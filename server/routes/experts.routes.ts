@@ -285,12 +285,13 @@ router.get("/api/expert/role", isAuthenticated, async (req, res) => {
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
 
       const formRow = await db
-        .select({ expertType: localExpertForms.expertType })
+        .select({ expertType: localExpertForms.expertType, status: localExpertForms.status })
         .from(localExpertForms)
         .where(eq(localExpertForms.userId, userId))
         .then((r) => r[0]);
 
       const expertRole = formRow?.expertType ?? null;
+      const applicationStatus = formRow?.status ?? null;
 
       const ROLE_LABELS: Record<string, string> = {
         local_expert:        "Local Expert",
@@ -300,8 +301,9 @@ router.get("/api/expert/role", isAuthenticated, async (req, res) => {
       };
 
       res.json({
-        role:      expertRole,
-        roleLabel: expertRole ? (ROLE_LABELS[expertRole] ?? expertRole) : null,
+        role:              expertRole,
+        roleLabel:         expertRole ? (ROLE_LABELS[expertRole] ?? expertRole) : null,
+        applicationStatus: applicationStatus,
       });
     } catch (err) {
       console.error("Error fetching expert role:", err);
