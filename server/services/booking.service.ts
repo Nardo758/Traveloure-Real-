@@ -10,7 +10,7 @@ import { stripePaymentService } from './stripe-payment.service';
 import { availabilityService } from './availability.service';
 import { pricingService } from './pricing.service';
 import { affiliateService } from './affiliate.service';
-import { sendBookingConfirmationEmail } from './email.service';
+import { sendBookingConfirmationEmail, sendBookingAlertEmail } from './email.service';
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
   apiVersion: '2024-12-18.acacia' as any,
@@ -451,7 +451,56 @@ class BookingService {
           status: 'pending_provider',
         });
 
-        // TODO: Send notification to provider
+        // Fire-and-forget: in-app notification + email to provider for new booking request
+        if (item.providerId) {
+          const reqId = insertedRequest?.id;
+          const providerId = item.providerId;
+          const title = item.title;
+          const date = item.date;
+          const time = item.time;
+          const price = item.price;
+          ;(async () => {
+            try {
+              const { storage } = await import('../storage');
+              const peopleRow = await db.execute(sql`
+                SELECT
+                  t.first_name AS t_first, t.last_name AS t_last,
+                  p.email AS p_email, p.first_name AS p_first, p.last_name AS p_last
+                FROM users t, users p
+                WHERE t.id = ${userId} AND p.id = ${providerId}
+              `);
+              const row = peopleRow.rows?.[0] as any;
+              const travelerName = [row?.t_first, row?.t_last].filter(Boolean).join(' ') || 'A traveler';
+              const providerEmail = row?.p_email as string | null;
+              const providerName = [row?.p_first, row?.p_last].filter(Boolean).join(' ') || 'Provider';
+
+              await storage.createNotification({
+                userId: providerId,
+                type: 'booking_request',
+                title: 'New Booking Request',
+                message: `${travelerName} requested "${title}" on ${date}${time ? ' at ' + time : ''}.`,
+                relatedId: reqId,
+                relatedType: 'booking_request',
+                data: { bookingRequestId: reqId, serviceTitle: title, travelerName, requestedDate: date, requestedTime: time ?? null },
+              });
+
+              if (providerEmail) {
+                sendBookingAlertEmail({
+                  providerEmail,
+                  providerName,
+                  bookingId: reqId || '',
+                  serviceName: title,
+                  travelerName,
+                  amount: String(price ?? 0),
+                }).catch(err =>
+                  console.error(`[BookingService] Provider booking request email failed for request ${reqId}:`, err)
+                );
+              }
+            } catch (notifErr) {
+              console.error(`[BookingService] Failed to notify provider ${providerId} of booking request:`, notifErr);
+            }
+          })();
+        }
       } catch (error: any) {
         errors.push(`Error submitting request for ${item.title}: ${error.message}`);
       }
@@ -535,7 +584,9 @@ class BookingService {
 
     // Gate 2: load the booking row for all subsequent checks.
     const bookingRow = await db.execute(sql`
-      SELECT user_id, status FROM bookings WHERE id = ${bookingId}
+      SELECT user_id, status, provider_id, service_amount, platform_fee, total_amount,
+             provider_payout, title, travelers, booking_date
+      FROM bookings WHERE id = ${bookingId}
     `);
 
     if (!bookingRow.rows || bookingRow.rows.length === 0) {
@@ -544,7 +595,18 @@ class BookingService {
       throw err;
     }
 
-    const booking = bookingRow.rows[0] as { user_id: string; status: string };
+    const booking = bookingRow.rows[0] as {
+      user_id: string;
+      status: string;
+      provider_id: string | null;
+      service_amount: string | null;
+      platform_fee: string | null;
+      total_amount: string | null;
+      provider_payout: string | null;
+      title: string | null;
+      travelers: number | null;
+      booking_date: string | null;
+    };
 
     // Gate 3: verify the booking belongs to the requesting user.
     if (booking.user_id !== userId) {
@@ -580,20 +642,148 @@ class BookingService {
 
     const confirmationCode = this.generateConfirmationCode();
 
-    await db.execute(sql`
-      UPDATE bookings SET
-        status = 'confirmed',
-        payment_status = 'succeeded',
-        confirmed_at = NOW(),
-        confirmation_code = ${confirmationCode},
-        deposit_paid = true,
-        stripe_payment_intent_id = ${paymentIntentId}
-      WHERE id = ${bookingId}
-        AND status = 'pending_payment'
-    `);
+    // Pre-compute earnings values before entering the transaction (avoids async imports inside tx)
+    const providerId = booking.provider_id;
+    const providerPayoutAmt = parseFloat(booking.provider_payout || '0');
+    const platformFeeAmt = parseFloat(booking.platform_fee || '0');
+    const totalAmt = parseFloat(booking.total_amount || '0');
+    const partySize = Math.max(1, booking.travelers || 1);
 
-    // TODO: Update provider earnings
-    // TODO: Decrease availability
+    const { availableAtFor } = await import('../config/earnings-hold.config');
+    const { PROCESSING_FEE_RATE } = await import('./commission');
+    const earningsAvailableAt = availableAtFor('service_booking');
+
+    // Atomic transaction: confirm booking + record earnings + decrement availability.
+    // All three succeed or all roll back together.
+    await db.transaction(async (tx) => {
+      // 1. Confirm the booking — must match exactly 1 row to proceed.
+      //    Using RETURNING id so we can check the affected count inside the tx.
+      const updateResult = await tx.execute(sql`
+        UPDATE bookings SET
+          status = 'confirmed',
+          payment_status = 'succeeded',
+          confirmed_at = NOW(),
+          confirmation_code = ${confirmationCode},
+          deposit_paid = true,
+          stripe_payment_intent_id = ${paymentIntentId}
+        WHERE id = ${bookingId}
+          AND status = 'pending_payment'
+        RETURNING id
+      `);
+
+      // Guard: if 0 rows were updated, another concurrent confirm already won.
+      // Abort the transaction before writing any earnings / availability rows.
+      if (!updateResult.rows || updateResult.rows.length === 0) {
+        const err = new Error(
+          `Booking ${bookingId} was not in 'pending_payment' status — concurrent confirmation detected`
+        );
+        (err as any).code = 'BOOKING_ALREADY_CONFIRMED';
+        throw err;
+      }
+
+      if (providerId) {
+        // 2. Record provider earnings ledger entry (born held; released after clearance window)
+        if (providerPayoutAmt > 0) {
+          const earningId = crypto.randomUUID();
+          await tx.execute(sql`
+            INSERT INTO provider_earnings (
+              id, provider_id, type, amount, currency,
+              source_type, source_id, description, status, available_at, created_at
+            ) VALUES (
+              ${earningId}, ${providerId}, 'service_booking',
+              ${String(providerPayoutAmt)}, 'USD',
+              'booking', ${bookingId},
+              ${`Earnings from booking ${bookingId}${booking.title ? ' - ' + booking.title : ''}`},
+              'held', ${earningsAvailableAt}, NOW()
+            )
+          `);
+        }
+
+        // 3. Record platform revenue entry
+        if (platformFeeAmt > 0) {
+          const revenueId = crypto.randomUUID();
+          const netAmount = platformFeeAmt * (1 - PROCESSING_FEE_RATE);
+          const processingFees = platformFeeAmt * PROCESSING_FEE_RATE;
+          await tx.execute(sql`
+            INSERT INTO platform_revenue (
+              id, source_type, source_id, gross_amount, platform_fee,
+              net_amount, processing_fees, provider_id, provider_earnings,
+              description, status, transaction_date, created_at
+            ) VALUES (
+              ${revenueId}, 'booking_commission', ${bookingId},
+              ${String(totalAmt)}, ${String(platformFeeAmt)},
+              ${String(netAmount)}, ${String(processingFees)},
+              ${providerId}, ${String(providerPayoutAmt)},
+              ${`Booking commission from booking ${bookingId}`},
+              'recorded', NOW(), NOW()
+            )
+          `);
+        }
+
+        // 4. Decrement provider general availability (service_id IS NULL rows only —
+        //    avoids over-counting service-specific capacity entries the booking
+        //    context cannot identify without a stored service_id on the booking).
+        await tx.execute(sql`
+          UPDATE provider_availability
+          SET current_bookings = COALESCE(current_bookings, 0) + ${partySize},
+              updated_at = NOW()
+          WHERE provider_id = ${providerId}
+            AND service_id IS NULL
+            AND is_available = true
+        `);
+      }
+    });
+
+    // Fire-and-forget: provider in-app notification + email (non-critical; must not block caller)
+    ;(async () => {
+      try {
+        if (!providerId) return;
+        const { storage } = await import('../storage');
+        const peopleRow = await db.execute(sql`
+          SELECT
+            t.first_name AS t_first, t.last_name AS t_last,
+            p.email AS p_email, p.first_name AS p_first, p.last_name AS p_last
+          FROM users t, users p
+          WHERE t.id = ${userId} AND p.id = ${providerId}
+        `);
+        const row = peopleRow.rows?.[0] as any;
+        const travelerName = [row?.t_first, row?.t_last].filter(Boolean).join(' ') || 'A traveler';
+        const providerEmail = row?.p_email as string | null;
+        const providerName = [row?.p_first, row?.p_last].filter(Boolean).join(' ') || 'Provider';
+
+        await storage.createNotification({
+          userId: providerId,
+          type: 'booking_confirmed',
+          title: 'Booking Confirmed',
+          message: `${travelerName} confirmed "${booking.title || 'a booking'}"${booking.booking_date ? ' on ' + booking.booking_date : ''}. Confirmation: ${confirmationCode}.`,
+          relatedId: bookingId,
+          relatedType: 'booking',
+          data: {
+            bookingId,
+            serviceTitle: booking.title,
+            travelerName,
+            bookingDate: booking.booking_date,
+            confirmationCode,
+            providerPayout: providerPayoutAmt,
+          },
+        });
+
+        if (providerEmail) {
+          sendBookingAlertEmail({
+            providerEmail,
+            providerName,
+            bookingId,
+            serviceName: booking.title || 'Service booking',
+            travelerName,
+            amount: String(booking.total_amount || providerPayoutAmt),
+          }).catch(err =>
+            console.error(`[BookingService] Provider booking confirmed email failed for booking ${bookingId}:`, err)
+          );
+        }
+      } catch (notifErr) {
+        console.error(`[BookingService] Post-confirmation notifications failed for booking ${bookingId}:`, notifErr);
+      }
+    })();
 
     // Fire-and-forget confirmation email — must not block the caller
     db.execute(sql`
