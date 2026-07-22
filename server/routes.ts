@@ -6062,7 +6062,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         return res.json({ alreadyPaid: true, feePaymentStatus: "paid" });
       }
       if (state.feePaymentStatus === "refunded") {
-        return res.status(409).json({ alreadyRefunded: true, feePaymentStatus: "refunded", message: "This coordination fee has already been refunded and cannot be charged again." });
+        return res.json({ alreadyRefunded: true, feePaymentStatus: "refunded" });
       }
 
       // §15 step 1 — claim the state atomically (unpaid → pending). The `WHERE ... IN (unpaid)` guard
@@ -6079,7 +6079,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (claimed.length === 0) {
         const fresh = await storage.getCoordinationState(coordinationId);
         if (fresh?.feePaymentStatus === "paid") return res.json({ alreadyPaid: true, feePaymentStatus: "paid" });
-        if (fresh?.feePaymentStatus === "refunded") return res.status(409).json({ alreadyRefunded: true, feePaymentStatus: "refunded", message: "This coordination fee has already been refunded and cannot be charged again." });
+        if (fresh?.feePaymentStatus === "refunded") return res.json({ alreadyRefunded: true, feePaymentStatus: "refunded" });
         if (fresh?.feePaymentIntentId) {
           const stripeR = new Stripe(process.env.STRIPE_SECRET_KEY || "", { apiVersion: "2024-12-18.acacia" as any });
           const existingPi = await stripeR.paymentIntents.retrieve(fresh.feePaymentIntentId);
