@@ -20,7 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import StripeCheckout from "@/components/booking/StripeCheckout";
-import { Crown, Calendar, MapPin, CheckCircle2, Loader2, Sparkles } from "lucide-react";
+import { Crown, Calendar, MapPin, CheckCircle2, Loader2, Sparkles, RefreshCcw } from "lucide-react";
 
 interface Engagement {
   id: string;
@@ -57,6 +57,8 @@ function StatusBadge({ status }: { status: string | null }) {
 function FeeBadge({ feePaymentStatus }: { feePaymentStatus: string }) {
   if (feePaymentStatus === "paid")
     return <Badge className="bg-emerald-600 hover:bg-emerald-600 text-white">Fee paid</Badge>;
+  if (feePaymentStatus === "refunded")
+    return <Badge className="bg-gray-100 text-gray-600 border border-gray-200">Fee refunded</Badge>;
   if (feePaymentStatus === "pending")
     return <Badge variant="outline">Payment in progress</Badge>;
   return <Badge variant="outline">Fee due</Badge>;
@@ -69,10 +71,11 @@ function EngagementCard({ engagement }: { engagement: Engagement }) {
   const [pi, setPi] = useState<{ clientSecret: string; paymentIntentId: string; amount: number } | null>(null);
 
   const isPaid = engagement.feePaymentStatus === "paid";
+  const isRefunded = engagement.feePaymentStatus === "refunded";
 
   const { data: fee, isLoading: feeLoading } = useQuery<FeeQuote>({
     queryKey: [`/api/coordination-states/${engagement.id}/fee`],
-    enabled: !isPaid, // once paid, the stored net is authoritative — no need to re-quote
+    enabled: !isPaid && !isRefunded, // once settled, the stored amount is authoritative — no need to re-quote
   });
 
   async function startPayment() {
@@ -82,6 +85,11 @@ function EngagementCard({ engagement }: { engagement: Engagement }) {
       const data = await res.json();
       if (data.alreadyPaid || data.paid) {
         toast({ title: "Coordination fee settled", description: "This engagement is fully paid." });
+        queryClient.invalidateQueries({ queryKey: ["/api/coordination-states"] });
+        return;
+      }
+      if (data.alreadyRefunded) {
+        toast({ title: "Fee already refunded", description: "This coordination fee was refunded and cannot be charged again.", variant: "destructive" });
         queryClient.invalidateQueries({ queryKey: ["/api/coordination-states"] });
         return;
       }
@@ -107,8 +115,9 @@ function EngagementCard({ engagement }: { engagement: Engagement }) {
     }
   }
 
-  const creditCents = isPaid ? (engagement.feeCreditCents ?? 0) : (fee?.optimizeCreditCents ?? 0);
-  const dueCents = isPaid ? (engagement.feeAmountCents ?? 0) : (fee?.feeCents ?? 0);
+  const isSettled = isPaid || isRefunded;
+  const creditCents = isSettled ? (engagement.feeCreditCents ?? 0) : (fee?.optimizeCreditCents ?? 0);
+  const dueCents = isSettled ? (engagement.feeAmountCents ?? 0) : (fee?.feeCents ?? 0);
 
   return (
     <Card data-testid={`card-engagement-${engagement.id}`}>
@@ -144,13 +153,13 @@ function EngagementCard({ engagement }: { engagement: Engagement }) {
 
         {/* Fee line */}
         <div className="rounded-lg border border-border p-4">
-          {feeLoading && !isPaid ? (
+          {feeLoading && !isSettled ? (
             <Skeleton className="h-6 w-40" />
           ) : (
             <div className="space-y-1">
               <div className="flex items-center justify-between">
                 <span className="text-sm text-muted-foreground">
-                  {isPaid ? "Coordination fee paid" : "Coordination fee"}
+                  {isPaid ? "Coordination fee paid" : isRefunded ? "Coordination fee refunded" : "Coordination fee"}
                 </span>
                 <span className="text-lg font-semibold" data-testid={`text-fee-${engagement.id}`}>
                   {money(dueCents, fee?.currency || "USD")}
@@ -169,6 +178,10 @@ function EngagementCard({ engagement }: { engagement: Engagement }) {
         {isPaid ? (
           <div className="flex items-center gap-2 text-sm text-emerald-600">
             <CheckCircle2 className="w-4 h-4" /> Paid — your coordinator is handling the rest.
+          </div>
+        ) : isRefunded ? (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground" data-testid={`text-refunded-${engagement.id}`}>
+            <RefreshCcw className="w-4 h-4" /> This coordination fee was refunded and cannot be charged again.
           </div>
         ) : (
           <Button
