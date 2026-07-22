@@ -1318,6 +1318,15 @@ router.patch("/api/admin/provider-applications/:id/status", isAuthenticated, asy
         message: "Congratulations! Your provider application has been approved. Complete your Stripe Connect setup to start receiving payouts.",
         data: { link: "/provider/earnings" },
       });
+      // Send approval email (fire-and-forget)
+      const providerUser = await storage.getUser(updated.userId);
+      if (providerUser?.email) {
+        const { sendProviderApplicationApprovalEmail } = await import("../services/email.service");
+        sendProviderApplicationApprovalEmail({
+          toEmail: providerUser.email,
+          firstName: providerUser.firstName ?? null,
+        });
+      }
     }
     
     res.json(updated);
