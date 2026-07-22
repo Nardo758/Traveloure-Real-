@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ExpertLayout } from "@/components/expert/expert-layout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -138,6 +138,11 @@ const SERVICE_TIER_FILTERS = [
   { label: "Specialized", value: "specialized" },
 ];
 
+interface ExpertRole {
+  role: string | null;
+  roleLabel: string | null;
+}
+
 export default function ServiceWizard() {
   const [startMode, setStartMode] = useState<'choose' | 'template' | 'scratch'>('choose');
   const [currentStep, setCurrentStep] = useState(1);
@@ -146,6 +151,21 @@ export default function ServiceWizard() {
   const [tierFilter, setTierFilter] = useState<string>("all");
   const { toast } = useToast();
   const [, navigate] = useLocation();
+
+  const { data: expertRoleData, isLoading: roleLoading } = useQuery<ExpertRole>({
+    queryKey: ["/api/expert/role"],
+  });
+
+  useEffect(() => {
+    if (!roleLoading && expertRoleData?.role === null) {
+      toast({
+        title: "Application required",
+        description: "You need to submit an expert application before creating services.",
+        variant: "destructive",
+      });
+      navigate("/expert/apply");
+    }
+  }, [roleLoading, expertRoleData, toast, navigate]);
 
   const { data: categories = [] } = useQuery<{ id: string; name: string }[]>({
     queryKey: ["/api/service-categories"],
