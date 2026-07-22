@@ -1380,6 +1380,16 @@ router.patch("/api/admin/provider-applications/:id/rejection-reason", isAuthenti
       message: "An admin has updated the feedback on your provider application. Review the new message to understand what you can improve before reapplying.",
       data: { link: "/provider-status" },
     });
+    // Send updated rejection feedback email (fire-and-forget)
+    const providerUser = await storage.getUser(updated.userId);
+    if (providerUser?.email) {
+      const { sendProviderApplicationRejectionEmail } = await import("../services/email.service");
+      sendProviderApplicationRejectionEmail({
+        toEmail: providerUser.email,
+        firstName: providerUser.firstName ?? null,
+        rejectionMessage: rejectionMessage,
+      });
+    }
     res.json(updated);
   });
 
