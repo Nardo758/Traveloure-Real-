@@ -14,10 +14,8 @@ import {
   Plane,
   PartyPopper,
 } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
-import { useEffect } from "react";
 import { useLocation, Link } from "wouter";
-import { useToast } from "@/hooks/use-toast";
+import { useApplicationGuard } from "@/hooks/use-application-guard";
 
 interface ServiceTemplate {
   id: string;
@@ -55,32 +53,12 @@ const ROLE_BADGE_STYLE: Record<string, { bg: string; text: string; icon: React.R
   },
 };
 
-interface ServiceTemplatesResponse {
-  requiresApplication: boolean;
-  templates: ServiceTemplate[];
-}
 
 export default function ServiceTemplates() {
   const [, navigate] = useLocation();
-  const { toast } = useToast();
 
-  const { data, isLoading } = useQuery<ServiceTemplatesResponse>({
-    queryKey: ["/api/expert/service-templates"],
-  });
-
-  const requiresApplication = data?.requiresApplication ?? false;
-  const templates = data?.templates ?? [];
-
-  useEffect(() => {
-    if (!isLoading && requiresApplication) {
-      toast({
-        title: "Application required",
-        description: "You need to submit an expert application before browsing service templates.",
-        variant: "destructive",
-      });
-      navigate("/expert/apply");
-    }
-  }, [isLoading, requiresApplication, toast, navigate]);
+  const { isLoading, requiresApplication, templates: rawTemplates } = useApplicationGuard();
+  const templates = rawTemplates as ServiceTemplate[];
 
   const handleUseTemplate = (template: ServiceTemplate) => {
     const params = new URLSearchParams();
