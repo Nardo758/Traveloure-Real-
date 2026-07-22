@@ -918,3 +918,85 @@ export async function sendVerificationDecisionEmail(params: VerificationDecision
     console.error("[email] Verification-decision email failed (non-fatal):", err);
   }
 }
+
+// ─── Expert application rejection email ───────────────────────────────────────
+
+interface ExpertApplicationRejectionParams {
+  toEmail: string;
+  firstName?: string | null;
+  /** Optional rejection reason provided by the admin. */
+  rejectionMessage?: string | null;
+}
+
+/**
+ * Fire-and-forget email to an expert applicant when their application is
+ * rejected. Includes the admin's rejection reason (if any) and a link back
+ * to /expert/apply so they can revise and resubmit. Never throws.
+ */
+export async function sendExpertApplicationRejectionEmail(
+  params: ExpertApplicationRejectionParams
+): Promise<void> {
+  const client = getClient();
+  if (!client) {
+    console.log("[email] RESEND_API_KEY not set — skipping expert rejection email for", params.toEmail);
+    return;
+  }
+
+  const greeting = params.firstName ? `Hi ${escHtml(params.firstName)},` : "Hi,";
+  const applyUrl = `${getAppBaseUrl()}/expert/apply`;
+  const reasonBlock =
+    params.rejectionMessage
+      ? `<p style="color:#374151;"><strong>Reviewer note:</strong> ${escHtml(params.rejectionMessage)}</p>`
+      : "";
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
+      <h2 style="color: #DC2626; margin-bottom: 8px;">Application not approved</h2>
+      <p style="color: #374151;">${greeting}</p>
+      <p style="color: #374151;">
+        Thank you for applying to join Traveloure as a local expert. After reviewing your
+        application, we're unable to approve it at this time.
+      </p>
+      ${reasonBlock}
+      <p style="color: #374151;">
+        You're welcome to update your details and reapply. Click the button below to return
+        to the application form.
+      </p>
+      <a href="${applyUrl}"
+         style="display: inline-block; background: #FF385C; color: #ffffff; text-decoration: none;
+                padding: 12px 24px; border-radius: 6px; font-weight: 600; margin-top: 8px;">
+        Reapply as an Expert
+      </a>
+      <p style="color: #9CA3AF; font-size: 12px; margin-top: 32px;">
+        You're receiving this because you submitted an expert application on Traveloure.<br>
+        Apply again at <a href="${applyUrl}" style="color: #FF385C;">${applyUrl}</a>.
+      </p>
+    </div>
+  `;
+
+  const text = [
+    "Application not approved",
+    ``,
+    greeting,
+    ``,
+    "Thank you for applying to join Traveloure as a local expert. After reviewing your application, we're unable to approve it at this time.",
+    params.rejectionMessage ? `\nReviewer note: ${params.rejectionMessage}` : "",
+    ``,
+    "You're welcome to update your details and reapply.",
+    ``,
+    `Reapply at: ${applyUrl}`,
+  ].filter((l) => l !== "").join("\n");
+
+  try {
+    await client.emails.send({
+      from: getFromAddress(),
+      to: params.toEmail,
+      subject: "Your Traveloure expert application",
+      html,
+      text,
+    });
+    console.log(`[email] Expert application rejection email sent to ${params.toEmail}`);
+  } catch (err) {
+    console.error("[email] Expert application rejection email failed (non-fatal):", err);
+  }
+}
