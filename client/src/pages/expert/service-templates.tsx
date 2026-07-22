@@ -13,6 +13,7 @@ import {
   ArrowRight,
   Plane,
   PartyPopper,
+  ClipboardList,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation, Link } from "wouter";
@@ -53,12 +54,20 @@ const ROLE_BADGE_STYLE: Record<string, { bg: string; text: string; icon: React.R
   },
 };
 
+interface ServiceTemplatesResponse {
+  requiresApplication: boolean;
+  templates: ServiceTemplate[];
+}
+
 export default function ServiceTemplates() {
   const [, navigate] = useLocation();
 
-  const { data: templates = [], isLoading } = useQuery<ServiceTemplate[]>({
+  const { data, isLoading } = useQuery<ServiceTemplatesResponse>({
     queryKey: ["/api/expert/service-templates"],
   });
+
+  const requiresApplication = data?.requiresApplication ?? false;
+  const templates = data?.templates ?? [];
 
   const handleUseTemplate = (template: ServiceTemplate) => {
     const params = new URLSearchParams();
@@ -222,7 +231,25 @@ export default function ServiceTemplates() {
           )}
         </div>
 
-        {templates.length === 0 && !isLoading && (
+        {!isLoading && requiresApplication && (
+          <div className="text-center py-16" data-testid="state-requires-application">
+            <ClipboardList className="w-14 h-14 text-gray-300 mx-auto mb-4" />
+            <h3 className="text-xl font-semibold text-gray-900 mb-2">
+              Complete your expert application first
+            </h3>
+            <p className="text-gray-600 mb-6 max-w-md mx-auto">
+              Service templates are tailored to your expert role. Submit your application so we can
+              match you with the right templates.
+            </p>
+            <Link href="/expert/apply">
+              <Button className="bg-primary hover:bg-primary/90" data-testid="button-go-to-application">
+                Submit Application
+              </Button>
+            </Link>
+          </div>
+        )}
+
+        {templates.length === 0 && !isLoading && !requiresApplication && (
           <div className="text-center py-12">
             <Package className="w-12 h-12 text-gray-400 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">No templates available</h3>
