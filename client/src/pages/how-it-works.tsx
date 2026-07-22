@@ -49,7 +49,7 @@ const steps = [
     color: "bg-green-500",
     features: [
       "All bookings managed in one place",
-      "24/7 support during your trip",
+      "In-app messaging with your expert advisor",
       "Real-time updates and notifications",
       "Post-trip memories and reviews"
     ]
