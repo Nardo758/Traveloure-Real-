@@ -4,13 +4,11 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { 
-  Bot, 
-  Send, 
-  CheckCircle, 
-  Clock, 
-  RefreshCw, 
-  X, 
-  Edit,
+  Bot,
+  Send,
+  CheckCircle,
+  Clock,
+  X,
   ArrowRight,
   Star
 } from "lucide-react";
@@ -172,17 +170,24 @@ export default function EAAIAssistant() {
 
                     <div className="mt-4 flex items-center justify-between">
                       <div className="flex gap-2">
-                        <Button size="sm" className="bg-green-600 hover:bg-green-700" data-testid={`button-approve-${task.id}`}>
+                        <Button
+                          size="sm"
+                          className="bg-green-600 hover:bg-green-700"
+                          disabled={updateTask.isPending}
+                          onClick={() => updateTask.mutate({ id: task.id, status: "approved" })}
+                          data-testid={`button-approve-${task.id}`}
+                        >
                           <CheckCircle className="w-3 h-3 mr-1" /> Approve
                         </Button>
-                        <Button size="sm" variant="outline" data-testid={`button-edit-${task.id}`}>
-                          <Edit className="w-3 h-3 mr-1" /> Edit
-                        </Button>
-                        <Button size="sm" variant="outline" data-testid={`button-regenerate-${task.id}`}>
-                          <RefreshCw className="w-3 h-3 mr-1" /> Regenerate
-                        </Button>
-                        <Button size="sm" variant="ghost" className="text-red-600" data-testid={`button-reject-${task.id}`}>
-                          <X className="w-3 h-3" />
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-red-600"
+                          disabled={updateTask.isPending}
+                          onClick={() => updateTask.mutate({ id: task.id, status: "rejected" })}
+                          data-testid={`button-reject-${task.id}`}
+                        >
+                          <X className="w-3 h-3 mr-1" /> Reject
                         </Button>
                       </div>
                     </div>
