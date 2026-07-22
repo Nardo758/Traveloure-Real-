@@ -52,6 +52,7 @@ export function DeliveryOptions({
   const [busy, setBusy] = useState<"ai" | "expert" | "full" | null>(null);
   const [success, setSuccess] = useState<{ tier: "expert" | "full"; message: string } | null>(null);
   const [isGuestFull, setIsGuestFull] = useState(false);
+  const [fullError, setFullError] = useState<string | null>(null);
   const { openSignInModal } = useSignInModal();
 
   const { suggestVsAdd, branch } = route;
@@ -123,14 +124,27 @@ export function DeliveryOptions({
       // traveler (Phase 1a) and returns its coordinationId — link the traveler straight to it.
       const res = await patchTier("full");
       let hasEngagement = false;
+      let isGuest = false;
       let claimToken: string | undefined;
+      let serverError = false;
       try {
         const data = res ? await res.json() : null;
         hasEngagement = Boolean(data?.coordinationId);
+        isGuest = Boolean(data?.isGuest);
         claimToken = data?.claimToken ?? undefined;
-      } catch { /* non-JSON / guest — fall back to the generic message */ }
+        // If the server returned no coordinationId but the user is NOT a guest,
+        // that's a silent server error — don't show the sign-in prompt.
+        if (!hasEngagement && !isGuest) {
+          serverError = true;
+        }
+      } catch { /* non-JSON — treat as server error for safety */ serverError = true; }
 
-      if (!hasEngagement) {
+      if (serverError) {
+        setFullError("Something went wrong. Please try again.");
+        return;
+      }
+
+      if (!hasEngagement && isGuest) {
         // Guest path: no coordination row was created (auth-gated).
         // Store the requestId + HMAC claim token so the post-auth hook can claim it.
         sessionStorage.setItem("guestConciergeRequestId", requestId);
@@ -319,12 +333,17 @@ export function DeliveryOptions({
             className="w-full"
             variant={route.full.available ? "default" : "outline"}
             disabled={!route.full.available || busy !== null}
-            onClick={handleFull}
+            onClick={() => { setFullError(null); handleFull(); }}
             data-testid="button-concierge-pick-full"
           >
             {busy === "full" ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Crown className="w-4 h-4 mr-2" />}
             {route.full.available ? "Request quote" : "Not available"}
           </Button>
+          {fullError && (
+            <p className="text-sm text-destructive" data-testid="text-full-error">
+              {fullError}
+            </p>
+          )}
         </CardContent>
       </Card>
     </div>
