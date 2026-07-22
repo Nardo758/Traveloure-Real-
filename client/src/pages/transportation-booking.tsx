@@ -137,8 +137,8 @@ export default function TransportationBookingPage() {
                   <ul className="text-sm text-muted-foreground space-y-1">
                     <li>• Compare all operators in one place</li>
                     <li>• Instant e-tickets - no printing needed</li>
-                    <li>• 24/7 customer support</li>
-                    <li>• Free cancellation on many routes</li>
+                    <li>• Customer support via 12Go</li>
+                    <li>• Cancellation policies vary by route and operator</li>
                   </ul>
                 </div>
               </div>
