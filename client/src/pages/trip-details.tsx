@@ -22,40 +22,9 @@ import { CreditCard, ShieldCheck, ExternalLink } from "lucide-react";
 import { getTemplateConfig, type PlanCardDay, type PlanCardActivity, type PlanCardTransport, type PlanCardTrip } from "@/components/plancard/plancard-types";
 import { PlanCard } from "@/components/plancard/PlanCard";
 import { EscalationCTA } from "@/components/plancard/EscalationCTA";
-import { InlineTransportSelector, type InlineTransportLegData } from "@/components/itinerary/InlineTransportSelector";
 import EnhancedPlanningModal from "@/components/EnhancedPlanningModal";
 
 type Section = "activities" | "transport";
-
-function synthesizeTransportLegs(activities: any[]): InlineTransportLegData[] {
-  if (!activities || activities.length < 2) return [];
-  const legs: InlineTransportLegData[] = [];
-  for (let i = 0; i < activities.length - 1; i++) {
-    const from = activities[i];
-    const to = activities[i + 1];
-    legs.push({
-      id: `synth-leg-${from.id}-${to.id}`,
-      legOrder: i + 1,
-      fromName: from.location || from.title || from.name || `Stop ${i + 1}`,
-      toName: to.location || to.title || to.name || `Stop ${i + 2}`,
-      recommendedMode: "walk",
-      userSelectedMode: null,
-      distanceDisplay: "~1 km",
-      estimatedDurationMinutes: 15,
-      estimatedCostUsd: null,
-      alternativeModes: [
-        { mode: "taxi", durationMinutes: 5, costUsd: 8, energyCost: 30, reason: "Fastest option" },
-        { mode: "transit", durationMinutes: 10, costUsd: 2, energyCost: 10, reason: "Affordable" },
-        { mode: "rideshare", durationMinutes: 7, costUsd: 6, energyCost: 25, reason: "Convenient pickup" },
-      ],
-      fromLat: from.lat || null,
-      fromLng: from.lng || null,
-      toLat: to.lat || null,
-      toLng: to.lng || null,
-    });
-  }
-  return legs;
-}
 
 type BookingType = "inApp" | "partner";
 
@@ -640,7 +609,11 @@ export default function TripDetails() {
                           transports: (() => {
                             const dayNum = d.day;
                             const real = realLegsMap[dayNum];
-                            const legs = real?.length ? real : d.transportLegs || synthesizeTransportLegs(d.activities || []);
+                            // Only real (routed) or persisted transport legs reach the PlanCard.
+                            // Do NOT synthesize fabricated walking legs / fake $8/$2/$6 alternatives
+                            // here — they were feeding the headline transit stats + "Book on
+                            // Traveloure" badge as if real (§13). No data → no transport shown.
+                            const legs = real?.length ? real : (d.transportLegs || []);
                             return legs.map((l: any): PlanCardTransport => ({
                               id: l.id,
                               from: l.fromName || l.from || "",
@@ -654,15 +627,6 @@ export default function TripDetails() {
                             }));
                           })(),
                         }));
-
-                        const currentPlanCardDay = planCardDays[selectedDay - 1];
-                        const currentItineraryDay = itinerary.days[selectedDay - 1];
-                        const currentDayLegs: InlineTransportLegData[] = (() => {
-                          if (!currentItineraryDay) return [];
-                          const dayNum = currentItineraryDay.day;
-                          const real = realLegsMap[dayNum];
-                          return real?.length ? real : currentItineraryDay.transportLegs || synthesizeTransportLegs(currentItineraryDay.activities || []);
-                        })();
 
                         // Compute extra stats
                         const totalDays = itinerary.days.length;
