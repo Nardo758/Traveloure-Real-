@@ -260,7 +260,7 @@ export interface IStorage {
     sortBy?: "rating" | "price_low" | "price_high" | "reviews";
     limit?: number;
     offset?: number;
-  }): Promise<{ services: ProviderService[]; packages: ExpertTemplate[]; total: number }>;
+  }): Promise<{ services: (ProviderService & { providerFirstName?: string | null; providerLastName?: string | null; providerImageUrl?: string | null })[]; packages: ExpertTemplate[]; total: number }>;
 
   // Cart
   getCartItems(userId: string, experienceSlug?: string): Promise<any[]>;
@@ -1731,8 +1731,25 @@ export class DatabaseStorage implements IStorage {
       });
     }
 
+    const pageServices = filtered.slice(offset, offset + limit);
+
+    // Enrich page results with real provider name and profile image from users table
+    let enrichedServices: (ProviderService & { providerFirstName?: string | null; providerLastName?: string | null; providerImageUrl?: string | null })[] = pageServices;
+    if (pageServices.length > 0) {
+      const userIds = [...new Set(pageServices.map(s => s.userId))];
+      const userRows = await db
+        .select({ id: users.id, firstName: users.firstName, lastName: users.lastName, profileImageUrl: users.profileImageUrl })
+        .from(users)
+        .where(inArray(users.id, userIds));
+      const userMap = new Map(userRows.map(u => [u.id, u]));
+      enrichedServices = pageServices.map(s => {
+        const u = userMap.get(s.userId);
+        return { ...s, providerFirstName: u?.firstName ?? null, providerLastName: u?.lastName ?? null, providerImageUrl: u?.profileImageUrl ?? null };
+      });
+    }
+
     return {
-      services: filtered.slice(offset, offset + limit),
+      services: enrichedServices,
       packages,
       total: filtered.length
     };
