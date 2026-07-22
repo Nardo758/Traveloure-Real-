@@ -377,8 +377,19 @@ This document captures architectural decisions to maintain consistency across co
       link). **Idempotent** — one engagement per concierge request (dedup on `user_request->>'conciergeRequestId'`);
       **guests stay request-only** (coordination_states.userId is NOT NULL). No schema change, no migration.
       Proven behaviorally: Full-pick → engagement created; re-PATCH → same id; `/fee` resolves ($499 floor at
-      empty budget, 8% tier when budget set). **Filed (Phase 1b/1c):** a traveler-facing engagements surface
-      (view status + quoted fee) and an admin coordinator-assignment action on the concierge queue.
+      empty budget, 8% tier when budget set).
+      **Phase 1b — LANDED (Jul 22, 2026): traveler engagements surface.** New `/my-events` page
+      (`client/src/pages/my-events.tsx`, ProtectedRoute + "My events" sidebar entry) lists the traveler's
+      coordination engagements with status + the credit-aware server-quoted fee (`GET …/:id/fee`) and a **Pay**
+      button that runs the Phase-2 flow via the shared Stripe `StripeCheckout` (`POST /pay` → Elements →
+      `POST /pay/confirm`; client never sends an amount). The concierge Full-pick now links straight to
+      `/my-events` (was a dead-end "we'll follow up"). Empty state → `/concierge`.
+      **Phase 1c — LANDED (Jul 22, 2026): admin coordinator assignment.** The admin concierge queue
+      (`/admin/concierge-requests`) now joins each Full request's coordination engagement (status + fee status +
+      current coordinator) and offers a coordinator picker: `GET /api/admin/coordinators` (expert/local_expert/
+      travel_expert, non-suspended/non-deleted) + `POST /api/admin/coordination-states/:id/assign-coordinator`
+      (adminApiGuard §2 + explicit admin check; validates the target is an expert role; sets `assigned_expert_id`
+      so the expert coordinator workspace picks it up). No migration.
       **Phase 2 — LANDED (Jul 22, 2026, decision-maker RATIFIED, migration 125): the coordination fee is now
       CHARGED, credit-aware.** The §7 quote-only→captured flip shipped: `POST /api/coordination-states/:id/pay`
       (+ `/pay/confirm`) charges the server-derived fee via Stripe (§14 amount from the state's own

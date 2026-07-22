@@ -41,6 +41,7 @@ import {
   serviceOfferingTypes, insertServiceOfferingTypeSchema,
   expertOfferingTypes, insertExpertOfferingTypeSchema,
   localExpertForms, expertRequests,
+  coordinationStates,
 } from "@shared/schema";
 import {
   TAB_CONTENT_TYPE_MAP,
@@ -503,6 +504,9 @@ router.get("/api/admin/concierge-requests", isAuthenticated, async (req, res) =>
     return res.status(403).json({ message: "Admin access required" });
   }
   try {
+    // Join the coordination engagement a Full-tier request spun up (Phase 1a wires it via
+    // user_request->>'conciergeRequestId'), plus the currently-assigned coordinator, so the admin
+    // queue can assign/see the coordinator + fee status inline (Phase 1c).
     const result = await db.execute(sql`
       SELECT
         cr.id,
@@ -513,9 +517,18 @@ router.get("/api/admin/concierge-requests", isAuthenticated, async (req, res) =>
         cr.created_at,
         u.email       AS user_email,
         u.first_name  AS user_first_name,
-        u.last_name   AS user_last_name
+        u.last_name   AS user_last_name,
+        cs.id                  AS coordination_id,
+        cs.status              AS coordination_status,
+        cs.fee_payment_status  AS fee_payment_status,
+        cs.assigned_expert_id  AS assigned_expert_id,
+        ce.first_name          AS coordinator_first_name,
+        ce.last_name           AS coordinator_last_name,
+        ce.email               AS coordinator_email
       FROM concierge_requests cr
       LEFT JOIN users u ON u.id = cr.user_id
+      LEFT JOIN coordination_states cs ON cs.user_request->>'conciergeRequestId' = cr.id::text
+      LEFT JOIN users ce ON ce.id = cs.assigned_expert_id
       WHERE cr.chosen_tier IN ('expert', 'full')
       ORDER BY cr.created_at DESC NULLS LAST
       LIMIT 200
@@ -524,6 +537,68 @@ router.get("/api/admin/concierge-requests", isAuthenticated, async (req, res) =>
   } catch (err: any) {
     console.error("Admin concierge-requests error:", err);
     res.status(500).json({ message: "Failed to fetch concierge requests" });
+  }
+});
+
+// GET /api/admin/coordinators — eligible expert coordinators for the assign-coordinator picker.
+// Any expert-type role (expert / local_expert / travel_expert), excluding deleted/suspended.
+router.get("/api/admin/coordinators", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const result = await db.execute(sql`
+      SELECT id, first_name, last_name, email, role
+      FROM users
+      WHERE role IN ('expert', 'local_expert', 'travel_expert')
+        AND (is_suspended IS NULL OR is_suspended = false)
+        AND (is_deleted IS NULL OR is_deleted = false)
+      ORDER BY first_name NULLS LAST, last_name NULLS LAST
+      LIMIT 500
+    `);
+    res.json({ coordinators: result.rows });
+  } catch (err: any) {
+    console.error("Admin coordinators error:", err);
+    res.status(500).json({ message: "Failed to fetch coordinators" });
+  }
+});
+
+// POST /api/admin/coordination-states/:id/assign-coordinator — assign (or reassign) an expert
+// coordinator to a coordination engagement. Sets assigned_expert_id; the expert coordinator
+// workspace reads engagements by that field. Validates the target is a real expert-type user.
+router.post("/api/admin/coordination-states/:id/assign-coordinator", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const { expertId } = z.object({ expertId: z.string().min(1) }).parse(req.body);
+
+    const [expert] = await db
+      .select({ id: users.id, role: users.role })
+      .from(users)
+      .where(eq(users.id, expertId))
+      .limit(1);
+    if (!expert || !["expert", "local_expert", "travel_expert"].includes(expert.role as string)) {
+      return res.status(400).json({ message: "Target user is not an eligible expert coordinator" });
+    }
+
+    const [updated] = await db
+      .update(coordinationStates)
+      .set({ assignedExpertId: expertId, updatedAt: new Date() })
+      .where(eq(coordinationStates.id, req.params.id))
+      .returning({ id: coordinationStates.id, assignedExpertId: coordinationStates.assignedExpertId });
+    if (!updated) {
+      return res.status(404).json({ message: "Coordination engagement not found" });
+    }
+    res.json({ success: true, coordinationId: updated.id, assignedExpertId: updated.assignedExpertId });
+  } catch (err: any) {
+    if (err instanceof z.ZodError) {
+      return res.status(400).json({ message: "Validation error", errors: err.errors });
+    }
+    console.error("Admin assign-coordinator error:", err);
+    res.status(500).json({ message: "Failed to assign coordinator" });
   }
 });
 
