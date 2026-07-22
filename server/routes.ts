@@ -586,6 +586,18 @@ export async function registerRoutes(
   // dead-code for those paths; inline /api/trips family is out of scope to remove).
   app.use(tripsRoutes);
 
+  // Expert routes — role management, service templates, vendor coordination, constraints,
+  // provider blackout dates, assigned trips, knowledge nuggets, visa info, and more.
+  // Imported at line 98 but previously unmounted; mounting restores all /api/expert/* and
+  // /api/provider/blackout-dates endpoints for live consumers.
+  app.use(expertsRoutes);
+
+  // Cross-sell event tracking — POST /api/cross-sell-events (anonymous/auth),
+  // GET /api/cross-sell-events/provider-stats (auth), GET /api/admin/cross-sell/funnel (admin).
+  // Imported at line 103 but previously unmounted; mounting restores provider analytics
+  // and admin cross-sell funnel pages.
+  app.use(crossSellRoutes);
+
   // Trips Routes (inline — superseded by tripsRoutes mount above; kept as-is per task scope)
   // GET /api/trips — list trips (auth only, since guests access via shareToken)
   app.get(api.trips.list.path, isAuthenticated, async (req, res) => {
