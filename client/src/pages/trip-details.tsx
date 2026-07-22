@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useTrip, useOptimizeTrip, useGeneratedItinerary } from "@/hooks/use-trips";
+import { useTrip, useGenerateItinerary, useGeneratedItinerary } from "@/hooks/use-trips";
 import { useParams, Link, useSearch, useLocation } from "wouter";
 import { Loader2, Calendar, MapPin, Sparkles, User, ArrowRight, ArrowLeft, Clock, Coffee, Camera, Utensils, Bed, Plane, ChevronRight, ShoppingCart, Star, Package, Share2, Copy, Check, UserPlus, MessageCircle, Lightbulb, CheckCircle, XCircle } from "lucide-react";
 import { TemporalAnchorManager, ScheduleValidator, EnergyBudgetDisplay, AnchorSuggestionsPanel, WeddingAnchorPresets, TripLogisticsDashboard } from "@/components/logistics";
@@ -22,40 +22,9 @@ import { CreditCard, ShieldCheck, ExternalLink } from "lucide-react";
 import { getTemplateConfig, type PlanCardDay, type PlanCardActivity, type PlanCardTransport, type PlanCardTrip } from "@/components/plancard/plancard-types";
 import { PlanCard } from "@/components/plancard/PlanCard";
 import { EscalationCTA } from "@/components/plancard/EscalationCTA";
-import { InlineTransportSelector, type InlineTransportLegData } from "@/components/itinerary/InlineTransportSelector";
 import EnhancedPlanningModal from "@/components/EnhancedPlanningModal";
 
 type Section = "activities" | "transport";
-
-function synthesizeTransportLegs(activities: any[]): InlineTransportLegData[] {
-  if (!activities || activities.length < 2) return [];
-  const legs: InlineTransportLegData[] = [];
-  for (let i = 0; i < activities.length - 1; i++) {
-    const from = activities[i];
-    const to = activities[i + 1];
-    legs.push({
-      id: `synth-leg-${from.id}-${to.id}`,
-      legOrder: i + 1,
-      fromName: from.location || from.title || from.name || `Stop ${i + 1}`,
-      toName: to.location || to.title || to.name || `Stop ${i + 2}`,
-      recommendedMode: "walk",
-      userSelectedMode: null,
-      distanceDisplay: "~1 km",
-      estimatedDurationMinutes: 15,
-      estimatedCostUsd: null,
-      alternativeModes: [
-        { mode: "taxi", durationMinutes: 5, costUsd: 8, energyCost: 30, reason: "Fastest option" },
-        { mode: "transit", durationMinutes: 10, costUsd: 2, energyCost: 10, reason: "Affordable" },
-        { mode: "rideshare", durationMinutes: 7, costUsd: 6, energyCost: 25, reason: "Convenient pickup" },
-      ],
-      fromLat: from.lat || null,
-      fromLng: from.lng || null,
-      toLat: to.lat || null,
-      toLng: to.lng || null,
-    });
-  }
-  return legs;
-}
 
 type BookingType = "inApp" | "partner";
 
@@ -137,7 +106,10 @@ export default function TripDetails() {
   const deepSection = searchParams.get("section");
   const justOptimized = searchParams.get("optimized") === "1";
   const { data: trip, isLoading, isError: tripError } = useTrip(id || "");
-  const optimizeTrip = useOptimizeTrip();
+  // The Generate/Regenerate buttons previously called useOptimizeTrip → the
+  // nonexistent POST /api/trips/:id/optimize (Vite catch-all → error). Repointed at
+  // the live generate-itinerary endpoint so a trip with no plan can actually self-generate.
+  const generatePlan = useGenerateItinerary();
   const { data: generatedItinerary, isLoading: itineraryLoading } = useGeneratedItinerary(id || "");
   const { toast } = useToast();
   const { user } = useAuth();
@@ -526,11 +498,11 @@ export default function TripDetails() {
                       Share with friends
                     </Button>
                     <Button 
-                      onClick={() => optimizeTrip.mutate(trip.id)}
-                      disabled={optimizeTrip.isPending}
+                      onClick={() => generatePlan.mutate(trip.id)}
+                      disabled={generatePlan.isPending}
                       data-testid="button-regenerate"
                     >
-                      {optimizeTrip.isPending ? (
+                      {generatePlan.isPending ? (
                         <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                       ) : (
                         <Sparkles className="w-4 h-4 mr-2" />
@@ -544,7 +516,7 @@ export default function TripDetails() {
               <div className="p-6">
                 <TabsContent value="itinerary" className="mt-0 space-y-6">
                   {/* Itinerary Timeline */}
-                  {(itineraryLoading || optimizeTrip.isPending) ? (
+                  {(itineraryLoading || generatePlan.isPending) ? (
                     <div className="space-y-6">
                       {[1, 2, 3].map((i) => (
                         <div key={i} className="space-y-3">
@@ -574,8 +546,8 @@ export default function TripDetails() {
                       </p>
                       <div className="flex flex-col sm:flex-row gap-3 justify-center">
                         <Button
-                          onClick={() => optimizeTrip.mutate(trip.id)}
-                          disabled={optimizeTrip.isPending}
+                          onClick={() => generatePlan.mutate(trip.id)}
+                          disabled={generatePlan.isPending}
                           data-testid="button-generate-itinerary"
                         >
                           <Sparkles className="w-4 h-4 mr-2" />
@@ -637,7 +609,11 @@ export default function TripDetails() {
                           transports: (() => {
                             const dayNum = d.day;
                             const real = realLegsMap[dayNum];
-                            const legs = real?.length ? real : d.transportLegs || synthesizeTransportLegs(d.activities || []);
+                            // Only real (routed) or persisted transport legs reach the PlanCard.
+                            // Do NOT synthesize fabricated walking legs / fake $8/$2/$6 alternatives
+                            // here — they were feeding the headline transit stats + "Book on
+                            // Traveloure" badge as if real (§13). No data → no transport shown.
+                            const legs = real?.length ? real : (d.transportLegs || []);
                             return legs.map((l: any): PlanCardTransport => ({
                               id: l.id,
                               from: l.fromName || l.from || "",
@@ -651,15 +627,6 @@ export default function TripDetails() {
                             }));
                           })(),
                         }));
-
-                        const currentPlanCardDay = planCardDays[selectedDay - 1];
-                        const currentItineraryDay = itinerary.days[selectedDay - 1];
-                        const currentDayLegs: InlineTransportLegData[] = (() => {
-                          if (!currentItineraryDay) return [];
-                          const dayNum = currentItineraryDay.day;
-                          const real = realLegsMap[dayNum];
-                          return real?.length ? real : currentItineraryDay.transportLegs || synthesizeTransportLegs(currentItineraryDay.activities || []);
-                        })();
 
                         // Compute extra stats
                         const totalDays = itinerary.days.length;

@@ -67,10 +67,11 @@ import { itineraryIntelligenceService } from "./services/itinerary-intelligence.
 import { emergencyService } from "./services/emergency.service";
 import { aiUsageService } from "./services/ai-usage.service";
 import { complexityTier } from "./services/smart-sequencing.service";
-import { getFee, resolveCoordinationFee } from "./services/optimization-fee.service";
+import { getFee, resolveCoordinationFee, getAvailableCoordinationCreditCents, claimCoordinationCredit, releaseCoordinationCredit } from "./services/optimization-fee.service";
 import { buildEventTimeline, getEventVendorGaps } from "./services/event-coordination.service";
 import { trackAnthropicResponse } from "./services/ai-cost-tracker";
-import { experienceTypes as experienceTypesTable } from "@shared/schema";
+import { revenueTrackingService } from "./services/revenue-tracking.service";
+import { experienceTypes as experienceTypesTable, coordinationStates, platformRevenue } from "@shared/schema";
 import Stripe from "stripe";
 import { sharedCache } from "./services/shared-cache.service";
 import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, createPublicProfile, getDisplayName, redactContactInfo } from "./utils/data-sanitizer";
@@ -4066,7 +4067,15 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   });
 
   // Update booking status (provider actions)
-  app.patch("/api/expert/bookings/:id/status", isAuthenticated, async (req, res) => {
+  // Booking-owner status control. The owner (provider/expert who owns the
+  // service, gated by booking.providerId) may only ACCEPT (confirmed) or DECLINE
+  // (cancelled) a booking. "completed" is deliberately NOT allowed here: marking a
+  // booking completed fires the escrow earnings side-effect (createProviderEarning),
+  // so allowing the owner to set it would let them self-credit. Completion stays
+  // traveler/escrow-driven (POST /api/bookings/:id/confirm-completion + the release
+  // job). Applied to BOTH the expert and provider status endpoints.
+  const OWNER_SETTABLE_BOOKING_STATUSES = ["confirmed", "cancelled"];
+  const handleOwnerBookingStatus = async (req: any, res: any) => {
     try {
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const booking = await storage.getServiceBooking(req.params.id);
@@ -4074,12 +4083,22 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         return res.status(404).json({ message: "Booking not found or not yours" });
       }
       const { status, reason } = req.body;
+      if (!OWNER_SETTABLE_BOOKING_STATUSES.includes(status)) {
+        return res.status(400).json({
+          message: "You can only accept (confirmed) or decline (cancelled) a booking. Completion is confirmed by the traveler.",
+        });
+      }
       const updated = await storage.updateServiceBookingStatus(req.params.id, status, reason);
       res.json(updated);
     } catch (err) {
       res.status(500).json({ message: "Failed to update booking status" });
     }
-  });
+  };
+  app.patch("/api/expert/bookings/:id/status", isAuthenticated, handleOwnerBookingStatus);
+  // Provider-named alias — the provider bookings page had NO accept/fulfill surface
+  // (only experts had one), so provider bookings dead-ended at "pending". Same
+  // ownership gate + transition allow-list.
+  app.patch("/api/provider/bookings/:id/status", isAuthenticated, handleOwnerBookingStatus);
 
   // Update visa application status on a service booking (expert/provider action)
   app.patch("/api/service-bookings/:id/visa-status", isAuthenticated, async (req, res) => {
@@ -5972,11 +5991,184 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         ? Math.round(budgetDollars * 100)
         : 0;
 
-      const fee = await resolveCoordinationFee(eventType, budgetCents);
-      res.json(fee);
+      // Paid-signal credit (§7): surface the traveler's available paid-optimize credit in the QUOTE
+      // (read-only — not consumed here; consumption happens under the atomic claim in /pay).
+      const availableCreditCents = await getAvailableCoordinationCreditCents(userId);
+      const fee = await resolveCoordinationFee(eventType, budgetCents, availableCreditCents);
+      res.json({ ...fee, feePaymentStatus: state.feePaymentStatus });
     } catch (error) {
       console.error("Error resolving coordination fee:", error);
       res.status(500).json({ message: "Failed to resolve coordination fee" });
+    }
+  });
+
+  // ── Coordination fee CAPTURE (§7 "Quote-only → CAPTURED", ratified Jul 22, 2026) ──────
+  // Charges the server-derived coordination fee for real, mirroring optimization-payments.
+  //   POST /api/coordination-states/:id/pay          → atomic-claim + Stripe PaymentIntent (net of credit)
+  //   POST /api/coordination-states/:id/pay/confirm   → verify intent, mark paid, record platform_revenue
+  // §14: amount derived server-side from the state's own experienceType + budget (never req.body).
+  // §15: atomic conditional UPDATE + deterministic Stripe idempotencyKey, both directions.
+  app.post("/api/coordination-states/:id/pay", isAuthenticated, async (req, res) => {
+    const coordinationId = req.params.id;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    let claimedCreditCents = 0;
+    try {
+      const state = await storage.getCoordinationState(coordinationId);
+      if (!state) return res.status(404).json({ message: "Coordination state not found" });
+      if (state.userId !== userId) return res.status(403).json({ message: "Unauthorized" });
+      if (state.feePaymentStatus === "paid") {
+        return res.json({ alreadyPaid: true, feePaymentStatus: "paid" });
+      }
+
+      // §15 step 1 — claim the state atomically (unpaid → pending). The `WHERE ... IN (unpaid)` guard
+      // is the concurrency lock: only one caller wins. A loser returns the in-flight PI (or 409 if the
+      // winner hasn't stored it yet), never a second charge.
+      const claimed = await db
+        .update(coordinationStates)
+        .set({ feePaymentStatus: "pending" })
+        .where(and(
+          eq(coordinationStates.id, coordinationId),
+          eq(coordinationStates.feePaymentStatus, "unpaid"),
+        ))
+        .returning({ id: coordinationStates.id });
+      if (claimed.length === 0) {
+        const fresh = await storage.getCoordinationState(coordinationId);
+        if (fresh?.feePaymentStatus === "paid") return res.json({ alreadyPaid: true, feePaymentStatus: "paid" });
+        if (fresh?.feePaymentIntentId) {
+          const stripeR = new Stripe(process.env.STRIPE_SECRET_KEY || "", { apiVersion: "2024-12-18.acacia" as any });
+          const existingPi = await stripeR.paymentIntents.retrieve(fresh.feePaymentIntentId);
+          return res.json({
+            clientSecret: existingPi.client_secret,
+            paymentIntentId: existingPi.id,
+            feeCents: fresh.feeAmountCents ?? existingPi.amount,
+            creditCents: fresh.feeCreditCents ?? 0,
+            currency: (existingPi.currency ?? "usd").toUpperCase(),
+            reused: true,
+          });
+        }
+        return res.status(409).json({ error: "payment_in_progress", message: "A payment for this engagement is already being created — retry shortly." });
+      }
+
+      try {
+        // §14 — derive the fee from the state's own experienceType + budget. Never trust the client.
+        const eventType = state.experienceType;
+        const budgetDollars = Number((state.budget as any)?.amount);
+        const budgetCents = Number.isFinite(budgetDollars) && budgetDollars > 0 ? Math.round(budgetDollars * 100) : 0;
+
+        // Consume the newest available paid-optimize credit (atomic — §15). Bind the charged net to
+        // the ACTUAL consumed amount so a race can't hand out an uncredited discount.
+        claimedCreditCents = await claimCoordinationCredit(userId, coordinationId);
+        const { feeCents: netFeeCents, breakdown, rule } = await resolveCoordinationFee(eventType, budgetCents, claimedCreditCents);
+
+        // Fully-credited edge (only reachable if an admin sets a $0 floor AND 0% while a credit exists):
+        // no Stripe charge, mark paid immediately, record nothing.
+        if (netFeeCents <= 0) {
+          await db
+            .update(coordinationStates)
+            .set({ feePaymentStatus: "paid", feeAmountCents: 0, feeCreditCents: claimedCreditCents, feePaidAt: new Date() })
+            .where(eq(coordinationStates.id, coordinationId));
+          return res.json({ paid: true, feeCents: 0, creditCents: claimedCreditCents, feePaymentStatus: "paid" });
+        }
+
+        const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", { apiVersion: "2024-12-18.acacia" as any });
+        const paymentIntent = await stripe.paymentIntents.create(
+          {
+            amount: netFeeCents,
+            currency: "usd",
+            metadata: {
+              type: "coordination_fee",
+              coordinationId,
+              userId,
+              eventType: eventType ?? "",
+              creditCents: String(claimedCreditCents),
+            },
+            description: `Traveloure event coordination fee (${eventType})`,
+          },
+          { idempotencyKey: `coord-fee-${coordinationId}` },
+        );
+
+        await db
+          .update(coordinationStates)
+          .set({ feePaymentIntentId: paymentIntent.id, feeAmountCents: netFeeCents, feeCreditCents: claimedCreditCents })
+          .where(eq(coordinationStates.id, coordinationId));
+
+        return res.json({
+          clientSecret: paymentIntent.client_secret,
+          paymentIntentId: paymentIntent.id,
+          feeCents: netFeeCents,
+          creditCents: claimedCreditCents,
+          currency: "USD",
+          rule,
+          breakdown,
+        });
+      } catch (inner) {
+        // Roll back so a retry starts clean: release the claimed credit and return the state to unpaid.
+        if (claimedCreditCents > 0) await releaseCoordinationCredit(coordinationId).catch(() => {});
+        await db
+          .update(coordinationStates)
+          .set({ feePaymentStatus: "unpaid" })
+          .where(and(eq(coordinationStates.id, coordinationId), eq(coordinationStates.feePaymentStatus, "pending")))
+          .catch(() => {});
+        throw inner;
+      }
+    } catch (error: any) {
+      console.error("Error creating coordination payment:", error);
+      res.status(500).json({ message: "Failed to create coordination payment", error: error?.message });
+    }
+  });
+
+  app.post("/api/coordination-states/:id/pay/confirm", isAuthenticated, async (req, res) => {
+    try {
+      const coordinationId = req.params.id;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const state = await storage.getCoordinationState(coordinationId);
+      if (!state) return res.status(404).json({ message: "Coordination state not found" });
+      if (state.userId !== userId) return res.status(403).json({ message: "Unauthorized" });
+
+      // §14 — take the PI from the SERVER record, not the client body.
+      const paymentIntentId = state.feePaymentIntentId;
+      if (!paymentIntentId) return res.status(400).json({ error: "no_payment", message: "No coordination payment has been started." });
+
+      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", { apiVersion: "2024-12-18.acacia" as any });
+      const pi = await stripe.paymentIntents.retrieve(paymentIntentId);
+      if (pi.status !== "succeeded") return res.status(400).json({ error: "payment_not_confirmed", message: "Payment not yet confirmed." });
+      if (pi.metadata?.type !== "coordination_fee") return res.status(400).json({ error: "invalid_payment_type" });
+      if (pi.metadata?.coordinationId !== coordinationId) return res.status(400).json({ error: "payment_coordination_mismatch" });
+      if (pi.metadata?.userId && pi.metadata.userId !== userId) return res.status(403).json({ error: "payment_belongs_to_another_user" });
+
+      // §15 — atomic transition (pending/unpaid → paid). Record revenue ONLY if a row flipped, so a
+      // duplicate confirm is a no-op (no double revenue).
+      const flipped = await db
+        .update(coordinationStates)
+        .set({ feePaymentStatus: "paid", feePaidAt: new Date() })
+        .where(and(eq(coordinationStates.id, coordinationId), ne(coordinationStates.feePaymentStatus, "paid")))
+        .returning({ id: coordinationStates.id });
+      if (flipped.length === 0) return res.json({ alreadyPaid: true, feePaymentStatus: "paid" });
+
+      // Idempotent revenue (defence-in-depth): skip if this PI was already recorded.
+      const [existingRev] = await db
+        .select({ id: platformRevenue.id })
+        .from(platformRevenue)
+        .where(eq(platformRevenue.sourceId, paymentIntentId))
+        .limit(1);
+      if (!existingRev) {
+        try {
+          await revenueTrackingService.recordRevenueEvent({
+            sourceType: "coordination_fee",
+            sourceId: paymentIntentId,
+            grossAmount: pi.amount / 100, // amount from Stripe, never the client
+            description: `Event coordination fee (${state.experienceType})`,
+            metadata: { type: "coordination_fee", coordinationId, userId, creditCents: pi.metadata?.creditCents ?? "0" },
+          });
+        } catch (revErr) {
+          console.warn("[coordination pay/confirm] revenue record failed (non-critical):", revErr);
+        }
+      }
+
+      return res.json({ success: true, feePaymentStatus: "paid", feeCents: pi.amount });
+    } catch (error: any) {
+      console.error("Error confirming coordination payment:", error);
+      res.status(500).json({ message: "Failed to confirm coordination payment", error: error?.message });
     }
   });
 

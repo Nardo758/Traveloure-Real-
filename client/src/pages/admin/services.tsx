@@ -1,4 +1,5 @@
 import { AdminLayout } from "@/components/admin-layout";
+import { AdminTabNav } from "@/components/admin/AdminTabNav";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -214,9 +215,12 @@ export default function AdminServices() {
     { label: "Total Services",  value: summary?.total ?? 0,          icon: Package,      color: "text-blue-600" },
     { label: "Active",          value: summary?.byStatus?.active ?? 0, icon: CheckCircle, color: "text-green-600" },
     { label: "Total Bookings",  value: summary?.totalBookings ?? 0,  icon: ShoppingCart, color: "text-purple-600" },
-    { label: "Platform Revenue",
-      value: `$${((summary?.totalRevenue ?? 0) * (1 - parseFloat(services[0]?.revenueShareRate ?? "0.75"))).toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
-      icon: DollarSign, color: "text-[#FF385C]" },
+    { label: "Service Revenue",
+      // Real sum of per-service revenue from the summary endpoint. Do NOT derive a
+      // "platform cut" here by multiplying by one service's rate (wrong math + a fee
+      // literal, §8) — the real config-resolved platform revenue lives on /admin/revenue.
+      value: `$${(summary?.totalRevenue ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
+      icon: DollarSign, color: "text-primary" },
     { label: "Featured",        value: summary?.featuredCount ?? 0,  icon: Star,         color: "text-amber-500" },
     { label: "Paused / Draft",
       value: (summary?.byStatus?.paused ?? 0) + (summary?.byStatus?.draft ?? 0),
@@ -236,6 +240,7 @@ export default function AdminServices() {
   return (
     <AdminLayout title="Services Registry">
       <div className="p-6 space-y-6">
+        <AdminTabNav tabs={[{ label: "Registry", href: "/admin/services" }, { label: "Approvals", href: "/admin/service-approvals" }]} />
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>

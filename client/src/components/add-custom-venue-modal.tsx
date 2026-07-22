@@ -128,7 +128,7 @@ export function AddCustomVenueModal({
       <DialogContent className="sm:max-w-md" data-testid="dialog-add-custom-venue">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <MapPin className="w-5 h-5 text-[#FF385C]" />
+            <MapPin className="w-5 h-5 text-primary" />
             Add Custom Venue
           </DialogTitle>
           <DialogDescription>
@@ -228,7 +228,7 @@ export function AddCustomVenueModal({
             </Button>
             <Button 
               type="submit" 
-              className="flex-1 bg-[#FF385C] hover:bg-[#E31C5F]"
+              className="flex-1 bg-primary hover:bg-[#E31C5F]"
               disabled={createVenueMutation.isPending}
               data-testid="button-add-venue"
             >

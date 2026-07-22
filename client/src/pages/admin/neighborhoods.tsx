@@ -372,7 +372,11 @@ export default function NeighborhoodsAdminPage() {
     [neighborhoods, cityFilter]
   );
 
-  if (isLoading) return <div className="p-6 text-sm text-gray-500">Loading neighborhoods…</div>;
+  if (isLoading) return (
+    <AdminLayout title="Neighborhoods">
+      <div className="p-6 text-sm text-gray-500">Loading neighborhoods…</div>
+    </AdminLayout>
+  );
 
   return (
     <AdminLayout title="Neighborhoods">

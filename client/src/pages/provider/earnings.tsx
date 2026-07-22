@@ -148,7 +148,7 @@ export default function ProviderEarnings() {
     return (
       <ProviderLayout title="Earnings">
         <div className="flex items-center justify-center h-64">
-          <Loader2 className="w-8 h-8 animate-spin text-[#FF385C]" />
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
         </div>
       </ProviderLayout>
     );
@@ -207,7 +207,7 @@ export default function ProviderEarnings() {
                       </div>
                       <div className="h-3 bg-console-bg rounded-full overflow-hidden">
                         <div 
-                          className="h-full bg-[#FF385C] rounded-full transition-all"
+                          className="h-full bg-primary rounded-full transition-all"
                           style={{ width: `${(month.amount / maxEarning) * 100}%` }}
                         />
                       </div>
@@ -274,7 +274,7 @@ export default function ProviderEarnings() {
         <Card data-testid="card-revenue-share">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg">
-              <PieChart className="w-5 h-5 text-[#FF385C]" />
+              <PieChart className="w-5 h-5 text-primary" />
               Revenue Share Breakdown
             </CardTitle>
           </CardHeader>
@@ -288,14 +288,14 @@ export default function ProviderEarnings() {
                 <p className="text-xs text-console-mid mt-1">Total from all bookings</p>
               </div>
               <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-100 dark:border-red-800 text-center" data-testid="stat-platform-fee">
-                <p className="text-sm text-red-600 mb-1">Platform Fee ({Math.round((1 - revenueBreakdown.effectiveRate) * 100)}%)</p>
+                <p className="text-sm text-red-600 mb-1">Platform Fee{revenueBreakdown.gross > 0 ? ` (${Math.round((1 - revenueBreakdown.effectiveRate) * 100)}%)` : ""}</p>
                 <p className="text-xl font-bold text-red-700">
                   -${revenueBreakdown.platformFee.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </p>
                 <p className="text-xs text-red-400 mt-1">Traveloure service charge</p>
               </div>
               <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800 text-center" data-testid="stat-your-share">
-                <p className="text-sm text-green-600 mb-1">Your Share ({Math.round(revenueBreakdown.effectiveRate * 100)}%)</p>
+                <p className="text-sm text-green-600 mb-1">Your Share{revenueBreakdown.gross > 0 ? ` (${Math.round(revenueBreakdown.effectiveRate * 100)}%)` : ""}</p>
                 <p className="text-xl font-bold text-green-700">
                   ${revenueBreakdown.providerShare.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </p>
@@ -338,7 +338,7 @@ export default function ProviderEarnings() {
 
             <div className="mt-3 h-3 bg-console-bg rounded-full overflow-hidden flex" data-testid="bar-revenue-split">
               <div
-                className="h-full bg-[#FF385C] transition-all"
+                className="h-full bg-primary transition-all"
                 style={{ width: `${Math.round((1 - revenueBreakdown.effectiveRate) * 100)}%` }}
               />
               <div className="h-full bg-green-500 flex-1" />

@@ -70,7 +70,7 @@ export default function EAReports() {
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
           <Card className="border border-gray-200" data-testid="stat-events">
             <CardContent className="p-4 text-center">
-              <Calendar className="w-6 h-6 mx-auto mb-2 text-[#FF385C]" />
+              <Calendar className="w-6 h-6 mx-auto mb-2 text-primary" />
               <p className="text-2xl font-bold text-gray-900">{weeklyStats.eventsManaged}</p>
               <p className="text-xs text-gray-600">Events Managed</p>
             </CardContent>
@@ -117,7 +117,7 @@ export default function EAReports() {
           <Card className="border border-gray-200">
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
-                <BarChart3 className="w-5 h-5 text-[#FF385C]" />
+                <BarChart3 className="w-5 h-5 text-primary" />
                 Monthly Performance
               </CardTitle>
             </CardHeader>

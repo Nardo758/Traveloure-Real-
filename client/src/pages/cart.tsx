@@ -1154,9 +1154,9 @@ export default function CartPage() {
                     disabled={!s.reachable}
                     className={`flex items-center gap-2 px-4 py-2 rounded-full transition-colors ${
                       flowStep === s.key
-                        ? "bg-[#FF385C] text-white"
+                        ? "bg-primary text-white"
                         : s.reachable
-                          ? "bg-muted hover:bg-[#FF385C]/15 hover:text-[#FF385C] cursor-pointer"
+                          ? "bg-muted hover:bg-primary/15 hover:text-primary cursor-pointer"
                           : "bg-muted/60 text-muted-foreground/60 cursor-default"
                     }`}
                     data-testid={`step-pill-${s.key}`}
@@ -1293,10 +1293,10 @@ export default function CartPage() {
                       type="button"
                       onClick={handleOptimizeClick}
                       disabled={resolvingTrip || previewLoading}
-                      className="w-full flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-[#FF385C]/30 bg-[#FF385C]/5 px-4 py-2.5 text-left text-sm hover:bg-[#FF385C]/10 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FF385C]"
+                      className="w-full flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-primary/30 bg-primary/5 px-4 py-2.5 text-left text-sm hover:bg-primary/10 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FF385C]"
                       data-testid="cart-optimize-nudge"
                     >
-                      <Sparkles className="w-4 h-4 text-[#FF385C] flex-shrink-0" />
+                      <Sparkles className="w-4 h-4 text-primary flex-shrink-0" />
                       <span className="font-medium">
                         Preview: up to {cartNudge.estimatedSavingsPct}% savings
                         {cartNudge.estimatedCostDelta < 0 && (
@@ -1304,7 +1304,7 @@ export default function CartPage() {
                         )}
                       </span>
                       <span className="text-muted-foreground">Plan score {cartNudge.currentScore}/100</span>
-                      <span className="ml-auto font-semibold text-[#FF385C] whitespace-nowrap">
+                      <span className="ml-auto font-semibold text-primary whitespace-nowrap">
                         {cartNudge.freeRerun ? "Optimize free →" : `Optimize · ${formatPrice(cartNudge.feeCents / 100)} →`}
                       </span>
                     </button>
@@ -1323,7 +1323,7 @@ export default function CartPage() {
 
                     if (isContent && contentDisplay) {
                       return (
-                        <Card key={item.id} data-testid={`cart-item-${item.id}`} className="border-[#FF385C]/20">
+                        <Card key={item.id} data-testid={`cart-item-${item.id}`} className="border-primary/20">
                           <CardContent className="p-4">
                             <div className="flex gap-4">
                               {contentDisplay.imageUrl && (
@@ -1336,7 +1336,7 @@ export default function CartPage() {
                                   <h3 className="font-semibold truncate" data-testid={`text-service-name-${item.id}`}>
                                     {contentDisplay.name}
                                   </h3>
-                                  <Badge variant="outline" className="text-xs border-[#FF385C]/40 text-[#FF385C] flex-shrink-0">
+                                  <Badge variant="outline" className="text-xs border-primary/40 text-primary flex-shrink-0">
                                     {contentTypeLabel}
                                   </Badge>
                                 </div>
@@ -1459,7 +1459,7 @@ export default function CartPage() {
                   })}
                   
                   {externalItems.map((item) => (
-                    <Card key={item.id} data-testid={`cart-item-${item.id}`} className="border-[#FF385C]/20">
+                    <Card key={item.id} data-testid={`cart-item-${item.id}`} className="border-primary/20">
                       <CardContent className="p-4">
                         <div className="flex gap-4">
                           <div className="flex-1">
@@ -1467,7 +1467,7 @@ export default function CartPage() {
                               <h3 className="font-semibold" data-testid={`text-service-name-${item.id}`}>
                                 {item.name}
                               </h3>
-                              <Badge variant="outline" className="text-xs border-[#FF385C] text-[#FF385C]">
+                              <Badge variant="outline" className="text-xs border-primary text-primary">
                                 {item.provider}
                               </Badge>
                             </div>
@@ -1551,7 +1551,7 @@ export default function CartPage() {
 
                   {/* Guest pending items — saved in localStorage before sign-in */}
                   {!user && guestPendingIds.map((serviceId) => (
-                    <Card key={serviceId} data-testid={`cart-item-${serviceId}`} className="border-[#FF385C]/20">
+                    <Card key={serviceId} data-testid={`cart-item-${serviceId}`} className="border-primary/20">
                       <CardContent className="p-4">
                         <div className="flex items-center gap-3">
                           <ShoppingCart className="w-8 h-8 text-muted-foreground shrink-0" />
@@ -1670,9 +1670,9 @@ export default function CartPage() {
                           details and the optimize step first — so the "Generate
                           Itinerary" label lives on the step where generation
                           actually fires, not in the cart. */}
-                      <div className="w-full p-3 rounded-lg bg-gradient-to-r from-[#FF385C]/10 to-purple-500/10 border border-[#FF385C]/20">
+                      <div className="w-full p-3 rounded-lg bg-gradient-to-r from-[#FF385C]/10 to-purple-500/10 border border-primary/20">
                         <div className="flex items-start gap-2 mb-2">
-                          <Sparkles className="w-4 h-4 text-[#FF385C] mt-0.5 flex-shrink-0" />
+                          <Sparkles className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" />
                           <div>
                             <h4 className="text-sm font-medium">Plan &amp; optimize this trip</h4>
                             <p className="text-xs text-muted-foreground mt-1">
@@ -1681,7 +1681,7 @@ export default function CartPage() {
                           </div>
                         </div>
                         <Button
-                          className="w-full bg-[#FF385C] hover:bg-[#E23350]"
+                          className="w-full bg-primary hover:bg-primary/90"
                           size="lg"
                           onClick={handleOptimizeClick}
                           disabled={previewLoading || resolvingTrip}
@@ -1722,7 +1722,7 @@ export default function CartPage() {
                 <Card>
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
-                      <MapPin className="w-5 h-5 text-[#FF385C]" />
+                      <MapPin className="w-5 h-5 text-primary" />
                       Confirm your trip
                     </CardTitle>
                     <p className="text-sm text-muted-foreground">
@@ -1811,7 +1811,7 @@ export default function CartPage() {
                   </CardContent>
                   <CardFooter className="flex flex-col gap-3">
                     <Button
-                      className="w-full bg-[#FF385C] hover:bg-[#E23350]"
+                      className="w-full bg-primary hover:bg-primary/90"
                       size="lg"
                       onClick={handleConfirmTripDetails}
                       disabled={previewLoading || !tripDestination.trim()}
@@ -1840,7 +1840,7 @@ export default function CartPage() {
                   <Card>
                     <CardHeader>
                       <CardTitle className="flex items-center gap-2">
-                        <Sparkles className="w-5 h-5 text-[#FF385C]" />
+                        <Sparkles className="w-5 h-5 text-primary" />
                         Optimization Preview
                       </CardTitle>
                     </CardHeader>
@@ -1854,11 +1854,11 @@ export default function CartPage() {
                       <div>
                         <div className="flex items-center justify-between mb-1">
                           <span className="text-sm font-medium">Current efficiency score</span>
-                          <span className="text-sm font-bold text-[#FF385C]">{optimizationPreview.currentScore}/100</span>
+                          <span className="text-sm font-bold text-primary">{optimizationPreview.currentScore}/100</span>
                         </div>
                         <div className="h-2.5 bg-muted rounded-full overflow-hidden">
                           <div
-                            className="h-full bg-[#FF385C] transition-all"
+                            className="h-full bg-primary transition-all"
                             style={{ width: `${optimizationPreview.currentScore}%` }}
                           />
                         </div>
@@ -1914,7 +1914,7 @@ export default function CartPage() {
                               <span className="text-xs w-20 text-muted-foreground">{labels[key]}</span>
                               <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
                                 <div
-                                  className="h-full bg-[#FF385C]/70 rounded-full"
+                                  className="h-full bg-primary/70 rounded-full"
                                   style={{ width: `${val}%` }}
                                 />
                               </div>
@@ -1931,7 +1931,7 @@ export default function CartPage() {
                     <Card>
                       <CardHeader>
                         <CardTitle className="flex items-center gap-2">
-                          <Lock className="w-5 h-5 text-[#FF385C]" />
+                          <Lock className="w-5 h-5 text-primary" />
                           Pay Optimization Fee
                         </CardTitle>
                       </CardHeader>
@@ -2001,7 +2001,7 @@ export default function CartPage() {
 
                       {!optimizationPayment && (
                         <Button
-                          className="w-full bg-[#FF385C] hover:bg-[#E23350]"
+                          className="w-full bg-primary hover:bg-primary/90"
                           size="lg"
                           onClick={requestOptimizationPayment}
                           disabled={paymentLoading || creatingComparison}
@@ -2058,19 +2058,19 @@ export default function CartPage() {
                       <Card>
                         <CardHeader>
                           <CardTitle className="flex items-center gap-2">
-                            <Sparkles className="w-5 h-5 text-[#FF385C]" />
+                            <Sparkles className="w-5 h-5 text-primary" />
                             Optimization Score
                           </CardTitle>
                         </CardHeader>
                         <CardContent>
                           <div className="flex items-center gap-4">
-                            <div className="text-4xl font-bold text-[#FF385C]">
+                            <div className="text-4xl font-bold text-primary">
                               {optimizationResult.overallScore}%
                             </div>
                             <div className="flex-1">
                               <div className="h-3 bg-muted rounded-full overflow-hidden">
                                 <div 
-                                  className="h-full bg-[#FF385C] transition-all"
+                                  className="h-full bg-primary transition-all"
                                   style={{ width: `${optimizationResult.overallScore}%` }}
                                 />
                               </div>
@@ -2189,7 +2189,7 @@ export default function CartPage() {
                       )}
                       {(cart?.items?.length || 0) > 0 ? (
                         <Button
-                          className="w-full bg-[#FF385C] hover:bg-[#E23350]"
+                          className="w-full bg-primary hover:bg-primary/90"
                           size="lg"
                           onClick={proceedToPayment}
                           data-testid="button-proceed-payment"
@@ -2350,7 +2350,7 @@ export default function CartPage() {
                       )}
                       {!checkoutPaymentIntent && (cart?.items?.length || 0) > 0 ? (
                         <Button
-                          className="w-full bg-[#FF385C] hover:bg-[#E23350]"
+                          className="w-full bg-primary hover:bg-primary/90"
                           size="lg"
                           onClick={() => checkoutMutation.mutate()}
                           disabled={checkoutMutation.isPending}

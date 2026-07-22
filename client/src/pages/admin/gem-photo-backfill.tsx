@@ -59,7 +59,7 @@ export default function AdminGemPhotoBackfill() {
             onClick={handleBackfill}
             disabled={backfillMutation.isPending}
             data-testid="button-backfill-photos"
-            className="bg-[#FF385C] hover:bg-[#e03354] text-white"
+            className="bg-primary hover:bg-[#e03354] text-white"
           >
             {backfillMutation.isPending ? (
               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
@@ -130,7 +130,7 @@ export default function AdminGemPhotoBackfill() {
         {backfillMutation.isPending && (
           <Card>
             <CardContent className="flex flex-col items-center justify-center py-14 text-center">
-              <Loader2 className="w-10 h-10 text-[#FF385C] animate-spin mb-3" />
+              <Loader2 className="w-10 h-10 text-primary animate-spin mb-3" />
               <p className="text-gray-700 dark:text-gray-300 font-medium">Backfill in progress…</p>
               <p className="text-sm text-gray-400 dark:text-gray-500 mt-1">
                 Fetching photos for gems with no image. This may take a moment.

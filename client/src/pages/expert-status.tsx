@@ -55,7 +55,7 @@ function StepIcon({ status }: { status: string }) {
 function StepDot({ status, id }: { status: string; id: number }) {
   const base = "absolute left-2 top-1 w-5 h-5 rounded-full flex items-center justify-center";
   if (status === "completed") return <div className={`${base} bg-green-500`}><StepIcon status="completed" /></div>;
-  if (status === "in_progress") return <div className={`${base} bg-[#FF385C]`}><StepIcon status="in_progress" /></div>;
+  if (status === "in_progress") return <div className={`${base} bg-primary`}><StepIcon status="in_progress" /></div>;
   if (status === "failed") return <div className={`${base} bg-red-500`}><StepIcon status="failed" /></div>;
   return <div className={`${base} bg-gray-300 dark:bg-gray-600`}><span className="text-xs text-white font-medium">{id}</span></div>;
 }
@@ -63,7 +63,7 @@ function StepDot({ status, id }: { status: string; id: number }) {
 function StepCard({ step }: { step: ApplicationStep }) {
   const bg =
     step.status === "completed" ? "bg-green-50 dark:bg-green-900/20" :
-    step.status === "in_progress" ? "bg-[#FFF5F7] dark:bg-[#FF385C]/10 border border-[#FF385C]" :
+    step.status === "in_progress" ? "bg-[#FFF5F7] dark:bg-primary/10 border border-primary" :
     step.status === "failed" ? "bg-red-50 dark:bg-red-900/20 border border-red-300" :
     "bg-gray-50 dark:bg-gray-800";
 
@@ -71,8 +71,8 @@ function StepCard({ step }: { step: ApplicationStep }) {
     <div className={`p-4 rounded-lg ${bg}`}>
       <div className="flex items-center justify-between">
         <div>
-          <h4 className="font-semibold text-[#111827] dark:text-white">{step.title}</h4>
-          <p className="text-sm text-[#6B7280] mt-1">{step.description}</p>
+          <h4 className="font-semibold text-foreground dark:text-white">{step.title}</h4>
+          <p className="text-sm text-muted-foreground mt-1">{step.description}</p>
         </div>
         <div className="text-right">
           {step.status === "completed" && <Badge className="bg-green-100 text-green-700"><CheckCheck className="w-3 h-3 mr-1" />Completed</Badge>}
@@ -81,7 +81,7 @@ function StepCard({ step }: { step: ApplicationStep }) {
           {step.status === "pending" && <Badge variant="secondary">Pending</Badge>}
         </div>
       </div>
-      {step.completedAt && <p className="text-xs text-[#6B7280] mt-2">Completed on {step.completedAt}</p>}
+      {step.completedAt && <p className="text-xs text-muted-foreground mt-2">Completed on {step.completedAt}</p>}
       {step.note && (
         <p className="text-sm text-amber-600 dark:text-amber-400 mt-2 flex items-center gap-1">
           <AlertCircle className="w-3 h-3" />{step.note}
@@ -129,7 +129,7 @@ export default function ExpertStatusPage() {
     return (
       <DashboardLayout>
         <div className="flex items-center justify-center h-64">
-          <Loader2 className="w-8 h-8 animate-spin text-[#FF385C]" />
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
         </div>
       </DashboardLayout>
     );
@@ -153,10 +153,10 @@ export default function ExpertStatusPage() {
       <div className="p-6 space-y-6">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
-            <h1 className="text-2xl md:text-3xl font-bold text-[#111827] dark:text-white" data-testid="text-page-title">
+            <h1 className="text-2xl md:text-3xl font-bold text-foreground dark:text-white" data-testid="text-page-title">
               Expert Application Status
             </h1>
-            <p className="text-[#6B7280] mt-1">Track your progress to becoming a trip planner</p>
+            <p className="text-muted-foreground mt-1">Track your progress to becoming a trip planner</p>
           </div>
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="sm" onClick={() => queryClient.invalidateQueries({ queryKey: ["/api/expert/application-status"] })} data-testid="button-refresh">
@@ -190,9 +190,9 @@ export default function ExpertStatusPage() {
                   <ShieldCheck className="w-6 h-6 text-white" />
                 </div>
                 <div className="flex-1">
-                  <h3 className="text-lg font-semibold text-[#111827] dark:text-white">Identity Verification Required</h3>
+                  <h3 className="text-lg font-semibold text-foreground dark:text-white">Identity Verification Required</h3>
                   {identityStatus === "pending" && (
-                    <p className="text-[#6B7280] mt-1">Verify your government-issued ID and take a quick selfie. Takes about 2 minutes and supports passports, national IDs, and driver's licenses from 100+ countries.</p>
+                    <p className="text-muted-foreground mt-1">Verify your government-issued ID and take a quick selfie. Takes about 2 minutes and supports passports, national IDs, and driver's licenses from 100+ countries.</p>
                   )}
                   {identityStatus === "processing" && (
                     <p className="text-amber-600 mt-1 flex items-center gap-2"><Clock className="w-4 h-4" />Your verification is being processed. Usually takes a few minutes.</p>
@@ -239,15 +239,15 @@ export default function ExpertStatusPage() {
         )}
 
         {currentStep && (
-          <Card className="border-2 border-[#FF385C] bg-[#FFF5F7] dark:bg-[#FF385C]/10">
+          <Card className="border-2 border-primary bg-[#FFF5F7] dark:bg-primary/10">
             <CardContent className="p-6">
               <div className="flex items-start gap-4">
-                <div className="p-3 bg-[#FF385C] rounded-full">
+                <div className="p-3 bg-primary rounded-full">
                   <Clock className="w-6 h-6 text-white" />
                 </div>
                 <div className="flex-1">
-                  <h3 className="text-lg font-semibold text-[#111827] dark:text-white">Current Step: {currentStep.title}</h3>
-                  <p className="text-[#6B7280] mt-1">{currentStep.description}</p>
+                  <h3 className="text-lg font-semibold text-foreground dark:text-white">Current Step: {currentStep.title}</h3>
+                  <p className="text-muted-foreground mt-1">{currentStep.description}</p>
                   {currentStep.note && (
                     <p className="text-amber-600 dark:text-amber-400 mt-2 flex items-center gap-2">
                       <AlertCircle className="w-4 h-4" />{currentStep.note}
@@ -296,7 +296,7 @@ export default function ExpertStatusPage() {
                 <CardTitle className="text-lg">Need Help?</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <p className="text-sm text-[#6B7280]">Have questions about your application? Our team is here to help.</p>
+                <p className="text-sm text-muted-foreground">Have questions about your application? Our team is here to help.</p>
                 <Button variant="outline" className="w-full" data-testid="button-contact-support">
                   <MessageSquare className="w-4 h-4 mr-2" />Contact Support
                 </Button>

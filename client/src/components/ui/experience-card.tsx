@@ -87,7 +87,7 @@ export function ExperienceCard({
             >
               <span className={cn(
                 "text-lg font-bold",
-                trending >= 70 ? "text-[#FF385C]" : trending >= 50 ? "text-orange-500 dark:text-orange-400" : "text-amber-500 dark:text-amber-400"
+                trending >= 70 ? "text-primary" : trending >= 50 ? "text-orange-500 dark:text-orange-400" : "text-amber-500 dark:text-amber-400"
               )}>
                 {trending}
               </span>
@@ -97,7 +97,7 @@ export function ExperienceCard({
             <div className="absolute top-3 left-3">
               {isHot || trending >= 60 ? (
                 <span 
-                  className="px-2.5 py-1 rounded-lg bg-[#FF385C] text-white text-xs font-bold flex items-center gap-1 shadow-lg"
+                  className="px-2.5 py-1 rounded-lg bg-primary text-white text-xs font-bold flex items-center gap-1 shadow-lg"
                   data-testid={`badge-hot-${slug}`}
                 >
                   <Sparkles className="w-3 h-3 fill-white" />

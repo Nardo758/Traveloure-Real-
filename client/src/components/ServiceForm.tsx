@@ -638,7 +638,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   if (isEditMode && loadingExisting) {
     return (
       <div className="flex items-center justify-center h-64">
-        <Loader2 className="w-8 h-8 animate-spin text-[#FF385C]" />
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
       </div>
     );
   }
@@ -664,7 +664,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                 View My Services
               </Button>
               <Button
-                className="bg-[#FF385C] hover:bg-[#FF385C]/90"
+                className="bg-primary hover:bg-primary/90"
                 onClick={handleAddAnother}
               >
                 <Plus className="w-4 h-4 mr-2" /> Add Another Service
@@ -1034,7 +1034,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                       }}
                       className={`text-left p-3 rounded-lg border-2 transition-colors ${
                         formData.expertOfferingTypeId === tier.id
-                          ? "border-[#FF385C] bg-[#FF385C]/5"
+                          ? "border-primary bg-primary/5"
                           : "border-gray-200 hover:border-gray-300"
                       }`}
                       data-testid={`option-tier-${tier.offeringTypeKey}`}
@@ -1180,7 +1180,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                             onClick={() =>
                               setCatAttr(active ? selected.filter((s) => s !== opt) : [...selected, opt])
                             }
-                            className={`px-3 py-1 rounded-full text-sm border transition-colors ${active ? "bg-[#FF385C] text-white border-[#FF385C]" : "bg-background text-foreground border-border hover:border-[#FF385C]"}`}
+                            className={`px-3 py-1 rounded-full text-sm border transition-colors ${active ? "bg-primary text-white border-primary" : "bg-background text-foreground border-border hover:border-primary"}`}
                             data-testid={`chip-cat-${field.fieldKey}-${opt}`}
                           >
                             {opt}
@@ -1713,7 +1713,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                   Save as Draft
                 </Button>
                 <Button
-                  className="bg-[#FF385C] hover:bg-[#FF385C]/90 flex-1"
+                  className="bg-primary hover:bg-primary/90 flex-1"
                   onClick={() => createMutation.mutate("submit")}
                   disabled={createMutation.isPending || !formData.name || !formData.categoryId}
                 >
@@ -1733,7 +1733,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                   Save Draft
                 </Button>
                 <Button
-                  className="bg-[#FF385C] hover:bg-[#FF385C]/90 flex-1"
+                  className="bg-primary hover:bg-primary/90 flex-1"
                   onClick={() => createMutation.mutate("publish")}
                   disabled={createMutation.isPending || !formData.name || !formData.categoryId || publishBlocked}
                   title={publishBlocked ? "Complete background verification before publishing this category" : undefined}

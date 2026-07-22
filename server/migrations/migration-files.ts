@@ -429,4 +429,22 @@ export const MIGRATION_FILES = [
   // Traveler-submitted service requests ("request a service that doesn't exist yet").
   // New table + status CHECK created together (no legacy rows) → no publish-time push trap.
   "123_service_requests.sql",
+  // Migration 124 — FEE-2 Phase 2: relocate insurance config read from booking_fee_configs
+  // to platform_settings. Seeds three keys (insurance_enabled="false", insurance_rate_percent="0",
+  // insurance_applies_to="[]") matching the booking_fee_configs column defaults exactly —
+  // behavior-neutral on apply. ON CONFLICT DO NOTHING: idempotent on dev (where 124 was previously
+  // applied then the file was deleted) and runs once on prod. booking_fee_configs is retained for
+  // its other 7 readers (transport commission, startup seed, tip commission, etc.); only
+  // commission.ts:resolveInsuranceFromCategory was migrated. platform_settings is the interim home
+  // until FEE-2 Phase 1 ships the admin-validated insurance_tier (see CLAUDE.md §6). No schema/CHECK
+  // change → no publish-time push trap. Closes the #819 / FEE-2 gate.
+  "124_insurance_platform_settings.sql",
+  // Migration 125 — Coordination fee CAPTURE + paid-signal ledger (CLAUDE.md §7 "Quote-only →
+  // CAPTURED", ratified Jul 22, 2026). Adds coordination_fee_credits (one row per PAID Event-branch
+  // optimize fee, applied once against a coordination charge) + fee-payment columns on
+  // coordination_states (fee_payment_status CHECK unpaid|pending|paid, fee_payment_intent_id,
+  // fee_amount_cents, fee_credit_cents, fee_paid_at). New table + new columns default 'unpaid'/0, so
+  // the CHECK has no legacy rows to violate → no publish-time push trap. Enables the §14/§15-clean
+  // POST /api/coordination-states/:id/pay (+ /pay/confirm).
+  "125_coordination_fee_payments.sql",
 ] as const;

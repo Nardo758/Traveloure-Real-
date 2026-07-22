@@ -120,7 +120,7 @@ export default function ExpertPerformance() {
             <Card className="border border-gray-200">
               <CardHeader>
                 <CardTitle className="text-lg flex items-center gap-2">
-                  <TrendingUp className="w-5 h-5 text-[#FF385C]" />
+                  <TrendingUp className="w-5 h-5 text-primary" />
                   Monthly Performance
                 </CardTitle>
               </CardHeader>
@@ -163,7 +163,7 @@ export default function ExpertPerformance() {
             <Card className="border border-gray-200">
               <CardHeader>
                 <CardTitle className="text-lg flex items-center gap-2">
-                  <MessageSquare className="w-5 h-5 text-[#FF385C]" />
+                  <MessageSquare className="w-5 h-5 text-primary" />
                   Recent Reviews
                 </CardTitle>
               </CardHeader>
@@ -204,7 +204,7 @@ export default function ExpertPerformance() {
           <Card className="border border-gray-200 h-fit">
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
-                <Target className="w-5 h-5 text-[#FF385C]" />
+                <Target className="w-5 h-5 text-primary" />
                 Achievements
               </CardTitle>
             </CardHeader>

@@ -122,7 +122,7 @@ export default function FeaturesPage() {
             animate={{ opacity: 1, y: 0 }}
             className="text-center"
           >
-            <Badge className="bg-[#FF385C] text-white mb-6">
+            <Badge className="bg-primary text-white mb-6">
               <Sparkles className="w-3 h-3 mr-1" />
               Powerful Features
             </Badge>
@@ -139,7 +139,7 @@ export default function FeaturesPage() {
               <Link href="/discover">
                 <Button
                   size="lg"
-                  className="bg-[#FF385C] hover:bg-[#E23350] text-white px-8"
+                  className="bg-primary hover:bg-primary/90 text-white px-8"
                   data-testid="button-start-planning"
                 >
                   Start Planning <ArrowRight className="w-4 h-4 ml-2" />
@@ -182,10 +182,10 @@ export default function FeaturesPage() {
       <section className="py-20">
         <div className="container mx-auto px-4 max-w-6xl">
           <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-4xl font-bold text-[#111827] mb-4">
+            <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-4">
               Core Features
             </h2>
-            <p className="text-lg text-[#6B7280] max-w-2xl mx-auto">
+            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
               The powerful tools that make Traveloure your complete travel
               planning companion
             </p>
@@ -204,12 +204,12 @@ export default function FeaturesPage() {
               >
                 <div className={idx % 2 === 1 ? "lg:order-2" : ""}>
                   <div className="w-16 h-16 rounded-2xl bg-[#FFE3E8] flex items-center justify-center mb-6">
-                    <feature.icon className="w-8 h-8 text-[#FF385C]" />
+                    <feature.icon className="w-8 h-8 text-primary" />
                   </div>
-                  <h3 className="text-2xl md:text-3xl font-bold text-[#111827] mb-4">
+                  <h3 className="text-2xl md:text-3xl font-bold text-foreground mb-4">
                     {feature.title}
                   </h3>
-                  <p className="text-lg text-[#6B7280] mb-6">
+                  <p className="text-lg text-muted-foreground mb-6">
                     {feature.description}
                   </p>
                   <ul className="space-y-3">
@@ -225,7 +225,7 @@ export default function FeaturesPage() {
                   </ul>
                 </div>
                 <div className={idx % 2 === 1 ? "lg:order-1" : ""}>
-                  <Card className="border-[#E5E7EB] bg-gradient-to-br from-[#F9FAFB] to-white">
+                  <Card className="border-border bg-gradient-to-br from-[#F9FAFB] to-white">
                     <CardContent className="p-8 h-80 flex items-center justify-center">
                       <feature.icon className="w-32 h-32 text-[#E5E7EB]" />
                     </CardContent>
@@ -241,10 +241,10 @@ export default function FeaturesPage() {
       <section className="py-20 bg-white">
         <div className="container mx-auto px-4 max-w-6xl">
           <div className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-bold text-[#111827] mb-4">
+            <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-4">
               And Much More
             </h2>
-            <p className="text-lg text-[#6B7280]">
+            <p className="text-lg text-muted-foreground">
               Additional features to make your travel planning seamless
             </p>
           </div>
@@ -257,15 +257,15 @@ export default function FeaturesPage() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: idx * 0.05 }}
               >
-                <Card className="border-[#E5E7EB] hover:shadow-lg hover:border-[#FF385C] transition-all h-full">
+                <Card className="border-border hover:shadow-lg hover:border-primary transition-all h-full">
                   <CardContent className="p-6">
                     <div className="w-12 h-12 rounded-lg bg-[#FFE3E8] flex items-center justify-center mb-4">
-                      <feature.icon className="w-6 h-6 text-[#FF385C]" />
+                      <feature.icon className="w-6 h-6 text-primary" />
                     </div>
-                    <h3 className="text-lg font-semibold text-[#111827] mb-2">
+                    <h3 className="text-lg font-semibold text-foreground mb-2">
                       {feature.title}
                     </h3>
-                    <p className="text-[#6B7280]">{feature.description}</p>
+                    <p className="text-muted-foreground">{feature.description}</p>
                   </CardContent>
                 </Card>
               </motion.div>
@@ -288,7 +288,7 @@ export default function FeaturesPage() {
             <Link href="/discover">
               <Button
                 size="lg"
-                className="bg-white text-[#FF385C] hover:bg-gray-100 px-8"
+                className="bg-white text-primary hover:bg-gray-100 px-8"
                 data-testid="button-start-free"
               >
                 Start Free

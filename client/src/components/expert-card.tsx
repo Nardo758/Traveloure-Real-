@@ -157,7 +157,7 @@ export function ExpertCard({ expert, showServices = true, experienceTypeFilter, 
             <div className="flex items-start justify-between gap-1">
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5 flex-wrap">
-                  <h3 className="font-semibold text-[#111827] dark:text-white text-sm truncate" data-testid="text-expert-name">
+                  <h3 className="font-semibold text-foreground dark:text-white text-sm truncate" data-testid="text-expert-name">
                     {fullName}
                   </h3>
                   {verified && (
@@ -171,7 +171,7 @@ export function ExpertCard({ expert, showServices = true, experienceTypeFilter, 
                 </div>
                 
                 {location && (
-                  <div className="flex items-center gap-1 text-[#6B7280] text-xs">
+                  <div className="flex items-center gap-1 text-muted-foreground text-xs">
                     <MapPin className="w-3 h-3 shrink-0" />
                     <span className="truncate">{location}</span>
                   </div>
@@ -185,7 +185,7 @@ export function ExpertCard({ expert, showServices = true, experienceTypeFilter, 
               >
                 <Heart className={cn(
                   "w-4 h-4 transition-colors",
-                  isFavorite ? "fill-[#FF385C] text-[#FF385C]" : "text-gray-400"
+                  isFavorite ? "fill-[#FF385C] text-primary" : "text-gray-400"
                 )} />
               </button>
             </div>
@@ -195,25 +195,25 @@ export function ExpertCard({ expert, showServices = true, experienceTypeFilter, 
                 <Star className="w-3 h-3 fill-amber-500" />
                 {expertRating !== null ? (
                   <>
-                    <span className="ml-0.5 font-semibold text-[#6B7280]">{expertRating.toFixed(1)}</span>
+                    <span className="ml-0.5 font-semibold text-muted-foreground">{expertRating.toFixed(1)}</span>
                     {reviewsCount !== null && (
-                      <span className="text-[#6B7280] ml-0.5">({reviewsCount})</span>
+                      <span className="text-muted-foreground ml-0.5">({reviewsCount})</span>
                     )}
                   </>
                 ) : (
-                  <span className="ml-0.5 font-semibold text-[#6B7280]">New</span>
+                  <span className="ml-0.5 font-semibold text-muted-foreground">New</span>
                 )}
               </div>
               
               {tripsCount !== null && (
-                <div className="flex items-center gap-0.5 text-[#6B7280]">
+                <div className="flex items-center gap-0.5 text-muted-foreground">
                   <Briefcase className="w-3 h-3" />
                   <span>{tripsCount} trips</span>
                 </div>
               )}
               
               {responseTime && (
-                <div className="flex items-center gap-0.5 text-[#6B7280]">
+                <div className="flex items-center gap-0.5 text-muted-foreground">
                   <Clock className="w-3 h-3" />
                   <span>{responseTime}</span>
                 </div>
@@ -223,8 +223,8 @@ export function ExpertCard({ expert, showServices = true, experienceTypeFilter, 
           
           {lowestPrice && (
             <div className="text-right shrink-0">
-              <p className="text-[10px] text-[#6B7280]">From</p>
-              <p className="text-lg font-bold text-[#FF385C]" data-testid="text-price">
+              <p className="text-[10px] text-muted-foreground">From</p>
+              <p className="text-lg font-bold text-primary" data-testid="text-price">
                 ${lowestPrice}
               </p>
             </div>
@@ -244,7 +244,7 @@ export function ExpertCard({ expert, showServices = true, experienceTypeFilter, 
               </Badge>
             ))}
             {languages.length > 0 && (
-              <span className="text-[10px] text-[#6B7280] flex items-center gap-0.5">
+              <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
                 <Languages className="w-3 h-3" />
                 {languages.slice(0, 2).join(", ")}
               </span>
@@ -312,7 +312,7 @@ export function ExpertCard({ expert, showServices = true, experienceTypeFilter, 
           </div>
         )}
 
-        <div className="flex items-center gap-2 mt-2 pt-2 border-t border-[#E5E7EB] dark:border-gray-700">
+        <div className="flex items-center gap-2 mt-2 pt-2 border-t border-border dark:border-gray-700">
           <Button
             variant="outline"
             size="sm"
@@ -326,7 +326,7 @@ export function ExpertCard({ expert, showServices = true, experienceTypeFilter, 
           <Link href={`/experts/${expert.id}${detailQuery ?? ""}`} className="flex-1">
             <Button 
               size="sm" 
-              className="w-full bg-[#FF385C] hover:bg-[#E23350] h-7 text-xs"
+              className="w-full bg-primary hover:bg-primary/90 h-7 text-xs"
               data-testid="button-view-profile"
             >
               View Profile

@@ -148,8 +148,8 @@ export default function ExpertEarnings() {
                     <p className="text-2xl font-bold text-console-darkest">{stat.value}</p>
                     {stat.date && <p className="text-sm text-console-mid">{stat.date}</p>}
                   </div>
-                  <div className="w-12 h-12 rounded-lg bg-[#FF385C]/10 flex items-center justify-center">
-                    <stat.icon className="w-6 h-6 text-[#FF385C]" />
+                  <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <stat.icon className="w-6 h-6 text-primary" />
                   </div>
                 </div>
               </CardContent>
@@ -161,7 +161,7 @@ export default function ExpertEarnings() {
         <Card className="border border-console-light" data-testid="card-revenue-share">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg">
-              <PieChart className="w-5 h-5 text-[#FF385C]" />
+              <PieChart className="w-5 h-5 text-primary" />
               Revenue Share Breakdown
             </CardTitle>
           </CardHeader>
@@ -192,7 +192,7 @@ export default function ExpertEarnings() {
             {/* Visual bar */}
             <div className="mt-4 h-3 bg-console-light rounded-full overflow-hidden flex" data-testid="bar-revenue-split">
               <div
-                className="h-full bg-[#FF385C] transition-all"
+                className="h-full bg-primary transition-all"
                 style={{ width: `${Math.round(platformRate * 100)}%` }}
               />
               <div className="h-full bg-green-500 flex-1" />
@@ -211,7 +211,7 @@ export default function ExpertEarnings() {
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-lg">Recent Transactions</CardTitle>
-                  <Button variant="ghost" size="sm" className="text-[#FF385C]" data-testid="button-view-all-transactions">
+                  <Button variant="ghost" size="sm" className="text-primary" data-testid="button-view-all-transactions">
                     View All
                   </Button>
                 </div>

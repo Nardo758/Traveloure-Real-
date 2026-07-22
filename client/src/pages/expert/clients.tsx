@@ -200,8 +200,8 @@ export default function ExpertClients() {
                 <Card key={client.id} className="border border-console-light" data-testid={`card-client-${client.id}`}>
                   <CardContent className="p-5">
                     <div className="flex items-start gap-4">
-                      <div className="w-12 h-12 rounded-lg bg-[#FF385C]/10 flex items-center justify-center flex-shrink-0">
-                        <Icon className="w-6 h-6 text-[#FF385C]" />
+                      <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                        <Icon className="w-6 h-6 text-primary" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between gap-4">

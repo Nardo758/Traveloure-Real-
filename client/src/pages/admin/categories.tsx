@@ -230,7 +230,7 @@ export default function AdminCategories() {
           </div>
           <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
             <DialogTrigger asChild>
-              <Button className="bg-[#FF385C] hover:bg-[#E23350]" data-testid="button-create-category">
+              <Button className="bg-primary hover:bg-primary/90" data-testid="button-create-category">
                 <Plus className="w-4 h-4 mr-2" /> Add Category
               </Button>
             </DialogTrigger>
@@ -295,7 +295,7 @@ export default function AdminCategories() {
                   />
                 </div>
                 <Button 
-                  className="w-full bg-[#FF385C] hover:bg-[#E23350]"
+                  className="w-full bg-primary hover:bg-primary/90"
                   onClick={() => createMutation.mutate(newCategory)}
                   disabled={!newCategory.name || createMutation.isPending}
                   data-testid="button-submit-category"
@@ -367,8 +367,8 @@ export default function AdminCategories() {
                     <AccordionItem key={category.id} value={category.id} className="border rounded-lg px-4">
                       <AccordionTrigger className="hover:no-underline py-4">
                         <div className="flex items-center gap-4 flex-1">
-                          <div className="w-10 h-10 rounded-lg bg-[#FF385C]/10 flex items-center justify-center">
-                            <IconComponent className="w-5 h-5 text-[#FF385C]" />
+                          <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                            <IconComponent className="w-5 h-5 text-primary" />
                           </div>
                           <div className="flex-1 text-left">
                             <div className="flex items-center gap-2 flex-wrap">

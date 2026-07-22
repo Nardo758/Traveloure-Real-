@@ -181,7 +181,7 @@ export default function ExpertServices() {
       data-testid={`service-${service.id}`}
     >
       <div className="flex items-start gap-4">
-        <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${service.status === "active" ? "bg-[#FF385C]/10" : "bg-console-light"}`}>
+        <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${service.status === "active" ? "bg-primary/10" : "bg-console-light"}`}>
           {getDeliveryIcon(service.deliveryMethod)}
         </div>
         <div className="flex-1 min-w-0">
@@ -283,7 +283,7 @@ export default function ExpertServices() {
             <p className="text-console-mid">Create and manage your service offerings</p>
           </div>
           <Link href="/expert/services/new">
-            <Button className="bg-[#FF385C] " data-testid="button-add-service">
+            <Button className="bg-primary " data-testid="button-add-service">
               <Plus className="w-4 h-4 mr-2" /> Create Service
             </Button>
           </Link>
@@ -293,47 +293,47 @@ export default function ExpertServices() {
           templateCount > 0 ? (
             <Link href="/expert/services/templates">
               <div
-                className="flex items-center justify-between gap-4 rounded-xl border border-[#FF385C]/30 bg-[#FF385C]/5 px-5 py-4 cursor-pointer hover:bg-[#FF385C]/10 transition-colors"
+                className="flex items-center justify-between gap-4 rounded-xl border border-primary/30 bg-primary/5 px-5 py-4 cursor-pointer hover:bg-primary/10 transition-colors"
                 data-testid="banner-role-callout"
               >
                 <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-[#FF385C]/15">
-                    <ShieldCheck className="h-5 w-5 text-[#FF385C]" />
+                  <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-primary/15">
+                    <ShieldCheck className="h-5 w-5 text-primary" />
                   </div>
                   <div>
                     <p className="font-semibold text-console-darkest">
                       You are a{" "}
-                      <span className="text-[#FF385C]">{expertRoleLabel}</span>
+                      <span className="text-primary">{expertRoleLabel}</span>
                     </p>
                     <p className="text-sm text-console-mid">
                       {templateCount} template{templateCount !== 1 ? "s" : ""} tailored to your role — use one to create a service faster
                     </p>
                   </div>
                 </div>
-                <ChevronRight className="h-5 w-5 flex-shrink-0 text-[#FF385C]" />
+                <ChevronRight className="h-5 w-5 flex-shrink-0 text-primary" />
               </div>
             </Link>
           ) : (
             <Link href="/expert/services/new">
               <div
-                className="flex items-center justify-between gap-4 rounded-xl border border-[#FF385C]/30 bg-[#FF385C]/5 px-5 py-4 cursor-pointer hover:bg-[#FF385C]/10 transition-colors"
+                className="flex items-center justify-between gap-4 rounded-xl border border-primary/30 bg-primary/5 px-5 py-4 cursor-pointer hover:bg-primary/10 transition-colors"
                 data-testid="banner-role-callout"
               >
                 <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-[#FF385C]/15">
-                    <ShieldCheck className="h-5 w-5 text-[#FF385C]" />
+                  <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-primary/15">
+                    <ShieldCheck className="h-5 w-5 text-primary" />
                   </div>
                   <div>
                     <p className="font-semibold text-console-darkest">
                       You are a{" "}
-                      <span className="text-[#FF385C]">{expertRoleLabel}</span>
+                      <span className="text-primary">{expertRoleLabel}</span>
                     </p>
                     <p className="text-sm text-console-mid">
                       No templates tailored to your role yet — create a service manually to get started
                     </p>
                   </div>
                 </div>
-                <ChevronRight className="h-5 w-5 flex-shrink-0 text-[#FF385C]" />
+                <ChevronRight className="h-5 w-5 flex-shrink-0 text-primary" />
               </div>
             </Link>
           )
@@ -460,7 +460,7 @@ export default function ExpertServices() {
                     <h3 className="text-lg font-medium text-console-darkest mb-2">No services yet</h3>
                     <p className="text-console-mid mb-4">Create your first service to start accepting bookings</p>
                     <Link href="/expert/services/new">
-                      <Button className="bg-[#FF385C] " data-testid="button-create-first-service">
+                      <Button className="bg-primary " data-testid="button-create-first-service">
                         <Plus className="w-4 h-4 mr-2" /> Create Service
                       </Button>
                     </Link>

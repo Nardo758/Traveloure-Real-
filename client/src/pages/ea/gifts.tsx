@@ -33,6 +33,27 @@ export default function EAGifts() {
   const aiSuggestions: Array<{ id: number; for: string; options: Array<{ name: string; price: string; matchScore: number }> }> = [];
   const giftHistory = allGifts.filter(g => g.gift && g.status === "sent" || g.rating);
 
+  // Derive stat cards from the real gifts list (were hardcoded 3/8/24/$18.5k — §13).
+  const thisYear = new Date().getFullYear();
+  const nowTs = new Date();
+  const giftsNeededCount = upcomingOccasions.length;
+  const upcomingCount = allGifts.filter(g => {
+    if (!g.occasionDate) return false;
+    const d = new Date(g.occasionDate);
+    return !isNaN(d.getTime()) && d >= nowTs;
+  }).length;
+  const giftsThisYear = giftHistory.filter(g => {
+    const raw = g.occasionDate ?? g.createdAt;
+    if (!raw) return false;
+    const d = new Date(raw);
+    return !isNaN(d.getTime()) && d.getFullYear() === thisYear;
+  }).length;
+  const ytdSpent = giftHistory.reduce((sum, g) => {
+    const amt = parseFloat(String(g.amount ?? "").replace(/[^0-9.]/g, "")) || 0;
+    return sum + amt;
+  }, 0);
+  const ytdSpentLabel = ytdSpent >= 1000 ? `$${(ytdSpent / 1000).toFixed(1)}k` : `$${ytdSpent.toFixed(0)}`;
+
   return (
     <EALayout title="Gifts">
       <div className="p-6 space-y-6">
@@ -47,7 +68,7 @@ export default function EAGifts() {
             <Button variant="outline" data-testid="button-browse-catalog">
               <ShoppingCart className="w-4 h-4 mr-2" /> Browse Catalog
             </Button>
-            <Button className="bg-[#FF385C] hover:bg-[#E23350]" data-testid="button-order-gift">
+            <Button className="bg-primary hover:bg-primary/90" data-testid="button-order-gift">
               <Plus className="w-4 h-4 mr-2" /> Order Gift
             </Button>
           </div>
@@ -57,25 +78,25 @@ export default function EAGifts() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <Card className="border border-gray-200" data-testid="stat-pending-gifts">
             <CardContent className="p-4 text-center">
-              <p className="text-3xl font-bold text-yellow-600">3</p>
+              <p className="text-3xl font-bold text-yellow-600">{giftsNeededCount}</p>
               <p className="text-sm text-gray-600">Gifts Needed</p>
             </CardContent>
           </Card>
           <Card className="border border-gray-200" data-testid="stat-upcoming">
             <CardContent className="p-4 text-center">
-              <p className="text-3xl font-bold text-gray-900">8</p>
+              <p className="text-3xl font-bold text-gray-900">{upcomingCount}</p>
               <p className="text-sm text-gray-600">Upcoming Occasions</p>
             </CardContent>
           </Card>
           <Card className="border border-gray-200" data-testid="stat-this-year">
             <CardContent className="p-4 text-center">
-              <p className="text-3xl font-bold text-gray-900">24</p>
+              <p className="text-3xl font-bold text-gray-900">{giftsThisYear}</p>
               <p className="text-sm text-gray-600">Gifts This Year</p>
             </CardContent>
           </Card>
           <Card className="border border-gray-200" data-testid="stat-budget">
             <CardContent className="p-4 text-center">
-              <p className="text-3xl font-bold text-green-600">$18.5k</p>
+              <p className="text-3xl font-bold text-green-600">{ytdSpentLabel}</p>
               <p className="text-sm text-gray-600">YTD Spent</p>
             </CardContent>
           </Card>
@@ -87,7 +108,7 @@ export default function EAGifts() {
             <Card className="border border-gray-200">
               <CardHeader>
                 <div className="flex items-center gap-2">
-                  <Calendar className="w-5 h-5 text-[#FF385C]" />
+                  <Calendar className="w-5 h-5 text-primary" />
                   <CardTitle className="text-lg">Upcoming Occasions</CardTitle>
                 </div>
               </CardHeader>
@@ -119,7 +140,7 @@ export default function EAGifts() {
                       </div>
                       <div className="flex gap-2">
                         {occasion.giftNeeded && (
-                          <Button size="sm" className="bg-[#FF385C] hover:bg-[#E23350]" data-testid={`button-select-gift-${occasion.id}`}>
+                          <Button size="sm" className="bg-primary hover:bg-primary/90" data-testid={`button-select-gift-${occasion.id}`}>
                             <Gift className="w-3 h-3 mr-1" /> Select Gift
                           </Button>
                         )}
@@ -204,15 +225,15 @@ export default function EAGifts() {
                   <div className="flex items-center justify-between mt-2 text-sm text-gray-500">
                     <span>{gift.amount}</span>
                     <div className="flex items-center gap-1">
-                      {[...Array(gift.rating)].map((_, i) => (
+                      {gift.rating ? [...Array(gift.rating)].map((_, i) => (
                         <Star key={i} className="w-3 h-3 text-yellow-500 fill-yellow-500" />
-                      ))}
+                      )) : null}
                     </div>
                   </div>
                   <p className="text-xs text-gray-400 mt-1">{gift.occasionDate ?? gift.createdAt}</p>
                 </div>
               ))}
-              <Button variant="ghost" className="w-full text-[#FF385C]" data-testid="button-view-all-history">
+              <Button variant="ghost" className="w-full text-primary" data-testid="button-view-all-history">
                 View All History
               </Button>
             </CardContent>

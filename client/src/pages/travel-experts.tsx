@@ -437,21 +437,21 @@ export default function TravelExpertsPage() {
   return (
     <div className="min-h-screen bg-[#F9FAFB]">
       {/* Header */}
-      <header className="bg-white border-b border-[#E5E7EB] sticky top-0 z-50">
+      <header className="bg-white border-b border-border sticky top-0 z-50">
         <div className="container mx-auto px-4 max-w-4xl">
           <div className="flex items-center justify-between h-16">
-            <Link href="/earn" className="flex items-center gap-2 text-[#6B7280] hover:text-[#111827]" data-testid="link-back">
+            <Link href="/earn" className="flex items-center gap-2 text-muted-foreground hover:text-foreground" data-testid="link-back">
               <ArrowLeft className="w-5 h-5" />
               Back
             </Link>
-            <span className="font-semibold text-[#111827]">{expertTypeTitle} Application</span>
+            <span className="font-semibold text-foreground">{expertTypeTitle} Application</span>
             <div className="w-20" />
           </div>
         </div>
       </header>
 
       {/* Progress Steps */}
-      <div className="bg-white border-b border-[#E5E7EB] py-4">
+      <div className="bg-white border-b border-border py-4">
         <div className="container mx-auto px-4 max-w-4xl">
           <div className="flex items-center justify-between">
             {steps.map((step, idx) => (
@@ -460,7 +460,7 @@ export default function TravelExpertsPage() {
                   className={cn(
                     "flex items-center gap-2 px-3 py-2 rounded-lg transition-colors",
                     currentStep === step.id
-                      ? "bg-[#FFE3E8] text-[#FF385C]"
+                      ? "bg-[#FFE3E8] text-primary"
                       : currentStep > step.id
                       ? "text-green-600"
                       : "text-[#9CA3AF]"
@@ -470,7 +470,7 @@ export default function TravelExpertsPage() {
                     className={cn(
                       "w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium",
                       currentStep === step.id
-                        ? "bg-[#FF385C] text-white"
+                        ? "bg-primary text-white"
                         : currentStep > step.id
                         ? "bg-green-100 text-green-600"
                         : "bg-[#F3F4F6] text-[#9CA3AF]"
@@ -515,9 +515,9 @@ export default function TravelExpertsPage() {
         >
           {/* Step 1: Basic Info */}
           {currentStep === 1 && (
-            <Card className="border-[#E5E7EB]">
+            <Card className="border-border">
               <CardHeader>
-                <CardTitle className="text-2xl text-[#111827]">Basic Information</CardTitle>
+                <CardTitle className="text-2xl text-foreground">Basic Information</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 {/* Quick Social Sign-In */}
@@ -542,7 +542,7 @@ export default function TravelExpertsPage() {
                     </p>
                   </div>
                 ) : (
-                  <div className="bg-gradient-to-r from-[#1877F2]/5 via-[#E1306C]/5 to-[#833AB4]/5 rounded-lg p-5 border border-[#E5E7EB]">
+                  <div className="bg-gradient-to-r from-[#1877F2]/5 via-[#E1306C]/5 to-[#833AB4]/5 rounded-lg p-5 border border-border">
                     <div className="flex items-center gap-2 mb-3">
                       <Sparkles className="w-5 h-5 text-primary" />
                       <p className="font-semibold text-foreground">
@@ -592,7 +592,7 @@ export default function TravelExpertsPage() {
                     <Input
                       value={formData.firstName}
                       onChange={(e) => updateFormData("firstName", e.target.value)}
-                      className="mt-2 h-12 border-[#E5E7EB]"
+                      className="mt-2 h-12 border-border"
                       data-testid="input-first-name"
                     />
                   </div>
@@ -601,7 +601,7 @@ export default function TravelExpertsPage() {
                     <Input
                       value={formData.lastName}
                       onChange={(e) => updateFormData("lastName", e.target.value)}
-                      className="mt-2 h-12 border-[#E5E7EB]"
+                      className="mt-2 h-12 border-border"
                       data-testid="input-last-name"
                     />
                   </div>
@@ -612,7 +612,7 @@ export default function TravelExpertsPage() {
                     type="email"
                     value={formData.email}
                     onChange={(e) => updateFormData("email", e.target.value)}
-                    className="mt-2 h-12 border-[#E5E7EB]"
+                    className="mt-2 h-12 border-border"
                     data-testid="input-email"
                   />
                 </div>
@@ -622,7 +622,7 @@ export default function TravelExpertsPage() {
                     type="tel"
                     value={formData.phone}
                     onChange={(e) => updateFormData("phone", e.target.value)}
-                    className="mt-2 h-12 border-[#E5E7EB]"
+                    className="mt-2 h-12 border-border"
                     data-testid="input-phone"
                   />
                 </div>
@@ -632,7 +632,7 @@ export default function TravelExpertsPage() {
                     <Input
                       value={formData.country}
                       onChange={(e) => updateFormData("country", e.target.value)}
-                      className="mt-2 h-12 border-[#E5E7EB]"
+                      className="mt-2 h-12 border-border"
                       data-testid="input-country"
                     />
                   </div>
@@ -641,7 +641,7 @@ export default function TravelExpertsPage() {
                     <Input
                       value={formData.city}
                       onChange={(e) => updateFormData("city", e.target.value)}
-                      className="mt-2 h-12 border-[#E5E7EB]"
+                      className="mt-2 h-12 border-border"
                       data-testid="input-city"
                     />
                   </div>
@@ -651,7 +651,7 @@ export default function TravelExpertsPage() {
                 {influencerFromUrl && (
                   <div className="border-t pt-6 mt-6">
                     <div className="flex items-center gap-3 mb-4">
-                      <Badge className="bg-[#FF385C] text-white">
+                      <Badge className="bg-primary text-white">
                         <Sparkles className="w-3 h-3 mr-1" />
                         Influencer Program
                       </Badge>
@@ -670,7 +670,7 @@ export default function TravelExpertsPage() {
                             value={formData.instagramLink}
                             onChange={(e) => updateFormData("instagramLink", e.target.value)}
                             placeholder="https://instagram.com/yourhandle"
-                            className="mt-2 h-12 border-[#E5E7EB]"
+                            className="mt-2 h-12 border-border"
                             data-testid="input-instagram-link"
                           />
                         </div>
@@ -680,7 +680,7 @@ export default function TravelExpertsPage() {
                             value={formData.instagramFollowers}
                             onChange={(e) => updateFormData("instagramFollowers", e.target.value)}
                             placeholder="e.g. 50000"
-                            className="mt-2 h-12 border-[#E5E7EB]"
+                            className="mt-2 h-12 border-border"
                             data-testid="input-instagram-followers"
                           />
                         </div>
@@ -692,7 +692,7 @@ export default function TravelExpertsPage() {
                             value={formData.tiktokLink}
                             onChange={(e) => updateFormData("tiktokLink", e.target.value)}
                             placeholder="https://tiktok.com/@yourhandle"
-                            className="mt-2 h-12 border-[#E5E7EB]"
+                            className="mt-2 h-12 border-border"
                             data-testid="input-tiktok-link"
                           />
                         </div>
@@ -702,7 +702,7 @@ export default function TravelExpertsPage() {
                             value={formData.tiktokFollowers}
                             onChange={(e) => updateFormData("tiktokFollowers", e.target.value)}
                             placeholder="e.g. 100000"
-                            className="mt-2 h-12 border-[#E5E7EB]"
+                            className="mt-2 h-12 border-border"
                             data-testid="input-tiktok-followers"
                           />
                         </div>
@@ -714,7 +714,7 @@ export default function TravelExpertsPage() {
                             value={formData.youtubeLink}
                             onChange={(e) => updateFormData("youtubeLink", e.target.value)}
                             placeholder="https://youtube.com/@yourchannel"
-                            className="mt-2 h-12 border-[#E5E7EB]"
+                            className="mt-2 h-12 border-border"
                             data-testid="input-youtube-link"
                           />
                         </div>
@@ -724,7 +724,7 @@ export default function TravelExpertsPage() {
                             value={formData.youtubeFollowers}
                             onChange={(e) => updateFormData("youtubeFollowers", e.target.value)}
                             placeholder="e.g. 25000"
-                            className="mt-2 h-12 border-[#E5E7EB]"
+                            className="mt-2 h-12 border-border"
                             data-testid="input-youtube-followers"
                           />
                         </div>
@@ -738,10 +738,10 @@ export default function TravelExpertsPage() {
 
           {/* Step 2 (Local Expert): Your Locality */}
           {isLocalExpert && currentStep === 2 && (
-            <Card className="border-[#E5E7EB]">
+            <Card className="border-border">
               <CardHeader>
-                <CardTitle className="text-2xl text-[#111827]">Your Local Knowledge</CardTitle>
-                <p className="text-[#6B7280] text-sm mt-1">
+                <CardTitle className="text-2xl text-foreground">Your Local Knowledge</CardTitle>
+                <p className="text-muted-foreground text-sm mt-1">
                   Tell us exactly where your expertise lives — not just the city, but the neighbourhoods you know block by block.
                 </p>
               </CardHeader>
@@ -753,7 +753,7 @@ export default function TravelExpertsPage() {
                     value={formData.city}
                     onChange={(e) => updateFormData("city", e.target.value)}
                     placeholder="e.g. Tokyo, Barcelona, Mumbai"
-                    className="mt-2 h-12 border-[#E5E7EB]"
+                    className="mt-2 h-12 border-border"
                     data-testid="input-local-city"
                   />
                 </div>
@@ -763,12 +763,12 @@ export default function TravelExpertsPage() {
                   <Label className="text-[#374151] mb-1 block">
                     Neighbourhoods You Know Deeply <span className="text-red-500">*</span>
                   </Label>
-                  <p className="text-xs text-[#6B7280] mb-2">
+                  <p className="text-xs text-muted-foreground mb-2">
                     Be specific — not "Tokyo" but "Shimokitazawa, Kōenji, Yanaka". Press <kbd className="px-1 py-0.5 rounded bg-gray-100 text-xs">Enter</kbd> or comma to add each one.
                   </p>
                   <div className="flex flex-wrap gap-2 mb-2">
                     {formData.neighborhoods.map((n) => (
-                      <Badge key={n} className="bg-[#FF385C] text-white gap-1 pr-1" data-testid={`badge-neighborhood-${n}`}>
+                      <Badge key={n} className="bg-primary text-white gap-1 pr-1" data-testid={`badge-neighborhood-${n}`}>
                         {n}
                         <button
                           type="button"
@@ -804,7 +804,7 @@ export default function TravelExpertsPage() {
                       }
                     }}
                     placeholder="Type a neighbourhood and press Enter…"
-                    className="h-12 border-[#E5E7EB]"
+                    className="h-12 border-border"
                     data-testid="input-neighborhood"
                   />
                 </div>
@@ -823,8 +823,8 @@ export default function TravelExpertsPage() {
                         className={cn(
                           "px-4 py-3 rounded-lg border text-sm text-left transition-colors",
                           formData.localityProof === opt.value
-                            ? "border-[#FF385C] bg-[#FFE3E8] text-[#FF385C] font-medium"
-                            : "border-[#E5E7EB] hover:border-[#FF385C] text-[#374151]"
+                            ? "border-primary bg-[#FFE3E8] text-primary font-medium"
+                            : "border-border hover:border-primary text-[#374151]"
                         )}
                         data-testid={`button-locality-${opt.value}`}
                       >
@@ -848,8 +848,8 @@ export default function TravelExpertsPage() {
                         className={cn(
                           "cursor-pointer px-3 py-2",
                           formData.languages.includes(lang)
-                            ? "bg-[#FF385C] hover:bg-[#E23350]"
-                            : "border-[#E5E7EB] hover:border-[#FF385C]"
+                            ? "bg-primary hover:bg-primary/90"
+                            : "border-border hover:border-primary"
                         )}
                         onClick={() => toggleArrayItem("languages", lang)}
                         data-testid={`badge-language-${lang.toLowerCase()}`}
@@ -865,9 +865,9 @@ export default function TravelExpertsPage() {
 
           {/* Step 3 (Local Expert): Knowledge Proof */}
           {isLocalExpert && currentStep === 3 && (
-            <Card className="border-[#E5E7EB]">
+            <Card className="border-border">
               <CardHeader>
-                <CardTitle className="text-2xl text-[#111827]">Knowledge Proof</CardTitle>
+                <CardTitle className="text-2xl text-foreground">Knowledge Proof</CardTitle>
                 <div className="mt-2 p-3 bg-amber-50 border border-amber-200 rounded-lg text-sm text-amber-800">
                   <strong>Be specific.</strong> Vague answers that could come from a guidebook won't pass review. Our team is looking for the kind of insight only a real local can give — including where to avoid and why.
                 </div>
@@ -886,7 +886,7 @@ export default function TravelExpertsPage() {
                         updateFormData("knowledgeProofAnswers", updated);
                       }}
                       placeholder="Write your answer here — be specific, name real places, and explain your reasoning…"
-                      className="border-[#E5E7EB]"
+                      className="border-border"
                       rows={5}
                       data-testid={`textarea-knowledge-proof-${i}`}
                     />
@@ -910,10 +910,10 @@ export default function TravelExpertsPage() {
 
           {/* Step 4 (Local Expert): Specialties */}
           {isLocalExpert && currentStep === 4 && (
-            <Card className="border-[#E5E7EB]">
+            <Card className="border-border">
               <CardHeader>
-                <CardTitle className="text-2xl text-[#111827]">Your Local Specialties</CardTitle>
-                <p className="text-[#6B7280] text-sm mt-1">
+                <CardTitle className="text-2xl text-foreground">Your Local Specialties</CardTitle>
+                <p className="text-muted-foreground text-sm mt-1">
                   Select the areas where you have genuine insider knowledge. These feed directly into how travellers find you.
                 </p>
               </CardHeader>
@@ -931,8 +931,8 @@ export default function TravelExpertsPage() {
                           className={cn(
                             "flex flex-col items-center gap-1.5 p-3 rounded-xl border text-sm transition-colors",
                             selected
-                              ? "border-[#FF385C] bg-[#FFE3E8] text-[#FF385C] font-medium"
-                              : "border-[#E5E7EB] hover:border-[#FF385C] text-[#374151]"
+                              ? "border-primary bg-[#FFE3E8] text-primary font-medium"
+                              : "border-border hover:border-primary text-[#374151]"
                           )}
                           data-testid={`button-local-specialty-${opt.value}`}
                         >
@@ -954,8 +954,8 @@ export default function TravelExpertsPage() {
                         className={cn(
                           "cursor-pointer px-3 py-2",
                           formData.experienceTypes.includes(type)
-                            ? "bg-[#FF385C] hover:bg-[#E23350]"
-                            : "border-[#E5E7EB] hover:border-[#FF385C]"
+                            ? "bg-primary hover:bg-primary/90"
+                            : "border-border hover:border-primary"
                         )}
                         onClick={() => toggleArrayItem("experienceTypes", type)}
                         data-testid={`badge-traveller-type-${type.toLowerCase().replace(/\s/g, "-")}`}
@@ -971,9 +971,9 @@ export default function TravelExpertsPage() {
 
           {/* Step 2: Expertise */}
           {!isLocalExpert && currentStep === 2 && (
-            <Card className="border-[#E5E7EB]">
+            <Card className="border-border">
               <CardHeader>
-                <CardTitle className="text-2xl text-[#111827]">Your Expertise</CardTitle>
+                <CardTitle className="text-2xl text-foreground">Your Expertise</CardTitle>
               </CardHeader>
               <CardContent className="space-y-6">
                 <div>
@@ -989,8 +989,8 @@ export default function TravelExpertsPage() {
                         className={cn(
                           "cursor-pointer px-3 py-2",
                           formData.destinations.includes(dest)
-                            ? "bg-[#FF385C] hover:bg-[#E23350]"
-                            : "border-[#E5E7EB] hover:border-[#FF385C]"
+                            ? "bg-primary hover:bg-primary/90"
+                            : "border-border hover:border-primary"
                         )}
                         onClick={() => toggleArrayItem("destinations", dest)}
                         data-testid={`badge-destination-${dest.toLowerCase().replace(/[,\s]/g, "-")}`}
@@ -1014,8 +1014,8 @@ export default function TravelExpertsPage() {
                         className={cn(
                           "cursor-pointer px-3 py-2",
                           formData.specialties.includes(spec)
-                            ? "bg-[#FF385C] hover:bg-[#E23350]"
-                            : "border-[#E5E7EB] hover:border-[#FF385C]"
+                            ? "bg-primary hover:bg-primary/90"
+                            : "border-border hover:border-primary"
                         )}
                         onClick={() => toggleArrayItem("specialties", spec)}
                         data-testid={`badge-specialty-${spec.toLowerCase().replace(/\s/g, "-")}`}
@@ -1039,8 +1039,8 @@ export default function TravelExpertsPage() {
                         className={cn(
                           "cursor-pointer px-3 py-2",
                           formData.languages.includes(lang)
-                            ? "bg-[#FF385C] hover:bg-[#E23350]"
-                            : "border-[#E5E7EB] hover:border-[#FF385C]"
+                            ? "bg-primary hover:bg-primary/90"
+                            : "border-border hover:border-primary"
                         )}
                         onClick={() => toggleArrayItem("languages", lang)}
                         data-testid={`badge-language-${lang.toLowerCase()}`}
@@ -1064,8 +1064,8 @@ export default function TravelExpertsPage() {
                         className={cn(
                           "cursor-pointer px-3 py-2",
                           formData.experienceTypes.includes(exp.id)
-                            ? "bg-[#FF385C] hover:bg-[#E23350]"
-                            : "border-[#E5E7EB] hover:border-[#FF385C]"
+                            ? "bg-primary hover:bg-primary/90"
+                            : "border-border hover:border-primary"
                         )}
                         onClick={() => toggleArrayItem("experienceTypes", exp.id)}
                         data-testid={`badge-experience-${exp.slug}`}
@@ -1089,8 +1089,8 @@ export default function TravelExpertsPage() {
                         className={cn(
                           "cursor-pointer px-3 py-2",
                           formData.specializations.includes(spec.value)
-                            ? "bg-[#FF385C] hover:bg-[#E23350]"
-                            : "border-[#E5E7EB] hover:border-[#FF385C]"
+                            ? "bg-primary hover:bg-primary/90"
+                            : "border-border hover:border-primary"
                         )}
                         onClick={() => toggleArrayItem("specializations", spec.value)}
                         data-testid={`badge-specialization-${spec.value}`}
@@ -1106,10 +1106,10 @@ export default function TravelExpertsPage() {
 
           {/* Step 3/5: Services */}
           {((!isLocalExpert && currentStep === 3) || (isLocalExpert && currentStep === 5)) && (
-            <Card className="border-[#E5E7EB]">
+            <Card className="border-border">
               <CardHeader>
-                <CardTitle className="text-2xl text-[#111827]">Services You Offer</CardTitle>
-                <p className="text-[#6B7280] text-sm mt-1">Select the services you want to offer to travelers. You can set custom pricing later.</p>
+                <CardTitle className="text-2xl text-foreground">Services You Offer</CardTitle>
+                <p className="text-muted-foreground text-sm mt-1">Select the services you want to offer to travelers. You can set custom pricing later.</p>
               </CardHeader>
               <CardContent className="space-y-6">
                 {serviceCategories.map((category: any) => (
@@ -1126,8 +1126,8 @@ export default function TravelExpertsPage() {
                           className={cn(
                             "cursor-pointer px-3 py-2",
                             formData.selectedServices.includes(offering.id)
-                              ? "bg-[#FF385C] hover:bg-[#E23350]"
-                              : "border-[#E5E7EB] hover:border-[#FF385C]"
+                              ? "bg-primary hover:bg-primary/90"
+                              : "border-border hover:border-primary"
                           )}
                           onClick={() => toggleArrayItem("selectedServices", offering.id)}
                           data-testid={`badge-service-${offering.id}`}
@@ -1144,9 +1144,9 @@ export default function TravelExpertsPage() {
 
           {/* Step 4: Experience (travel/event experts only) */}
           {!isLocalExpert && currentStep === 4 && (
-            <Card className="border-[#E5E7EB]">
+            <Card className="border-border">
               <CardHeader>
-                <CardTitle className="text-2xl text-[#111827]">Your Experience</CardTitle>
+                <CardTitle className="text-2xl text-foreground">Your Experience</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div>
@@ -1155,7 +1155,7 @@ export default function TravelExpertsPage() {
                     value={formData.yearsExperience}
                     onValueChange={(v) => updateFormData("yearsExperience", v)}
                   >
-                    <SelectTrigger className="mt-2 h-12 border-[#E5E7EB]" data-testid="select-experience">
+                    <SelectTrigger className="mt-2 h-12 border-border" data-testid="select-experience">
                       <SelectValue placeholder="Select years of experience" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1173,7 +1173,7 @@ export default function TravelExpertsPage() {
                     value={formData.bio}
                     onChange={(e) => updateFormData("bio", e.target.value)}
                     placeholder="Tell travelers about yourself, your passion for travel, and what makes you a great guide..."
-                    className="mt-2 border-[#E5E7EB]"
+                    className="mt-2 border-border"
                     rows={5}
                     data-testid="textarea-bio"
                   />
@@ -1185,7 +1185,7 @@ export default function TravelExpertsPage() {
                     value={formData.portfolio}
                     onChange={(e) => updateFormData("portfolio", e.target.value)}
                     placeholder="https://yourwebsite.com"
-                    className="mt-2 h-12 border-[#E5E7EB]"
+                    className="mt-2 h-12 border-border"
                     data-testid="input-portfolio"
                   />
                 </div>
@@ -1196,7 +1196,7 @@ export default function TravelExpertsPage() {
                     value={formData.certifications}
                     onChange={(e) => updateFormData("certifications", e.target.value)}
                     placeholder="List any relevant certifications, licenses, or qualifications..."
-                    className="mt-2 border-[#E5E7EB]"
+                    className="mt-2 border-border"
                     rows={3}
                     data-testid="textarea-certifications"
                   />
@@ -1207,9 +1207,9 @@ export default function TravelExpertsPage() {
 
           {/* Step 5/6: Availability */}
           {((!isLocalExpert && currentStep === 5) || (isLocalExpert && currentStep === 6)) && (
-            <Card className="border-[#E5E7EB]">
+            <Card className="border-border">
               <CardHeader>
-                <CardTitle className="text-2xl text-[#111827]">Availability & Rates</CardTitle>
+                <CardTitle className="text-2xl text-foreground">Availability & Rates</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div>
@@ -1218,7 +1218,7 @@ export default function TravelExpertsPage() {
                     value={formData.availability}
                     onValueChange={(v) => updateFormData("availability", v)}
                   >
-                    <SelectTrigger className="mt-2 h-12 border-[#E5E7EB]" data-testid="select-availability">
+                    <SelectTrigger className="mt-2 h-12 border-border" data-testid="select-availability">
                       <SelectValue placeholder="Select your availability" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1236,7 +1236,7 @@ export default function TravelExpertsPage() {
                     value={formData.responseTime}
                     onValueChange={(v) => updateFormData("responseTime", v)}
                   >
-                    <SelectTrigger className="mt-2 h-12 border-[#E5E7EB]" data-testid="select-response-time">
+                    <SelectTrigger className="mt-2 h-12 border-border" data-testid="select-response-time">
                       <SelectValue placeholder="Select response time" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1257,11 +1257,11 @@ export default function TravelExpertsPage() {
                       value={formData.hourlyRate}
                       onChange={(e) => updateFormData("hourlyRate", e.target.value)}
                       placeholder="75"
-                      className="pl-10 h-12 border-[#E5E7EB]"
+                      className="pl-10 h-12 border-border"
                       data-testid="input-hourly-rate"
                     />
                   </div>
-                  <p className="text-sm text-[#6B7280] mt-2">
+                  <p className="text-sm text-muted-foreground mt-2">
                     Average expert rates: $50-150/hour depending on experience
                   </p>
                 </div>
@@ -1271,31 +1271,31 @@ export default function TravelExpertsPage() {
 
           {/* Step 6/7: Review */}
           {((!isLocalExpert && currentStep === 6) || (isLocalExpert && currentStep === 7)) && (
-            <Card className="border-[#E5E7EB]">
+            <Card className="border-border">
               <CardHeader>
-                <CardTitle className="text-2xl text-[#111827]">Review Your Application</CardTitle>
+                <CardTitle className="text-2xl text-foreground">Review Your Application</CardTitle>
               </CardHeader>
               <CardContent className="space-y-6">
                 <div className="grid grid-cols-2 gap-4 text-sm">
                   <div>
-                    <span className="text-[#6B7280]">Name:</span>
-                    <span className="ml-2 text-[#111827] font-medium">
+                    <span className="text-muted-foreground">Name:</span>
+                    <span className="ml-2 text-foreground font-medium">
                       {formData.firstName} {formData.lastName}
                     </span>
                   </div>
                   <div>
-                    <span className="text-[#6B7280]">Email:</span>
-                    <span className="ml-2 text-[#111827] font-medium">{formData.email}</span>
+                    <span className="text-muted-foreground">Email:</span>
+                    <span className="ml-2 text-foreground font-medium">{formData.email}</span>
                   </div>
                   <div>
-                    <span className="text-[#6B7280]">Location:</span>
-                    <span className="ml-2 text-[#111827] font-medium">
+                    <span className="text-muted-foreground">Location:</span>
+                    <span className="ml-2 text-foreground font-medium">
                       {formData.city}, {formData.country}
                     </span>
                   </div>
                   <div>
-                    <span className="text-[#6B7280]">Experience:</span>
-                    <span className="ml-2 text-[#111827] font-medium">
+                    <span className="text-muted-foreground">Experience:</span>
+                    <span className="ml-2 text-foreground font-medium">
                       {formData.yearsExperience} years
                     </span>
                   </div>
@@ -1304,7 +1304,7 @@ export default function TravelExpertsPage() {
                 {isLocalExpert ? (
                   <>
                     <div>
-                      <span className="text-[#6B7280] text-sm">Neighbourhoods:</span>
+                      <span className="text-muted-foreground text-sm">Neighbourhoods:</span>
                       <div className="flex flex-wrap gap-1 mt-1">
                         {formData.neighborhoods.map((n) => (
                           <Badge key={n} variant="secondary" className="text-xs">{n}</Badge>
@@ -1312,7 +1312,7 @@ export default function TravelExpertsPage() {
                       </div>
                     </div>
                     <div>
-                      <span className="text-[#6B7280] text-sm">Local Specialties:</span>
+                      <span className="text-muted-foreground text-sm">Local Specialties:</span>
                       <div className="flex flex-wrap gap-1 mt-1">
                         {formData.localSpecialties.map((s) => {
                           const opt = localSpecialtyOptions.find(o => o.value === s);
@@ -1325,7 +1325,7 @@ export default function TravelExpertsPage() {
                       </div>
                     </div>
                     <div>
-                      <span className="text-[#6B7280] text-sm">Services Offered:</span>
+                      <span className="text-muted-foreground text-sm">Services Offered:</span>
                       <div className="flex flex-wrap gap-1 mt-1">
                         {formData.selectedServices.map((s) => (
                           <Badge key={s} variant="secondary" className="text-xs">{s}</Badge>
@@ -1333,12 +1333,12 @@ export default function TravelExpertsPage() {
                       </div>
                     </div>
                     <div className="space-y-3">
-                      <span className="text-[#6B7280] text-sm block">Knowledge Proof (summary):</span>
+                      <span className="text-muted-foreground text-sm block">Knowledge Proof (summary):</span>
                       {formData.knowledgeProofAnswers.map((ans, i) => (
                         ans.trim().length > 0 && (
                           <div key={i} className="p-3 bg-gray-50 rounded-lg text-sm">
                             <p className="font-medium text-[#374151] mb-1">Q{i + 1}: {KNOWLEDGE_PROOF_QUESTIONS[i].slice(0, 60)}…</p>
-                            <p className="text-[#6B7280] italic">"{ans.trim().slice(0, 120)}{ans.trim().length > 120 ? "…" : ""}"</p>
+                            <p className="text-muted-foreground italic">"{ans.trim().slice(0, 120)}{ans.trim().length > 120 ? "…" : ""}"</p>
                           </div>
                         )
                       ))}
@@ -1347,7 +1347,7 @@ export default function TravelExpertsPage() {
                 ) : (
                   <>
                     <div>
-                      <span className="text-[#6B7280] text-sm">Destinations:</span>
+                      <span className="text-muted-foreground text-sm">Destinations:</span>
                       <div className="flex flex-wrap gap-1 mt-1">
                         {formData.destinations.map((d) => (
                           <Badge key={d} variant="secondary" className="text-xs">{d}</Badge>
@@ -1355,7 +1355,7 @@ export default function TravelExpertsPage() {
                       </div>
                     </div>
                     <div>
-                      <span className="text-[#6B7280] text-sm">Specialties:</span>
+                      <span className="text-muted-foreground text-sm">Specialties:</span>
                       <div className="flex flex-wrap gap-1 mt-1">
                         {formData.specialties.map((s) => (
                           <Badge key={s} variant="secondary" className="text-xs">{s}</Badge>
@@ -1366,11 +1366,11 @@ export default function TravelExpertsPage() {
                 )}
 
                 <div className="p-4 bg-[#F3F4F6] rounded-lg">
-                  <h4 className="font-medium text-[#111827] mb-2">Benefits You'll Get:</h4>
+                  <h4 className="font-medium text-foreground mb-2">Benefits You'll Get:</h4>
                   <div className="grid grid-cols-2 gap-2">
                     {benefits.map((benefit) => (
-                      <div key={benefit.text} className="flex items-center gap-2 text-sm text-[#6B7280]">
-                        <benefit.icon className="w-4 h-4 text-[#FF385C]" />
+                      <div key={benefit.text} className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <benefit.icon className="w-4 h-4 text-primary" />
                         {benefit.text}
                       </div>
                     ))}
@@ -1384,18 +1384,18 @@ export default function TravelExpertsPage() {
                     onCheckedChange={(checked) => updateFormData("agreeToTerms", checked)}
                     data-testid="checkbox-terms"
                   />
-                  <label htmlFor="terms" className="text-sm text-[#6B7280]">
+                  <label htmlFor="terms" className="text-sm text-muted-foreground">
                     I agree to the{" "}
                     <a 
                       href={influencerFromUrl ? "/terms#influencer-terms" : "/terms#expert-terms"} 
                       target="_blank" 
                       rel="noopener noreferrer" 
-                      className="text-[#FF385C] underline"
+                      className="text-primary underline"
                     >
                       {influencerFromUrl ? "Influencer Program Terms" : expertTypeTitle + " Terms"}
                     </a>{" "}
                     and{" "}
-                    <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-[#FF385C] underline">
+                    <a href="/privacy" target="_blank" rel="noopener noreferrer" className="text-primary underline">
                       Privacy Policy
                     </a>
                   </label>
@@ -1411,7 +1411,7 @@ export default function TravelExpertsPage() {
             variant="outline"
             onClick={prevStep}
             disabled={currentStep === 1}
-            className="border-[#E5E7EB]"
+            className="border-border"
             data-testid="button-back"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
@@ -1422,7 +1422,7 @@ export default function TravelExpertsPage() {
             <Button
               onClick={nextStep}
               disabled={!canProceed()}
-              className="bg-[#FF385C] hover:bg-[#E23350] text-white"
+              className="bg-primary hover:bg-primary/90 text-white"
               data-testid="button-next-step"
             >
               Next
@@ -1432,7 +1432,7 @@ export default function TravelExpertsPage() {
             <Button
               onClick={handleSubmit}
               disabled={!formData.agreeToTerms || isSubmitting}
-              className="bg-[#FF385C] hover:bg-[#E23350] text-white"
+              className="bg-primary hover:bg-primary/90 text-white"
               data-testid="button-submit"
             >
               {isSubmitting ? "Submitting..." : "Submit Application"}

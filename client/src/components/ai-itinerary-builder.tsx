@@ -228,7 +228,7 @@ export function AIItineraryBuilder({
   const getMealIcon = (type: string) => {
     if (type === "breakfast") return <Coffee className="h-4 w-4 text-amber-500" />;
     if (type === "lunch") return <Utensils className="h-4 w-4 text-orange-500" />;
-    return <Utensils className="h-4 w-4 text-[#FF385C]" />;
+    return <Utensils className="h-4 w-4 text-primary" />;
   };
 
   const steps = [
@@ -405,18 +405,18 @@ export function AIItineraryBuilder({
                     className={cn(
                       "flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all hover-elevate",
                       isSelected 
-                        ? "border-[#FF385C] bg-[#FF385C]/5" 
+                        ? "border-primary bg-primary/5" 
                         : "border-border bg-background"
                     )}
                     data-testid={`interest-${option.id}`}
                   >
                     <Icon className={cn(
                       "h-6 w-6",
-                      isSelected ? "text-[#FF385C]" : "text-muted-foreground"
+                      isSelected ? "text-primary" : "text-muted-foreground"
                     )} />
                     <span className={cn(
                       "text-sm font-medium",
-                      isSelected ? "text-[#FF385C]" : "text-foreground"
+                      isSelected ? "text-primary" : "text-foreground"
                     )}>
                       {option.label}
                     </span>
@@ -498,7 +498,7 @@ export function AIItineraryBuilder({
                       className={cn(
                         "px-3 py-1.5 text-sm rounded-full border transition-all",
                         dietaryRestrictions.includes(diet)
-                          ? "border-[#FF385C] bg-[#FF385C]/5 text-[#FF385C]"
+                          ? "border-primary bg-primary/5 text-primary"
                           : "border-border text-muted-foreground"
                       )}
                       data-testid={`dietary-${diet.toLowerCase()}`}
@@ -524,7 +524,7 @@ export function AIItineraryBuilder({
                       className={cn(
                         "px-3 py-1.5 text-sm rounded-full border transition-all",
                         mobilityConsiderations.includes(mobility)
-                          ? "border-[#FF385C] bg-[#FF385C]/5 text-[#FF385C]"
+                          ? "border-primary bg-primary/5 text-primary"
                           : "border-border text-muted-foreground"
                       )}
                       data-testid={`mobility-${mobility.toLowerCase().replace(/\s+/g, "-")}`}
@@ -551,7 +551,7 @@ export function AIItineraryBuilder({
             <Card>
               <CardContent className="pt-6 space-y-4">
                 <div className="flex items-center gap-3">
-                  <MapPin className="h-5 w-5 text-[#FF385C]" />
+                  <MapPin className="h-5 w-5 text-primary" />
                   <div>
                     <p className="text-sm text-muted-foreground">Destination</p>
                     <p className="font-medium text-foreground">{destination}</p>
@@ -559,7 +559,7 @@ export function AIItineraryBuilder({
                 </div>
 
                 <div className="flex items-center gap-3">
-                  <Calendar className="h-5 w-5 text-[#FF385C]" />
+                  <Calendar className="h-5 w-5 text-primary" />
                   <div>
                     <p className="text-sm text-muted-foreground">Dates</p>
                     <p className="font-medium text-foreground">
@@ -571,7 +571,7 @@ export function AIItineraryBuilder({
                 </div>
 
                 <div className="flex items-center gap-3">
-                  <Users className="h-5 w-5 text-[#FF385C]" />
+                  <Users className="h-5 w-5 text-primary" />
                   <div>
                     <p className="text-sm text-muted-foreground">Travelers</p>
                     <p className="font-medium text-foreground">{travelers} {travelers === 1 ? "person" : "people"}</p>
@@ -580,7 +580,7 @@ export function AIItineraryBuilder({
 
                 {budget && (
                   <div className="flex items-center gap-3">
-                    <DollarSign className="h-5 w-5 text-[#FF385C]" />
+                    <DollarSign className="h-5 w-5 text-primary" />
                     <div>
                       <p className="text-sm text-muted-foreground">Budget</p>
                       <p className="font-medium text-foreground">${parseFloat(budget).toLocaleString()}</p>
@@ -619,7 +619,7 @@ export function AIItineraryBuilder({
 
             {generateMutation.isPending && (
               <div className="flex flex-col items-center py-8">
-                <Loader2 className="h-8 w-8 animate-spin text-[#FF385C] mb-4" />
+                <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
                 <p className="text-muted-foreground text-sm">
                   AI is crafting your personalized itinerary...
                 </p>
@@ -706,14 +706,14 @@ export function AIItineraryBuilder({
                   className={cn(
                     "p-3 rounded-lg border-2 text-left transition-all",
                     selectedVariation === index
-                      ? "border-[#FF385C] bg-[#FF385C]/5"
+                      ? "border-primary bg-primary/5"
                       : "border-border hover-elevate"
                   )}
                   data-testid={`variation-${variation.variationType}`}
                 >
                   <p className={cn(
                     "text-sm font-medium",
-                    selectedVariation === index ? "text-[#FF385C]" : "text-foreground"
+                    selectedVariation === index ? "text-primary" : "text-foreground"
                   )}>
                     {variation.variationLabel}
                   </p>
@@ -765,7 +765,7 @@ export function AIItineraryBuilder({
                   className={cn(
                     "flex-shrink-0 px-4 py-2 rounded-lg border-2 transition-all",
                     selectedDay === index
-                      ? "border-[#FF385C] bg-[#FF385C]/5 text-[#FF385C]"
+                      ? "border-primary bg-primary/5 text-primary"
                       : "border-border text-muted-foreground hover-elevate"
                   )}
                   data-testid={`button-day-${day.day}`}
@@ -941,7 +941,7 @@ export function AIItineraryBuilder({
                   <ul className="space-y-2">
                     {currentItinerary.travelTips.slice(0, 4).map((tip, idx) => (
                       <li key={idx} className="text-sm text-muted-foreground flex items-start gap-2">
-                        <span className="text-[#FF385C]">•</span>
+                        <span className="text-primary">•</span>
                         {tip}
                       </li>
                     ))}
@@ -967,9 +967,9 @@ export function AIItineraryBuilder({
                 <div className={cn(
                   "flex items-center justify-center w-8 h-8 rounded-full border-2 text-sm font-medium transition-all",
                   index < currentStep
-                    ? "bg-[#FF385C] border-[#FF385C] text-white"
+                    ? "bg-primary border-primary text-white"
                     : index === currentStep
-                    ? "border-[#FF385C] text-[#FF385C]"
+                    ? "border-primary text-primary"
                     : "border-muted text-muted-foreground"
                 )}>
                   {index < currentStep ? (
@@ -981,7 +981,7 @@ export function AIItineraryBuilder({
                 {index < 2 && (
                   <div className={cn(
                     "h-0.5 w-8 sm:w-16 mx-2",
-                    index < currentStep ? "bg-[#FF385C]" : "bg-muted"
+                    index < currentStep ? "bg-primary" : "bg-muted"
                   )} />
                 )}
               </div>
@@ -1007,7 +1007,7 @@ export function AIItineraryBuilder({
           <Button
             onClick={handleNext}
             disabled={!canProceed()}
-            className="bg-[#FF385C]"
+            className="bg-primary"
             data-testid="button-next"
           >
             {currentStep === 2 ? (
@@ -1041,7 +1041,7 @@ export function AIItineraryBuilder({
             Start Over
           </Button>
           <Button
-            className="flex-1 bg-[#FF385C]"
+            className="flex-1 bg-primary"
             onClick={handleSaveItinerary}
             disabled={saveMutation.isPending}
             data-testid="button-use-itinerary"

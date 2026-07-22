@@ -17,8 +17,6 @@ import {
   CheckCircle,
   AlertTriangle,
   RefreshCw,
-  Download,
-  Upload,
   Loader2
 } from "lucide-react";
 import { useState } from "react";
@@ -217,77 +215,32 @@ export default function AdminSystem() {
           </Card>
         </div>
 
-        {/* Security & Backup */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Shield className="w-5 h-5 text-blue-600" />
-                Security
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                <div>
-                  <p className="font-medium">Two-Factor Authentication</p>
-                  <p className="text-sm text-gray-500">Required for admin accounts</p>
-                </div>
-                <Badge className="bg-green-100 text-green-700 border-green-200">Enabled</Badge>
+        {/* Security & Backup — infrastructure monitoring is not wired to live data yet.
+            The previous cards asserted fabricated status (2FA "Enabled", SSL "245 days",
+            "Last backup Today 3AM") that an admin could dangerously act on. Gated honestly
+            until backed by a real infra-status source. */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Shield className="w-5 h-5 text-blue-600" />
+              Security &amp; Backup
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-start gap-3 py-2">
+              <Database className="w-5 h-5 text-gray-400 mt-0.5" />
+              <div>
+                <p className="font-medium">Infrastructure monitoring is coming soon</p>
+                <p className="text-sm text-gray-500 mt-1 max-w-xl">
+                  Live security posture (2FA enforcement, SSL expiry, last audit) and
+                  backup/restore status will appear here once wired to the platform's
+                  infrastructure sources. Until then, check these directly in your hosting
+                  and database dashboards — this page won't assert a status it can't verify.
+                </p>
               </div>
-              <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                <div>
-                  <p className="font-medium">SSL Certificate</p>
-                  <p className="text-sm text-gray-500">Expires in 245 days</p>
-                </div>
-                <Badge className="bg-green-100 text-green-700 border-green-200">Valid</Badge>
-              </div>
-              <div className="flex items-center justify-between py-2">
-                <div>
-                  <p className="font-medium">Last Security Audit</p>
-                  <p className="text-sm text-gray-500">December 15, 2025</p>
-                </div>
-                <Button variant="outline" size="sm" data-testid="button-run-audit">
-                  Run Audit
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Database className="w-5 h-5 text-amber-600" />
-                Backup & Recovery
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                <div>
-                  <p className="font-medium">Last Backup</p>
-                  <p className="text-sm text-gray-500">Today at 3:00 AM</p>
-                </div>
-                <Badge className="bg-green-100 text-green-700 border-green-200">Success</Badge>
-              </div>
-              <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                <div>
-                  <p className="font-medium">Backup Frequency</p>
-                  <p className="text-sm text-gray-500">Every 6 hours</p>
-                </div>
-                <Button variant="ghost" size="sm" data-testid="button-change-frequency">
-                  Change
-                </Button>
-              </div>
-              <div className="flex gap-2">
-                <Button variant="outline" size="sm" data-testid="button-backup-now">
-                  <Download className="w-4 h-4 mr-2" /> Backup Now
-                </Button>
-                <Button variant="outline" size="sm" data-testid="button-restore">
-                  <Upload className="w-4 h-4 mr-2" /> Restore
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </AdminLayout>
   );

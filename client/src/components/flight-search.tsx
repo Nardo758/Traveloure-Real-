@@ -489,7 +489,7 @@ export function FlightSearch({
       <Card className="border-2 border-dashed">
         <CardContent className="p-6">
           <div className="text-center mb-4">
-            <Plane className="h-10 w-10 mx-auto mb-2 text-[#FF385C]" />
+            <Plane className="h-10 w-10 mx-auto mb-2 text-primary" />
             <h3 className="font-semibold text-lg mb-1">Airport Detection Failed</h3>
           </div>
 
@@ -854,7 +854,7 @@ export function FlightSearch({
                   <div className="flex items-end">
                     <Button
                       onClick={() => { refetch(); setShowModify(false); }}
-                      className="w-full bg-[#FF385C] hover:bg-[#E23350]"
+                      className="w-full bg-primary hover:bg-primary/90"
                       data-testid="button-search-flights"
                     >
                       Update
@@ -891,11 +891,11 @@ export function FlightSearch({
 
       {/* Selected Outbound Flight Summary (for round-trip) */}
       {tripType === "roundtrip" && selectedOutboundFlight && (
-        <Card className="border-[#FF385C] bg-[#FF385C]/5">
+        <Card className="border-primary bg-primary/5">
           <CardContent className="p-4">
             <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
               <div className="flex items-center gap-2">
-                <Badge className="bg-[#FF385C]">Outbound Selected</Badge>
+                <Badge className="bg-primary">Outbound Selected</Badge>
                 <span className="text-sm text-muted-foreground">Step 1 of 2</span>
               </div>
               <Button 
@@ -1067,7 +1067,7 @@ export function FlightSearch({
 
                     {tripType === "roundtrip" ? (
                       <Button
-                        className="w-full mt-4 bg-[#FF385C] hover:bg-[#E23350]"
+                        className="w-full mt-4 bg-primary hover:bg-primary/90"
                         onClick={() => setSelectedOutboundFlight(flight)}
                         data-testid={`button-select-outbound-${flight.id}`}
                       >
@@ -1075,7 +1075,7 @@ export function FlightSearch({
                       </Button>
                     ) : onSelectFlight && (
                       <Button
-                        className="w-full mt-4 bg-[#FF385C] hover:bg-[#E23350]"
+                        className="w-full mt-4 bg-primary hover:bg-primary/90"
                         onClick={() => onSelectFlight(flight)}
                         data-testid={`button-select-flight-${flight.id}`}
                       >
@@ -1249,7 +1249,7 @@ export function FlightSearch({
 
                       {onSelectFlight && (
                         <Button
-                          className="w-full mt-4 bg-[#FF385C] hover:bg-[#E23350]"
+                          className="w-full mt-4 bg-primary hover:bg-primary/90"
                           onClick={() => {
                             // Add both outbound and return flights
                             onSelectFlight(selectedOutboundFlight);

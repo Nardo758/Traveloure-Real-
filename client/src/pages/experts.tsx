@@ -376,7 +376,7 @@ export default function ExpertsPage() {
       <section className="py-8">
         <div className="container mx-auto px-4 max-w-6xl">
           {/* Unified Filter Bar */}
-          <div className="bg-white border border-[#E5E7EB] rounded-xl p-3 mb-6 shadow-sm">
+          <div className="bg-white border border-border rounded-xl p-3 mb-6 shadow-sm">
             {/* Top row: search + destination */}
             <div className="flex flex-col sm:flex-row gap-2 mb-3">
               <div className="flex-1 relative">
@@ -385,12 +385,12 @@ export default function ExpertsPage() {
                   placeholder="Search by name, destination, or specialty..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 h-10 border-[#E5E7EB] text-[#111827] text-sm"
+                  className="pl-9 h-10 border-border text-foreground text-sm"
                   data-testid="input-search-experts"
                 />
               </div>
               <Select value={selectedDestination} onValueChange={setSelectedDestination}>
-                <SelectTrigger className="w-full sm:w-44 h-10 border-[#E5E7EB]" data-testid="select-destination">
+                <SelectTrigger className="w-full sm:w-44 h-10 border-border" data-testid="select-destination">
                   <MapPin className="w-4 h-4 mr-1.5 text-gray-400 flex-shrink-0" />
                   <SelectValue />
                 </SelectTrigger>
@@ -406,7 +406,7 @@ export default function ExpertsPage() {
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex flex-wrap gap-2">
                 <Select value={selectedExperienceType || "all"} onValueChange={(val) => setSelectedExperienceType(val === "all" ? "" : val)}>
-                  <SelectTrigger className="h-9 w-44 border-[#E5E7EB] bg-[#F9FAFB] text-sm" data-testid="select-experience-type">
+                  <SelectTrigger className="h-9 w-44 border-border bg-[#F9FAFB] text-sm" data-testid="select-experience-type">
                     <Calendar className="w-3.5 h-3.5 mr-1.5 text-gray-400 flex-shrink-0" />
                     <SelectValue placeholder="Experience Type" />
                   </SelectTrigger>
@@ -419,7 +419,7 @@ export default function ExpertsPage() {
                 </Select>
 
                 <Select value={selectedLanguage} onValueChange={setSelectedLanguage}>
-                  <SelectTrigger className="h-9 w-36 border-[#E5E7EB] bg-[#F9FAFB] text-sm" data-testid="select-language">
+                  <SelectTrigger className="h-9 w-36 border-border bg-[#F9FAFB] text-sm" data-testid="select-language">
                     <Languages className="w-3.5 h-3.5 mr-1.5 text-gray-400 flex-shrink-0" />
                     <SelectValue placeholder="Language" />
                   </SelectTrigger>
@@ -438,7 +438,7 @@ export default function ExpertsPage() {
                       placeholder="Neighbourhood"
                       value={neighbourhoodQuery}
                       onChange={(e) => setNeighbourhoodQuery(e.target.value)}
-                      className="pl-8 h-9 border-[#E5E7EB] bg-[#F9FAFB] w-44 text-sm"
+                      className="pl-8 h-9 border-border bg-[#F9FAFB] w-44 text-sm"
                       data-testid="input-neighbourhood-filter"
                     />
                   </div>
@@ -446,11 +446,11 @@ export default function ExpertsPage() {
               </div>
 
               <div className="flex items-center gap-3">
-                <span className="text-sm text-[#6B7280] whitespace-nowrap">
+                <span className="text-sm text-muted-foreground whitespace-nowrap">
                   {sortedExperts.length} found
                 </span>
                 <Select value={sortBy} onValueChange={setSortBy}>
-                  <SelectTrigger className="h-9 w-40 border-[#E5E7EB] bg-[#F9FAFB] text-sm" data-testid="select-sort">
+                  <SelectTrigger className="h-9 w-40 border-border bg-[#F9FAFB] text-sm" data-testid="select-sort">
                     <SelectValue placeholder="Sort by" />
                   </SelectTrigger>
                   <SelectContent>
@@ -468,13 +468,13 @@ export default function ExpertsPage() {
           {/* Active Filter Chips */}
           {(selectedDestination !== "All Destinations" || neighbourhoodQuery.trim().length >= 2) && (
             <div className="flex flex-wrap items-center gap-2 mb-5" data-testid="active-filter-chips">
-              <span className="text-sm text-[#6B7280] font-medium flex items-center gap-1">
+              <span className="text-sm text-muted-foreground font-medium flex items-center gap-1">
                 <Filter className="w-3.5 h-3.5" />
                 Active:
               </span>
               {selectedDestination !== "All Destinations" && (
                 <Badge
-                  className="flex items-center gap-1 bg-[#FFF1F3] text-[#FF385C] border border-[#FECDD3] px-2.5 py-1 text-xs font-medium rounded-full"
+                  className="flex items-center gap-1 bg-[#FFF1F3] text-primary border border-[#FECDD3] px-2.5 py-1 text-xs font-medium rounded-full"
                   data-testid="chip-filter-destination"
                 >
                   <MapPin className="w-3 h-3" />
@@ -507,7 +507,7 @@ export default function ExpertsPage() {
                 </Badge>
               )}
               {selectedDestination !== "All Destinations" && neighbourhoodQuery.trim().length >= 2 && (
-                <span className="text-xs text-[#6B7280] italic" data-testid="text-combined-filter-hint">
+                <span className="text-xs text-muted-foreground italic" data-testid="text-combined-filter-hint">
                   Experts covering {neighbourhoodQuery.trim()} in {selectedDestination}
                 </span>
               )}
@@ -517,8 +517,8 @@ export default function ExpertsPage() {
           {/* Expert Cards Grid */}
           {isLoadingExperts ? (
             <div className="flex items-center justify-center py-16">
-              <Loader2 className="w-8 h-8 animate-spin text-[#FF385C]" />
-              <span className="ml-2 text-[#6B7280]">Loading experts...</span>
+              <Loader2 className="w-8 h-8 animate-spin text-primary" />
+              <span className="ml-2 text-muted-foreground">Loading experts...</span>
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
@@ -547,10 +547,10 @@ export default function ExpertsPage() {
               <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-[#F3F4F6] flex items-center justify-center">
                 <Search className="w-8 h-8 text-[#9CA3AF]" />
               </div>
-              <h3 className="text-lg font-semibold text-[#111827] mb-2">
+              <h3 className="text-lg font-semibold text-foreground mb-2">
                 No experts found
               </h3>
-              <p className="text-[#6B7280] mb-4">
+              <p className="text-muted-foreground mb-4">
                 Try adjusting your filters or search terms
               </p>
               <Button
@@ -575,7 +575,7 @@ export default function ExpertsPage() {
               <Button
                 variant="outline"
                 size="lg"
-                className="border-[#E5E7EB]"
+                className="border-border"
                 onClick={() => setVisibleCount(c => c + 12)}
                 data-testid="button-load-more"
               >
@@ -611,19 +611,19 @@ export default function ExpertsPage() {
         };
         const config = ctaConfig[selectedRole] ?? ctaConfig.local_expert;
         return (
-          <section className="py-16 bg-white border-t border-[#E5E7EB]">
+          <section className="py-16 bg-white border-t border-border">
             <div className="container mx-auto px-4 max-w-4xl text-center">
-              <h2 className="text-3xl font-bold text-[#111827] mb-4">
+              <h2 className="text-3xl font-bold text-foreground mb-4">
                 {config.heading}
               </h2>
-              <p className="text-lg text-[#6B7280] mb-8 max-w-2xl mx-auto">
+              <p className="text-lg text-muted-foreground mb-8 max-w-2xl mx-auto">
                 {config.body}
               </p>
               <div className="flex flex-wrap justify-center gap-4">
                 <Link href={config.href}>
                   <Button
                     size="lg"
-                    className="bg-[#FF385C] hover:bg-[#E23350] text-white px-8"
+                    className="bg-primary hover:bg-primary/90 text-white px-8"
                     data-testid="button-become-expert"
                   >
                     {config.cta}
@@ -633,7 +633,7 @@ export default function ExpertsPage() {
                   <Button
                     size="lg"
                     variant="outline"
-                    className="border-[#E5E7EB] px-8"
+                    className="border-border px-8"
                     data-testid="button-learn-more"
                   >
                     Learn More

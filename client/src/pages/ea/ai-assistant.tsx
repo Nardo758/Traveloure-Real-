@@ -4,13 +4,11 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { 
-  Bot, 
-  Send, 
-  CheckCircle, 
-  Clock, 
-  RefreshCw, 
-  X, 
-  Edit,
+  Bot,
+  Send,
+  CheckCircle,
+  Clock,
+  X,
   ArrowRight,
   Star
 } from "lucide-react";
@@ -64,16 +62,13 @@ export default function EAAIAssistant() {
             </h1>
             <p className="text-gray-600">Delegate tasks and review AI work</p>
           </div>
-          <Badge className="bg-green-100 text-green-700 border-green-200" data-testid="badge-ai-status">
-            <Bot className="w-4 h-4 mr-1" /> GPT-4 Active
-          </Badge>
         </div>
 
         {/* Quick Delegate */}
         <Card className="border border-gray-200">
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
-              <Bot className="w-5 h-5 text-[#FF385C]" />
+              <Bot className="w-5 h-5 text-primary" />
               Delegate Task to AI
             </CardTitle>
           </CardHeader>
@@ -84,7 +79,7 @@ export default function EAAIAssistant() {
                 className="flex-1"
                 data-testid="input-delegate-task"
               />
-              <Button className="bg-[#FF385C] hover:bg-[#E23350]" data-testid="button-delegate">
+              <Button className="bg-primary hover:bg-primary/90" data-testid="button-delegate">
                 <Send className="w-4 h-4 mr-2" /> Delegate
               </Button>
             </div>
@@ -175,17 +170,24 @@ export default function EAAIAssistant() {
 
                     <div className="mt-4 flex items-center justify-between">
                       <div className="flex gap-2">
-                        <Button size="sm" className="bg-green-600 hover:bg-green-700" data-testid={`button-approve-${task.id}`}>
+                        <Button
+                          size="sm"
+                          className="bg-green-600 hover:bg-green-700"
+                          disabled={updateTask.isPending}
+                          onClick={() => updateTask.mutate({ id: task.id, status: "approved" })}
+                          data-testid={`button-approve-${task.id}`}
+                        >
                           <CheckCircle className="w-3 h-3 mr-1" /> Approve
                         </Button>
-                        <Button size="sm" variant="outline" data-testid={`button-edit-${task.id}`}>
-                          <Edit className="w-3 h-3 mr-1" /> Edit
-                        </Button>
-                        <Button size="sm" variant="outline" data-testid={`button-regenerate-${task.id}`}>
-                          <RefreshCw className="w-3 h-3 mr-1" /> Regenerate
-                        </Button>
-                        <Button size="sm" variant="ghost" className="text-red-600" data-testid={`button-reject-${task.id}`}>
-                          <X className="w-3 h-3" />
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-red-600"
+                          disabled={updateTask.isPending}
+                          onClick={() => updateTask.mutate({ id: task.id, status: "rejected" })}
+                          data-testid={`button-reject-${task.id}`}
+                        >
+                          <X className="w-3 h-3 mr-1" /> Reject
                         </Button>
                       </div>
                     </div>
@@ -232,7 +234,7 @@ export default function EAAIAssistant() {
                     </div>
                   ))}
                 </div>
-                <Button variant="ghost" className="w-full text-[#FF385C]" data-testid="button-view-analytics">
+                <Button variant="ghost" className="w-full text-primary" data-testid="button-view-analytics">
                   View Detailed Analytics <ArrowRight className="w-4 h-4 ml-1" />
                 </Button>
               </CardContent>

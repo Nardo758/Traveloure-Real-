@@ -56,7 +56,7 @@ export default function MyTrips() {
     return (
       <DashboardLayout>
         <div className="min-h-screen flex items-center justify-center">
-          <Loader2 className="w-10 h-10 animate-spin text-[#FF385C]" />
+          <Loader2 className="w-10 h-10 animate-spin text-primary" />
         </div>
       </DashboardLayout>
     );
@@ -67,7 +67,7 @@ export default function MyTrips() {
       <DashboardLayout>
         <div className="container mx-auto px-4 py-12 text-center">
           <h2 className="text-2xl font-bold text-destructive">Something went wrong</h2>
-          <p className="text-[#6B7280] mt-2">Could not load your trips. Please try again later.</p>
+          <p className="text-muted-foreground mt-2">Could not load your trips. Please try again later.</p>
         </div>
       </DashboardLayout>
     );
@@ -128,22 +128,22 @@ export default function MyTrips() {
 
     return (
       <Card
-        className="border border-[#E5E7EB] hover:shadow-md transition-shadow cursor-pointer"
+        className="border border-border hover:shadow-md transition-shadow cursor-pointer"
         data-testid={`trip-card-${trip.id}`}
         onClick={() => setLocation(`/trip/${trip.id}`)}
       >
         <CardContent className={viewMode === "list" ? "p-5" : "p-4"}>
           <div className={viewMode === "list" ? "flex items-start gap-4" : "space-y-4"}>
             <div className={`${viewMode === "list" ? "w-16 h-16" : "w-full h-32"} rounded-lg bg-gradient-to-br from-[#FFE3E8] to-[#FFF1F3] flex items-center justify-center flex-shrink-0`}>
-              <Icon className={`${viewMode === "list" ? "w-8 h-8" : "w-12 h-12"} text-[#FF385C]`} />
+              <Icon className={`${viewMode === "list" ? "w-8 h-8" : "w-12 h-12"} text-primary`} />
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-start justify-between gap-2 mb-2">
                 <div>
-                  <h3 className="font-semibold text-[#111827] dark:text-white truncate" data-testid={`text-trip-title-${trip.id}`}>
+                  <h3 className="font-semibold text-foreground dark:text-white truncate" data-testid={`text-trip-title-${trip.id}`}>
                     {trip.title}
                   </h3>
-                  <p className="text-sm text-[#6B7280]">
+                  <p className="text-sm text-muted-foreground">
                     {format(start, "MMM d")} - {format(end, "MMM d, yyyy")} • {trip.destination}
                   </p>
                 </div>
@@ -165,8 +165,8 @@ export default function MyTrips() {
               {!isCompleted && (
                 <div className="mb-3">
                   <div className="flex items-center justify-between text-sm mb-1">
-                    <span className="text-[#6B7280]">Progress</span>
-                    <span className="font-medium text-[#111827] dark:text-white">{progress}%</span>
+                    <span className="text-muted-foreground">Progress</span>
+                    <span className="font-medium text-foreground dark:text-white">{progress}%</span>
                   </div>
                   <Progress value={progress} className="h-2" />
                 </div>
@@ -179,13 +179,13 @@ export default function MyTrips() {
                   </Button>
                 </Link>
                 <Link href="/chat" onClick={(e) => e.stopPropagation()}>
-                  <Button size="sm" variant="ghost" className="text-[#6B7280]" data-testid={`button-chat-${trip.id}`}>
+                  <Button size="sm" variant="ghost" className="text-muted-foreground" data-testid={`button-chat-${trip.id}`}>
                     Chat
                   </Button>
                 </Link>
                 {!isCompleted && (
                   <Link href={`/trip/${trip.id}`} onClick={(e) => e.stopPropagation()}>
-                    <Button size="sm" variant="ghost" className="text-[#6B7280]" data-testid={`button-edit-${trip.id}`}>
+                    <Button size="sm" variant="ghost" className="text-muted-foreground" data-testid={`button-edit-${trip.id}`}>
                       Edit
                     </Button>
                   </Link>
@@ -203,11 +203,11 @@ export default function MyTrips() {
       <div className="p-6 space-y-6">
         {/* Header */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-          <h1 className="text-2xl font-bold text-[#111827] dark:text-white" data-testid="text-page-title">
+          <h1 className="text-2xl font-bold text-foreground dark:text-white" data-testid="text-page-title">
             My Plans & Events
           </h1>
           <Link href="/experiences">
-            <Button className="bg-[#FF385C] hover:bg-[#E23350] text-white" data-testid="button-create-new">
+            <Button className="bg-primary hover:bg-primary/90 text-white" data-testid="button-create-new">
               <Plus className="w-4 h-4 mr-2" />
               Create New
             </Button>
@@ -220,7 +220,7 @@ export default function MyTrips() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#9CA3AF]" />
             <Input 
               placeholder="Search plans..." 
-              className="pl-10 border-[#E5E7EB]"
+              className="pl-10 border-border"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               data-testid="input-search"
@@ -229,8 +229,8 @@ export default function MyTrips() {
           
           <div className="flex items-center gap-2 flex-wrap">
             <Select value={typeFilter} onValueChange={setTypeFilter}>
-              <SelectTrigger className="w-[140px] border-[#E5E7EB]" data-testid="select-type-filter">
-                <Filter className="w-4 h-4 mr-2 text-[#6B7280]" />
+              <SelectTrigger className="w-[140px] border-border" data-testid="select-type-filter">
+                <Filter className="w-4 h-4 mr-2 text-muted-foreground" />
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -241,7 +241,7 @@ export default function MyTrips() {
             </Select>
 
             <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-[140px] border-[#E5E7EB]" data-testid="select-status-filter">
+              <SelectTrigger className="w-[140px] border-border" data-testid="select-status-filter">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -251,7 +251,7 @@ export default function MyTrips() {
               </SelectContent>
             </Select>
 
-            <div className="flex border border-[#E5E7EB] rounded-md">
+            <div className="flex border border-border rounded-md">
               <Button
                 variant="ghost"
                 size="icon"
@@ -277,7 +277,7 @@ export default function MyTrips() {
         {/* Active Plans */}
         {activeTrips.length > 0 && (
           <section>
-            <h2 className="text-lg font-semibold text-[#111827] dark:text-white mb-4 flex items-center gap-2">
+            <h2 className="text-lg font-semibold text-foreground dark:text-white mb-4 flex items-center gap-2">
               Active Plans ({activeTrips.length})
             </h2>
             <div className={viewMode === "grid" ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" : "space-y-4"}>
@@ -298,7 +298,7 @@ export default function MyTrips() {
         {/* Upcoming Events */}
         {upcomingTrips.length > 0 && (
           <section>
-            <h2 className="text-lg font-semibold text-[#111827] dark:text-white mb-4 flex items-center gap-2">
+            <h2 className="text-lg font-semibold text-foreground dark:text-white mb-4 flex items-center gap-2">
               Upcoming Events ({upcomingTrips.length})
             </h2>
             <div className={viewMode === "grid" ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" : "space-y-4"}>
@@ -320,10 +320,10 @@ export default function MyTrips() {
         {completedTrips.length > 0 && (
           <section>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-[#111827] dark:text-white flex items-center gap-2">
+              <h2 className="text-lg font-semibold text-foreground dark:text-white flex items-center gap-2">
                 Completed ({completedTrips.length})
               </h2>
-              <Button variant="ghost" className="text-[#FF385C]" data-testid="button-show-all-completed">
+              <Button variant="ghost" className="text-primary" data-testid="button-show-all-completed">
                 Show All <ChevronRight className="w-4 h-4 ml-1" />
               </Button>
             </div>
@@ -344,24 +344,24 @@ export default function MyTrips() {
 
         {/* Empty State */}
         {filteredTrips.length === 0 && (
-          <Card className="border-2 border-dashed border-[#E5E7EB]">
+          <Card className="border-2 border-dashed border-border">
             <CardContent className="p-12 text-center">
               <div className="w-16 h-16 bg-[#FFE3E8] rounded-full flex items-center justify-center mx-auto mb-4">
-                <Plane className="w-8 h-8 text-[#FF385C]" />
+                <Plane className="w-8 h-8 text-primary" />
               </div>
-              <h3 className="text-lg font-semibold text-[#111827] dark:text-white mb-2">
+              <h3 className="text-lg font-semibold text-foreground dark:text-white mb-2">
                 {searchQuery || typeFilter !== "all" || statusFilter !== "all" 
                   ? "No matching plans found" 
                   : "No plans yet"}
               </h3>
-              <p className="text-[#6B7280] mb-4">
+              <p className="text-muted-foreground mb-4">
                 {searchQuery || typeFilter !== "all" || statusFilter !== "all"
                   ? "Try adjusting your filters"
                   : "Start planning your next adventure!"}
               </p>
               {!searchQuery && typeFilter === "all" && statusFilter === "all" && (
                 <Link href="/experiences">
-                  <Button className="bg-[#FF385C] hover:bg-[#E23350] text-white" data-testid="button-create-first">
+                  <Button className="bg-primary hover:bg-primary/90 text-white" data-testid="button-create-first">
                     <Plus className="w-4 h-4 mr-2" />
                     Create Your First Plan
                   </Button>

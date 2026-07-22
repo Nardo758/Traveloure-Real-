@@ -30,7 +30,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                 style={{ border: "1px solid #E8E8E2" }}
                 data-testid="button-dashboard-sidebar-toggle"
               />
-              <Link href="/" data-testid="link-logo" className="flex items-center gap-1.5 text-sm font-semibold text-[#1A1A1A] hover:opacity-80 transition-opacity">
+              <Link href="/" data-testid="link-logo" className="flex items-center gap-1.5 text-sm font-semibold text-[#1A1A18] hover:opacity-80 transition-opacity">
                 Traveloure
               </Link>
             </div>

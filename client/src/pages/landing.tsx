@@ -424,7 +424,7 @@ export default function LandingPage() {
       label: "Trips Planned",
       description: "Join the millions who've seamlessly planned their journeys--from weekend getaways to month-long adventures.",
       icon: MapPin,
-      color: "text-[#FF385C]"
+      color: "text-primary"
     },
     {
       value: platformStats ? formatStat(platformStats.totalReviews) : "0+",
@@ -484,7 +484,7 @@ export default function LandingPage() {
               transition={{ delay: 0.2 }}
               className="inline-flex items-center gap-2 bg-white/15 backdrop-blur-md text-white px-4 py-2 rounded-full text-sm font-medium mb-6 border border-white/20"
             >
-              <Rocket className="w-4 h-4 text-[#FF385C]" />
+              <Rocket className="w-4 h-4 text-primary" />
               <span>BETA VERSION</span>
               <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
             </motion.div>
@@ -503,7 +503,7 @@ export default function LandingPage() {
             <div className="mt-8 flex justify-center">
               <Button
                 size="lg"
-                className="bg-[#FF385C] hover:bg-[#E0314F] text-white font-semibold px-8 shadow-xl gap-2"
+                className="bg-primary hover:bg-[#E0314F] text-white font-semibold px-8 shadow-xl gap-2"
                 onClick={() => setPlanningOpen(true)}
                 data-testid="button-plan-trip"
               >
@@ -674,11 +674,11 @@ export default function LandingPage() {
             className="mb-12"
           >
             <div className="flex items-center gap-2 mb-2">
-              <div className="w-10 h-10 rounded-full bg-[#FF385C] flex items-center justify-center">
+              <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center">
                 <Sparkles className="w-5 h-5 text-white" />
               </div>
               <h2 className="text-3xl md:text-4xl font-bold text-foreground">
-                Popular <span className="text-[#FF385C]">Experiences</span>
+                Popular <span className="text-primary">Experiences</span>
               </h2>
             </div>
             <p className="text-muted-foreground max-w-xl">
@@ -708,7 +708,7 @@ export default function LandingPage() {
             className="text-center mb-12"
           >
             <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-3">
-              How It <span className="text-[#FF385C]">Works</span>
+              How It <span className="text-primary">Works</span>
             </h2>
             <p className="text-muted-foreground max-w-xl mx-auto">
               From dream to reality in four simple steps
@@ -754,7 +754,7 @@ export default function LandingPage() {
             className="text-center mt-10"
           >
             <Link href="/ai-assistant">
-              <Button size="lg" className="bg-[#FF385C] text-white font-semibold px-8" data-testid="button-get-started-how">
+              <Button size="lg" className="bg-primary text-white font-semibold px-8" data-testid="button-get-started-how">
                 Get Started <ArrowRight className="w-4 h-4 ml-2" />
               </Button>
             </Link>
@@ -771,11 +771,11 @@ export default function LandingPage() {
             className="mb-12"
           >
             <div className="flex items-center gap-2 mb-2">
-              <div className="w-10 h-10 rounded-full bg-[#FF385C] flex items-center justify-center">
+              <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center">
                 <Activity className="w-5 h-5 text-white" />
               </div>
               <h2 className="text-3xl md:text-4xl font-bold text-foreground">
-                Platform <span className="text-[#FF385C]">Intelligence</span>
+                Platform <span className="text-primary">Intelligence</span>
               </h2>
               <span className="ml-2 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 text-xs font-medium">
                 <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
@@ -839,7 +839,7 @@ export default function LandingPage() {
             data-testid="platform-stats-bar"
           >
             <div className="text-center" data-testid="stat-avg-rating">
-              <p className="text-2xl font-bold text-[#FF385C]">{platformStats?.avgRating != null ? `${platformStats.avgRating}/5` : "New"}</p>
+              <p className="text-2xl font-bold text-primary">{platformStats?.avgRating != null ? `${platformStats.avgRating}/5` : "New"}</p>
               <p className="text-xs text-muted-foreground">Average Rating</p>
             </div>
             <div className="text-center" data-testid="stat-reviews">
@@ -951,7 +951,7 @@ export default function LandingPage() {
             <div className="flex flex-wrap justify-center gap-4">
               <Button
                 size="lg"
-                className="bg-white text-[#FF385C] font-semibold px-8 h-12 shadow-xl"
+                className="bg-white text-primary font-semibold px-8 h-12 shadow-xl"
                 onClick={() => openSignInModal()}
                 data-testid="button-cta-get-started"
               >

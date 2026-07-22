@@ -52,7 +52,7 @@ export function VenueCard({ venue, onAddToCart, onViewDetails }: VenueCardProps)
       <div className="relative h-48 overflow-hidden bg-gray-100">
         {imageLoading && (
           <div className="absolute inset-0 flex items-center justify-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#FF385C]"></div>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
           </div>
         )}
         <img
@@ -112,7 +112,7 @@ export function VenueCard({ venue, onAddToCart, onViewDetails }: VenueCardProps)
               href={venue.website}
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-1 text-[#FF385C]"
+              className="flex items-center gap-1 text-primary"
               onClick={(e) => e.stopPropagation()}
               data-testid={`link-venue-website-${venue.id}`}
             >
@@ -137,7 +137,7 @@ export function VenueCard({ venue, onAddToCart, onViewDetails }: VenueCardProps)
         )}
         {onAddToCart && (
           <Button
-            className="flex-1 bg-[#FF385C]"
+            className="flex-1 bg-primary"
             onClick={() => onAddToCart(venue)}
             data-testid={`button-add-to-cart-${venue.id}`}
           >

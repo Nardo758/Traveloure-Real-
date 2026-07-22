@@ -64,14 +64,51 @@ This document captures architectural decisions to maintain consistency across co
 6. **Insurance.** `has_insurance` (provider self-attestation, `service_provider_forms`, migration 108) is the **sole**
    provider insurance field; the "023 insurance evidence" was a never-shipped plan. When FEE-2 Phase 1 ships the
    admin-validated `insurance_tier`, a **boolean-vs-tier precedence rule must be written here before both coexist.**
+   - **Interim insurance config source (FEE-2 Phase 2, migration 124):** `platform_settings` now holds three keys —
+     `insurance_enabled` (`"false"`), `insurance_rate_percent` (`"0"`), `insurance_applies_to` (`"[]"`) — as the
+     **interim** source for `commission.ts:resolveInsuranceFromCategory`. Defaults match the `booking_fee_configs`
+     column defaults exactly (behavior-neutral on apply). `booking_fee_configs` is retained for its other 7 readers
+     (transport commission, startup seed, tip commission); only the commission.ts insurance read path was migrated.
+     This is a **deliberate interim home**, not a third permanent insurance location: when FEE-2 Phase 1 ships
+     `insurance_tier`, update `commission.ts:resolveInsuranceFromCategory` to read from `insurance_tier` instead,
+     and write the boolean-vs-tier precedence rule here before both coexist. *Recorded per Coordination Prevention;
+     commit: "insurance read relocated commission.ts booking_fee_configs→platform_settings (migration 124, additive
+     false/0 defaults); booking_fee_configs retained for its other 7 readers; closes the #819/FEE-2 gate."*
 7. **Coordination fee.** Fee logic lives in the service (`optimization-fee.service.ts`); rates resolve via config, no
    literals; the optimize credit is **payment-gated — never credit an unpaid optimize fee**. **Resolved (interim, #144):**
    the fee reads the event budget from the existing `coordination_states.budget` jsonb column
    (`{ amount: <dollars>, currency }`, written at create/patch from the request's `metadata.budget`, read ×100), **not**
-   `total_estimated_cost` (that means *cost*, not budget); absent/`{}` budget → intentional floor-only. The optimize
-   credit is **not applied** pending the Phase-4 paid-signal linkage (no unearned discount). Filed follow-ups: first-class
-   validated `budget` field (D-BUDGET(b)); the paid-signal ledger. Full contract in the "Recorded change — Coordination-fee"
-   note below.
+   `total_estimated_cost` (that means *cost*, not budget); absent/`{}` budget → intentional floor-only. Full contract in
+   the "Recorded change — Coordination-fee" note below.
+   - **Quote-only → CAPTURED — RATIFIED Jul 22, 2026 (decision-maker sign-off; the deliberate §7 flip Phase 2 was gated
+     on).** The coordination fee is **no longer quote-only** — it is charged for real, mirroring the `optimization-payments`
+     pattern. `POST /api/coordination-states/:id/pay` (server-derives the fee — §14 — from the state's own
+     `experienceType` + `budget`; a client-sent amount is never read) creates a Stripe PaymentIntent
+     (`type=coordination_fee`, ownership-verified against `state.userId`); `POST …/:id/pay/confirm` verifies the intent
+     (`status==='succeeded'` + type + `coordinationId`/`userId` match) and records `platform_revenue` (100%-platform via
+     the `coordination_fee` source tier = `AI_PLATFORM_FEE`). **§15 idempotent both ways:** the pay claim is an atomic
+     conditional `UPDATE … SET fee_payment_status='pending' WHERE fee_payment_status IN (NULL,'unpaid')` (a lost claim
+     returns the in-flight PI, never a second charge) + deterministic Stripe `idempotencyKey` `coord-fee-<id>`; confirm
+     transitions `… SET fee_payment_status='paid' WHERE fee_payment_status <> 'paid'` and records revenue only if a row
+     flipped (dup confirm → `alreadyPaid`, no double revenue) + revenue idempotent on `sourceId=<PI>`. Fee-payment state
+     lives on **new `coordination_states` columns** (`fee_payment_status` DB-CHECK `unpaid|pending|paid`,
+     `fee_payment_intent_id`, `fee_amount_cents` = net charged, `fee_credit_cents`, `fee_paid_at`; migration 125 —
+     new columns default `unpaid`, so the CHECK has no legacy rows to violate → no publish-time push trap).
+   - **Paid-signal ledger — BUILT (closes the filed follow-up).** The optimize credit is now applied **only when a real
+     paid optimize fee exists**, via a dedicated ledger `coordination_fee_credits` (migration 125, new table):
+     `optimization-payments/confirm` inserts a credit row (`source_payment_intent_id` UNIQUE → idempotent; `amount_cents`
+     from Stripe; `user_id` from session) **only for Event-branch optimizers** (`isEventOptimizer(eventType)` — the same
+     branches whose `creditTowardCoordination` is true, i.e. wedding/corporate). At **pay** time the newest **unconsumed**
+     credit for the traveler is claimed atomically (`UPDATE … SET consumed_by_coordination_id=:id WHERE
+     consumed_by_coordination_id IS NULL RETURNING amount_cents`) and applied: **charge = max(floor, percent) − paid
+     optimize credit** (this is the `/pricing` "Event $19.99 credited-toward-coordination" promise, now honored honestly).
+     `resolveCoordinationFee(eventType, budgetCents, availableCreditCents=0)` gained the credit param but stays a **pure
+     function** — the credit is looked up/claimed by the caller (route), never queried inside the resolver. The `/fee`
+     quote surfaces the available credit read-only (no consume); consumption happens only under the pay claim. Credit is
+     capped at the fee (`min(credit, rawFee)`), so a credit can never make the charge negative. **Filed follow-ups:**
+     tighten credit matching to same-event (currently user + unconsumed, defensible since every credit is a paid
+     Event-branch optimize); accumulate multiple credits (today claims one — the singular `/pricing` promise); reverse the
+     consumed credit + `platform_revenue` on a coordination refund (mirrors the escrow reversal spine).
 8. **No fee/commission/margin literals** anywhere outside `fee_bands`/config — grep-gated every phase. A hardcoded rate in
    touched code is a defect (see §13). **Phase 4.1 LANDED (migration 122):** the `499`/`8%` coordination constants —
    formerly the pre-existing §8 exception — are now admin-editable `fee_bands` rows (`coordination_floor` flat-dollars
@@ -328,6 +365,39 @@ This document captures architectural decisions to maintain consistency across co
       `POST /api/optimization-payments/confirm` verifies the intent and records `platform_revenue`. Client
       pays via cart.tsx / the Concierge UI. Amounts config-resolved (§8). See §7 (payment-gated optimize
       credit). **Still filed (not built):** Pinterest hooks, hotel-concierge B2B.
+    - **Concierge→coordination FULFILLMENT wire — Phase 1a LANDED (Jul 22, 2026).** The event-coordination
+      engine was fully built but **unwired**: `coordination_states` (status machine, `assigned_expert_id`
+      coordinator field, budget/dates/vendors/timeline/cost) + full CRUD + `GET …/:id/fee`
+      (`resolveCoordinationFee`, §7) + `coordination_bookings` + the expert coordinator workspace all existed,
+      but the concierge **Full / done-for-you** tier never created a coordination state — "we'll follow up"
+      dead-ended (only the admin visibility queue from the Fix-#5 pass saw it). **Phase 1a (this change):**
+      the concierge `PATCH /api/concierge/requests/:id` now, when a **signed-in** traveler picks `full`,
+      spins up (or reuses) a real `coordination_states` row (`experience_type` from the request's eventType,
+      `status='intake'`, `path='concierge'`, `user_request` carries `{conciergeRequestId, intent}` as the
+      link). **Idempotent** — one engagement per concierge request (dedup on `user_request->>'conciergeRequestId'`);
+      **guests stay request-only** (coordination_states.userId is NOT NULL). No schema change, no migration.
+      Proven behaviorally: Full-pick → engagement created; re-PATCH → same id; `/fee` resolves ($499 floor at
+      empty budget, 8% tier when budget set).
+      **Phase 1b — LANDED (Jul 22, 2026): traveler engagements surface.** New `/my-events` page
+      (`client/src/pages/my-events.tsx`, ProtectedRoute + "My events" sidebar entry) lists the traveler's
+      coordination engagements with status + the credit-aware server-quoted fee (`GET …/:id/fee`) and a **Pay**
+      button that runs the Phase-2 flow via the shared Stripe `StripeCheckout` (`POST /pay` → Elements →
+      `POST /pay/confirm`; client never sends an amount). The concierge Full-pick now links straight to
+      `/my-events` (was a dead-end "we'll follow up"). Empty state → `/concierge`.
+      **Phase 1c — LANDED (Jul 22, 2026): admin coordinator assignment.** The admin concierge queue
+      (`/admin/concierge-requests`) now joins each Full request's coordination engagement (status + fee status +
+      current coordinator) and offers a coordinator picker: `GET /api/admin/coordinators` (expert/local_expert/
+      travel_expert, non-suspended/non-deleted) + `POST /api/admin/coordination-states/:id/assign-coordinator`
+      (adminApiGuard §2 + explicit admin check; validates the target is an expert role; sets `assigned_expert_id`
+      so the expert coordinator workspace picks it up). No migration.
+      **Phase 2 — LANDED (Jul 22, 2026, decision-maker RATIFIED, migration 125): the coordination fee is now
+      CHARGED, credit-aware.** The §7 quote-only→captured flip shipped: `POST /api/coordination-states/:id/pay`
+      (+ `/pay/confirm`) charges the server-derived fee via Stripe (§14 amount from the state's own
+      `experienceType`+`budget`, never body; §15 atomic-claim + `idempotencyKey` both directions; records
+      `platform_revenue` 100%-platform), and the paid-signal ledger (`coordination_fee_credits`) applies the paid
+      Event-branch optimize fee as a real credit — **charge = max(floor, percent) − paid optimize credit**, honoring
+      the `/pricing` "Event $19.99 credited-toward-coordination" promise only when the optimize fee was actually paid.
+      Full contract in §7 ("Quote-only → CAPTURED" + "Paid-signal ledger").
     - **DMO content layer — BUILT-BUT-DARK, ACTIVATED Kyoto-first (migration 117, Jul 16, 2026).** The
       8-market DMO ingestion spine (`research/traveloure_dmo_implementation_map.md` + `_addendum.md`) was
       already coded + schema-complete (7 tables: `dmo_sources`, `dmo_raw_content`,

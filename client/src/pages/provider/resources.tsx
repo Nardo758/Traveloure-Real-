@@ -83,7 +83,7 @@ const faqs = [
   },
   {
     question: "What is the platform fee?",
-    answer: "We charge a 10% service fee on completed bookings. This covers payment processing, platform maintenance, and customer support.",
+    answer: "We charge a service fee on completed bookings, which covers payment processing, platform maintenance, and customer support. Your exact rate and net payout are always shown on each booking and on your Earnings page.",
   },
   {
     question: "How do I handle cancellations?",
@@ -129,15 +129,15 @@ export default function ProviderResources() {
                   data-testid={`card-guide-${guide.id}`}
                 >
                   <div className="flex items-start gap-4">
-                    <div className="w-12 h-12 bg-[#FF385C]/10 rounded-lg flex items-center justify-center flex-shrink-0">
-                      <BookOpen className="w-6 h-6 text-[#FF385C]" />
+                    <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <BookOpen className="w-6 h-6 text-primary" />
                     </div>
                     <div className="flex-1">
                       <h3 className="font-semibold text-console-darkest">{guide.title}</h3>
                       <p className="text-sm text-console-dark mt-1">{guide.description}</p>
                       <div className="flex items-center gap-2 mt-2">
                         <Badge variant="outline" className="text-xs">{guide.duration}</Badge>
-                        <Button variant="ghost" size="sm" className="text-[#FF385C]" data-testid={`button-read-guide-${guide.id}`}>
+                        <Button variant="ghost" size="sm" className="text-primary" data-testid={`button-read-guide-${guide.id}`}>
                           Read Now <ExternalLink className="w-3 h-3 ml-1" />
                         </Button>
                       </div>
@@ -274,9 +274,9 @@ export default function ProviderResources() {
         </Card>
 
         {/* Need Help */}
-        <Card className="bg-[#FF385C]/5 border-[#FF385C]/20">
+        <Card className="bg-primary/5 border-primary/20">
           <CardContent className="p-6 text-center">
-            <MessageSquare className="w-12 h-12 text-[#FF385C] mx-auto mb-4" />
+            <MessageSquare className="w-12 h-12 text-primary mx-auto mb-4" />
             <h3 className="text-lg font-semibold text-console-darkest">Need More Help?</h3>
             <p className="text-console-dark mt-1 mb-4">
               Our support team is available 24/7 to assist you

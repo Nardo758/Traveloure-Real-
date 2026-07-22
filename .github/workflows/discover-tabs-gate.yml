@@ -1,0 +1,194 @@
+name: Discover Tabs Gate
+
+# Guards against regressions in the /discover page tab system.
+#
+# Background: discover-tabs.spec.ts (18 tests) covers all critical behaviour of
+# the /discover page — hero band visibility, TravelPulse tab active by default,
+# client-side tab switching (URL must NOT change), URL deep-linking via ?tab=,
+# Browse Services filter inputs and quick-cat chips, add-to-cart toast feedback,
+# and the expert handoff banner (?source=quick-start&showExperts=true).
+# Without a CI gate a breaking change to discover.tsx or its sub-components
+# silently merges without any automated signal.
+#
+# Jobs:
+#   discover-tabs-smoke — full browser + API end-to-end test.
+#     Starts a local dev server, runs all 18 tests in discover-tabs.spec.ts
+#     against a real browser (Chromium) hitting http://localhost:5000.
+#     No authentication setup required — all /discover tabs are publicly visible.
+#
+# Status contexts (for branch-protection required checks):
+#   * discover-tabs-smoke — safe to mark as a REQUIRED check.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: discover-tabs-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────
+  # discover-tabs-smoke: browser end-to-end test.
+  #
+  # Starts the dev server (tsx server/index.ts), waits for /api/ready,
+  # then runs all 18 tests in discover-tabs.spec.ts against Chromium.
+  # No PW_AUTH_SETUP — the /discover page requires no login.
+  # ─────────────────────────────────────────────────────────────────────────
+  discover-tabs-smoke:
+    # NOTE: this job name must EXACTLY equal the branch-protection required-status
+    # context "discover-tabs-smoke" — a descriptive suffix here would orphan the
+    # required context and leave it stuck "Expected — Waiting for status to be reported".
+    name: discover-tabs-smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Assert spec file exists (discover-tabs)
+        # Guard: if the spec is renamed or deleted, Playwright silently reports
+        # "0 passed" and exits 0 — letting the gate go green with no tests run.
+        # This step fails fast before any Playwright invocation.
+        run: |
+          if [ ! -f "playwright/tests/discover-tabs.spec.ts" ]; then
+            echo "::error::Spec file not found: playwright/tests/discover-tabs.spec.ts — rename or restore it before re-running this gate."
+            exit 1
+          fi
+          echo "Spec file present ✅"
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Playwright (chromium)
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+
+      - name: Install Playwright system deps (cache hit)
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+
+      - name: Set up CI database (migrations + sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+
+      - name: Start dev server
+        run: npx tsx server/index.ts &
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          SESSION_SECRET: ci-test-secret-not-for-production
+          STRIPE_SECRET_KEY: [REDACTED_STRIPE_TEST_KEY]_stub_no_real_calls
+          STRIPE_WEBHOOK_SECRET: whsec_ci_stub_no_real_calls
+          AMADEUS_API_KEY: amadeus-ci-stub-no-real-calls
+          AMADEUS_API_SECRET: amadeus-ci-stub-no-real-calls
+          XAI_API_KEY: xai-ci-stub-no-real-calls
+          ANTHROPIC_API_KEY: sk-ant-ci-stub-no-real-calls
+          RESEND_API_KEY: re_ci_stub_no_real_calls
+          GIT_COMMIT: ${{ github.sha }}
+          NODE_ENV: development
+          PORT: 5000
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGDATABASE: traveloure
+
+      - name: Wait for server and seeding
+        run: |
+          for i in $(seq 1 60); do
+            result=$(curl -s http://localhost:5000/api/ready || true)
+            if echo "$result" | grep -q '"ready":true'; then
+              echo "Server ready and seeding complete ✅"; exit 0
+            fi
+            echo "attempt $i/60: waiting... ($result)"; sleep 5
+          done
+          echo "::error::Server did not become ready within 5 minutes"
+          pgrep -a tsx || true
+          exit 1
+
+      - name: Discover tabs smoke test (all 18 tests)
+        # Runs all 18 tests across the 6 suites in discover-tabs.spec.ts:
+        #   1. Page load — hero band visible, travelpulse tab active by default
+        #   2. Client-side tab switching — URL must NOT change on tab click
+        #   3. URL deep-linking via ?tab=<value> — correct tab active on load
+        #   4. Browse Services — filter bar inputs and quick-cat chips
+        #   5. Add to cart — feedback toast appears on button click
+        #   6. Expert handoff banner — conditional on ?source=quick-start&showExperts=true
+        # No auth setup required — all tabs are publicly visible.
+        run: npx playwright test discover-tabs --project=chromium
+        env:
+          BASE_URL: http://localhost:5000
+          CI: 'true'
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: discover-tabs-report
+          path: playwright-report/
+          retention-days: 14
+
+  report:
+    name: report (PR comment)
+    runs-on: ubuntu-latest
+    needs: [discover-tabs-smoke]
+    if: ${{ always() && github.event_name == 'pull_request' }}
+    steps:
+      - name: Post pass/fail summary to the PR
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const needs = ${{ toJSON(needs) }};
+            const icon = (r) => (r === 'success' ? '✅' : r === 'skipped' ? '⏭️' : '❌');
+            const rows = Object.entries(needs).map(([job, d]) => `- ${icon(d.result)} \`${job}\` — ${d.result}`);
+            const allGreen = Object.values(needs).every((d) => d.result === 'success');
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = [
+              `## Discover Tabs Gate — ${allGreen ? 'all green ✅' : 'attention needed ❌'}`,
+              '',
+              ...rows,
+              '',
+              `[Run details](${runUrl})`,
+              '',
+              '> **discover-tabs-smoke**: runs all 18 tests in `discover-tabs.spec.ts` against a local dev server.',
+              '> Covers: hero band visibility, TravelPulse tab active by default, client-side tab switching (URL must NOT change), URL deep-linking via `?tab=`, Browse Services filter bar and quick-cat chips, add-to-cart toast feedback, and the expert handoff banner (`?source=quick-start&showExperts=true`).',
+              '> No authentication required — all `/discover` tabs are publicly visible.',
+              allGreen ? '' : '> A red gate means the /discover tab system is broken — fix `client/src/pages/discover.tsx` or its sub-components before merging.',
+            ].filter(Boolean).join('\n');
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body,
+            });

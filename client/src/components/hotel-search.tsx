@@ -482,7 +482,7 @@ export function HotelSearch({
       <Card className="border-2 border-dashed">
         <CardContent className="p-6">
           <div className="text-center mb-4">
-            <Hotel className="h-10 w-10 mx-auto mb-2 text-[#FF385C]" />
+            <Hotel className="h-10 w-10 mx-auto mb-2 text-primary" />
             <h3 className="font-semibold text-lg mb-1">City Detection Failed</h3>
           </div>
           <div className="mb-4 p-3 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-md text-sm text-amber-800 dark:text-amber-200">
@@ -602,7 +602,7 @@ export function HotelSearch({
               <Calendar className="h-3 w-3" />
               {checkInDate} - {checkOutDate}
             </Badge>
-            <Badge className="gap-1 bg-[#FF385C] text-white">
+            <Badge className="gap-1 bg-primary text-white">
               {tripNights} night{tripNights !== 1 ? "s" : ""}
             </Badge>
             <Badge variant="outline" className="gap-1">
@@ -718,7 +718,7 @@ export function HotelSearch({
                   <div className="flex gap-2 mt-4">
                     <Button
                       onClick={() => { refetch(); setShowModify(false); }}
-                      className="bg-[#FF385C] hover:bg-[#E23350]"
+                      className="bg-primary hover:bg-primary/90"
                       data-testid="button-search-hotels"
                     >
                       Update Search
@@ -912,7 +912,7 @@ export function HotelSearch({
 
                     {onSelectHotel && (
                       <Button
-                        className="w-full mt-4 bg-[#FF385C] hover:bg-[#E23350]"
+                        className="w-full mt-4 bg-primary hover:bg-primary/90"
                         onClick={() => onSelectHotel(hotelData)}
                         data-testid={`button-select-hotel-${hotel.hotelId}`}
                       >

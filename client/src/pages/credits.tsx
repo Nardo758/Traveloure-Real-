@@ -49,7 +49,7 @@ export default function Credits() {
   return (
     <DashboardLayout>
       <div className="p-6 space-y-8">
-        <h1 className="text-2xl font-bold text-[#111827] dark:text-white" data-testid="text-page-title">
+        <h1 className="text-2xl font-bold text-foreground dark:text-white" data-testid="text-page-title">
           Credits & Billing
         </h1>
 
@@ -73,7 +73,7 @@ export default function Credits() {
 
         {/* Credit Packages */}
         <section>
-          <h2 className="text-xl font-bold text-[#111827] dark:text-white mb-4">Buy Credits</h2>
+          <h2 className="text-xl font-bold text-foreground dark:text-white mb-4">Buy Credits</h2>
           <div className="grid md:grid-cols-3 gap-6">
             {creditPackages.map((pkg, i) => (
               <motion.div
@@ -82,22 +82,22 @@ export default function Credits() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.1 }}
               >
-                <Card className={`border relative ${pkg.popular ? 'border-[#FF385C] shadow-lg' : 'border-[#E5E7EB]'}`} data-testid={`card-package-${pkg.id}`}>
+                <Card className={`border relative ${pkg.popular ? 'border-primary shadow-lg' : 'border-border'}`} data-testid={`card-package-${pkg.id}`}>
                   {pkg.popular && (
                     <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                      <Badge className="bg-[#FF385C] text-white">Most Popular</Badge>
+                      <Badge className="bg-primary text-white">Most Popular</Badge>
                     </div>
                   )}
                   <CardHeader className="text-center pt-8">
                     <div className="w-12 h-12 bg-[#FFE3E8] rounded-full flex items-center justify-center mx-auto mb-4">
-                      <Gift className="w-6 h-6 text-[#FF385C]" />
+                      <Gift className="w-6 h-6 text-primary" />
                     </div>
-                    <CardTitle className="text-3xl font-bold text-[#111827] dark:text-white">
+                    <CardTitle className="text-3xl font-bold text-foreground dark:text-white">
                       {pkg.credits}
                     </CardTitle>
-                    <CardDescription className="text-[#6B7280]">credits</CardDescription>
+                    <CardDescription className="text-muted-foreground">credits</CardDescription>
                     <div className="mt-4">
-                      <span className="text-2xl font-bold text-[#111827] dark:text-white">${pkg.price}</span>
+                      <span className="text-2xl font-bold text-foreground dark:text-white">${pkg.price}</span>
                       {pkg.savings && (
                         <Badge variant="secondary" className="ml-2 bg-green-100 text-green-600">
                           {pkg.savings}
@@ -108,14 +108,14 @@ export default function Credits() {
                   <CardContent>
                     <ul className="space-y-3 mb-6">
                       {pkg.features.map((feature, j) => (
-                        <li key={j} className="flex items-center gap-2 text-sm text-[#6B7280]">
+                        <li key={j} className="flex items-center gap-2 text-sm text-muted-foreground">
                           <Check className="w-4 h-4 text-green-500 flex-shrink-0" />
                           {feature}
                         </li>
                       ))}
                     </ul>
                     <Button 
-                      className={`w-full ${pkg.popular ? 'bg-[#FF385C] hover:bg-[#E23350] text-white' : ''}`}
+                      className={`w-full ${pkg.popular ? 'bg-primary hover:bg-primary/90 text-white' : ''}`}
                       variant={pkg.popular ? "default" : "outline"}
                       onClick={() => purchaseMutation.mutate(pkg)}
                       disabled={purchaseMutation.isPending}
@@ -137,12 +137,12 @@ export default function Credits() {
         {/* Transaction History */}
         <section>
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-bold text-[#111827] dark:text-white">Transaction History</h2>
-            <Button variant="ghost" className="text-[#FF385C]" data-testid="button-view-all-transactions">
+            <h2 className="text-xl font-bold text-foreground dark:text-white">Transaction History</h2>
+            <Button variant="ghost" className="text-primary" data-testid="button-view-all-transactions">
               View All
             </Button>
           </div>
-          <Card className="border border-[#E5E7EB]">
+          <Card className="border border-border">
             <CardContent className="p-0">
               <div className="divide-y divide-[#E5E7EB]">
                 {transactions.map((tx) => (
@@ -162,12 +162,12 @@ export default function Credits() {
                         )}
                       </div>
                       <div>
-                        <p className="font-medium text-[#111827] dark:text-white">{tx.description}</p>
-                        <p className="text-sm text-[#6B7280]">{tx.date}</p>
+                        <p className="font-medium text-foreground dark:text-white">{tx.description}</p>
+                        <p className="text-sm text-muted-foreground">{tx.date}</p>
                       </div>
                     </div>
                     <span className={`font-semibold ${
-                      tx.amount > 0 ? "text-green-600" : "text-[#6B7280]"
+                      tx.amount > 0 ? "text-green-600" : "text-muted-foreground"
                     }`}>
                       {tx.amount > 0 ? "+" : ""}{tx.amount} credits
                     </span>

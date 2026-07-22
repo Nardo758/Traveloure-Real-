@@ -203,7 +203,7 @@ export function TransportBookingCard({
           onClick={() => bookPlatformMutation.mutate()}
           disabled={readOnly || bookPlatformMutation.isPending}
           size="sm"
-          className="bg-[#FF385C] hover:bg-[#E23350] text-white"
+          className="bg-primary hover:bg-primary/90 text-white"
           data-testid={`button-book-platform-${option.id}`}
         >
           {bookPlatformMutation.isPending ? "Processing…" : `Book — ${option.priceDisplay || "Select"}`}
@@ -335,7 +335,7 @@ export function TransportBookingCard({
             />
             <Button
               size="sm"
-              className="h-7 text-xs bg-[#FF385C] hover:bg-[#E23350] text-white"
+              className="h-7 text-xs bg-primary hover:bg-primary/90 text-white"
               onClick={() => markBookedMutation.mutate()}
               disabled={markBookedMutation.isPending}
               data-testid={`button-confirm-booked-${option.id}`}

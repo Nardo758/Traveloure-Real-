@@ -111,7 +111,7 @@ function ClientCard({ client, onDelete }: { client: EaClient; onDelete: (id: str
           <CardHeader className="cursor-pointer hover:bg-gray-50 transition-colors rounded-t-lg py-4" data-testid={`card-client-${client.id}`}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-[#FF385C] flex items-center justify-center text-white font-semibold text-sm">
+                <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center text-white font-semibold text-sm">
                   {initials(client)}
                 </div>
                 <div>
@@ -217,7 +217,7 @@ function ClientCard({ client, onDelete }: { client: EaClient; onDelete: (id: str
                       </div>
                     </div>
                     <div className="flex gap-2 pt-2">
-                      <Button className="flex-1 bg-[#FF385C] hover:bg-[#e03354]" onClick={() => updateMutation.mutate()} disabled={updateMutation.isPending} data-testid="button-save-client">
+                      <Button className="flex-1 bg-primary hover:bg-[#e03354]" onClick={() => updateMutation.mutate()} disabled={updateMutation.isPending} data-testid="button-save-client">
                         <Check className="w-4 h-4 mr-1" /> {updateMutation.isPending ? "Saving…" : "Save Changes"}
                       </Button>
                       <Button variant="outline" onClick={() => setEditOpen(false)} data-testid="button-cancel-edit">
@@ -261,7 +261,7 @@ function ClientCard({ client, onDelete }: { client: EaClient; onDelete: (id: str
                         />
                       </div>
                       <Button
-                        className="w-full bg-[#FF385C] hover:bg-[#e03354]"
+                        className="w-full bg-primary hover:bg-[#e03354]"
                         onClick={() => pushMutation.mutate()}
                         disabled={pushMutation.isPending || !pushTitle || !pushMsg}
                         data-testid="button-send-push"
@@ -346,7 +346,7 @@ export default function EAClients() {
           </div>
           <Dialog open={addOpen} onOpenChange={setAddOpen}>
             <DialogTrigger asChild>
-              <Button className="bg-[#FF385C] hover:bg-[#e03354]" data-testid="button-add-client">
+              <Button className="bg-primary hover:bg-[#e03354]" data-testid="button-add-client">
                 <Plus className="w-4 h-4 mr-2" /> Add Client
               </Button>
             </DialogTrigger>
@@ -388,7 +388,7 @@ export default function EAClients() {
                   />
                 </div>
                 <Button
-                  className="w-full bg-[#FF385C] hover:bg-[#e03354]"
+                  className="w-full bg-primary hover:bg-[#e03354]"
                   onClick={() => addMutation.mutate()}
                   disabled={addMutation.isPending || !email}
                   data-testid="button-submit-add-client"
@@ -440,7 +440,7 @@ export default function EAClients() {
                 Add clients to save their payment info and send them updates.
               </p>
               <Button
-                className="bg-[#FF385C] hover:bg-[#e03354]"
+                className="bg-primary hover:bg-[#e03354]"
                 onClick={() => setAddOpen(true)}
                 data-testid="button-add-first-client"
               >

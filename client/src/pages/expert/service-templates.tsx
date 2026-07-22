@@ -161,7 +161,7 @@ export default function ServiceTemplates() {
                 <Card key={template.id} className="border-gray-200 hover:shadow-md transition-shadow">
                   <CardHeader className="pb-3">
                     <div className="flex items-start justify-between gap-2">
-                      <div className="w-10 h-10 rounded-lg bg-[#FF385C]/10 flex items-center justify-center text-[#FF385C]">
+                      <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary">
                         {getDeliveryIcon(template.deliveryMethod)}
                       </div>
                       {template.suggestedPrice && (
@@ -208,7 +208,7 @@ export default function ServiceTemplates() {
                     )}
 
                     <Button
-                      className="w-full bg-[#FF385C] hover:bg-[#E23350]"
+                      className="w-full bg-primary hover:bg-primary/90"
                       onClick={() => handleUseTemplate(template)}
                       data-testid={`button-use-template-${template.id}`}
                     >
@@ -228,7 +228,7 @@ export default function ServiceTemplates() {
             <h3 className="text-lg font-medium text-gray-900 mb-2">No templates available</h3>
             <p className="text-gray-600 mb-4">Create your service from scratch instead</p>
             <Link href="/expert/services/new">
-              <Button className="bg-[#FF385C] hover:bg-[#E23350]" data-testid="button-create-service">
+              <Button className="bg-primary hover:bg-primary/90" data-testid="button-create-service">
                 Create Service
               </Button>
             </Link>

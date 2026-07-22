@@ -103,7 +103,7 @@ export default function EACalendar() {
                           {event && (
                             <Badge 
                               variant="outline" 
-                              className={`text-xs ${event === "D" || event === "F" ? "bg-[#FF385C]/10 text-[#FF385C] border-[#FF385C]" : ""}`}
+                              className={`text-xs ${event === "D" || event === "F" ? "bg-primary/10 text-primary border-primary" : ""}`}
                             >
                               {event}
                             </Badge>
@@ -134,7 +134,7 @@ export default function EACalendar() {
         <Card className="border border-gray-200">
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
-              <CalendarIcon className="w-5 h-5 text-[#FF385C]" />
+              <CalendarIcon className="w-5 h-5 text-primary" />
               Today's Events ({todayEvents.length})
             </CardTitle>
           </CardHeader>
@@ -187,7 +187,7 @@ export default function EACalendar() {
                     <div className="flex flex-col gap-2">
                       {event.urgent && (
                         <>
-                          <Button size="sm" className="bg-[#FF385C] hover:bg-[#E23350]" data-testid={`button-contact-${event.id}`}>
+                          <Button size="sm" className="bg-primary hover:bg-primary/90" data-testid={`button-contact-${event.id}`}>
                             Contact Restaurant
                           </Button>
                           <Button size="sm" variant="outline" data-testid={`button-update-exec-${event.id}`}>
@@ -197,7 +197,7 @@ export default function EACalendar() {
                       )}
                       {event.needsReview && (
                         <>
-                          <Button size="sm" className="bg-[#FF385C] hover:bg-[#E23350]" data-testid={`button-review-${event.id}`}>
+                          <Button size="sm" className="bg-primary hover:bg-primary/90" data-testid={`button-review-${event.id}`}>
                             Review Options
                           </Button>
                           <Button size="sm" variant="outline" data-testid={`button-approve-all-${event.id}`}>
@@ -237,7 +237,7 @@ export default function EACalendar() {
               <li>• Draft communications on your behalf</li>
               <li>• Research venues, restaurants, hotels in bulk</li>
             </ul>
-            <Button className="bg-[#FF385C] hover:bg-[#E23350]" data-testid="button-delegate-task">
+            <Button className="bg-primary hover:bg-primary/90" data-testid="button-delegate-task">
               <Bot className="w-4 h-4 mr-2" /> Delegate Task to AI
             </Button>
           </CardContent>

@@ -274,7 +274,7 @@ function ServiceCard({
             >
               <span className={cn(
                 "text-lg font-bold",
-                heatScore >= 90 ? "text-[#FF385C]" : heatScore >= 80 ? "text-orange-500 dark:text-orange-400" : "text-amber-500 dark:text-amber-400"
+                heatScore >= 90 ? "text-primary" : heatScore >= 80 ? "text-orange-500 dark:text-orange-400" : "text-amber-500 dark:text-amber-400"
               )}>
                 {heatScore}
               </span>
@@ -284,7 +284,7 @@ function ServiceCard({
             <div className="absolute top-3 left-3 flex items-center gap-2">
               {isHot ? (
                 <span 
-                  className="px-2.5 py-1 rounded-lg bg-[#FF385C] text-white text-xs font-bold flex items-center gap-1 shadow-lg"
+                  className="px-2.5 py-1 rounded-lg bg-primary text-white text-xs font-bold flex items-center gap-1 shadow-lg"
                   data-testid={`badge-hot-${service.id}`}
                 >
                   <Zap className="w-3 h-3 fill-white" />
@@ -1591,12 +1591,12 @@ export default function DiscoverPage() {
                               </Badge>
                             </div>
                             
-                            <h3 className="font-semibold text-base mb-2 group-hover:text-[#FF385C] transition-colors line-clamp-2 flex-1">
+                            <h3 className="font-semibold text-base mb-2 group-hover:text-primary transition-colors line-clamp-2 flex-1">
                               {content.title}
                             </h3>
                             
                             <div className="flex items-center gap-2 text-sm text-muted-foreground mb-3">
-                              <MapPin className="w-4 h-4 text-[#FF385C]" />
+                              <MapPin className="w-4 h-4 text-primary" />
                               <span>{content.destination}</span>
                             </div>
                             

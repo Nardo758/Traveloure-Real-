@@ -63,9 +63,10 @@ export default function ProviderCalendar() {
     { day: "Saturday", startTime: "08:00", endTime: "20:00", active: true },
     { day: "Sunday", startTime: "08:00", endTime: "20:00", active: false },
   ]);
-  const [blackoutDates, setBlackoutDates] = useState<BlackoutDate[]>([
-    { id: "1", startDate: "2024-04-15", endDate: "2024-04-17", reason: "Holiday" },
-  ]);
+  // Availability scheduling has no backend yet (there is no provider-availability
+  // table/endpoint). These editors are a local-only PREVIEW — nothing here persists.
+  // Gated honestly with a "coming soon" note + a disabled Save until the backend lands.
+  const [blackoutDates, setBlackoutDates] = useState<BlackoutDate[]>([]);
   const [newBlackoutStart, setNewBlackoutStart] = useState("");
   const [newBlackoutEnd, setNewBlackoutEnd] = useState("");
   const [newBlackoutReason, setNewBlackoutReason] = useState<"Personal" | "Vehicle Maintenance" | "Family" | "Holiday" | "Other">("Personal");
@@ -163,7 +164,7 @@ export default function ProviderCalendar() {
     return (
       <ProviderLayout title="Calendar">
         <div className="flex items-center justify-center h-64">
-          <Loader2 className="w-8 h-8 animate-spin text-[#FF385C]" />
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
         </div>
       </ProviderLayout>
     );
@@ -206,6 +207,9 @@ export default function ProviderCalendar() {
                 <SheetHeader>
                   <SheetTitle>Edit Weekly Schedule</SheetTitle>
                 </SheetHeader>
+                <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  Preview only — availability scheduling is coming soon. Changes here aren't saved yet.
+                </div>
                 <div className="space-y-4 mt-6">
                   {scheduleRules.map((rule, idx) => (
                     <div key={rule.day} className="space-y-2">
@@ -245,8 +249,8 @@ export default function ProviderCalendar() {
                       </div>
                     </div>
                   ))}
-                  <Button className="w-full bg-[#FF385C] hover:bg-[#FF385C]/90 mt-6">
-                    Save Schedule
+                  <Button className="w-full mt-6" disabled title="Saving your availability is coming soon">
+                    Saving coming soon
                   </Button>
                 </div>
               </SheetContent>
@@ -261,6 +265,9 @@ export default function ProviderCalendar() {
                 <SheetHeader>
                   <SheetTitle>Block Dates</SheetTitle>
                 </SheetHeader>
+                <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  Preview only — blocking dates is coming soon. Anything added here isn't saved yet.
+                </div>
                 <div className="space-y-4 mt-6">
                   <div>
                     <Label htmlFor="block-start">Start Date</Label>
@@ -297,7 +304,7 @@ export default function ProviderCalendar() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <Button onClick={addBlackoutDate} className="w-full bg-[#FF385C] hover:bg-[#FF385C]/90">
+                  <Button onClick={addBlackoutDate} className="w-full bg-primary hover:bg-primary/90">
                     Add Blocked Period
                   </Button>
                   <div className="space-y-2 mt-6">
@@ -432,7 +439,7 @@ export default function ProviderCalendar() {
                       onClick={() => setSelectedDate(day)}
                       className={`h-20 p-1 rounded-lg border transition-colors text-left ${
                         isSelected 
-                          ? "border-[#FF385C] bg-[#FF385C]/5" 
+                          ? "border-primary bg-primary/5" 
                           : hasBookings 
                             ? hasConfirmed 
                               ? "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800" 
@@ -482,7 +489,7 @@ export default function ProviderCalendar() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <CalendarIcon className="w-5 h-5 text-[#FF385C]" />
+                <CalendarIcon className="w-5 h-5 text-primary" />
                 {selectedDate ? `${monthName} ${selectedDate}, ${year}` : "Select a Date"}
               </CardTitle>
             </CardHeader>

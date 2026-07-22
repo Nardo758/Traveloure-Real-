@@ -211,7 +211,7 @@ export default function ExpertServiceListingsPage() {
           </div>
           <Dialog open={isDialogOpen} onOpenChange={(open) => { setIsDialogOpen(open); if (!open) resetForm(); }}>
             <DialogTrigger asChild>
-              <Button className="bg-[#FF385C]  text-white" data-testid="button-create-service">
+              <Button className="bg-primary  text-white" data-testid="button-create-service">
                 <Plus className="w-4 h-4 mr-2" />
                 Create Service
               </Button>
@@ -354,7 +354,7 @@ export default function ExpertServiceListingsPage() {
                 </Button>
                 <Button 
                   onClick={handleSubmit} 
-                  className="bg-[#FF385C]  text-white"
+                  className="bg-primary  text-white"
                   disabled={createMutation.isPending || updateMutation.isPending}
                   data-testid="button-save-service"
                 >
@@ -370,7 +370,7 @@ export default function ExpertServiceListingsPage() {
 
         {isLoading ? (
           <div className="flex items-center justify-center py-16">
-            <Loader2 className="w-8 h-8 animate-spin text-[#FF385C]" />
+            <Loader2 className="w-8 h-8 animate-spin text-primary" />
           </div>
         ) : serviceListings.length === 0 ? (
           <Card>
@@ -382,7 +382,7 @@ export default function ExpertServiceListingsPage() {
               </p>
               <Button 
                 onClick={() => setIsDialogOpen(true)}
-                className="bg-[#FF385C]  text-white"
+                className="bg-primary  text-white"
                 data-testid="button-create-first-service"
               >
                 <Plus className="w-4 h-4 mr-2" />

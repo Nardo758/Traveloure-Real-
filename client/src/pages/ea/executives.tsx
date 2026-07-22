@@ -205,7 +205,7 @@ export default function EAExecutives() {
             <Button variant="outline" data-testid="button-export-list">
               Export List
             </Button>
-            <Button className="bg-[#FF385C] hover:bg-[#E23350]" data-testid="button-add-executive">
+            <Button className="bg-primary hover:bg-primary/90" data-testid="button-add-executive">
               <Plus className="w-4 h-4 mr-2" /> Add New Executive
             </Button>
           </div>
@@ -240,8 +240,8 @@ export default function EAExecutives() {
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-full bg-[#FF385C]/10 flex items-center justify-center">
-                      <User className="w-6 h-6 text-[#FF385C]" />
+                    <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
+                      <User className="w-6 h-6 text-primary" />
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
@@ -372,7 +372,7 @@ export default function EAExecutives() {
           ))}
         </div>
 
-        <Button variant="ghost" className="w-full text-[#FF385C]" data-testid="button-show-all">
+        <Button variant="ghost" className="w-full text-primary" data-testid="button-show-all">
           Show All 8 Executives
         </Button>
       </div>
@@ -630,7 +630,7 @@ export default function EAExecutives() {
               Cancel
             </Button>
             <Button
-              className="bg-[#FF385C] hover:bg-[#E23350]"
+              className="bg-primary hover:bg-primary/90"
               onClick={handleSave}
               data-testid="button-save-profile"
               disabled={updateMutation.isPending}

@@ -209,7 +209,7 @@ export default function ExpertAIAssistant() {
         <Card>
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
-              <Bot className="w-5 h-5 text-[#FF385C]" />
+              <Bot className="w-5 h-5 text-primary" />
               Quick Delegate
             </CardTitle>
           </CardHeader>
@@ -265,7 +265,7 @@ export default function ExpertAIAssistant() {
               <Button
                 onClick={handleDelegate}
                 disabled={delegateMutation.isPending || taskInput.length < 10}
-                className="bg-[#FF385C]"
+                className="bg-primary"
                 data-testid="button-delegate-task"
               >
                 {delegateMutation.isPending ? (
@@ -475,7 +475,7 @@ export default function ExpertAIAssistant() {
                     ))}
                   </div>
                 )}
-                <Button variant="ghost" className="w-full mt-3 text-[#FF385C]" data-testid="button-view-all-completed">
+                <Button variant="ghost" className="w-full mt-3 text-primary" data-testid="button-view-all-completed">
                   View All Completed Tasks <ArrowRight className="w-4 h-4 ml-1" />
                 </Button>
               </CardContent>

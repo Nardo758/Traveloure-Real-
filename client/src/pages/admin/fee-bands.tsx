@@ -251,7 +251,11 @@ export default function FeeBandsAdminPage() {
   });
 
   if (bandsLoading || settingsLoading) {
-    return <div className="p-6 text-sm text-gray-500">Loading fee bands…</div>;
+    return (
+      <AdminLayout title="Fee Bands">
+        <div className="p-6 text-sm text-gray-500">Loading fee bands…</div>
+      </AdminLayout>
+    );
   }
 
   const percentBands = (bands ?? []).filter((b) => b.rate_type === "percent");

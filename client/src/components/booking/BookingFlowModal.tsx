@@ -411,7 +411,7 @@ export default function BookingFlowModal({
               <Button
                 onClick={() => setCurrentStep('review')}
                 disabled={!visaIntake.passportNationality || !visaIntake.destinationCountry}
-                className="w-full bg-[#FF385C] hover:bg-[#FF385C]/90 text-white"
+                className="w-full bg-primary hover:bg-primary/90 text-white"
                 data-testid="button-visa-continue"
               >
                 Continue to Review

@@ -61,7 +61,7 @@ export default function SharedTripPage() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">
-          <Loader2 className="w-10 h-10 animate-spin text-[#FF385C] mx-auto mb-3" />
+          <Loader2 className="w-10 h-10 animate-spin text-primary mx-auto mb-3" />
           <p className="text-muted-foreground text-sm">Loading trip plan…</p>
         </div>
       </div>
@@ -73,14 +73,14 @@ export default function SharedTripPage() {
       <div className="min-h-screen flex flex-col items-center justify-center bg-background px-4">
         <div className="text-center max-w-sm">
           <div className="w-16 h-16 bg-[#FFE3E8] rounded-full flex items-center justify-center mx-auto mb-4">
-            <MapPin className="w-8 h-8 text-[#FF385C]" />
+            <MapPin className="w-8 h-8 text-primary" />
           </div>
           <h2 className="text-xl font-semibold text-foreground mb-2">Link not found</h2>
           <p className="text-muted-foreground mb-6 text-sm">
             This trip plan link may have expired or is no longer available.
           </p>
           <Link href="/">
-            <Button className="bg-[#FF385C] hover:bg-[#E23350] text-white" data-testid="button-explore-own">
+            <Button className="bg-primary hover:bg-primary/90 text-white" data-testid="button-explore-own">
               Plan your own trip
             </Button>
           </Link>
@@ -164,7 +164,7 @@ export default function SharedTripPage() {
             {days.map((day, dayIndex) => (
               <div key={day.day} data-testid={`shared-day-${day.day}`}>
                 <div className="flex items-center gap-3 mb-4">
-                  <div className="w-10 h-10 rounded-full bg-[#FF385C] text-white flex items-center justify-center font-bold text-sm shrink-0">
+                  <div className="w-10 h-10 rounded-full bg-primary text-white flex items-center justify-center font-bold text-sm shrink-0">
                     {day.day}
                   </div>
                   <div>
@@ -182,7 +182,7 @@ export default function SharedTripPage() {
                         className="relative flex items-start gap-3 p-3 bg-muted/30 rounded-xl"
                         data-testid={`shared-activity-${day.day}-${actIndex}`}
                       >
-                        <div className="absolute -left-[29px] w-3.5 h-3.5 rounded-full bg-[#FF385C] border-[3px] border-background" />
+                        <div className="absolute -left-[29px] w-3.5 h-3.5 rounded-full bg-primary border-[3px] border-background" />
                         <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
                           <ActivityIcon className="w-4 h-4 text-primary" />
                         </div>
@@ -201,7 +201,7 @@ export default function SharedTripPage() {
                             </div>
                           )}
                           {activity.estimatedCost != null && (
-                            <p className="text-xs text-[#FF385C] mt-1">~${activity.estimatedCost}</p>
+                            <p className="text-xs text-primary mt-1">~${activity.estimatedCost}</p>
                           )}
                         </div>
                       </div>
@@ -221,7 +221,7 @@ export default function SharedTripPage() {
           </p>
           <Link href="/experiences">
             <Button
-              className="bg-[#FF385C] hover:bg-[#E23350] text-white px-6"
+              className="bg-primary hover:bg-primary/90 text-white px-6"
               data-testid="button-plan-own-trip"
             >
               Plan my own trip

@@ -218,7 +218,7 @@ export default function PartnerWithUsPage() {
             animate={{ opacity: 1, y: 0 }}
             className="text-center"
           >
-            <Badge className="bg-[#FF385C] text-white mb-6">
+            <Badge className="bg-primary text-white mb-6">
               <Sparkles className="w-3 h-3 mr-1" />
               Join 500+ Partners Worldwide
             </Badge>
@@ -234,7 +234,7 @@ export default function PartnerWithUsPage() {
               <Link href="#partner-types">
                 <Button
                   size="lg"
-                  className="bg-[#FF385C] hover:bg-[#E23350] text-white px-8"
+                  className="bg-primary hover:bg-primary/90 text-white px-8"
                   data-testid="button-get-started"
                 >
                   Get Started <ArrowRight className="w-4 h-4 ml-2" />
@@ -277,10 +277,10 @@ export default function PartnerWithUsPage() {
       <section id="partner-types" className="py-20">
         <div className="container mx-auto px-4 max-w-6xl">
           <div className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-bold text-[#111827] mb-4">
+            <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-4">
               Choose Your Path
             </h2>
-            <p className="text-lg text-[#6B7280] max-w-2xl mx-auto">
+            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
               Whether you're a travel enthusiast, local guide, or business owner,
               there's a place for you on Traveloure.
             </p>
@@ -295,37 +295,37 @@ export default function PartnerWithUsPage() {
                 transition={{ delay: idx * 0.05 }}
               >
                 <Card
-                  className={`h-full border-[#E5E7EB] hover:shadow-lg transition-shadow relative ${
+                  className={`h-full border-border hover:shadow-lg transition-shadow relative ${
                     type.popular ? "ring-2 ring-[#FF385C]" : ""
                   }`}
                   data-testid={`card-partner-${type.id}`}
                 >
                   {type.popular && (
                     <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                      <Badge className="bg-[#FF385C] text-white">
+                      <Badge className="bg-primary text-white">
                         Most Popular
                       </Badge>
                     </div>
                   )}
                   <CardHeader>
                     <div className="w-12 h-12 rounded-lg bg-[#FFE3E8] flex items-center justify-center mb-4">
-                      <type.icon className="w-6 h-6 text-[#FF385C]" />
+                      <type.icon className="w-6 h-6 text-primary" />
                     </div>
-                    <CardTitle className="text-xl text-[#111827]">
+                    <CardTitle className="text-xl text-foreground">
                       {type.title}
                     </CardTitle>
-                    <p className="text-[#6B7280]">{type.description}</p>
+                    <p className="text-muted-foreground">{type.description}</p>
                   </CardHeader>
                   <CardContent className="space-y-6">
                     <div>
-                      <h4 className="text-sm font-semibold text-[#111827] mb-2">
+                      <h4 className="text-sm font-semibold text-foreground mb-2">
                         Benefits
                       </h4>
                       <ul className="space-y-2">
                         {type.benefits.map((benefit) => (
                           <li
                             key={benefit}
-                            className="flex items-start gap-2 text-sm text-[#6B7280]"
+                            className="flex items-start gap-2 text-sm text-muted-foreground"
                           >
                             <CheckCircle className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" />
                             {benefit}
@@ -335,12 +335,12 @@ export default function PartnerWithUsPage() {
                     </div>
 
                     <div>
-                      <h4 className="text-sm font-semibold text-[#111827] mb-2">
+                      <h4 className="text-sm font-semibold text-foreground mb-2">
                         Requirements
                       </h4>
                       <ul className="space-y-1">
                         {type.requirements.map((req) => (
-                          <li key={req} className="text-sm text-[#6B7280]">
+                          <li key={req} className="text-sm text-muted-foreground">
                             {req}
                           </li>
                         ))}
@@ -349,7 +349,7 @@ export default function PartnerWithUsPage() {
 
                     <Link href={type.id === "service-provider" ? "/become-provider" : "/become-expert"}>
                       <Button
-                        className="w-full bg-[#FF385C] hover:bg-[#E23350] text-white"
+                        className="w-full bg-primary hover:bg-primary/90 text-white"
                         data-testid={`button-apply-${type.id}`}
                       >
                         {type.cta}
@@ -368,14 +368,14 @@ export default function PartnerWithUsPage() {
       <section id="benefits" className="py-20 bg-white">
         <div className="container mx-auto px-4 max-w-6xl">
           <div className="text-center mb-12">
-            <Badge className="bg-[#FFE3E8] text-[#FF385C] mb-4">
+            <Badge className="bg-[#FFE3E8] text-primary mb-4">
               <Sparkles className="w-3 h-3 mr-1" />
               Why Partner With Traveloure
             </Badge>
-            <h2 className="text-3xl md:text-4xl font-bold text-[#111827] mb-4">
+            <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-4">
               Platform Benefits
             </h2>
-            <p className="text-lg text-[#6B7280] max-w-2xl mx-auto">
+            <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
               Join a platform designed to help you succeed. We provide the tools,
               clients, and support you need to grow your travel business.
             </p>
@@ -390,17 +390,17 @@ export default function PartnerWithUsPage() {
                 transition={{ delay: idx * 0.05 }}
               >
                 <Card
-                  className="h-full border-[#E5E7EB] hover:shadow-lg transition-shadow"
+                  className="h-full border-border hover:shadow-lg transition-shadow"
                   data-testid={`card-benefit-${benefit.title.toLowerCase().replace(/\s+/g, '-')}`}
                 >
                   <CardContent className="p-6">
                     <div className="w-12 h-12 rounded-lg bg-[#FFE3E8] flex items-center justify-center mb-4">
-                      <benefit.icon className="w-6 h-6 text-[#FF385C]" />
+                      <benefit.icon className="w-6 h-6 text-primary" />
                     </div>
-                    <h3 className="text-lg font-semibold text-[#111827] mb-2">
+                    <h3 className="text-lg font-semibold text-foreground mb-2">
                       {benefit.title}
                     </h3>
-                    <p className="text-[#6B7280]">
+                    <p className="text-muted-foreground">
                       {benefit.description}
                     </p>
                   </CardContent>
@@ -415,10 +415,10 @@ export default function PartnerWithUsPage() {
       <section id="how-it-works" className="py-20 bg-[#F9FAFB]">
         <div className="container mx-auto px-4 max-w-6xl">
           <div className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-bold text-[#111827] mb-4">
+            <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-4">
               How It Works
             </h2>
-            <p className="text-lg text-[#6B7280]">
+            <p className="text-lg text-muted-foreground">
               Getting started is simple. Join our platform in 4 easy steps.
             </p>
           </div>
@@ -434,16 +434,16 @@ export default function PartnerWithUsPage() {
               >
                 <div className="relative mb-6">
                   <div className="w-16 h-16 mx-auto rounded-full bg-[#FFE3E8] flex items-center justify-center">
-                    <step.icon className="w-8 h-8 text-[#FF385C]" />
+                    <step.icon className="w-8 h-8 text-primary" />
                   </div>
-                  <div className="absolute -top-2 -right-2 w-8 h-8 rounded-full bg-[#FF385C] text-white flex items-center justify-center font-bold text-sm">
+                  <div className="absolute -top-2 -right-2 w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center font-bold text-sm">
                     {step.step}
                   </div>
                 </div>
-                <h3 className="text-lg font-semibold text-[#111827] mb-2">
+                <h3 className="text-lg font-semibold text-foreground mb-2">
                   {step.title}
                 </h3>
-                <p className="text-[#6B7280]">{step.description}</p>
+                <p className="text-muted-foreground">{step.description}</p>
               </motion.div>
             ))}
           </div>
@@ -454,7 +454,7 @@ export default function PartnerWithUsPage() {
       <section className="py-20">
         <div className="container mx-auto px-4 max-w-6xl">
           <div className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-bold text-[#111827] mb-4">
+            <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-4">
               Partner Success Stories
             </h2>
           </div>
@@ -467,7 +467,7 @@ export default function PartnerWithUsPage() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: idx * 0.1 }}
               >
-                <Card className="h-full border-[#E5E7EB]">
+                <Card className="h-full border-border">
                   <CardContent className="p-6">
                     <div className="flex items-center gap-1 mb-4">
                       {[...Array(5)].map((_, i) => (
@@ -482,10 +482,10 @@ export default function PartnerWithUsPage() {
                     </p>
                     <div className="flex items-center justify-between">
                       <div>
-                        <div className="font-semibold text-[#111827]">
+                        <div className="font-semibold text-foreground">
                           {testimonial.author}
                         </div>
-                        <div className="text-sm text-[#6B7280]">
+                        <div className="text-sm text-muted-foreground">
                           {testimonial.role}
                         </div>
                       </div>
@@ -516,7 +516,7 @@ export default function PartnerWithUsPage() {
             <Link href="/become-expert">
               <Button
                 size="lg"
-                className="bg-white text-[#FF385C] hover:bg-gray-100 px-8"
+                className="bg-white text-primary hover:bg-gray-100 px-8"
                 data-testid="button-apply-expert"
               >
                 Apply as Expert

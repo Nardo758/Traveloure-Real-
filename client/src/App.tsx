@@ -86,6 +86,7 @@ const AdminAffiliatePartners = lazy(() => import("@/pages/admin/affiliate-partne
 const AdminContentTracking = lazy(() => import("@/pages/admin/content-tracking"));
 const AdminContentMapping = lazy(() => import("@/pages/admin/content-mapping"));
 const AdminServices = lazy(() => import("@/pages/admin/services"));
+const AdminServiceApprovals = lazy(() => import("@/pages/admin/service-approvals"));
 const AdminAICosts = lazy(() => import("@/pages/admin/ai-costs"));
 const AdminTourismAnalytics = lazy(() => import("@/pages/admin/tourism-analytics"));
 const AdminPayouts = lazy(() => import("@/pages/admin/payouts"));
@@ -124,6 +125,7 @@ const AdminNeighborhoods = lazy(() => import("@/pages/admin/neighborhoods"));
 const AdminEventPackages = lazy(() => import("@/pages/admin/event-packages"));
 const AdminPlatformProviders = lazy(() => import("@/pages/admin/platform-providers"));
 const AdminRoutingQueue = lazy(() => import("@/pages/admin/routing-queue"));
+const AdminConciergeRequests = lazy(() => import("@/pages/admin/concierge-requests"));
 const AdminCrossSellAnalytics = lazy(() => import("@/pages/admin/cross-sell-analytics"));
 const AdminQAChecklist = lazy(() => import("@/pages/admin/qa-checklist"));
 const ExpertAnalytics = lazy(() => import("@/pages/expert/analytics"));
@@ -139,6 +141,7 @@ const ExpertWorkspace = lazy(() => import("@/pages/expert/workspace"));
 const DmoLibrary = lazy(() => import("@/pages/expert/dmo-library"));
 const CartPage = lazy(() => import("@/pages/cart"));
 const MyBookingsPage = lazy(() => import("@/pages/my-bookings"));
+const MyEventsPage = lazy(() => import("@/pages/my-events"));
 const ContractViewPage = lazy(() => import("@/pages/contract-view"));
 const ServiceDetailPage = lazy(() => import("@/pages/service-detail"));
 const LayoutMock = lazy(() => import("@/pages/layout-mock"));
@@ -340,6 +343,9 @@ function Router() {
       </Route>
       <Route path="/bookings">
         {() => <ProtectedRoute component={MyBookingsPage} />}
+      </Route>
+      <Route path="/my-events">
+        {() => <ProtectedRoute component={MyEventsPage} />}
       </Route>
       <Route path="/contracts/:id">
         <PageErrorBoundary fallbackHeading="Contract Not Found">
@@ -735,6 +741,9 @@ function Router() {
       <Route path="/admin/content-tracking">
         {() => <ProtectedRoute component={AdminContentTracking} requiredRole="admin" />}
       </Route>
+      <Route path="/admin/service-approvals">
+        {() => <ProtectedRoute component={AdminServiceApprovals} requiredRole="admin" />}
+      </Route>
       <Route path="/admin/services">
         {() => <ProtectedRoute component={AdminServices} requiredRole="admin" />}
       </Route>
@@ -776,6 +785,9 @@ function Router() {
       </Route>
       <Route path="/admin/routing-queue">
         {() => <ProtectedRoute component={AdminRoutingQueue} requiredRole="admin" />}
+      </Route>
+      <Route path="/admin/concierge-requests">
+        {() => <ProtectedRoute component={AdminConciergeRequests} requiredRole="admin" />}
       </Route>
       <Route path="/admin/neighborhood-backfill">
         {() => <ProtectedRoute component={AdminNeighborhoodBackfill} requiredRole="admin" />}

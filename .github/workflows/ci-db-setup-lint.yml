@@ -234,7 +234,7 @@ jobs:
             done
             [ "$skip" -eq 1 ] && continue
 
-            if grep -qE "image: postgres:" "$f"; then
+            if grep -qE "image:.*postgres:" "$f"; then
               WORKFLOW_FILES+=("$f")
             fi
           done
@@ -338,7 +338,7 @@ jobs:
             done
             [ "$skip" -eq 1 ] && continue
 
-            if grep -qE "image: postgres:" "$f"; then
+            if grep -qE "image:.*postgres:" "$f"; then
               WORKFLOW_FILES+=("$f")
             fi
           done

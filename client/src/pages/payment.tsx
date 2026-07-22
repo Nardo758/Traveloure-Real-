@@ -176,7 +176,7 @@ export default function PaymentPage() {
   if (cartLoading || feePreviewLoading) {
     return (
       <div className="min-h-screen bg-[#F9FAFB] flex items-center justify-center">
-        <Loader2 className="w-10 h-10 animate-spin text-[#FF385C]" />
+        <Loader2 className="w-10 h-10 animate-spin text-primary" />
       </div>
     );
   }
@@ -184,8 +184,8 @@ export default function PaymentPage() {
   if (cartItems.length === 0) {
     return (
       <div className="min-h-screen bg-[#F9FAFB] flex flex-col items-center justify-center gap-4">
-        <h2 className="text-2xl font-bold text-[#111827]">Your cart is empty</h2>
-        <p className="text-[#6B7280]">Add items to your cart before proceeding to payment.</p>
+        <h2 className="text-2xl font-bold text-foreground">Your cart is empty</h2>
+        <p className="text-muted-foreground">Add items to your cart before proceeding to payment.</p>
         <Link href="/cart"><Button>Go to Cart</Button></Link>
       </div>
     );
@@ -194,18 +194,18 @@ export default function PaymentPage() {
   return (
     <div className="min-h-screen bg-[#F9FAFB]">
       {/* Header */}
-      <header className="bg-white border-b border-[#E5E7EB] sticky top-0 z-50">
+      <header className="bg-white border-b border-border sticky top-0 z-50">
         <div className="container mx-auto px-4 max-w-6xl">
           <div className="flex items-center justify-between h-16">
             <Link
               href="/cart"
-              className="flex items-center gap-2 text-[#6B7280] hover:text-[#111827]"
+              className="flex items-center gap-2 text-muted-foreground hover:text-foreground"
               data-testid="link-back"
             >
               <ArrowLeft className="w-5 h-5" />
               Back to Cart
             </Link>
-            <div className="flex items-center gap-2 text-sm text-[#6B7280]">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Lock className="w-4 h-4" />
               Secure Checkout
             </div>
@@ -221,29 +221,29 @@ export default function PaymentPage() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
             >
-              <h1 className="text-2xl font-bold text-[#111827] mb-6">
+              <h1 className="text-2xl font-bold text-foreground mb-6">
                 Complete Your Booking
               </h1>
 
               {/* Trip Summary */}
-              <Card className="border-[#E5E7EB] mb-6">
+              <Card className="border-border mb-6">
                 <CardHeader className="pb-3">
-                  <CardTitle className="text-lg text-[#111827]">
+                  <CardTitle className="text-lg text-foreground">
                     Trip Details
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="flex flex-wrap gap-6 text-sm">
-                    <div className="flex items-center gap-2 text-[#6B7280]">
-                      <MapPin className="w-4 h-4 text-[#FF385C]" />
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <MapPin className="w-4 h-4 text-primary" />
                       Bali, Indonesia
                     </div>
-                    <div className="flex items-center gap-2 text-[#6B7280]">
-                      <Calendar className="w-4 h-4 text-[#FF385C]" />
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <Calendar className="w-4 h-4 text-primary" />
                       Feb 15 - Feb 20, 2026
                     </div>
-                    <div className="flex items-center gap-2 text-[#6B7280]">
-                      <Users className="w-4 h-4 text-[#FF385C]" />
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <Users className="w-4 h-4 text-primary" />
                       2 Travelers
                     </div>
                   </div>
@@ -251,9 +251,9 @@ export default function PaymentPage() {
               </Card>
 
               {/* Payment Method */}
-              <Card className="border-[#E5E7EB]">
+              <Card className="border-border">
                 <CardHeader>
-                  <CardTitle className="text-lg text-[#111827]">
+                  <CardTitle className="text-lg text-foreground">
                     Payment Method
                   </CardTitle>
                 </CardHeader>
@@ -268,15 +268,15 @@ export default function PaymentPage() {
                         key={method.id}
                         className={`flex items-center justify-between p-4 border rounded-lg cursor-pointer transition-colors ${
                           paymentMethod === method.id
-                            ? "border-[#FF385C] bg-[#FFF5F7]"
-                            : "border-[#E5E7EB] hover:border-[#FF385C]"
+                            ? "border-primary bg-[#FFF5F7]"
+                            : "border-border hover:border-primary"
                         }`}
                         onClick={() => setPaymentMethod(method.id)}
                         data-testid={`radio-payment-${method.id}`}
                       >
                         <div className="flex items-center gap-3">
                           <RadioGroupItem value={method.id} />
-                          <span className="font-medium text-[#111827]">
+                          <span className="font-medium text-foreground">
                             {method.label}
                           </span>
                         </div>
@@ -284,7 +284,7 @@ export default function PaymentPage() {
                           {method.icons.map((Icon, idx) => (
                             <Icon
                               key={idx}
-                              className="w-8 h-8 text-[#6B7280]"
+                              className="w-8 h-8 text-muted-foreground"
                             />
                           ))}
                         </div>
@@ -297,7 +297,7 @@ export default function PaymentPage() {
                     <motion.div
                       initial={{ opacity: 0, height: 0 }}
                       animate={{ opacity: 1, height: "auto" }}
-                      className="space-y-4 pt-4 border-t border-[#E5E7EB]"
+                      className="space-y-4 pt-4 border-t border-border"
                     >
                       <div>
                         <Label htmlFor="cardNumber" className="text-[#374151]">
@@ -310,7 +310,7 @@ export default function PaymentPage() {
                             placeholder="1234 5678 9012 3456"
                             value={cardDetails.cardNumber}
                             onChange={(e) => setCardDetails(prev => ({ ...prev, cardNumber: e.target.value.replace(/\D/g, '').slice(0, 16) }))}
-                            className="pl-10 h-12 border-[#E5E7EB]"
+                            className="pl-10 h-12 border-border"
                             data-testid="input-card-number"
                           />
                         </div>
@@ -326,7 +326,7 @@ export default function PaymentPage() {
                             placeholder="MM/YY"
                             value={cardDetails.expiry}
                             onChange={(e) => setCardDetails(prev => ({ ...prev, expiry: e.target.value.slice(0, 5) }))}
-                            className="mt-2 h-12 border-[#E5E7EB]"
+                            className="mt-2 h-12 border-border"
                             data-testid="input-expiry"
                           />
                         </div>
@@ -339,7 +339,7 @@ export default function PaymentPage() {
                             placeholder="123"
                             value={cardDetails.cvv}
                             onChange={(e) => setCardDetails(prev => ({ ...prev, cvv: e.target.value.replace(/\D/g, '').slice(0, 4) }))}
-                            className="mt-2 h-12 border-[#E5E7EB]"
+                            className="mt-2 h-12 border-border"
                             data-testid="input-cvv"
                           />
                         </div>
@@ -354,7 +354,7 @@ export default function PaymentPage() {
                           placeholder="John Doe"
                           value={cardDetails.cardName}
                           onChange={(e) => setCardDetails(prev => ({ ...prev, cardName: e.target.value }))}
-                          className="mt-2 h-12 border-[#E5E7EB]"
+                          className="mt-2 h-12 border-border"
                           data-testid="input-card-name"
                         />
                       </div>
@@ -362,8 +362,8 @@ export default function PaymentPage() {
                   )}
 
                   {/* Billing Address */}
-                  <div className="pt-4 border-t border-[#E5E7EB]">
-                    <h3 className="font-medium text-[#111827] mb-4">
+                  <div className="pt-4 border-t border-border">
+                    <h3 className="font-medium text-foreground mb-4">
                       Billing Address
                     </h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -374,7 +374,7 @@ export default function PaymentPage() {
                         <Input
                           id="address"
                           placeholder="123 Main St"
-                          className="mt-2 h-12 border-[#E5E7EB]"
+                          className="mt-2 h-12 border-border"
                           data-testid="input-address"
                         />
                       </div>
@@ -385,7 +385,7 @@ export default function PaymentPage() {
                         <Input
                           id="city"
                           placeholder="New York"
-                          className="mt-2 h-12 border-[#E5E7EB]"
+                          className="mt-2 h-12 border-border"
                           data-testid="input-city"
                         />
                       </div>
@@ -396,7 +396,7 @@ export default function PaymentPage() {
                         <Input
                           id="zip"
                           placeholder="10001"
-                          className="mt-2 h-12 border-[#E5E7EB]"
+                          className="mt-2 h-12 border-border"
                           data-testid="input-zip"
                         />
                       </div>
@@ -415,13 +415,13 @@ export default function PaymentPage() {
                   }
                   data-testid="checkbox-terms"
                 />
-                <label htmlFor="terms" className="text-sm text-[#6B7280]">
+                <label htmlFor="terms" className="text-sm text-muted-foreground">
                   I agree to the{" "}
-                  <Link href="/terms" className="text-[#FF385C] underline">
+                  <Link href="/terms" className="text-primary underline">
                     Terms & Conditions
                   </Link>{" "}
                   and{" "}
-                  <Link href="/privacy" className="text-[#FF385C] underline">
+                  <Link href="/privacy" className="text-primary underline">
                     Privacy Policy
                   </Link>
                   . I understand that my booking is subject to the cancellation
@@ -439,9 +439,9 @@ export default function PaymentPage() {
               transition={{ delay: 0.1 }}
               className="sticky top-24"
             >
-              <Card className="border-[#E5E7EB]">
+              <Card className="border-border">
                 <CardHeader>
-                  <CardTitle className="text-lg text-[#111827]">
+                  <CardTitle className="text-lg text-foreground">
                     Order Summary
                   </CardTitle>
                 </CardHeader>
@@ -454,10 +454,10 @@ export default function PaymentPage() {
                         className="flex items-start justify-between text-sm"
                       >
                         <div>
-                          <div className="font-medium text-[#111827]">
+                          <div className="font-medium text-foreground">
                             {item.name}
                           </div>
-                          <div className="text-[#6B7280]">{item.category}</div>
+                          <div className="text-muted-foreground">{item.category}</div>
                         </div>
                         <div className="text-right">
                           {item.originalPrice > item.price && (
@@ -465,7 +465,7 @@ export default function PaymentPage() {
                               ${item.originalPrice}
                             </div>
                           )}
-                          <div className="font-medium text-[#111827]">
+                          <div className="font-medium text-foreground">
                             ${item.price}
                           </div>
                         </div>
@@ -484,7 +484,7 @@ export default function PaymentPage() {
                         value={promoCode}
                         onChange={(e) => setPromoCode(e.target.value)}
                         disabled={promoApplied}
-                        className="h-10 border-[#E5E7EB]"
+                        className="h-10 border-border"
                         data-testid="input-promo"
                       />
                       <Button
@@ -511,8 +511,8 @@ export default function PaymentPage() {
                   {/* Totals */}
                   <div className="space-y-2 text-sm">
                     <div className="flex justify-between">
-                      <span className="text-[#6B7280]">Subtotal</span>
-                      <span className="text-[#111827]">${subtotal}</span>
+                      <span className="text-muted-foreground">Subtotal</span>
+                      <span className="text-foreground">${subtotal}</span>
                     </div>
                     {discount > 0 && (
                       <div className="flex justify-between text-green-600">
@@ -521,23 +521,23 @@ export default function PaymentPage() {
                       </div>
                     )}
                     <div className="flex justify-between">
-                      <span className="text-[#6B7280]">Service Fee</span>
-                      <span className="text-[#111827]">${serviceFee}</span>
+                      <span className="text-muted-foreground">Service Fee</span>
+                      <span className="text-foreground">${serviceFee}</span>
                     </div>
                   </div>
 
                   <Separator />
 
                   <div className="flex justify-between items-center">
-                    <span className="font-semibold text-[#111827]">Total</span>
-                    <span className="text-2xl font-bold text-[#FF385C]">
+                    <span className="font-semibold text-foreground">Total</span>
+                    <span className="text-2xl font-bold text-primary">
                       ${total.toFixed(0)}
                     </span>
                   </div>
 
                   {/* Pay Button */}
                   <Button
-                    className="w-full h-12 bg-[#FF385C] hover:bg-[#E23350] text-white text-lg"
+                    className="w-full h-12 bg-primary hover:bg-primary/90 text-white text-lg"
                     onClick={handlePayment}
                     disabled={isProcessing || !agreeToTerms || !isCardValid}
                     data-testid="button-pay-now"
@@ -553,7 +553,7 @@ export default function PaymentPage() {
                   </Button>
 
                   {/* Security Badge */}
-                  <div className="flex items-center justify-center gap-2 text-xs text-[#6B7280]">
+                  <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
                     <Shield className="w-4 h-4" />
                     Secure payment powered by Stripe
                   </div>
@@ -561,24 +561,24 @@ export default function PaymentPage() {
               </Card>
 
               {/* AI Optimization Upsell */}
-              <Card className="border-[#E5E7EB] mt-4 bg-gradient-to-r from-[#FFF5F7] to-white">
+              <Card className="border-border mt-4 bg-gradient-to-r from-[#FFF5F7] to-white">
                 <CardContent className="p-4">
                   <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-full bg-[#FF385C] flex items-center justify-center flex-shrink-0">
+                    <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center flex-shrink-0">
                       <Sparkles className="w-5 h-5 text-white" />
                     </div>
                     <div>
-                      <h4 className="font-medium text-[#111827] mb-1">
+                      <h4 className="font-medium text-foreground mb-1">
                         Optimize Your Trip?
                       </h4>
-                      <p className="text-sm text-[#6B7280] mb-2">
+                      <p className="text-sm text-muted-foreground mb-2">
                         Let AI arrange your activities for the best experience
                       </p>
                       <Link href="/optimize">
                         <Button
                           size="sm"
                           variant="outline"
-                          className="border-[#FF385C] text-[#FF385C]"
+                          className="border-primary text-primary"
                           data-testid="button-optimize"
                         >
                           Add for $29

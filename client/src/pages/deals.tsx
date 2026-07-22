@@ -126,7 +126,7 @@ function resolveImage(deal: DealItem): string | null {
 
 function DealCardSkeleton() {
   return (
-    <Card className="bg-white border-[#E5E7EB] overflow-hidden">
+    <Card className="bg-white border-border overflow-hidden">
       <CardContent className="p-0">
         <Skeleton className="h-40 w-full rounded-none" />
         <div className="p-4 space-y-3">
@@ -164,7 +164,7 @@ function DealCard({ deal, idx }: { deal: DealItem; idx: number }) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: idx * 0.04 }}
     >
-      <Card className="bg-white border-[#E5E7EB] hover:shadow-lg transition-shadow overflow-hidden group h-full flex flex-col">
+      <Card className="bg-white border-border hover:shadow-lg transition-shadow overflow-hidden group h-full flex flex-col">
         <CardContent className="p-0 flex flex-col flex-1">
           {/* Image / placeholder */}
           <div className="relative h-40 bg-gradient-to-br from-gray-100 to-gray-200 flex-shrink-0">
@@ -185,7 +185,7 @@ function DealCard({ deal, idx }: { deal: DealItem; idx: number }) {
             {/* Featured badge */}
             {deal.featured && (
               <div className="absolute top-3 left-3">
-                <Badge className="bg-[#FF385C] text-white text-xs">
+                <Badge className="bg-primary text-white text-xs">
                   <Sparkles className="w-3 h-3 mr-1" />
                   Featured
                 </Badge>
@@ -206,21 +206,21 @@ function DealCard({ deal, idx }: { deal: DealItem; idx: number }) {
           {/* Content */}
           <div className="p-4 flex flex-col flex-1">
             {deal.destination && (
-              <div className="flex items-center gap-1 text-xs text-[#6B7280] mb-1">
+              <div className="flex items-center gap-1 text-xs text-muted-foreground mb-1">
                 <MapPin className="w-3 h-3" />
                 <span>{deal.destination}</span>
               </div>
             )}
 
             <h3
-              className="font-semibold text-[#111827] mb-2 group-hover:text-[#FF385C] transition-colors text-sm leading-snug line-clamp-2"
+              className="font-semibold text-foreground mb-2 group-hover:text-primary transition-colors text-sm leading-snug line-clamp-2"
               data-testid={`text-deal-title-${deal.id}`}
             >
               {deal.title}
             </h3>
 
             {deal.rating !== null && (
-              <div className="flex items-center gap-1 text-xs text-[#6B7280] mb-2">
+              <div className="flex items-center gap-1 text-xs text-muted-foreground mb-2">
                 <Star className="w-3 h-3 text-yellow-500 fill-yellow-500" />
                 <span>{deal.rating.toFixed(1)}</span>
                 {deal.reviewCount !== null && (
@@ -234,7 +234,7 @@ function DealCard({ deal, idx }: { deal: DealItem; idx: number }) {
                 {formattedPrice ? (
                   <div>
                     <span
-                      className="text-lg font-bold text-[#FF385C]"
+                      className="text-lg font-bold text-primary"
                       data-testid={`text-deal-price-${deal.id}`}
                     >
                       {formattedPrice}
@@ -244,7 +244,7 @@ function DealCard({ deal, idx }: { deal: DealItem; idx: number }) {
                     </span>
                   </div>
                 ) : (
-                  <span className="text-sm text-[#6B7280]">Price varies</span>
+                  <span className="text-sm text-muted-foreground">Price varies</span>
                 )}
                 <div className="text-xs text-[#9CA3AF]">{deal.providerLabel}</div>
               </div>
@@ -258,7 +258,7 @@ function DealCard({ deal, idx }: { deal: DealItem; idx: number }) {
                 >
                   <Button
                     size="sm"
-                    className="bg-[#FF385C] hover:bg-[#E23350] text-white shrink-0"
+                    className="bg-primary hover:bg-primary/90 text-white shrink-0"
                     data-testid={`button-book-${deal.id}`}
                   >
                     Book Now
@@ -339,7 +339,7 @@ export default function DealsPage() {
                 placeholder="Search by destination (e.g. Tokyo, Paris, Bali)..."
                 value={searchQuery}
                 onChange={(e) => handleSearchChange(e.target.value)}
-                className="pl-12 h-14 text-lg border-0 bg-white text-[#111827] rounded-xl"
+                className="pl-12 h-14 text-lg border-0 bg-white text-foreground rounded-xl"
                 data-testid="input-search-deals"
               />
             </div>
@@ -351,7 +351,7 @@ export default function DealsPage() {
       {!isLoading && featuredDeals.length > 0 && (
         <section className="py-12 -mt-8">
           <div className="container mx-auto px-4 max-w-6xl">
-            <h2 className="text-2xl font-bold text-[#111827] mb-6">
+            <h2 className="text-2xl font-bold text-foreground mb-6">
               Featured Deals
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -366,7 +366,7 @@ export default function DealsPage() {
       {isLoading && (
         <section className="py-12 -mt-8">
           <div className="container mx-auto px-4 max-w-6xl">
-            <h2 className="text-2xl font-bold text-[#111827] mb-6">Featured Deals</h2>
+            <h2 className="text-2xl font-bold text-foreground mb-6">Featured Deals</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               {[1, 2, 3].map((n) => <DealCardSkeleton key={n} />)}
             </div>
@@ -390,8 +390,8 @@ export default function DealsPage() {
                   className={cn(
                     "gap-1.5",
                     activeCategory === cat.id
-                      ? "bg-[#FF385C] hover:bg-[#E23350] text-white border-transparent"
-                      : "border-[#E5E7EB] text-[#374151]"
+                      ? "bg-primary hover:bg-primary/90 text-white border-transparent"
+                      : "border-border text-[#374151]"
                   )}
                   data-testid={`button-category-${cat.id}`}
                 >
@@ -404,7 +404,7 @@ export default function DealsPage() {
 
           {/* Count */}
           {!isLoading && !isError && (
-            <p className="text-sm text-[#6B7280] mb-4">
+            <p className="text-sm text-muted-foreground mb-4">
               {deals.length} live deal{deals.length !== 1 ? "s" : ""} found
               {debouncedSearch ? ` for "${debouncedSearch}"` : ""}
             </p>
@@ -423,10 +423,10 @@ export default function DealsPage() {
           {isError && !isLoading && (
             <div className="text-center py-16">
               <Tag className="w-16 h-16 text-[#9CA3AF] mx-auto mb-4" />
-              <h3 className="text-lg font-semibold text-[#111827] mb-2">
+              <h3 className="text-lg font-semibold text-foreground mb-2">
                 Couldn't load deals
               </h3>
-              <p className="text-[#6B7280]">
+              <p className="text-muted-foreground">
                 Our deal providers may be temporarily unavailable. Try again in a moment.
               </p>
             </div>
@@ -445,10 +445,10 @@ export default function DealsPage() {
           {!isLoading && !isError && deals.length === 0 && (
             <div className="text-center py-16">
               <Tag className="w-16 h-16 text-[#9CA3AF] mx-auto mb-4" />
-              <h3 className="text-lg font-semibold text-[#111827] mb-2">
+              <h3 className="text-lg font-semibold text-foreground mb-2">
                 No deals found
               </h3>
-              <p className="text-[#6B7280] mb-4">
+              <p className="text-muted-foreground mb-4">
                 {debouncedSearch
                   ? `No deals found for "${debouncedSearch}". Try a different destination.`
                   : "Try adjusting your category filter."}
@@ -470,22 +470,22 @@ export default function DealsPage() {
       </section>
 
       {/* Newsletter CTA */}
-      <section className="py-16 bg-white border-t border-[#E5E7EB]">
+      <section className="py-16 bg-white border-t border-border">
         <div className="container mx-auto px-4 max-w-4xl text-center">
-          <h2 className="text-2xl font-bold text-[#111827] mb-4">
+          <h2 className="text-2xl font-bold text-foreground mb-4">
             Never Miss a Deal
           </h2>
-          <p className="text-[#6B7280] mb-6">
+          <p className="text-muted-foreground mb-6">
             Subscribe to get exclusive deals and flash sales delivered to your inbox
           </p>
           <div className="flex flex-col sm:flex-row gap-3 max-w-md mx-auto">
             <Input
               placeholder="Enter your email"
-              className="h-12 border-[#E5E7EB]"
+              className="h-12 border-border"
               data-testid="input-newsletter"
             />
             <Button
-              className="h-12 px-8 bg-[#FF385C] hover:bg-[#E23350] text-white"
+              className="h-12 px-8 bg-primary hover:bg-primary/90 text-white"
               data-testid="button-subscribe"
             >
               Subscribe

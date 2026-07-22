@@ -497,7 +497,7 @@ export default function ExpertBookings() {
             <h1 className="text-2xl font-bold text-console-darkest" data-testid="text-bookings-title">Bookings & Calendar</h1>
             <p className="text-console-mid">Manage your appointments and reservations</p>
           </div>
-          <Button className="bg-[#FF385C] " data-testid="button-new-booking">
+          <Button className="bg-primary " data-testid="button-new-booking">
             <CalendarDays className="w-4 h-4 mr-2" /> New Booking
           </Button>
         </div>
@@ -545,7 +545,7 @@ export default function ExpertBookings() {
                       <div className="flex items-center gap-2 mt-1">
                         <Badge variant="outline" className="text-xs">{booking.status}</Badge>
                         {isVisaBooking(booking) && (
-                          <span className="text-xs text-[#FF385C] flex items-center gap-1">
+                          <span className="text-xs text-primary flex items-center gap-1">
                             <Plane className="w-3 h-3" /> Visa
                           </span>
                         )}
@@ -589,8 +589,8 @@ export default function ExpertBookings() {
                 </div>
               </div>
               {bookings && bookings.filter(isVisaBooking).length > 0 && (
-                <div className="p-3 bg-[#FF385C]/5 rounded-lg text-center border border-[#FF385C]/20">
-                  <p className="text-2xl font-bold text-[#FF385C]">
+                <div className="p-3 bg-primary/5 rounded-lg text-center border border-primary/20">
+                  <p className="text-2xl font-bold text-primary">
                     {bookings.filter(isVisaBooking).length}
                   </p>
                   <p className="text-sm text-[#7A7A72] flex items-center justify-center gap-1">
@@ -606,7 +606,7 @@ export default function ExpertBookings() {
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle className="text-lg">Upcoming Bookings</CardTitle>
-              <Button variant="ghost" size="sm" className="text-[#FF385C]" data-testid="button-view-all-bookings">
+              <Button variant="ghost" size="sm" className="text-primary" data-testid="button-view-all-bookings">
                 View All <ArrowRight className="w-4 h-4 ml-1" />
               </Button>
             </div>
@@ -633,7 +633,7 @@ export default function ExpertBookings() {
                           <p className="font-semibold text-console-darkest">Booking</p>
                           {getStatusBadge(booking.status)}
                           {isVisa && (
-                            <Badge variant="outline" className="text-[#FF385C] border-[#FF385C]/30 text-xs">
+                            <Badge variant="outline" className="text-primary border-primary/30 text-xs">
                               <Plane className="w-3 h-3 mr-1" /> Visa Application
                             </Badge>
                           )}
@@ -732,7 +732,7 @@ export default function ExpertBookings() {
                           <Button
                             size="sm"
                             variant="outline"
-                            className="text-[#FF385C] border-[#FF385C]/30 hover:bg-[#FF385C]/5"
+                            className="text-primary border-primary/30 hover:bg-primary/5"
                             onClick={() => openVisaDialog(booking)}
                             data-testid={`button-update-visa-status-${booking.id}`}
                           >
