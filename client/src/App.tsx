@@ -168,6 +168,7 @@ import { Loader2 } from "lucide-react";
 
 import { getRoleHomePath, userHasRequiredRole } from "@/lib/role-utils";
 import { useClaimGuestTrips } from "@/hooks/use-claim-guest-trips";
+import { useClaimGuestConcierge } from "@/hooks/use-claim-guest-concierge";
 
 // Fallback shown while a lazily-loaded route chunk is being fetched.
 // Routes are code-split (React.lazy) so the browser and the Vite dev server
@@ -239,8 +240,9 @@ function ChatWithRoleLayout() {
 }
 
 function Router() {
-  // Automatically claim guest trips when user signs up
+  // Automatically claim guest trips and concierge requests when user signs in
   useClaimGuestTrips();
+  useClaimGuestConcierge();
 
   return (
     <Suspense fallback={<PageLoader />}>

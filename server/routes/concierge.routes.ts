@@ -11,6 +11,7 @@
  * preview is the hook). userId is captured from session if present.
  */
 import { Router } from "express";
+import { createHmac } from "crypto";
 import { z } from "zod";
 import { and, eq, ilike, desc, sql } from "drizzle-orm";
 import { db } from "../db";
@@ -19,6 +20,11 @@ import { routeConcierge } from "../services/concierge-router.service";
 import { storage } from "../storage";
 
 const router = Router();
+
+function makeClaimToken(requestId: string): string {
+  const secret = process.env.SESSION_SECRET || "dev-fallback-secret";
+  return createHmac("sha256", secret).update(`concierge-claim:${requestId}`).digest("hex");
+}
 
 const createRequestSchema = z.object({
   intent: z.string().min(1).max(2000),
@@ -165,12 +171,89 @@ router.patch("/api/concierge/requests/:id", async (req, res) => {
       }
     }
 
-    res.json({ ...row, coordinationId });
+    // For guests (no coordinationId), return a signed claim token they can use after sign-in.
+    const claimToken = !row.userId ? makeClaimToken(row.id) : undefined;
+
+    res.json({ ...row, coordinationId, ...(claimToken ? { claimToken } : {}) });
   } catch (err: any) {
     if (err instanceof z.ZodError) {
       return res.status(400).json({ error: "validation_failed", details: err.errors });
     }
     console.error("[concierge/requests/:id PATCH] error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── POST /api/concierge/requests/:id/claim ─────────────────────────────────
+// Links an orphaned (guest) concierge request to the authenticated user and
+// spins up a coordination_states row — the same path as the authenticated
+// Full-pick flow in PATCH above. Auth required; idempotent.
+
+router.post("/api/concierge/requests/:id/claim", async (req, res) => {
+  try {
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id ?? null;
+    if (!userId) {
+      return res.status(401).json({ error: "unauthenticated", message: "Sign in to claim a concierge request." });
+    }
+
+    // Validate possession token — prevents another authenticated user from claiming
+    // a request they didn't originate. Token is HMAC-SHA256(requestId, SESSION_SECRET).
+    const providedToken: string | undefined = req.body?.claimToken;
+    const expectedToken = makeClaimToken(req.params.id);
+    if (!providedToken || providedToken !== expectedToken) {
+      return res.status(403).json({ error: "invalid_claim_token", message: "Claim token is missing or invalid." });
+    }
+
+    const [row] = await db
+      .select()
+      .from(conciergeRequests)
+      .where(eq(conciergeRequests.id, req.params.id))
+      .limit(1);
+
+    if (!row) {
+      return res.status(404).json({ error: "not_found" });
+    }
+
+    // If already owned by a different user, reject.
+    if (row.userId && row.userId !== userId) {
+      return res.status(403).json({ error: "forbidden", message: "This request belongs to another account." });
+    }
+
+    // Stamp the userId if it was null (guest request).
+    let claimed = row;
+    if (!row.userId) {
+      const [updated] = await db
+        .update(conciergeRequests)
+        .set({ userId, status: "selected", chosenTier: row.chosenTier ?? "full" })
+        .where(eq(conciergeRequests.id, row.id))
+        .returning();
+      claimed = updated;
+    }
+
+    // Create or reuse a coordination_states row (idempotent, same as PATCH full).
+    const [existing] = await db
+      .select({ id: coordinationStates.id })
+      .from(coordinationStates)
+      .where(sql`${coordinationStates.userRequest}->>'conciergeRequestId' = ${claimed.id}`)
+      .limit(1);
+
+    let coordinationId: string;
+    if (existing) {
+      coordinationId = existing.id;
+    } else {
+      const state = await storage.createCoordinationState({
+        userId,
+        experienceType: claimed.eventType || "event",
+        status: "intake",
+        path: "concierge",
+        userRequest: { conciergeRequestId: claimed.id, intent: claimed.intent, source: "concierge_guest_claim" },
+      } as any);
+      coordinationId = state.id;
+    }
+
+    res.json({ ...claimed, coordinationId });
+  } catch (err: any) {
+    console.error("[concierge/requests/:id/claim] error:", err);
     res.status(500).json({ error: err.message });
   }
 });
