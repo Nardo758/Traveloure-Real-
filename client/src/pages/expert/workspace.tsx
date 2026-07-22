@@ -546,6 +546,45 @@ export default function ExpertWorkspace() {
     onError: () => toast({ title: "Failed to add item", variant: "destructive" }),
   });
 
+  // ── Coordination status advance (coordinator-side) ──
+  const COORD_STATUS_ORDER = [
+    "intake", "expert_matching", "vendor_discovery", "itinerary_generation",
+    "optimization", "booking_coordination", "confirmed", "in_progress", "completed",
+  ] as const;
+
+  const coordStatusLabel: Record<string, string> = {
+    intake: "Intake",
+    expert_matching: "Expert Matching",
+    vendor_discovery: "Vendor Discovery",
+    itinerary_generation: "Itinerary Generation",
+    optimization: "Optimization",
+    booking_coordination: "Booking Coordination",
+    confirmed: "Confirmed",
+    in_progress: "In Progress",
+    completed: "Completed",
+  };
+
+  const currentCoordStatus = (eventCoordState?.status ?? "intake") as string;
+  const currentCoordIdx = COORD_STATUS_ORDER.indexOf(currentCoordStatus as any);
+  const nextCoordStatus = currentCoordIdx >= 0 && currentCoordIdx < COORD_STATUS_ORDER.length - 1
+    ? COORD_STATUS_ORDER[currentCoordIdx + 1]
+    : null;
+
+  const advanceCoordStatusMutation = useMutation({
+    mutationFn: async (targetStatus: string) => {
+      const res = await apiRequest("PATCH", `/api/coordination-states/${coordinationId}/status`, {
+        status: targetStatus,
+        note: `Advanced by coordinator`,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/expert/coordination-states`, tripId] });
+      toast({ title: "Status updated", description: "Coordination stage advanced successfully." });
+    },
+    onError: (e: any) => toast({ title: "Could not advance status", description: e.message, variant: "destructive" }),
+  });
+
   // ── Mutations ──
   const advanceStatusMutation = useMutation({
     mutationFn: async () => {
@@ -1240,6 +1279,62 @@ export default function ExpertWorkspace() {
               {!coordinationId && (
                 <div style={{ background: G[50], border: `1px solid ${G[200]}`, borderRadius: 8, padding: "12px", fontSize: 12, color: G[500] }}>
                   No coordination state linked to this trip yet. The traveler will create one during the concierge flow.
+                </div>
+              )}
+
+              {/* Status advance control */}
+              {coordinationId && (
+                <div style={{ background: "white", border: `1px solid ${G[200]}`, borderRadius: 8, padding: "12px 14px", marginBottom: 14 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: G[400], letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>Engagement Stage</div>
+                  {/* Stage progress strip */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 3, marginBottom: 10, overflowX: "auto", paddingBottom: 2 }}>
+                    {COORD_STATUS_ORDER.map((s, idx) => {
+                      const isDone = idx < currentCoordIdx;
+                      const isCurrent = idx === currentCoordIdx;
+                      return (
+                        <div key={s} style={{ display: "flex", alignItems: "center", gap: 3, flexShrink: 0 }}>
+                          <div style={{
+                            width: 8, height: 8, borderRadius: "50%", flexShrink: 0,
+                            background: isDone ? "#16A34A" : isCurrent ? P : G[300],
+                          }} />
+                          <span style={{
+                            fontSize: 10, fontWeight: isCurrent ? 700 : 400,
+                            color: isDone ? "#16A34A" : isCurrent ? P : G[400],
+                            whiteSpace: "nowrap",
+                          }}>
+                            {coordStatusLabel[s]}
+                          </span>
+                          {idx < COORD_STATUS_ORDER.length - 1 && (
+                            <span style={{ fontSize: 10, color: G[300], marginLeft: 1 }}>›</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {/* Advance button */}
+                  {nextCoordStatus ? (
+                    <button
+                      data-testid="button-advance-coord-status"
+                      onClick={() => advanceCoordStatusMutation.mutate(nextCoordStatus)}
+                      disabled={advanceCoordStatusMutation.isPending}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 6, padding: "7px 12px",
+                        borderRadius: 7, fontSize: 12, fontWeight: 600, cursor: "pointer",
+                        background: P, color: "white", border: "none",
+                        opacity: advanceCoordStatusMutation.isPending ? 0.6 : 1,
+                      }}
+                    >
+                      {advanceCoordStatusMutation.isPending
+                        ? <Loader2 style={{ width: 13, height: 13, animation: "spin 1s linear infinite" }} />
+                        : <ChevronRight style={{ width: 13, height: 13 }} />
+                      }
+                      Advance to {coordStatusLabel[nextCoordStatus]}
+                    </button>
+                  ) : (
+                    <div style={{ fontSize: 12, color: "#16A34A", fontWeight: 600 }}>
+                      ✓ Coordination complete
+                    </div>
+                  )}
                 </div>
               )}
 
