@@ -263,9 +263,31 @@ export default function ProviderStatusPage() {
                       ? appStatus.rejectionMessage
                       : "Your application was not approved at this time. Please review the requirements and reapply when you are ready."}
                   </p>
-                  {!appStatus?.rejectionMessage && (
-                    <p className="text-xs text-red-500 dark:text-red-500 mt-2">Contact support for more details on what to improve before reapplying.</p>
-                  )}
+                  <p className="text-xs text-red-600 dark:text-red-400 mt-2">
+                    Address the feedback above, then update your application and resubmit. If you need more clarity, our support team is happy to help.
+                  </p>
+                  <div className="flex flex-wrap gap-3 mt-4">
+                    <Link href="/become-provider">
+                      <Button
+                        size="sm"
+                        className="bg-red-600 hover:bg-red-700 text-white"
+                        data-testid="button-resubmit-application"
+                      >
+                        <ArrowRight className="w-4 h-4 mr-2" />
+                        Update &amp; Resubmit
+                      </Button>
+                    </Link>
+                    <a href="mailto:support@traveloure.com" data-testid="link-contact-support">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="border-red-300 text-red-700 hover:bg-red-100 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-900/30"
+                      >
+                        <MessageSquare className="w-4 h-4 mr-2" />
+                        Contact Support
+                      </Button>
+                    </a>
+                  </div>
                 </div>
               </div>
             </CardContent>
