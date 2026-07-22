@@ -921,6 +921,82 @@ export async function sendVerificationDecisionEmail(params: VerificationDecision
 
 // ─── Expert application rejection email ───────────────────────────────────────
 
+interface ExpertApplicationApprovalParams {
+  toEmail: string;
+  firstName?: string | null;
+}
+
+/**
+ * Fire-and-forget email to an expert applicant when their application is
+ * approved. Congratulates them, explains the Stripe Connect next step, and
+ * links directly to /expert/earnings. Never throws.
+ */
+export async function sendExpertApplicationApprovalEmail(
+  params: ExpertApplicationApprovalParams
+): Promise<void> {
+  const client = getClient();
+  if (!client) {
+    console.log("[email] RESEND_API_KEY not set — skipping expert approval email for", params.toEmail);
+    return;
+  }
+
+  const greeting = params.firstName ? `Hi ${escHtml(params.firstName)},` : "Hi,";
+  const earningsUrl = `${getAppBaseUrl()}/expert/earnings`;
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
+      <h2 style="color: #16A34A; margin-bottom: 8px;">You're approved as a Traveloure Expert! 🎉</h2>
+      <p style="color: #374151;">${greeting}</p>
+      <p style="color: #374151;">
+        Congratulations — your application to join Traveloure as a local expert has been approved!
+        You can now create services, accept bookings, and earn money sharing your local knowledge.
+      </p>
+      <h3 style="color: #111827; margin-bottom: 8px;">Next step: set up payouts</h3>
+      <p style="color: #374151;">
+        To receive payments, you'll need to connect your Stripe account. It only takes a few
+        minutes — head to your earnings page to get started.
+      </p>
+      <a href="${earningsUrl}"
+         style="display: inline-block; background: #FF385C; color: #ffffff; text-decoration: none;
+                padding: 12px 24px; border-radius: 6px; font-weight: 600; margin-top: 8px;">
+        Set Up Payouts
+      </a>
+      <p style="color: #9CA3AF; font-size: 12px; margin-top: 32px;">
+        You're receiving this because your expert application on Traveloure was approved.<br>
+        Manage your earnings at <a href="${earningsUrl}" style="color: #FF385C;">${earningsUrl}</a>.
+      </p>
+    </div>
+  `;
+
+  const text = [
+    "You're approved as a Traveloure Expert! 🎉",
+    ``,
+    greeting,
+    ``,
+    "Congratulations — your application to join Traveloure as a local expert has been approved!",
+    "You can now create services, accept bookings, and earn money sharing your local knowledge.",
+    ``,
+    "Next step: set up payouts",
+    ``,
+    "To receive payments, connect your Stripe account — it only takes a few minutes:",
+    ``,
+    `Set up payouts: ${earningsUrl}`,
+  ].join("\n");
+
+  try {
+    await client.emails.send({
+      from: getFromAddress(),
+      to: params.toEmail,
+      subject: "Your Traveloure expert application has been approved!",
+      html,
+      text,
+    });
+    console.log(`[email] Expert application approval email sent to ${params.toEmail}`);
+  } catch (err) {
+    console.error("[email] Expert application approval email failed (non-fatal):", err);
+  }
+}
+
 interface ExpertApplicationRejectionParams {
   toEmail: string;
   firstName?: string | null;
