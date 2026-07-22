@@ -289,7 +289,11 @@ export default function CategoryFeesAdminPage() {
   }, [settings]);
 
   if (catsLoading || bandsLoading || settingsLoading) {
-    return <div className="p-6 text-sm text-gray-500">Loading…</div>;
+    return (
+      <AdminLayout title="Category Fees">
+        <div className="p-6 text-sm text-gray-500">Loading…</div>
+      </AdminLayout>
+    );
   }
 
   return (
