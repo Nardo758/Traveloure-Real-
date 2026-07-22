@@ -579,7 +579,14 @@ export async function registerRoutes(
   // (inherits the blanket adminApiGuard registered above). New table, migration 123.
   app.use(serviceRequestsRoutes);
 
-  // Trips Routes
+  // Trips + Itinerary-Comparison Routes — was imported at line 95 but never mounted
+  // (§9 route-shadow class). Mounting here makes it the live handler for all paths
+  // it declares: /api/trips CRUD, /api/trips/:id/claim, /api/itinerary-comparisons/*
+  // The identical inline registrations below remain as-is (they become unreachable
+  // dead-code for those paths; inline /api/trips family is out of scope to remove).
+  app.use(tripsRoutes);
+
+  // Trips Routes (inline — superseded by tripsRoutes mount above; kept as-is per task scope)
   // GET /api/trips — list trips (auth only, since guests access via shareToken)
   app.get(api.trips.list.path, isAuthenticated, async (req, res) => {
     const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
