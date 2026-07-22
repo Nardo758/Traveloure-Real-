@@ -614,7 +614,7 @@ export default function ItineraryPage() {
                 data-testid="expert-help-callout"
               >
                 <div className="flex items-start gap-3">
-                  <div className="p-2 rounded-full bg-[#FF385C]/10 shrink-0">
+                  <div className="p-2 rounded-full bg-primary/10 shrink-0">
                     <UserCheck className="w-4 h-4 text-[#FF385C]" />
                   </div>
                   <div className="flex-1 min-w-0">
@@ -634,7 +634,7 @@ export default function ItineraryPage() {
                       >
                         <Button
                           size="sm"
-                          className="h-8 text-xs bg-[#FF385C] hover:bg-[#E23350] gap-1.5"
+                          className="h-8 text-xs bg-primary hover:bg-primary/90 gap-1.5"
                           data-testid="button-find-local-expert"
                         >
                           <MapPin className="w-3 h-3" />
@@ -797,7 +797,7 @@ export default function ItineraryPage() {
 
             <div className="rounded-xl border border-[#E5E7EB] bg-white dark:bg-gray-800 p-4 space-y-3">
               <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-full bg-[#FFE3E8] dark:bg-[#FF385C]/20 shrink-0">
+                <div className="p-2 rounded-full bg-[#FFE3E8] dark:bg-primary/20 shrink-0">
                   <UserCheck className="w-4 h-4 text-[#FF385C]" />
                 </div>
                 <div>
@@ -811,7 +811,7 @@ export default function ItineraryPage() {
                 >
                   <Button
                     size="sm"
-                    className="w-full h-8 text-xs bg-[#FF385C] hover:bg-[#E23350] justify-between"
+                    className="w-full h-8 text-xs bg-primary hover:bg-primary/90 justify-between"
                     data-testid="button-expert-help"
                   >
                     <span className="flex items-center gap-1.5">

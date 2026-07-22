@@ -41,7 +41,7 @@ export default function EATravel() {
             </h1>
             <p className="text-gray-600">Manage executive travel arrangements</p>
           </div>
-          <Button className="bg-[#FF385C] hover:bg-[#E23350]" data-testid="button-new-trip">
+          <Button className="bg-primary hover:bg-primary/90" data-testid="button-new-trip">
             <Plus className="w-4 h-4 mr-2" /> Arrange New Trip
           </Button>
         </div>
@@ -122,7 +122,7 @@ export default function EATravel() {
                       View Details
                     </Button>
                     {trip.status === "pending_approval" && (
-                      <Button size="sm" className="bg-[#FF385C] hover:bg-[#E23350]" data-testid={`button-approve-trip-${trip.id}`}>
+                      <Button size="sm" className="bg-primary hover:bg-primary/90" data-testid={`button-approve-trip-${trip.id}`}>
                         Approve All
                       </Button>
                     )}
@@ -225,7 +225,7 @@ export default function EATravel() {
                 <li>• Handle booking modifications</li>
                 <li>• Track frequent flyer programs</li>
               </ul>
-              <Button className="w-full bg-[#FF385C] hover:bg-[#E23350]" data-testid="button-ai-travel">
+              <Button className="w-full bg-primary hover:bg-primary/90" data-testid="button-ai-travel">
                 <Bot className="w-4 h-4 mr-2" /> Delegate Travel Task
               </Button>
             </CardContent>

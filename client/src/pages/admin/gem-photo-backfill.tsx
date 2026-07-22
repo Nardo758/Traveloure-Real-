@@ -59,7 +59,7 @@ export default function AdminGemPhotoBackfill() {
             onClick={handleBackfill}
             disabled={backfillMutation.isPending}
             data-testid="button-backfill-photos"
-            className="bg-[#FF385C] hover:bg-[#e03354] text-white"
+            className="bg-primary hover:bg-[#e03354] text-white"
           >
             {backfillMutation.isPending ? (
               <Loader2 className="w-4 h-4 mr-2 animate-spin" />

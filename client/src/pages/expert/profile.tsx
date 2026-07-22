@@ -291,7 +291,7 @@ export default function ExpertProfile() {
             <h1 className="text-2xl font-bold text-console-darkest">Business Profile</h1>
             <p className="text-console-mid">Manage your public profile and preferences</p>
           </div>
-          <Button className="bg-[#FF385C] " data-testid="button-save-profile">
+          <Button className="bg-primary " data-testid="button-save-profile">
             <Save className="w-4 h-4 mr-2" />
             Save Changes
           </Button>
@@ -307,13 +307,13 @@ export default function ExpertProfile() {
               <div className="relative">
                 <Avatar className="w-24 h-24 border-4 border-[#FF385C]/20">
                   <AvatarImage src={user?.profileImageUrl || undefined} />
-                  <AvatarFallback className="bg-[#FF385C]/10 text-[#FF385C] text-2xl font-medium">
+                  <AvatarFallback className="bg-primary/10 text-[#FF385C] text-2xl font-medium">
                     {user?.firstName?.[0] || "E"}{user?.lastName?.[0] || "X"}
                   </AvatarFallback>
                 </Avatar>
                 <Button
                   size="icon"
-                  className="absolute bottom-0 right-0 rounded-full w-8 h-8 bg-[#FF385C] "
+                  className="absolute bottom-0 right-0 rounded-full w-8 h-8 bg-primary "
                   data-testid="button-change-photo"
                 >
                   <Camera className="w-4 h-4" />
@@ -389,7 +389,7 @@ export default function ExpertProfile() {
                       </Select>
                       <Button
                         size="sm"
-                        className="bg-[#FF385C] shrink-0"
+                        className="bg-primary shrink-0"
                         onClick={() => saveRoleMutation.mutate(selectedRole)}
                         disabled={
                           saveRoleMutation.isPending ||
@@ -600,7 +600,7 @@ export default function ExpertProfile() {
             <div className="flex justify-end">
               <Button
                 size="sm"
-                className="bg-[#FF385C] hover:bg-[#e0324f] text-white"
+                className="bg-primary hover:bg-[#e0324f] text-white"
                 disabled={saveNeighborhoodsMutation.isPending || neighborhoodsLoading}
                 onClick={() => saveNeighborhoodsMutation.mutate()}
                 data-testid="button-save-neighbourhoods"

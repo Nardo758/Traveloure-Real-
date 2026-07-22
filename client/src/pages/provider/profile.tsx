@@ -59,7 +59,7 @@ export default function ProviderProfile() {
             <div className="flex flex-col md:flex-row gap-6">
               <div className="relative">
                 <Avatar className="w-24 h-24">
-                  <AvatarFallback className="bg-[#FF385C]/10 text-[#FF385C] text-2xl">GE</AvatarFallback>
+                  <AvatarFallback className="bg-primary/10 text-[#FF385C] text-2xl">GE</AvatarFallback>
                 </Avatar>
                 <Button 
                   variant="outline" 

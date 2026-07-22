@@ -288,7 +288,7 @@ export default function ExpertDashboard() {
                     data-testid={`card-client-${trip.trip_id}`}
                   >
                     <div className="flex items-start gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-[#FF385C]/10 flex items-center justify-center flex-shrink-0">
+                      <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
                         <Plane className="w-5 h-5 text-[#FF385C]" />
                       </div>
                       <div className="flex-1 min-w-0">
@@ -330,7 +330,7 @@ export default function ExpertDashboard() {
                     data-testid={`card-client-booking-${client.id}`}
                   >
                     <div className="flex items-start gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-[#FF385C]/10 flex items-center justify-center flex-shrink-0">
+                      <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
                         <Plane className="w-5 h-5 text-[#FF385C]" />
                       </div>
                       <div className="flex-1 min-w-0">

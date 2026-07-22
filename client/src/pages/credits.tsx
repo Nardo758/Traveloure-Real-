@@ -85,7 +85,7 @@ export default function Credits() {
                 <Card className={`border relative ${pkg.popular ? 'border-[#FF385C] shadow-lg' : 'border-[#E5E7EB]'}`} data-testid={`card-package-${pkg.id}`}>
                   {pkg.popular && (
                     <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                      <Badge className="bg-[#FF385C] text-white">Most Popular</Badge>
+                      <Badge className="bg-primary text-white">Most Popular</Badge>
                     </div>
                   )}
                   <CardHeader className="text-center pt-8">
@@ -115,7 +115,7 @@ export default function Credits() {
                       ))}
                     </ul>
                     <Button 
-                      className={`w-full ${pkg.popular ? 'bg-[#FF385C] hover:bg-[#E23350] text-white' : ''}`}
+                      className={`w-full ${pkg.popular ? 'bg-primary hover:bg-primary/90 text-white' : ''}`}
                       variant={pkg.popular ? "default" : "outline"}
                       onClick={() => purchaseMutation.mutate(pkg)}
                       disabled={purchaseMutation.isPending}

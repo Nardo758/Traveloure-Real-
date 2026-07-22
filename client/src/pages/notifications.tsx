@@ -175,7 +175,7 @@ export default function Notifications() {
               Notifications
             </h1>
             {unreadCount > 0 && (
-              <Badge className="bg-[#FF385C] text-white" data-testid="badge-unread-count">
+              <Badge className="bg-primary text-white" data-testid="badge-unread-count">
                 {unreadCount} new
               </Badge>
             )}
@@ -203,7 +203,7 @@ export default function Notifications() {
                 transition={{ delay: i * 0.05 }}
               >
                 <Card
-                  className={`border ${notification.read ? 'border-[#E5E7EB] bg-white dark:bg-gray-800' : 'border-[#FF385C]/20 bg-[#FFF1F3] dark:bg-[#FF385C]/10'}`}
+                  className={`border ${notification.read ? 'border-[#E5E7EB] bg-white dark:bg-gray-800' : 'border-[#FF385C]/20 bg-[#FFF1F3] dark:bg-primary/10'}`}
                   data-testid={`notification-${notification.index}`}
                 >
                   <CardContent className="p-4">
@@ -265,7 +265,7 @@ export default function Notifications() {
                               <Link href={notification.workspacePath || `/expert/workspace/${notification.tripId}`}>
                                 <Button
                                   size="sm"
-                                  className="mt-2 h-7 px-3 text-xs bg-[#FF385C] hover:bg-[#e0314f] text-white"
+                                  className="mt-2 h-7 px-3 text-xs bg-primary hover:bg-[#e0314f] text-white"
                                   data-testid={`button-open-workspace-${notification.index}`}
                                 >
                                   <Briefcase className="w-3 h-3 mr-1" />

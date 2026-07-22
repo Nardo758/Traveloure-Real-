@@ -207,7 +207,7 @@ export default function ProviderEarnings() {
                       </div>
                       <div className="h-3 bg-console-bg rounded-full overflow-hidden">
                         <div 
-                          className="h-full bg-[#FF385C] rounded-full transition-all"
+                          className="h-full bg-primary rounded-full transition-all"
                           style={{ width: `${(month.amount / maxEarning) * 100}%` }}
                         />
                       </div>
@@ -338,7 +338,7 @@ export default function ProviderEarnings() {
 
             <div className="mt-3 h-3 bg-console-bg rounded-full overflow-hidden flex" data-testid="bar-revenue-split">
               <div
-                className="h-full bg-[#FF385C] transition-all"
+                className="h-full bg-primary transition-all"
                 style={{ width: `${Math.round((1 - revenueBreakdown.effectiveRate) * 100)}%` }}
               />
               <div className="h-full bg-green-500 flex-1" />

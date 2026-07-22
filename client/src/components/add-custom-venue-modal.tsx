@@ -228,7 +228,7 @@ export function AddCustomVenueModal({
             </Button>
             <Button 
               type="submit" 
-              className="flex-1 bg-[#FF385C] hover:bg-[#E31C5F]"
+              className="flex-1 bg-primary hover:bg-[#E31C5F]"
               disabled={createVenueMutation.isPending}
               data-testid="button-add-venue"
             >

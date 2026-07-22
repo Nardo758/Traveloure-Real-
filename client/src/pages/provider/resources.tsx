@@ -129,7 +129,7 @@ export default function ProviderResources() {
                   data-testid={`card-guide-${guide.id}`}
                 >
                   <div className="flex items-start gap-4">
-                    <div className="w-12 h-12 bg-[#FF385C]/10 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center flex-shrink-0">
                       <BookOpen className="w-6 h-6 text-[#FF385C]" />
                     </div>
                     <div className="flex-1">
@@ -274,7 +274,7 @@ export default function ProviderResources() {
         </Card>
 
         {/* Need Help */}
-        <Card className="bg-[#FF385C]/5 border-[#FF385C]/20">
+        <Card className="bg-primary/5 border-[#FF385C]/20">
           <CardContent className="p-6 text-center">
             <MessageSquare className="w-12 h-12 text-[#FF385C] mx-auto mb-4" />
             <h3 className="text-lg font-semibold text-console-darkest">Need More Help?</h3>

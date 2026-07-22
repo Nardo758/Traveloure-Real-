@@ -102,7 +102,7 @@ export function TrendingCities() {
         >
           <div>
             <div className="flex items-center gap-2 mb-2">
-              <div className="w-10 h-10 rounded-full bg-[#FF385C] flex items-center justify-center">
+              <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center">
                 <TrendingUp className="w-5 h-5 text-white" />
               </div>
               <h2 className="text-3xl sm:text-4xl font-bold text-foreground">
@@ -186,7 +186,7 @@ export function TrendingCities() {
           <Link href="/discover?tab=travelpulse">
             <Button
               size="lg"
-              className="bg-[#FF385C] text-white font-semibold px-8"
+              className="bg-primary text-white font-semibold px-8"
               data-testid="button-explore-all-cities"
             >
               Explore All in TravelPulse

@@ -623,7 +623,7 @@ export default function ExpertsPage() {
                 <Link href={config.href}>
                   <Button
                     size="lg"
-                    className="bg-[#FF385C] hover:bg-[#E23350] text-white px-8"
+                    className="bg-primary hover:bg-primary/90 text-white px-8"
                     data-testid="button-become-expert"
                   >
                     {config.cta}

@@ -276,7 +276,7 @@ function MapContent({
               onAddToCart && (
                 <Button 
                   size="sm" 
-                  className="w-full bg-[#FF385C] hover:bg-[#E23350] text-xs h-7"
+                  className="w-full bg-primary hover:bg-primary/90 text-xs h-7"
                   onClick={() => onAddToCart(selectedProvider)}
                 >
                   <Plus className="w-3 h-3 mr-1" />
@@ -464,7 +464,7 @@ export function ExperienceMap({
           </div>
         </div>
         {selectedCount > 0 && (
-          <div className="bg-[#FF385C] text-white rounded-md shadow-md p-2">
+          <div className="bg-primary text-white rounded-md shadow-md p-2">
             <div className="flex items-center gap-2 text-xs">
               <Check className="w-4 h-4" />
               <span className="font-medium">{selectedCount} in plan</span>
@@ -535,7 +535,7 @@ export function RouteVisualization({
               <div key={index} className="flex items-start gap-3 relative">
                 <div className={cn(
                   "w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 z-10",
-                  index === 0 ? "bg-[#FF385C] text-white" : "bg-white dark:bg-gray-800 border-2 border-[#FF385C] text-[#FF385C]"
+                  index === 0 ? "bg-primary text-white" : "bg-white dark:bg-gray-800 border-2 border-[#FF385C] text-[#FF385C]"
                 )}>
                   {index + 1}
                 </div>

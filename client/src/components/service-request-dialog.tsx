@@ -141,7 +141,7 @@ export function ServiceRequestDialog({
           <Button
             onClick={() => submit.mutate()}
             disabled={!canSubmit}
-            className="bg-[#FF385C] hover:bg-[#E31C5F] text-white"
+            className="bg-primary hover:bg-[#E31C5F] text-white"
             data-testid="button-submit-service-request"
           >
             {submit.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}

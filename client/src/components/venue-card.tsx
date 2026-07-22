@@ -137,7 +137,7 @@ export function VenueCard({ venue, onAddToCart, onViewDetails }: VenueCardProps)
         )}
         {onAddToCart && (
           <Button
-            className="flex-1 bg-[#FF385C]"
+            className="flex-1 bg-primary"
             onClick={() => onAddToCart(venue)}
             data-testid={`button-add-to-cart-${venue.id}`}
           >

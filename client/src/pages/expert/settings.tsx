@@ -325,7 +325,7 @@ export default function ExpertSettings() {
                     </div>
                   </div>
                 ))}
-                <Button className="w-full mt-4 bg-[#FF385C] hover:bg-[#FF385C]/90" data-testid="button-save-notifications">
+                <Button className="w-full mt-4 bg-primary hover:bg-primary/90" data-testid="button-save-notifications">
                   <Save className="w-4 h-4 mr-2" /> Save Preferences
                 </Button>
               </CardContent>
@@ -390,7 +390,7 @@ export default function ExpertSettings() {
                   </div>
                 </div>
 
-                <Button className="w-full bg-[#FF385C] hover:bg-[#FF385C]/90" data-testid="button-save-availability">
+                <Button className="w-full bg-primary hover:bg-primary/90" data-testid="button-save-availability">
                   <Save className="w-4 h-4 mr-2" /> Save Status
                 </Button>
               </CardContent>
@@ -466,7 +466,7 @@ export default function ExpertSettings() {
                     </div>
                     <Button
                       onClick={addTemplate}
-                      className="bg-[#FF385C] hover:bg-[#FF385C]/90"
+                      className="bg-primary hover:bg-primary/90"
                       data-testid="button-add-template"
                     >
                       <Plus className="w-4 h-4 mr-2" /> Add Template
@@ -517,7 +517,7 @@ export default function ExpertSettings() {
                   </Select>
                 </div>
 
-                <Button className="w-full bg-[#FF385C] hover:bg-[#FF385C]/90" data-testid="button-save-preferences">
+                <Button className="w-full bg-primary hover:bg-primary/90" data-testid="button-save-preferences">
                   <Save className="w-4 h-4 mr-2" /> Save Preferences
                 </Button>
               </CardContent>
@@ -567,7 +567,7 @@ export default function ExpertSettings() {
                     </div>
                   </div>
 
-                  <Button className="w-full bg-[#FF385C] hover:bg-[#FF385C]/90" data-testid="button-change-password">
+                  <Button className="w-full bg-primary hover:bg-primary/90" data-testid="button-change-password">
                     <Save className="w-4 h-4 mr-2" /> Change Password
                   </Button>
                 </CardContent>
@@ -631,7 +631,7 @@ export default function ExpertSettings() {
                   </div>
                 )}
 
-                <Button className="w-full bg-[#FF385C] hover:bg-[#FF385C]/90" data-testid="button-save-leaderboard">
+                <Button className="w-full bg-primary hover:bg-primary/90" data-testid="button-save-leaderboard">
                   <Save className="w-4 h-4 mr-2" /> Save Preference
                 </Button>
               </CardContent>
