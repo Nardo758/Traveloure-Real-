@@ -301,17 +301,33 @@ class BookingService {
           }
           finalPrice = dbPrice;
         } else {
-          // AI-generated item — no catalog price exists, so the client's number is
-          // the only source (§14 residual, filed). Sanitize it hard: a negative or
-          // non-finite "price" would REDUCE the PaymentIntent total for the whole
-          // cart (pay less for the real items), so clamp to [0, 100000]. This is
-          // the buyer's own charge — no payout derives from it. money-derive-ok
-          const rawPrice = Number(item.price);
-          finalPrice = Number.isFinite(rawPrice) ? Math.min(Math.max(rawPrice, 0), 100000) : 0;
-          if (finalPrice !== item.price) {
-            console.warn(
-              `[BookingService] Sanitized AI-item price for "${item.title}": client sent ${item.price}, using ${finalPrice}.`
-            );
+          // AI-generated item — resolve price from server record only (§14).
+          // Never trust the client-supplied price value.
+          const itineraryRecord = await db.execute(sql`
+            SELECT estimated_cost AS price FROM itinerary_items WHERE id = ${item.id} LIMIT 1
+          `);
+
+          if (itineraryRecord.rows && itineraryRecord.rows.length > 0) {
+            const serverPrice = itineraryRecord.rows[0].price;
+            finalPrice = serverPrice !== null ? Number(serverPrice) : 0;
+            console.log(`[BookingService] AI-item "${item.title}" price derived from itinerary_items: ${finalPrice}`);
+          } else {
+            // Fall back to itinerary variant items (optimizer output)
+            const variantRecord = await db.execute(sql`
+              SELECT price FROM itinerary_variant_items WHERE id = ${item.id} LIMIT 1
+            `);
+
+            if (variantRecord.rows && variantRecord.rows.length > 0) {
+              const serverPrice = variantRecord.rows[0].price;
+              finalPrice = serverPrice !== null ? Number(serverPrice) : 0;
+              console.log(`[BookingService] AI-item "${item.title}" price derived from itinerary_variant_items: ${finalPrice}`);
+            } else {
+              console.error(
+                `[BookingService] No server price record found for AI item "${item.title}" (id=${item.id}). Rejecting.`
+              );
+              errors.push(`Cannot verify price for "${item.title}" — no server record found (id=${item.id}).`);
+              continue;
+            }
           }
         }
 
