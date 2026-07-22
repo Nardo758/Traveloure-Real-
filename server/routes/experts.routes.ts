@@ -221,12 +221,17 @@ router.get("/api/expert/service-templates", isAuthenticated, async (req, res) =>
 
       // No application submitted — tell the client so it can prompt the user.
       if (!formRow) {
-        return res.json({ requiresApplication: true, applicationRejected: false, templates: [] });
+        return res.json({ requiresApplication: true, applicationRejected: false, pendingApproval: false, templates: [] });
       }
 
       // Application was rejected — block access to service creation.
       if (formRow.status === "rejected") {
-        return res.json({ requiresApplication: false, applicationRejected: true, templates: [] });
+        return res.json({ requiresApplication: false, applicationRejected: true, pendingApproval: false, templates: [] });
+      }
+
+      // Application is pending review — block access until approved.
+      if (formRow.status !== "approved") {
+        return res.json({ requiresApplication: false, applicationRejected: false, pendingApproval: true, templates: [] });
       }
 
       // expertId and isActive columns dropped in migration 013; all ESO rows are platform templates.
