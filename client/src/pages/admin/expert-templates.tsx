@@ -191,7 +191,7 @@ export default function AdminExpertTemplates() {
               onClick={() => setActiveTab(tab.key)}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                 activeTab === tab.key
-                  ? "bg-[#FF385C] text-white"
+                  ? "bg-primary text-white"
                   : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
               }`}
               data-testid={`tab-${tab.key}`}
@@ -340,7 +340,7 @@ export default function AdminExpertTemplates() {
                     Cancel
                   </Button>
                   <Button
-                    className="flex-1 bg-[#FF385C] hover:bg-[#E23350]"
+                    className="flex-1 bg-primary hover:bg-primary/90"
                     onClick={() =>
                       updateRolesMutation.mutate({
                         id: editingTemplate.id,

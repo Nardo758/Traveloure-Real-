@@ -202,7 +202,7 @@ export function UnifiedResultCard({
           
           {isPartner && (
             <Badge 
-              className="absolute top-2 left-2 bg-[#FF385C] text-white border-none"
+              className="absolute top-2 left-2 bg-primary text-white border-none"
               data-testid={`badge-partner-${result.id}`}
             >
               <Check className="h-3 w-3 mr-1" />

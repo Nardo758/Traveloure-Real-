@@ -652,7 +652,7 @@ export default function ExpertDetailPage() {
                         service to attach the request to. */}
                     {handoffTripId && services.length > 0 && (
                       <Button
-                        className="w-full bg-[#FF385C] hover:bg-[#E23350]"
+                        className="w-full bg-primary hover:bg-primary/90"
                         size="lg"
                         onClick={handleRequestHelpWithPlan}
                         disabled={requestHelpMutation.isPending || requestHelpMutation.isSuccess}

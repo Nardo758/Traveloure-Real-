@@ -179,7 +179,7 @@ function VisaStatusTimeline({ metadata, bookingId }: { metadata: VisaBookingMeta
               <div key={step.key} className="flex-1 flex flex-col items-center relative" data-testid={`visa-step-${step.key}`}>
                 {idx < stepsToShow.length - 1 && (
                   <div
-                    className={`absolute top-4 left-1/2 w-full h-0.5 ${isPast || isCurrent ? "bg-[#FF385C]" : "bg-muted-foreground/20"}`}
+                    className={`absolute top-4 left-1/2 w-full h-0.5 ${isPast || isCurrent ? "bg-primary" : "bg-muted-foreground/20"}`}
                     style={{ left: "50%", width: "100%" }}
                   />
                 )}
@@ -188,9 +188,9 @@ function VisaStatusTimeline({ metadata, bookingId }: { metadata: VisaBookingMeta
                     isCurrent
                       ? isRejected
                         ? "border-red-500 bg-red-50 text-red-500"
-                        : "border-[#FF385C] bg-[#FF385C] text-white"
+                        : "border-[#FF385C] bg-primary text-white"
                       : isPast
-                      ? "border-[#FF385C] bg-[#FF385C]/10 text-[#FF385C]"
+                      ? "border-[#FF385C] bg-primary/10 text-[#FF385C]"
                       : "border-muted-foreground/30 bg-background text-muted-foreground/40"
                   }`}
                 >

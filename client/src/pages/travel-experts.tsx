@@ -470,7 +470,7 @@ export default function TravelExpertsPage() {
                     className={cn(
                       "w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium",
                       currentStep === step.id
-                        ? "bg-[#FF385C] text-white"
+                        ? "bg-primary text-white"
                         : currentStep > step.id
                         ? "bg-green-100 text-green-600"
                         : "bg-[#F3F4F6] text-[#9CA3AF]"
@@ -651,7 +651,7 @@ export default function TravelExpertsPage() {
                 {influencerFromUrl && (
                   <div className="border-t pt-6 mt-6">
                     <div className="flex items-center gap-3 mb-4">
-                      <Badge className="bg-[#FF385C] text-white">
+                      <Badge className="bg-primary text-white">
                         <Sparkles className="w-3 h-3 mr-1" />
                         Influencer Program
                       </Badge>
@@ -768,7 +768,7 @@ export default function TravelExpertsPage() {
                   </p>
                   <div className="flex flex-wrap gap-2 mb-2">
                     {formData.neighborhoods.map((n) => (
-                      <Badge key={n} className="bg-[#FF385C] text-white gap-1 pr-1" data-testid={`badge-neighborhood-${n}`}>
+                      <Badge key={n} className="bg-primary text-white gap-1 pr-1" data-testid={`badge-neighborhood-${n}`}>
                         {n}
                         <button
                           type="button"
@@ -848,7 +848,7 @@ export default function TravelExpertsPage() {
                         className={cn(
                           "cursor-pointer px-3 py-2",
                           formData.languages.includes(lang)
-                            ? "bg-[#FF385C] hover:bg-[#E23350]"
+                            ? "bg-primary hover:bg-primary/90"
                             : "border-[#E5E7EB] hover:border-[#FF385C]"
                         )}
                         onClick={() => toggleArrayItem("languages", lang)}
@@ -954,7 +954,7 @@ export default function TravelExpertsPage() {
                         className={cn(
                           "cursor-pointer px-3 py-2",
                           formData.experienceTypes.includes(type)
-                            ? "bg-[#FF385C] hover:bg-[#E23350]"
+                            ? "bg-primary hover:bg-primary/90"
                             : "border-[#E5E7EB] hover:border-[#FF385C]"
                         )}
                         onClick={() => toggleArrayItem("experienceTypes", type)}
@@ -989,7 +989,7 @@ export default function TravelExpertsPage() {
                         className={cn(
                           "cursor-pointer px-3 py-2",
                           formData.destinations.includes(dest)
-                            ? "bg-[#FF385C] hover:bg-[#E23350]"
+                            ? "bg-primary hover:bg-primary/90"
                             : "border-[#E5E7EB] hover:border-[#FF385C]"
                         )}
                         onClick={() => toggleArrayItem("destinations", dest)}
@@ -1014,7 +1014,7 @@ export default function TravelExpertsPage() {
                         className={cn(
                           "cursor-pointer px-3 py-2",
                           formData.specialties.includes(spec)
-                            ? "bg-[#FF385C] hover:bg-[#E23350]"
+                            ? "bg-primary hover:bg-primary/90"
                             : "border-[#E5E7EB] hover:border-[#FF385C]"
                         )}
                         onClick={() => toggleArrayItem("specialties", spec)}
@@ -1039,7 +1039,7 @@ export default function TravelExpertsPage() {
                         className={cn(
                           "cursor-pointer px-3 py-2",
                           formData.languages.includes(lang)
-                            ? "bg-[#FF385C] hover:bg-[#E23350]"
+                            ? "bg-primary hover:bg-primary/90"
                             : "border-[#E5E7EB] hover:border-[#FF385C]"
                         )}
                         onClick={() => toggleArrayItem("languages", lang)}
@@ -1064,7 +1064,7 @@ export default function TravelExpertsPage() {
                         className={cn(
                           "cursor-pointer px-3 py-2",
                           formData.experienceTypes.includes(exp.id)
-                            ? "bg-[#FF385C] hover:bg-[#E23350]"
+                            ? "bg-primary hover:bg-primary/90"
                             : "border-[#E5E7EB] hover:border-[#FF385C]"
                         )}
                         onClick={() => toggleArrayItem("experienceTypes", exp.id)}
@@ -1089,7 +1089,7 @@ export default function TravelExpertsPage() {
                         className={cn(
                           "cursor-pointer px-3 py-2",
                           formData.specializations.includes(spec.value)
-                            ? "bg-[#FF385C] hover:bg-[#E23350]"
+                            ? "bg-primary hover:bg-primary/90"
                             : "border-[#E5E7EB] hover:border-[#FF385C]"
                         )}
                         onClick={() => toggleArrayItem("specializations", spec.value)}
@@ -1126,7 +1126,7 @@ export default function TravelExpertsPage() {
                           className={cn(
                             "cursor-pointer px-3 py-2",
                             formData.selectedServices.includes(offering.id)
-                              ? "bg-[#FF385C] hover:bg-[#E23350]"
+                              ? "bg-primary hover:bg-primary/90"
                               : "border-[#E5E7EB] hover:border-[#FF385C]"
                           )}
                           onClick={() => toggleArrayItem("selectedServices", offering.id)}
@@ -1422,7 +1422,7 @@ export default function TravelExpertsPage() {
             <Button
               onClick={nextStep}
               disabled={!canProceed()}
-              className="bg-[#FF385C] hover:bg-[#E23350] text-white"
+              className="bg-primary hover:bg-primary/90 text-white"
               data-testid="button-next-step"
             >
               Next
@@ -1432,7 +1432,7 @@ export default function TravelExpertsPage() {
             <Button
               onClick={handleSubmit}
               disabled={!formData.agreeToTerms || isSubmitting}
-              className="bg-[#FF385C] hover:bg-[#E23350] text-white"
+              className="bg-primary hover:bg-primary/90 text-white"
               data-testid="button-submit"
             >
               {isSubmitting ? "Submitting..." : "Submit Application"}

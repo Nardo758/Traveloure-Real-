@@ -38,7 +38,7 @@ export default function EAVenues() {
             </h1>
             <p className="text-gray-600">Manage favorite venues and search new locations</p>
           </div>
-          <Button className="bg-[#FF385C] hover:bg-[#E23350]" data-testid="button-add-venue">
+          <Button className="bg-primary hover:bg-primary/90" data-testid="button-add-venue">
             <Plus className="w-4 h-4 mr-2" /> Add Venue
           </Button>
         </div>

@@ -20,7 +20,7 @@ export default function LayoutMock() {
       <header className="flex items-center justify-between px-4 py-3 border-b bg-white shrink-0">
         <div className="flex items-center gap-2">
           <span className="text-xl font-bold text-[#FF385C]">TRAVELOURE</span>
-          <span className="text-xs bg-[#FF385C] text-white px-2 py-0.5 rounded">BETA</span>
+          <span className="text-xs bg-primary text-white px-2 py-0.5 rounded">BETA</span>
         </div>
         {/* Credits and Generate buttons moved to hero overlay */}
       </header>
@@ -42,7 +42,7 @@ export default function LayoutMock() {
                 <span className="text-amber-500">0 Credits</span>
                 <span>+</span>
               </Button>
-              <Button className="bg-[#FF385C] hover:bg-[#E02D50]">
+              <Button className="bg-primary hover:bg-[#E02D50]">
                 Generate Itinerary
               </Button>
             </div>
@@ -111,7 +111,7 @@ export default function LayoutMock() {
               </div>
 
               {/* Submit Button */}
-              <Button className="w-full bg-[#FF385C] hover:bg-[#E02D50]">
+              <Button className="w-full bg-primary hover:bg-[#E02D50]">
                 Submit Trip Details
               </Button>
             </div>
@@ -123,25 +123,25 @@ export default function LayoutMock() {
               <TabsList className="bg-transparent gap-2 p-0 h-auto">
                 <TabsTrigger 
                   value="activities"
-                  className="data-[state=active]:bg-[#FF385C] data-[state=active]:text-white rounded-full px-4 py-2 border"
+                  className="data-[state=active]:bg-primary data-[state=active]:text-white rounded-full px-4 py-2 border"
                 >
                   Activities
                 </TabsTrigger>
                 <TabsTrigger 
                   value="hotels"
-                  className="data-[state=active]:bg-[#FF385C] data-[state=active]:text-white rounded-full px-4 py-2 border"
+                  className="data-[state=active]:bg-primary data-[state=active]:text-white rounded-full px-4 py-2 border"
                 >
                   Hotels
                 </TabsTrigger>
                 <TabsTrigger 
                   value="services"
-                  className="data-[state=active]:bg-[#FF385C] data-[state=active]:text-white rounded-full px-4 py-2 border"
+                  className="data-[state=active]:bg-primary data-[state=active]:text-white rounded-full px-4 py-2 border"
                 >
                   Services
                 </TabsTrigger>
                 <TabsTrigger 
                   value="ai"
-                  className="data-[state=active]:bg-[#FF385C] data-[state=active]:text-white rounded-full px-4 py-2 border"
+                  className="data-[state=active]:bg-primary data-[state=active]:text-white rounded-full px-4 py-2 border"
                 >
                   AI Optimization
                 </TabsTrigger>
@@ -182,7 +182,7 @@ export default function LayoutMock() {
                 disableDefaultUI={false}
               >
                 <AdvancedMarker position={{ lat: 48.8566, lng: 2.3522 }}>
-                  <div className="w-8 h-8 bg-[#FF385C] rounded-full flex items-center justify-center shadow-lg">
+                  <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center shadow-lg">
                     <MapPin className="w-4 h-4 text-white" />
                   </div>
                 </AdvancedMarker>

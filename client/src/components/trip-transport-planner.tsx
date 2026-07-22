@@ -844,7 +844,7 @@ export function TripTransportPlanner({
                   >
                     {isSelected && (
                       <div className="absolute -top-2.5 left-3">
-                        <Badge className="bg-[#FF385C] text-white border-0">Selected</Badge>
+                        <Badge className="bg-primary text-white border-0">Selected</Badge>
                       </div>
                     )}
                     <CardContent className="p-4 pt-5 space-y-3">

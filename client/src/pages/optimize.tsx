@@ -404,7 +404,7 @@ export default function OptimizePage() {
                               {tier.name}
                             </Label>
                             {tier.recommended && (
-                              <Badge className="bg-[#FF385C] text-white">Recommended</Badge>
+                              <Badge className="bg-primary text-white">Recommended</Badge>
                             )}
                           </div>
                           <p className="text-sm text-gray-500 mt-1">{tier.description}</p>
@@ -438,7 +438,7 @@ export default function OptimizePage() {
 
                 <div className="flex gap-3">
                   <Button
-                    className="flex-1 bg-[#FF385C] hover:bg-[#E23350] text-white h-12 text-lg font-semibold"
+                    className="flex-1 bg-primary hover:bg-primary/90 text-white h-12 text-lg font-semibold"
                     onClick={() => setShowComparison(true)}
                     data-testid="button-unlock-optimization"
                   >
@@ -584,7 +584,7 @@ export default function OptimizePage() {
                     className={cn(
                       "w-full mt-4",
                       selectedPlan === plan.id
-                        ? "bg-[#FF385C] hover:bg-[#E23350] text-white"
+                        ? "bg-primary hover:bg-primary/90 text-white"
                         : "bg-gray-100 hover:bg-gray-200 text-gray-900"
                     )}
                     data-testid={`button-select-${plan.id}`}
@@ -649,7 +649,7 @@ export default function OptimizePage() {
                   </p>
                 </div>
                 <Button
-                  className="bg-[#FF385C] hover:bg-[#E23350] text-white px-8"
+                  className="bg-primary hover:bg-primary/90 text-white px-8"
                   data-testid="button-proceed-booking"
                 >
                   Proceed to Booking

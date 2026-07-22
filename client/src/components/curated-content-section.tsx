@@ -278,7 +278,7 @@ function CuratedCard({
           />
           <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
           <div className="absolute top-2 left-2 flex items-center gap-1.5 flex-wrap">
-            <Badge className="bg-[#FF385C] text-white border-0 text-[10px] px-2 py-0.5">
+            <Badge className="bg-primary text-white border-0 text-[10px] px-2 py-0.5">
               <Sparkles className="w-2.5 h-2.5 mr-1" />
               Curated
             </Badge>
@@ -344,7 +344,7 @@ function CuratedCard({
               // ALL affiliate items route through platform intermediary — click recorded server-side
               <Button
                 size="sm"
-                className="flex-1 text-xs h-8 bg-[#FF385C] hover:bg-[#E23350]"
+                className="flex-1 text-xs h-8 bg-primary hover:bg-primary/90"
                 onClick={handleBookViaTraveloure}
                 disabled={affiliateRedirectMutation.isPending}
                 data-testid={`button-book-via-traveloure-${item.id}`}
@@ -441,7 +441,7 @@ export function CuratedContentSection({
       <div className="flex items-center gap-2 mb-3">
         <Sparkles className="h-4 w-4 text-[#FF385C]" />
         <h3 className="text-sm font-semibold text-foreground">{label}</h3>
-        <Badge className="text-[10px] bg-[#FF385C]/10 text-[#FF385C] border-[#FF385C]/20 hover:bg-[#FF385C]/10 ml-1">
+        <Badge className="text-[10px] bg-primary/10 text-[#FF385C] border-[#FF385C]/20 hover:bg-primary/10 ml-1">
           {items.length} available
         </Badge>
         <span className="text-xs text-muted-foreground">in {destination}</span>

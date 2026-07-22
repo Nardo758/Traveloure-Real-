@@ -326,7 +326,7 @@ export function ExpertCard({ expert, showServices = true, experienceTypeFilter, 
           <Link href={`/experts/${expert.id}${detailQuery ?? ""}`} className="flex-1">
             <Button 
               size="sm" 
-              className="w-full bg-[#FF385C] hover:bg-[#E23350] h-7 text-xs"
+              className="w-full bg-primary hover:bg-primary/90 h-7 text-xs"
               data-testid="button-view-profile"
             >
               View Profile

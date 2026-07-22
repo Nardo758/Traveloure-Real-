@@ -207,7 +207,7 @@ export default function MyTrips() {
             My Plans & Events
           </h1>
           <Link href="/experiences">
-            <Button className="bg-[#FF385C] hover:bg-[#E23350] text-white" data-testid="button-create-new">
+            <Button className="bg-primary hover:bg-primary/90 text-white" data-testid="button-create-new">
               <Plus className="w-4 h-4 mr-2" />
               Create New
             </Button>
@@ -361,7 +361,7 @@ export default function MyTrips() {
               </p>
               {!searchQuery && typeFilter === "all" && statusFilter === "all" && (
                 <Link href="/experiences">
-                  <Button className="bg-[#FF385C] hover:bg-[#E23350] text-white" data-testid="button-create-first">
+                  <Button className="bg-primary hover:bg-primary/90 text-white" data-testid="button-create-first">
                     <Plus className="w-4 h-4 mr-2" />
                     Create Your First Plan
                   </Button>

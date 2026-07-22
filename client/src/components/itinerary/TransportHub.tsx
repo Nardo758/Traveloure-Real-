@@ -238,7 +238,7 @@ export function TransportHub({ tripId, destination = "", readOnly = false, onNav
                           <div className="flex items-center gap-2">
                             <span className="font-semibold text-sm text-gray-900 dark:text-white">{p.name}</span>
                             {p.badge && (
-                              <Badge className="bg-[#FF385C] text-white text-[10px] px-1.5 py-0">{p.badge}</Badge>
+                              <Badge className="bg-primary text-white text-[10px] px-1.5 py-0">{p.badge}</Badge>
                             )}
                           </div>
                           <p className="text-xs text-gray-500">{p.tagline}</p>
@@ -269,7 +269,7 @@ export function TransportHub({ tripId, destination = "", readOnly = false, onNav
               >
                 <Card className="border border-gray-200 dark:border-gray-700 hover:border-[#FF385C] hover:shadow-sm transition-all duration-200">
                   <CardContent className="p-3 flex flex-col items-center gap-2">
-                    <div className="p-2 rounded-lg bg-gray-100 dark:bg-gray-800 group-hover:bg-[#FFE3E8] dark:group-hover:bg-[#FF385C]/20 transition-colors">
+                    <div className="p-2 rounded-lg bg-gray-100 dark:bg-gray-800 group-hover:bg-[#FFE3E8] dark:group-hover:bg-primary/20 transition-colors">
                       <m.icon className="w-5 h-5 text-gray-600 dark:text-gray-300 group-hover:text-[#FF385C] transition-colors" />
                     </div>
                     <span className="text-xs font-medium text-gray-700 dark:text-gray-300">{m.label}</span>
@@ -288,7 +288,7 @@ export function TransportHub({ tripId, destination = "", readOnly = false, onNav
               <p className="text-xs text-gray-500 mt-0.5">12Go has the best coverage for trains, buses & ferries across Southeast and East Asia.</p>
             </div>
             <a href={twelveGoUrl} target="_blank" rel="noopener noreferrer">
-              <Button size="sm" className="bg-[#FF385C] hover:bg-[#E23350] text-white whitespace-nowrap">
+              <Button size="sm" className="bg-primary hover:bg-primary/90 text-white whitespace-nowrap">
                 Search Routes <ArrowRight className="w-3.5 h-3.5 ml-1.5" />
               </Button>
             </a>

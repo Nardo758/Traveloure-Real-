@@ -131,7 +131,7 @@ export default function CreditsBillingPage() {
             </h1>
             <p className="text-[#6B7280] mt-1">Manage your credits and payment methods</p>
           </div>
-          <Button className="bg-[#FF385C] hover:bg-[#E23350]" data-testid="button-buy-credits">
+          <Button className="bg-primary hover:bg-primary/90" data-testid="button-buy-credits">
             <Plus className="w-4 h-4 mr-2" />
             Buy Credits
           </Button>
@@ -207,12 +207,12 @@ export default function CreditsBillingPage() {
                   data-testid={`card-package-${pkg.credits}`}
                 >
                   {pkg.popular && (
-                    <Badge className="absolute -top-3 left-1/2 -translate-x-1/2 bg-[#FF385C]">
+                    <Badge className="absolute -top-3 left-1/2 -translate-x-1/2 bg-primary">
                       Most Popular
                     </Badge>
                   )}
                   <CardContent className="p-6 text-center">
-                    <div className="p-3 bg-[#FFE3E8] dark:bg-[#FF385C]/20 rounded-full w-fit mx-auto mb-4">
+                    <div className="p-3 bg-[#FFE3E8] dark:bg-primary/20 rounded-full w-fit mx-auto mb-4">
                       <Sparkles className="w-8 h-8 text-[#FF385C]" />
                     </div>
                     <p className="text-4xl font-bold text-[#111827] dark:text-white">{pkg.credits}</p>
@@ -226,7 +226,7 @@ export default function CreditsBillingPage() {
                     <Button
                       className={`w-full mt-4 ${
                         selectedPackage === pkg.id
-                          ? "bg-[#FF385C] hover:bg-[#E23350]"
+                          ? "bg-primary hover:bg-primary/90"
                           : "bg-gray-900 hover:bg-gray-800 dark:bg-gray-700"
                       }`}
                       onClick={(e) => {
@@ -244,7 +244,7 @@ export default function CreditsBillingPage() {
             {selectedPackage && (
               <div className="mt-6 flex justify-end">
                 <Button
-                  className="bg-[#FF385C] hover:bg-[#E23350]"
+                  className="bg-primary hover:bg-primary/90"
                   onClick={() => {
                     const pkg = creditPackages.find(p => p.id === selectedPackage);
                     if (pkg) purchaseMutation.mutate(pkg);

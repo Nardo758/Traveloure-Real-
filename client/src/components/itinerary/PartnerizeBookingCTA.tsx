@@ -120,7 +120,7 @@ export function PartnerizeBookingCTA({
         disabled={submitting || !canRequestExpert}
         title={!canRequestExpert ? "This offer isn't linked to a trip or plan yet" : undefined}
         size="sm"
-        className="bg-[#FF385C] hover:bg-[#E23350] text-white"
+        className="bg-primary hover:bg-primary/90 text-white"
         data-testid="button-partnerize-book-with-expert"
       >
         {submitting ? (

@@ -279,7 +279,7 @@ export default function VisaHelpPage() {
                   <p className="text-sm text-gray-500 dark:text-gray-400">
                     Your visa assistance request has been sent. The expert will reach out to you shortly.
                   </p>
-                  <Button className="mt-2 bg-[#FF385C] hover:bg-[#FF385C]/90 text-white" onClick={() => setBookingService(null)}>
+                  <Button className="mt-2 bg-primary hover:bg-primary/90 text-white" onClick={() => setBookingService(null)}>
                     Done
                   </Button>
                 </div>
@@ -360,7 +360,7 @@ export default function VisaHelpPage() {
                       Cancel
                     </Button>
                     <Button
-                      className="flex-1 bg-[#FF385C] hover:bg-[#FF385C]/90 text-white"
+                      className="flex-1 bg-primary hover:bg-primary/90 text-white"
                       onClick={handleSubmitBooking}
                       disabled={!intakePassport || !intakeDestination || !intakeStartDate || bookingMutation.isPending}
                       data-testid="button-submit-visa-booking"
@@ -382,7 +382,7 @@ export default function VisaHelpPage() {
       {/* Hero */}
       <div className="bg-gradient-to-br from-[#FF385C]/10 via-orange-50 to-blue-50 dark:from-[#FF385C]/20 dark:via-gray-900 dark:to-gray-900 py-16 px-4">
         <div className="max-w-3xl mx-auto text-center space-y-4">
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#FF385C]/10 text-[#FF385C] text-sm font-medium">
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/10 text-[#FF385C] text-sm font-medium">
             <Shield className="w-4 h-4" />
             AI-Powered Visa Requirements
           </div>
@@ -443,7 +443,7 @@ export default function VisaHelpPage() {
             <Button
               onClick={handleLookup}
               disabled={!passportCountry || !destinationCountry || requirementsMutation.isPending}
-              className="w-full bg-[#FF385C] hover:bg-[#FF385C]/90 text-white"
+              className="w-full bg-primary hover:bg-primary/90 text-white"
               data-testid="button-lookup-visa"
             >
               {requirementsMutation.isPending ? (
@@ -665,7 +665,7 @@ export default function VisaHelpPage() {
               { step: "3", title: "Travel confidently", desc: "Your expert keeps you updated until your visa is approved and you're ready to go.", icon: CheckCircle },
             ].map(({ step, title, desc, icon: Icon }) => (
               <div key={step} className="flex gap-4">
-                <div className="w-10 h-10 rounded-full bg-[#FF385C] text-white flex items-center justify-center font-bold flex-shrink-0">
+                <div className="w-10 h-10 rounded-full bg-primary text-white flex items-center justify-center font-bold flex-shrink-0">
                   {step}
                 </div>
                 <div>
@@ -695,7 +695,7 @@ function VisaExpertCard({ service, onBook }: { service: Service; onBook: (servic
             {avatar ? (
               <img src={avatar} alt={name} className="w-12 h-12 rounded-full object-cover border-2 border-[#FF385C]/20" />
             ) : (
-              <div className="w-12 h-12 rounded-full bg-[#FF385C]/10 border-2 border-[#FF385C]/20 flex items-center justify-center text-[#FF385C] font-bold text-lg">
+              <div className="w-12 h-12 rounded-full bg-primary/10 border-2 border-[#FF385C]/20 flex items-center justify-center text-[#FF385C] font-bold text-lg">
                 {name.charAt(0).toUpperCase()}
               </div>
             )}
@@ -734,7 +734,7 @@ function VisaExpertCard({ service, onBook }: { service: Service; onBook: (servic
           </div>
           <Button
             size="sm"
-            className="bg-[#FF385C] hover:bg-[#FF385C]/90 text-white"
+            className="bg-primary hover:bg-primary/90 text-white"
             onClick={() => onBook(service)}
             data-testid={`button-book-visa-${service.id}`}
           >

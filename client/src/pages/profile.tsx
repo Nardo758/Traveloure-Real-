@@ -219,7 +219,7 @@ export default function Profile() {
         {/* Save Button */}
         <div className="flex justify-end">
           <Button
-            className="bg-[#FF385C] hover:bg-[#E23350] text-white"
+            className="bg-primary hover:bg-primary/90 text-white"
             onClick={handleSave}
             disabled={isLoading}
             data-testid="button-save-profile"

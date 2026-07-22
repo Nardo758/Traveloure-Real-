@@ -1154,9 +1154,9 @@ export default function CartPage() {
                     disabled={!s.reachable}
                     className={`flex items-center gap-2 px-4 py-2 rounded-full transition-colors ${
                       flowStep === s.key
-                        ? "bg-[#FF385C] text-white"
+                        ? "bg-primary text-white"
                         : s.reachable
-                          ? "bg-muted hover:bg-[#FF385C]/15 hover:text-[#FF385C] cursor-pointer"
+                          ? "bg-muted hover:bg-primary/15 hover:text-[#FF385C] cursor-pointer"
                           : "bg-muted/60 text-muted-foreground/60 cursor-default"
                     }`}
                     data-testid={`step-pill-${s.key}`}
@@ -1293,7 +1293,7 @@ export default function CartPage() {
                       type="button"
                       onClick={handleOptimizeClick}
                       disabled={resolvingTrip || previewLoading}
-                      className="w-full flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-[#FF385C]/30 bg-[#FF385C]/5 px-4 py-2.5 text-left text-sm hover:bg-[#FF385C]/10 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FF385C]"
+                      className="w-full flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-[#FF385C]/30 bg-primary/5 px-4 py-2.5 text-left text-sm hover:bg-primary/10 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#FF385C]"
                       data-testid="cart-optimize-nudge"
                     >
                       <Sparkles className="w-4 h-4 text-[#FF385C] flex-shrink-0" />
@@ -1681,7 +1681,7 @@ export default function CartPage() {
                           </div>
                         </div>
                         <Button
-                          className="w-full bg-[#FF385C] hover:bg-[#E23350]"
+                          className="w-full bg-primary hover:bg-primary/90"
                           size="lg"
                           onClick={handleOptimizeClick}
                           disabled={previewLoading || resolvingTrip}
@@ -1811,7 +1811,7 @@ export default function CartPage() {
                   </CardContent>
                   <CardFooter className="flex flex-col gap-3">
                     <Button
-                      className="w-full bg-[#FF385C] hover:bg-[#E23350]"
+                      className="w-full bg-primary hover:bg-primary/90"
                       size="lg"
                       onClick={handleConfirmTripDetails}
                       disabled={previewLoading || !tripDestination.trim()}
@@ -1858,7 +1858,7 @@ export default function CartPage() {
                         </div>
                         <div className="h-2.5 bg-muted rounded-full overflow-hidden">
                           <div
-                            className="h-full bg-[#FF385C] transition-all"
+                            className="h-full bg-primary transition-all"
                             style={{ width: `${optimizationPreview.currentScore}%` }}
                           />
                         </div>
@@ -1914,7 +1914,7 @@ export default function CartPage() {
                               <span className="text-xs w-20 text-muted-foreground">{labels[key]}</span>
                               <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
                                 <div
-                                  className="h-full bg-[#FF385C]/70 rounded-full"
+                                  className="h-full bg-primary/70 rounded-full"
                                   style={{ width: `${val}%` }}
                                 />
                               </div>
@@ -2001,7 +2001,7 @@ export default function CartPage() {
 
                       {!optimizationPayment && (
                         <Button
-                          className="w-full bg-[#FF385C] hover:bg-[#E23350]"
+                          className="w-full bg-primary hover:bg-primary/90"
                           size="lg"
                           onClick={requestOptimizationPayment}
                           disabled={paymentLoading || creatingComparison}
@@ -2070,7 +2070,7 @@ export default function CartPage() {
                             <div className="flex-1">
                               <div className="h-3 bg-muted rounded-full overflow-hidden">
                                 <div 
-                                  className="h-full bg-[#FF385C] transition-all"
+                                  className="h-full bg-primary transition-all"
                                   style={{ width: `${optimizationResult.overallScore}%` }}
                                 />
                               </div>
@@ -2189,7 +2189,7 @@ export default function CartPage() {
                       )}
                       {(cart?.items?.length || 0) > 0 ? (
                         <Button
-                          className="w-full bg-[#FF385C] hover:bg-[#E23350]"
+                          className="w-full bg-primary hover:bg-primary/90"
                           size="lg"
                           onClick={proceedToPayment}
                           data-testid="button-proceed-payment"
@@ -2350,7 +2350,7 @@ export default function CartPage() {
                       )}
                       {!checkoutPaymentIntent && (cart?.items?.length || 0) > 0 ? (
                         <Button
-                          className="w-full bg-[#FF385C] hover:bg-[#E23350]"
+                          className="w-full bg-primary hover:bg-primary/90"
                           size="lg"
                           onClick={() => checkoutMutation.mutate()}
                           disabled={checkoutMutation.isPending}

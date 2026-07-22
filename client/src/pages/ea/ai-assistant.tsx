@@ -79,7 +79,7 @@ export default function EAAIAssistant() {
                 className="flex-1"
                 data-testid="input-delegate-task"
               />
-              <Button className="bg-[#FF385C] hover:bg-[#E23350]" data-testid="button-delegate">
+              <Button className="bg-primary hover:bg-primary/90" data-testid="button-delegate">
                 <Send className="w-4 h-4 mr-2" /> Delegate
               </Button>
             </div>

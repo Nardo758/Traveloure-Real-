@@ -284,7 +284,7 @@ function ServiceCard({
             <div className="absolute top-3 left-3 flex items-center gap-2">
               {isHot ? (
                 <span 
-                  className="px-2.5 py-1 rounded-lg bg-[#FF385C] text-white text-xs font-bold flex items-center gap-1 shadow-lg"
+                  className="px-2.5 py-1 rounded-lg bg-primary text-white text-xs font-bold flex items-center gap-1 shadow-lg"
                   data-testid={`badge-hot-${service.id}`}
                 >
                   <Zap className="w-3 h-3 fill-white" />

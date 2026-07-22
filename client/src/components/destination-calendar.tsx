@@ -224,7 +224,7 @@ export function DestinationCalendar({ initialCountry, compact = false }: Destina
                       {rating}
                     </div>
                     {monthEvents.length > 0 && (
-                      <div className="absolute -top-1 -right-1 w-4 h-4 bg-[#FF385C] text-white rounded-full text-[10px] flex items-center justify-center">
+                      <div className="absolute -top-1 -right-1 w-4 h-4 bg-primary text-white rounded-full text-[10px] flex items-center justify-center">
                         {monthEvents.length}
                       </div>
                     )}

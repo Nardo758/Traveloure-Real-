@@ -695,7 +695,7 @@ function AIOptimizationTab({
       )}
 
       <Button 
-        className="bg-[#FF385C] " 
+        className="bg-primary " 
         onClick={runOptimization}
         disabled={optimizing}
         data-testid="button-optimize"
@@ -1829,7 +1829,7 @@ export default function ExperienceTemplatePage() {
                 size="sm"
                 onClick={createComparison}
                 disabled={!canGenerateItinerary || cart.length === 0 || creatingComparison}
-                className="gap-1.5 bg-[#FF385C]"
+                className="gap-1.5 bg-primary"
                 data-testid="button-generate-ribbon"
               >
                 {creatingComparison ? (
@@ -2027,7 +2027,7 @@ export default function ExperienceTemplatePage() {
                 </div>
 
                 <Button 
-                  className="w-full bg-[#FF385C]  text-white"
+                  className="w-full bg-primary  text-white"
                   disabled={!!dateError || !destination.trim()}
                   onClick={() => {
                     setDetailsSubmitted(true);
@@ -2090,7 +2090,7 @@ export default function ExperienceTemplatePage() {
                     setWeddingMode("planning");
                     setActiveTab(dbTabsToConfig(dbTabs, slug)[0]?.id ?? "venues");
                   }}
-                  className={weddingMode === "planning" ? "bg-[#FF385C]" : ""}
+                  className={weddingMode === "planning" ? "bg-primary" : ""}
                   data-testid="button-wedding-mode-planning"
                 >
                   Planning Mode
@@ -2104,7 +2104,7 @@ export default function ExperienceTemplatePage() {
                     const firstGuest = dbTabsToConfig(dbTabs, slug).find(t => GUEST_TAB_TYPES.has(t.tabType ?? ""));
                     setActiveTab(firstGuest?.id ?? "activities");
                   }}
-                  className={weddingMode === "guest" ? "bg-[#FF385C]" : ""}
+                  className={weddingMode === "guest" ? "bg-primary" : ""}
                   data-testid="button-wedding-mode-guest"
                 >
                   Guest Activities
@@ -2199,7 +2199,7 @@ export default function ExperienceTemplatePage() {
                       </div>
                       <div className="space-y-2">
                         <Button 
-                          className="w-full bg-[#FF385C] "
+                          className="w-full bg-primary "
                           onClick={createComparison}
                           disabled={creatingComparison}
                           data-testid="button-compare-ai"
@@ -2760,7 +2760,7 @@ export default function ExperienceTemplatePage() {
                             ) : (
                               <Button
                                 size="sm"
-                                className="bg-[#FF385C] "
+                                className="bg-primary "
                                 onClick={() => addToCart({
                                   id: venueId,
                                   type: "venue",
@@ -2816,7 +2816,7 @@ export default function ExperienceTemplatePage() {
                             <span className="font-bold text-lg">${service.price || 0}</span>
                             <Button
                               size="sm"
-                              className="bg-[#FF385C] "
+                              className="bg-primary "
                               onClick={() => addToCart({
                                 id: service.id.toString(),
                                 type: activeTab,
@@ -2899,7 +2899,7 @@ export default function ExperienceTemplatePage() {
                       }));
                       setLocation("/cart");
                     }}
-                    className="bg-[#FF385C]"
+                    className="bg-primary"
                     data-testid="button-view-cart-persistent"
                   >
                     <ShoppingCart className="w-4 h-4 mr-1" />
@@ -2911,7 +2911,7 @@ export default function ExperienceTemplatePage() {
           )}
           </Panel>
 
-          <PanelResizeHandle className="w-2 bg-gray-200 dark:bg-gray-700 hover:bg-[#FF385C] transition-colors cursor-col-resize flex items-center justify-center">
+          <PanelResizeHandle className="w-2 bg-gray-200 dark:bg-gray-700 hover:bg-primary transition-colors cursor-col-resize flex items-center justify-center">
             <div className="w-1 h-8 bg-gray-400 dark:bg-gray-500 rounded-full" />
           </PanelResizeHandle>
 
@@ -2964,7 +2964,7 @@ export default function ExperienceTemplatePage() {
               <Button
                 variant={showMobileMap ? "default" : "outline"}
                 size="sm"
-                className={cn("gap-1 text-xs", showMobileMap && "bg-[#FF385C]")}
+                className={cn("gap-1 text-xs", showMobileMap && "bg-primary")}
                 onClick={() => setShowMobileMap(!showMobileMap)}
                 data-testid="button-toggle-view-mobile"
               >
@@ -3025,7 +3025,7 @@ export default function ExperienceTemplatePage() {
                 size="sm"
                 onClick={createComparison}
                 disabled={!canGenerateItinerary || cart.length === 0 || creatingComparison}
-                className="gap-1 px-2 bg-[#FF385C]"
+                className="gap-1 px-2 bg-primary"
                 data-testid="button-generate-ribbon-mobile"
               >
                 {creatingComparison ? (
@@ -3070,7 +3070,7 @@ export default function ExperienceTemplatePage() {
                     size="sm"
                     onClick={createComparison}
                     disabled={!canGenerateItinerary || cart.length === 0 || creatingComparison}
-                    className="bg-[#FF385C]"
+                    className="bg-primary"
                   >
                     {creatingComparison ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4 mr-1" />}
                     Generate
@@ -3130,7 +3130,7 @@ export default function ExperienceTemplatePage() {
                     </Popover>
                   </div>
                 </div>
-                <Button className="w-full bg-[#FF385C]  text-white" disabled={!!dateError}>
+                <Button className="w-full bg-primary  text-white" disabled={!!dateError}>
                   Submit Details
                 </Button>
               </div>
@@ -3147,7 +3147,7 @@ export default function ExperienceTemplatePage() {
                   setWeddingMode("planning");
                   setActiveTab(dbTabsToConfig(dbTabs, slug)[0]?.id ?? "venues");
                 }}
-                className={weddingMode === "planning" ? "bg-[#FF385C]" : ""}
+                className={weddingMode === "planning" ? "bg-primary" : ""}
               >
                 Planning
               </Button>
@@ -3160,7 +3160,7 @@ export default function ExperienceTemplatePage() {
                   const firstGuest = dbTabsToConfig(dbTabs, slug).find(t => GUEST_TAB_TYPES.has(t.tabType ?? ""));
                   setActiveTab(firstGuest?.id ?? "activities");
                 }}
-                className={weddingMode === "guest" ? "bg-[#FF385C]" : ""}
+                className={weddingMode === "guest" ? "bg-primary" : ""}
               >
                 Guest Activities
               </Button>
@@ -3206,7 +3206,7 @@ export default function ExperienceTemplatePage() {
                           <span className="font-bold">${service.price || 0}</span>
                           <Button
                             size="sm"
-                            className="bg-[#FF385C]  h-7 text-xs"
+                            className="bg-primary  h-7 text-xs"
                             onClick={() => addToCart({
                               id: service.id.toString(),
                               type: activeTab,
@@ -3246,7 +3246,7 @@ export default function ExperienceTemplatePage() {
                     <MapPin className="w-5 h-5 text-[#FF385C]" />
                     <span className="font-medium">View Map</span>
                     {cart.length > 0 && (
-                      <Badge className="bg-[#FF385C]">{cart.length} selected</Badge>
+                      <Badge className="bg-primary">{cart.length} selected</Badge>
                     )}
                   </div>
                   <div className="flex items-center gap-3">
@@ -3329,7 +3329,7 @@ export default function ExperienceTemplatePage() {
               }
             }}
             className={cn(
-              "fixed h-14 w-14 rounded-full bg-[#FF385C]  shadow-lg z-[9999] cursor-grab",
+              "fixed h-14 w-14 rounded-full bg-primary  shadow-lg z-[9999] cursor-grab",
               isDragging && "cursor-grabbing"
             )}
             style={{
@@ -3409,7 +3409,7 @@ export default function ExperienceTemplatePage() {
                           setExpertHelpDialogOpen(false);
                           setChatOpen(true);
                         }}
-                        className="bg-[#FF385C]"
+                        className="bg-primary"
                         data-testid="button-start-chat"
                       >
                         <MessageCircle className="w-4 h-4 mr-2" />

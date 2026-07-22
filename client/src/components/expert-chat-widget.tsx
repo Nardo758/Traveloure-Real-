@@ -118,7 +118,7 @@ export function ExpertChatWidget({
       data-testid="chat-widget"
     >
       <CardHeader
-        className="bg-[#FF385C] text-white rounded-t-lg p-4 cursor-pointer"
+        className="bg-primary text-white rounded-t-lg p-4 cursor-pointer"
         onClick={() => setIsMinimized(!isMinimized)}
       >
         <div className="flex items-center justify-between">
@@ -195,7 +195,7 @@ export function ExpertChatWidget({
                     className={cn(
                       "max-w-[80%] rounded-lg px-4 py-2",
                       msg.sender === "user"
-                        ? "bg-[#FF385C] text-white"
+                        ? "bg-primary text-white"
                         : msg.sender === "expert"
                           ? "bg-gray-100 dark:bg-gray-800"
                           : "bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800"
@@ -224,7 +224,7 @@ export function ExpertChatWidget({
                   <Button
                     onClick={handleConnectExpert}
                     disabled={isConnecting}
-                    className="bg-[#FF385C] hover:bg-[#E23350]"
+                    className="bg-primary hover:bg-primary/90"
                     data-testid="button-connect-expert"
                   >
                     {isConnecting ? (
@@ -262,7 +262,7 @@ export function ExpertChatWidget({
               <Button
                 type="submit"
                 size="icon"
-                className="bg-[#FF385C] hover:bg-[#E23350]"
+                className="bg-primary hover:bg-primary/90"
                 data-testid="button-send-message"
               >
                 <Send className="w-4 h-4" />
@@ -320,7 +320,7 @@ export function ExpertSidebarCard({
 
         <Button
           onClick={onConnect}
-          className="w-full bg-[#FF385C] hover:bg-[#E23350]"
+          className="w-full bg-primary hover:bg-primary/90"
           data-testid="button-connect-sidebar-expert"
         >
           <MessageCircle className="w-4 h-4 mr-2" />
@@ -345,7 +345,7 @@ export function CheckoutExpertBanner({
   return (
     <div className="bg-gradient-to-r from-[#FF385C]/10 to-[#FF385C]/5 rounded-lg p-4 mb-4">
       <div className="flex items-start gap-3">
-        <div className="bg-[#FF385C] p-2 rounded-full flex-shrink-0">
+        <div className="bg-primary p-2 rounded-full flex-shrink-0">
           <Headphones className="w-4 h-4 text-white" />
         </div>
         <div className="flex-1">
@@ -360,7 +360,7 @@ export function CheckoutExpertBanner({
             variant="outline"
             size="sm"
             onClick={onConnect}
-            className="border-[#FF385C] text-[#FF385C] hover:bg-[#FF385C]/10"
+            className="border-[#FF385C] text-[#FF385C] hover:bg-primary/10"
             data-testid="button-checkout-expert"
           >
             <MessageCircle className="w-3 h-3 mr-2" />

@@ -346,7 +346,7 @@ export function ExpertMatchCard({
           {onRequestMatch ? (
             <Button
               size="sm"
-              className="flex-1 bg-[#FF385C] hover:bg-[#E23350] h-7 text-xs gap-1"
+              className="flex-1 bg-primary hover:bg-primary/90 h-7 text-xs gap-1"
               onClick={() => onRequestMatch(expert.id)}
               disabled={isLoading}
               data-testid={`button-request-expert-${expert.id}`}
@@ -356,7 +356,7 @@ export function ExpertMatchCard({
             </Button>
           ) : (
             <Link href={`/experts/${expert.id}`} className="flex-1">
-              <Button size="sm" className="w-full bg-[#FF385C] hover:bg-[#E23350] h-7 text-xs" data-testid="button-view-profile">
+              <Button size="sm" className="w-full bg-primary hover:bg-primary/90 h-7 text-xs" data-testid="button-view-profile">
                 View Profile
               </Button>
             </Link>

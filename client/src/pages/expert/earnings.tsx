@@ -148,7 +148,7 @@ export default function ExpertEarnings() {
                     <p className="text-2xl font-bold text-console-darkest">{stat.value}</p>
                     {stat.date && <p className="text-sm text-console-mid">{stat.date}</p>}
                   </div>
-                  <div className="w-12 h-12 rounded-lg bg-[#FF385C]/10 flex items-center justify-center">
+                  <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
                     <stat.icon className="w-6 h-6 text-[#FF385C]" />
                   </div>
                 </div>
@@ -192,7 +192,7 @@ export default function ExpertEarnings() {
             {/* Visual bar */}
             <div className="mt-4 h-3 bg-console-light rounded-full overflow-hidden flex" data-testid="bar-revenue-split">
               <div
-                className="h-full bg-[#FF385C] transition-all"
+                className="h-full bg-primary transition-all"
                 style={{ width: `${Math.round(platformRate * 100)}%` }}
               />
               <div className="h-full bg-green-500 flex-1" />

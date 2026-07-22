@@ -114,7 +114,7 @@ export function CompactFilterBar({
                       key={opt.id}
                       variant={active ? "default" : "outline"}
                       size="sm"
-                      className={`h-8 ${active ? "bg-[#FF385C] hover:bg-[#FF385C]" : ""}`}
+                      className={`h-8 ${active ? "bg-primary hover:bg-primary" : ""}`}
                       onClick={() => onToggle(control, opt.id)}
                       data-testid={`selection-${control.id}-${opt.id}`}
                     >
@@ -140,7 +140,7 @@ export function CompactFilterBar({
                         key={opt.value}
                         variant={active ? "default" : "outline"}
                         size="sm"
-                        className={`h-8 ${active ? "bg-[#FF385C] hover:bg-[#FF385C]" : ""}`}
+                        className={`h-8 ${active ? "bg-primary hover:bg-primary" : ""}`}
                         onClick={() => onSingleSelectChange?.(ctrl.id, opt.value)}
                         data-testid={`filter-${ctrl.id}-${opt.value}`}
                       >

@@ -195,7 +195,7 @@ function ServiceCard({
         {onAddToCart && (
           <Button
             size="sm"
-            className="w-full mt-3 bg-[#FF385C] hover:bg-[#E23350]"
+            className="w-full mt-3 bg-primary hover:bg-primary/90"
             onClick={() => onAddToCart(service)}
             data-testid={`button-add-to-cart-${service.id}`}
           >

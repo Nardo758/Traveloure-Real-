@@ -123,14 +123,14 @@ function VerificationPayoutsSection() {
                   <p className="text-xs text-red-600">Please try again with a clear, valid ID.</p>
                 </div>
               </div>
-              <Button size="sm" onClick={() => identityMutation.mutate()} disabled={identityMutation.isPending} className="bg-[#FF385C] hover:bg-[#E23350]" data-testid="button-ea-retry-identity">
+              <Button size="sm" onClick={() => identityMutation.mutate()} disabled={identityMutation.isPending} className="bg-primary hover:bg-primary/90" data-testid="button-ea-retry-identity">
                 {identityMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ExternalLink className="w-4 h-4 mr-2" />}Retry
               </Button>
             </div>
           ) : (
             <div className="space-y-3">
               <p className="text-sm text-gray-600">Upload a government-issued ID and take a short selfie. Takes about 3 minutes.</p>
-              <Button size="sm" onClick={() => identityMutation.mutate()} disabled={identityMutation.isPending} className="bg-[#FF385C] hover:bg-[#E23350]" data-testid="button-ea-start-identity">
+              <Button size="sm" onClick={() => identityMutation.mutate()} disabled={identityMutation.isPending} className="bg-primary hover:bg-primary/90" data-testid="button-ea-start-identity">
                 {identityMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ShieldCheck className="w-4 h-4 mr-2" />}Start Verification
               </Button>
             </div>
@@ -173,14 +173,14 @@ function VerificationPayoutsSection() {
                   <p className="text-xs text-orange-600">Finish setting up your payout account to receive earnings.</p>
                 </div>
               </div>
-              <Button size="sm" onClick={() => onboardMutation.mutate()} disabled={onboardMutation.isPending} className="bg-[#FF385C] hover:bg-[#E23350]" data-testid="button-ea-continue-stripe">
+              <Button size="sm" onClick={() => onboardMutation.mutate()} disabled={onboardMutation.isPending} className="bg-primary hover:bg-primary/90" data-testid="button-ea-continue-stripe">
                 {onboardMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ExternalLink className="w-4 h-4 mr-2" />}Continue Setup
               </Button>
             </div>
           ) : (
             <div className="space-y-3">
               <p className="text-sm text-gray-600">Connect your bank account via Stripe. Your financial details are handled securely — Traveloure never sees your banking information.</p>
-              <Button size="sm" onClick={() => onboardMutation.mutate()} disabled={onboardMutation.isPending} className="bg-[#FF385C] hover:bg-[#E23350]" data-testid="button-ea-connect-stripe">
+              <Button size="sm" onClick={() => onboardMutation.mutate()} disabled={onboardMutation.isPending} className="bg-primary hover:bg-primary/90" data-testid="button-ea-connect-stripe">
                 {onboardMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CreditCard className="w-4 h-4 mr-2" />}Connect Payout Account
               </Button>
             </div>
@@ -397,7 +397,7 @@ export default function EASettings() {
         </div>
 
         <div className="flex justify-end">
-          <Button className="bg-[#FF385C] hover:bg-[#E23350]" data-testid="button-save-settings">
+          <Button className="bg-primary hover:bg-primary/90" data-testid="button-save-settings">
             Save All Settings
           </Button>
         </div>
