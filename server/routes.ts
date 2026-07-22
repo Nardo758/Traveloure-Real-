@@ -6333,9 +6333,14 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
 
         // 2c. Mark the coordination state as refunded (terminal state).
+        // If no revenue rows were reversed AND a real fee was charged, flag the ledger gap
+        // so admins can see and investigate it in the concierge panel.
         await tx
           .update(coordinationStates)
-          .set({ feePaymentStatus: "refunded" })
+          .set({
+            feePaymentStatus: "refunded",
+            revenueReversalMissing: originals.length === 0 && feeCents > 0,
+          })
           .where(eq(coordinationStates.id, coordinationId));
       });
 
@@ -6353,11 +6358,13 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         );
       }
 
+      const revenueReversalMissing = reversedRevenueRows === 0 && feeCents > 0;
       return res.json({
         success: true,
         feePaymentStatus: "refunded",
         stripeRefundId,
         reversedRevenueRows,
+        revenueReversalMissing,
       });
     } catch (error: any) {
       console.error("Error processing coordination fee refund:", error);
