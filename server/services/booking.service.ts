@@ -656,8 +656,9 @@ class BookingService {
     // Atomic transaction: confirm booking + record earnings + decrement availability.
     // All three succeed or all roll back together.
     await db.transaction(async (tx) => {
-      // 1. Confirm the booking
-      await tx.execute(sql`
+      // 1. Confirm the booking — must match exactly 1 row to proceed.
+      //    Using RETURNING id so we can check the affected count inside the tx.
+      const updateResult = await tx.execute(sql`
         UPDATE bookings SET
           status = 'confirmed',
           payment_status = 'succeeded',
@@ -667,7 +668,18 @@ class BookingService {
           stripe_payment_intent_id = ${paymentIntentId}
         WHERE id = ${bookingId}
           AND status = 'pending_payment'
+        RETURNING id
       `);
+
+      // Guard: if 0 rows were updated, another concurrent confirm already won.
+      // Abort the transaction before writing any earnings / availability rows.
+      if (!updateResult.rows || updateResult.rows.length === 0) {
+        const err = new Error(
+          `Booking ${bookingId} was not in 'pending_payment' status — concurrent confirmation detected`
+        );
+        (err as any).code = 'BOOKING_ALREADY_CONFIRMED';
+        throw err;
+      }
 
       if (providerId) {
         // 2. Record provider earnings ledger entry (born held; released after clearance window)
