@@ -71,7 +71,7 @@ import { getFee, resolveCoordinationFee, getAvailableCoordinationCreditCents, cl
 import { buildEventTimeline, getEventVendorGaps } from "./services/event-coordination.service";
 import { trackAnthropicResponse } from "./services/ai-cost-tracker";
 import { revenueTrackingService } from "./services/revenue-tracking.service";
-import { experienceTypes as experienceTypesTable, coordinationStates, platformRevenue } from "@shared/schema";
+import { experienceTypes as experienceTypesTable, coordinationStates, coordinationFeeCredits, platformRevenue } from "@shared/schema";
 import Stripe from "stripe";
 import { sharedCache } from "./services/shared-cache.service";
 import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, createPublicProfile, getDisplayName, redactContactInfo } from "./utils/data-sanitizer";
@@ -6224,6 +6224,144 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     } catch (error: any) {
       console.error("Error confirming coordination payment:", error);
       res.status(500).json({ message: "Failed to confirm coordination payment", error: error?.message });
+    }
+  });
+
+  // ── Coordination fee REFUND (admin-only) ─────────────────────────────────────────────────
+  // POST /api/coordination-states/:id/refund
+  // Reverses a paid coordination fee: issues a Stripe refund, releases the consumed credit row,
+  // flips the linked platform_revenue to 'reversed', and sets fee_payment_status = 'refunded'.
+  // Atomic guarantee: Stripe is called first; the DB transaction only runs on Stripe success,
+  // so a Stripe failure leaves the ledger untouched.
+  app.post("/api/coordination-states/:id/refund", isAuthenticated, async (req, res) => {
+    try {
+      const coordinationId = req.params.id;
+      const callerId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+
+      // Admin-only gate (inline, consistent with other admin checks in this file)
+      const [callerRow] = await db.select({ role: users.role }).from(users).where(eq(users.id, callerId));
+      if (!callerRow || callerRow.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const state = await storage.getCoordinationState(coordinationId);
+      if (!state) return res.status(404).json({ message: "Coordination state not found" });
+
+      // Idempotency: already refunded → treat as success
+      if (state.feePaymentStatus === "refunded") {
+        return res.json({ alreadyRefunded: true, feePaymentStatus: "refunded" });
+      }
+
+      if (state.feePaymentStatus !== "paid") {
+        return res.status(400).json({
+          error: "not_paid",
+          message: `Coordination fee is in '${state.feePaymentStatus}' status — only 'paid' fees can be refunded.`,
+        });
+      }
+
+      const paymentIntentId = state.feePaymentIntentId;
+      if (!paymentIntentId) {
+        return res.status(400).json({ error: "no_payment_intent", message: "No payment intent on record for this coordination fee." });
+      }
+
+      const feeCents = state.feeAmountCents ?? 0;
+
+      // Step 1 — Stripe refund. Idempotency-keyed so retries are safe.
+      // A Stripe failure leaves the DB untouched (satisfies the atomicity contract).
+      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", { apiVersion: "2024-12-18.acacia" as any });
+      let stripeRefundId: string | null = null;
+      if (feeCents > 0) {
+        const stripeRefund = await stripe.refunds.create(
+          {
+            payment_intent: paymentIntentId,
+            amount: feeCents,
+            reason: "requested_by_customer",
+            metadata: { coordinationId, source: "coordination_fee_refund" },
+          },
+          { idempotencyKey: `coord-refund-${coordinationId}` },
+        );
+        stripeRefundId = stripeRefund.id;
+      }
+
+      // Step 2 — Atomic DB mutations: all three ledger/state writes in one transaction.
+      // Stripe call (step 1) already succeeded; a transaction failure here propagates as a 500
+      // so the admin can retry — the Stripe idempotency key prevents a duplicate charge on retry.
+      let reversedRevenueRows = 0;
+      const compensatingRows: Array<{ grossAmount: string; platformFee: string; netAmount: string; transactionDate: Date }> = [];
+      await db.transaction(async (tx) => {
+        // 2a. Release the consumed credit row (null out consumed_by / consumed_at).
+        await tx
+          .update(coordinationFeeCredits)
+          .set({ consumedByCoordinationId: null, consumedAt: null })
+          .where(eq(coordinationFeeCredits.consumedByCoordinationId, coordinationId));
+
+        // 2b. Reverse platform revenue (sourceId = paymentIntentId as recorded at pay/confirm).
+        //     Flip original row(s) to 'reversed' and insert a compensating negative entry per row
+        //     (double-entry: same pattern as reversePlatformRevenueForBooking in storage.ts).
+        const originals = await tx
+          .update(platformRevenue)
+          .set({ status: "reversed" })
+          .where(and(eq(platformRevenue.sourceId, paymentIntentId), ne(platformRevenue.status, "reversed")))
+          .returning();
+
+        reversedRevenueRows = originals.length;
+        const now = new Date();
+        for (const o of originals) {
+          const neg = (v: string | null) => String(-parseFloat(v || "0"));
+          const negGross = neg(o.grossAmount);
+          const negFee = neg(o.platformFee);
+          const negNet = neg(o.netAmount);
+          await tx.insert(platformRevenue).values({
+            sourceType: o.sourceType,
+            sourceId: o.sourceId,
+            trackingNumber: o.trackingNumber,
+            grossAmount: negGross,
+            platformFee: negFee,
+            netAmount: negNet,
+            processingFees: neg(o.processingFees),
+            currency: o.currency,
+            expertId: o.expertId,
+            expertEarnings: neg(o.expertEarnings),
+            providerId: o.providerId,
+            providerEarnings: neg(o.providerEarnings),
+            description: `Reversal of platform revenue ${o.id} (coordination ${coordinationId})`,
+            metadata: { reversalOf: o.id, reason: "coordination_fee_refund" },
+            status: "reversed",
+            transactionDate: now,
+          } as any);
+          compensatingRows.push({ grossAmount: negGross, platformFee: negFee, netAmount: negNet, transactionDate: now });
+        }
+
+        // 2c. Mark the coordination state as refunded (terminal state).
+        await tx
+          .update(coordinationStates)
+          .set({ feePaymentStatus: "refunded" })
+          .where(eq(coordinationStates.id, coordinationId));
+      });
+
+      // Step 3 — Update daily revenue summary for each compensating entry (analytics cache;
+      // runs outside the transaction like recordPlatformRevenue does in storage.ts). Fire-and-forget:
+      // a summary staleness is tolerable; a duplicate charge is not.
+      for (const row of compensatingRows) {
+        const date = row.transactionDate.toISOString().split("T")[0];
+        storage.updateDailyRevenueSummary(date, {
+          totalGross: row.grossAmount,
+          totalPlatformFee: row.platformFee,
+          totalNet: row.netAmount,
+        } as any).catch((e: any) =>
+          console.warn("[coordination refund] daily summary update failed (non-critical):", e)
+        );
+      }
+
+      return res.json({
+        success: true,
+        feePaymentStatus: "refunded",
+        stripeRefundId,
+        reversedRevenueRows,
+      });
+    } catch (error: any) {
+      console.error("Error processing coordination fee refund:", error);
+      res.status(500).json({ message: "Failed to refund coordination fee", error: error?.message });
     }
   });
 
