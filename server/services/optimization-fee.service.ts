@@ -279,11 +279,15 @@ export async function claimCoordinationCredit(
 
   if (candidates.length === 0) return 0;
 
-  // Select IDs to consume (oldest-first) up to the gross fee ceiling
+  // Select IDs to consume (oldest-first) up to the gross fee ceiling.
+  // The guard checks BEFORE including each credit: if adding this credit would push
+  // the running total past the ceiling, skip it (leave it available for a future
+  // engagement). We `continue` rather than `break` so a later, smaller credit can
+  // still fill any remaining headroom (handles varying credit sizes).
   const toConsume: string[] = [];
   let runningTotal = 0;
   for (const c of candidates) {
-    if (grossFeeCents != null && runningTotal >= grossFeeCents) break;
+    if (grossFeeCents != null && runningTotal + c.amountCents > grossFeeCents) continue;
     toConsume.push(c.id);
     runningTotal += c.amountCents;
   }
