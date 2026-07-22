@@ -141,6 +141,7 @@ const SERVICE_TIER_FILTERS = [
 interface ExpertRole {
   role: string | null;
   roleLabel: string | null;
+  applicationStatus: string | null;
 }
 
 export default function ServiceWizard() {
@@ -157,13 +158,21 @@ export default function ServiceWizard() {
   });
 
   useEffect(() => {
-    if (!roleLoading && expertRoleData?.role === null) {
+    if (roleLoading) return;
+    if (expertRoleData?.role === null) {
       toast({
         title: "Application required",
         description: "You need to submit an expert application before creating services.",
         variant: "destructive",
       });
       navigate("/expert/apply");
+    } else if (expertRoleData?.applicationStatus === "pending") {
+      toast({
+        title: "Application pending",
+        description: "Your expert application is under review. You can create services once it has been approved.",
+        variant: "destructive",
+      });
+      navigate("/expert/dashboard");
     }
   }, [roleLoading, expertRoleData, toast, navigate]);
 
