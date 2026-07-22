@@ -1272,6 +1272,24 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       
       const existing = await storage.getLocalExpertForm(userId);
       if (existing) {
+        if (existing.status === "rejected") {
+          // Resubmission after rejection: upsert the existing row and reset to pending
+          const input = insertLocalExpertFormSchema.parse(req.body);
+          const form = await storage.updateLocalExpertForm(existing.id, {
+            ...input,
+            status: "pending",
+            rejectionMessage: null,
+          });
+          void scoreKnowledgeProof(
+            (form!.knowledgeProofAnswers as string[]) ?? [],
+            KNOWLEDGE_PROOF_QUESTIONS,
+            form!.localityProof ?? null,
+            form!.city ?? "",
+          )
+            .then((s) => storage.updateLocalExpertFormKnowledgeScore(form!.id, s))
+            .catch((e: any) => console.error("[expertise-scoring] persist failed:", e?.message));
+          return res.status(200).json(form);
+        }
         return res.status(400).json({ message: "You already have an application submitted" });
       }
 
@@ -1303,6 +1321,24 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const existing = await storage.getLocalExpertForm(userId);
       if (existing) {
+        if (existing.status === "rejected") {
+          // Resubmission after rejection: upsert the existing row and reset to pending
+          const input = insertLocalExpertFormSchema.parse(req.body);
+          const form = await storage.updateLocalExpertForm(existing.id, {
+            ...input,
+            status: "pending",
+            rejectionMessage: null,
+          });
+          void scoreKnowledgeProof(
+            (form!.knowledgeProofAnswers as string[]) ?? [],
+            KNOWLEDGE_PROOF_QUESTIONS,
+            form!.localityProof ?? null,
+            form!.city ?? "",
+          )
+            .then((s) => storage.updateLocalExpertFormKnowledgeScore(form!.id, s))
+            .catch((e: any) => console.error("[expertise-scoring] persist failed:", e?.message));
+          return res.status(200).json(form);
+        }
         return res.status(400).json({ message: "You already have an application submitted" });
       }
       const input = insertLocalExpertFormSchema.parse(req.body);
