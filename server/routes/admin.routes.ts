@@ -1355,6 +1355,30 @@ router.patch("/api/admin/provider-applications/:id/status", isAuthenticated, asy
     res.json(updated);
   });
 
+  // Admin: Update provider application rejection reason only (without changing status)
+router.patch("/api/admin/provider-applications/:id/rejection-reason", isAuthenticated, async (req, res) => {
+    const user = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
+    if (!user || user.role !== "admin") {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+    const { rejectionMessage } = req.body;
+    if (typeof rejectionMessage !== "string" || !rejectionMessage.trim()) {
+      return res.status(400).json({ message: "rejectionMessage must be a non-empty string" });
+    }
+    const updated = await storage.updateServiceProviderFormRejectionMessage(req.params.id, rejectionMessage.trim());
+    if (!updated) {
+      return res.status(404).json({ message: "Application not found" });
+    }
+    await insertNotification({
+      userId: updated.userId,
+      type: "rejection_reason_updated",
+      title: "Rejection Feedback Updated",
+      message: "An admin has updated the feedback on your provider application. Review the new message to understand what you can improve before reapplying.",
+      data: { link: "/provider-status" },
+    });
+    res.json(updated);
+  });
+
   // GET /api/expert/application-status — user-facing live step status for expert applicants
 
 router.post("/api/admin/service-templates", isAuthenticated, async (req, res) => {

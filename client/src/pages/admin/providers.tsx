@@ -4,11 +4,15 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from "@/components/ui/dialog";
 import {
   Search, Building2, MapPin, CheckCircle, XCircle, Eye, Clock,
   Loader2, Calendar, Star, ShoppingBag, TrendingUp, Users,
   Camera, ChefHat, Car, Sparkles, Music, Waves, Dumbbell,
-  MoreHorizontal, ExternalLink, Package, DollarSign, AlertCircle,
+  MoreHorizontal, ExternalLink, Package, DollarSign, AlertCircle, MessageSquarePen,
 } from "lucide-react";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -29,6 +33,7 @@ interface ProviderApplication {
   serviceOffers?: string[];
   description?: string;
   status: string;
+  rejectionMessage?: string | null;
   createdAt: string;
 }
 
@@ -99,6 +104,8 @@ export default function AdminProviders() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState<"platform" | "applications">("platform");
   const [expandedProvider, setExpandedProvider] = useState<string | null>(null);
+  const [feedbackDialog, setFeedbackDialog] = useState<{ appId: string; current: string } | null>(null);
+  const [feedbackText, setFeedbackText] = useState("");
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -112,6 +119,7 @@ export default function AdminProviders() {
 
   const pendingApps = applications.filter(a => a.status === "pending");
   const approvedApps = applications.filter(a => a.status === "approved");
+  const rejectedApps = applications.filter(a => a.status === "rejected");
 
   const updateStatusMutation = useMutation({
     mutationFn: async ({ id, status, rejectionMessage }: { id: string; status: string; rejectionMessage?: string }) => {
@@ -126,6 +134,21 @@ export default function AdminProviders() {
           ? "The provider is now active on the platform."
           : "The application has been rejected.",
       });
+    },
+  });
+
+  const updateRejectionReasonMutation = useMutation({
+    mutationFn: async ({ id, rejectionMessage }: { id: string; rejectionMessage: string }) => {
+      return apiRequest("PATCH", `/api/admin/provider-applications/${id}/rejection-reason`, { rejectionMessage });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/provider-applications"] });
+      setFeedbackDialog(null);
+      setFeedbackText("");
+      toast({ title: "Feedback Updated", description: "The provider has been notified of the updated rejection feedback." });
+    },
+    onError: (error: any) => {
+      toast({ variant: "destructive", title: "Failed to update feedback", description: error?.message ?? "Try again." });
     },
   });
 
@@ -619,9 +642,117 @@ export default function AdminProviders() {
                 {approvedApps.length} approved provider{approvedApps.length !== 1 ? "s" : ""} — switch to <button className="text-gray-900 font-medium underline" onClick={() => setActiveTab("platform")}>Service Providers</button> to see their listings.
               </div>
             )}
+
+            {/* Rejected applications */}
+            {rejectedApps.length > 0 && (
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <XCircle className="w-4 h-4 text-red-500" />
+                    Rejected Applications ({rejectedApps.length})
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {rejectedApps.map((app) => (
+                    <div
+                      key={app.id}
+                      className="p-4 border border-red-100 rounded-lg space-y-3 bg-red-50/30"
+                      data-testid={`card-rejected-${app.id}`}
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex items-center gap-3">
+                          <Avatar className="h-10 w-10">
+                            <AvatarFallback className="bg-red-100 text-red-700 text-sm">
+                              {app.businessName.split(" ").map(n => n[0]).join("").slice(0, 2)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <h3 className="font-semibold text-gray-900 text-sm">{app.businessName}</h3>
+                            <p className="text-xs text-gray-500">{app.email} · {app.country}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge className="bg-red-100 text-red-700 border-red-200 text-xs">Rejected</Badge>
+                          <Badge variant="outline" className="text-xs">
+                            <Calendar className="w-3 h-3 mr-1" />
+                            {new Date(app.createdAt).toLocaleDateString()}
+                          </Badge>
+                        </div>
+                      </div>
+
+                      {app.rejectionMessage && (
+                        <div className="bg-white border border-red-100 rounded p-3">
+                          <p className="text-xs text-gray-500 font-medium mb-1">Current feedback</p>
+                          <p className="text-sm text-gray-700">{app.rejectionMessage}</p>
+                        </div>
+                      )}
+                      {!app.rejectionMessage && (
+                        <p className="text-xs text-gray-400 italic">No feedback message provided.</p>
+                      )}
+
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setFeedbackText(app.rejectionMessage ?? "");
+                          setFeedbackDialog({ appId: app.id, current: app.rejectionMessage ?? "" });
+                        }}
+                        data-testid={`button-update-feedback-${app.id}`}
+                      >
+                        <MessageSquarePen className="w-4 h-4 mr-1" /> Update Feedback
+                      </Button>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            )}
           </div>
         )}
       </div>
+
+      {/* Update Feedback Dialog */}
+      <Dialog open={!!feedbackDialog} onOpenChange={(open) => { if (!open) { setFeedbackDialog(null); setFeedbackText(""); } }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Update Rejection Feedback</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <p className="text-sm text-gray-500">
+              Update the feedback message sent to the provider. They will be notified when you save.
+            </p>
+            <Textarea
+              value={feedbackText}
+              onChange={(e) => setFeedbackText(e.target.value)}
+              placeholder="Explain why the application was rejected and what the provider can improve..."
+              rows={5}
+              data-testid="textarea-rejection-feedback"
+            />
+          </div>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => { setFeedbackDialog(null); setFeedbackText(""); }}
+              data-testid="button-cancel-feedback"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (!feedbackDialog || !feedbackText.trim()) return;
+                updateRejectionReasonMutation.mutate({ id: feedbackDialog.appId, rejectionMessage: feedbackText.trim() });
+              }}
+              disabled={updateRejectionReasonMutation.isPending || !feedbackText.trim()}
+              data-testid="button-save-feedback"
+            >
+              {updateRejectionReasonMutation.isPending ? (
+                <><Loader2 className="w-4 h-4 mr-1 animate-spin" /> Saving…</>
+              ) : (
+                "Save Feedback"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AdminLayout>
   );
 }
