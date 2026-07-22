@@ -101,6 +101,7 @@ function RejectionReasonEditor({
         rows={3}
         className="text-sm resize-none"
         placeholder="Enter rejection reason…"
+        maxLength={2000}
         data-testid={`textarea-rejection-${appId}`}
       />
       <div className="flex gap-2">
@@ -733,6 +734,7 @@ export default function AdminExperts() {
               rows={4}
               className="resize-none"
               placeholder="Rejection reason…"
+              maxLength={2000}
               data-testid="textarea-rejection-reason"
             />
           </div>

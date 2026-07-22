@@ -1144,11 +1144,13 @@ router.patch("/api/admin/expert-applications/:id/rejection-reason", isAuthentica
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
-    const { rejectionMessage } = req.body;
-    if (typeof rejectionMessage !== "string" || !rejectionMessage.trim()) {
-      return res.status(400).json({ message: "rejectionMessage must be a non-empty string" });
+    const schema = z.object({ rejectionMessage: z.string().trim().min(1, "rejectionMessage must be a non-empty string").max(2000, "rejectionMessage must be 2000 characters or fewer") });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: parsed.error.errors[0].message });
     }
-    const updated = await storage.updateLocalExpertFormRejectionMessage(req.params.id, rejectionMessage.trim());
+    const { rejectionMessage } = parsed.data;
+    const updated = await storage.updateLocalExpertFormRejectionMessage(req.params.id, rejectionMessage);
     if (!updated) {
       return res.status(404).json({ message: "Application not found" });
     }
@@ -1361,11 +1363,13 @@ router.patch("/api/admin/provider-applications/:id/rejection-reason", isAuthenti
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
-    const { rejectionMessage } = req.body;
-    if (typeof rejectionMessage !== "string" || !rejectionMessage.trim()) {
-      return res.status(400).json({ message: "rejectionMessage must be a non-empty string" });
+    const schema = z.object({ rejectionMessage: z.string().trim().min(1, "rejectionMessage must be a non-empty string").max(2000, "rejectionMessage must be 2000 characters or fewer") });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: parsed.error.errors[0].message });
     }
-    const updated = await storage.updateServiceProviderFormRejectionMessage(req.params.id, rejectionMessage.trim());
+    const { rejectionMessage } = parsed.data;
+    const updated = await storage.updateServiceProviderFormRejectionMessage(req.params.id, rejectionMessage);
     if (!updated) {
       return res.status(404).json({ message: "Application not found" });
     }
