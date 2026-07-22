@@ -33,6 +33,16 @@ export default function EACommunications() {
     id: number; executive: string; type: string; content: string; aiGenerated: boolean;
   }> = [];
 
+  // Derive the "This Week" stats from the real communications list (were hardcoded
+  // 24/38/12/15 — §13). Counts sent items of each type in the last 7 days.
+  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const inThisWeek = (c: EaCommunication) =>
+    !!c.sentAt && !isNaN(new Date(c.sentAt).getTime()) && new Date(c.sentAt) >= weekAgo;
+  const emailsSent = recentComms.filter((c) => c.type === "email" && inThisWeek(c)).length;
+  const messagesCount = recentComms.filter((c) => c.type === "message" && inThisWeek(c)).length;
+  const callsLogged = recentComms.filter((c) => c.type === "call" && inThisWeek(c)).length;
+  const aiDrafted = drafts.length;
+
   return (
     <EALayout title="Communications">
       <div className="p-6 space-y-6">
@@ -214,19 +224,19 @@ export default function EACommunications() {
               <CardContent className="space-y-2">
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-gray-600">Emails Sent</span>
-                  <span className="font-medium">24</span>
+                  <span className="font-medium">{emailsSent}</span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-gray-600">Messages</span>
-                  <span className="font-medium">38</span>
+                  <span className="font-medium">{messagesCount}</span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-gray-600">Calls Logged</span>
-                  <span className="font-medium">12</span>
+                  <span className="font-medium">{callsLogged}</span>
                 </div>
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-gray-600">AI Drafted</span>
-                  <span className="font-medium text-green-600">15</span>
+                  <span className="font-medium text-green-600">{aiDrafted}</span>
                 </div>
               </CardContent>
             </Card>

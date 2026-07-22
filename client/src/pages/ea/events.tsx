@@ -29,6 +29,19 @@ export default function EAEvents() {
     queryKey: ["/api/ea/events"],
   });
 
+  // Derive stat cards from the real events list (was hardcoded 28/12/5/3 crowning
+  // an otherwise-empty list — §13). Honest zero when there are no events.
+  const now = new Date();
+  const weekFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+  const activeCount = events.filter((e) => e.status !== "completed" && e.status !== "cancelled").length;
+  const thisWeekCount = events.filter((e) => {
+    if (!e.date) return false;
+    const d = new Date(e.date);
+    return !isNaN(d.getTime()) && d >= now && d <= weekFromNow;
+  }).length;
+  const pendingCount = events.filter((e) => e.status === "pending").length;
+  const urgentCount = events.filter((e) => e.status === "urgent").length;
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "urgent":
@@ -61,25 +74,25 @@ export default function EAEvents() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <Card className="border border-gray-200" data-testid="stat-total-events">
             <CardContent className="p-4 text-center">
-              <p className="text-3xl font-bold text-gray-900">28</p>
+              <p className="text-3xl font-bold text-gray-900">{activeCount}</p>
               <p className="text-sm text-gray-600">Active Events</p>
             </CardContent>
           </Card>
           <Card className="border border-gray-200" data-testid="stat-this-week">
             <CardContent className="p-4 text-center">
-              <p className="text-3xl font-bold text-gray-900">12</p>
+              <p className="text-3xl font-bold text-gray-900">{thisWeekCount}</p>
               <p className="text-sm text-gray-600">This Week</p>
             </CardContent>
           </Card>
           <Card className="border border-gray-200" data-testid="stat-pending">
             <CardContent className="p-4 text-center">
-              <p className="text-3xl font-bold text-yellow-600">5</p>
+              <p className="text-3xl font-bold text-yellow-600">{pendingCount}</p>
               <p className="text-sm text-gray-600">Pending Approval</p>
             </CardContent>
           </Card>
           <Card className="border border-gray-200" data-testid="stat-urgent">
             <CardContent className="p-4 text-center">
-              <p className="text-3xl font-bold text-red-600">3</p>
+              <p className="text-3xl font-bold text-red-600">{urgentCount}</p>
               <p className="text-sm text-gray-600">Need Attention</p>
             </CardContent>
           </Card>
