@@ -5991,9 +5991,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         ? Math.round(budgetDollars * 100)
         : 0;
 
-      // Paid-signal credit (§7): surface the traveler's available paid-optimize credit in the QUOTE
-      // (read-only — not consumed here; consumption happens under the atomic claim in /pay).
-      const availableCreditCents = await getAvailableCoordinationCreditCents(userId);
+      // Paid-signal credit (§7, scoped by migration 126): surface the traveler's total available
+      // paid-optimize credit in the QUOTE, filtered to the same event type so cross-event bleeding
+      // is impossible (legacy null-event credits are still eligible). Read-only — not consumed here;
+      // consumption happens under the atomic claim in /pay.
+      const availableCreditCents = await getAvailableCoordinationCreditCents(userId, eventType);
       const fee = await resolveCoordinationFee(eventType, budgetCents, availableCreditCents);
       res.json({ ...fee, feePaymentStatus: state.feePaymentStatus });
     } catch (error) {
@@ -6055,9 +6057,22 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         const budgetDollars = Number((state.budget as any)?.amount);
         const budgetCents = Number.isFinite(budgetDollars) && budgetDollars > 0 ? Math.round(budgetDollars * 100) : 0;
 
-        // Consume the newest available paid-optimize credit (atomic — §15). Bind the charged net to
-        // the ACTUAL consumed amount so a race can't hand out an uncredited discount.
-        claimedCreditCents = await claimCoordinationCredit(userId, coordinationId);
+        // §7 / migration 126: Consume ALL eligible credits for this event type (atomic — §15).
+        //
+        // Step 1: compute the gross fee (0 credits) so we know the ceiling for credit consumption.
+        //   Passing 0 credits means resolveCoordinationFee returns feeCents = rawFeeCents (the floor
+        //   or percent, whichever is larger). We need this number to cap the claim so credits beyond
+        //   the ceiling are preserved for a future engagement rather than wasted.
+        const { feeCents: grossFeeCents } = await resolveCoordinationFee(eventType, budgetCents, 0);
+        //
+        // Step 2: atomically claim all eligible credits up to the gross fee ceiling, scoped to the
+        //   same event type as this coordination. Credits with event_type IS NULL (legacy) are also
+        //   eligible. Oldest credits are consumed first. The `consumed IS NULL` guard on the UPDATE
+        //   is the concurrency lock — two coordinations racing for the same credits, only one wins
+        //   each row.
+        claimedCreditCents = await claimCoordinationCredit(userId, coordinationId, eventType, grossFeeCents);
+        //
+        // Step 3: recompute the net fee with the actually-consumed credit total.
         const { feeCents: netFeeCents, breakdown, rule } = await resolveCoordinationFee(eventType, budgetCents, claimedCreditCents);
 
         // Fully-credited edge (only reachable if an admin sets a $0 floor AND 0% while a credit exists):

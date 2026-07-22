@@ -447,4 +447,11 @@ export const MIGRATION_FILES = [
   // the CHECK has no legacy rows to violate → no publish-time push trap. Enables the §14/§15-clean
   // POST /api/coordination-states/:id/pay (+ /pay/confirm).
   "125_coordination_fee_payments.sql",
+  // Migration 126 — Tighten coordination_fee_credits event scoping (CLAUDE.md §7 follow-ups resolved).
+  // Adds idx_coord_fee_credits_event_scoped on (user_id, event_type, created_at) WHERE consumed IS NULL
+  // for the new multi-credit, event-scoped claim query. The event_type column exists from migration 125;
+  // legacy credits (event_type IS NULL) remain eligible for any engagement (backward-compatible).
+  // Companion code change: getAvailableCoordinationCreditCents + claimCoordinationCredit now accept
+  // eventType, sum ALL eligible credits (not just the newest), and cap consumption at the gross fee.
+  "126_coordination_credit_event_scoping.sql",
 ] as const;
