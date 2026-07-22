@@ -12,7 +12,7 @@
  *   2. Tier-level default row (event_type IS NULL)
  *   3. Code-level DEFAULT_FEE_CENTS fallback (§4.8 standard: $9.99 across tiers). fee-literal-ok: comment
  */
-import { and, eq, isNull, desc } from "drizzle-orm";
+import { and, eq, isNull, or, inArray } from "drizzle-orm";
 import { db } from "../db";
 import { optimizationFees, feeBands, coordinationFeeCredits } from "@shared/schema";
 import { complexityTier } from "./smart-sequencing.service";
@@ -207,51 +207,99 @@ export async function resolveCoordinationFee(
   };
 }
 
-// ── Paid-signal ledger helpers (coordination_fee_credits, migration 125) ──────────────
+// ── Paid-signal ledger helpers (coordination_fee_credits, migrations 125–126) ─────────
 //
 // A credit row exists only when a real Event-branch optimize fee was PAID
 // (optimization-payments/confirm inserts it). "Available" = not yet consumed by any
-// coordination charge. We claim the NEWEST available credit for the traveler (the singular
-// "$19.99 credited-toward-coordination" promise — accumulating multiple is a filed follow-up).
+// coordination charge.
+//
+// Event scoping (migration 126, §7 follow-ups resolved):
+//   • Credits with a non-null event_type are only eligible for coordinations of the SAME
+//     event type — a credit earned on a wedding optimizer can't bleed into a corporate fee.
+//   • Credits with event_type IS NULL are legacy "any event" credits (born before strict
+//     scoping) and remain eligible for any engagement.
+//   • ALL eligible credits are summed (not just the newest one). Two optimize fees paid for
+//     the same wedding both credit toward its coordination fee.
+//   • Consumption is capped at the gross fee ceiling so credits are never "wasted" on an
+//     overpayment that resolveCoordinationFee would discard anyway.
 
-/** Read-only: the newest available paid-optimize credit for a user, in cents (0 if none). Used by
- *  the /fee QUOTE — surfaces the credit without consuming it. */
-export async function getAvailableCoordinationCreditCents(userId: string): Promise<number> {
-  const [candidate] = await db
-    .select({ amountCents: coordinationFeeCredits.amountCents })
-    .from(coordinationFeeCredits)
-    .where(and(
-      eq(coordinationFeeCredits.userId, userId),
-      isNull(coordinationFeeCredits.consumedByCoordinationId),
-    ))
-    .orderBy(desc(coordinationFeeCredits.createdAt))
-    .limit(1);
-  return candidate?.amountCents ?? 0;
+/**
+ * Build the WHERE conditions for an event-scoped available-credit lookup.
+ * Credits with event_type IS NULL are legacy "any event" rows — always eligible.
+ */
+function buildCreditConditions(userId: string, eventType?: string | null) {
+  const base = [
+    eq(coordinationFeeCredits.userId, userId),
+    isNull(coordinationFeeCredits.consumedByCoordinationId),
+  ] as const;
+  if (!eventType) return and(...base);
+  return and(
+    ...base,
+    or(
+      eq(coordinationFeeCredits.eventType, eventType),
+      isNull(coordinationFeeCredits.eventType),
+    ),
+  );
 }
 
-/** Atomically CONSUME the newest available credit against a coordination (§15: the
- *  `consumed IS NULL` guard on the UPDATE is the concurrency lock — two coordinations racing for
- *  the same credit, only one UPDATE matches). Returns the consumed amount in cents (0 if none/raced). */
-export async function claimCoordinationCredit(userId: string, coordinationId: string): Promise<number> {
-  const [candidate] = await db
+/** Read-only: sum of all available paid-optimize credits for a user, scoped to the given
+ *  event type (legacy null credits are also included). Used by the /fee QUOTE — surfaces
+ *  the total credit without consuming anything. */
+export async function getAvailableCoordinationCreditCents(
+  userId: string,
+  eventType?: string | null,
+): Promise<number> {
+  const rows = await db
+    .select({ amountCents: coordinationFeeCredits.amountCents })
+    .from(coordinationFeeCredits)
+    .where(buildCreditConditions(userId, eventType));
+  return rows.reduce((sum, r) => sum + r.amountCents, 0);
+}
+
+/** Atomically CONSUME all eligible credits against a coordination, up to grossFeeCents.
+ *  (§15: `consumed IS NULL` guard on the UPDATE is the concurrency lock — two coordinations
+ *  racing for the same credits, only one UPDATE per row matches.)
+ *
+ *  Credits are consumed oldest-first so earlier payments are exhausted before newer ones.
+ *  The grossFeeCents cap prevents consuming more credit than the fee can absorb — credits
+ *  beyond the ceiling are left available for a future engagement.
+ *
+ *  Returns the total amount consumed in cents (0 if none or all raced away). */
+export async function claimCoordinationCredit(
+  userId: string,
+  coordinationId: string,
+  eventType?: string | null,
+  grossFeeCents?: number,
+): Promise<number> {
+  const candidates = await db
     .select({ id: coordinationFeeCredits.id, amountCents: coordinationFeeCredits.amountCents })
     .from(coordinationFeeCredits)
-    .where(and(
-      eq(coordinationFeeCredits.userId, userId),
-      isNull(coordinationFeeCredits.consumedByCoordinationId),
-    ))
-    .orderBy(desc(coordinationFeeCredits.createdAt))
-    .limit(1);
-  if (!candidate) return 0;
+    .where(buildCreditConditions(userId, eventType))
+    .orderBy(coordinationFeeCredits.createdAt); // oldest first
+
+  if (candidates.length === 0) return 0;
+
+  // Select IDs to consume (oldest-first) up to the gross fee ceiling
+  const toConsume: string[] = [];
+  let runningTotal = 0;
+  for (const c of candidates) {
+    if (grossFeeCents != null && runningTotal >= grossFeeCents) break;
+    toConsume.push(c.id);
+    runningTotal += c.amountCents;
+  }
+  if (toConsume.length === 0) return 0;
+
+  // Atomic multi-row claim: `consumed IS NULL` guard on each row is the concurrency lock.
+  // If another coordination races for the same credits, only one UPDATE per row succeeds.
   const claimed = await db
     .update(coordinationFeeCredits)
     .set({ consumedByCoordinationId: coordinationId, consumedAt: new Date() })
     .where(and(
-      eq(coordinationFeeCredits.id, candidate.id),
+      inArray(coordinationFeeCredits.id, toConsume),
       isNull(coordinationFeeCredits.consumedByCoordinationId),
     ))
     .returning({ amountCents: coordinationFeeCredits.amountCents });
-  return claimed.length > 0 ? claimed[0].amountCents : 0;
+  return claimed.reduce((sum, r) => sum + r.amountCents, 0);
 }
 
 /** Roll back any credit consumed by a coordination (used when a pay attempt fails after claiming,
