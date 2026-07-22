@@ -96,6 +96,9 @@ type Service = {
   deliveryTimeframe: string;
   revisionsIncluded?: number;
   includesExpertNotes?: boolean;
+  providerFirstName?: string | null;
+  providerLastName?: string | null;
+  providerImageUrl?: string | null;
 };
 
 type DiscoverResult = {
@@ -206,37 +209,12 @@ function ServiceCard({
     return imageMap[categorySlug] || "https://picsum.photos/seed/travel/600/400";
   };
 
-  // Generate provider avatar based on service ID for consistency
-  const getProviderAvatar = (serviceId: string) => {
-    const avatars = [
-      "https://picsum.photos/seed/avatar-1/150/150",
-      "https://picsum.photos/seed/avatar-2/150/150",
-      "https://picsum.photos/seed/avatar-3/150/150",
-      "https://picsum.photos/seed/avatar-4/150/150",
-      "https://picsum.photos/seed/avatar-5/150/150",
-      "https://picsum.photos/seed/avatar-6/150/150",
-      "https://picsum.photos/seed/avatar-7/150/150",
-      "https://picsum.photos/seed/avatar-8/150/150",
-      "https://picsum.photos/seed/avatar-9/150/150",
-      "https://picsum.photos/seed/avatar-10/150/150",
-      "https://picsum.photos/seed/avatar-11/150/150",
-      "https://picsum.photos/seed/avatar-12/150/150",
-    ];
-    // Use a hash of the service ID to get a consistent avatar
-    const hash = serviceId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-    return avatars[hash % avatars.length];
-  };
+  // Build real provider display name from API data
+  const providerName = [service.providerFirstName, service.providerLastName].filter(Boolean).join(" ") || "Provider";
+  const providerImageUrl = service.providerImageUrl || null;
 
-  // Generate provider name based on service ID
-  const getProviderName = (serviceId: string) => {
-    const firstNames = ["Sarah", "Michael", "Emma", "James", "Sofia", "David", "Olivia", "Daniel", "Isabella", "Alexander", "Mia", "William"];
-    const lastNames = ["Mitchell", "Chen", "Rodriguez", "Thompson", "Garcia", "Wilson", "Lee", "Anderson", "Taylor", "Brown", "Kim", "Davis"];
-    const hash = serviceId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-    return `${firstNames[hash % firstNames.length]} ${lastNames[(hash + 3) % lastNames.length]}`;
-  };
-
-  const providerAvatar = getProviderAvatar(service.id);
-  const providerName = getProviderName(service.id);
+  // Initials fallback for providers without a profile photo
+  const providerInitials = [service.providerFirstName?.[0], service.providerLastName?.[0]].filter(Boolean).join("").toUpperCase() || "P";
 
   const getStatusColor = (rating: number) => {
     if (rating >= 4.5) return { text: "text-orange-500 dark:text-orange-400", bg: "bg-orange-50 dark:bg-orange-900/20" };
@@ -313,12 +291,21 @@ function ServiceCard({
             {/* Provider Info & Service Title */}
             <div className="absolute bottom-3 left-3 right-3 flex items-center gap-3">
               <div className="relative">
-                <img
-                  src={providerAvatar}
-                  alt={providerName}
-                  className="w-12 h-12 rounded-full border-2 border-white object-cover shadow-lg"
-                  data-testid={`img-provider-avatar-${service.id}`}
-                />
+                {providerImageUrl ? (
+                  <img
+                    src={providerImageUrl}
+                    alt={providerName}
+                    className="w-12 h-12 rounded-full border-2 border-white object-cover shadow-lg"
+                    data-testid={`img-provider-avatar-${service.id}`}
+                  />
+                ) : (
+                  <div
+                    className="w-12 h-12 rounded-full border-2 border-white shadow-lg bg-primary flex items-center justify-center"
+                    data-testid={`img-provider-avatar-${service.id}`}
+                  >
+                    <span className="text-white text-sm font-bold">{providerInitials}</span>
+                  </div>
+                )}
                 {isVerified && (
                   <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-emerald-500 rounded-full flex items-center justify-center border-2 border-white">
                     <CheckCircle className="w-3 h-3 text-white" />
