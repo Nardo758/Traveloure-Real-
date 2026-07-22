@@ -64,6 +64,20 @@ export function SignInModal({
     }
   };
 
+  const claimGuestConcierge = async () => {
+    try {
+      const requestId = sessionStorage.getItem("guestConciergeRequestId");
+      if (!requestId) return;
+      sessionStorage.removeItem("guestConciergeRequestId");
+      await fetch(`/api/concierge/requests/${requestId}/claim`, {
+        method: "POST",
+        credentials: "include",
+      });
+    } catch (err) {
+      console.warn("[concierge] Guest concierge claim failed", err);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -97,7 +111,7 @@ export function SignInModal({
         throw new Error(data.message || "Authentication failed");
       }
 
-      await migrateGuestCart();
+      await Promise.all([migrateGuestCart(), claimGuestConcierge()]);
       queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
 
       toast({
