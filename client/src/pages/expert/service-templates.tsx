@@ -13,10 +13,11 @@ import {
   ArrowRight,
   Plane,
   PartyPopper,
-  ClipboardList,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
+import { useEffect } from "react";
 import { useLocation, Link } from "wouter";
+import { useToast } from "@/hooks/use-toast";
 
 interface ServiceTemplate {
   id: string;
@@ -61,6 +62,7 @@ interface ServiceTemplatesResponse {
 
 export default function ServiceTemplates() {
   const [, navigate] = useLocation();
+  const { toast } = useToast();
 
   const { data, isLoading } = useQuery<ServiceTemplatesResponse>({
     queryKey: ["/api/expert/service-templates"],
@@ -68,6 +70,17 @@ export default function ServiceTemplates() {
 
   const requiresApplication = data?.requiresApplication ?? false;
   const templates = data?.templates ?? [];
+
+  useEffect(() => {
+    if (!isLoading && requiresApplication) {
+      toast({
+        title: "Application required",
+        description: "You need to submit an expert application before browsing service templates.",
+        variant: "destructive",
+      });
+      navigate("/expert/apply");
+    }
+  }, [isLoading, requiresApplication, toast, navigate]);
 
   const handleUseTemplate = (template: ServiceTemplate) => {
     const params = new URLSearchParams();
@@ -230,24 +243,6 @@ export default function ServiceTemplates() {
             })
           )}
         </div>
-
-        {!isLoading && requiresApplication && (
-          <div className="text-center py-16" data-testid="state-requires-application">
-            <ClipboardList className="w-14 h-14 text-gray-300 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold text-gray-900 mb-2">
-              Complete your expert application first
-            </h3>
-            <p className="text-gray-600 mb-6 max-w-md mx-auto">
-              Service templates are tailored to your expert role. Submit your application so we can
-              match you with the right templates.
-            </p>
-            <Link href="/expert/apply">
-              <Button className="bg-primary hover:bg-primary/90" data-testid="button-go-to-application">
-                Submit Application
-              </Button>
-            </Link>
-          </div>
-        )}
 
         {templates.length === 0 && !isLoading && !requiresApplication && (
           <div className="text-center py-12">
