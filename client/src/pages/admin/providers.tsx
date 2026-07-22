@@ -725,6 +725,7 @@ export default function AdminProviders() {
               onChange={(e) => setFeedbackText(e.target.value)}
               placeholder="Explain why the application was rejected and what the provider can improve..."
               rows={5}
+              maxLength={2000}
               data-testid="textarea-rejection-feedback"
             />
           </div>
