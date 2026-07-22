@@ -1328,6 +1328,19 @@ router.patch("/api/admin/provider-applications/:id/status", isAuthenticated, asy
         });
       }
     }
+
+    if (status === "rejected") {
+      // Send rejection email (fire-and-forget)
+      const providerUser = await storage.getUser(updated.userId);
+      if (providerUser?.email) {
+        const { sendProviderApplicationRejectionEmail } = await import("../services/email.service");
+        sendProviderApplicationRejectionEmail({
+          toEmail: providerUser.email,
+          firstName: providerUser.firstName ?? null,
+          rejectionMessage: rejectionMessage ?? null,
+        });
+      }
+    }
     
     res.json(updated);
   });
