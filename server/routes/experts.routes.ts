@@ -210,9 +210,9 @@ router.get("/api/expert/service-templates", isAuthenticated, async (req, res) =>
     try {
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
 
-      // Resolve the expert's role from their application form
+      // Resolve the expert's role and application status from their application form
       const formRow = await db
-        .select({ expertType: localExpertForms.expertType })
+        .select({ expertType: localExpertForms.expertType, status: localExpertForms.status })
         .from(localExpertForms)
         .where(eq(localExpertForms.userId, userId))
         .then((r) => r[0]);
@@ -221,7 +221,12 @@ router.get("/api/expert/service-templates", isAuthenticated, async (req, res) =>
 
       // No application submitted — tell the client so it can prompt the user.
       if (!formRow) {
-        return res.json({ requiresApplication: true, templates: [] });
+        return res.json({ requiresApplication: true, applicationRejected: false, templates: [] });
+      }
+
+      // Application was rejected — block access to service creation.
+      if (formRow.status === "rejected") {
+        return res.json({ requiresApplication: false, applicationRejected: true, templates: [] });
       }
 
       // expertId and isActive columns dropped in migration 013; all ESO rows are platform templates.
@@ -270,7 +275,7 @@ router.get("/api/expert/service-templates", isAuthenticated, async (req, res) =>
         };
       });
 
-      res.json({ requiresApplication: false, templates });
+      res.json({ requiresApplication: false, applicationRejected: false, templates });
     } catch (err) {
       console.error("Error fetching expert service templates:", err);
       res.status(500).json({ message: "Failed to fetch service templates" });
