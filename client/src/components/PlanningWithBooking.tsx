@@ -175,22 +175,24 @@ export default function PlanningWithBooking({
     }
   };
 
-  // Convert AI-generated itinerary to bookable cart items
+  // Convert AI-generated itinerary to bookable cart items.
+  // item.id must be the DB id from itinerary_items so booking.service.ts can
+  // resolve the price server-side (§14 — never trust client-supplied price).
   const convertItineraryToCartItems = (itinerary: any, tripId: string) => {
     if (!itinerary || !itinerary.items) return [];
 
     return itinerary.items
-      .filter((item: any) => item.bookable !== false) // Only include bookable items
+      .filter((item: any) => item.bookable !== false)
       .map((item: any, index: number) => ({
         id: item.id || `item-${index}`,
         tripId: tripId,
         providerId: item.providerId || undefined,
         title: item.title || item.name || 'Untitled Activity',
         itemType: item.type || item.category || 'activities',
-        bookingType: item.bookingType || 'instant', // instant, request, or external
+        bookingType: item.bookingType || 'instant',
         date: item.date || startDate,
         time: item.time || '09:00',
-        price: item.price || item.estimatedPrice || 0,
+        price: item.price || item.estimatedPrice || item.estimatedCost || 0,
         location: item.location || destinations[0]?.city || '',
         metadata: {
           description: item.description,
