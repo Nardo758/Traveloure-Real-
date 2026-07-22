@@ -68,11 +68,15 @@ export function SignInModal({
     try {
       const requestId = sessionStorage.getItem("guestConciergeRequestId");
       if (!requestId) return;
-      sessionStorage.removeItem("guestConciergeRequestId");
-      await fetch(`/api/concierge/requests/${requestId}/claim`, {
+      const res = await fetch(`/api/concierge/requests/${requestId}/claim`, {
         method: "POST",
         credentials: "include",
       });
+      if (res.ok) {
+        sessionStorage.removeItem("guestConciergeRequestId");
+      } else {
+        console.warn("[concierge] Guest concierge claim returned", res.status);
+      }
     } catch (err) {
       console.warn("[concierge] Guest concierge claim failed", err);
     }
@@ -156,6 +160,9 @@ export function SignInModal({
   };
 
   const handleReplitSignIn = () => {
+    if (returnTo) {
+      sessionStorage.setItem("traveloure_return_to", returnTo);
+    }
     window.location.href = "/api/login";
   };
 
