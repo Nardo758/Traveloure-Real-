@@ -375,10 +375,10 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         if (!item.service) continue;
         const itemPrice = parseFloat(item.service.price || "0") * (item.quantity || 1);
         // Map service category UUID → booking_fee_configs slug → commission rates
-        // FEE-2: providers get flat 10% commission; query role to apply provider_commission_percent
         let feeCategory = item.service.categoryId
           ? (catSlugMap.get(item.service.categoryId) ?? "default")
           : "default";
+        let isProviderService = false;
         if (item.service.userId) {
           const [providerRow] = await db
             .select({ role: users.role })
@@ -386,13 +386,17 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
             .where(eq(users.id, item.service.userId))
             .limit(1);
           if (providerRow?.role === "provider") {
-            feeCategory = "provider_commission_percent";
+            isProviderService = true;
           }
         }
-        const itemCategoryRates = await resolveCommissionRates({
-          category: feeCategory,
-          expertId: item.service.userId ?? null, // EXP-OVR.P2: honor per-expert override for experts
-        });
+        // Provider-role items: route through source:"provider" + providerId so the
+        // early-adopter gate in resolveCommissionRates picks the correct band
+        // (beta_flat vs expert_standard) from platform_settings — no literal strings.
+        const itemCategoryRates = await resolveCommissionRates(
+          isProviderService
+            ? { source: "provider", providerId: item.service.userId ?? null }
+            : { category: feeCategory, expertId: item.service.userId ?? null } // EXP-OVR.P2
+        );
         // Per-service revenueShareRate is the final override (takes priority over config)
         const itemExpertShare = safeParseRate(item.service.revenueShareRate, itemCategoryRates.expertShareRate);
         checkoutSubtotal += itemPrice;
@@ -421,10 +425,10 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         
         const price = parseFloat(item.service.price || "0") * (item.quantity || 1);
         // Map service category UUID → booking_fee_configs slug → commission rates
-        // FEE-2: providers get flat 10% commission; query role to apply provider_commission_percent
         let feeCategory2 = item.service.categoryId
           ? (catSlugMap.get(item.service.categoryId) ?? "default")
           : "default";
+        let isProviderService2 = false;
         if (item.service.userId) {
           const [providerRow] = await db
             .select({ role: users.role })
@@ -432,13 +436,14 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
             .where(eq(users.id, item.service.userId))
             .limit(1);
           if (providerRow?.role === "provider") {
-            feeCategory2 = "provider_commission_percent";
+            isProviderService2 = true;
           }
         }
-        const itemCategoryRates2 = await resolveCommissionRates({
-          category: feeCategory2,
-          expertId: item.service.userId ?? null, // EXP-OVR.P2: honor per-expert override for experts
-        });
+        const itemCategoryRates2 = await resolveCommissionRates(
+          isProviderService2
+            ? { source: "provider", providerId: item.service.userId ?? null }
+            : { category: feeCategory2, expertId: item.service.userId ?? null } // EXP-OVR.P2
+        );
         // expertShareRate: fraction expert earns; platform gets (1 - expertShareRate)
         const expertShareRate = safeParseRate(item.service.revenueShareRate, itemCategoryRates2.expertShareRate);
         const baseExpertEarningsAmt = price * expertShareRate;
@@ -623,6 +628,7 @@ router.get("/api/cart/fee-preview", isAuthenticated, async (req, res) => {
         let feeCategory = item.service.categoryId
           ? (catSlugMap.get(item.service.categoryId) ?? "default")
           : "default";
+        let isProviderServicePreview = false;
         if (item.service.userId) {
           const [providerRow] = await db
             .select({ role: users.role })
@@ -630,13 +636,14 @@ router.get("/api/cart/fee-preview", isAuthenticated, async (req, res) => {
             .where(eq(users.id, item.service.userId))
             .limit(1);
           if (providerRow?.role === "provider") {
-            feeCategory = "provider_commission_percent";
+            isProviderServicePreview = true;
           }
         }
-        const itemRates = await resolveCommissionRates({
-          category: feeCategory,
-          expertId: item.service.userId ?? null,
-        });
+        const itemRates = await resolveCommissionRates(
+          isProviderServicePreview
+            ? { source: "provider", providerId: item.service.userId ?? null }
+            : { category: feeCategory, expertId: item.service.userId ?? null }
+        );
         const itemExpertShare = safeParseRate(item.service.revenueShareRate, itemRates.expertShareRate);
         previewSubtotal += itemPrice;
         const itemInsuranceFee = calcInsuranceFee(itemPrice, itemRates, feeCategory);
