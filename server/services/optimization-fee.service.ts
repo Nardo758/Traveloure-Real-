@@ -12,9 +12,9 @@
  *   2. Tier-level default row (event_type IS NULL)
  *   3. Code-level DEFAULT_FEE_CENTS fallback (§4.8 standard: $9.99 across tiers). fee-literal-ok: comment
  */
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, desc } from "drizzle-orm";
 import { db } from "../db";
-import { optimizationFees, feeBands } from "@shared/schema";
+import { optimizationFees, feeBands, coordinationFeeCredits } from "@shared/schema";
 import { complexityTier } from "./smart-sequencing.service";
 
 // 3.0.1b: Fail-loud resolver. If the DB is missing both the event-type row AND
@@ -174,6 +174,7 @@ async function resolveCoordinationParams(): Promise<{ floorCents: number; percen
 export async function resolveCoordinationFee(
   eventType: string,
   budgetCents: number,
+  availableCreditCents: number = 0,
 ): Promise<ResolvedCoordinationFee> {
   // Phase 4.1: read the floor + percent from admin-editable fee_bands (migration 122),
   // falling back to the ratified constants when a row is missing/invalid so a fee floor
@@ -184,15 +185,13 @@ export async function resolveCoordinationFee(
   const rawFeeCents = Math.max(floorCents, percentFee);
   const rule: "floor" | "percent" = rawFeeCents === floorCents ? "floor" : "percent";
 
-  // D-CREDIT (interim): NO optimize-fee credit is applied here. The credit was previously
-  // subtracted unconditionally for every event type based on config alone (isEventOptimizer),
-  // with no signal that the traveler actually PAID an optimize fee — the payment record
-  // (optimization.routes.ts confirm) ties to itinerary_comparisons/platform_revenue, never to a
-  // coordination state (explicit TODO there). Crediting an unpaid fee is an unearned discount, so
-  // the honest interim charges the correct floor-or-percent with no credit.
-  // Follow-up (filed): record/lookup the paid optimize fee per coordination state, then credit only
-  // when actually paid. The optimize-fee config (getFee / creditTowardCoordination) is left intact.
-  const optimizeCreditCents = 0;
+  // PAID-SIGNAL CREDIT (§7, ratified Jul 22, 2026). The optimize credit is applied ONLY when a real
+  // PAID optimize fee is passed in via availableCreditCents — never inferred from config alone (that
+  // was the "unearned discount" the interim refused). This function stays PURE: the caller (the pay
+  // route / the /fee quote) looks up the paid credit from the coordination_fee_credits ledger and
+  // passes the cents in; nothing is queried or consumed here. Capped at the raw fee so a credit can
+  // never make the charge negative.
+  const optimizeCreditCents = Math.max(0, Math.min(availableCreditCents, rawFeeCents));
   const feeCents = Math.max(0, rawFeeCents - optimizeCreditCents);
 
   return {
@@ -206,4 +205,60 @@ export async function resolveCoordinationFee(
       appliedPercent: percent,
     },
   };
+}
+
+// ── Paid-signal ledger helpers (coordination_fee_credits, migration 125) ──────────────
+//
+// A credit row exists only when a real Event-branch optimize fee was PAID
+// (optimization-payments/confirm inserts it). "Available" = not yet consumed by any
+// coordination charge. We claim the NEWEST available credit for the traveler (the singular
+// "$19.99 credited-toward-coordination" promise — accumulating multiple is a filed follow-up).
+
+/** Read-only: the newest available paid-optimize credit for a user, in cents (0 if none). Used by
+ *  the /fee QUOTE — surfaces the credit without consuming it. */
+export async function getAvailableCoordinationCreditCents(userId: string): Promise<number> {
+  const [candidate] = await db
+    .select({ amountCents: coordinationFeeCredits.amountCents })
+    .from(coordinationFeeCredits)
+    .where(and(
+      eq(coordinationFeeCredits.userId, userId),
+      isNull(coordinationFeeCredits.consumedByCoordinationId),
+    ))
+    .orderBy(desc(coordinationFeeCredits.createdAt))
+    .limit(1);
+  return candidate?.amountCents ?? 0;
+}
+
+/** Atomically CONSUME the newest available credit against a coordination (§15: the
+ *  `consumed IS NULL` guard on the UPDATE is the concurrency lock — two coordinations racing for
+ *  the same credit, only one UPDATE matches). Returns the consumed amount in cents (0 if none/raced). */
+export async function claimCoordinationCredit(userId: string, coordinationId: string): Promise<number> {
+  const [candidate] = await db
+    .select({ id: coordinationFeeCredits.id, amountCents: coordinationFeeCredits.amountCents })
+    .from(coordinationFeeCredits)
+    .where(and(
+      eq(coordinationFeeCredits.userId, userId),
+      isNull(coordinationFeeCredits.consumedByCoordinationId),
+    ))
+    .orderBy(desc(coordinationFeeCredits.createdAt))
+    .limit(1);
+  if (!candidate) return 0;
+  const claimed = await db
+    .update(coordinationFeeCredits)
+    .set({ consumedByCoordinationId: coordinationId, consumedAt: new Date() })
+    .where(and(
+      eq(coordinationFeeCredits.id, candidate.id),
+      isNull(coordinationFeeCredits.consumedByCoordinationId),
+    ))
+    .returning({ amountCents: coordinationFeeCredits.amountCents });
+  return claimed.length > 0 ? claimed[0].amountCents : 0;
+}
+
+/** Roll back any credit consumed by a coordination (used when a pay attempt fails after claiming,
+ *  so the credit returns to the available pool and the next attempt starts clean). */
+export async function releaseCoordinationCredit(coordinationId: string): Promise<void> {
+  await db
+    .update(coordinationFeeCredits)
+    .set({ consumedByCoordinationId: null, consumedAt: null })
+    .where(eq(coordinationFeeCredits.consumedByCoordinationId, coordinationId));
 }

@@ -55,7 +55,7 @@ export function DeliveryOptions({
   const isEvent = branch === "event";
 
   async function patchTier(tier: "ai" | "expert" | "full") {
-    await fetch(`/api/concierge/requests/${requestId}`, {
+    return fetch(`/api/concierge/requests/${requestId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
@@ -116,10 +116,19 @@ export function DeliveryOptions({
   async function handleFull() {
     setBusy("full");
     try {
-      await patchTier("full");
+      // PATCH chosenTier=full creates (or reuses) a real coordination engagement for a signed-in
+      // traveler (Phase 1a) and returns its coordinationId — link the traveler straight to it.
+      const res = await patchTier("full");
+      let hasEngagement = false;
+      try {
+        const data = res && "json" in res ? await res.json() : null;
+        hasEngagement = Boolean(data?.coordinationId);
+      } catch { /* non-JSON / guest — fall back to the generic message */ }
       setSuccess({
         tier: "full",
-        message: "We'll follow up with a personalized quote for your event.",
+        message: hasEngagement
+          ? "Your event coordination is set up. Track its status and pay the coordination fee under My Events."
+          : "We'll follow up with a personalized quote for your event.",
       });
     } finally {
       setBusy(null);
@@ -136,6 +145,13 @@ export function DeliveryOptions({
           </CardTitle>
           <CardDescription>{success.message}</CardDescription>
         </CardHeader>
+        {success.tier === "full" && (
+          <CardContent>
+            <Button onClick={() => setLocation("/my-events")} data-testid="button-view-my-events">
+              View My Events
+            </Button>
+          </CardContent>
+        )}
       </Card>
     );
   }
