@@ -35,6 +35,7 @@ interface ApplicationStep {
 interface ApplicationStatus {
   steps: ApplicationStep[];
   overallStatus: string;
+  rejectionMessage: string | null;
   identityVerificationStatus: string;
   identityVerifiedAt?: string;
   form: {
@@ -180,6 +181,52 @@ export default function ExpertStatusPage() {
             <Progress value={progressPercentage} className="mt-4 h-3 bg-white/20" />
           </CardContent>
         </Card>
+
+        {/* Rejection callout — only shown when the application was not approved */}
+        {overallStatus === "rejected" && (
+          <Card className="border-2 border-red-300 bg-red-50 dark:bg-red-900/20" data-testid="card-rejection-details">
+            <CardContent className="p-6">
+              <div className="flex items-start gap-4">
+                <div className="p-3 bg-red-500 rounded-full flex-shrink-0">
+                  <AlertCircle className="w-6 h-6 text-white" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-lg font-semibold text-red-800 dark:text-red-300">Application Not Approved</h3>
+                  {appStatus?.rejectionMessage ? (
+                    <div className="mt-2 space-y-3">
+                      <div className="rounded-lg bg-red-100 dark:bg-red-900/30 px-4 py-3 border border-red-200 dark:border-red-700">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-red-600 dark:text-red-400 mb-1">
+                          Reason from our review team
+                        </p>
+                        <p className="text-sm text-red-800 dark:text-red-200 leading-relaxed" data-testid="text-rejection-reason">
+                          {appStatus.rejectionMessage}
+                        </p>
+                      </div>
+                      <p className="text-sm text-red-700 dark:text-red-400">
+                        Please address the feedback above and resubmit your application.
+                      </p>
+                    </div>
+                  ) : (
+                    <p className="text-muted-foreground mt-1 text-sm">
+                      Our review team did not leave a specific reason. Please review your application, make any improvements, and reapply.
+                    </p>
+                  )}
+                  <div className="mt-4">
+                    <a href="/expert/apply">
+                      <button
+                        className="inline-flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+                        data-testid="button-reapply"
+                      >
+                        Update &amp; Resubmit Application
+                        <ArrowRight className="w-4 h-4" />
+                      </button>
+                    </a>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Identity Verification Action Card */}
         {identityStatus !== "verified" && (
