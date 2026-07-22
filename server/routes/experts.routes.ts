@@ -369,7 +369,7 @@ router.get("/api/expert/earnings/details", isAuthenticated, async (req, res) => 
 
 router.get("/api/expert/trips/:tripId/constraints", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any)?.id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || (user.role !== "expert" && user.role !== "admin")) {
@@ -418,7 +418,7 @@ router.get("/api/expert/trips/:tripId/constraints", isAuthenticated, async (req,
 
 router.get("/api/expert/trips/:tripId/vendors", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any)?.id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || (user.role !== "expert" && user.role !== "admin")) {
@@ -436,7 +436,7 @@ router.get("/api/expert/trips/:tripId/vendors", isAuthenticated, async (req, res
 
 router.post("/api/expert/trips/:tripId/vendors", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any)?.id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || (user.role !== "expert" && user.role !== "admin")) {
@@ -469,7 +469,7 @@ router.post("/api/expert/trips/:tripId/vendors", isAuthenticated, async (req, re
 
 router.put("/api/expert/vendors/:vendorId", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any)?.id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || (user.role !== "expert" && user.role !== "admin")) {
@@ -498,7 +498,7 @@ router.put("/api/expert/vendors/:vendorId", isAuthenticated, async (req, res) =>
 
 router.delete("/api/expert/vendors/:vendorId", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any)?.id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || (user.role !== "expert" && user.role !== "admin")) {
