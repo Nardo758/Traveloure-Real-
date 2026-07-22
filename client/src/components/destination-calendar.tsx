@@ -142,7 +142,7 @@ export function DestinationCalendar({ initialCountry, compact = false }: Destina
       <CardHeader className={cn("pb-4", compact && "px-0 pt-0")}>
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div className="flex items-center gap-2">
-            <Calendar className="w-5 h-5 text-[#FF385C]" />
+            <Calendar className="w-5 h-5 text-primary" />
             <CardTitle className="text-lg">When to Visit</CardTitle>
           </div>
           
@@ -161,7 +161,7 @@ export function DestinationCalendar({ initialCountry, compact = false }: Destina
 
       <CardContent className={cn(compact && "px-0 pb-0")}>
         {!selectedCountry ? (
-          <div className="text-center py-8 text-[#6B7280]">
+          <div className="text-center py-8 text-muted-foreground">
             <MapPin className="w-12 h-12 mx-auto mb-3 text-gray-300" />
             <p>Select a country to see the best times to visit</p>
           </div>
@@ -278,7 +278,7 @@ export function DestinationCalendar({ initialCountry, compact = false }: Destina
                 )}
 
                 {selectedMonthData?.weatherDescription && (
-                  <p className="text-sm text-[#6B7280] mb-4">
+                  <p className="text-sm text-muted-foreground mb-4">
                     {selectedMonthData.weatherDescription}
                   </p>
                 )}
@@ -286,7 +286,7 @@ export function DestinationCalendar({ initialCountry, compact = false }: Destina
                 {selectedMonthEvents.length > 0 && (
                   <div className="space-y-2">
                     <h4 className="text-sm font-medium flex items-center gap-1.5">
-                      <Sparkles className="w-4 h-4 text-[#FF385C]" />
+                      <Sparkles className="w-4 h-4 text-primary" />
                       Events & Festivals
                     </h4>
                     <div className="space-y-2">
@@ -297,7 +297,7 @@ export function DestinationCalendar({ initialCountry, compact = false }: Destina
                             <div className="flex-1 min-w-0">
                               <h5 className="font-medium text-sm">{event.title}</h5>
                               {event.description && (
-                                <p className="text-xs text-[#6B7280] mt-0.5 line-clamp-2">{event.description}</p>
+                                <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{event.description}</p>
                               )}
                               {event.tips && (
                                 <div className="flex items-start gap-1.5 mt-2 text-xs text-blue-600 dark:text-blue-400">

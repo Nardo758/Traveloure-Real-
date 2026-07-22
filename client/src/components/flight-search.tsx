@@ -489,7 +489,7 @@ export function FlightSearch({
       <Card className="border-2 border-dashed">
         <CardContent className="p-6">
           <div className="text-center mb-4">
-            <Plane className="h-10 w-10 mx-auto mb-2 text-[#FF385C]" />
+            <Plane className="h-10 w-10 mx-auto mb-2 text-primary" />
             <h3 className="font-semibold text-lg mb-1">Airport Detection Failed</h3>
           </div>
 
@@ -891,7 +891,7 @@ export function FlightSearch({
 
       {/* Selected Outbound Flight Summary (for round-trip) */}
       {tripType === "roundtrip" && selectedOutboundFlight && (
-        <Card className="border-[#FF385C] bg-primary/5">
+        <Card className="border-primary bg-primary/5">
           <CardContent className="p-4">
             <div className="flex items-center justify-between flex-wrap gap-2 mb-2">
               <div className="flex items-center gap-2">

@@ -305,9 +305,9 @@ export default function ExpertProfile() {
           <CardContent>
             <div className="flex items-center gap-6">
               <div className="relative">
-                <Avatar className="w-24 h-24 border-4 border-[#FF385C]/20">
+                <Avatar className="w-24 h-24 border-4 border-primary/20">
                   <AvatarImage src={user?.profileImageUrl || undefined} />
-                  <AvatarFallback className="bg-primary/10 text-[#FF385C] text-2xl font-medium">
+                  <AvatarFallback className="bg-primary/10 text-primary text-2xl font-medium">
                     {user?.firstName?.[0] || "E"}{user?.lastName?.[0] || "X"}
                   </AvatarFallback>
                 </Avatar>
@@ -358,7 +358,7 @@ export default function ExpertProfile() {
 
             <div className="space-y-2 md:col-span-2">
               <Label className="flex items-center gap-1.5">
-                <BadgeCheck className="w-4 h-4 text-[#FF385C]" />
+                <BadgeCheck className="w-4 h-4 text-primary" />
                 Expert Role
               </Label>
               {profileLoading ? (

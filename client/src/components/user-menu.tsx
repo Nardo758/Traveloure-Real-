@@ -113,7 +113,7 @@ export function UserMenu() {
             </AvatarFallback>
           </Avatar>
           <div className="flex flex-col items-start leading-none">
-            <span className="text-sm font-medium text-[#6B7280] dark:text-gray-300">
+            <span className="text-sm font-medium text-muted-foreground dark:text-gray-300">
               {displayName}
             </span>
             {roleLabel && (

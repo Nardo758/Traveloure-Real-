@@ -43,7 +43,7 @@ function getNotificationColor(type: string) {
   switch (type) {
     case "message":
     case "new_chat": return "bg-blue-100 text-blue-600";
-    case "ai": return "bg-[#FFE3E8] text-[#FF385C]";
+    case "ai": return "bg-[#FFE3E8] text-primary";
     case "reminder": return "bg-green-100 text-green-600";
     case "credits": return "bg-yellow-100 text-yellow-600";
     case "booking_request":
@@ -171,7 +171,7 @@ export default function Notifications() {
     <div className="p-6 max-w-3xl mx-auto space-y-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold text-[#111827] dark:text-white" data-testid="text-page-title">
+            <h1 className="text-2xl font-bold text-foreground dark:text-white" data-testid="text-page-title">
               Notifications
             </h1>
             {unreadCount > 0 && (
@@ -183,7 +183,7 @@ export default function Notifications() {
           {unreadCount > 0 && (
             <Button
               variant="ghost"
-              className="text-[#FF385C]"
+              className="text-primary"
               onClick={markAllRead}
               data-testid="button-mark-all-read"
             >
@@ -203,7 +203,7 @@ export default function Notifications() {
                 transition={{ delay: i * 0.05 }}
               >
                 <Card
-                  className={`border ${notification.read ? 'border-[#E5E7EB] bg-white dark:bg-gray-800' : 'border-[#FF385C]/20 bg-[#FFF1F3] dark:bg-primary/10'}`}
+                  className={`border ${notification.read ? 'border-border bg-white dark:bg-gray-800' : 'border-primary/20 bg-[#FFF1F3] dark:bg-primary/10'}`}
                   data-testid={`notification-${notification.index}`}
                 >
                   <CardContent className="p-4">
@@ -214,10 +214,10 @@ export default function Notifications() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between gap-2">
                           <div className="flex-1 min-w-0">
-                            <h3 className={`font-medium ${notification.read ? 'text-[#111827] dark:text-white' : 'text-[#111827] dark:text-white font-semibold'}`}>
+                            <h3 className={`font-medium ${notification.read ? 'text-foreground dark:text-white' : 'text-foreground dark:text-white font-semibold'}`}>
                               {notification.title}
                             </h3>
-                            <p className="text-sm text-[#6B7280] mt-0.5">{notification.description}</p>
+                            <p className="text-sm text-muted-foreground mt-0.5">{notification.description}</p>
                             <p className="text-xs text-[#9CA3AF] mt-1">{notification.time}</p>
 
                             {isBookingNotif(notification.type) && notification.bookingId ? (
@@ -253,7 +253,7 @@ export default function Notifications() {
                                   <Button
                                     size="sm"
                                     variant="ghost"
-                                    className="h-7 px-3 text-xs text-[#FF385C] hover:text-[#e0314f]"
+                                    className="h-7 px-3 text-xs text-primary hover:text-[#e0314f]"
                                     data-testid={`button-view-booking-${notification.index}`}
                                   >
                                     <Briefcase className="w-3 h-3 mr-1" />
@@ -279,7 +279,7 @@ export default function Notifications() {
                               <Button
                                 size="icon"
                                 variant="ghost"
-                                className="h-8 w-8 text-[#6B7280] hover:text-[#111827]"
+                                className="h-8 w-8 text-muted-foreground hover:text-foreground"
                                 onClick={() => markAsRead(notification.id)}
                                 data-testid={`button-mark-read-${notification.index}`}
                               >
@@ -289,7 +289,7 @@ export default function Notifications() {
                             <Button
                               size="icon"
                               variant="ghost"
-                              className="h-8 w-8 text-[#6B7280] hover:text-red-500"
+                              className="h-8 w-8 text-muted-foreground hover:text-red-500"
                               onClick={() => deleteNotification(notification.id)}
                               data-testid={`button-delete-${notification.index}`}
                             >
@@ -305,15 +305,15 @@ export default function Notifications() {
             ))}
           </div>
         ) : (
-          <Card className="border-2 border-dashed border-[#E5E7EB]">
+          <Card className="border-2 border-dashed border-border">
             <CardContent className="p-12 text-center">
               <div className="w-16 h-16 bg-[#F3F4F6] rounded-full flex items-center justify-center mx-auto mb-4">
                 <Bell className="w-8 h-8 text-[#9CA3AF]" />
               </div>
-              <h3 className="text-lg font-semibold text-[#111827] dark:text-white mb-2">
+              <h3 className="text-lg font-semibold text-foreground dark:text-white mb-2">
                 No notifications
               </h3>
-              <p className="text-[#6B7280]">
+              <p className="text-muted-foreground">
                 You're all caught up! Check back later for updates.
               </p>
             </CardContent>

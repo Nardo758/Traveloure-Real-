@@ -621,7 +621,7 @@ function AIOptimizationTab({
 
         <Card className="p-6">
           <h4 className="font-semibold mb-4 flex items-center gap-2">
-            <Wand2 className="w-5 h-5 text-[#FF385C]" />
+            <Wand2 className="w-5 h-5 text-primary" />
             Score breakdown
           </h4>
           <div className="grid grid-cols-2 gap-3">
@@ -677,7 +677,7 @@ function AIOptimizationTab({
 
   return (
     <Card className="p-8 text-center">
-      <Wand2 className="w-12 h-12 text-[#FF385C] mx-auto mb-4" />
+      <Wand2 className="w-12 h-12 text-primary mx-auto mb-4" />
       <h3 className="text-xl font-semibold mb-2">AI Optimization</h3>
       <p className="text-muted-foreground mb-4 max-w-md mx-auto">
         Let our AI analyze your selections and optimize your {experienceType.name.toLowerCase()} plan
@@ -2119,7 +2119,7 @@ export default function ExperienceTemplatePage() {
                       key={tab.id}
                       value={tab.id}
                       className={cn(
-                        "rounded-none border-b-2 border-transparent px-4 py-3 data-[state=active]:border-[#FF385C] data-[state=active]:text-[#FF385C]",
+                        "rounded-none border-b-2 border-transparent px-4 py-3 data-[state=active]:border-primary data-[state=active]:text-primary",
                         "data-[state=active]:shadow-none"
                       )}
                       data-testid={`tab-${tab.id}`}
@@ -2728,14 +2728,14 @@ export default function ExperienceTemplatePage() {
                     const venueId = `custom-${venue.id}`;
                     const isInCart = selectedProviderIds.includes(venueId);
                     return (
-                      <Card key={venueId} className="overflow-hidden hover-elevate border-dashed border-2 border-[#FF385C]/30">
+                      <Card key={venueId} className="overflow-hidden hover-elevate border-dashed border-2 border-primary/30">
                         <div className="h-48 bg-gradient-to-br from-[#FF385C]/10 to-[#FF385C]/20 flex items-center justify-center">
-                          <MapPin className="w-12 h-12 text-[#FF385C]" />
+                          <MapPin className="w-12 h-12 text-primary" />
                         </div>
                         <CardContent className="p-4">
                           <div className="flex items-start justify-between mb-2">
                             <h3 className="font-semibold text-lg">{venue.name}</h3>
-                            <Badge variant="outline" className="text-xs border-[#FF385C] text-[#FF385C]">
+                            <Badge variant="outline" className="text-xs border-primary text-primary">
                               Custom
                             </Badge>
                           </div>
@@ -3178,7 +3178,7 @@ export default function ExperienceTemplatePage() {
                   <TabsTrigger
                     key={tab.id}
                     value={tab.id}
-                    className="rounded-none border-b-2 border-transparent px-3 py-2 text-sm data-[state=active]:border-[#FF385C] data-[state=active]:text-[#FF385C] whitespace-nowrap"
+                    className="rounded-none border-b-2 border-transparent px-3 py-2 text-sm data-[state=active]:border-primary data-[state=active]:text-primary whitespace-nowrap"
                   >
                     {tab.label}
                   </TabsTrigger>
@@ -3243,7 +3243,7 @@ export default function ExperienceTemplatePage() {
                   data-testid="button-toggle-map-mobile"
                 >
                   <div className="flex items-center gap-2">
-                    <MapPin className="w-5 h-5 text-[#FF385C]" />
+                    <MapPin className="w-5 h-5 text-primary" />
                     <span className="font-medium">View Map</span>
                     {cart.length > 0 && (
                       <Badge className="bg-primary">{cart.length} selected</Badge>
@@ -3251,7 +3251,7 @@ export default function ExperienceTemplatePage() {
                   </div>
                   <div className="flex items-center gap-3">
                     {cart.length > 0 && (
-                      <span className="font-bold text-[#FF385C]">${cartTotal}</span>
+                      <span className="font-bold text-primary">${cartTotal}</span>
                     )}
                     <ChevronDown className="w-5 h-5" />
                   </div>
@@ -3289,7 +3289,7 @@ export default function ExperienceTemplatePage() {
           <SheetContent side="right" className="w-full sm:max-w-lg overflow-y-auto">
             <SheetHeader>
               <SheetTitle className="flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-[#FF385C]" />
+                <Sparkles className="w-5 h-5 text-primary" />
                 AI Optimization
               </SheetTitle>
             </SheetHeader>
@@ -3367,7 +3367,7 @@ export default function ExperienceTemplatePage() {
           <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
-                <MessageCircle className="w-5 h-5 text-[#FF385C]" />
+                <MessageCircle className="w-5 h-5 text-primary" />
                 Get Expert Help
               </DialogTitle>
               <DialogDescription>
@@ -3428,7 +3428,7 @@ export default function ExperienceTemplatePage() {
           <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
-                <Wand2 className="w-5 h-5 text-[#FF385C]" />
+                <Wand2 className="w-5 h-5 text-primary" />
                 AI Itinerary Builder
                 <Badge variant="secondary" className="text-[10px] ml-2">Powered by Grok</Badge>
               </DialogTitle>

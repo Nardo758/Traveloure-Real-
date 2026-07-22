@@ -220,7 +220,7 @@ export default function AdminServices() {
       // "platform cut" here by multiplying by one service's rate (wrong math + a fee
       // literal, §8) — the real config-resolved platform revenue lives on /admin/revenue.
       value: `$${(summary?.totalRevenue ?? 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}`,
-      icon: DollarSign, color: "text-[#FF385C]" },
+      icon: DollarSign, color: "text-primary" },
     { label: "Featured",        value: summary?.featuredCount ?? 0,  icon: Star,         color: "text-amber-500" },
     { label: "Paused / Draft",
       value: (summary?.byStatus?.paused ?? 0) + (summary?.byStatus?.draft ?? 0),

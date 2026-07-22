@@ -192,7 +192,7 @@ export function ExpertMatchCard({
             <div className="flex items-start justify-between gap-1">
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5 flex-wrap">
-                  <h3 className="font-semibold text-[#111827] dark:text-white text-sm truncate" data-testid="text-expert-name">
+                  <h3 className="font-semibold text-foreground dark:text-white text-sm truncate" data-testid="text-expert-name">
                     {fullName}
                   </h3>
                   {verified && <CheckCircle className="w-3.5 h-3.5 text-blue-500 fill-blue-500 shrink-0" />}
@@ -202,7 +202,7 @@ export function ExpertMatchCard({
                 </div>
 
                 {location && (
-                  <div className="flex items-center gap-1 text-[#6B7280] text-xs">
+                  <div className="flex items-center gap-1 text-muted-foreground text-xs">
                     <MapPin className="w-3 h-3 shrink-0" />
                     <span className="truncate">{location}</span>
                   </div>
@@ -216,7 +216,7 @@ export function ExpertMatchCard({
                 data-testid="button-favorite"
               >
                 <Heart
-                  className={cn("w-4 h-4 transition-colors", isFavorite ? "fill-[#FF385C] text-[#FF385C]" : "text-gray-400")}
+                  className={cn("w-4 h-4 transition-colors", isFavorite ? "fill-[#FF385C] text-primary" : "text-gray-400")}
                 />
               </button>
             </div>
@@ -224,14 +224,14 @@ export function ExpertMatchCard({
             <div className="flex items-center gap-2 mt-1 flex-wrap text-xs">
               <div className="flex items-center text-amber-500">
                 <Star className="w-3 h-3 fill-amber-500" />
-                <span className="ml-0.5 font-semibold text-[#6B7280]">New</span>
+                <span className="ml-0.5 font-semibold text-muted-foreground">New</span>
                 {reviewsCount !== null && (
-                  <span className="text-[#6B7280] ml-0.5">({reviewsCount})</span>
+                  <span className="text-muted-foreground ml-0.5">({reviewsCount})</span>
                 )}
               </div>
 
               {tripsCount !== null && (
-                <div className="flex items-center gap-0.5 text-[#6B7280]">
+                <div className="flex items-center gap-0.5 text-muted-foreground">
                   <Briefcase className="w-3 h-3" />
                   <span>{tripsCount} trips</span>
                 </div>
@@ -241,8 +241,8 @@ export function ExpertMatchCard({
 
           {lowestPrice && (
             <div className="text-right shrink-0">
-              <p className="text-[10px] text-[#6B7280]">From</p>
-              <p className="text-lg font-bold text-[#FF385C]" data-testid="text-price">
+              <p className="text-[10px] text-muted-foreground">From</p>
+              <p className="text-lg font-bold text-primary" data-testid="text-price">
                 ${lowestPrice}
               </p>
             </div>
@@ -283,7 +283,7 @@ export function ExpertMatchCard({
               </Badge>
             ))}
             {languages.length > 0 && (
-              <span className="text-[10px] text-[#6B7280] flex items-center gap-0.5">
+              <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
                 <Languages className="w-3 h-3" />
                 {languages.slice(0, 2).join(", ")}
               </span>
@@ -295,7 +295,7 @@ export function ExpertMatchCard({
           <div className="mt-2">
             <button
               onClick={() => setShowBreakdown(!showBreakdown)}
-              className="flex items-center gap-1 text-[10px] text-[#6B7280] hover:text-[#374151] dark:hover:text-gray-300 transition-colors"
+              className="flex items-center gap-1 text-[10px] text-muted-foreground hover:text-[#374151] dark:hover:text-gray-300 transition-colors"
               data-testid="button-toggle-breakdown"
             >
               <TrendingUp className="w-3 h-3" />
@@ -307,7 +307,7 @@ export function ExpertMatchCard({
               <div className="mt-2 space-y-1.5 p-2 rounded-md bg-gray-50 dark:bg-gray-800/50">
                 {breakdownItems.map((item) => (
                   <div key={item.label} className="flex items-center gap-2">
-                    <span className="text-[10px] text-[#6B7280] w-28 truncate">{item.label}</span>
+                    <span className="text-[10px] text-muted-foreground w-28 truncate">{item.label}</span>
                     <div className="flex-1 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
                       <div
                         className={cn("h-full rounded-full transition-all", getProgressColor(item.value))}
@@ -332,7 +332,7 @@ export function ExpertMatchCard({
           </div>
         )}
 
-        <div className="flex items-center gap-2 mt-2 pt-2 border-t border-[#E5E7EB] dark:border-gray-700">
+        <div className="flex items-center gap-2 mt-2 pt-2 border-t border-border dark:border-gray-700">
           <Button
             variant="outline"
             size="sm"

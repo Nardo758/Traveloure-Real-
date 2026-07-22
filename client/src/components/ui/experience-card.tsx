@@ -87,7 +87,7 @@ export function ExperienceCard({
             >
               <span className={cn(
                 "text-lg font-bold",
-                trending >= 70 ? "text-[#FF385C]" : trending >= 50 ? "text-orange-500 dark:text-orange-400" : "text-amber-500 dark:text-amber-400"
+                trending >= 70 ? "text-primary" : trending >= 50 ? "text-orange-500 dark:text-orange-400" : "text-amber-500 dark:text-amber-400"
               )}>
                 {trending}
               </span>

@@ -610,18 +610,18 @@ export default function ItineraryPage() {
             {/* Expert help callout — shown when no expert is involved yet */}
             {!shareData?.expertStatus && (
               <div
-                className="rounded-xl border border-[#FECDD3] bg-gradient-to-r from-[#FFF1F3] to-white dark:from-[#FF385C]/10 dark:to-transparent dark:border-[#FF385C]/30 p-4"
+                className="rounded-xl border border-[#FECDD3] bg-gradient-to-r from-[#FFF1F3] to-white dark:from-[#FF385C]/10 dark:to-transparent dark:border-primary/30 p-4"
                 data-testid="expert-help-callout"
               >
                 <div className="flex items-start gap-3">
                   <div className="p-2 rounded-full bg-primary/10 shrink-0">
-                    <UserCheck className="w-4 h-4 text-[#FF385C]" />
+                    <UserCheck className="w-4 h-4 text-primary" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-[#111827] dark:text-white">
+                    <p className="text-sm font-semibold text-foreground dark:text-white">
                       Want a local expert to plan this for you?
                     </p>
-                    <p className="text-xs text-[#6B7280] mt-0.5">
+                    <p className="text-xs text-muted-foreground mt-0.5">
                       Browse verified experts for{" "}
                       <span className="font-medium text-[#374151] dark:text-gray-300">
                         {itinerary?.destination?.split(",")[0] ?? "your destination"}
@@ -645,7 +645,7 @@ export default function ItineraryPage() {
                         <Button
                           size="sm"
                           variant="outline"
-                          className="h-8 text-xs border-[#FECDD3] text-[#FF385C] hover:bg-[#FFF1F3] gap-1.5"
+                          className="h-8 text-xs border-[#FECDD3] text-primary hover:bg-[#FFF1F3] gap-1.5"
                           data-testid="button-find-trip-planner"
                         >
                           <Star className="w-3 h-3" />
@@ -795,14 +795,14 @@ export default function ItineraryPage() {
               );
             })()}
 
-            <div className="rounded-xl border border-[#E5E7EB] bg-white dark:bg-gray-800 p-4 space-y-3">
+            <div className="rounded-xl border border-border bg-white dark:bg-gray-800 p-4 space-y-3">
               <div className="flex items-center gap-2.5">
                 <div className="p-2 rounded-full bg-[#FFE3E8] dark:bg-primary/20 shrink-0">
-                  <UserCheck className="w-4 h-4 text-[#FF385C]" />
+                  <UserCheck className="w-4 h-4 text-primary" />
                 </div>
                 <div>
-                  <h4 className="font-semibold text-sm text-[#111827] dark:text-white">Get Expert Help</h4>
-                  <p className="text-[11px] text-[#6B7280] leading-tight">Local guides · Trip planners · Event experts</p>
+                  <h4 className="font-semibold text-sm text-foreground dark:text-white">Get Expert Help</h4>
+                  <p className="text-[11px] text-muted-foreground leading-tight">Local guides · Trip planners · Event experts</p>
                 </div>
               </div>
               <div className="space-y-1.5">

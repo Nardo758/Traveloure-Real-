@@ -53,7 +53,7 @@ export default function EAProfile() {
               <div className="relative inline-block mb-4">
                 <Avatar className="h-24 w-24">
                   <AvatarImage src={user?.profileImageUrl || undefined} />
-                  <AvatarFallback className="bg-primary/10 text-[#FF385C] text-2xl">
+                  <AvatarFallback className="bg-primary/10 text-primary text-2xl">
                     {initials}
                   </AvatarFallback>
                 </Avatar>

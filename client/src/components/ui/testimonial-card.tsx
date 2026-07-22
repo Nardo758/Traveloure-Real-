@@ -102,7 +102,7 @@ export function TestimonialCard({
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <span className="text-sm font-semibold text-foreground" data-testid="expert-name">{expertName}</span>
-                <span className="px-1.5 py-0.5 rounded bg-primary/10 text-[#FF385C] text-xs font-bold" data-testid="expert-score">
+                <span className="px-1.5 py-0.5 rounded bg-primary/10 text-primary text-xs font-bold" data-testid="expert-score">
                   {expertHeatScore}
                 </span>
               </div>

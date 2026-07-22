@@ -416,7 +416,7 @@ export function CuratedContentSection({
     return (
       <div className={`mb-6 ${className}`}>
         <div className="flex items-center gap-2 mb-3">
-          <Sparkles className="h-4 w-4 text-[#FF385C]" />
+          <Sparkles className="h-4 w-4 text-primary" />
           <h3 className="text-sm font-semibold">{label}</h3>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -439,9 +439,9 @@ export function CuratedContentSection({
   return (
     <div className={`mb-6 ${className}`} data-testid="section-curated-content">
       <div className="flex items-center gap-2 mb-3">
-        <Sparkles className="h-4 w-4 text-[#FF385C]" />
+        <Sparkles className="h-4 w-4 text-primary" />
         <h3 className="text-sm font-semibold text-foreground">{label}</h3>
-        <Badge className="text-[10px] bg-primary/10 text-[#FF385C] border-[#FF385C]/20 hover:bg-primary/10 ml-1">
+        <Badge className="text-[10px] bg-primary/10 text-primary border-primary/20 hover:bg-primary/10 ml-1">
           {items.length} available
         </Badge>
         <span className="text-xs text-muted-foreground">in {destination}</span>

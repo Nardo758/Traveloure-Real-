@@ -560,7 +560,7 @@ export function TripTransportPlanner({
       <Card data-testid="transport-planner-empty">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Car className="h-5 w-5 text-[#FF385C]" />
+            <Car className="h-5 w-5 text-primary" />
             Trip Transportation
           </CardTitle>
           <p className="text-sm text-muted-foreground mt-1">
@@ -630,7 +630,7 @@ export function TripTransportPlanner({
       <CardHeader>
         <CardTitle className="flex items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center gap-2">
-            <Car className="h-5 w-5 text-[#FF385C]" />
+            <Car className="h-5 w-5 text-primary" />
             Trip Transportation
           </div>
           <div className="flex gap-2 flex-wrap">
@@ -793,7 +793,7 @@ export function TripTransportPlanner({
         {generateMutation.isPending && (
           <div className="py-8 space-y-4" data-testid="transport-loading">
             <div className="text-center">
-              <Loader2 className="h-8 w-8 animate-spin mx-auto mb-3 text-[#FF385C]" />
+              <Loader2 className="h-8 w-8 animate-spin mx-auto mb-3 text-primary" />
               <p className="font-medium">Analyzing {needsTransportSegments.length} transport legs...</p>
               <p className="text-sm text-muted-foreground mt-1">Building personalized transport packages for {destination}</p>
             </div>
@@ -833,7 +833,7 @@ export function TripTransportPlanner({
                     className={cn(
                       "cursor-pointer transition-all relative",
                       isSelected
-                        ? "ring-2 ring-[#FF385C] border-[#FF385C]"
+                        ? "ring-2 ring-[#FF385C] border-primary"
                         : "hover-elevate"
                     )}
                     onClick={() => {

@@ -19,7 +19,7 @@ export default function LayoutMock() {
       {/* Header */}
       <header className="flex items-center justify-between px-4 py-3 border-b bg-white shrink-0">
         <div className="flex items-center gap-2">
-          <span className="text-xl font-bold text-[#FF385C]">TRAVELOURE</span>
+          <span className="text-xl font-bold text-primary">TRAVELOURE</span>
           <span className="text-xs bg-primary text-white px-2 py-0.5 rounded">BETA</span>
         </div>
         {/* Credits and Generate buttons moved to hero overlay */}
