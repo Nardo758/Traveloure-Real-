@@ -1086,6 +1086,16 @@ interface ProviderApplicationRejectionParams {
 }
 
 /**
+ * Test-only seam. When a key is set here the corresponding function delegates
+ * to it instead of sending real email. Empty by default — no production impact.
+ */
+export const _emailTestHooks: {
+  sendProviderApplicationRejectionEmail?: (
+    params: ProviderApplicationRejectionParams
+  ) => Promise<void>;
+} = {};
+
+/**
  * Fire-and-forget email to a provider applicant when their application is
  * rejected. Includes the admin's rejection reason (if any) and a link back
  * to /provider/apply so they can revise and resubmit. Never throws.
@@ -1093,6 +1103,9 @@ interface ProviderApplicationRejectionParams {
 export async function sendProviderApplicationRejectionEmail(
   params: ProviderApplicationRejectionParams
 ): Promise<void> {
+  if (_emailTestHooks.sendProviderApplicationRejectionEmail) {
+    return _emailTestHooks.sendProviderApplicationRejectionEmail(params);
+  }
   const client = getClient();
   if (!client) {
     console.log("[email] RESEND_API_KEY not set — skipping provider rejection email for", params.toEmail);
