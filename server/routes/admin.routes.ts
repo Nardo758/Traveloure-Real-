@@ -2684,8 +2684,9 @@ router.get("/api/admin/revenue/transactions", isAuthenticated, async (req, res) 
       const startDate = req.query.startDate ? new Date(String(req.query.startDate)) : undefined;
       const endDate = req.query.endDate ? new Date(String(req.query.endDate)) : undefined;
       const sourceType = req.query.sourceType ? String(req.query.sourceType) : undefined;
+      const status = req.query.status ? String(req.query.status) : undefined;
       
-      const transactions = await storage.getPlatformRevenue({ startDate, endDate, sourceType });
+      const transactions = await storage.getPlatformRevenue({ startDate, endDate, sourceType, status });
       res.json(transactions);
     } catch (error: any) {
       res.status(500).json({ message: "Failed to get revenue transactions", error: error.message });

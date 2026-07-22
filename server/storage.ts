@@ -488,7 +488,7 @@ export interface IStorage {
 
   // Platform Revenue
   recordPlatformRevenue(revenue: InsertPlatformRevenue): Promise<PlatformRevenue>;
-  getPlatformRevenue(filters?: { startDate?: Date; endDate?: Date; sourceType?: string }): Promise<PlatformRevenue[]>;
+  getPlatformRevenue(filters?: { startDate?: Date; endDate?: Date; sourceType?: string; status?: string }): Promise<PlatformRevenue[]>;
   getPlatformRevenueSummary(startDate?: Date, endDate?: Date): Promise<{
     totalGross: number;
     totalPlatformFee: number;
@@ -496,6 +496,9 @@ export interface IStorage {
     totalExpertEarnings: number;
     totalProviderEarnings: number;
     bySource: Record<string, number>;
+    totalReversedGross: number;
+    totalReversedFee: number;
+    reversedBySource: Record<string, number>;
   }>;
   
   // Daily Revenue Summary
@@ -3711,12 +3714,15 @@ export class DatabaseStorage implements IStorage {
     return newRevenue;
   }
 
-  async getPlatformRevenue(filters?: { startDate?: Date; endDate?: Date; sourceType?: string }): Promise<PlatformRevenue[]> {
+  async getPlatformRevenue(filters?: { startDate?: Date; endDate?: Date; sourceType?: string; status?: string }): Promise<PlatformRevenue[]> {
     let query = db.select().from(platformRevenue);
     
     const conditions = [];
     if (filters?.sourceType) {
       conditions.push(eq(platformRevenue.sourceType, filters.sourceType));
+    }
+    if (filters?.status) {
+      conditions.push(eq(platformRevenue.status, filters.status));
     }
     if (filters?.startDate) {
       conditions.push(sql`${platformRevenue.transactionDate} >= ${filters.startDate}`);
@@ -3739,22 +3745,37 @@ export class DatabaseStorage implements IStorage {
     totalExpertEarnings: number;
     totalProviderEarnings: number;
     bySource: Record<string, number>;
+    totalReversedGross: number;
+    totalReversedFee: number;
+    reversedBySource: Record<string, number>;
   }> {
     const revenues = await this.getPlatformRevenue({ startDate, endDate });
     
+    const active = revenues.filter(r => r.status !== 'reversed');
+    const reversed = revenues.filter(r => r.status === 'reversed');
+
     const bySource: Record<string, number> = {};
-    for (const r of revenues) {
+    for (const r of active) {
       const source = r.sourceType || 'other';
       bySource[source] = (bySource[source] || 0) + parseFloat(r.platformFee || '0');
     }
+
+    const reversedBySource: Record<string, number> = {};
+    for (const r of reversed) {
+      const source = r.sourceType || 'other';
+      reversedBySource[source] = (reversedBySource[source] || 0) + parseFloat(r.platformFee || '0');
+    }
     
     return {
-      totalGross: revenues.reduce((sum, r) => sum + parseFloat(r.grossAmount || '0'), 0),
-      totalPlatformFee: revenues.reduce((sum, r) => sum + parseFloat(r.platformFee || '0'), 0),
-      totalNet: revenues.reduce((sum, r) => sum + parseFloat(r.netAmount || '0'), 0),
-      totalExpertEarnings: revenues.reduce((sum, r) => sum + parseFloat(r.expertEarnings || '0'), 0),
-      totalProviderEarnings: revenues.reduce((sum, r) => sum + parseFloat(r.providerEarnings || '0'), 0),
+      totalGross: active.reduce((sum, r) => sum + parseFloat(r.grossAmount || '0'), 0),
+      totalPlatformFee: active.reduce((sum, r) => sum + parseFloat(r.platformFee || '0'), 0),
+      totalNet: active.reduce((sum, r) => sum + parseFloat(r.netAmount || '0'), 0),
+      totalExpertEarnings: active.reduce((sum, r) => sum + parseFloat(r.expertEarnings || '0'), 0),
+      totalProviderEarnings: active.reduce((sum, r) => sum + parseFloat(r.providerEarnings || '0'), 0),
       bySource,
+      totalReversedGross: reversed.reduce((sum, r) => sum + parseFloat(r.grossAmount || '0'), 0),
+      totalReversedFee: reversed.reduce((sum, r) => sum + parseFloat(r.platformFee || '0'), 0),
+      reversedBySource,
     };
   }
 
