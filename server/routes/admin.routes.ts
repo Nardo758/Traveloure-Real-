@@ -1335,8 +1335,10 @@ router.patch("/api/admin/provider-applications/:id/status", isAuthenticated, asy
         userId: updated.userId,
         type: "application_rejected",
         title: "Application Not Approved",
-        message: "Unfortunately, your provider application was not approved at this time. You can review the feedback and reapply when you're ready.",
-        data: { link: "/provider/apply" },
+        message: rejectionMessage
+          ? `Your provider application was not approved. Feedback: ${rejectionMessage}`
+          : "Unfortunately, your provider application was not approved at this time. You can review the feedback and reapply when you're ready.",
+        data: { link: "/provider-status", rejectionMessage: rejectionMessage ?? null },
       });
       // Send rejection email (fire-and-forget)
       const providerUser = await storage.getUser(updated.userId);

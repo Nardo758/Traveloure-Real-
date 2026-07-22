@@ -1569,6 +1569,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       res.json({
         steps,
         overallStatus: form?.status ?? "pending",
+        rejectionMessage: form?.status === "rejected" ? (form.rejectionMessage ?? null) : null,
         identityVerificationStatus: identityStatus,
         identityVerifiedAt: (form as any)?.identityVerifiedAt,
         businessVerificationStatus: bizStatus,
