@@ -141,6 +141,7 @@ const ExpertWorkspace = lazy(() => import("@/pages/expert/workspace"));
 const DmoLibrary = lazy(() => import("@/pages/expert/dmo-library"));
 const CartPage = lazy(() => import("@/pages/cart"));
 const MyBookingsPage = lazy(() => import("@/pages/my-bookings"));
+const MyEventsPage = lazy(() => import("@/pages/my-events"));
 const ContractViewPage = lazy(() => import("@/pages/contract-view"));
 const ServiceDetailPage = lazy(() => import("@/pages/service-detail"));
 const LayoutMock = lazy(() => import("@/pages/layout-mock"));
@@ -342,6 +343,9 @@ function Router() {
       </Route>
       <Route path="/bookings">
         {() => <ProtectedRoute component={MyBookingsPage} />}
+      </Route>
+      <Route path="/my-events">
+        {() => <ProtectedRoute component={MyEventsPage} />}
       </Route>
       <Route path="/contracts/:id">
         <PageErrorBoundary fallbackHeading="Contract Not Found">
