@@ -78,10 +78,37 @@ This document captures architectural decisions to maintain consistency across co
    literals; the optimize credit is **payment-gated — never credit an unpaid optimize fee**. **Resolved (interim, #144):**
    the fee reads the event budget from the existing `coordination_states.budget` jsonb column
    (`{ amount: <dollars>, currency }`, written at create/patch from the request's `metadata.budget`, read ×100), **not**
-   `total_estimated_cost` (that means *cost*, not budget); absent/`{}` budget → intentional floor-only. The optimize
-   credit is **not applied** pending the Phase-4 paid-signal linkage (no unearned discount). Filed follow-ups: first-class
-   validated `budget` field (D-BUDGET(b)); the paid-signal ledger. Full contract in the "Recorded change — Coordination-fee"
-   note below.
+   `total_estimated_cost` (that means *cost*, not budget); absent/`{}` budget → intentional floor-only. Full contract in
+   the "Recorded change — Coordination-fee" note below.
+   - **Quote-only → CAPTURED — RATIFIED Jul 22, 2026 (decision-maker sign-off; the deliberate §7 flip Phase 2 was gated
+     on).** The coordination fee is **no longer quote-only** — it is charged for real, mirroring the `optimization-payments`
+     pattern. `POST /api/coordination-states/:id/pay` (server-derives the fee — §14 — from the state's own
+     `experienceType` + `budget`; a client-sent amount is never read) creates a Stripe PaymentIntent
+     (`type=coordination_fee`, ownership-verified against `state.userId`); `POST …/:id/pay/confirm` verifies the intent
+     (`status==='succeeded'` + type + `coordinationId`/`userId` match) and records `platform_revenue` (100%-platform via
+     the `coordination_fee` source tier = `AI_PLATFORM_FEE`). **§15 idempotent both ways:** the pay claim is an atomic
+     conditional `UPDATE … SET fee_payment_status='pending' WHERE fee_payment_status IN (NULL,'unpaid')` (a lost claim
+     returns the in-flight PI, never a second charge) + deterministic Stripe `idempotencyKey` `coord-fee-<id>`; confirm
+     transitions `… SET fee_payment_status='paid' WHERE fee_payment_status <> 'paid'` and records revenue only if a row
+     flipped (dup confirm → `alreadyPaid`, no double revenue) + revenue idempotent on `sourceId=<PI>`. Fee-payment state
+     lives on **new `coordination_states` columns** (`fee_payment_status` DB-CHECK `unpaid|pending|paid`,
+     `fee_payment_intent_id`, `fee_amount_cents` = net charged, `fee_credit_cents`, `fee_paid_at`; migration 125 —
+     new columns default `unpaid`, so the CHECK has no legacy rows to violate → no publish-time push trap).
+   - **Paid-signal ledger — BUILT (closes the filed follow-up).** The optimize credit is now applied **only when a real
+     paid optimize fee exists**, via a dedicated ledger `coordination_fee_credits` (migration 125, new table):
+     `optimization-payments/confirm` inserts a credit row (`source_payment_intent_id` UNIQUE → idempotent; `amount_cents`
+     from Stripe; `user_id` from session) **only for Event-branch optimizers** (`isEventOptimizer(eventType)` — the same
+     branches whose `creditTowardCoordination` is true, i.e. wedding/corporate). At **pay** time the newest **unconsumed**
+     credit for the traveler is claimed atomically (`UPDATE … SET consumed_by_coordination_id=:id WHERE
+     consumed_by_coordination_id IS NULL RETURNING amount_cents`) and applied: **charge = max(floor, percent) − paid
+     optimize credit** (this is the `/pricing` "Event $19.99 credited-toward-coordination" promise, now honored honestly).
+     `resolveCoordinationFee(eventType, budgetCents, availableCreditCents=0)` gained the credit param but stays a **pure
+     function** — the credit is looked up/claimed by the caller (route), never queried inside the resolver. The `/fee`
+     quote surfaces the available credit read-only (no consume); consumption happens only under the pay claim. Credit is
+     capped at the fee (`min(credit, rawFee)`), so a credit can never make the charge negative. **Filed follow-ups:**
+     tighten credit matching to same-event (currently user + unconsumed, defensible since every credit is a paid
+     Event-branch optimize); accumulate multiple credits (today claims one — the singular `/pricing` promise); reverse the
+     consumed credit + `platform_revenue` on a coordination refund (mirrors the escrow reversal spine).
 8. **No fee/commission/margin literals** anywhere outside `fee_bands`/config — grep-gated every phase. A hardcoded rate in
    touched code is a defect (see §13). **Phase 4.1 LANDED (migration 122):** the `499`/`8%` coordination constants —
    formerly the pre-existing §8 exception — are now admin-editable `fee_bands` rows (`coordination_floor` flat-dollars
@@ -352,11 +379,14 @@ This document captures architectural decisions to maintain consistency across co
       Proven behaviorally: Full-pick → engagement created; re-PATCH → same id; `/fee` resolves ($499 floor at
       empty budget, 8% tier when budget set). **Filed (Phase 1b/1c):** a traveler-facing engagements surface
       (view status + quoted fee) and an admin coordinator-assignment action on the concierge queue.
-      **Filed (Phase 2, needs decision-maker sign-off — MONEY):** actually *charging* the coordination fee —
-      §7 currently keeps it **quote-only** by design ("no unearned discount, paid-signal ledger filed"), so
-      capturing it (mirror the `optimization-payments` PaymentIntent+confirm pattern, amount server-derived
-      §14, idempotent §15, records `platform_revenue`) is a deliberate architectural flip to be ratified here
-      before it ships.
+      **Phase 2 — LANDED (Jul 22, 2026, decision-maker RATIFIED, migration 125): the coordination fee is now
+      CHARGED, credit-aware.** The §7 quote-only→captured flip shipped: `POST /api/coordination-states/:id/pay`
+      (+ `/pay/confirm`) charges the server-derived fee via Stripe (§14 amount from the state's own
+      `experienceType`+`budget`, never body; §15 atomic-claim + `idempotencyKey` both directions; records
+      `platform_revenue` 100%-platform), and the paid-signal ledger (`coordination_fee_credits`) applies the paid
+      Event-branch optimize fee as a real credit — **charge = max(floor, percent) − paid optimize credit**, honoring
+      the `/pricing` "Event $19.99 credited-toward-coordination" promise only when the optimize fee was actually paid.
+      Full contract in §7 ("Quote-only → CAPTURED" + "Paid-signal ledger").
     - **DMO content layer — BUILT-BUT-DARK, ACTIVATED Kyoto-first (migration 117, Jul 16, 2026).** The
       8-market DMO ingestion spine (`research/traveloure_dmo_implementation_map.md` + `_addendum.md`) was
       already coded + schema-complete (7 tables: `dmo_sources`, `dmo_raw_content`,

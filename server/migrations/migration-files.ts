@@ -439,4 +439,12 @@ export const MIGRATION_FILES = [
   // until FEE-2 Phase 1 ships the admin-validated insurance_tier (see CLAUDE.md §6). No schema/CHECK
   // change → no publish-time push trap. Closes the #819 / FEE-2 gate.
   "124_insurance_platform_settings.sql",
+  // Migration 125 — Coordination fee CAPTURE + paid-signal ledger (CLAUDE.md §7 "Quote-only →
+  // CAPTURED", ratified Jul 22, 2026). Adds coordination_fee_credits (one row per PAID Event-branch
+  // optimize fee, applied once against a coordination charge) + fee-payment columns on
+  // coordination_states (fee_payment_status CHECK unpaid|pending|paid, fee_payment_intent_id,
+  // fee_amount_cents, fee_credit_cents, fee_paid_at). New table + new columns default 'unpaid'/0, so
+  // the CHECK has no legacy rows to violate → no publish-time push trap. Enables the §14/§15-clean
+  // POST /api/coordination-states/:id/pay (+ /pay/confirm).
+  "125_coordination_fee_payments.sql",
 ] as const;

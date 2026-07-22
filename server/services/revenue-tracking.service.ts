@@ -11,7 +11,7 @@ import { availableAtFor } from "../config/earnings-hold.config";
 import { eq, desc, sql, and, gte, lte, count, sum } from "drizzle-orm";
 
 export interface RevenueEvent {
-  sourceType: 'booking_commission' | 'template_commission' | 'affiliate_commission' | 'tip_commission' | 'subscription' | 'optimization_fee' | 'other';
+  sourceType: 'booking_commission' | 'template_commission' | 'affiliate_commission' | 'tip_commission' | 'subscription' | 'optimization_fee' | 'coordination_fee' | 'other';
   sourceId: string;
   trackingNumber?: string;
   grossAmount: number;
@@ -67,13 +67,15 @@ export interface UnifiedRevenueDashboard {
 
 class RevenueTrackingService {
   async recordRevenueEvent(event: RevenueEvent): Promise<void> {
-    // Optimization fees are 100% platform revenue — route through 'ai' source tier.
-    const isOptimizationFee = event.sourceType === 'optimization_fee';
+    // Optimization AND coordination fees are 100% platform revenue — route through the 'ai' source
+    // tier (AI_PLATFORM_FEE = 1.0). Coordination fee has no expert/provider split (the coordinator is
+    // paid via the earnings ledger on the bookings they place, not from this fee).
+    const isFullPlatformFee = event.sourceType === 'optimization_fee' || event.sourceType === 'coordination_fee';
     // Derive source flag for the resolver so affiliate events get the 70% tier.
     const affiliateSource = event.sourceType === 'affiliate_commission' ? 'affiliate' as const : undefined;
     const rates = await resolveCommissionRates({
-      category: isOptimizationFee ? 'ai_optimization' : event.sourceType.replace('_commission', ''),
-      source: isOptimizationFee ? 'ai' : affiliateSource,
+      category: isFullPlatformFee ? 'ai_optimization' : event.sourceType.replace('_commission', ''),
+      source: isFullPlatformFee ? 'ai' : affiliateSource,
     });
     const platformFee = event.grossAmount * rates.platformFeeRate;
     const processingFees = platformFee * PROCESSING_FEE_RATE;

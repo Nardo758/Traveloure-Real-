@@ -1660,10 +1660,35 @@ export const coordinationStates = pgTable("coordination_states", {
   
   totalEstimatedCost: decimal("total_estimated_cost", { precision: 10, scale: 2 }),
   totalConfirmedCost: decimal("total_confirmed_cost", { precision: 10, scale: 2 }),
-  
+
+  // Coordination FEE capture (CLAUDE.md §7 "Quote-only → CAPTURED", migration 125). 1:1 per
+  // engagement. fee_amount_cents is the NET charged (after the paid-optimize credit); fee_credit_cents
+  // is the applied credit. State machine has a DB CHECK (unpaid|pending|paid).
+  feePaymentStatus: varchar("fee_payment_status", { length: 20 }).notNull().default("unpaid"),
+  feePaymentIntentId: varchar("fee_payment_intent_id"),
+  feeAmountCents: integer("fee_amount_cents"),
+  feeCreditCents: integer("fee_credit_cents").notNull().default(0),
+  feePaidAt: timestamp("fee_paid_at"),
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
   completedAt: timestamp("completed_at"),
+});
+
+// Paid-signal ledger (CLAUDE.md §7 "Paid-signal ledger", migration 125). One row per PAID
+// Event-branch optimize fee, recorded by optimization-payments/confirm. Applied ONCE against a
+// coordination fee: consumed_by_coordination_id (+ the atomic claim in the pay route) is what
+// prevents double-credit. source_payment_intent_id is UNIQUE so the insert is idempotent.
+export const coordinationFeeCredits = pgTable("coordination_fee_credits", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  sourcePaymentIntentId: varchar("source_payment_intent_id").notNull().unique(),
+  amountCents: integer("amount_cents").notNull(),
+  currency: varchar("currency", { length: 10 }).notNull().default("USD"),
+  eventType: varchar("event_type", { length: 50 }),
+  consumedByCoordinationId: varchar("consumed_by_coordination_id").references(() => coordinationStates.id, { onDelete: "set null" }),
+  consumedAt: timestamp("consumed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
 export const coordinationBookings = pgTable("coordination_bookings", {
@@ -2045,6 +2070,7 @@ export type InsertRestaurantCache = z.infer<typeof insertRestaurantCacheSchema>;
 export const insertVendorAvailabilitySlotSchema = createInsertSchema(vendorAvailabilitySlots).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertCoordinationStateSchema = createInsertSchema(coordinationStates).omit({ id: true, createdAt: true, updatedAt: true, completedAt: true });
 export const insertCoordinationBookingSchema = createInsertSchema(coordinationBookings).omit({ id: true, createdAt: true, updatedAt: true, confirmedAt: true });
+export const insertCoordinationFeeCreditSchema = createInsertSchema(coordinationFeeCredits).omit({ id: true, createdAt: true, consumedAt: true, consumedByCoordinationId: true });
 
 export type VendorAvailabilitySlot = typeof vendorAvailabilitySlots.$inferSelect;
 export type InsertVendorAvailabilitySlot = z.infer<typeof insertVendorAvailabilitySlotSchema>;
@@ -2052,6 +2078,8 @@ export type CoordinationState = typeof coordinationStates.$inferSelect;
 export type InsertCoordinationState = z.infer<typeof insertCoordinationStateSchema>;
 export type CoordinationBooking = typeof coordinationBookings.$inferSelect;
 export type InsertCoordinationBooking = z.infer<typeof insertCoordinationBookingSchema>;
+export type CoordinationFeeCredit = typeof coordinationFeeCredits.$inferSelect;
+export type InsertCoordinationFeeCredit = z.infer<typeof insertCoordinationFeeCreditSchema>;
 
 // === AI Integration Tables ===
 

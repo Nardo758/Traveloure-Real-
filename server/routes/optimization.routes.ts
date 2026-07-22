@@ -16,14 +16,14 @@
 
 import { Router } from "express";
 import { db } from "../db";
-import { itineraryComparisons, users, trips, userExperiences, experienceTypes, platformRevenue } from "@shared/schema";
+import { itineraryComparisons, users, trips, userExperiences, experienceTypes, platformRevenue, coordinationFeeCredits } from "@shared/schema";
 import { eq, and, gte } from "drizzle-orm";
 import { isAuthenticated } from "../replit_integrations/auth";
 import {
   calculateItineraryMetrics,
   complexityTier,
 } from "../services/smart-sequencing.service";
-import { getFee } from "../services/optimization-fee.service";
+import { getFee, isEventOptimizer } from "../services/optimization-fee.service";
 import { revenueTrackingService } from "../services/revenue-tracking.service";
 import Stripe from "stripe";
 
@@ -369,12 +369,29 @@ router.post("/api/optimization-payments/confirm", isAuthenticated, async (req, r
       }
     }
 
-    // Phase 2: Event branch optimizers credit toward coordination fee.
-    // If this is an Event-branch optimization, record the credit so it
-    // can be applied against the eventual coordination fee (Phase 4).
+    // Paid-signal ledger (§7, migration 125). An Event-branch optimize fee that was ACTUALLY paid
+    // is recorded as a coordination_fee_credit, so it can be credited against the traveler's eventual
+    // coordination fee (the "$19.99 credited-toward-coordination" promise, honored only on real payment).
+    // Idempotent: source_payment_intent_id is UNIQUE → onConflictDoNothing makes a duplicate confirm a
+    // no-op. amount_cents comes from Stripe (never the client); user_id is the session user (verified
+    // above to match the PI). Non-Event optimizers (trip/experience branch) record no credit.
     const eventType = pi.metadata?.eventType as string | undefined;
-    // TODO: Record creditTowardCoordination in a dedicated ledger when
-    //       the coordination fee infrastructure is ready (Phase 4).
+    if (isEventOptimizer(eventType)) {
+      try {
+        await db
+          .insert(coordinationFeeCredits)
+          .values({
+            userId,
+            sourcePaymentIntentId: paymentIntentId,
+            amountCents: pi.amount,
+            currency: (pi.currency?.toUpperCase() ?? "USD"),
+            eventType: eventType ?? null,
+          })
+          .onConflictDoNothing({ target: coordinationFeeCredits.sourcePaymentIntentId });
+      } catch (creditErr) {
+        console.warn("[optimization-payments/confirm] credit-ledger insert failed (non-critical):", creditErr);
+      }
+    }
 
     return res.json({ success: true });
   } catch (err: any) {
