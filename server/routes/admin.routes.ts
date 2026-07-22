@@ -1090,6 +1090,23 @@ router.patch("/api/admin/expert-applications/:id/status", isAuthenticated, async
         message: "Congratulations! Your expert application has been approved. Complete your Stripe Connect setup to start receiving payouts.",
         data: { link: "/expert/earnings" },
       });
+
+      // Send the applicant a congratulations email with a link to /expert/earnings
+      const [approvedApplicant] = await db
+        .select({ email: users.email, firstName: users.firstName })
+        .from(users)
+        .where(eq(users.id, updated.userId));
+      if (approvedApplicant?.email) {
+        try {
+          const { sendExpertApplicationApprovalEmail } = await import("../services/email.service");
+          sendExpertApplicationApprovalEmail({
+            toEmail: approvedApplicant.email,
+            firstName: approvedApplicant.firstName ?? null,
+          });
+        } catch (err) {
+          console.error("[admin] Failed to send expert approval email (non-fatal):", err);
+        }
+      }
     }
 
     // If rejected, send the applicant an email with the rejection reason (if any)
