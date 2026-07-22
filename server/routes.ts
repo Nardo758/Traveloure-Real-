@@ -6796,9 +6796,47 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         status: "generated",
       }).returning();
 
+      // Create a backing trip so itinerary_items can FK-reference it.
+      const quickTrip = await storage.createTrip({
+        userId,
+        title: result.title || `${itineraryRequest.destination} Trip`,
+        destination: itineraryRequest.destination,
+        startDate: itineraryRequest.dates.start,
+        endDate: itineraryRequest.dates.end,
+        numberOfTravelers: travelers,
+        status: "draft",
+        eventType: "vacation",
+      });
+
+      // Insert itinerary_items rows so the booking service can resolve prices by DB ID.
+      const qsDailyItinerary = Array.isArray(result.dailyItinerary) ? result.dailyItinerary : [];
+      const qsInsertedItems: any[] = [];
+      for (const day of qsDailyItinerary) {
+        const activities = Array.isArray(day?.activities) ? day.activities : [];
+        for (const activity of activities) {
+          const [inserted] = await db.insert(itineraryItems).values({
+            tripId: quickTrip.id,
+            title: activity.name || activity.title || "Activity",
+            description: activity.description || "",
+            itemType: activity.type || "activity",
+            status: "planned",
+            dayNumber: day.day || 1,
+            startTime: activity.time || "",
+            durationMinutes: typeof activity.duration === "number" ? activity.duration : 60,
+            locationName: activity.location || itineraryRequest.destination,
+            estimatedCost: activity.estimatedCost != null ? String(activity.estimatedCost) : null,
+            currency: "USD",
+            suggestedBy: "ai",
+          }).returning();
+          qsInsertedItems.push({ ...activity, id: inserted.id });
+        }
+      }
+
       res.json({
         ...result,
         id: saved.id,
+        tripId: quickTrip.id,
+        itinerary: { items: qsInsertedItems },
         cityIntelligence: cityIntelligence ? {
           pulseScore: cityIntelligence.city?.pulseScore,
           trendingScore: cityIntelligence.city?.trendingScore,
