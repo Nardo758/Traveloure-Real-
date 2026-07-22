@@ -172,9 +172,10 @@ router.patch("/api/concierge/requests/:id", async (req, res) => {
     }
 
     // For guests (no coordinationId), return a signed claim token they can use after sign-in.
-    const claimToken = !row.userId ? makeClaimToken(row.id) : undefined;
+    const isGuest = !row.userId;
+    const claimToken = isGuest ? makeClaimToken(row.id) : undefined;
 
-    res.json({ ...row, coordinationId, ...(claimToken ? { claimToken } : {}) });
+    res.json({ ...row, coordinationId, isGuest, ...(claimToken ? { claimToken } : {}) });
   } catch (err: any) {
     if (err instanceof z.ZodError) {
       return res.status(400).json({ error: "validation_failed", details: err.errors });
