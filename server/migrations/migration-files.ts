@@ -460,4 +460,10 @@ export const MIGRATION_FILES = [
   // old constraint at runtime. Idempotent: drops and recreates the constraint by name.
   // (Originally authored as 126; renumbered to 127 after 126 was taken by coordination_credit_event_scoping.)
   "127_coordination_fee_refunded_status.sql",
+  // Migration 128 — Add revenue_reversal_missing boolean flag to coordination_states. Set to true
+  // when a fee refund completes (Stripe + state marked refunded + credit released) but no
+  // platform_revenue row exists to reverse (reversedRevenueRows = 0 with feeCents > 0). Admins
+  // see a warning badge in the concierge panel and can investigate the ledger gap. Idempotent:
+  // ADD COLUMN IF NOT EXISTS.
+  "128_coordination_revenue_reversal_missing.sql",
 ] as const;

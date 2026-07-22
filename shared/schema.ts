@@ -1670,6 +1670,10 @@ export const coordinationStates = pgTable("coordination_states", {
   feeCreditCents: integer("fee_credit_cents").notNull().default(0),
   feePaidAt: timestamp("fee_paid_at"),
 
+  // Set to true when a refund is processed but no platform_revenue rows are found to reverse.
+  // This is an admin-visible flag indicating a ledger inconsistency that needs manual review.
+  revenueReversalMissing: boolean("revenue_reversal_missing").notNull().default(false),
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
   completedAt: timestamp("completed_at"),

@@ -14,7 +14,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
-import { Sparkles, Crown, UserCheck, Loader2, RotateCcw } from "lucide-react";
+import { Sparkles, Crown, UserCheck, Loader2, RotateCcw, AlertTriangle } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -41,6 +41,7 @@ interface ConciergeRequest {
   coordination_id: string | null;
   coordination_status: string | null;
   fee_payment_status: string | null;
+  revenue_reversal_missing: boolean | null;
   assigned_expert_id: string | null;
   coordinator_first_name: string | null;
   coordinator_last_name: string | null;
@@ -176,6 +177,17 @@ function CoordinatorAssign({ request, coordinators }: { request: ConciergeReques
           <span className="text-muted-foreground">No coordinator assigned</span>
         )}
       </div>
+      {request.revenue_reversal_missing && (
+        <div
+          className="flex items-center gap-2 rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800"
+          data-testid={`alert-revenue-reversal-missing-${request.coordination_id}`}
+        >
+          <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-amber-500" />
+          <span>
+            <strong>Ledger gap:</strong> Fee was refunded but no platform revenue row was found to reverse. Manual review required.
+          </span>
+        </div>
+      )}
       {request.fee_payment_status === "paid" && (
         <div className="flex items-center">
           <RefundFeeButton request={request} />
