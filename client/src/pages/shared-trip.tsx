@@ -80,7 +80,7 @@ export default function SharedTripPage() {
             This trip plan link may have expired or is no longer available.
           </p>
           <Link href="/">
-            <Button className="bg-[#FF385C] hover:bg-[#E23350] text-white" data-testid="button-explore-own">
+            <Button className="bg-primary hover:bg-primary/90 text-white" data-testid="button-explore-own">
               Plan your own trip
             </Button>
           </Link>
@@ -164,7 +164,7 @@ export default function SharedTripPage() {
             {days.map((day, dayIndex) => (
               <div key={day.day} data-testid={`shared-day-${day.day}`}>
                 <div className="flex items-center gap-3 mb-4">
-                  <div className="w-10 h-10 rounded-full bg-[#FF385C] text-white flex items-center justify-center font-bold text-sm shrink-0">
+                  <div className="w-10 h-10 rounded-full bg-primary text-white flex items-center justify-center font-bold text-sm shrink-0">
                     {day.day}
                   </div>
                   <div>
@@ -182,7 +182,7 @@ export default function SharedTripPage() {
                         className="relative flex items-start gap-3 p-3 bg-muted/30 rounded-xl"
                         data-testid={`shared-activity-${day.day}-${actIndex}`}
                       >
-                        <div className="absolute -left-[29px] w-3.5 h-3.5 rounded-full bg-[#FF385C] border-[3px] border-background" />
+                        <div className="absolute -left-[29px] w-3.5 h-3.5 rounded-full bg-primary border-[3px] border-background" />
                         <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
                           <ActivityIcon className="w-4 h-4 text-primary" />
                         </div>
@@ -221,7 +221,7 @@ export default function SharedTripPage() {
           </p>
           <Link href="/experiences">
             <Button
-              className="bg-[#FF385C] hover:bg-[#E23350] text-white px-6"
+              className="bg-primary hover:bg-primary/90 text-white px-6"
               data-testid="button-plan-own-trip"
             >
               Plan my own trip

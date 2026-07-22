@@ -185,7 +185,7 @@ function DealCard({ deal, idx }: { deal: DealItem; idx: number }) {
             {/* Featured badge */}
             {deal.featured && (
               <div className="absolute top-3 left-3">
-                <Badge className="bg-[#FF385C] text-white text-xs">
+                <Badge className="bg-primary text-white text-xs">
                   <Sparkles className="w-3 h-3 mr-1" />
                   Featured
                 </Badge>
@@ -258,7 +258,7 @@ function DealCard({ deal, idx }: { deal: DealItem; idx: number }) {
                 >
                   <Button
                     size="sm"
-                    className="bg-[#FF385C] hover:bg-[#E23350] text-white shrink-0"
+                    className="bg-primary hover:bg-primary/90 text-white shrink-0"
                     data-testid={`button-book-${deal.id}`}
                   >
                     Book Now
@@ -390,7 +390,7 @@ export default function DealsPage() {
                   className={cn(
                     "gap-1.5",
                     activeCategory === cat.id
-                      ? "bg-[#FF385C] hover:bg-[#E23350] text-white border-transparent"
+                      ? "bg-primary hover:bg-primary/90 text-white border-transparent"
                       : "border-[#E5E7EB] text-[#374151]"
                   )}
                   data-testid={`button-category-${cat.id}`}
@@ -485,7 +485,7 @@ export default function DealsPage() {
               data-testid="input-newsletter"
             />
             <Button
-              className="h-12 px-8 bg-[#FF385C] hover:bg-[#E23350] text-white"
+              className="h-12 px-8 bg-primary hover:bg-primary/90 text-white"
               data-testid="button-subscribe"
             >
               Subscribe

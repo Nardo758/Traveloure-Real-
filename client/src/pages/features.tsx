@@ -122,7 +122,7 @@ export default function FeaturesPage() {
             animate={{ opacity: 1, y: 0 }}
             className="text-center"
           >
-            <Badge className="bg-[#FF385C] text-white mb-6">
+            <Badge className="bg-primary text-white mb-6">
               <Sparkles className="w-3 h-3 mr-1" />
               Powerful Features
             </Badge>
@@ -139,7 +139,7 @@ export default function FeaturesPage() {
               <Link href="/discover">
                 <Button
                   size="lg"
-                  className="bg-[#FF385C] hover:bg-[#E23350] text-white px-8"
+                  className="bg-primary hover:bg-primary/90 text-white px-8"
                   data-testid="button-start-planning"
                 >
                   Start Planning <ArrowRight className="w-4 h-4 ml-2" />

@@ -218,7 +218,7 @@ export default function PartnerWithUsPage() {
             animate={{ opacity: 1, y: 0 }}
             className="text-center"
           >
-            <Badge className="bg-[#FF385C] text-white mb-6">
+            <Badge className="bg-primary text-white mb-6">
               <Sparkles className="w-3 h-3 mr-1" />
               Join 500+ Partners Worldwide
             </Badge>
@@ -234,7 +234,7 @@ export default function PartnerWithUsPage() {
               <Link href="#partner-types">
                 <Button
                   size="lg"
-                  className="bg-[#FF385C] hover:bg-[#E23350] text-white px-8"
+                  className="bg-primary hover:bg-primary/90 text-white px-8"
                   data-testid="button-get-started"
                 >
                   Get Started <ArrowRight className="w-4 h-4 ml-2" />
@@ -302,7 +302,7 @@ export default function PartnerWithUsPage() {
                 >
                   {type.popular && (
                     <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                      <Badge className="bg-[#FF385C] text-white">
+                      <Badge className="bg-primary text-white">
                         Most Popular
                       </Badge>
                     </div>
@@ -349,7 +349,7 @@ export default function PartnerWithUsPage() {
 
                     <Link href={type.id === "service-provider" ? "/become-provider" : "/become-expert"}>
                       <Button
-                        className="w-full bg-[#FF385C] hover:bg-[#E23350] text-white"
+                        className="w-full bg-primary hover:bg-primary/90 text-white"
                         data-testid={`button-apply-${type.id}`}
                       >
                         {type.cta}
@@ -436,7 +436,7 @@ export default function PartnerWithUsPage() {
                   <div className="w-16 h-16 mx-auto rounded-full bg-[#FFE3E8] flex items-center justify-center">
                     <step.icon className="w-8 h-8 text-[#FF385C]" />
                   </div>
-                  <div className="absolute -top-2 -right-2 w-8 h-8 rounded-full bg-[#FF385C] text-white flex items-center justify-center font-bold text-sm">
+                  <div className="absolute -top-2 -right-2 w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center font-bold text-sm">
                     {step.step}
                   </div>
                 </div>

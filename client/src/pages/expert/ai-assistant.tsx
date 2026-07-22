@@ -265,7 +265,7 @@ export default function ExpertAIAssistant() {
               <Button
                 onClick={handleDelegate}
                 disabled={delegateMutation.isPending || taskInput.length < 10}
-                className="bg-[#FF385C]"
+                className="bg-primary"
                 data-testid="button-delegate-task"
               >
                 {delegateMutation.isPending ? (

@@ -405,7 +405,7 @@ export function AIItineraryBuilder({
                     className={cn(
                       "flex flex-col items-center gap-2 p-4 rounded-lg border-2 transition-all hover-elevate",
                       isSelected 
-                        ? "border-[#FF385C] bg-[#FF385C]/5" 
+                        ? "border-[#FF385C] bg-primary/5" 
                         : "border-border bg-background"
                     )}
                     data-testid={`interest-${option.id}`}
@@ -498,7 +498,7 @@ export function AIItineraryBuilder({
                       className={cn(
                         "px-3 py-1.5 text-sm rounded-full border transition-all",
                         dietaryRestrictions.includes(diet)
-                          ? "border-[#FF385C] bg-[#FF385C]/5 text-[#FF385C]"
+                          ? "border-[#FF385C] bg-primary/5 text-[#FF385C]"
                           : "border-border text-muted-foreground"
                       )}
                       data-testid={`dietary-${diet.toLowerCase()}`}
@@ -524,7 +524,7 @@ export function AIItineraryBuilder({
                       className={cn(
                         "px-3 py-1.5 text-sm rounded-full border transition-all",
                         mobilityConsiderations.includes(mobility)
-                          ? "border-[#FF385C] bg-[#FF385C]/5 text-[#FF385C]"
+                          ? "border-[#FF385C] bg-primary/5 text-[#FF385C]"
                           : "border-border text-muted-foreground"
                       )}
                       data-testid={`mobility-${mobility.toLowerCase().replace(/\s+/g, "-")}`}
@@ -706,7 +706,7 @@ export function AIItineraryBuilder({
                   className={cn(
                     "p-3 rounded-lg border-2 text-left transition-all",
                     selectedVariation === index
-                      ? "border-[#FF385C] bg-[#FF385C]/5"
+                      ? "border-[#FF385C] bg-primary/5"
                       : "border-border hover-elevate"
                   )}
                   data-testid={`variation-${variation.variationType}`}
@@ -765,7 +765,7 @@ export function AIItineraryBuilder({
                   className={cn(
                     "flex-shrink-0 px-4 py-2 rounded-lg border-2 transition-all",
                     selectedDay === index
-                      ? "border-[#FF385C] bg-[#FF385C]/5 text-[#FF385C]"
+                      ? "border-[#FF385C] bg-primary/5 text-[#FF385C]"
                       : "border-border text-muted-foreground hover-elevate"
                   )}
                   data-testid={`button-day-${day.day}`}
@@ -967,7 +967,7 @@ export function AIItineraryBuilder({
                 <div className={cn(
                   "flex items-center justify-center w-8 h-8 rounded-full border-2 text-sm font-medium transition-all",
                   index < currentStep
-                    ? "bg-[#FF385C] border-[#FF385C] text-white"
+                    ? "bg-primary border-[#FF385C] text-white"
                     : index === currentStep
                     ? "border-[#FF385C] text-[#FF385C]"
                     : "border-muted text-muted-foreground"
@@ -981,7 +981,7 @@ export function AIItineraryBuilder({
                 {index < 2 && (
                   <div className={cn(
                     "h-0.5 w-8 sm:w-16 mx-2",
-                    index < currentStep ? "bg-[#FF385C]" : "bg-muted"
+                    index < currentStep ? "bg-primary" : "bg-muted"
                   )} />
                 )}
               </div>
@@ -1007,7 +1007,7 @@ export function AIItineraryBuilder({
           <Button
             onClick={handleNext}
             disabled={!canProceed()}
-            className="bg-[#FF385C]"
+            className="bg-primary"
             data-testid="button-next"
           >
             {currentStep === 2 ? (
@@ -1041,7 +1041,7 @@ export function AIItineraryBuilder({
             Start Over
           </Button>
           <Button
-            className="flex-1 bg-[#FF385C]"
+            className="flex-1 bg-primary"
             onClick={handleSaveItinerary}
             disabled={saveMutation.isPending}
             data-testid="button-use-itinerary"

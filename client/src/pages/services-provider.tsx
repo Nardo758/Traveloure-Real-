@@ -254,7 +254,7 @@ export default function ServicesProviderPage() {
                     className={cn(
                       "w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium",
                       currentStep === step.id
-                        ? "bg-[#FF385C] text-white"
+                        ? "bg-primary text-white"
                         : currentStep > step.id
                         ? "bg-green-100 text-green-600"
                         : "bg-[#F3F4F6] text-[#9CA3AF]"
@@ -652,7 +652,7 @@ export default function ServicesProviderPage() {
             <Button
               onClick={nextStep}
               disabled={!canProceed()}
-              className="bg-[#FF385C] hover:bg-[#E23350] text-white"
+              className="bg-primary hover:bg-primary/90 text-white"
               data-testid="button-next-step"
             >
               Next
@@ -662,7 +662,7 @@ export default function ServicesProviderPage() {
             <Button
               onClick={handleSubmit}
               disabled={!formData.agreeToTerms || isSubmitting}
-              className="bg-[#FF385C] hover:bg-[#E23350] text-white"
+              className="bg-primary hover:bg-primary/90 text-white"
               data-testid="button-submit"
             >
               {isSubmitting ? "Submitting..." : "Submit Registration"}

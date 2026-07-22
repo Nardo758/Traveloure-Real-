@@ -126,7 +126,7 @@ export default function ExpertVerification() {
                 <Button
                   onClick={() => identityMutation.mutate()}
                   disabled={identityMutation.isPending}
-                  className="bg-[#FF385C] hover:bg-[#E23350]"
+                  className="bg-primary hover:bg-primary/90"
                   data-testid="button-retry-identity"
                 >
                   {identityMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ExternalLink className="w-4 h-4 mr-2" />}
@@ -139,7 +139,7 @@ export default function ExpertVerification() {
                 <Button
                   onClick={() => identityMutation.mutate()}
                   disabled={identityMutation.isPending}
-                  className="bg-[#FF385C] hover:bg-[#E23350]"
+                  className="bg-primary hover:bg-primary/90"
                   data-testid="button-start-identity"
                 >
                   {identityMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ShieldCheck className="w-4 h-4 mr-2" />}
@@ -194,7 +194,7 @@ export default function ExpertVerification() {
                 <Button
                   onClick={() => onboardMutation.mutate()}
                   disabled={onboardMutation.isPending}
-                  className="bg-[#FF385C] hover:bg-[#E23350]"
+                  className="bg-primary hover:bg-primary/90"
                   data-testid="button-continue-stripe"
                 >
                   {onboardMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ExternalLink className="w-4 h-4 mr-2" />}
@@ -207,7 +207,7 @@ export default function ExpertVerification() {
                 <Button
                   onClick={() => onboardMutation.mutate()}
                   disabled={onboardMutation.isPending}
-                  className="bg-[#FF385C] hover:bg-[#E23350]"
+                  className="bg-primary hover:bg-primary/90"
                   data-testid="button-connect-stripe"
                 >
                   {onboardMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CreditCard className="w-4 h-4 mr-2" />}

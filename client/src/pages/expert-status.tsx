@@ -55,7 +55,7 @@ function StepIcon({ status }: { status: string }) {
 function StepDot({ status, id }: { status: string; id: number }) {
   const base = "absolute left-2 top-1 w-5 h-5 rounded-full flex items-center justify-center";
   if (status === "completed") return <div className={`${base} bg-green-500`}><StepIcon status="completed" /></div>;
-  if (status === "in_progress") return <div className={`${base} bg-[#FF385C]`}><StepIcon status="in_progress" /></div>;
+  if (status === "in_progress") return <div className={`${base} bg-primary`}><StepIcon status="in_progress" /></div>;
   if (status === "failed") return <div className={`${base} bg-red-500`}><StepIcon status="failed" /></div>;
   return <div className={`${base} bg-gray-300 dark:bg-gray-600`}><span className="text-xs text-white font-medium">{id}</span></div>;
 }
@@ -63,7 +63,7 @@ function StepDot({ status, id }: { status: string; id: number }) {
 function StepCard({ step }: { step: ApplicationStep }) {
   const bg =
     step.status === "completed" ? "bg-green-50 dark:bg-green-900/20" :
-    step.status === "in_progress" ? "bg-[#FFF5F7] dark:bg-[#FF385C]/10 border border-[#FF385C]" :
+    step.status === "in_progress" ? "bg-[#FFF5F7] dark:bg-primary/10 border border-[#FF385C]" :
     step.status === "failed" ? "bg-red-50 dark:bg-red-900/20 border border-red-300" :
     "bg-gray-50 dark:bg-gray-800";
 
@@ -239,10 +239,10 @@ export default function ExpertStatusPage() {
         )}
 
         {currentStep && (
-          <Card className="border-2 border-[#FF385C] bg-[#FFF5F7] dark:bg-[#FF385C]/10">
+          <Card className="border-2 border-[#FF385C] bg-[#FFF5F7] dark:bg-primary/10">
             <CardContent className="p-6">
               <div className="flex items-start gap-4">
-                <div className="p-3 bg-[#FF385C] rounded-full">
+                <div className="p-3 bg-primary rounded-full">
                   <Clock className="w-6 h-6 text-white" />
                 </div>
                 <div className="flex-1">

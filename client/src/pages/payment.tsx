@@ -537,7 +537,7 @@ export default function PaymentPage() {
 
                   {/* Pay Button */}
                   <Button
-                    className="w-full h-12 bg-[#FF385C] hover:bg-[#E23350] text-white text-lg"
+                    className="w-full h-12 bg-primary hover:bg-primary/90 text-white text-lg"
                     onClick={handlePayment}
                     disabled={isProcessing || !agreeToTerms || !isCardValid}
                     data-testid="button-pay-now"
@@ -564,7 +564,7 @@ export default function PaymentPage() {
               <Card className="border-[#E5E7EB] mt-4 bg-gradient-to-r from-[#FFF5F7] to-white">
                 <CardContent className="p-4">
                   <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-full bg-[#FF385C] flex items-center justify-center flex-shrink-0">
+                    <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center flex-shrink-0">
                       <Sparkles className="w-5 h-5 text-white" />
                     </div>
                     <div>

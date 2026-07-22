@@ -217,7 +217,7 @@ export default function ProviderServices() {
             )}
           </div>
           <Link href="/provider/services/new">
-            <Button className="bg-[#FF385C] hover:bg-[#FF385C]/90" data-testid="button-add-service">
+            <Button className="bg-primary hover:bg-primary/90" data-testid="button-add-service">
               <Plus className="w-4 h-4 mr-2" /> Add New Service
             </Button>
           </Link>
@@ -329,7 +329,7 @@ export default function ProviderServices() {
                         <div className="flex items-center gap-2 flex-wrap">
                           <h3 className="font-semibold text-console-darkest truncate">{displayName}</h3>
                           {service.isFeatured && (
-                            <Badge className="bg-[#FF385C] text-white text-[10px]" data-testid={`badge-featured-${service.id}`}>
+                            <Badge className="bg-primary text-white text-[10px]" data-testid={`badge-featured-${service.id}`}>
                               Featured
                             </Badge>
                           )}
@@ -379,7 +379,7 @@ export default function ProviderServices() {
                                 <Badge
                                   key={tag}
                                   variant="secondary"
-                                  className="text-[10px] py-0 px-1.5 bg-[#FF385C]/8 text-[#FF385C] border border-[#FF385C]/20"
+                                  className="text-[10px] py-0 px-1.5 bg-primary/8 text-[#FF385C] border border-[#FF385C]/20"
                                   data-testid={`chip-affinity-${service.id}-${tag}`}
                                 >
                                   {AFFINITY_TAG_LABELS[tag] ?? tag}

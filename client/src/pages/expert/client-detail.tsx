@@ -106,7 +106,7 @@ export default function ExpertClientDetail() {
         <div className="flex items-start justify-between">
           <div className="flex items-start gap-4">
             <Avatar className="w-16 h-16">
-              <AvatarFallback className="bg-[#FF385C] text-white text-lg font-semibold">
+              <AvatarFallback className="bg-primary text-white text-lg font-semibold">
                 {mockClient.avatar}
               </AvatarFallback>
             </Avatar>
@@ -133,7 +133,7 @@ export default function ExpertClientDetail() {
           </div>
           <div className="flex gap-2">
             <Link href="/chat">
-              <Button className="bg-[#FF385C] hover:bg-[#FF385C]/90" data-testid="button-client-detail-message">
+              <Button className="bg-primary hover:bg-primary/90" data-testid="button-client-detail-message">
                 <MessageSquare className="w-4 h-4 mr-2" /> Message
               </Button>
             </Link>
@@ -189,7 +189,7 @@ export default function ExpertClientDetail() {
                   </div>
                 </div>
                 <Link href="/expert/assigned-trips">
-                  <Button className="w-full bg-[#FF385C] hover:bg-[#FF385C]/90" data-testid="button-client-detail-full-itinerary">
+                  <Button className="w-full bg-primary hover:bg-primary/90" data-testid="button-client-detail-full-itinerary">
                     View Full Itinerary <ArrowRight className="w-4 h-4 ml-2" />
                   </Button>
                 </Link>
@@ -213,7 +213,7 @@ export default function ExpertClientDetail() {
                       <div
                         className={`max-w-xs rounded-lg p-3 ${
                           message.sender === "expert"
-                            ? "bg-[#FF385C] text-white"
+                            ? "bg-primary text-white"
                             : "bg-gray-100 text-gray-900"
                         }`}
                       >

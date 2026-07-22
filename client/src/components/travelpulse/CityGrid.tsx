@@ -215,7 +215,7 @@ function CityCard({ city, onClick }: { city: TravelPulseCity; onClick: () => voi
                             <button
                               key={trip.id}
                               onClick={() => handleSelectTrip(trip.id)}
-                              className="w-full flex items-center justify-between gap-3 p-3 rounded-xl border border-border hover:border-[#FF385C] hover:bg-[#FF385C]/5 transition-all text-left group"
+                              className="w-full flex items-center justify-between gap-3 p-3 rounded-xl border border-border hover:border-[#FF385C] hover:bg-primary/5 transition-all text-left group"
                               data-testid={`button-select-trip-${trip.id}`}
                             >
                               <div className="flex items-center gap-3 min-w-0">

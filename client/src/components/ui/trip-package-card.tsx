@@ -57,7 +57,7 @@ const getStatusBadge = (status?: string) => {
     case "Limited":
       return { icon: Zap, label: "Limited", bgColor: "bg-red-500 dark:bg-red-600" };
     case "Hot":
-      return { icon: Zap, label: "Hot", bgColor: "bg-[#FF385C]" };
+      return { icon: Zap, label: "Hot", bgColor: "bg-primary" };
     default:
       return null;
   }

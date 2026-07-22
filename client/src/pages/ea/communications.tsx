@@ -50,7 +50,7 @@ export default function EACommunications() {
             <Button variant="outline" data-testid="button-new-message">
               <MessageSquare className="w-4 h-4 mr-2" /> New Message
             </Button>
-            <Button className="bg-[#FF385C] hover:bg-[#E23350]" data-testid="button-ai-draft">
+            <Button className="bg-primary hover:bg-primary/90" data-testid="button-ai-draft">
               <Bot className="w-4 h-4 mr-2" /> AI Draft
             </Button>
           </div>
@@ -133,7 +133,7 @@ export default function EACommunications() {
                   <Button variant="outline" data-testid="button-ai-assist">
                     <Bot className="w-4 h-4 mr-2" /> AI Assist
                   </Button>
-                  <Button className="bg-[#FF385C] hover:bg-[#E23350]" data-testid="button-send">
+                  <Button className="bg-primary hover:bg-primary/90" data-testid="button-send">
                     <Send className="w-4 h-4 mr-2" /> Send
                   </Button>
                 </div>

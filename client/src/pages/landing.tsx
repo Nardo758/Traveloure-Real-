@@ -503,7 +503,7 @@ export default function LandingPage() {
             <div className="mt-8 flex justify-center">
               <Button
                 size="lg"
-                className="bg-[#FF385C] hover:bg-[#E0314F] text-white font-semibold px-8 shadow-xl gap-2"
+                className="bg-primary hover:bg-[#E0314F] text-white font-semibold px-8 shadow-xl gap-2"
                 onClick={() => setPlanningOpen(true)}
                 data-testid="button-plan-trip"
               >
@@ -674,7 +674,7 @@ export default function LandingPage() {
             className="mb-12"
           >
             <div className="flex items-center gap-2 mb-2">
-              <div className="w-10 h-10 rounded-full bg-[#FF385C] flex items-center justify-center">
+              <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center">
                 <Sparkles className="w-5 h-5 text-white" />
               </div>
               <h2 className="text-3xl md:text-4xl font-bold text-foreground">
@@ -754,7 +754,7 @@ export default function LandingPage() {
             className="text-center mt-10"
           >
             <Link href="/ai-assistant">
-              <Button size="lg" className="bg-[#FF385C] text-white font-semibold px-8" data-testid="button-get-started-how">
+              <Button size="lg" className="bg-primary text-white font-semibold px-8" data-testid="button-get-started-how">
                 Get Started <ArrowRight className="w-4 h-4 ml-2" />
               </Button>
             </Link>
@@ -771,7 +771,7 @@ export default function LandingPage() {
             className="mb-12"
           >
             <div className="flex items-center gap-2 mb-2">
-              <div className="w-10 h-10 rounded-full bg-[#FF385C] flex items-center justify-center">
+              <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center">
                 <Activity className="w-5 h-5 text-white" />
               </div>
               <h2 className="text-3xl md:text-4xl font-bold text-foreground">

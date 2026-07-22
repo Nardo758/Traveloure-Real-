@@ -47,7 +47,7 @@ export default function EAGifts() {
             <Button variant="outline" data-testid="button-browse-catalog">
               <ShoppingCart className="w-4 h-4 mr-2" /> Browse Catalog
             </Button>
-            <Button className="bg-[#FF385C] hover:bg-[#E23350]" data-testid="button-order-gift">
+            <Button className="bg-primary hover:bg-primary/90" data-testid="button-order-gift">
               <Plus className="w-4 h-4 mr-2" /> Order Gift
             </Button>
           </div>
@@ -119,7 +119,7 @@ export default function EAGifts() {
                       </div>
                       <div className="flex gap-2">
                         {occasion.giftNeeded && (
-                          <Button size="sm" className="bg-[#FF385C] hover:bg-[#E23350]" data-testid={`button-select-gift-${occasion.id}`}>
+                          <Button size="sm" className="bg-primary hover:bg-primary/90" data-testid={`button-select-gift-${occasion.id}`}>
                             <Gift className="w-3 h-3 mr-1" /> Select Gift
                           </Button>
                         )}

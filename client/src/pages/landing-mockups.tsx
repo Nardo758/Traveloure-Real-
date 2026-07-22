@@ -98,7 +98,7 @@ export default function LandingMockups() {
                 <div className="flex flex-wrap gap-4">
                   <Button 
                     size="lg"
-                    className="bg-[#FF385C] hover:bg-[#E23350] text-white font-semibold px-8"
+                    className="bg-primary hover:bg-primary/90 text-white font-semibold px-8"
                   >
                     <Bot className="w-5 h-5 mr-2" />
                     Start with AI
@@ -197,7 +197,7 @@ export default function LandingMockups() {
               <div className="flex flex-wrap justify-center gap-4">
                 <Button 
                   size="lg"
-                  className="bg-[#FF385C] hover:bg-[#E23350] text-white font-semibold px-8"
+                  className="bg-primary hover:bg-primary/90 text-white font-semibold px-8"
                 >
                   <Bot className="w-5 h-5 mr-2" />
                   Plan with AI

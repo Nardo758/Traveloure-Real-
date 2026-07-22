@@ -497,7 +497,7 @@ export default function ExpertBookings() {
             <h1 className="text-2xl font-bold text-console-darkest" data-testid="text-bookings-title">Bookings & Calendar</h1>
             <p className="text-console-mid">Manage your appointments and reservations</p>
           </div>
-          <Button className="bg-[#FF385C] " data-testid="button-new-booking">
+          <Button className="bg-primary " data-testid="button-new-booking">
             <CalendarDays className="w-4 h-4 mr-2" /> New Booking
           </Button>
         </div>
@@ -589,7 +589,7 @@ export default function ExpertBookings() {
                 </div>
               </div>
               {bookings && bookings.filter(isVisaBooking).length > 0 && (
-                <div className="p-3 bg-[#FF385C]/5 rounded-lg text-center border border-[#FF385C]/20">
+                <div className="p-3 bg-primary/5 rounded-lg text-center border border-[#FF385C]/20">
                   <p className="text-2xl font-bold text-[#FF385C]">
                     {bookings.filter(isVisaBooking).length}
                   </p>
@@ -732,7 +732,7 @@ export default function ExpertBookings() {
                           <Button
                             size="sm"
                             variant="outline"
-                            className="text-[#FF385C] border-[#FF385C]/30 hover:bg-[#FF385C]/5"
+                            className="text-[#FF385C] border-[#FF385C]/30 hover:bg-primary/5"
                             onClick={() => openVisaDialog(booking)}
                             data-testid={`button-update-visa-status-${booking.id}`}
                           >

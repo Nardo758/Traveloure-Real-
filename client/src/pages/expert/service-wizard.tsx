@@ -291,7 +291,7 @@ export default function ServiceWizard() {
             className={cn(
               "flex items-center justify-center w-10 h-10 rounded-full border-2 transition-colors",
               currentStep === step.id 
-                ? "bg-[#FF385C] border-[#FF385C] text-white" 
+                ? "bg-primary border-[#FF385C] text-white" 
                 : currentStep > step.id 
                   ? "bg-green-500 border-green-500 text-white"
                   : "border-gray-300 text-gray-400"
@@ -346,7 +346,7 @@ export default function ServiceWizard() {
               className={cn(
                 "px-3 py-1.5 rounded-full text-sm font-medium border transition-colors",
                 tierFilter === f.value
-                  ? "bg-[#FF385C] border-[#FF385C] text-white"
+                  ? "bg-primary border-[#FF385C] text-white"
                   : "bg-white border-gray-200 text-gray-600 hover:border-gray-400"
               )}
               data-testid={`filter-tier-${f.value}`}
@@ -375,7 +375,7 @@ export default function ServiceWizard() {
                     className={cn(
                       "p-4 rounded-lg border-2 cursor-pointer transition-colors",
                       formData.expertOfferingTypeId === tier.id
-                        ? "border-[#FF385C] bg-[#FF385C]/5"
+                        ? "border-[#FF385C] bg-primary/5"
                         : "border-gray-200 hover:border-gray-300"
                     )}
                     data-testid={`option-tier-${tier.offeringTypeKey}`}
@@ -456,7 +456,7 @@ export default function ServiceWizard() {
                     className={cn(
                       "p-4 rounded-lg border-2 cursor-pointer transition-colors",
                       formData.deliveryMethod === method.value
-                        ? "border-[#FF385C] bg-[#FF385C]/5"
+                        ? "border-[#FF385C] bg-primary/5"
                         : "border-gray-200 hover:border-gray-300"
                     )}
                     data-testid={`option-delivery-${method.value}`}
@@ -728,7 +728,7 @@ export default function ServiceWizard() {
           className="p-6 rounded-xl border-2 border-gray-200 hover:border-[#FF385C] cursor-pointer transition-colors group"
           data-testid="option-start-from-template"
         >
-          <div className="w-12 h-12 rounded-xl bg-[#FF385C]/10 flex items-center justify-center mb-4">
+          <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center mb-4">
             <Sparkles className="w-6 h-6 text-[#FF385C]" />
           </div>
           <h3 className="text-lg font-semibold text-gray-900 mb-2">Start from a Template</h3>
@@ -787,7 +787,7 @@ export default function ServiceWizard() {
             <Package className="w-10 h-10 text-gray-400 mb-3" />
             <p className="font-medium text-gray-700">No templates available yet</p>
             <p className="text-sm text-gray-500 mt-1">Start from scratch to create your custom service</p>
-            <Button className="mt-4 bg-[#FF385C]" onClick={() => setStartMode('scratch')} data-testid="button-switch-to-scratch">
+            <Button className="mt-4 bg-primary" onClick={() => setStartMode('scratch')} data-testid="button-switch-to-scratch">
               Start from Scratch
             </Button>
           </CardContent>
@@ -835,7 +835,7 @@ export default function ServiceWizard() {
                   </Button>
                   <Button
                     size="sm"
-                    className="flex-1 bg-[#FF385C]"
+                    className="flex-1 bg-primary"
                     onClick={() => createFromTemplateMutation.mutate(t.id)}
                     disabled={createFromTemplateMutation.isPending}
                     data-testid={`button-quick-create-${t.id}`}
@@ -927,7 +927,7 @@ export default function ServiceWizard() {
                   Save as Draft
                 </Button>
                 <Button
-                  className="bg-[#FF385C] "
+                  className="bg-primary "
                   onClick={() => handleSubmit(false)}
                   disabled={createMutation.isPending}
                   data-testid="button-publish-service"
@@ -937,7 +937,7 @@ export default function ServiceWizard() {
               </>
             ) : (
               <Button
-                className="bg-[#FF385C] "
+                className="bg-primary "
                 onClick={handleNext}
                 data-testid="button-wizard-next"
               >

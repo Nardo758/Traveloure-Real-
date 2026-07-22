@@ -183,7 +183,7 @@ export default function FAQPage() {
                 onClick={() => setActiveCategory(cat.id)}
                 className={
                   activeCategory === cat.id
-                    ? "bg-[#FF385C] hover:bg-[#E23350] text-white"
+                    ? "bg-primary hover:bg-primary/90 text-white"
                     : "border-[#E5E7EB]"
                 }
                 data-testid={`button-category-${cat.id}`}
@@ -257,7 +257,7 @@ export default function FAQPage() {
             <Link href="/contact">
               <Button
                 size="lg"
-                className="bg-[#FF385C] hover:bg-[#E23350] text-white"
+                className="bg-primary hover:bg-primary/90 text-white"
                 data-testid="button-contact-us"
               >
                 <MessageSquare className="w-4 h-4 mr-2" />

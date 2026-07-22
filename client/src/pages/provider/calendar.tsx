@@ -304,7 +304,7 @@ export default function ProviderCalendar() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <Button onClick={addBlackoutDate} className="w-full bg-[#FF385C] hover:bg-[#FF385C]/90">
+                  <Button onClick={addBlackoutDate} className="w-full bg-primary hover:bg-primary/90">
                     Add Blocked Period
                   </Button>
                   <div className="space-y-2 mt-6">
@@ -439,7 +439,7 @@ export default function ProviderCalendar() {
                       onClick={() => setSelectedDate(day)}
                       className={`h-20 p-1 rounded-lg border transition-colors text-left ${
                         isSelected 
-                          ? "border-[#FF385C] bg-[#FF385C]/5" 
+                          ? "border-[#FF385C] bg-primary/5" 
                           : hasBookings 
                             ? hasConfirmed 
                               ? "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800" 

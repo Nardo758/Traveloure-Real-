@@ -52,7 +52,7 @@ export default function EAEvents() {
             </h1>
             <p className="text-gray-600">Track and manage all executive events</p>
           </div>
-          <Button className="bg-[#FF385C] hover:bg-[#E23350]" data-testid="button-new-event">
+          <Button className="bg-primary hover:bg-primary/90" data-testid="button-new-event">
             <Plus className="w-4 h-4 mr-2" /> Create New Event
           </Button>
         </div>
@@ -191,7 +191,7 @@ export default function EAEvents() {
                       Edit
                     </Button>
                     {event.status === "urgent" && (
-                      <Button size="sm" className="bg-[#FF385C] hover:bg-[#E23350]" data-testid={`button-handle-${event.id}`}>
+                      <Button size="sm" className="bg-primary hover:bg-primary/90" data-testid={`button-handle-${event.id}`}>
                         Handle Now
                       </Button>
                     )}
