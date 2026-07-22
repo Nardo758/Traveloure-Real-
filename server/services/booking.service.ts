@@ -451,7 +451,35 @@ class BookingService {
           status: 'pending_provider',
         });
 
-        // TODO: Send notification to provider
+        // Fire-and-forget: notify provider of new booking request
+        if (item.providerId) {
+          const reqId = insertedRequest?.id;
+          const providerId = item.providerId;
+          const title = item.title;
+          const date = item.date;
+          const time = item.time;
+          ;(async () => {
+            try {
+              const { storage } = await import('../storage');
+              const travelerRow = await db.execute(sql`
+                SELECT first_name, last_name FROM users WHERE id = ${userId} LIMIT 1
+              `);
+              const traveler = travelerRow.rows?.[0] as any;
+              const travelerName = [traveler?.first_name, traveler?.last_name].filter(Boolean).join(' ') || 'A traveler';
+              await storage.createNotification({
+                userId: providerId,
+                type: 'booking_request',
+                title: 'New Booking Request',
+                message: `${travelerName} requested "${title}" on ${date}${time ? ' at ' + time : ''}.`,
+                relatedId: reqId,
+                relatedType: 'booking_request',
+                data: { bookingRequestId: reqId, serviceTitle: title, travelerName, requestedDate: date, requestedTime: time ?? null },
+              });
+            } catch (notifErr) {
+              console.error(`[BookingService] Failed to notify provider ${providerId} of booking request:`, notifErr);
+            }
+          })();
+        }
       } catch (error: any) {
         errors.push(`Error submitting request for ${item.title}: ${error.message}`);
       }
@@ -535,7 +563,9 @@ class BookingService {
 
     // Gate 2: load the booking row for all subsequent checks.
     const bookingRow = await db.execute(sql`
-      SELECT user_id, status FROM bookings WHERE id = ${bookingId}
+      SELECT user_id, status, provider_id, service_amount, platform_fee, total_amount,
+             provider_payout, title, travelers, booking_date
+      FROM bookings WHERE id = ${bookingId}
     `);
 
     if (!bookingRow.rows || bookingRow.rows.length === 0) {
@@ -544,7 +574,18 @@ class BookingService {
       throw err;
     }
 
-    const booking = bookingRow.rows[0] as { user_id: string; status: string };
+    const booking = bookingRow.rows[0] as {
+      user_id: string;
+      status: string;
+      provider_id: string | null;
+      service_amount: string | null;
+      platform_fee: string | null;
+      total_amount: string | null;
+      provider_payout: string | null;
+      title: string | null;
+      travelers: number | null;
+      booking_date: string | null;
+    };
 
     // Gate 3: verify the booking belongs to the requesting user.
     if (booking.user_id !== userId) {
@@ -592,8 +633,91 @@ class BookingService {
         AND status = 'pending_payment'
     `);
 
-    // TODO: Update provider earnings
-    // TODO: Decrease availability
+    // Fire-and-forget: update provider earnings, decrement availability, notify provider
+    const _bookingId = bookingId;
+    const _userId = userId;
+    const _confirmationCode = confirmationCode;
+    const _booking = booking;
+    ;(async () => {
+      try {
+        const { storage } = await import('../storage');
+        const { availableAtFor } = await import('../config/earnings-hold.config');
+        const { PROCESSING_FEE_RATE } = await import('./commission');
+
+        const providerId = _booking.provider_id;
+        if (!providerId) return;
+
+        const providerPayoutAmt = parseFloat(_booking.provider_payout || '0');
+        const platformFeeAmt = parseFloat(_booking.platform_fee || '0');
+        const totalAmt = parseFloat(_booking.total_amount || '0');
+        const partySize = Math.max(1, _booking.travelers || 1);
+
+        // 1. Record provider earnings ledger entry (born held; released after clearance window)
+        if (providerPayoutAmt > 0) {
+          const availableAt = availableAtFor('service_booking');
+          await storage.createProviderEarning({
+            providerId,
+            type: 'service_booking',
+            amount: String(providerPayoutAmt),
+            sourceType: 'booking',
+            sourceId: _bookingId,
+            description: `Earnings from booking ${_bookingId}${_booking.title ? ' - ' + _booking.title : ''}`,
+            status: 'held',
+            availableAt,
+          });
+
+          // Record platform revenue entry
+          if (platformFeeAmt > 0) {
+            await storage.recordPlatformRevenue({
+              sourceType: 'booking_commission',
+              sourceId: _bookingId,
+              grossAmount: String(totalAmt),
+              platformFee: String(platformFeeAmt),
+              netAmount: String(platformFeeAmt * (1 - PROCESSING_FEE_RATE)),
+              processingFees: String(platformFeeAmt * PROCESSING_FEE_RATE),
+              providerId,
+              providerEarnings: String(providerPayoutAmt),
+              description: `Booking commission from booking ${_bookingId}`,
+              status: 'recorded',
+              transactionDate: new Date(),
+            });
+          }
+        }
+
+        // 2. Decrement provider availability (increment current_bookings counter)
+        await db.execute(sql`
+          UPDATE provider_availability
+          SET current_bookings = COALESCE(current_bookings, 0) + ${partySize}
+          WHERE provider_id = ${providerId}
+            AND is_available = true
+        `);
+
+        // 3. Notify provider of the confirmed booking
+        const travelerRow = await db.execute(sql`
+          SELECT first_name, last_name FROM users WHERE id = ${_userId} LIMIT 1
+        `);
+        const traveler = travelerRow.rows?.[0] as any;
+        const travelerName = [traveler?.first_name, traveler?.last_name].filter(Boolean).join(' ') || 'A traveler';
+        await storage.createNotification({
+          userId: providerId,
+          type: 'booking_confirmed',
+          title: 'Booking Confirmed',
+          message: `${travelerName} confirmed "${_booking.title || 'a booking'}"${_booking.booking_date ? ' on ' + _booking.booking_date : ''}. Confirmation: ${_confirmationCode}.`,
+          relatedId: _bookingId,
+          relatedType: 'booking',
+          data: {
+            bookingId: _bookingId,
+            serviceTitle: _booking.title,
+            travelerName,
+            bookingDate: _booking.booking_date,
+            confirmationCode: _confirmationCode,
+            providerPayout: providerPayoutAmt,
+          },
+        });
+      } catch (sideEffectErr) {
+        console.error(`[BookingService] Post-confirmation side-effects failed for booking ${_bookingId}:`, sideEffectErr);
+      }
+    })();
 
     // Fire-and-forget confirmation email — must not block the caller
     db.execute(sql`
