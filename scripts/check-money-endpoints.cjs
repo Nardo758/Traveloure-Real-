@@ -17,8 +17,15 @@
  * Handler-scoping (b) keeps the huge routes.ts monolith from flagging every unrelated req.body read
  * — only reads inside a money-operation handler count.
  *
- * To exempt a genuinely-safe read (e.g. a discount PREVIEW amount that never becomes a charge), add
- * a `money-derive-ok` comment on the same line.
+ * COMMISSION LITERAL GUARD (added Jul 2026 — CLAUDE.md §15):
+ * Fails if a numeric commission literal (0.9, 0.1, 0.75, 0.25) appears in source code outside
+ * fee_bands seed files and test files. All commission rates must live in fee_bands / platform_settings
+ * and be resolved via resolveCommissionRates(). To exempt a genuinely safe occurrence (e.g. an
+ * explanatory constant already backed by a fee_bands lookup), add a `fee-literal-ok` comment on
+ * the same line.
+ *
+ * To exempt a genuinely-safe req.body read (e.g. a discount PREVIEW amount that never becomes a
+ * charge), add a `money-derive-ok` comment on the same line.
  *
  * Wire into CI alongside lockfile-purity; run locally with: node scripts/check-money-endpoints.cjs
  */
@@ -38,6 +45,22 @@ const BODY_RE = /req\.body/;
 const FIELD_RE = /\b(amount|price|userId)\b/;
 const HANDLER_RE = /\b(app|router)\.(get|post|put|patch|delete)\s*\(/;
 const ALLOW = 'money-derive-ok';
+
+// ─── Commission literal guard ────────────────────────────────────────────────
+// Numeric literals that express the 90/10 or 75/25 commission split must only
+// appear in commission/payment/fee-named source files where they are explicitly
+// annotated fee-literal-ok, or in seed/migration/test files (ground truth).
+// In those files without an exemption, a bare 0.9/0.1/0.75/0.25 literal is a defect:
+// the rate must come from resolveCommissionRates() / fee_bands at runtime.
+const COMMISSION_LITERAL_RE = /\b0\.(9|1|75|25)\b/;
+const COMMISSION_ALLOW = 'fee-literal-ok';
+// Only commission/payment/fee/payout/checkout-named files are in scope.
+// Broad service files (cache, scoring, HTTP headers, etc.) produce too many false positives.
+const COMMISSION_FILE_RE = /(commission|payment|payout|checkout|fee)/i;
+// Seed, migration, and test files are always exempt (ground-truth literals).
+const COMMISSION_EXEMPT_RE = /(server[/\\]seeds[/\\]|[/\\]migrations[/\\]|\.spec\.|\.test\.|__tests__)/;
+
+const commissionViolations = [];
 
 function walk(dir, out) {
   const abs = path.join(ROOT, dir);
@@ -79,35 +102,63 @@ for (const rel of files) {
   const fileMoneyNamed = NAME_RE.test(path.basename(rel));
   if (fileMoneyNamed) moneyNamedCount++;
   const ranges = fileMoneyNamed ? null : handlerRanges(lines);
+  const exemptCommission = COMMISSION_EXEMPT_RE.test(rel.replace(/\\/g, '/'));
 
   lines.forEach((line, i) => {
-    if (line.includes(ALLOW)) return;
-    const code = stripComment(line);
-    if (!(BODY_RE.test(code) && FIELD_RE.test(code))) return;
-
-    if (fileMoneyNamed) {
-      violations.push({ where: `${rel}:${i + 1}`, line: line.trim(), why: 'money-named file' });
-      return;
+    // ── req.body guard ──────────────────────────────────────────────────────
+    if (!line.includes(ALLOW)) {
+      const code = stripComment(line);
+      if (BODY_RE.test(code) && FIELD_RE.test(code)) {
+        if (fileMoneyNamed) {
+          violations.push({ where: `${rel}:${i + 1}`, line: line.trim(), why: 'money-named file' });
+        } else {
+          const r = ranges.find((rg) => i >= rg.start && i < rg.end);
+          if (r && r.money) {
+            violations.push({ where: `${rel}:${i + 1}`, line: line.trim(), why: 'money-operation handler' });
+          }
+        }
+      }
     }
-    // operation-scope: only if the enclosing handler performs a money op.
-    const r = ranges.find((rg) => i >= rg.start && i < rg.end);
-    if (r && r.money) {
-      violations.push({ where: `${rel}:${i + 1}`, line: line.trim(), why: 'money-operation handler' });
+
+    // ── commission literal guard ─────────────────────────────────────────────
+    // Only scan commission/payment/fee/payout/checkout-named files to avoid false
+    // positives from scoring weights, HTTP headers, percentile SQL, etc.
+    const inCommissionScope = COMMISSION_FILE_RE.test(path.basename(rel));
+    if (inCommissionScope && !exemptCommission && !line.includes(COMMISSION_ALLOW)) {
+      // Strip inline // comments, then skip pure block-comment lines (JSDoc `* ...`)
+      const code = stripComment(line);
+      const trimmed = code.trim();
+      const isBlockCommentLine = trimmed.startsWith('*') || trimmed.startsWith('/*');
+      if (!isBlockCommentLine && COMMISSION_LITERAL_RE.test(code)) {
+        commissionViolations.push({ where: `${rel}:${i + 1}`, line: line.trim() });
+      }
     }
   });
 }
 
+let failed = false;
+
 if (violations.length) {
+  failed = true;
   console.error('❌ Money-endpoint guard: `amount`/`price`/`userId` sourced from req.body in a money context.');
   console.error('   Derive the amount server-side and the user from the session (CLAUDE.md §14).');
   console.error('   If this read is genuinely safe (e.g. a preview that never becomes a charge), add a');
   console.error('   `money-derive-ok` comment on the line.\n');
-  for (const v of violations) console.error(`   ${v.where}  [${v.why}]: ${v.line}`);
-  process.exit(1);
+  for (const v of violations) console.error(`   ${v.where}  [money-named file / money-operation handler]: ${v.line}`);
 }
+
+if (commissionViolations.length) {
+  failed = true;
+  console.error('\n❌ Commission literal guard: numeric commission split (0.9/0.1/0.75/0.25) found outside seed/test files.');
+  console.error('   All commission rates must be resolved via resolveCommissionRates() from fee_bands (CLAUDE.md §15).');
+  console.error('   If this occurrence is genuinely backed by a fee_bands lookup, add a `fee-literal-ok` comment.\n');
+  for (const v of commissionViolations) console.error(`   ${v.where}: ${v.line}`);
+}
+
+if (failed) process.exit(1);
 
 console.log(
   `✅ Money-endpoint guard (operation-scoped): scanned ${files.length} files ` +
   `(${moneyNamedCount} money-named + ${files.length - moneyNamedCount} scanned for money-operation handlers) ` +
-  `— no client-trusted amount/identity.`
+  `— no client-trusted amount/identity, no bare commission literals.`
 );

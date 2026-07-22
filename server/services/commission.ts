@@ -44,8 +44,9 @@ export const PROCESSING_FEE_RATE = 0.03;
 // 3.0.1b: Exported field defaults — NOT resolver safety-nets. Used in route files
 // when a provider service's revenueShareRate is unset. The resolver path no longer
 // falls back to these; it throws on missing config. These are data-model defaults.
-export const EXPERT_SHARE_RATE = 0.75;
-export const PLATFORM_FEE_RATE = 0.25;
+// The actual runtime rates come from fee_bands via resolveCommissionRates().
+export const EXPERT_SHARE_RATE = 0.75; // fee-literal-ok: data-model default for unset revenueShareRate; runtime rate from fee_bands
+export const PLATFORM_FEE_RATE = 0.25; // fee-literal-ok: data-model default for unset revenueShareRate; runtime rate from fee_bands
 
 /**
  * Phase 3.1 — Booking Concierge facilitation fee.
@@ -438,9 +439,9 @@ export async function resolveCommissionRates(
 
   // Early-adopter gate for provider-source bookings.
   // When a providerId is supplied, compare their registration date to
-  // early_adopter_cutoff_date in platform_settings:
-  //   before cutoff  → beta_flat (10% platform / 90% provider)
-  //   on/after cutoff → expert_standard (25% platform / 75% provider)
+  // early_adopter_cutoff_date in platform_settings (config-driven — no literal date here):
+  //   before cutoff  → beta_flat band (rates from fee_bands row)
+  //   on/after cutoff → expert_standard band (rates from fee_bands row)
   // Omitting providerId (existing call-sites) always resolves to beta_flat — safe.
   const isProviderLine = source === "provider" || category === "provider_commission_percent";
   let bandKey: string;
