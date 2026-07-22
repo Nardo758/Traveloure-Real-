@@ -25,6 +25,7 @@ import {
   Loader2,
   RefreshCw,
   Globe,
+  XCircle,
 } from "lucide-react";
 import { Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -44,6 +45,7 @@ interface ApplicationStep {
 interface ApplicationStatus {
   steps: ApplicationStep[];
   overallStatus: string;
+  rejectionMessage?: string | null;
   identityVerificationStatus: string;
   identityVerifiedAt?: string;
   businessVerificationStatus: string;
@@ -246,6 +248,29 @@ export default function ProviderStatusPage() {
             {overallBadge}
           </div>
         </div>
+
+        {overallStatus === "rejected" && (
+          <Card className="border-2 border-red-300 bg-red-50 dark:bg-red-900/20" data-testid="card-rejection-feedback">
+            <CardContent className="p-6">
+              <div className="flex items-start gap-4">
+                <div className="p-3 bg-red-500 rounded-full flex-shrink-0">
+                  <XCircle className="w-6 h-6 text-white" />
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-lg font-semibold text-red-800 dark:text-red-300">Application Not Approved</h3>
+                  <p className="text-sm text-red-700 dark:text-red-400 mt-1 leading-relaxed" data-testid="text-rejection-message">
+                    {appStatus?.rejectionMessage
+                      ? appStatus.rejectionMessage
+                      : "Your application was not approved at this time. Please review the requirements and reapply when you are ready."}
+                  </p>
+                  {!appStatus?.rejectionMessage && (
+                    <p className="text-xs text-red-500 dark:text-red-500 mt-2">Contact support for more details on what to improve before reapplying.</p>
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         <Card className="bg-gradient-to-r from-[#FF385C] to-[#E23350] text-white">
           <CardContent className="p-6">
