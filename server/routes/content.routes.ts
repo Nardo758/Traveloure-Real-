@@ -4227,7 +4227,13 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
       // Ensure a trip row exists so we can insert itinerary_items (which FK on trips.id).
       // Prefer the caller-supplied tripId; if absent, create a new draft trip.
       let resolvedTripId: string = tripIdParam || "";
-      if (!resolvedTripId) {
+      if (resolvedTripId) {
+        // Ownership check — reject if the trip doesn't belong to this user.
+        const isOwner = await verifyTripOwnership(resolvedTripId, userId);
+        if (!isOwner) {
+          return res.status(403).json({ message: "Forbidden: you do not own this trip" });
+        }
+      } else {
         const newTrip = await storage.createTrip({
           userId,
           title: result.title || `${destination} Trip`,
@@ -4242,30 +4248,33 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
         resolvedTripId = newTrip.id;
       }
 
-      // Rebuild itinerary_items for the trip so the booking service can resolve prices by item ID.
-      await db.delete(itineraryItems).where(eq(itineraryItems.tripId, resolvedTripId));
+      // Rebuild itinerary_items inside a transaction so a partial failure never
+      // leaves the trip with a mix of old and new items.
       const dailyItinerary = Array.isArray(result.dailyItinerary) ? result.dailyItinerary : [];
       const insertedItems: any[] = [];
-      for (const day of dailyItinerary) {
-        const activities = Array.isArray(day?.activities) ? day.activities : [];
-        for (const activity of activities) {
-          const [inserted] = await db.insert(itineraryItems).values({
-            tripId: resolvedTripId,
-            title: activity.name || activity.title || "Activity",
-            description: activity.description || "",
-            itemType: activity.type || "activity",
-            status: "planned",
-            dayNumber: day.day || 1,
-            startTime: activity.time || "",
-            durationMinutes: typeof activity.duration === "number" ? activity.duration : 60,
-            locationName: activity.location || destination,
-            estimatedCost: activity.estimatedCost != null ? String(activity.estimatedCost) : null,
-            currency: "USD",
-            suggestedBy: "ai",
-          }).returning();
-          insertedItems.push({ ...activity, id: inserted.id });
+      await db.transaction(async (tx) => {
+        await tx.delete(itineraryItems).where(eq(itineraryItems.tripId, resolvedTripId));
+        for (const day of dailyItinerary) {
+          const activities = Array.isArray(day?.activities) ? day.activities : [];
+          for (const activity of activities) {
+            const [inserted] = await tx.insert(itineraryItems).values({
+              tripId: resolvedTripId,
+              title: activity.name || activity.title || "Activity",
+              description: activity.description || "",
+              itemType: activity.type || "activity",
+              status: "planned",
+              dayNumber: day.day || 1,
+              startTime: activity.time || "",
+              durationMinutes: typeof activity.duration === "number" ? activity.duration : 60,
+              locationName: activity.location || destination,
+              estimatedCost: activity.estimatedCost != null ? String(activity.estimatedCost) : null,
+              currency: "USD",
+              suggestedBy: "ai",
+            }).returning();
+            insertedItems.push({ ...activity, id: inserted.id });
+          }
         }
-      }
+      });
 
       // NEW: Create comparison and trigger optimization
       const numericBudget = budget != null && !isNaN(Number(budget)) ? String(budget) : null;
