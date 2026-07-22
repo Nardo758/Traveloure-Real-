@@ -1091,7 +1091,27 @@ router.patch("/api/admin/expert-applications/:id/status", isAuthenticated, async
         data: { link: "/expert/earnings" },
       });
     }
-    
+
+    // If rejected, send the applicant an email with the rejection reason (if any)
+    if (status === "rejected") {
+      const [applicant] = await db
+        .select({ email: users.email, firstName: users.firstName })
+        .from(users)
+        .where(eq(users.id, updated.userId));
+      if (applicant?.email) {
+        try {
+          const { sendExpertApplicationRejectionEmail } = await import("../services/email.service");
+          sendExpertApplicationRejectionEmail({
+            toEmail: applicant.email,
+            firstName: applicant.firstName ?? null,
+            rejectionMessage: rejectionMessage ?? null,
+          });
+        } catch (err) {
+          console.error("[admin] Failed to send expert rejection email (non-fatal):", err);
+        }
+      }
+    }
+
     res.json(updated);
   });
 
