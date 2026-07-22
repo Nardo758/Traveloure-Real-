@@ -5863,8 +5863,29 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const state = await storage.getCoordinationState(req.params.id);
       if (!state) return res.status(404).json({ message: "Coordination state not found" });
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
-      if (state.userId !== userId) return res.status(403).json({ message: "Unauthorized" });
+
+      const isTraveler = state.userId === userId;
+      const isCoordinator = state.assignedExpertId === userId;
+
+      if (!isTraveler && !isCoordinator) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+
       const { status, ...historyEntry } = req.body;
+
+      // Coordinators can only advance status forward — never regress or cancel.
+      if (isCoordinator && !isTraveler) {
+        const FORWARD_ORDER = [
+          "intake", "expert_matching", "vendor_discovery", "itinerary_generation",
+          "optimization", "booking_coordination", "confirmed", "in_progress", "completed",
+        ];
+        const currentIdx = FORWARD_ORDER.indexOf(state.status ?? "intake");
+        const nextIdx = FORWARD_ORDER.indexOf(status);
+        if (nextIdx === -1 || nextIdx <= currentIdx) {
+          return res.status(403).json({ message: "Coordinators can only advance status forward" });
+        }
+      }
+
       const updated = await storage.updateCoordinationStatus(req.params.id, status, historyEntry);
       res.json(updated);
     } catch (error) {
