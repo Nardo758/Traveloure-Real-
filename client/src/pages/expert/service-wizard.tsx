@@ -37,6 +37,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 import { cn } from "@/lib/utils";
+import { useApplicationGuard } from "@/hooks/use-application-guard";
 
 interface ServiceTemplate {
   id: string;
@@ -153,20 +154,16 @@ export default function ServiceWizard() {
   const { toast } = useToast();
   const [, navigate] = useLocation();
 
+  const { isLoading: guardLoading, requiresApplication } = useApplicationGuard();
+
   const { data: expertRoleData, isLoading: roleLoading } = useQuery<ExpertRole>({
     queryKey: ["/api/expert/role"],
+    enabled: !guardLoading && !requiresApplication,
   });
 
   useEffect(() => {
-    if (roleLoading) return;
-    if (expertRoleData?.role === null) {
-      toast({
-        title: "Application required",
-        description: "You need to submit an expert application before creating services.",
-        variant: "destructive",
-      });
-      navigate("/expert/apply");
-    } else if (expertRoleData?.applicationStatus === "pending") {
+    if (roleLoading || requiresApplication) return;
+    if (expertRoleData?.applicationStatus === "pending") {
       toast({
         title: "Application pending",
         description: "Your expert application is under review. You can create services once it has been approved.",
@@ -174,7 +171,7 @@ export default function ServiceWizard() {
       });
       navigate("/expert/dashboard");
     }
-  }, [roleLoading, expertRoleData, toast, navigate]);
+  }, [roleLoading, requiresApplication, expertRoleData, toast, navigate]);
 
   const { data: categories = [] } = useQuery<{ id: string; name: string }[]>({
     queryKey: ["/api/service-categories"],
