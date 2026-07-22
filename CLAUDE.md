@@ -338,6 +338,25 @@ This document captures architectural decisions to maintain consistency across co
       `POST /api/optimization-payments/confirm` verifies the intent and records `platform_revenue`. Client
       pays via cart.tsx / the Concierge UI. Amounts config-resolved (§8). See §7 (payment-gated optimize
       credit). **Still filed (not built):** Pinterest hooks, hotel-concierge B2B.
+    - **Concierge→coordination FULFILLMENT wire — Phase 1a LANDED (Jul 22, 2026).** The event-coordination
+      engine was fully built but **unwired**: `coordination_states` (status machine, `assigned_expert_id`
+      coordinator field, budget/dates/vendors/timeline/cost) + full CRUD + `GET …/:id/fee`
+      (`resolveCoordinationFee`, §7) + `coordination_bookings` + the expert coordinator workspace all existed,
+      but the concierge **Full / done-for-you** tier never created a coordination state — "we'll follow up"
+      dead-ended (only the admin visibility queue from the Fix-#5 pass saw it). **Phase 1a (this change):**
+      the concierge `PATCH /api/concierge/requests/:id` now, when a **signed-in** traveler picks `full`,
+      spins up (or reuses) a real `coordination_states` row (`experience_type` from the request's eventType,
+      `status='intake'`, `path='concierge'`, `user_request` carries `{conciergeRequestId, intent}` as the
+      link). **Idempotent** — one engagement per concierge request (dedup on `user_request->>'conciergeRequestId'`);
+      **guests stay request-only** (coordination_states.userId is NOT NULL). No schema change, no migration.
+      Proven behaviorally: Full-pick → engagement created; re-PATCH → same id; `/fee` resolves ($499 floor at
+      empty budget, 8% tier when budget set). **Filed (Phase 1b/1c):** a traveler-facing engagements surface
+      (view status + quoted fee) and an admin coordinator-assignment action on the concierge queue.
+      **Filed (Phase 2, needs decision-maker sign-off — MONEY):** actually *charging* the coordination fee —
+      §7 currently keeps it **quote-only** by design ("no unearned discount, paid-signal ledger filed"), so
+      capturing it (mirror the `optimization-payments` PaymentIntent+confirm pattern, amount server-derived
+      §14, idempotent §15, records `platform_revenue`) is a deliberate architectural flip to be ratified here
+      before it ships.
     - **DMO content layer — BUILT-BUT-DARK, ACTIVATED Kyoto-first (migration 117, Jul 16, 2026).** The
       8-market DMO ingestion spine (`research/traveloure_dmo_implementation_map.md` + `_addendum.md`) was
       already coded + schema-complete (7 tables: `dmo_sources`, `dmo_raw_content`,

@@ -12,10 +12,11 @@
  */
 import { Router } from "express";
 import { z } from "zod";
-import { and, eq, ilike, desc } from "drizzle-orm";
+import { and, eq, ilike, desc, sql } from "drizzle-orm";
 import { db } from "../db";
-import { conciergeRequests, conciergeRequestStatuses, conciergeTiers, eventPackages } from "@shared/schema";
+import { conciergeRequests, conciergeRequestStatuses, conciergeTiers, eventPackages, coordinationStates } from "@shared/schema";
 import { routeConcierge } from "../services/concierge-router.service";
+import { storage } from "../storage";
 
 const router = Router();
 
@@ -137,7 +138,34 @@ router.patch("/api/concierge/requests/:id", async (req, res) => {
     if (!row) {
       return res.status(404).json({ error: "not_found" });
     }
-    res.json(row);
+
+    // Fulfillment wire (§7): a signed-in traveler picking the Full / done-for-you tier
+    // spins up a real coordination engagement so "we'll follow up" becomes a trackable
+    // event-coordination state the fee engine + coordinator workspace already understand.
+    // Guests stay request-only (coordination_states.userId is NOT NULL). Idempotent —
+    // one engagement per concierge request (dedup on userRequest.conciergeRequestId).
+    let coordinationId: string | undefined;
+    if (row.chosenTier === "full" && row.userId) {
+      const [existing] = await db
+        .select({ id: coordinationStates.id })
+        .from(coordinationStates)
+        .where(sql`${coordinationStates.userRequest}->>'conciergeRequestId' = ${row.id}`)
+        .limit(1);
+      if (existing) {
+        coordinationId = existing.id;
+      } else {
+        const state = await storage.createCoordinationState({
+          userId: row.userId,
+          experienceType: row.eventType || "event",
+          status: "intake",
+          path: "concierge",
+          userRequest: { conciergeRequestId: row.id, intent: row.intent, source: "concierge_full" },
+        } as any);
+        coordinationId = state.id;
+      }
+    }
+
+    res.json({ ...row, coordinationId });
   } catch (err: any) {
     if (err instanceof z.ZodError) {
       return res.status(400).json({ error: "validation_failed", details: err.errors });
