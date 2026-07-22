@@ -123,15 +123,20 @@ export function DeliveryOptions({
       // traveler (Phase 1a) and returns its coordinationId — link the traveler straight to it.
       const res = await patchTier("full");
       let hasEngagement = false;
+      let claimToken: string | undefined;
       try {
-        const data = res && "json" in res ? await res.json() : null;
+        const data = res ? await res.json() : null;
         hasEngagement = Boolean(data?.coordinationId);
+        claimToken = data?.claimToken ?? undefined;
       } catch { /* non-JSON / guest — fall back to the generic message */ }
 
       if (!hasEngagement) {
         // Guest path: no coordination row was created (auth-gated).
-        // Store the requestId so SignInModal can claim it after sign-in.
+        // Store the requestId + HMAC claim token so the post-auth hook can claim it.
         sessionStorage.setItem("guestConciergeRequestId", requestId);
+        if (claimToken) {
+          sessionStorage.setItem("guestConciergeClaimToken", claimToken);
+        }
         setIsGuestFull(true);
       }
 

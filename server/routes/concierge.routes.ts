@@ -11,6 +11,7 @@
  * preview is the hook). userId is captured from session if present.
  */
 import { Router } from "express";
+import { createHmac } from "crypto";
 import { z } from "zod";
 import { and, eq, ilike, desc, sql } from "drizzle-orm";
 import { db } from "../db";
@@ -19,6 +20,11 @@ import { routeConcierge } from "../services/concierge-router.service";
 import { storage } from "../storage";
 
 const router = Router();
+
+function makeClaimToken(requestId: string): string {
+  const secret = process.env.SESSION_SECRET || "dev-fallback-secret";
+  return createHmac("sha256", secret).update(`concierge-claim:${requestId}`).digest("hex");
+}
 
 const createRequestSchema = z.object({
   intent: z.string().min(1).max(2000),
@@ -165,7 +171,10 @@ router.patch("/api/concierge/requests/:id", async (req, res) => {
       }
     }
 
-    res.json({ ...row, coordinationId });
+    // For guests (no coordinationId), return a signed claim token they can use after sign-in.
+    const claimToken = !row.userId ? makeClaimToken(row.id) : undefined;
+
+    res.json({ ...row, coordinationId, ...(claimToken ? { claimToken } : {}) });
   } catch (err: any) {
     if (err instanceof z.ZodError) {
       return res.status(400).json({ error: "validation_failed", details: err.errors });
@@ -185,6 +194,14 @@ router.post("/api/concierge/requests/:id/claim", async (req, res) => {
     const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id ?? null;
     if (!userId) {
       return res.status(401).json({ error: "unauthenticated", message: "Sign in to claim a concierge request." });
+    }
+
+    // Validate possession token — prevents another authenticated user from claiming
+    // a request they didn't originate. Token is HMAC-SHA256(requestId, SESSION_SECRET).
+    const providedToken: string | undefined = req.body?.claimToken;
+    const expectedToken = makeClaimToken(req.params.id);
+    if (!providedToken || providedToken !== expectedToken) {
+      return res.status(403).json({ error: "invalid_claim_token", message: "Claim token is missing or invalid." });
     }
 
     const [row] = await db
