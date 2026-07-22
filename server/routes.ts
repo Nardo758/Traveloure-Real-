@@ -6266,6 +6266,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // Stripe call (step 1) already succeeded; a transaction failure here propagates as a 500
       // so the admin can retry — the Stripe idempotency key prevents a duplicate charge on retry.
       let reversedRevenueRows = 0;
+      const compensatingRows: Array<{ grossAmount: string; platformFee: string; netAmount: string; transactionDate: Date }> = [];
       await db.transaction(async (tx) => {
         // 2a. Release the consumed credit row (null out consumed_by / consumed_at).
         await tx
@@ -6286,13 +6287,16 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         const now = new Date();
         for (const o of originals) {
           const neg = (v: string | null) => String(-parseFloat(v || "0"));
+          const negGross = neg(o.grossAmount);
+          const negFee = neg(o.platformFee);
+          const negNet = neg(o.netAmount);
           await tx.insert(platformRevenue).values({
             sourceType: o.sourceType,
             sourceId: o.sourceId,
             trackingNumber: o.trackingNumber,
-            grossAmount: neg(o.grossAmount),
-            platformFee: neg(o.platformFee),
-            netAmount: neg(o.netAmount),
+            grossAmount: negGross,
+            platformFee: negFee,
+            netAmount: negNet,
             processingFees: neg(o.processingFees),
             currency: o.currency,
             expertId: o.expertId,
@@ -6304,6 +6308,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             status: "reversed",
             transactionDate: now,
           } as any);
+          compensatingRows.push({ grossAmount: negGross, platformFee: negFee, netAmount: negNet, transactionDate: now });
         }
 
         // 2c. Mark the coordination state as refunded (terminal state).
@@ -6312,6 +6317,20 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           .set({ feePaymentStatus: "refunded" })
           .where(eq(coordinationStates.id, coordinationId));
       });
+
+      // Step 3 — Update daily revenue summary for each compensating entry (analytics cache;
+      // runs outside the transaction like recordPlatformRevenue does in storage.ts). Fire-and-forget:
+      // a summary staleness is tolerable; a duplicate charge is not.
+      for (const row of compensatingRows) {
+        const date = row.transactionDate.toISOString().split("T")[0];
+        storage.updateDailyRevenueSummary(date, {
+          totalGross: row.grossAmount,
+          totalPlatformFee: row.platformFee,
+          totalNet: row.netAmount,
+        } as any).catch((e: any) =>
+          console.warn("[coordination refund] daily summary update failed (non-critical):", e)
+        );
+      }
 
       return res.json({
         success: true,

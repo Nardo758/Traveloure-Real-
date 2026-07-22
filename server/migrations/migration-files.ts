@@ -454,4 +454,10 @@ export const MIGRATION_FILES = [
   // Companion code change: getAvailableCoordinationCreditCents + claimCoordinationCredit now accept
   // eventType, sum ALL eligible credits (not just the newest), and cap consumption at the gross fee.
   "126_coordination_credit_event_scoping.sql",
+  // Migration 127 — Expand fee_payment_status CHECK to include 'refunded'. Migration 125 created the
+  // CHECK with only ('unpaid','pending','paid'). The admin refund endpoint (POST
+  // /api/coordination-states/:id/refund) sets fee_payment_status = 'refunded', which violated the
+  // old constraint at runtime. Idempotent: drops and recreates the constraint by name.
+  // (Originally authored as 126; renumbered to 127 after 126 was taken by coordination_credit_event_scoping.)
+  "127_coordination_fee_refunded_status.sql",
 ] as const;
