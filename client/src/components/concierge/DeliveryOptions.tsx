@@ -17,7 +17,8 @@ import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Sparkles, UserCheck, Crown, Loader2, CheckCircle2, Clock } from "lucide-react";
+import { Sparkles, UserCheck, Crown, Loader2, CheckCircle2, Clock, LogIn } from "lucide-react";
+import { useSignInModal } from "@/contexts/SignInModalContext";
 
 export interface ConciergeRoute {
   ai: { priceCents: number; currency: string; available: boolean; disabled: boolean };
@@ -50,6 +51,8 @@ export function DeliveryOptions({
   const [, setLocation] = useLocation();
   const [busy, setBusy] = useState<"ai" | "expert" | "full" | null>(null);
   const [success, setSuccess] = useState<{ tier: "expert" | "full"; message: string } | null>(null);
+  const [isGuestFull, setIsGuestFull] = useState(false);
+  const { openSignInModal } = useSignInModal();
 
   const { suggestVsAdd, branch } = route;
   const isEvent = branch === "event";
@@ -120,10 +123,23 @@ export function DeliveryOptions({
       // traveler (Phase 1a) and returns its coordinationId — link the traveler straight to it.
       const res = await patchTier("full");
       let hasEngagement = false;
+      let claimToken: string | undefined;
       try {
-        const data = res && "json" in res ? await res.json() : null;
+        const data = res ? await res.json() : null;
         hasEngagement = Boolean(data?.coordinationId);
+        claimToken = data?.claimToken ?? undefined;
       } catch { /* non-JSON / guest — fall back to the generic message */ }
+
+      if (!hasEngagement) {
+        // Guest path: no coordination row was created (auth-gated).
+        // Store the requestId + HMAC claim token so the post-auth hook can claim it.
+        sessionStorage.setItem("guestConciergeRequestId", requestId);
+        if (claimToken) {
+          sessionStorage.setItem("guestConciergeClaimToken", claimToken);
+        }
+        setIsGuestFull(true);
+      }
+
       setSuccess({
         tier: "full",
         message: hasEngagement
@@ -146,10 +162,33 @@ export function DeliveryOptions({
           <CardDescription>{success.message}</CardDescription>
         </CardHeader>
         {success.tier === "full" && (
-          <CardContent>
-            <Button onClick={() => setLocation("/my-events")} data-testid="button-view-my-events">
-              View My Events
-            </Button>
+          <CardContent className="space-y-3">
+            {isGuestFull ? (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  Sign in or create a free account to track your coordination and receive your quote.
+                </p>
+                <Button
+                  className="w-full"
+                  onClick={() =>
+                    openSignInModal({
+                      title: "Sign in to track your coordination",
+                      description:
+                        "Create a free account or sign in to link this request to your profile and receive your personalized quote.",
+                      returnTo: "/my-events",
+                    })
+                  }
+                  data-testid="button-sign-in-to-track"
+                >
+                  <LogIn className="w-4 h-4 mr-2" />
+                  Sign in to track your coordination
+                </Button>
+              </>
+            ) : (
+              <Button onClick={() => setLocation("/my-events")} data-testid="button-view-my-events">
+                View My Events
+              </Button>
+            )}
           </CardContent>
         )}
       </Card>
