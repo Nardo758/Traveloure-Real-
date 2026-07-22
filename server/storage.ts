@@ -169,6 +169,7 @@ export interface IStorage {
   getLocalExpertForms(status?: string): Promise<LocalExpertForm[]>;
   createLocalExpertForm(form: InsertLocalExpertForm & { userId: string }): Promise<LocalExpertForm>;
   updateLocalExpertFormStatus(id: string, status: string, rejectionMessage?: string): Promise<LocalExpertForm | undefined>;
+  updateLocalExpertFormRejectionMessage(id: string, rejectionMessage: string): Promise<LocalExpertForm | undefined>;
   updateLocalExpertFormKnowledgeScore(id: string, knowledgeScore: unknown): Promise<void>;
   updateLocalExpertFormNotesStyle(userId: string, notesStyle: string): Promise<void>;
   updateLocalExpertFormNeighborhoods(userId: string, neighborhoods: string[], localityProof: string): Promise<void>;
@@ -1004,6 +1005,14 @@ export class DatabaseStorage implements IStorage {
       )
       .onConflictDoNothing();
     return matchedIds.size;
+  }
+
+  async updateLocalExpertFormRejectionMessage(id: string, rejectionMessage: string): Promise<LocalExpertForm | undefined> {
+    const [updated] = await db.update(localExpertForms)
+      .set({ rejectionMessage })
+      .where(eq(localExpertForms.id, id))
+      .returning();
+    return updated;
   }
 
   // Kyoto Knowledge-Bar scored expertise gate (migration 114): persist the AI-scored rubric result.

@@ -1095,6 +1095,23 @@ router.patch("/api/admin/expert-applications/:id/status", isAuthenticated, async
     res.json(updated);
   });
 
+  // Admin: Update rejection reason only (without changing status)
+router.patch("/api/admin/expert-applications/:id/rejection-reason", isAuthenticated, async (req, res) => {
+    const user = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
+    if (!user || user.role !== "admin") {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+    const { rejectionMessage } = req.body;
+    if (typeof rejectionMessage !== "string" || !rejectionMessage.trim()) {
+      return res.status(400).json({ message: "rejectionMessage must be a non-empty string" });
+    }
+    const updated = await storage.updateLocalExpertFormRejectionMessage(req.params.id, rejectionMessage.trim());
+    if (!updated) {
+      return res.status(404).json({ message: "Application not found" });
+    }
+    res.json(updated);
+  });
+
   // ─── Per-expert commission override (EXP-OVR.P3) ──────────────────────────
   // Admin sets/clears the override that commission.ts:resolveCommissionRates
   // reads before falling back to category. Stored value is the expert-share
