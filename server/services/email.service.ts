@@ -1093,6 +1093,9 @@ export const _emailTestHooks: {
   sendProviderApplicationRejectionEmail?: (
     params: ProviderApplicationRejectionParams
   ) => Promise<void>;
+  sendProviderApplicationApprovalEmail?: (
+    params: ProviderApplicationApprovalParams
+  ) => Promise<void>;
 } = {};
 
 /**
@@ -1186,6 +1189,9 @@ interface ProviderApplicationApprovalParams {
 export async function sendProviderApplicationApprovalEmail(
   params: ProviderApplicationApprovalParams
 ): Promise<void> {
+  if (_emailTestHooks.sendProviderApplicationApprovalEmail) {
+    return _emailTestHooks.sendProviderApplicationApprovalEmail(params);
+  }
   const client = getClient();
   if (!client) {
     console.log("[email] RESEND_API_KEY not set — skipping provider approval email for", params.toEmail);
