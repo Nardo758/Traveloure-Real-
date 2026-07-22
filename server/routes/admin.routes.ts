@@ -1071,6 +1071,11 @@ router.patch("/api/admin/expert-applications/:id/status", isAuthenticated, async
       return res.status(403).json({ message: "Admin access required" });
     }
     const { status, rejectionMessage } = req.body;
+    const [existing] = await db
+      .select({ status: localExpertForms.status })
+      .from(localExpertForms)
+      .where(eq(localExpertForms.id, req.params.id));
+    const priorStatus = existing?.status;
     const updated = await storage.updateLocalExpertFormStatus(req.params.id, status, rejectionMessage);
     if (!updated) {
       return res.status(404).json({ message: "Application not found" });
@@ -1092,8 +1097,9 @@ router.patch("/api/admin/expert-applications/:id/status", isAuthenticated, async
       });
     }
 
-    // If rejected, send the applicant an email with the rejection reason (if any)
-    if (status === "rejected") {
+    // If rejected, send the applicant an email with the rejection reason (if any).
+    // Guard: only send when actually transitioning TO rejected — not on re-saves of the same status.
+    if (status === "rejected" && priorStatus !== "rejected") {
       const [applicant] = await db
         .select({ email: users.email, firstName: users.firstName })
         .from(users)
