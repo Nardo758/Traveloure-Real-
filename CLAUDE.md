@@ -64,6 +64,16 @@ This document captures architectural decisions to maintain consistency across co
 6. **Insurance.** `has_insurance` (provider self-attestation, `service_provider_forms`, migration 108) is the **sole**
    provider insurance field; the "023 insurance evidence" was a never-shipped plan. When FEE-2 Phase 1 ships the
    admin-validated `insurance_tier`, a **boolean-vs-tier precedence rule must be written here before both coexist.**
+   - **Interim insurance config source (FEE-2 Phase 2, migration 124):** `platform_settings` now holds three keys —
+     `insurance_enabled` (`"false"`), `insurance_rate_percent` (`"0"`), `insurance_applies_to` (`"[]"`) — as the
+     **interim** source for `commission.ts:resolveInsuranceFromCategory`. Defaults match the `booking_fee_configs`
+     column defaults exactly (behavior-neutral on apply). `booking_fee_configs` is retained for its other 7 readers
+     (transport commission, startup seed, tip commission); only the commission.ts insurance read path was migrated.
+     This is a **deliberate interim home**, not a third permanent insurance location: when FEE-2 Phase 1 ships
+     `insurance_tier`, update `commission.ts:resolveInsuranceFromCategory` to read from `insurance_tier` instead,
+     and write the boolean-vs-tier precedence rule here before both coexist. *Recorded per Coordination Prevention;
+     commit: "insurance read relocated commission.ts booking_fee_configs→platform_settings (migration 124, additive
+     false/0 defaults); booking_fee_configs retained for its other 7 readers; closes the #819/FEE-2 gate."*
 7. **Coordination fee.** Fee logic lives in the service (`optimization-fee.service.ts`); rates resolve via config, no
    literals; the optimize credit is **payment-gated — never credit an unpaid optimize fee**. **Resolved (interim, #144):**
    the fee reads the event budget from the existing `coordination_states.budget` jsonb column
