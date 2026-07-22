@@ -1129,6 +1129,13 @@ router.patch("/api/admin/expert-applications/:id/rejection-reason", isAuthentica
     if (!updated) {
       return res.status(404).json({ message: "Application not found" });
     }
+    await insertNotification({
+      userId: updated.userId,
+      type: "rejection_reason_updated",
+      title: "Rejection Feedback Updated",
+      message: "An admin has updated the feedback on your expert application. Review the new message to understand what you can improve before reapplying.",
+      data: { link: "/expert-status" },
+    });
     res.json(updated);
   });
 
