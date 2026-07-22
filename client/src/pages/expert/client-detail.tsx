@@ -7,8 +7,8 @@ import { Link } from "wouter";
 /**
  * Expert client detail — GATED.
  *
- * This route (/expert/clients/:id) previously rendered 100% mock data: a
- * hardcoded "Yuki Matsuda" with fabricated bookings and messages, shown for
+ * This route (/expert/clients/:id) previously rendered 100% mock data: a single
+ * hardcoded fake client with fabricated bookings and messages, shown for
  * EVERY id (the param was only used to set the fake record's id). There is no
  * /api/expert/clients/:id endpoint, and nothing in the app links here — the real
  * client surface is the Assigned Trips list and the per-trip workspace, both
