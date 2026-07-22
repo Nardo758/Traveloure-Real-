@@ -152,7 +152,7 @@ function VisaStatusTimeline({ metadata, bookingId }: { metadata: VisaBookingMeta
   return (
     <div className="mt-4 border rounded-lg p-4 bg-muted/30" data-testid="visa-status-timeline">
       <div className="flex items-center gap-2 mb-3">
-        <Plane className="w-4 h-4 text-[#FF385C]" />
+        <Plane className="w-4 h-4 text-primary" />
         <span className="text-sm font-semibold">Visa Application Status</span>
         {metadata.visaStatusUpdatedAt && (
           <span className="text-xs text-muted-foreground ml-auto">
@@ -188,9 +188,9 @@ function VisaStatusTimeline({ metadata, bookingId }: { metadata: VisaBookingMeta
                     isCurrent
                       ? isRejected
                         ? "border-red-500 bg-red-50 text-red-500"
-                        : "border-[#FF385C] bg-primary text-white"
+                        : "border-primary bg-primary text-white"
                       : isPast
-                      ? "border-[#FF385C] bg-primary/10 text-[#FF385C]"
+                      ? "border-primary bg-primary/10 text-primary"
                       : "border-muted-foreground/30 bg-background text-muted-foreground/40"
                   }`}
                 >
@@ -198,7 +198,7 @@ function VisaStatusTimeline({ metadata, bookingId }: { metadata: VisaBookingMeta
                 </div>
                 <span
                   className={`mt-1 text-xs text-center font-medium leading-tight ${
-                    isCurrent ? (isRejected ? "text-red-500" : "text-[#FF385C]") : isPast ? "text-foreground" : "text-muted-foreground/50"
+                    isCurrent ? (isRejected ? "text-red-500" : "text-primary") : isPast ? "text-foreground" : "text-muted-foreground/50"
                   }`}
                 >
                   {step.label}
@@ -223,7 +223,7 @@ function VisaStatusTimeline({ metadata, bookingId }: { metadata: VisaBookingMeta
       {checklist.length > 0 && (
         <div className="mt-4 border-t pt-3" data-testid="document-checklist">
           <div className="flex items-center gap-1.5 mb-2">
-            <ListChecks className="w-3.5 h-3.5 text-[#FF385C]" />
+            <ListChecks className="w-3.5 h-3.5 text-primary" />
             <span className="text-xs font-semibold">Required Documents</span>
             <span className="text-xs text-muted-foreground ml-auto">
               {checklist.filter(d => d.checked).length}/{checklist.length} ready
@@ -571,7 +571,7 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
                 {status.label}
               </Badge>
               {showVisaTimeline && (
-                <Badge variant="outline" className="text-[#FF385C] border-[#FF385C]/30" data-testid={`badge-visa-${booking.id}`}>
+                <Badge variant="outline" className="text-primary border-primary/30" data-testid={`badge-visa-${booking.id}`}>
                   <Plane className="w-3 h-3 mr-1" />
                   Visa Application
                 </Badge>

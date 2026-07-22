@@ -293,47 +293,47 @@ export default function ExpertServices() {
           templateCount > 0 ? (
             <Link href="/expert/services/templates">
               <div
-                className="flex items-center justify-between gap-4 rounded-xl border border-[#FF385C]/30 bg-primary/5 px-5 py-4 cursor-pointer hover:bg-primary/10 transition-colors"
+                className="flex items-center justify-between gap-4 rounded-xl border border-primary/30 bg-primary/5 px-5 py-4 cursor-pointer hover:bg-primary/10 transition-colors"
                 data-testid="banner-role-callout"
               >
                 <div className="flex items-center gap-3">
                   <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-primary/15">
-                    <ShieldCheck className="h-5 w-5 text-[#FF385C]" />
+                    <ShieldCheck className="h-5 w-5 text-primary" />
                   </div>
                   <div>
                     <p className="font-semibold text-console-darkest">
                       You are a{" "}
-                      <span className="text-[#FF385C]">{expertRoleLabel}</span>
+                      <span className="text-primary">{expertRoleLabel}</span>
                     </p>
                     <p className="text-sm text-console-mid">
                       {templateCount} template{templateCount !== 1 ? "s" : ""} tailored to your role — use one to create a service faster
                     </p>
                   </div>
                 </div>
-                <ChevronRight className="h-5 w-5 flex-shrink-0 text-[#FF385C]" />
+                <ChevronRight className="h-5 w-5 flex-shrink-0 text-primary" />
               </div>
             </Link>
           ) : (
             <Link href="/expert/services/new">
               <div
-                className="flex items-center justify-between gap-4 rounded-xl border border-[#FF385C]/30 bg-primary/5 px-5 py-4 cursor-pointer hover:bg-primary/10 transition-colors"
+                className="flex items-center justify-between gap-4 rounded-xl border border-primary/30 bg-primary/5 px-5 py-4 cursor-pointer hover:bg-primary/10 transition-colors"
                 data-testid="banner-role-callout"
               >
                 <div className="flex items-center gap-3">
                   <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-primary/15">
-                    <ShieldCheck className="h-5 w-5 text-[#FF385C]" />
+                    <ShieldCheck className="h-5 w-5 text-primary" />
                   </div>
                   <div>
                     <p className="font-semibold text-console-darkest">
                       You are a{" "}
-                      <span className="text-[#FF385C]">{expertRoleLabel}</span>
+                      <span className="text-primary">{expertRoleLabel}</span>
                     </p>
                     <p className="text-sm text-console-mid">
                       No templates tailored to your role yet — create a service manually to get started
                     </p>
                   </div>
                 </div>
-                <ChevronRight className="h-5 w-5 flex-shrink-0 text-[#FF385C]" />
+                <ChevronRight className="h-5 w-5 flex-shrink-0 text-primary" />
               </div>
             </Link>
           )

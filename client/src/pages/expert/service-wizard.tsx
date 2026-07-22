@@ -291,7 +291,7 @@ export default function ServiceWizard() {
             className={cn(
               "flex items-center justify-center w-10 h-10 rounded-full border-2 transition-colors",
               currentStep === step.id 
-                ? "bg-primary border-[#FF385C] text-white" 
+                ? "bg-primary border-primary text-white" 
                 : currentStep > step.id 
                   ? "bg-green-500 border-green-500 text-white"
                   : "border-gray-300 text-gray-400"
@@ -346,7 +346,7 @@ export default function ServiceWizard() {
               className={cn(
                 "px-3 py-1.5 rounded-full text-sm font-medium border transition-colors",
                 tierFilter === f.value
-                  ? "bg-primary border-[#FF385C] text-white"
+                  ? "bg-primary border-primary text-white"
                   : "bg-white border-gray-200 text-gray-600 hover:border-gray-400"
               )}
               data-testid={`filter-tier-${f.value}`}
@@ -375,7 +375,7 @@ export default function ServiceWizard() {
                     className={cn(
                       "p-4 rounded-lg border-2 cursor-pointer transition-colors",
                       formData.expertOfferingTypeId === tier.id
-                        ? "border-[#FF385C] bg-primary/5"
+                        ? "border-primary bg-primary/5"
                         : "border-gray-200 hover:border-gray-300"
                     )}
                     data-testid={`option-tier-${tier.offeringTypeKey}`}
@@ -456,14 +456,14 @@ export default function ServiceWizard() {
                     className={cn(
                       "p-4 rounded-lg border-2 cursor-pointer transition-colors",
                       formData.deliveryMethod === method.value
-                        ? "border-[#FF385C] bg-primary/5"
+                        ? "border-primary bg-primary/5"
                         : "border-gray-200 hover:border-gray-300"
                     )}
                     data-testid={`option-delivery-${method.value}`}
                   >
                     <method.icon className={cn(
                       "w-6 h-6 mb-2",
-                      formData.deliveryMethod === method.value ? "text-[#FF385C]" : "text-gray-400"
+                      formData.deliveryMethod === method.value ? "text-primary" : "text-gray-400"
                     )} />
                     <p className="font-medium text-gray-900">{method.label}</p>
                     <p className="text-sm text-gray-600">{method.description}</p>
@@ -725,24 +725,24 @@ export default function ServiceWizard() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div
           onClick={() => setStartMode('template')}
-          className="p-6 rounded-xl border-2 border-gray-200 hover:border-[#FF385C] cursor-pointer transition-colors group"
+          className="p-6 rounded-xl border-2 border-gray-200 hover:border-primary cursor-pointer transition-colors group"
           data-testid="option-start-from-template"
         >
           <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center mb-4">
-            <Sparkles className="w-6 h-6 text-[#FF385C]" />
+            <Sparkles className="w-6 h-6 text-primary" />
           </div>
           <h3 className="text-lg font-semibold text-gray-900 mb-2">Start from a Template</h3>
           <p className="text-sm text-gray-600">
             Choose from platform-curated service templates. Pre-fills all details — ready to customize and publish in minutes.
           </p>
-          <div className="mt-4 flex items-center text-[#FF385C] text-sm font-medium">
+          <div className="mt-4 flex items-center text-primary text-sm font-medium">
             Browse templates <ChevronRight className="w-4 h-4 ml-1" />
           </div>
         </div>
 
         <div
           onClick={() => setStartMode('scratch')}
-          className="p-6 rounded-xl border-2 border-gray-200 hover:border-[#FF385C] cursor-pointer transition-colors group"
+          className="p-6 rounded-xl border-2 border-gray-200 hover:border-primary cursor-pointer transition-colors group"
           data-testid="option-start-from-scratch"
         >
           <div className="w-12 h-12 rounded-xl bg-gray-100 flex items-center justify-center mb-4">
@@ -795,7 +795,7 @@ export default function ServiceWizard() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {serviceTemplates.map((t) => (
-            <Card key={t.id} className="border hover:border-[#FF385C] transition-colors" data-testid={`card-template-${t.id}`}>
+            <Card key={t.id} className="border hover:border-primary transition-colors" data-testid={`card-template-${t.id}`}>
               <CardHeader className="pb-3">
                 <div className="flex items-start justify-between gap-2">
                   <CardTitle className="text-base">{t.title}</CardTitle>

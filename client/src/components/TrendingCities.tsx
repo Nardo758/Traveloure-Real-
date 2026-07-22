@@ -58,7 +58,7 @@ const getCrowdColor = (level: string) => {
 };
 
 const getPulseColor = (score: number) => {
-  if (score >= 90) return 'text-[#FF385C]';
+  if (score >= 90) return 'text-primary';
   if (score >= 80) return 'text-orange-500 dark:text-orange-400';
   return 'text-amber-500 dark:text-amber-400';
 };
@@ -106,7 +106,7 @@ export function TrendingCities() {
                 <TrendingUp className="w-5 h-5 text-white" />
               </div>
               <h2 className="text-3xl sm:text-4xl font-bold text-foreground">
-                Trending <span className="text-[#FF385C]">Cities</span>
+                Trending <span className="text-primary">Cities</span>
               </h2>
             </div>
             <p className="text-muted-foreground">

@@ -368,7 +368,7 @@ export default function AdminCategories() {
                       <AccordionTrigger className="hover:no-underline py-4">
                         <div className="flex items-center gap-4 flex-1">
                           <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                            <IconComponent className="w-5 h-5 text-[#FF385C]" />
+                            <IconComponent className="w-5 h-5 text-primary" />
                           </div>
                           <div className="flex-1 text-left">
                             <div className="flex items-center gap-2 flex-wrap">

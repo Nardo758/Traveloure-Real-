@@ -81,8 +81,8 @@ export function UserTemplateRecommendations({ city, experienceType, className = 
     return (
       <section className={className}>
         <div className="flex items-center gap-2 mb-4">
-          <Sparkles className="w-5 h-5 text-[#FF385C]" />
-          <h2 className="text-xl font-bold text-[#111827] dark:text-white">Recommended For You</h2>
+          <Sparkles className="w-5 h-5 text-primary" />
+          <h2 className="text-xl font-bold text-foreground dark:text-white">Recommended For You</h2>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {[1, 2, 3, 4].map((i) => (
@@ -111,15 +111,15 @@ export function UserTemplateRecommendations({ city, experienceType, className = 
     <section className={className}>
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <Sparkles className="w-5 h-5 text-[#FF385C]" />
+          <Sparkles className="w-5 h-5 text-primary" />
           <div>
-            <h2 className="text-xl font-bold text-[#111827] dark:text-white">Recommended For You</h2>
+            <h2 className="text-xl font-bold text-foreground dark:text-white">Recommended For You</h2>
             <p className="text-xs text-muted-foreground mt-0.5">
               {city ? `Trending in ${city}` : (data.message || "Based on current travel trends")}
             </p>
           </div>
         </div>
-        <Badge variant="outline" className="text-[#FF385C] border-[#FF385C]/30 bg-[#FFE3E8]/40 hidden sm:flex items-center gap-1">
+        <Badge variant="outline" className="text-primary border-primary/30 bg-[#FFE3E8]/40 hidden sm:flex items-center gap-1">
           <TrendingUp className="w-3 h-3" />
           Trending
         </Badge>
@@ -156,7 +156,7 @@ export function UserTemplateRecommendations({ city, experienceType, className = 
                 <div className="flex items-start gap-2 mb-1">
                   <h4 className="font-semibold text-sm text-foreground leading-snug flex-1">{rec.title}</h4>
                   {isTopMatch && (
-                    <Badge className="bg-[#FFE3E8] text-[#FF385C] text-[10px] px-1.5 py-0.5 border-0 flex-shrink-0">
+                    <Badge className="bg-[#FFE3E8] text-primary text-[10px] px-1.5 py-0.5 border-0 flex-shrink-0">
                       Top Match
                     </Badge>
                   )}
@@ -205,9 +205,9 @@ export function UserTemplateRecommendations({ city, experienceType, className = 
       {packages.length > 0 && (
         <div className="mt-8">
           <div className="flex items-center gap-2 mb-4">
-            <BookOpen className="w-5 h-5 text-[#FF385C]" />
+            <BookOpen className="w-5 h-5 text-primary" />
             <div>
-              <h3 className="text-lg font-bold text-[#111827] dark:text-white">
+              <h3 className="text-lg font-bold text-foreground dark:text-white">
                 Ready made trips{city ? ` for ${city}` : ""}
               </h3>
               <p className="text-xs text-muted-foreground mt-0.5">Curated by verified local experts</p>
@@ -279,7 +279,7 @@ export function UserTemplateRecommendations({ city, experienceType, className = 
 
       {data.recommendations.length > 6 && (
         <div className="mt-4 text-center">
-          <Button variant="outline" className="border-[#FF385C] text-[#FF385C] hover:bg-[#FFE3E8]" data-testid="button-explore-recommendations">
+          <Button variant="outline" className="border-primary text-primary hover:bg-[#FFE3E8]" data-testid="button-explore-recommendations">
             Explore all recommendations
             <ArrowRight className="w-4 h-4 ml-2" />
           </Button>

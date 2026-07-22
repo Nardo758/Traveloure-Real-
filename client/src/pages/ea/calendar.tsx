@@ -103,7 +103,7 @@ export default function EACalendar() {
                           {event && (
                             <Badge 
                               variant="outline" 
-                              className={`text-xs ${event === "D" || event === "F" ? "bg-primary/10 text-[#FF385C] border-[#FF385C]" : ""}`}
+                              className={`text-xs ${event === "D" || event === "F" ? "bg-primary/10 text-primary border-primary" : ""}`}
                             >
                               {event}
                             </Badge>
@@ -134,7 +134,7 @@ export default function EACalendar() {
         <Card className="border border-gray-200">
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
-              <CalendarIcon className="w-5 h-5 text-[#FF385C]" />
+              <CalendarIcon className="w-5 h-5 text-primary" />
               Today's Events ({todayEvents.length})
             </CardTitle>
           </CardHeader>

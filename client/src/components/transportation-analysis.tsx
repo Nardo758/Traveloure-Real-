@@ -604,7 +604,7 @@ export function TransportationAnalysis({
                             className={cn(
                               "rounded-md border overflow-hidden transition-all",
                               isSelected 
-                                ? "bg-primary/10 border-[#FF385C] ring-2 ring-[#FF385C]/30" 
+                                ? "bg-primary/10 border-primary ring-2 ring-[#FF385C]/30" 
                                 : "bg-white dark:bg-gray-800"
                             )}
                           >

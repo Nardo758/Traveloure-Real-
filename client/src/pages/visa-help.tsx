@@ -382,7 +382,7 @@ export default function VisaHelpPage() {
       {/* Hero */}
       <div className="bg-gradient-to-br from-[#FF385C]/10 via-orange-50 to-blue-50 dark:from-[#FF385C]/20 dark:via-gray-900 dark:to-gray-900 py-16 px-4">
         <div className="max-w-3xl mx-auto text-center space-y-4">
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/10 text-[#FF385C] text-sm font-medium">
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/10 text-primary text-sm font-medium">
             <Shield className="w-4 h-4" />
             AI-Powered Visa Requirements
           </div>
@@ -401,7 +401,7 @@ export default function VisaHelpPage() {
         <Card className="shadow-lg border-0">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-xl">
-              <Globe className="w-5 h-5 text-[#FF385C]" />
+              <Globe className="w-5 h-5 text-primary" />
               Visa Requirements Lookup
             </CardTitle>
           </CardHeader>
@@ -499,7 +499,7 @@ export default function VisaHelpPage() {
                   <button
                     onClick={handleForceRefresh}
                     disabled={requirementsMutation.isPending}
-                    className="flex items-center gap-1 text-xs text-[#FF385C] hover:text-[#FF385C]/80 disabled:opacity-50 transition-colors"
+                    className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 disabled:opacity-50 transition-colors"
                     title="Force refresh from AI"
                     data-testid="button-visa-refresh"
                   >
@@ -516,7 +516,7 @@ export default function VisaHelpPage() {
                 <Card>
                   <CardHeader className="pb-3">
                     <CardTitle className="text-base flex items-center gap-2">
-                      <BookOpen className="w-4 h-4 text-[#FF385C]" />
+                      <BookOpen className="w-4 h-4 text-primary" />
                       Visa Types Available
                     </CardTitle>
                   </CardHeader>
@@ -537,7 +537,7 @@ export default function VisaHelpPage() {
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base flex items-center gap-2">
-                    <Clock className="w-4 h-4 text-[#FF385C]" />
+                    <Clock className="w-4 h-4 text-primary" />
                     Timing &amp; Fees
                   </CardTitle>
                 </CardHeader>
@@ -569,7 +569,7 @@ export default function VisaHelpPage() {
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-base flex items-center gap-2">
-                    <FileText className="w-4 h-4 text-[#FF385C]" />
+                    <FileText className="w-4 h-4 text-primary" />
                     Required Documents
                   </CardTitle>
                 </CardHeader>
@@ -577,7 +577,7 @@ export default function VisaHelpPage() {
                   <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {(result.requiredDocuments as string[]).map((doc, i) => (
                       <li key={i} className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300">
-                        <CheckCircle className="w-4 h-4 text-[#FF385C] flex-shrink-0 mt-0.5" />
+                        <CheckCircle className="w-4 h-4 text-primary flex-shrink-0 mt-0.5" />
                         {doc}
                       </li>
                     ))}
@@ -693,9 +693,9 @@ function VisaExpertCard({ service, onBook }: { service: Service; onBook: (servic
         <div className="p-5 flex-1 space-y-3">
           <div className="flex items-center gap-3">
             {avatar ? (
-              <img src={avatar} alt={name} className="w-12 h-12 rounded-full object-cover border-2 border-[#FF385C]/20" />
+              <img src={avatar} alt={name} className="w-12 h-12 rounded-full object-cover border-2 border-primary/20" />
             ) : (
-              <div className="w-12 h-12 rounded-full bg-primary/10 border-2 border-[#FF385C]/20 flex items-center justify-center text-[#FF385C] font-bold text-lg">
+              <div className="w-12 h-12 rounded-full bg-primary/10 border-2 border-primary/20 flex items-center justify-center text-primary font-bold text-lg">
                 {name.charAt(0).toUpperCase()}
               </div>
             )}

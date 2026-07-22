@@ -142,7 +142,7 @@ export default function ContractCategories() {
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-[#FFE3E8] rounded-lg">
-                  <FileText className="w-5 h-5 text-[#FF385C]" />
+                  <FileText className="w-5 h-5 text-primary" />
                 </div>
                 <div>
                   <p className="text-sm text-gray-600">Total Contracts</p>
@@ -231,7 +231,7 @@ export default function ContractCategories() {
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-center gap-3">
                     <div className="p-3 bg-[#FFE3E8] rounded-lg">
-                      <category.icon className="w-6 h-6 text-[#FF385C]" />
+                      <category.icon className="w-6 h-6 text-primary" />
                     </div>
                     <div>
                       <h3 className="font-semibold text-gray-900">{category.name}</h3>

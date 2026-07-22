@@ -61,7 +61,7 @@ export default function SharedTripPage() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="text-center">
-          <Loader2 className="w-10 h-10 animate-spin text-[#FF385C] mx-auto mb-3" />
+          <Loader2 className="w-10 h-10 animate-spin text-primary mx-auto mb-3" />
           <p className="text-muted-foreground text-sm">Loading trip plan…</p>
         </div>
       </div>
@@ -73,7 +73,7 @@ export default function SharedTripPage() {
       <div className="min-h-screen flex flex-col items-center justify-center bg-background px-4">
         <div className="text-center max-w-sm">
           <div className="w-16 h-16 bg-[#FFE3E8] rounded-full flex items-center justify-center mx-auto mb-4">
-            <MapPin className="w-8 h-8 text-[#FF385C]" />
+            <MapPin className="w-8 h-8 text-primary" />
           </div>
           <h2 className="text-xl font-semibold text-foreground mb-2">Link not found</h2>
           <p className="text-muted-foreground mb-6 text-sm">
@@ -201,7 +201,7 @@ export default function SharedTripPage() {
                             </div>
                           )}
                           {activity.estimatedCost != null && (
-                            <p className="text-xs text-[#FF385C] mt-1">~${activity.estimatedCost}</p>
+                            <p className="text-xs text-primary mt-1">~${activity.estimatedCost}</p>
                           )}
                         </div>
                       </div>

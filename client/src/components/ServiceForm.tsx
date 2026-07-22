@@ -638,7 +638,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   if (isEditMode && loadingExisting) {
     return (
       <div className="flex items-center justify-center h-64">
-        <Loader2 className="w-8 h-8 animate-spin text-[#FF385C]" />
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
       </div>
     );
   }
@@ -1034,7 +1034,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                       }}
                       className={`text-left p-3 rounded-lg border-2 transition-colors ${
                         formData.expertOfferingTypeId === tier.id
-                          ? "border-[#FF385C] bg-primary/5"
+                          ? "border-primary bg-primary/5"
                           : "border-gray-200 hover:border-gray-300"
                       }`}
                       data-testid={`option-tier-${tier.offeringTypeKey}`}
@@ -1180,7 +1180,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                             onClick={() =>
                               setCatAttr(active ? selected.filter((s) => s !== opt) : [...selected, opt])
                             }
-                            className={`px-3 py-1 rounded-full text-sm border transition-colors ${active ? "bg-primary text-white border-[#FF385C]" : "bg-background text-foreground border-border hover:border-[#FF385C]"}`}
+                            className={`px-3 py-1 rounded-full text-sm border transition-colors ${active ? "bg-primary text-white border-primary" : "bg-background text-foreground border-border hover:border-primary"}`}
                             data-testid={`chip-cat-${field.fieldKey}-${opt}`}
                           >
                             {opt}

@@ -226,7 +226,7 @@ export function TransportHub({ tripId, destination = "", readOnly = false, onNav
                 className="group block"
                 data-testid={`link-transport-partner-${p.name.toLowerCase()}`}
               >
-                <Card className="h-full border border-gray-200 dark:border-gray-700 hover:border-[#FF385C] hover:shadow-md transition-all duration-200 overflow-hidden">
+                <Card className="h-full border border-gray-200 dark:border-gray-700 hover:border-primary hover:shadow-md transition-all duration-200 overflow-hidden">
                   <div className={`h-2 bg-gradient-to-r ${p.color}`} />
                   <CardContent className="p-4">
                     <div className="flex items-start justify-between mb-2">
@@ -244,7 +244,7 @@ export function TransportHub({ tripId, destination = "", readOnly = false, onNav
                           <p className="text-xs text-gray-500">{p.tagline}</p>
                         </div>
                       </div>
-                      <ExternalLink className="w-3.5 h-3.5 text-gray-400 group-hover:text-[#FF385C] transition-colors mt-0.5 flex-shrink-0" />
+                      <ExternalLink className="w-3.5 h-3.5 text-gray-400 group-hover:text-primary transition-colors mt-0.5 flex-shrink-0" />
                     </div>
                     <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed">{p.description}</p>
                   </CardContent>
@@ -267,10 +267,10 @@ export function TransportHub({ tripId, destination = "", readOnly = false, onNav
                 className="group"
                 data-testid={`link-transport-mode-${m.label.toLowerCase()}`}
               >
-                <Card className="border border-gray-200 dark:border-gray-700 hover:border-[#FF385C] hover:shadow-sm transition-all duration-200">
+                <Card className="border border-gray-200 dark:border-gray-700 hover:border-primary hover:shadow-sm transition-all duration-200">
                   <CardContent className="p-3 flex flex-col items-center gap-2">
                     <div className="p-2 rounded-lg bg-gray-100 dark:bg-gray-800 group-hover:bg-[#FFE3E8] dark:group-hover:bg-primary/20 transition-colors">
-                      <m.icon className="w-5 h-5 text-gray-600 dark:text-gray-300 group-hover:text-[#FF385C] transition-colors" />
+                      <m.icon className="w-5 h-5 text-gray-600 dark:text-gray-300 group-hover:text-primary transition-colors" />
                     </div>
                     <span className="text-xs font-medium text-gray-700 dark:text-gray-300">{m.label}</span>
                   </CardContent>

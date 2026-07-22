@@ -68,7 +68,7 @@ export default function EAAIAssistant() {
         <Card className="border border-gray-200">
           <CardHeader>
             <CardTitle className="text-lg flex items-center gap-2">
-              <Bot className="w-5 h-5 text-[#FF385C]" />
+              <Bot className="w-5 h-5 text-primary" />
               Delegate Task to AI
             </CardTitle>
           </CardHeader>
@@ -234,7 +234,7 @@ export default function EAAIAssistant() {
                     </div>
                   ))}
                 </div>
-                <Button variant="ghost" className="w-full text-[#FF385C]" data-testid="button-view-analytics">
+                <Button variant="ghost" className="w-full text-primary" data-testid="button-view-analytics">
                   View Detailed Analytics <ArrowRight className="w-4 h-4 ml-1" />
                 </Button>
               </CardContent>

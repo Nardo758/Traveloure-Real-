@@ -108,7 +108,7 @@ export default function EAGifts() {
             <Card className="border border-gray-200">
               <CardHeader>
                 <div className="flex items-center gap-2">
-                  <Calendar className="w-5 h-5 text-[#FF385C]" />
+                  <Calendar className="w-5 h-5 text-primary" />
                   <CardTitle className="text-lg">Upcoming Occasions</CardTitle>
                 </div>
               </CardHeader>
@@ -233,7 +233,7 @@ export default function EAGifts() {
                   <p className="text-xs text-gray-400 mt-1">{gift.occasionDate ?? gift.createdAt}</p>
                 </div>
               ))}
-              <Button variant="ghost" className="w-full text-[#FF385C]" data-testid="button-view-all-history">
+              <Button variant="ghost" className="w-full text-primary" data-testid="button-view-all-history">
                 View All History
               </Button>
             </CardContent>

@@ -97,7 +97,7 @@ function getCrowdLevelColor(level: string) {
 }
 
 function getPulseColor(score: number) {
-  if (score >= 90) return "text-[#FF385C]";
+  if (score >= 90) return "text-primary";
   if (score >= 80) return "text-orange-500 dark:text-orange-400";
   return "text-amber-500 dark:text-amber-400";
 }
@@ -188,7 +188,7 @@ function CityCard({ city, onClick }: { city: TravelPulseCity; onClick: () => voi
             <DialogContent className="sm:max-w-md" onClick={(e) => e.stopPropagation()}>
               <DialogHeader>
                 <DialogTitle className="flex items-center gap-2">
-                  <MapPin className="h-5 w-5 text-[#FF385C]" />
+                  <MapPin className="h-5 w-5 text-primary" />
                   Take me to {city.cityName}
                 </DialogTitle>
                 <DialogDescription>
@@ -215,7 +215,7 @@ function CityCard({ city, onClick }: { city: TravelPulseCity; onClick: () => voi
                             <button
                               key={trip.id}
                               onClick={() => handleSelectTrip(trip.id)}
-                              className="w-full flex items-center justify-between gap-3 p-3 rounded-xl border border-border hover:border-[#FF385C] hover:bg-primary/5 transition-all text-left group"
+                              className="w-full flex items-center justify-between gap-3 p-3 rounded-xl border border-border hover:border-primary hover:bg-primary/5 transition-all text-left group"
                               data-testid={`button-select-trip-${trip.id}`}
                             >
                               <div className="flex items-center gap-3 min-w-0">
@@ -231,7 +231,7 @@ function CityCard({ city, onClick }: { city: TravelPulseCity; onClick: () => voi
                                 <Badge variant="outline" className="text-xs capitalize hidden sm:flex">
                                   {trip.status}
                                 </Badge>
-                                <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-[#FF385C] transition-colors" />
+                                <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
                               </div>
                             </button>
                           ))}

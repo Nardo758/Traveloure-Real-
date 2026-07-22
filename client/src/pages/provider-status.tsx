@@ -120,7 +120,7 @@ function StepDot({ status, id }: { status: string; id: number }) {
 function StepCard({ step }: { step: ApplicationStep }) {
   const bg =
     step.status === "completed" ? "bg-green-50 dark:bg-green-900/20" :
-    step.status === "in_progress" ? "bg-[#FFF5F7] dark:bg-primary/10 border border-[#FF385C]" :
+    step.status === "in_progress" ? "bg-[#FFF5F7] dark:bg-primary/10 border border-primary" :
     step.status === "failed" ? "bg-red-50 dark:bg-red-900/20 border border-red-300" :
     "bg-gray-50 dark:bg-gray-800";
 
@@ -128,8 +128,8 @@ function StepCard({ step }: { step: ApplicationStep }) {
     <div className={`p-4 rounded-lg ${bg}`}>
       <div className="flex items-center justify-between">
         <div>
-          <h4 className="font-semibold text-[#111827] dark:text-white">{step.title}</h4>
-          <p className="text-sm text-[#6B7280] mt-1">{step.description}</p>
+          <h4 className="font-semibold text-foreground dark:text-white">{step.title}</h4>
+          <p className="text-sm text-muted-foreground mt-1">{step.description}</p>
         </div>
         <div>
           {step.status === "completed" && <Badge className="bg-green-100 text-green-700"><CheckCheck className="w-3 h-3 mr-1" />Done</Badge>}
@@ -138,7 +138,7 @@ function StepCard({ step }: { step: ApplicationStep }) {
           {step.status === "pending" && <Badge variant="secondary">Pending</Badge>}
         </div>
       </div>
-      {step.completedAt && <p className="text-xs text-[#6B7280] mt-2">Completed on {step.completedAt}</p>}
+      {step.completedAt && <p className="text-xs text-muted-foreground mt-2">Completed on {step.completedAt}</p>}
       {step.note && <p className="text-sm text-amber-600 mt-2 flex items-center gap-1"><AlertCircle className="w-3 h-3" />{step.note}</p>}
     </div>
   );
@@ -207,7 +207,7 @@ export default function ProviderStatusPage() {
     return (
       <DashboardLayout>
         <div className="flex items-center justify-center h-64">
-          <Loader2 className="w-8 h-8 animate-spin text-[#FF385C]" />
+          <Loader2 className="w-8 h-8 animate-spin text-primary" />
         </div>
       </DashboardLayout>
     );
@@ -234,10 +234,10 @@ export default function ProviderStatusPage() {
       <div className="p-6 space-y-6">
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
-            <h1 className="text-2xl md:text-3xl font-bold text-[#111827] dark:text-white" data-testid="text-page-title">
+            <h1 className="text-2xl md:text-3xl font-bold text-foreground dark:text-white" data-testid="text-page-title">
               Service Provider Application
             </h1>
-            <p className="text-[#6B7280] mt-1">Track your business verification progress</p>
+            <p className="text-muted-foreground mt-1">Track your business verification progress</p>
           </div>
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="sm" onClick={() => queryClient.invalidateQueries({ queryKey: ["/api/provider/application-status"] })} data-testid="button-refresh">
@@ -269,8 +269,8 @@ export default function ProviderStatusPage() {
                   <ShieldCheck className="w-6 h-6 text-white" />
                 </div>
                 <div className="flex-1">
-                  <h3 className="text-lg font-semibold text-[#111827] dark:text-white">Business Owner ID Verification</h3>
-                  {identityStatus === "pending" && <p className="text-[#6B7280] mt-1">Verify your government-issued ID and take a quick selfie. Supports passports, national IDs, and driver's licenses from 100+ countries.</p>}
+                  <h3 className="text-lg font-semibold text-foreground dark:text-white">Business Owner ID Verification</h3>
+                  {identityStatus === "pending" && <p className="text-muted-foreground mt-1">Verify your government-issued ID and take a quick selfie. Supports passports, national IDs, and driver's licenses from 100+ countries.</p>}
                   {identityStatus === "processing" && <p className="text-amber-600 mt-1 flex items-center gap-2"><Clock className="w-4 h-4" />Processing — usually takes a few minutes.</p>}
                   {identityStatus === "failed" && <p className="text-red-600 mt-1 flex items-center gap-2"><AlertCircle className="w-4 h-4" />Verification was unsuccessful. Please try again.</p>}
                 </div>
@@ -314,8 +314,8 @@ export default function ProviderStatusPage() {
                   <Globe className="w-6 h-6 text-white" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-semibold text-[#111827] dark:text-white">Business Verification</h3>
-                  {bizStatus === "pending" && <p className="text-[#6B7280] mt-1">Verify your business entity. We check against national registries in 180+ countries.</p>}
+                  <h3 className="text-lg font-semibold text-foreground dark:text-white">Business Verification</h3>
+                  {bizStatus === "pending" && <p className="text-muted-foreground mt-1">Verify your business entity. We check against national registries in 180+ countries.</p>}
                   {bizStatus === "submitted" && <p className="text-amber-600 mt-1 flex items-center gap-2"><Clock className="w-4 h-4" />Verification submitted — we'll notify you when complete.</p>}
                   {bizStatus === "failed" && <p className="text-red-600 mt-1 flex items-center gap-2"><AlertCircle className="w-4 h-4" />Verification failed. Please check your details and try again.</p>}
                 </div>
@@ -400,15 +400,15 @@ export default function ProviderStatusPage() {
         )}
 
         {currentStep && (
-          <Card className="border-2 border-[#FF385C] bg-[#FFF5F7] dark:bg-primary/10">
+          <Card className="border-2 border-primary bg-[#FFF5F7] dark:bg-primary/10">
             <CardContent className="p-6">
               <div className="flex items-start gap-4">
                 <div className="p-3 bg-primary rounded-full">
                   <Clock className="w-6 h-6 text-white" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-semibold text-[#111827] dark:text-white">Current Step: {currentStep.title}</h3>
-                  <p className="text-[#6B7280] mt-1">{currentStep.description}</p>
+                  <h3 className="text-lg font-semibold text-foreground dark:text-white">Current Step: {currentStep.title}</h3>
+                  <p className="text-muted-foreground mt-1">{currentStep.description}</p>
                   {currentStep.note && <p className="text-amber-600 mt-2 flex items-center gap-2"><AlertCircle className="w-4 h-4" />{currentStep.note}</p>}
                 </div>
               </div>
@@ -446,18 +446,18 @@ export default function ProviderStatusPage() {
               <CardContent className="space-y-3">
                 {appStatus?.form?.businessName && (
                   <div>
-                    <p className="text-lg font-semibold text-[#111827] dark:text-white" data-testid="text-business-name">{appStatus.form.businessName}</p>
-                    {appStatus.form.country && <p className="text-sm text-[#6B7280] mt-1">{appStatus.form.country}</p>}
+                    <p className="text-lg font-semibold text-foreground dark:text-white" data-testid="text-business-name">{appStatus.form.businessName}</p>
+                    {appStatus.form.country && <p className="text-sm text-muted-foreground mt-1">{appStatus.form.country}</p>}
                   </div>
                 )}
-                <p className="text-xs text-[#6B7280]">Applied {appStatus?.form?.createdAt ? new Date(appStatus.form.createdAt).toLocaleDateString() : "—"}</p>
+                <p className="text-xs text-muted-foreground">Applied {appStatus?.form?.createdAt ? new Date(appStatus.form.createdAt).toLocaleDateString() : "—"}</p>
               </CardContent>
             </Card>
 
             <Card>
               <CardHeader><CardTitle className="text-lg">Need Help?</CardTitle></CardHeader>
               <CardContent className="space-y-4">
-                <p className="text-sm text-[#6B7280]">Questions about your application? We're here to assist.</p>
+                <p className="text-sm text-muted-foreground">Questions about your application? We're here to assist.</p>
                 <Button variant="outline" className="w-full" data-testid="button-contact-support">
                   <MessageSquare className="w-4 h-4 mr-2" />Contact Support
                 </Button>
