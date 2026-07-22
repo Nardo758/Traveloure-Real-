@@ -74,7 +74,7 @@ const PARTNERS: PartnerBrand[] = [
     commissionNote: "of Booking.com commission",
     affiliateUrl: (dest = "") =>
       `https://www.booking.com/searchresults.html?ss=${encodeURIComponent(dest || "")}&aid=304142&label=traveloure-${TP_MARKER}`,
-    features: ["28M+ listings", "Free cancellation", "Instant confirm"],
+    features: ["28M+ listings", "Free cancellation on eligible listings", "Instant confirm on select properties"],
     recommended: true,
   },
   {
@@ -112,7 +112,7 @@ const PARTNERS: PartnerBrand[] = [
     commissionNote: "of booking value",
     affiliateUrl: (dest = "") =>
       `https://www.getyourguide.com/?partner_id=TRAVELOURE${dest ? `&q=${encodeURIComponent(dest)}` : ""}`,
-    features: ["300K+ activities", "Instant booking", "Free cancellation"],
+    features: ["300K+ activities", "Instant booking on select activities", "Free cancellation on eligible bookings"],
     recommended: true,
   },
   {
@@ -210,7 +210,7 @@ const PARTNERS: PartnerBrand[] = [
     commissionNote: "of booking value",
     affiliateUrl: (dest = "") =>
       `https://www.welcomepickups.com/?ref=traveloure${dest ? `&destination=${encodeURIComponent(dest)}` : ""}`,
-    features: ["Local drivers", "Meet at gate", "24/7 support"],
+    features: ["Local drivers", "Meet at gate", "24/7 support (Welcome Pickups)"],
   },
   {
     id: "discovercars",

@@ -150,7 +150,7 @@ export function EmergencyResponse({
             Emergency Response
           </CardTitle>
           <CardDescription data-testid="text-emergency-description">
-            24/7 support, medical facilities, and contingency planning for {experienceName}
+            Medical facilities, emergency contacts, and contingency planning for {experienceName}
           </CardDescription>
         </div>
         {criticalAlerts.length > 0 && (
