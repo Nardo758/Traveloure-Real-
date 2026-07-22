@@ -5,6 +5,7 @@ import { useToast } from "@/hooks/use-toast";
 
 interface ServiceTemplatesResponse {
   requiresApplication: boolean;
+  applicationRejected: boolean;
   templates: unknown[];
 }
 
@@ -17,6 +18,7 @@ export function useApplicationGuard() {
   });
 
   const requiresApplication = data?.requiresApplication ?? false;
+  const applicationRejected = data?.applicationRejected ?? false;
 
   useEffect(() => {
     if (!isLoading && requiresApplication) {
@@ -29,5 +31,16 @@ export function useApplicationGuard() {
     }
   }, [isLoading, requiresApplication, toast, navigate]);
 
-  return { isLoading, requiresApplication, templates: data?.templates ?? [] };
+  useEffect(() => {
+    if (!isLoading && applicationRejected) {
+      toast({
+        title: "Application rejected",
+        description: "Your expert application was not approved. Please reapply or contact support.",
+        variant: "destructive",
+      });
+      navigate("/expert/apply");
+    }
+  }, [isLoading, applicationRejected, toast, navigate]);
+
+  return { isLoading, requiresApplication, applicationRejected, templates: data?.templates ?? [] };
 }
