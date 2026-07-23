@@ -76,7 +76,7 @@ interface PlatformProvider {
 }
 
 function stripeStatus(provider: PlatformProvider) {
-  if (provider.stripeAccountStatus === "complete" && provider.canReceivePayments) return "complete";
+  if (provider.stripeAccountStatus === "complete") return "complete";
   if (provider.stripeAccountId) return "incomplete";
   return "missing";
 }
