@@ -18,6 +18,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
@@ -231,6 +232,12 @@ export default function CartPage() {
   const [tripDestination, setTripDestination] = useState("");
   const [tripStartDate, setTripStartDate] = useState("");
   const [tripEndDate, setTripEndDate] = useState("");
+  // Date-prompt modal: ensures a trip date is set before preparing the trip. Discover-origin
+  // carts carry no date (experience-template carts set one up front), so this unifies both entry
+  // points — the traveler is prompted for start/end when none is known yet.
+  const [showDatePrompt, setShowDatePrompt] = useState(false);
+  const [promptStart, setPromptStart] = useState("");
+  const [promptEnd, setPromptEnd] = useState("");
   const [tripTravelers, setTripTravelers] = useState(2);
 
   // Guest cart pending items (stored when unauthenticated users click add-to-cart)
@@ -713,23 +720,17 @@ export default function CartPage() {
     }
   };
 
-  // ── G6: Resolve (or auto-create) a trip before entering the optimize gate ─
-  const handleOptimizeClick = async () => {
-    if (!user) {
-      openSignInModal();
-      return;
-    }
-    if (previewLoading || resolvingTrip) return;
-    if (isLoading) {
-      toast({ title: "Loading cart...", description: "Please wait a moment" });
-      return;
-    }
-    const platformItems = cart?.items || [];
-    if (platformItems.length === 0 && externalItems.length === 0) {
-      toast({ variant: "destructive", title: "Cart is empty", description: "Add items to your cart first" });
-      return;
-    }
+  // Trip dates already known from the experience context (experience-template flow sets them up front).
+  const readContextDates = (): { start: string; end: string } => {
+    try {
+      const ctx = JSON.parse(sessionStorage.getItem("experienceContext") || "{}");
+      return { start: ctx.startDate || "", end: ctx.endDate || "" };
+    } catch { return { start: "", end: "" }; }
+  };
 
+  // ── G6: Resolve (or auto-create) a trip before entering the optimize gate ─
+  // The heavy lifting; runs once a trip date is known (already set, or just collected via the modal).
+  const proceedOptimize = async (effStart: string, effEnd: string) => {
     setResolvingTrip(true);
     try {
       let ctxExperienceSlug: string | undefined;
@@ -756,8 +757,9 @@ export default function CartPage() {
       setResolvedTrip(trip);
       setTripTitle(trip.title || "");
       setTripDestination(trip.destination || "");
-      setTripStartDate(trip.startDate || "");
-      setTripEndDate(trip.endDate || "");
+      // Prefer the trip's own dates; otherwise keep the dates we just collected (don't clobber to empty).
+      setTripStartDate(trip.startDate || effStart || "");
+      setTripEndDate(trip.endDate || effEnd || "");
       setTripTravelers(trip.numberOfTravelers || 2);
       // Prefill "What are you planning?" from an existing template context
       // (wedding/proposal template flows keep their type); default "trip".
@@ -769,12 +771,14 @@ export default function CartPage() {
         setTripEventType("trip");
       }
 
-      // Persist the resolved tripId back into the experience context so
+      // Persist the resolved tripId (and the dates) into the experience context so
       // downstream steps (createComparison, requestOptimizationPayment) pick it up
       try {
         const stored = sessionStorage.getItem("experienceContext");
         const ctx = stored ? JSON.parse(stored) : {};
         ctx.tripId = trip.id;
+        if (effStart) ctx.startDate = effStart;
+        if (effEnd) ctx.endDate = effEnd;
         sessionStorage.setItem("experienceContext", JSON.stringify(ctx));
       } catch { /* ignore */ }
 
@@ -784,6 +788,58 @@ export default function CartPage() {
     } finally {
       setResolvingTrip(false);
     }
+  };
+
+  const handleOptimizeClick = async () => {
+    if (!user) {
+      openSignInModal();
+      return;
+    }
+    if (previewLoading || resolvingTrip) return;
+    if (isLoading) {
+      toast({ title: "Loading cart...", description: "Please wait a moment" });
+      return;
+    }
+    const platformItems = cart?.items || [];
+    if (platformItems.length === 0 && externalItems.length === 0) {
+      toast({ variant: "destructive", title: "Cart is empty", description: "Add items to your cart first" });
+      return;
+    }
+
+    // Date gate — every trip needs dates before it can be prepared. Experience-template carts set
+    // them up front; Discover-origin carts have none, so prompt via the modal (unifies both paths).
+    const ctxDates = readContextDates();
+    const effStart = tripStartDate || ctxDates.start;
+    const effEnd = tripEndDate || ctxDates.end;
+    if (!effStart || !effEnd) {
+      setPromptStart(effStart || "");
+      setPromptEnd(effEnd || "");
+      setShowDatePrompt(true);
+      return;
+    }
+    await proceedOptimize(effStart, effEnd);
+  };
+
+  // Date-prompt modal confirm — validate, persist, then continue into the optimize flow.
+  const confirmDatePrompt = async () => {
+    if (!promptStart || !promptEnd) {
+      toast({ variant: "destructive", title: "Add your travel dates", description: "Pick a start and end date to continue." });
+      return;
+    }
+    if (new Date(promptEnd) < new Date(promptStart)) {
+      toast({ variant: "destructive", title: "Invalid dates", description: "End date can't be before the start date." });
+      return;
+    }
+    setTripStartDate(promptStart);
+    setTripEndDate(promptEnd);
+    try {
+      const ctx = JSON.parse(sessionStorage.getItem("experienceContext") || "{}");
+      ctx.startDate = promptStart;
+      ctx.endDate = promptEnd;
+      sessionStorage.setItem("experienceContext", JSON.stringify(ctx));
+    } catch { /* ignore */ }
+    setShowDatePrompt(false);
+    await proceedOptimize(promptStart, promptEnd);
   };
 
   // ── G6: Save user edits to the trip details, then proceed to preview ─────
@@ -2545,6 +2601,54 @@ export default function CartPage() {
                 <CheckCircle className="w-4 h-4 mr-2" />
               )}
               {convertToItineraryMutation.isPending ? "Adding…" : `Add ${selectedPlanItemIds.size} item${selectedPlanItemIds.size !== 1 ? "s" : ""} to trip`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Date-prompt modal — ensures a trip date is set before preparing the trip. Fires when a
+          Discover-origin cart (no date) reaches "Prepare Trip"; experience-template carts skip it. */}
+      <Dialog open={showDatePrompt} onOpenChange={setShowDatePrompt}>
+        <DialogContent className="max-w-md" data-testid="dialog-trip-dates">
+          <DialogHeader>
+            <DialogTitle>When are you travelling?</DialogTitle>
+            <DialogDescription>
+              Add your travel dates so we can prepare your trip and schedule your items.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-4 py-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="prompt-start-date">Start date</Label>
+              <Input
+                id="prompt-start-date"
+                type="date"
+                value={promptStart}
+                onChange={(e) => setPromptStart(e.target.value)}
+                data-testid="input-trip-start-date"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="prompt-end-date">End date</Label>
+              <Input
+                id="prompt-end-date"
+                type="date"
+                min={promptStart || undefined}
+                value={promptEnd}
+                onChange={(e) => setPromptEnd(e.target.value)}
+                data-testid="input-trip-end-date"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDatePrompt(false)} data-testid="button-cancel-trip-dates">
+              Cancel
+            </Button>
+            <Button
+              onClick={confirmDatePrompt}
+              disabled={!promptStart || !promptEnd || resolvingTrip}
+              data-testid="button-confirm-trip-dates"
+            >
+              Continue
             </Button>
           </DialogFooter>
         </DialogContent>
