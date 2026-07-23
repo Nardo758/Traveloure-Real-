@@ -10,6 +10,7 @@ import { isAuthenticated } from '../replit_integrations/auth';
 import { trackFunnelEvent } from '../utils/funnelTracker';
 import { bookingService } from '../services/booking.service';
 import { verifyTripOwnership } from '../utils/trip-ownership';
+import { authorizeTripLogistics } from '../utils/trip-logistics-auth';
 import { getUserId } from '../utils/auth';
 import { storage } from '../storage';
 import { EXPERT_SHARE_RATE } from '../services/commission';
@@ -1100,13 +1101,10 @@ router.post("/trips/:tripId/calculate-energy", isAuthenticated, async (req, res)
   try {
     const userId = (req.user as any).claims?.sub ?? (req.user as any)?.id;
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
-    const user = await storage.getUser(userId);
-    if (!user) return res.status(401).json({ message: "Not authenticated" });
     const trip = await storage.getTrip(req.params.tripId);
     if (!trip) return res.status(404).json({ message: "Trip not found" });
-    if (trip.userId !== userId && user.role !== "admin" && user.role !== "expert") {
-      return res.status(403).json({ message: "Not authorized to access this trip" });
-    }
+    const denied = await authorizeTripLogistics(req.params.tripId, userId, `${req.method} ${req.path}`);
+    if (denied) return res.status(denied.status).json({ message: denied.message });
 
     const items = await storage.getItineraryItems(req.params.tripId);
 
@@ -1162,13 +1160,10 @@ router.post("/trips/:tripId/generate-presets", isAuthenticated, async (req, res)
   try {
     const userId = (req.user as any).claims?.sub ?? (req.user as any)?.id;
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
-    const user = await storage.getUser(userId);
-    if (!user) return res.status(401).json({ message: "Not authenticated" });
     const trip = await storage.getTrip(req.params.tripId);
     if (!trip) return res.status(404).json({ message: "Trip not found" });
-    if (trip.userId !== userId && user.role !== "admin" && user.role !== "expert") {
-      return res.status(403).json({ message: "Not authorized to access this trip" });
-    }
+    const denied = await authorizeTripLogistics(req.params.tripId, userId, `${req.method} ${req.path}`);
+    if (denied) return res.status(denied.status).json({ message: denied.message });
 
     const { templateSlug, eventDate, userExperienceId } = req.body;
     if (!templateSlug || !eventDate) {
