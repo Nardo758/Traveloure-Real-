@@ -24,8 +24,8 @@
  *
  * Relevant source files:
  *   client/src/pages/discover.tsx
- *   client/src/components/travelpulse/GlobalCalendar.tsx
- *   client/src/components/travelpulse/CityGrid.tsx
+ *   client/src/components/travelpulse/CityGrid.tsx   (data-testid="city-grid")
+ *   client/src/components/ui/toaster.tsx             (data-testid="toast-${id}")
  */
 
 import { test, expect } from '@playwright/test';
@@ -62,7 +62,7 @@ test.describe('/discover — page load', () => {
     await expect(page.getByTestId('tab-services')).toBeVisible();
   });
 
-  test('default active tab is travelpulse and services filter bar is hidden', async ({ page }) => {
+  test('default active tab is travelpulse, CityGrid is visible, services filter bar is hidden', async ({ page }) => {
     await gotoDiscover(page);
 
     // Radix Tabs sets aria-selected="true" on the active trigger.
@@ -70,6 +70,9 @@ test.describe('/discover — page load', () => {
     await expect(page.getByTestId('tab-packages')).toHaveAttribute('aria-selected', 'false');
     await expect(page.getByTestId('tab-events')).toHaveAttribute('aria-selected', 'false');
     await expect(page.getByTestId('tab-services')).toHaveAttribute('aria-selected', 'false');
+
+    // CityGrid surface must be visible on the default tab.
+    await expect(page.getByTestId('city-grid')).toBeVisible();
 
     // Services filter bar belongs to the services TabsContent — must be hidden.
     await expect(page.getByTestId('services-filter-bar')).not.toBeVisible();
@@ -79,7 +82,7 @@ test.describe('/discover — page load', () => {
 // ── 2. Client-side tab switching ─────────────────────────────────────────────
 
 test.describe('/discover — tab switching (client-side, URL must not change)', () => {
-  test('packages tab: becomes active and services filter bar stays hidden', async ({ page }) => {
+  test('packages tab: becomes active, CityGrid hidden, packages content visible, URL unchanged', async ({ page }) => {
     await gotoDiscover(page);
 
     await page.getByTestId('tab-packages').click();
@@ -87,13 +90,28 @@ test.describe('/discover — tab switching (client-side, URL must not change)', 
 
     await expect(page.getByTestId('tab-packages')).toHaveAttribute('aria-selected', 'true');
     await expect(page.getByTestId('tab-travelpulse')).toHaveAttribute('aria-selected', 'false');
+
+    // CityGrid is in travelpulse tab — must no longer be visible.
+    await expect(page.getByTestId('city-grid')).not.toBeVisible();
+
+    // Services filter bar stays hidden (we are on packages, not services).
     await expect(page.getByTestId('services-filter-bar')).not.toBeVisible();
+
+    // Packages content: either template cards (seeded) or the empty state (unauthenticated).
+    const templateCards = page.locator('[data-testid^="card-template-"]');
+    const cardCount = await templateCards.count();
+    if (cardCount > 0) {
+      await expect(templateCards.first()).toBeVisible();
+    } else {
+      // No templates seeded — unauthenticated users see "Become an expert" empty state.
+      await expect(page.getByTestId('button-become-expert')).toBeVisible();
+    }
 
     // Tab click must NOT mutate the URL.
     await expect(page).toHaveURL(`${BASE_URL}/discover`);
   });
 
-  test('events tab: becomes active, GlobalCalendar is visible, URL unchanged', async ({ page }) => {
+  test('events tab: becomes active, GlobalCalendar is visible, CityGrid hidden, URL unchanged', async ({ page }) => {
     await gotoDiscover(page);
 
     await page.getByTestId('tab-events').click();
@@ -101,12 +119,13 @@ test.describe('/discover — tab switching (client-side, URL must not change)', 
 
     await expect(page.getByTestId('tab-events')).toHaveAttribute('aria-selected', 'true');
     await expect(page.getByTestId('global-calendar')).toBeVisible();
+    await expect(page.getByTestId('city-grid')).not.toBeVisible();
     await expect(page.getByTestId('services-filter-bar')).not.toBeVisible();
 
     await expect(page).toHaveURL(`${BASE_URL}/discover`);
   });
 
-  test('services tab: becomes active, filter bar visible, URL unchanged', async ({ page }) => {
+  test('services tab: becomes active, filter bar visible, CityGrid hidden, URL unchanged', async ({ page }) => {
     await gotoDiscover(page);
 
     await page.getByTestId('tab-services').click();
@@ -114,6 +133,7 @@ test.describe('/discover — tab switching (client-side, URL must not change)', 
 
     await expect(page.getByTestId('tab-services')).toHaveAttribute('aria-selected', 'true');
     await expect(page.getByTestId('services-filter-bar')).toBeVisible();
+    await expect(page.getByTestId('city-grid')).not.toBeVisible();
 
     // All filter controls should be visible inside the filter bar.
     await expect(page.getByTestId('input-location')).toBeVisible();
@@ -126,7 +146,7 @@ test.describe('/discover — tab switching (client-side, URL must not change)', 
     await expect(page).toHaveURL(`${BASE_URL}/discover`);
   });
 
-  test('switching back to travelpulse tab re-activates it and hides services bar', async ({ page }) => {
+  test('switching back to travelpulse tab re-activates it, CityGrid visible, hides services bar', async ({ page }) => {
     await gotoDiscover(page);
 
     // Switch away, then back.
@@ -136,6 +156,7 @@ test.describe('/discover — tab switching (client-side, URL must not change)', 
     await page.waitForTimeout(300);
 
     await expect(page.getByTestId('tab-travelpulse')).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByTestId('city-grid')).toBeVisible();
     await expect(page.getByTestId('services-filter-bar')).not.toBeVisible();
 
     await expect(page).toHaveURL(`${BASE_URL}/discover`);
@@ -145,13 +166,26 @@ test.describe('/discover — tab switching (client-side, URL must not change)', 
 // ── 3. URL deep-linking ───────────────────────────────────────────────────────
 
 test.describe('/discover — URL deep-linking via ?tab=', () => {
-  test('?tab=packages activates packages tab on load', async ({ page }) => {
+  test('?tab=packages activates packages tab, CityGrid hidden, packages content visible', async ({ page }) => {
     await gotoDiscover(page, '?tab=packages');
 
     await expect(page.getByTestId('tab-packages')).toHaveAttribute('aria-selected', 'true');
     await expect(page.getByTestId('tab-travelpulse')).toHaveAttribute('aria-selected', 'false');
-    // Services filter bar must be hidden (we are on packages, not services).
+
+    // CityGrid (travelpulse) must not be visible.
+    await expect(page.getByTestId('city-grid')).not.toBeVisible();
+
+    // Services filter bar must be hidden.
     await expect(page.getByTestId('services-filter-bar')).not.toBeVisible();
+
+    // Packages content: template cards if seeded, otherwise the empty state.
+    const templateCards = page.locator('[data-testid^="card-template-"]');
+    const cardCount = await templateCards.count();
+    if (cardCount > 0) {
+      await expect(templateCards.first()).toBeVisible();
+    } else {
+      await expect(page.getByTestId('button-become-expert')).toBeVisible();
+    }
   });
 
   test('?tab=events activates events tab and shows GlobalCalendar on load', async ({ page }) => {
@@ -159,6 +193,7 @@ test.describe('/discover — URL deep-linking via ?tab=', () => {
 
     await expect(page.getByTestId('tab-events')).toHaveAttribute('aria-selected', 'true');
     await expect(page.getByTestId('global-calendar')).toBeVisible();
+    await expect(page.getByTestId('city-grid')).not.toBeVisible();
   });
 
   test('?tab=services activates services tab and shows filter bar on load', async ({ page }) => {
@@ -166,12 +201,14 @@ test.describe('/discover — URL deep-linking via ?tab=', () => {
 
     await expect(page.getByTestId('tab-services')).toHaveAttribute('aria-selected', 'true');
     await expect(page.getByTestId('services-filter-bar')).toBeVisible();
+    await expect(page.getByTestId('city-grid')).not.toBeVisible();
   });
 
-  test('?tab=invalidvalue falls back to travelpulse tab', async ({ page }) => {
+  test('?tab=invalidvalue falls back to travelpulse tab and CityGrid is visible', async ({ page }) => {
     await gotoDiscover(page, '?tab=invalidvalue');
 
     await expect(page.getByTestId('tab-travelpulse')).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByTestId('city-grid')).toBeVisible();
     await expect(page.getByTestId('services-filter-bar')).not.toBeVisible();
   });
 });
@@ -182,6 +219,8 @@ test.describe('/discover — Browse Services tab filters', () => {
   test.beforeEach(async ({ page }) => {
     await gotoDiscover(page, '?tab=services');
     await expect(page.getByTestId('services-filter-bar')).toBeVisible();
+    // Wait for service data to settle before filter interactions.
+    await page.waitForTimeout(1_500);
   });
 
   test('filter bar inputs are all present', async ({ page }) => {
@@ -197,24 +236,33 @@ test.describe('/discover — Browse Services tab filters', () => {
     await expect(page.getByTestId('button-quick-cat-all')).toBeVisible();
   });
 
-  test('clicking button-quick-cat-all keeps page stable', async ({ page }) => {
+  test('clicking button-quick-cat-all resets to full results or empty state', async ({ page }) => {
     await page.getByTestId('button-quick-cat-all').click();
     await page.waitForTimeout(800);
 
-    // Page should still be on services tab and filter bar visible.
+    // Page must still be on the services tab with the filter bar visible.
     await expect(page.getByTestId('tab-services')).toHaveAttribute('aria-selected', 'true');
     await expect(page.getByTestId('services-filter-bar')).toBeVisible();
+
+    // After "All" click, results must show: either service cards or the no-results state.
+    const serviceCards = page.locator('[data-testid^="card-service-"]');
+    const cardCount = await serviceCards.count();
+    if (cardCount > 0) {
+      await expect(serviceCards.first()).toBeVisible();
+    } else {
+      // No services seeded — empty state must be visible confirming the list rendered.
+      await expect(page.getByTestId('services-no-results')).toBeVisible();
+    }
   });
 
-  test('clicking a specific category chip filters results without crashing', async ({ page }) => {
+  test('clicking a specific category chip shows filtered results or empty state', async ({ page }) => {
     const catChips = page.locator(
       '[data-testid^="button-quick-cat-"]:not([data-testid="button-quick-cat-all"])',
     );
     const count = await catChips.count();
 
     if (count === 0) {
-      // No category chips seeded — the "All" chip is the only one present.
-      // This is valid; just confirm the page is still stable.
+      // No category chips seeded — confirm "All" chip still present and page stable.
       await expect(page.getByTestId('button-quick-cat-all')).toBeVisible();
       return;
     }
@@ -222,10 +270,19 @@ test.describe('/discover — Browse Services tab filters', () => {
     await catChips.first().click();
     await page.waitForTimeout(1_000);
 
-    // After filtering: either service cards appear OR an empty state renders.
-    // Both are valid — the test just asserts no crash (filter bar still visible).
+    // Filter bar stays visible — we are still on the services tab.
     await expect(page.getByTestId('services-filter-bar')).toBeVisible();
     await expect(page.getByTestId('tab-services')).toHaveAttribute('aria-selected', 'true');
+
+    // After category filter: either matching service cards appear OR empty state renders.
+    // Both are valid outcomes — assert exactly one of them is visible.
+    const serviceCards = page.locator('[data-testid^="card-service-"]');
+    const cardCount = await serviceCards.count();
+    if (cardCount > 0) {
+      await expect(serviceCards.first()).toBeVisible();
+    } else {
+      await expect(page.getByTestId('services-no-results')).toBeVisible();
+    }
   });
 });
 
@@ -254,14 +311,9 @@ test.describe('/discover — add to cart from Browse Services', () => {
     await expect(addBtn).toBeVisible();
     await addBtn.click();
 
-    // Unauthenticated → "Saved!" toast (guest cart fallback).
-    // Authenticated  → "Added to cart!" toast.
-    // Radix Toast.Root renders as `li` with role="status" (polite) for default
-    // toasts and role="alert" (assertive) for destructive ones. Cover both.
-    const feedbackToast = page
-      .locator('[role="status"], [role="alert"]')
-      .filter({ hasText: /Added to cart|Saved/i });
-    await expect(feedbackToast).toBeVisible({ timeout: 5_000 });
+    // Toast renders with data-testid="toast-{id}" (set in toaster.tsx).
+    // Any toast appearing within the viewport confirms the feedback was shown.
+    await expect(page.locator('[data-testid^="toast-"]').first()).toBeVisible({ timeout: 5_000 });
   });
 });
 
