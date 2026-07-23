@@ -130,6 +130,26 @@ This document captures architectural decisions to maintain consistency across co
      mounted router already serves** — the router copy wins on mount order and the inline copy is born dead (this class
      ate at least three real fixes: bf93f45e, 571b593f, 23ece804 all landed on dead copies). New endpoints belong in
      the appropriate `server/routes/*.ts` router.
+   - **Route-shadow REVERSE landmine — trips.routes.ts mount, CORRECTED (Jul 23, 2026).** A later change mounted the
+     formerly-dark `trips.routes.ts` at the TOP of `registerRoutes` (before the inline routes) to activate its
+     consumer-backed logistics/anchor/transport/itinerary-share families — but that **wholesale mount shadowed 57 inline
+     handlers** the router also declares (core trip CRUD via `api.trips.*.path`, `generate-itinerary`,
+     `itinerary-comparisons/*`, participants, **budget/transactions/contracts**, emergency, alerts). Because the router
+     mounted *before* the inline copies, the **stale router copies silently won** — and they are NOT identical: they
+     carry a **different auth model** (`getTripRole`/`canMutateTrip` vs the inline `verifyTripOwnership`/
+     `isExpertAssignedToTrip`) and **drop side-effects** the inline copies have (e.g. expert-notify-on-item-add). The
+     mounting commit's comment asserted the copies were "identical" — they are not. **Fix (this change):** the inline
+     copies are the documented-canonical, long-lived ones, so `app.use(tripsRoutes)` was moved to the **very end of
+     `registerRoutes`** (just before `return httpServer`) — Express matches in registration order, so the earlier inline
+     routes now win the 57 shared paths, while `trips.routes.ts` still serves its **32 UNIQUE, consumer-backed** endpoints
+     (anchors, day-boundaries, transport-legs, itinerary-share exports/navigate, expert-review, logistics presets,
+     itinerary-variants, vendor contact-sheet/bulk-email, `/api/trips/:tripId/itinerary-items/:itemId`). `experts.routes.ts`
+     (24 unique / 0 collisions) and `cross-sell.routes.ts` (3 / 0) are collision-free and stay mounted where they are.
+     Allow-list emptied (all three routers are mounted now → `unmounted-router-guard` green again — it was RED because
+     the trio was mounted but still allow-listed). **Filed follow-up (a real careful sweep, not mechanical):** delete the
+     57 duplicate handlers from `trips.routes.ts`, reconciling the divergent auth model per-handler first (which model is
+     intended) — until then the router keeps 57 born-dead duplicates that lose the mount-order race. Do NOT auto-strip
+     them: the copies are semantically divergent, not stale-vs-fixed.
    - **Ground-truth correction (Jul 14, 2026): the "mostly-dark supply side" headline was overstated.** Re-verified on
      `origin/main`, three surfaces the maps inferred were dark are actually **LIVE on origin/main** (not even
      deploy-only): the **recommender** (real `server/services/recommendation.service.ts` → `getExpertRecommendations`/
