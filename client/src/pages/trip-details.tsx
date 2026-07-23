@@ -6,6 +6,7 @@ import { TemporalAnchorManager, ScheduleValidator, EnergyBudgetDisplay, AnchorSu
 import { Button } from "@/components/ui/button";
 import { format, differenceInDays, isValid } from "date-fns";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -118,6 +119,7 @@ export default function TripDetails() {
   const [section, setSection] = useState<Section>(initialSection);
   const [selectedDay, setSelectedDay] = useState(1);
   const [showFullItinerary, setShowFullItinerary] = useState(false);
+  const [showAnchorCapture, setShowAnchorCapture] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [shareLink, setShareLink] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -515,6 +517,36 @@ export default function TripDetails() {
 
               <div className="p-6">
                 <TabsContent value="itinerary" className="mt-0 space-y-6">
+                  {/* Flight & hotel time capture — surfaced in the primary trip view
+                      (was only reachable in the buried Logistics tab). Reuses the
+                      canonical TemporalAnchorManager filtered to the 4 flight/hotel
+                      anchor types. Optional; never blocks. */}
+                  {id && (
+                    <Collapsible open={showAnchorCapture} onOpenChange={setShowAnchorCapture}>
+                      <CollapsibleTrigger asChild>
+                        <Button
+                          variant="outline"
+                          className="w-full justify-between"
+                          data-testid="button-toggle-anchor-capture"
+                        >
+                          <span className="flex items-center gap-2">
+                            <Plane className="w-4 h-4 text-blue-600" />
+                            Add flight &amp; hotel times (optional)
+                          </span>
+                          <ChevronRight className={`w-4 h-4 transition-transform ${showAnchorCapture ? "rotate-90" : ""}`} />
+                        </Button>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent className="pt-3">
+                        <TemporalAnchorManager
+                          tripId={id}
+                          allowedTypes={["flight_arrival", "flight_departure", "hotel_checkin", "hotel_checkout"]}
+                          title="Flight & hotel times"
+                          description="Add arrival, departure, and check-in/out times so we can build a realistic plan around them."
+                        />
+                      </CollapsibleContent>
+                    </Collapsible>
+                  )}
+
                   {/* Itinerary Timeline */}
                   {(itineraryLoading || generatePlan.isPending) ? (
                     <div className="space-y-6">

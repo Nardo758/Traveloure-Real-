@@ -57,9 +57,19 @@ interface TemporalAnchor {
 
 interface TemporalAnchorManagerProps {
   tripId: string;
+  /**
+   * Optional whitelist of anchor-type values. When set, the type picker and the
+   * list are filtered to just these types — lets the same canonical component
+   * back both the full Logistics-tab manager and the traveler's collapsed
+   * "flight & hotel times" affordance without forking. Undefined = all types.
+   */
+  allowedTypes?: string[];
+  /** Optional header overrides for the filtered variant. */
+  title?: string;
+  description?: string;
 }
 
-export function TemporalAnchorManager({ tripId }: TemporalAnchorManagerProps) {
+export function TemporalAnchorManager({ tripId, allowedTypes, title, description: headerDescription }: TemporalAnchorManagerProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
@@ -74,10 +84,18 @@ export function TemporalAnchorManager({ tripId }: TemporalAnchorManagerProps) {
   const [description, setDescription] = useState("");
   const [isImmovable, setIsImmovable] = useState(true);
 
-  const { data: anchors = [], isLoading } = useQuery<TemporalAnchor[]>({
+  const { data: allAnchors = [], isLoading } = useQuery<TemporalAnchor[]>({
     queryKey: [`/api/trips/${tripId}/anchors`],
     enabled: !!tripId,
   });
+
+  // Type picker + list are scoped to allowedTypes when provided (filtered variant).
+  const visibleTypes = allowedTypes
+    ? ANCHOR_TYPES.filter(t => allowedTypes.includes(t.value))
+    : ANCHOR_TYPES;
+  const anchors = allowedTypes
+    ? allAnchors.filter(a => allowedTypes.includes(a.anchorType))
+    : allAnchors;
 
   const createMutation = useMutation({
     mutationFn: async (data: Record<string, unknown>) => {
@@ -162,10 +180,10 @@ export function TemporalAnchorManager({ tripId }: TemporalAnchorManagerProps) {
           <div>
             <CardTitle className="flex items-center gap-2">
               <Shield className="h-5 w-5 text-blue-600" />
-              Temporal Anchors
+              {title ?? "Temporal Anchors"}
             </CardTitle>
             <CardDescription>
-              Fixed time commitments that everything else must work around
+              {headerDescription ?? "Fixed time commitments that everything else must work around"}
             </CardDescription>
           </div>
           <Button size="sm" onClick={() => setShowForm(!showForm)}>
@@ -189,7 +207,7 @@ export function TemporalAnchorManager({ tripId }: TemporalAnchorManagerProps) {
                         <SelectValue placeholder="Select type..." />
                       </SelectTrigger>
                       <SelectContent>
-                        {ANCHOR_TYPES.map(t => (
+                        {visibleTypes.map(t => (
                           <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
                         ))}
                       </SelectContent>
