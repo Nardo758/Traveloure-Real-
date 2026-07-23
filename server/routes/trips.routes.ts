@@ -1772,7 +1772,9 @@ router.put("/api/anchors/:id", isAuthenticated, async (req, res) => {
       const userId = (req.user as any).claims?.sub;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       // Resolve the anchor → its owning trip, then apply owner ‖ assigned ‖ admin.
-      // Unknown id → 404 (don't leak existence via 403).
+      // Unknown id → 404; forbidden → 403 below, per codebase convention. NOTE: because
+      // unknown (404) and forbidden (403) differ, anchor-id existence is enumerable by an
+      // authenticated user — accepted as low-sensitivity (anchor ids carry no secret).
       const existing = await storage.getTemporalAnchorById(req.params.id);
       if (!existing) return res.status(404).json({ message: "Anchor not found" });
       const denied = await authorizeTripLogistics(existing.tripId, userId, `${req.method} ${req.path}`);
@@ -1791,7 +1793,9 @@ router.delete("/api/anchors/:id", isAuthenticated, async (req, res) => {
       const userId = (req.user as any).claims?.sub;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       // Resolve the anchor → its owning trip, then apply owner ‖ assigned ‖ admin.
-      // Unknown id → 404 (don't leak existence via 403).
+      // Unknown id → 404; forbidden → 403 below, per codebase convention. NOTE: because
+      // unknown (404) and forbidden (403) differ, anchor-id existence is enumerable by an
+      // authenticated user — accepted as low-sensitivity (anchor ids carry no secret).
       const existing = await storage.getTemporalAnchorById(req.params.id);
       if (!existing) return res.status(404).json({ message: "Anchor not found" });
       const denied = await authorizeTripLogistics(existing.tripId, userId, `${req.method} ${req.path}`);
