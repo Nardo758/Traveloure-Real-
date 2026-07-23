@@ -1732,6 +1732,21 @@ router.get("/api/trips/:tripId/anchors", isAuthenticated, async (req, res) => {
   });
 
 
+// Route-boundary coercion for anchor datetimes. JSON cannot carry a JS Date, so
+// the shared Drizzle `anchorDatetime` contract (a strict z.date()) is unsatisfiable
+// over HTTP — every client would 400. We coerce HERE (not in the shared schema, which
+// stays untouched) so any caller — this UI, the expert workspace, future callers — can
+// send an ISO string. z.coerce.date() still REJECTS non-dates (Invalid Date → 400).
+const anchorCreateInput = insertTemporalAnchorSchema.extend({
+  anchorDatetime: z.coerce.date(),
+});
+// Update: all fields optional; tripId omitted so an anchor can't be reassigned to
+// another trip (mass-assign guard). Same coercion on anchorDatetime.
+const anchorUpdateInput = insertTemporalAnchorSchema
+  .omit({ tripId: true })
+  .partial()
+  .extend({ anchorDatetime: z.coerce.date().optional() });
+
 router.post("/api/trips/:tripId/anchors", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims?.sub;
@@ -1755,7 +1770,7 @@ router.post("/api/trips/:tripId/anchors", isAuthenticated, async (req, res) => {
         delete body.suggestedTime;
       }
 
-      const input = insertTemporalAnchorSchema.parse(body);
+      const input = anchorCreateInput.parse(body);
       const anchor = await storage.createTemporalAnchor(input);
       res.status(201).json(anchor);
     } catch (err) {
@@ -1779,10 +1794,16 @@ router.put("/api/anchors/:id", isAuthenticated, async (req, res) => {
       if (!existing) return res.status(404).json({ message: "Anchor not found" });
       const denied = await authorizeTripLogistics(existing.tripId, userId, `${req.method} ${req.path}`);
       if (denied) return res.status(denied.status).json({ message: denied.message });
-      const updated = await storage.updateTemporalAnchor(req.params.id, req.body);
+      // Validate-then-mutate: coerce the datetime + reject tripId reassignment
+      // (was: raw req.body passed straight to the update — an unvalidated contract gap).
+      const updates = anchorUpdateInput.parse(req.body);
+      const updated = await storage.updateTemporalAnchor(req.params.id, updates);
       if (!updated) return res.status(404).json({ message: "Anchor not found" });
       res.json(updated);
     } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: error.errors[0].message });
+      }
       res.status(500).json({ message: "Failed to update anchor", error: error.message });
     }
   });
