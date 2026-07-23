@@ -1,4 +1,4 @@
-import { useState, useEffect, type ReactNode } from "react";
+import { useState, useEffect, useRef, type ReactNode } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
@@ -240,6 +240,7 @@ export default function CartPage() {
     } catch { return []; }
   });
   const [migrationDone, setMigrationDone] = useState(false);
+  const migrationStartedRef = useRef(false);
 
   // Initialize guest session ID on first visit (ensures localStorage entry exists)
   useEffect(() => {
@@ -248,9 +249,11 @@ export default function CartPage() {
 
   // Migrate guest cart items to DB after sign-in.
   // Only clears IDs that successfully POST; keeps failed ones for retry and surfaces an error.
+  // migrationStartedRef prevents re-entry; migrationDone flips only after all POSTs settle
+  // so "Prepare Trip" cannot fire against a not-yet-migrated cart.
   useEffect(() => {
-    if (authLoading || !user || guestPendingIds.length === 0 || migrationDone) return;
-    setMigrationDone(true);
+    if (authLoading || !user || guestPendingIds.length === 0 || migrationStartedRef.current) return;
+    migrationStartedRef.current = true;
     Promise.all(
       guestPendingIds.map(async (serviceId) => {
         try {
@@ -273,8 +276,9 @@ export default function CartPage() {
       if (results.some((r) => r.ok)) {
         queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
       }
+      setMigrationDone(true);
     });
-  }, [user, authLoading, guestPendingIds, migrationDone]);
+  }, [user, authLoading, guestPendingIds]);
 
   // Load experience context from sessionStorage on mount
   useEffect(() => {
@@ -745,7 +749,7 @@ export default function CartPage() {
         credentials: "include",
         body: JSON.stringify({ experienceSlug: ctxExperienceSlug, userExperienceId: ctxUserExperienceId }),
       });
-      if (!res.ok) throw new Error("Could not prepare trip");
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error((e as any).message || "Could not prepare trip"); }
       const data = await res.json();
       const trip = data.trip;
 
@@ -776,7 +780,7 @@ export default function CartPage() {
 
       setFlowStep("trip-details");
     } catch (err: any) {
-      toast({ variant: "destructive", title: "Could not prepare trip", description: err.message });
+      toast({ variant: "destructive", title: "Trip preparation failed", description: err.message });
     } finally {
       setResolvingTrip(false);
     }
@@ -1684,7 +1688,12 @@ export default function CartPage() {
                           className="w-full bg-primary hover:bg-primary/90"
                           size="lg"
                           onClick={handleOptimizeClick}
-                          disabled={previewLoading || resolvingTrip}
+                          disabled={
+                            previewLoading ||
+                            resolvingTrip ||
+                            (migrationStartedRef.current && !migrationDone) ||
+                            ((cart?.items?.length || 0) === 0 && externalItems.length === 0 && guestPendingIds.length === 0)
+                          }
                           data-testid="button-generate-itinerary-comparison"
                         >
                           {(previewLoading || resolvingTrip) ? (

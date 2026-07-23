@@ -12,7 +12,7 @@ import {
   Search, Building2, MapPin, CheckCircle, XCircle, Eye, Clock,
   Loader2, Calendar, Star, ShoppingBag, TrendingUp, Users,
   Camera, ChefHat, Car, Sparkles, Music, Waves, Dumbbell,
-  MoreHorizontal, ExternalLink, Package, DollarSign, AlertCircle, MessageSquarePen,
+  MoreHorizontal, ExternalLink, Package, DollarSign, AlertCircle, PenLine,
   CreditCard, Bell, Filter,
 } from "lucide-react";
 import { useState } from "react";
@@ -827,7 +827,7 @@ export default function AdminProviders() {
                         }}
                         data-testid={`button-update-feedback-${app.id}`}
                       >
-                        <MessageSquarePen className="w-4 h-4 mr-1" /> Update Feedback
+                        <PenLine className="w-4 h-4 mr-1" /> Update Feedback
                       </Button>
                     </div>
                   ))}
