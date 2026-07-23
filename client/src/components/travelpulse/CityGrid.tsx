@@ -366,7 +366,7 @@ export function CityGrid({ onCitySelect, selectedCityName }: CityGridProps) {
   const cities = data?.cities || [];
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6" data-testid="city-grid">
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold flex items-center gap-2">
