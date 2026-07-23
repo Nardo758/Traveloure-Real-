@@ -1,9 +1,10 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { MapPin, Star, ExternalLink, Building2 } from "lucide-react";
+import { MapPin, Star, Building2 } from "lucide-react";
 import type { CatalogItem } from "@/types/catalog";
 import { BookWithExpertButton } from "./BookWithExpertButton";
+import { useAgentBooking } from "./useAgentBooking";
 
 const PROVIDER_META: Record<string, { label: string; color: string }> = {
   hotellook:  { label: "HotelLook", color: "bg-blue-100 text-blue-700" },
@@ -11,11 +12,8 @@ const PROVIDER_META: Record<string, { label: string; color: string }> = {
 };
 
 export function HotelCard({ item, className }: { item: CatalogItem; className?: string }) {
-  const handleBook = () => {
-    if (item.affiliateUrl || item.bookingUrl) {
-      window.open((item.affiliateUrl || item.bookingUrl)!, "_blank", "noopener");
-    }
-  };
+  // §16: no raw outbound — partner fulfilment goes through the booking-agent rail.
+  const { book: handleBook, isPending: bookPending, requested: bookRequested } = useAgentBooking(item, "hotels");
 
   const meta = PROVIDER_META[item.provider] || { label: item.provider, color: "bg-gray-100 text-gray-700" };
 
@@ -61,8 +59,8 @@ export function HotelCard({ item, className }: { item: CatalogItem; className?: 
                 </span>
               )}
             </div>
-            <Button size="sm" onClick={handleBook} variant="outline" className="h-7 text-xs gap-1" data-testid={`button-book-hotel-${item.id}`}>
-              <Building2 className="h-3 w-3" />Book<ExternalLink className="h-3 w-3" />
+            <Button size="sm" onClick={handleBook} variant="outline" className="h-7 text-xs gap-1" disabled={bookPending || bookRequested} data-testid={`button-book-hotel-${item.id}`}>
+              <Building2 className="h-3 w-3" />{bookRequested ? "Requested ✓" : "Book via agent"}
             </Button>
           </div>
           <BookWithExpertButton

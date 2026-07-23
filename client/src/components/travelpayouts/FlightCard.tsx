@@ -1,9 +1,10 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Plane, Clock, ExternalLink, ArrowRight } from "lucide-react";
+import { Plane, Clock, ArrowRight } from "lucide-react";
 import type { CatalogItem } from "@/types/catalog";
 import { BookWithExpertButton } from "./BookWithExpertButton";
+import { useAgentBooking } from "./useAgentBooking";
 
 interface FlightCardProps {
   item: CatalogItem;
@@ -11,11 +12,8 @@ interface FlightCardProps {
 }
 
 export function FlightCard({ item, className }: FlightCardProps) {
-  const handleBook = () => {
-    if (item.affiliateUrl || item.bookingUrl) {
-      window.open((item.affiliateUrl || item.bookingUrl)!, "_blank", "noopener");
-    }
-  };
+  // §16: no raw outbound — partner fulfilment goes through the booking-agent rail.
+  const { book: handleBook, isPending: bookPending, requested: bookRequested } = useAgentBooking(item, "flights");
 
   const isNomad = item.tags.includes("nomad") || item.tags.includes("multi-city");
   const providerLabel = item.provider === "kiwi" ? "Kiwi.com" : "Aviasales";
@@ -78,10 +76,10 @@ export function FlightCard({ item, className }: FlightCardProps) {
               size="sm"
               onClick={handleBook}
               className="h-7 text-xs gap-1"
+              disabled={bookPending || bookRequested}
               data-testid={`button-book-flight-${item.id}`}
             >
-              Search Flights
-              <ExternalLink className="h-3 w-3" />
+              {bookRequested ? "Requested ✓" : "Book via agent"}
             </Button>
           </div>
           <BookWithExpertButton
