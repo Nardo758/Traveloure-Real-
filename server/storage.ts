@@ -510,6 +510,7 @@ export interface IStorage {
 
   // Logistics - Temporal Anchors
   getTemporalAnchors(tripId: string): Promise<TemporalAnchor[]>;
+  getTemporalAnchorById(id: string): Promise<TemporalAnchor | undefined>;
   createTemporalAnchor(anchor: InsertTemporalAnchor): Promise<TemporalAnchor>;
   updateTemporalAnchor(id: string, updates: Partial<InsertTemporalAnchor>): Promise<TemporalAnchor | undefined>;
   deleteTemporalAnchor(id: string): Promise<void>;
@@ -4313,6 +4314,13 @@ export class DatabaseStorage implements IStorage {
   // === Logistics: Temporal Anchors ===
   async getTemporalAnchors(tripId: string): Promise<TemporalAnchor[]> {
     return await db.select().from(temporalAnchors).where(eq(temporalAnchors.tripId, tripId));
+  }
+
+  // Resolve a single anchor by id (for ownership checks on PUT/DELETE /api/anchors/:id).
+  // Returns the full row incl. tripId, or undefined when the id is unknown (route maps → 404).
+  async getTemporalAnchorById(id: string): Promise<TemporalAnchor | undefined> {
+    const [row] = await db.select().from(temporalAnchors).where(eq(temporalAnchors.id, id)).limit(1);
+    return row;
   }
 
   async createTemporalAnchor(anchor: InsertTemporalAnchor): Promise<TemporalAnchor> {
