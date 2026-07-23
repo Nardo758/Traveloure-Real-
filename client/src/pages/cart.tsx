@@ -230,14 +230,14 @@ export default function CartPage() {
   const [resolvedTrip, setResolvedTrip] = useState<{ id: string; title: string; destination: string; startDate: string; endDate: string; numberOfTravelers: number } | null>(null);
   const [tripTitle, setTripTitle] = useState("");
   const [tripDestination, setTripDestination] = useState("");
-  const [tripStartDate, setTripStartDate] = useState("");
-  const [tripEndDate, setTripEndDate] = useState("");
-  // Date-prompt modal: ensures a trip date is set before preparing the trip. Discover-origin
-  // carts carry no date (experience-template carts set one up front), so this unifies both entry
-  // points — the traveler is prompted for start/end when none is known yet.
-  const [showDatePrompt, setShowDatePrompt] = useState(false);
-  const [promptStart, setPromptStart] = useState("");
-  const [promptEnd, setPromptEnd] = useState("");
+  // Trip-date range — edited in the always-visible header at the top of the cart (not a step/modal).
+  // Seeded from the experience context so an experience-template flow's up-front dates carry over.
+  const [tripStartDate, setTripStartDate] = useState(() => {
+    try { return JSON.parse(sessionStorage.getItem("experienceContext") || "{}").startDate || ""; } catch { return ""; }
+  });
+  const [tripEndDate, setTripEndDate] = useState(() => {
+    try { return JSON.parse(sessionStorage.getItem("experienceContext") || "{}").endDate || ""; } catch { return ""; }
+  });
   const [tripTravelers, setTripTravelers] = useState(2);
 
   // Guest cart pending items (stored when unauthenticated users click add-to-cart)
@@ -720,14 +720,6 @@ export default function CartPage() {
     }
   };
 
-  // Trip dates already known from the experience context (experience-template flow sets them up front).
-  const readContextDates = (): { start: string; end: string } => {
-    try {
-      const ctx = JSON.parse(sessionStorage.getItem("experienceContext") || "{}");
-      return { start: ctx.startDate || "", end: ctx.endDate || "" };
-    } catch { return { start: "", end: "" }; }
-  };
-
   // ── G6: Resolve (or auto-create) a trip before entering the optimize gate ─
   // The heavy lifting; runs once a trip date is known (already set, or just collected via the modal).
   const proceedOptimize = async (effStart: string, effEnd: string) => {
@@ -806,40 +798,35 @@ export default function CartPage() {
       return;
     }
 
-    // Date gate — every trip needs dates before it can be prepared. Experience-template carts set
-    // them up front; Discover-origin carts have none, so prompt via the modal (unifies both paths).
-    const ctxDates = readContextDates();
-    const effStart = tripStartDate || ctxDates.start;
-    const effEnd = tripEndDate || ctxDates.end;
+    // Every trip needs dates before it can be prepared. Dates live in the always-visible trip-date
+    // header at the top of the cart (not a step, not a modal) — if unset, nudge the user there.
+    const effStart = tripStartDate;
+    const effEnd = tripEndDate;
     if (!effStart || !effEnd) {
-      setPromptStart(effStart || "");
-      setPromptEnd(effEnd || "");
-      setShowDatePrompt(true);
+      toast({ variant: "destructive", title: "Add your travel dates", description: "Set your trip dates at the top of the cart to continue." });
+      return;
+    }
+    if (new Date(effEnd) < new Date(effStart)) {
+      toast({ variant: "destructive", title: "Invalid dates", description: "End date can't be before the start date." });
       return;
     }
     await proceedOptimize(effStart, effEnd);
   };
 
-  // Date-prompt modal confirm — validate, persist, then continue into the optimize flow.
-  const confirmDatePrompt = async () => {
-    if (!promptStart || !promptEnd) {
-      toast({ variant: "destructive", title: "Add your travel dates", description: "Pick a start and end date to continue." });
-      return;
-    }
-    if (new Date(promptEnd) < new Date(promptStart)) {
-      toast({ variant: "destructive", title: "Invalid dates", description: "End date can't be before the start date." });
-      return;
-    }
-    setTripStartDate(promptStart);
-    setTripEndDate(promptEnd);
+  // Trip-date header edits write straight to tripStartDate/tripEndDate and persist into the
+  // experience context so downstream steps + a returning visit keep the range.
+  const updateTripDates = (next: { start?: string; end?: string }) => {
+    const start = next.start ?? tripStartDate;
+    let end = next.end ?? tripEndDate;
+    if (start && end && new Date(end) < new Date(start)) end = start; // keep end >= start
+    setTripStartDate(start);
+    setTripEndDate(end);
     try {
       const ctx = JSON.parse(sessionStorage.getItem("experienceContext") || "{}");
-      ctx.startDate = promptStart;
-      ctx.endDate = promptEnd;
+      ctx.startDate = start;
+      ctx.endDate = end;
       sessionStorage.setItem("experienceContext", JSON.stringify(ctx));
     } catch { /* ignore */ }
-    setShowDatePrompt(false);
-    await proceedOptimize(promptStart, promptEnd);
   };
 
   // ── G6: Save user edits to the trip details, then proceed to preview ─────
@@ -1283,6 +1270,48 @@ export default function CartPage() {
             <Badge variant="secondary" data-testid="badge-item-count">{totalItemCount} items</Badge>
           )}
         </div>
+
+        {/* Trip-date header — always-visible, editable trip date range (not a step, not a modal).
+            Seeds from the experience context; edits persist there for downstream steps. */}
+        {flowStep === "cart" && totalItemCount > 0 && (
+          <div
+            className="flex flex-col sm:flex-row sm:items-end gap-3 px-4 py-3 mb-4 rounded-lg border border-border bg-card"
+            data-testid="header-trip-dates"
+          >
+            <div className="flex items-center gap-2 text-sm font-medium shrink-0 sm:pb-2">
+              <Calendar className="w-4 h-4 text-primary" />
+              Travel dates
+            </div>
+            <div className="flex items-end gap-3 flex-1">
+              <div className="space-y-1 flex-1 max-w-[10rem]">
+                <Label htmlFor="header-start" className="text-xs text-muted-foreground">Start</Label>
+                <Input
+                  id="header-start"
+                  type="date"
+                  value={tripStartDate}
+                  onChange={(e) => updateTripDates({ start: e.target.value })}
+                  className="h-9"
+                  data-testid="input-header-start-date"
+                />
+              </div>
+              <div className="space-y-1 flex-1 max-w-[10rem]">
+                <Label htmlFor="header-end" className="text-xs text-muted-foreground">End</Label>
+                <Input
+                  id="header-end"
+                  type="date"
+                  min={tripStartDate || undefined}
+                  value={tripEndDate}
+                  onChange={(e) => updateTripDates({ end: e.target.value })}
+                  className="h-9"
+                  data-testid="input-header-end-date"
+                />
+              </div>
+            </div>
+            {(!tripStartDate || !tripEndDate) && (
+              <span className="text-xs text-muted-foreground sm:pb-2">Add dates to prepare your trip</span>
+            )}
+          </div>
+        )}
 
         {/* Guest nudge — only shown when unauthenticated and there are items */}
         {!user && !authLoading && totalItemCount > 0 && flowStep === "cart" && (
@@ -1838,26 +1867,14 @@ export default function CartPage() {
                       </Select>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="trip-start">Start date</Label>
-                        <Input
-                          id="trip-start"
-                          type="date"
-                          value={tripStartDate}
-                          onChange={(e) => setTripStartDate(e.target.value)}
-                          data-testid="input-trip-start-date"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="trip-end">End date</Label>
-                        <Input
-                          id="trip-end"
-                          type="date"
-                          value={tripEndDate}
-                          onChange={(e) => setTripEndDate(e.target.value)}
-                          data-testid="input-trip-end-date"
-                        />
+                    {/* Dates are edited in the trip-date header at the top of the cart; shown here read-only. */}
+                    <div className="space-y-1">
+                      <Label>Travel dates</Label>
+                      <div className="flex items-center gap-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-sm" data-testid="text-trip-dates-summary">
+                        <Calendar className="w-4 h-4 text-muted-foreground" />
+                        {tripStartDate && tripEndDate
+                          ? <span>{tripStartDate} → {tripEndDate}</span>
+                          : <span className="text-muted-foreground">Set your dates at the top of the cart</span>}
                       </div>
                     </div>
 
@@ -2606,53 +2623,6 @@ export default function CartPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Date-prompt modal — ensures a trip date is set before preparing the trip. Fires when a
-          Discover-origin cart (no date) reaches "Prepare Trip"; experience-template carts skip it. */}
-      <Dialog open={showDatePrompt} onOpenChange={setShowDatePrompt}>
-        <DialogContent className="max-w-md" data-testid="dialog-trip-dates">
-          <DialogHeader>
-            <DialogTitle>When are you travelling?</DialogTitle>
-            <DialogDescription>
-              Add your travel dates so we can prepare your trip and schedule your items.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid grid-cols-2 gap-4 py-2">
-            <div className="space-y-1.5">
-              <Label htmlFor="prompt-start-date">Start date</Label>
-              <Input
-                id="prompt-start-date"
-                type="date"
-                value={promptStart}
-                onChange={(e) => setPromptStart(e.target.value)}
-                data-testid="input-trip-start-date"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="prompt-end-date">End date</Label>
-              <Input
-                id="prompt-end-date"
-                type="date"
-                min={promptStart || undefined}
-                value={promptEnd}
-                onChange={(e) => setPromptEnd(e.target.value)}
-                data-testid="input-trip-end-date"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowDatePrompt(false)} data-testid="button-cancel-trip-dates">
-              Cancel
-            </Button>
-            <Button
-              onClick={confirmDatePrompt}
-              disabled={!promptStart || !promptEnd || resolvingTrip}
-              data-testid="button-confirm-trip-dates"
-            >
-              Continue
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </>
   );
 }
