@@ -125,11 +125,12 @@ test.describe('/discover — tab switching (client-side, URL must not change)', 
     await expect(page).toHaveURL(`${BASE_URL}/discover`);
   });
 
-  test('services tab: becomes active, filter bar visible, CityGrid hidden, URL unchanged', async ({ page }) => {
+  test('services tab: becomes active, filter bar visible, CityGrid hidden, service list rendered, URL unchanged', async ({ page }) => {
     await gotoDiscover(page);
 
     await page.getByTestId('tab-services').click();
-    await page.waitForTimeout(500);
+    // Allow service data to load before asserting card presence.
+    await page.waitForTimeout(2_000);
 
     await expect(page.getByTestId('tab-services')).toHaveAttribute('aria-selected', 'true');
     await expect(page.getByTestId('services-filter-bar')).toBeVisible();
@@ -142,6 +143,15 @@ test.describe('/discover — tab switching (client-side, URL must not change)', 
     await expect(page.getByTestId('input-max-price')).toBeVisible();
     await expect(page.getByTestId('select-rating')).toBeVisible();
     await expect(page.getByTestId('select-sort')).toBeVisible();
+
+    // Services list rendered: either seeded cards OR the empty state.
+    const serviceCards = page.locator('[data-testid^="card-service-"]');
+    const cardCount = await serviceCards.count();
+    if (cardCount > 0) {
+      await expect(serviceCards.first()).toBeVisible();
+    } else {
+      await expect(page.getByTestId('services-no-results')).toBeVisible();
+    }
 
     await expect(page).toHaveURL(`${BASE_URL}/discover`);
   });
@@ -236,23 +246,59 @@ test.describe('/discover — Browse Services tab filters', () => {
     await expect(page.getByTestId('button-quick-cat-all')).toBeVisible();
   });
 
-  test('clicking button-quick-cat-all resets to full results or empty state', async ({ page }) => {
-    await page.getByTestId('button-quick-cat-all').click();
-    await page.waitForTimeout(800);
+  test('clicking button-quick-cat-all resets to full results after a category filter', async ({ page }) => {
+    // Establish a filtered state first: apply a specific category chip if one exists.
+    const catChips = page.locator(
+      '[data-testid^="button-quick-cat-"]:not([data-testid="button-quick-cat-all"])',
+    );
+    const chipCount = await catChips.count();
 
-    // Page must still be on the services tab with the filter bar visible.
+    if (chipCount > 0) {
+      // Apply the first non-"All" chip to filter the list.
+      await catChips.first().click();
+      await page.waitForTimeout(800);
+      // Filtered state: service cards or empty state visible.
+      const filteredCards = page.locator('[data-testid^="card-service-"]');
+      const filteredCardCount = await filteredCards.count();
+      const filteredState = filteredCardCount > 0 ? 'cards' : 'empty';
+
+      // Now click "All" to reset.
+      await page.getByTestId('button-quick-cat-all').click();
+      await page.waitForTimeout(800);
+
+      if (filteredState === 'empty') {
+        // "All" should produce at least as many results as the filtered empty state.
+        // Either cards appear now (list restored) or empty state still shows (no data seeded).
+        const resetCards = page.locator('[data-testid^="card-service-"]');
+        const resetCardCount = await resetCards.count();
+        if (resetCardCount > 0) {
+          await expect(resetCards.first()).toBeVisible();
+        } else {
+          await expect(page.getByTestId('services-no-results')).toBeVisible();
+        }
+      } else {
+        // We had cards before; "All" must still show cards (broader set, >= filtered count).
+        const resetCards = page.locator('[data-testid^="card-service-"]');
+        await expect(resetCards.first()).toBeVisible();
+        const resetCardCount = await resetCards.count();
+        expect(resetCardCount).toBeGreaterThanOrEqual(filteredCardCount);
+      }
+    } else {
+      // No category chips — click "All" and confirm the list state is stable.
+      await page.getByTestId('button-quick-cat-all').click();
+      await page.waitForTimeout(800);
+      const serviceCards = page.locator('[data-testid^="card-service-"]');
+      const cardCount = await serviceCards.count();
+      if (cardCount > 0) {
+        await expect(serviceCards.first()).toBeVisible();
+      } else {
+        await expect(page.getByTestId('services-no-results')).toBeVisible();
+      }
+    }
+
+    // Invariant: filter bar and tab remain stable after reset.
     await expect(page.getByTestId('tab-services')).toHaveAttribute('aria-selected', 'true');
     await expect(page.getByTestId('services-filter-bar')).toBeVisible();
-
-    // After "All" click, results must show: either service cards or the no-results state.
-    const serviceCards = page.locator('[data-testid^="card-service-"]');
-    const cardCount = await serviceCards.count();
-    if (cardCount > 0) {
-      await expect(serviceCards.first()).toBeVisible();
-    } else {
-      // No services seeded — empty state must be visible confirming the list rendered.
-      await expect(page.getByTestId('services-no-results')).toBeVisible();
-    }
   });
 
   test('clicking a specific category chip shows filtered results or empty state', async ({ page }) => {
