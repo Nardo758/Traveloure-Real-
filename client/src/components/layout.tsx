@@ -366,7 +366,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 <div className="hidden lg:flex items-center gap-2">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="sm" data-testid="button-become-expert" className="gap-1">
+                      <Button variant="outline" size="sm" data-testid="button-become-expert-nav" className="gap-1">
                         Join as Partner
                         <ChevronDown className="w-3.5 h-3.5" />
                       </Button>
