@@ -7,11 +7,16 @@
  *
  * Throttle: one reminder per user per 3-day window — checked against the
  * notifications table so the cadence survives server restarts.
+ *
+ * Restart-safety: on startup the scheduler queries the most recent
+ * stripe_connect_reminder notification to determine how long ago the last
+ * batch ran. The first run is delayed by (CHECK_INTERVAL_MS - elapsed) so a
+ * rapid restart loop cannot fire a duplicate batch before the cooldown expires.
  */
 
 import { db } from "../db";
 import { users, notifications } from "@shared/schema";
-import { eq, and, sql, or, isNull, gte, inArray } from "drizzle-orm";
+import { eq, and, sql, or, isNull, gte, inArray, desc } from "drizzle-orm";
 
 const CHECK_INTERVAL_MS = 3 * 24 * 60 * 60 * 1000; // 72 hours
 const REMINDER_COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000; // 72 hours
@@ -22,11 +27,7 @@ class StripeConnectReminderService {
 
   start(): void {
     if (this.timer) return;
-
-    // First run 10 minutes after startup
-    setTimeout(() => this.runReminders(), 10 * 60 * 1000);
-
-    this.timer = setInterval(() => this.runReminders(), CHECK_INTERVAL_MS);
+    this.scheduleFirstRun();
     console.log("[StripeConnectReminder] Scheduler started — runs every 72 hours");
   }
 
@@ -34,6 +35,59 @@ class StripeConnectReminderService {
     if (this.timer) {
       clearInterval(this.timer);
       this.timer = null;
+    }
+  }
+
+  /**
+   * Determine how long ago the last reminder batch ran by checking the most
+   * recent stripe_connect_reminder notification. If a batch ran within the
+   * last CHECK_INTERVAL_MS, delay the first run until the interval has fully
+   * elapsed. This prevents duplicate sends during rapid restart loops.
+   */
+  private async scheduleFirstRun(): Promise<void> {
+    try {
+      const [lastNotification] = await db
+        .select({ createdAt: notifications.createdAt })
+        .from(notifications)
+        .where(eq(notifications.type, REMINDER_TYPE))
+        .orderBy(desc(notifications.createdAt))
+        .limit(1);
+
+      let initialDelayMs: number;
+
+      if (lastNotification?.createdAt) {
+        const elapsedMs = Date.now() - new Date(lastNotification.createdAt).getTime();
+        const remainingMs = CHECK_INTERVAL_MS - elapsedMs;
+
+        if (remainingMs > 0) {
+          // Last run was within the interval — wait out the remainder
+          initialDelayMs = remainingMs;
+          console.log(
+            `[StripeConnectReminder] Last run was ${Math.round(elapsedMs / 3600000)}h ago — ` +
+            `delaying first run by ${Math.round(remainingMs / 3600000)}h to avoid duplicates`
+          );
+        } else {
+          // Interval has already elapsed — run soon after startup
+          initialDelayMs = 10 * 60 * 1000;
+          console.log("[StripeConnectReminder] Interval elapsed — first run in 10 minutes");
+        }
+      } else {
+        // No prior reminders found — run soon after startup
+        initialDelayMs = 10 * 60 * 1000;
+        console.log("[StripeConnectReminder] No prior reminders found — first run in 10 minutes");
+      }
+
+      setTimeout(() => {
+        this.runReminders();
+        this.timer = setInterval(() => this.runReminders(), CHECK_INTERVAL_MS);
+      }, initialDelayMs);
+    } catch (err) {
+      // If the DB query fails, fall back to the safe default (full interval delay)
+      console.error("[StripeConnectReminder] Failed to determine last run time — defaulting to 72h delay:", err);
+      setTimeout(() => {
+        this.runReminders();
+        this.timer = setInterval(() => this.runReminders(), CHECK_INTERVAL_MS);
+      }, CHECK_INTERVAL_MS);
     }
   }
 
