@@ -1,0 +1,39 @@
+Fix the "Prepare Trip → cart is empty" dead-end. Read-first, then implement on a branch off
+main; tsc must stay at baseline 254 (0 net-new) and `npm run build` must pass. This is NOT a
+money/schema change — no migration, no new table.
+
+Context (already verified, do not re-litigate): the server guard
+`POST /api/cart/resolve-trip` → 400 "Cannot resolve trip: cart is empty" is CORRECT and stays.
+Guest→auth cart migration ALREADY EXISTS via two mechanisms — do NOT build a new one, and do NOT
+add a third guest-cart store:
+  (a) localStorage `traveloure_guest_cart_pending` → re-POSTed to /api/cart in a cart.tsx useEffect;
+  (b) server `/api/cart/migrate` (guestSessionId) → storage.migrateGuestCart, called from
+      SignInModal.tsx and App.tsx.
+
+Three fixes, smallest-blast-radius:
+
+1. Surface the real server error (cart.tsx ~line 748). Replace
+     if (!res.ok) throw new Error("Could not prepare trip");
+   with reading the body:
+     if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.message || "Could not prepare trip"); }
+   And make the toast title generic while the description carries err.message (line ~779) so they
+   aren't identical.
+
+2. Prevent the dead-end: disable/hide the "Prepare Trip" action whenever the resolvable cart is
+   empty (cart items + externalItems + guestPendingIds all zero — the same condition the empty-cart
+   branch at cart.tsx:1268 already computes). The user should not be able to click Prepare Trip with
+   nothing to resolve.
+
+3. Fix the migration race (the real root cause): in the cart.tsx guest-migration useEffect
+   (~line 249), set migrationDone=true only AFTER the POST Promise.all resolves (today it's set at
+   line 253 BEFORE), and don't enable/allow Prepare Trip until migration has settled — so a fast
+   click after sign-in doesn't read a not-yet-migrated (empty) cart.
+
+Also REPORT (don't fix without escalating): the two parallel guest-cart systems (localStorage
+serviceIds vs the server guestSessionId cart) are redundant and can race — note in the PR which one
+is authoritative and whether both are needed, so we can decide whether to consolidate to one
+(CLAUDE.md's "never two systems for one thing" ethos). Do not consolidate in this PR.
+
+Verify: reproduce the empty-cart click → now shows "…cart is empty" (not the duplicate); add an
+item as a guest, sign in, land on /cart, immediately click Prepare Trip → migration completes first,
+trip resolves. tsc 254, build green. Small PR, this-fix-only.
