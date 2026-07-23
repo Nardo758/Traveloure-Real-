@@ -108,7 +108,7 @@ import {
   aiGeneratedItineraries,
   tripAnalyticsEnhanced,
 } from "@shared/schema";
-import { eq, ilike, and, desc, or, count, gt, gte, lte, avg, inArray, asc, isNotNull, sql as sqlOp } from "drizzle-orm";
+import { eq, ilike, and, desc, or, count, gt, gte, lte, avg, inArray, asc, isNotNull, isNull, sql as sqlOp } from "drizzle-orm";
 import { authStorage } from "./replit_integrations/auth/storage";
 import type { User } from "@shared/models/auth";
 import {
@@ -1797,7 +1797,14 @@ export class DatabaseStorage implements IStorage {
   async getCartItems(userId: string, experienceSlug?: string): Promise<any[]> {
     let whereCondition: any = eq(cartItems.userId, userId);
     if (experienceSlug) {
-      whereCondition = and(eq(cartItems.userId, userId), eq(cartItems.experienceSlug, experienceSlug));
+      // Include unslugged items (Discover add-to-cart sets no experienceSlug) alongside the
+      // experience's own items. A strict eq() filter made Discover-origin items vanish from the
+      // cart whenever a lingering experience context set the filter — general-pool items belong
+      // in every experience cart view until they're scoped to one.
+      whereCondition = and(
+        eq(cartItems.userId, userId),
+        or(eq(cartItems.experienceSlug, experienceSlug), isNull(cartItems.experienceSlug)),
+      );
     }
     return this._enrichCartItems(whereCondition);
   }
