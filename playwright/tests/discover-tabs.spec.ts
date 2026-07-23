@@ -104,7 +104,7 @@ test.describe('/discover — tab switching (client-side, URL must not change)', 
       await expect(templateCards.first()).toBeVisible();
     } else {
       // No templates seeded — unauthenticated users see "Become an expert" empty state.
-      await expect(page.getByTestId('button-become-expert')).toBeVisible();
+      await expect(page.getByTestId('button-become-expert-packages')).toBeVisible();
     }
 
     // Tab click must NOT mutate the URL.
@@ -194,7 +194,7 @@ test.describe('/discover — URL deep-linking via ?tab=', () => {
     if (cardCount > 0) {
       await expect(templateCards.first()).toBeVisible();
     } else {
-      await expect(page.getByTestId('button-become-expert')).toBeVisible();
+      await expect(page.getByTestId('button-become-expert-packages')).toBeVisible();
     }
   });
 

@@ -580,11 +580,16 @@ export async function registerRoutes(
   app.use(serviceRequestsRoutes);
 
   // Trips + Itinerary-Comparison Routes — was imported at line 95 but never mounted
-  // (§9 route-shadow class). Mounting here makes it the live handler for all paths
-  // it declares: /api/trips CRUD, /api/trips/:id/claim, /api/itinerary-comparisons/*
-  // The identical inline registrations below remain as-is (they become unreachable
-  // dead-code for those paths; inline /api/trips family is out of scope to remove).
-  app.use(tripsRoutes);
+  // NOTE (§9 shadow fix): tripsRoutes is mounted LAST (just before `return httpServer`),
+  // NOT here. 57 of its handlers duplicate inline registrations below that are the
+  // documented-canonical, battle-tested copies (they carry divergent auth models +
+  // side-effects like expert-notify-on-add that the router copies lack). Mounting the
+  // router HERE (before the inline routes) silently made the stale router copies win for
+  // core trip CRUD / generate-itinerary / itinerary-comparisons / budget+transactions.
+  // Mounting it AFTER the inline routes lets the canonical inline copies win those 57
+  // paths, while the router still serves its 32 UNIQUE (consumer-backed) endpoints
+  // (anchors, transport-legs, itinerary-share, expert-review, logistics, …). The full
+  // delete-the-57-duplicates sweep is filed (needs per-handler auth-model reconciliation).
 
   // Expert routes — role management, service templates, vendor coordination, constraints,
   // provider blackout dates, assigned trips, knowledge nuggets, visa info, and more.
@@ -8055,6 +8060,14 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   // Register AI Discovery routes
   await registerDiscoveryRoutes(app);
+
+  // §9 shadow fix: mount tripsRoutes LAST so the canonical inline trip/itinerary handlers
+  // above win the 57 duplicated paths, while tripsRoutes still serves its 32 UNIQUE,
+  // consumer-backed endpoints (anchors, day-boundaries, transport-legs, itinerary-share,
+  // expert-review, logistics presets, itinerary-variants, vendor contact-sheet/bulk-email,
+  // /api/trips/:tripId/itinerary-items/:itemId). Express matches in registration order, so
+  // an inline route registered earlier claims a shared path before this router sees it.
+  app.use(tripsRoutes);
 
   return httpServer;
 }
