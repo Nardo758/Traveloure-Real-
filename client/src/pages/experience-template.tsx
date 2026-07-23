@@ -861,6 +861,12 @@ export default function ExperienceTemplatePage() {
   };
   
   const [destination, setDestination] = useState(getInitialDestination);
+  // Destination-prompt modal: the content sections (curated, venues, catalog) all require a
+  // destination and render empty without one. When the template is opened without a destination
+  // (e.g. from an experience card / landing link that carries no ?destination=), prompt for it up
+  // front so the page populates instead of looking broken.
+  const [showDestPrompt, setShowDestPrompt] = useState(false);
+  const [destPromptInput, setDestPromptInput] = useState("");
   const [originCity, setOriginCity] = useState(initialSettings?.originCity ?? "");
   const [originCode, setOriginCode] = useState(initialSettings?.originCode ?? "");
   const [startDate, setStartDate] = useState<Date | undefined>(initialSettings?.startDate ? new Date(initialSettings.startDate) : undefined);
@@ -1134,6 +1140,26 @@ export default function ExperienceTemplatePage() {
     
     geocodeDestination();
   }, [destination]);
+
+  // Prompt for a destination on mount when none was provided (no ?destination= and no saved
+  // settings). At mount `destination` already reflects saved settings, so this won't flash for
+  // returning users. Once a destination is set (typed here or in the settings panel), close it.
+  useEffect(() => {
+    if (!destination.trim() && !destinationFromQuery && !destinationsFromQuery) {
+      setShowDestPrompt(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    if (destination.trim()) setShowDestPrompt(false);
+  }, [destination]);
+
+  const confirmDestPrompt = () => {
+    const d = destPromptInput.trim();
+    if (!d) return;
+    setDestination(d);
+    setShowDestPrompt(false);
+  };
 
   const { data: customVenues = [] } = useQuery<CustomVenue[]>({
     queryKey: ["/api/custom-venues", { experienceType: slug }],
@@ -3472,6 +3498,40 @@ export default function ExperienceTemplatePage() {
                   }}
                 />
               )}
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Destination prompt — opens when the template loads without a destination, so the
+            content sections (curated, venues, catalog) have a city to populate from. */}
+        <Dialog open={showDestPrompt} onOpenChange={setShowDestPrompt}>
+          <DialogContent className="max-w-md" data-testid="dialog-choose-destination">
+            <DialogHeader>
+              <DialogTitle>Where are you headed?</DialogTitle>
+              <DialogDescription>
+                Choose a destination so we can show venues, activities, and recommendations for your{" "}
+                {(experienceType?.name || "experience").toLowerCase()}.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-1.5 py-2">
+              <Label htmlFor="dest-prompt-input">Destination city</Label>
+              <Input
+                id="dest-prompt-input"
+                placeholder="Eg: Kyoto, Paris, New York"
+                value={destPromptInput}
+                onChange={(e) => setDestPromptInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") confirmDestPrompt(); }}
+                autoFocus
+                data-testid="input-choose-destination"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setShowDestPrompt(false)} data-testid="button-skip-destination">
+                Skip for now
+              </Button>
+              <Button onClick={confirmDestPrompt} disabled={!destPromptInput.trim()} data-testid="button-confirm-destination">
+                Continue
+              </Button>
             </div>
           </DialogContent>
         </Dialog>
