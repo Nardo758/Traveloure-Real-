@@ -749,9 +749,11 @@ export default function CartPage() {
       setResolvedTrip(trip);
       setTripTitle(trip.title || "");
       setTripDestination(trip.destination || "");
-      // Prefer the trip's own dates; otherwise keep the dates we just collected (don't clobber to empty).
-      setTripStartDate(trip.startDate || effStart || "");
-      setTripEndDate(trip.endDate || effEnd || "");
+      // The user's explicitly-set header dates WIN over a reused trip's stored dates — a returning
+      // trip must not silently clobber a fresh edit. Fall back to the trip's dates only when the
+      // header had none (defensive: handleOptimizeClick already requires them).
+      setTripStartDate(effStart || trip.startDate || "");
+      setTripEndDate(effEnd || trip.endDate || "");
       setTripTravelers(trip.numberOfTravelers || 2);
       // Prefill "What are you planning?" from an existing template context
       // (wedding/proposal template flows keep their type); default "trip".
