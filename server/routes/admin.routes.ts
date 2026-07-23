@@ -1289,11 +1289,48 @@ router.get("/api/admin/platform-service-providers", isAuthenticated, async (req,
         user: providerUser ? { id: providerUser.id, name: [providerUser.firstName, providerUser.lastName].filter(Boolean).join(" "), email: providerUser.email, profileImageUrl: providerUser.profileImageUrl } : null,
         providerVerificationStatus: providerUser?.providerVerificationStatus ?? "pending",
         backgroundCheckConfirmed: providerUser?.backgroundCheckConfirmed ?? false,
+        stripeAccountId: providerUser?.stripeAccountId ?? null,
+        stripeAccountStatus: providerUser?.stripeAccountStatus ?? null,
+        canReceivePayments: providerUser?.canReceivePayments ?? false,
         services, totalBookings, totalRevenue, activeServices,
       };
     }));
 
     res.json(enriched);
+  });
+
+  // Admin: Get count of providers missing Stripe Connect setup
+router.get("/api/admin/providers/stripe-incomplete-count", isAuthenticated, async (req, res) => {
+    const user = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
+    if (!user || user.role !== "admin") {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+    const approvedForms = await getApprovedProviderForms();
+    let count = 0;
+    for (const form of approvedForms) {
+      const providerUser = await getProviderUserInfo(form.userId);
+      if (!providerUser?.stripeAccountStatus || providerUser.stripeAccountStatus !== "complete") {
+        count++;
+      }
+    }
+    res.json({ count });
+  });
+
+  // Admin: Send a Stripe Connect reminder notification to a provider
+router.post("/api/admin/providers/:userId/remind-stripe", isAuthenticated, async (req, res) => {
+    const user = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
+    if (!user || user.role !== "admin") {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+    const { userId } = req.params;
+    await insertNotification({
+      userId,
+      type: "stripe_connect_reminder",
+      title: "Complete Your Payout Setup",
+      message: "An admin has sent you a reminder to complete your Stripe Connect setup so you can receive payouts. Visit your earnings page to get started.",
+      data: { link: "/provider/earnings" },
+    });
+    res.json({ ok: true });
   });
 
   // Admin: Update provider application status
