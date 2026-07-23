@@ -918,3 +918,339 @@ export async function sendVerificationDecisionEmail(params: VerificationDecision
     console.error("[email] Verification-decision email failed (non-fatal):", err);
   }
 }
+
+// ─── Expert application rejection email ───────────────────────────────────────
+
+interface ExpertApplicationApprovalParams {
+  toEmail: string;
+  firstName?: string | null;
+}
+
+/**
+ * Fire-and-forget email to an expert applicant when their application is
+ * approved. Congratulates them, explains the Stripe Connect next step, and
+ * links directly to /expert/earnings. Never throws.
+ */
+export async function sendExpertApplicationApprovalEmail(
+  params: ExpertApplicationApprovalParams
+): Promise<void> {
+  const client = getClient();
+  if (!client) {
+    console.log("[email] RESEND_API_KEY not set — skipping expert approval email for", params.toEmail);
+    return;
+  }
+
+  const greeting = params.firstName ? `Hi ${escHtml(params.firstName)},` : "Hi,";
+  const earningsUrl = `${getAppBaseUrl()}/expert/earnings`;
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
+      <h2 style="color: #16A34A; margin-bottom: 8px;">You're approved as a Traveloure Expert! 🎉</h2>
+      <p style="color: #374151;">${greeting}</p>
+      <p style="color: #374151;">
+        Congratulations — your application to join Traveloure as a local expert has been approved!
+        You can now create services, accept bookings, and earn money sharing your local knowledge.
+      </p>
+      <h3 style="color: #111827; margin-bottom: 8px;">Next step: set up payouts</h3>
+      <p style="color: #374151;">
+        To receive payments, you'll need to connect your Stripe account. It only takes a few
+        minutes — head to your earnings page to get started.
+      </p>
+      <a href="${earningsUrl}"
+         style="display: inline-block; background: #FF385C; color: #ffffff; text-decoration: none;
+                padding: 12px 24px; border-radius: 6px; font-weight: 600; margin-top: 8px;">
+        Set Up Payouts
+      </a>
+      <p style="color: #9CA3AF; font-size: 12px; margin-top: 32px;">
+        You're receiving this because your expert application on Traveloure was approved.<br>
+        Manage your earnings at <a href="${earningsUrl}" style="color: #FF385C;">${earningsUrl}</a>.
+      </p>
+    </div>
+  `;
+
+  const text = [
+    "You're approved as a Traveloure Expert! 🎉",
+    ``,
+    greeting,
+    ``,
+    "Congratulations — your application to join Traveloure as a local expert has been approved!",
+    "You can now create services, accept bookings, and earn money sharing your local knowledge.",
+    ``,
+    "Next step: set up payouts",
+    ``,
+    "To receive payments, connect your Stripe account — it only takes a few minutes:",
+    ``,
+    `Set up payouts: ${earningsUrl}`,
+  ].join("\n");
+
+  try {
+    await client.emails.send({
+      from: getFromAddress(),
+      to: params.toEmail,
+      subject: "Your Traveloure expert application has been approved!",
+      html,
+      text,
+    });
+    console.log(`[email] Expert application approval email sent to ${params.toEmail}`);
+  } catch (err) {
+    console.error("[email] Expert application approval email failed (non-fatal):", err);
+  }
+}
+
+interface ExpertApplicationRejectionParams {
+  toEmail: string;
+  firstName?: string | null;
+  /** Optional rejection reason provided by the admin. */
+  rejectionMessage?: string | null;
+}
+
+/**
+ * Fire-and-forget email to an expert applicant when their application is
+ * rejected. Includes the admin's rejection reason (if any) and a link back
+ * to /expert/apply so they can revise and resubmit. Never throws.
+ */
+export async function sendExpertApplicationRejectionEmail(
+  params: ExpertApplicationRejectionParams
+): Promise<void> {
+  const client = getClient();
+  if (!client) {
+    console.log("[email] RESEND_API_KEY not set — skipping expert rejection email for", params.toEmail);
+    return;
+  }
+
+  const greeting = params.firstName ? `Hi ${escHtml(params.firstName)},` : "Hi,";
+  const applyUrl = `${getAppBaseUrl()}/expert/apply`;
+  const reasonBlock =
+    params.rejectionMessage
+      ? `<p style="color:#374151;"><strong>Reviewer note:</strong> ${escHtml(params.rejectionMessage)}</p>`
+      : "";
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
+      <h2 style="color: #DC2626; margin-bottom: 8px;">Application not approved</h2>
+      <p style="color: #374151;">${greeting}</p>
+      <p style="color: #374151;">
+        Thank you for applying to join Traveloure as a local expert. After reviewing your
+        application, we're unable to approve it at this time.
+      </p>
+      ${reasonBlock}
+      <p style="color: #374151;">
+        You're welcome to update your details and reapply. Click the button below to return
+        to the application form.
+      </p>
+      <a href="${applyUrl}"
+         style="display: inline-block; background: #FF385C; color: #ffffff; text-decoration: none;
+                padding: 12px 24px; border-radius: 6px; font-weight: 600; margin-top: 8px;">
+        Reapply as an Expert
+      </a>
+      <p style="color: #9CA3AF; font-size: 12px; margin-top: 32px;">
+        You're receiving this because you submitted an expert application on Traveloure.<br>
+        Apply again at <a href="${applyUrl}" style="color: #FF385C;">${applyUrl}</a>.
+      </p>
+    </div>
+  `;
+
+  const text = [
+    "Application not approved",
+    ``,
+    greeting,
+    ``,
+    "Thank you for applying to join Traveloure as a local expert. After reviewing your application, we're unable to approve it at this time.",
+    params.rejectionMessage ? `\nReviewer note: ${params.rejectionMessage}` : "",
+    ``,
+    "You're welcome to update your details and reapply.",
+    ``,
+    `Reapply at: ${applyUrl}`,
+  ].filter((l) => l !== "").join("\n");
+
+  try {
+    await client.emails.send({
+      from: getFromAddress(),
+      to: params.toEmail,
+      subject: "Your Traveloure expert application",
+      html,
+      text,
+    });
+    console.log(`[email] Expert application rejection email sent to ${params.toEmail}`);
+  } catch (err) {
+    console.error("[email] Expert application rejection email failed (non-fatal):", err);
+  }
+}
+
+// ─── Provider application rejection email ─────────────────────────────────────
+
+interface ProviderApplicationRejectionParams {
+  toEmail: string;
+  firstName?: string | null;
+  rejectionMessage?: string | null;
+}
+
+/**
+ * Test-only seam. When a key is set here the corresponding function delegates
+ * to it instead of sending real email. Empty by default — no production impact.
+ */
+export const _emailTestHooks: {
+  sendProviderApplicationRejectionEmail?: (
+    params: ProviderApplicationRejectionParams
+  ) => Promise<void>;
+  sendProviderApplicationApprovalEmail?: (
+    params: ProviderApplicationApprovalParams
+  ) => Promise<void>;
+} = {};
+
+/**
+ * Fire-and-forget email to a provider applicant when their application is
+ * rejected. Includes the admin's rejection reason (if any) and a link back
+ * to /provider/apply so they can revise and resubmit. Never throws.
+ */
+export async function sendProviderApplicationRejectionEmail(
+  params: ProviderApplicationRejectionParams
+): Promise<void> {
+  if (_emailTestHooks.sendProviderApplicationRejectionEmail) {
+    return _emailTestHooks.sendProviderApplicationRejectionEmail(params);
+  }
+  const client = getClient();
+  if (!client) {
+    console.log("[email] RESEND_API_KEY not set — skipping provider rejection email for", params.toEmail);
+    return;
+  }
+
+  const greeting = params.firstName ? `Hi ${escHtml(params.firstName)},` : "Hi,";
+  const applyUrl = `${getAppBaseUrl()}/provider/apply`;
+  const reasonBlock =
+    params.rejectionMessage
+      ? `<p style="color:#374151;"><strong>Reviewer note:</strong> ${escHtml(params.rejectionMessage)}</p>`
+      : "";
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
+      <h2 style="color: #DC2626; margin-bottom: 8px;">Application not approved</h2>
+      <p style="color: #374151;">${greeting}</p>
+      <p style="color: #374151;">
+        Thank you for applying to join Traveloure as a service provider. After reviewing your
+        application, we're unable to approve it at this time.
+      </p>
+      ${reasonBlock}
+      <p style="color: #374151;">
+        You're welcome to update your details and reapply. Click the button below to return
+        to the application form.
+      </p>
+      <a href="${applyUrl}"
+         style="display: inline-block; background: #FF385C; color: #ffffff; text-decoration: none;
+                padding: 12px 24px; border-radius: 6px; font-weight: 600; margin-top: 8px;">
+        Reapply as a Provider
+      </a>
+      <p style="color: #9CA3AF; font-size: 12px; margin-top: 32px;">
+        You're receiving this because you submitted a provider application on Traveloure.<br>
+        Apply again at <a href="${applyUrl}" style="color: #FF385C;">${applyUrl}</a>.
+      </p>
+    </div>
+  `;
+
+  const text = [
+    "Application not approved",
+    ``,
+    greeting,
+    ``,
+    "Thank you for applying to join Traveloure as a service provider. After reviewing your application, we're unable to approve it at this time.",
+    params.rejectionMessage ? `\nReviewer note: ${params.rejectionMessage}` : "",
+    ``,
+    "You're welcome to update your details and reapply.",
+    ``,
+    `Reapply at: ${applyUrl}`,
+  ].filter((l) => l !== "").join("\n");
+
+  try {
+    await client.emails.send({
+      from: getFromAddress(),
+      to: params.toEmail,
+      subject: "Your Traveloure provider application",
+      html,
+      text,
+    });
+    console.log(`[email] Provider application rejection email sent to ${params.toEmail}`);
+  } catch (err) {
+    console.error("[email] Provider application rejection email failed (non-fatal):", err);
+  }
+}
+
+// ─── Provider application approval email ──────────────────────────────────────
+
+interface ProviderApplicationApprovalParams {
+  toEmail: string;
+  firstName?: string | null;
+}
+
+/**
+ * Fire-and-forget email to a provider applicant when their application is
+ * approved. Congratulates them, explains the Stripe Connect next step, and
+ * links directly to /provider/earnings. Never throws.
+ */
+export async function sendProviderApplicationApprovalEmail(
+  params: ProviderApplicationApprovalParams
+): Promise<void> {
+  if (_emailTestHooks.sendProviderApplicationApprovalEmail) {
+    return _emailTestHooks.sendProviderApplicationApprovalEmail(params);
+  }
+  const client = getClient();
+  if (!client) {
+    console.log("[email] RESEND_API_KEY not set — skipping provider approval email for", params.toEmail);
+    return;
+  }
+
+  const greeting = params.firstName ? `Hi ${escHtml(params.firstName)},` : "Hi,";
+  const earningsUrl = `${getAppBaseUrl()}/provider/earnings`;
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
+      <h2 style="color: #16A34A; margin-bottom: 8px;">You're approved as a Traveloure Provider! 🎉</h2>
+      <p style="color: #374151;">${greeting}</p>
+      <p style="color: #374151;">
+        Congratulations — your application to join Traveloure as a service provider has been approved!
+        You can now list services, accept bookings, and start earning on the platform.
+      </p>
+      <h3 style="color: #111827; margin-bottom: 8px;">Next step: set up payouts</h3>
+      <p style="color: #374151;">
+        To receive payments, you'll need to connect your Stripe account. It only takes a few
+        minutes — head to your earnings page to get started.
+      </p>
+      <a href="${earningsUrl}"
+         style="display: inline-block; background: #FF385C; color: #ffffff; text-decoration: none;
+                padding: 12px 24px; border-radius: 6px; font-weight: 600; margin-top: 8px;">
+        Set Up Payouts
+      </a>
+      <p style="color: #9CA3AF; font-size: 12px; margin-top: 32px;">
+        You're receiving this because your provider application on Traveloure was approved.<br>
+        Manage your earnings at <a href="${earningsUrl}" style="color: #FF385C;">${earningsUrl}</a>.
+      </p>
+    </div>
+  `;
+
+  const text = [
+    "You're approved as a Traveloure Provider! 🎉",
+    ``,
+    greeting,
+    ``,
+    "Congratulations — your application to join Traveloure as a service provider has been approved!",
+    "You can now list services, accept bookings, and start earning on the platform.",
+    ``,
+    "Next step: set up payouts",
+    ``,
+    "To receive payments, connect your Stripe account — it only takes a few minutes:",
+    ``,
+    `Set up payouts: ${earningsUrl}`,
+  ].join("\n");
+
+  try {
+    await client.emails.send({
+      from: getFromAddress(),
+      to: params.toEmail,
+      subject: "Your Traveloure provider application has been approved!",
+      html,
+      text,
+    });
+    console.log(`[email] Provider application approval email sent to ${params.toEmail}`);
+  } catch (err) {
+    console.error("[email] Provider application approval email failed (non-fatal):", err);
+  }
+}

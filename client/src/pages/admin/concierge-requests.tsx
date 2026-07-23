@@ -14,7 +14,18 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
-import { Sparkles, Crown, UserCheck, Loader2 } from "lucide-react";
+import { Sparkles, Crown, UserCheck, Loader2, RotateCcw, AlertTriangle } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 interface ConciergeRequest {
   id: string;
@@ -30,6 +41,7 @@ interface ConciergeRequest {
   coordination_id: string | null;
   coordination_status: string | null;
   fee_payment_status: string | null;
+  revenue_reversal_missing: boolean | null;
   assigned_expert_id: string | null;
   coordinator_first_name: string | null;
   coordinator_last_name: string | null;
@@ -72,7 +84,66 @@ function coordinatorLabel(c: Coordinator) {
 function feeBadge(status: string | null) {
   if (status === "paid") return <Badge className="bg-emerald-600 text-white hover:bg-emerald-600">Fee paid</Badge>;
   if (status === "pending") return <Badge variant="outline">Payment in progress</Badge>;
+  if (status === "refunded") return <Badge className="bg-gray-100 text-gray-600 border-gray-200">Fee refunded</Badge>;
   return <Badge variant="outline">Fee due</Badge>;
+}
+
+function RefundFeeButton({ request }: { request: ConciergeRequest }) {
+  const { toast } = useToast();
+
+  const refund = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/coordination-states/${request.coordination_id}/refund`, {});
+      return res.json() as Promise<{ success?: boolean; alreadyRefunded?: boolean; feePaymentStatus?: string }>;
+    },
+    onSuccess: (data) => {
+      if (data?.alreadyRefunded) {
+        toast({ title: "Already refunded", description: "This coordination fee was already refunded." });
+      } else {
+        toast({ title: "Fee refunded", description: "The coordination fee has been reversed and the credit restored." });
+      }
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/concierge-requests"] });
+    },
+    onError: (err: any) => {
+      toast({ title: "Refund failed", description: err?.message || "Please try again.", variant: "destructive" });
+    },
+  });
+
+  return (
+    <AlertDialog>
+      <AlertDialogTrigger asChild>
+        <Button
+          size="sm"
+          variant="outline"
+          className="text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
+          disabled={refund.isPending}
+          data-testid={`button-refund-fee-${request.coordination_id}`}
+        >
+          {refund.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : <RotateCcw className="w-3 h-3 mr-1" />}
+          Refund fee
+        </Button>
+      </AlertDialogTrigger>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Refund coordination fee?</AlertDialogTitle>
+          <AlertDialogDescription>
+            This will issue a full Stripe refund, release the consumed credit, and reverse the
+            platform revenue entry. This action cannot be undone.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            className="bg-red-600 hover:bg-red-700 text-white"
+            onClick={() => refund.mutate()}
+            data-testid={`button-confirm-refund-${request.coordination_id}`}
+          >
+            Yes, refund
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
 }
 
 function CoordinatorAssign({ request, coordinators }: { request: ConciergeRequest; coordinators: Coordinator[] }) {
@@ -106,6 +177,22 @@ function CoordinatorAssign({ request, coordinators }: { request: ConciergeReques
           <span className="text-muted-foreground">No coordinator assigned</span>
         )}
       </div>
+      {request.revenue_reversal_missing && (
+        <div
+          className="flex items-center gap-2 rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800"
+          data-testid={`alert-revenue-reversal-missing-${request.coordination_id}`}
+        >
+          <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-amber-500" />
+          <span>
+            <strong>Ledger gap:</strong> Fee was refunded but no platform revenue row was found to reverse. Manual review required.
+          </span>
+        </div>
+      )}
+      {request.fee_payment_status === "paid" && (
+        <div className="flex items-center">
+          <RefundFeeButton request={request} />
+        </div>
+      )}
       <div className="flex items-center gap-2">
         <Select value={selected} onValueChange={setSelected}>
           <SelectTrigger className="h-9 max-w-xs" data-testid={`select-coordinator-${request.id}`}>

@@ -17,7 +17,8 @@ import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Sparkles, UserCheck, Crown, Loader2, CheckCircle2, Clock } from "lucide-react";
+import { Sparkles, UserCheck, Crown, Loader2, CheckCircle2, Clock, LogIn } from "lucide-react";
+import { useSignInModal } from "@/contexts/SignInModalContext";
 
 export interface ConciergeRoute {
   ai: { priceCents: number; currency: string; available: boolean; disabled: boolean };
@@ -50,6 +51,9 @@ export function DeliveryOptions({
   const [, setLocation] = useLocation();
   const [busy, setBusy] = useState<"ai" | "expert" | "full" | null>(null);
   const [success, setSuccess] = useState<{ tier: "expert" | "full"; message: string } | null>(null);
+  const [isGuestFull, setIsGuestFull] = useState(false);
+  const [fullError, setFullError] = useState<string | null>(null);
+  const { openSignInModal } = useSignInModal();
 
   const { suggestVsAdd, branch } = route;
   const isEvent = branch === "event";
@@ -120,10 +124,36 @@ export function DeliveryOptions({
       // traveler (Phase 1a) and returns its coordinationId — link the traveler straight to it.
       const res = await patchTier("full");
       let hasEngagement = false;
+      let isGuest = false;
+      let claimToken: string | undefined;
+      let serverError = false;
       try {
-        const data = res && "json" in res ? await res.json() : null;
+        const data = res ? await res.json() : null;
         hasEngagement = Boolean(data?.coordinationId);
-      } catch { /* non-JSON / guest — fall back to the generic message */ }
+        isGuest = Boolean(data?.isGuest);
+        claimToken = data?.claimToken ?? undefined;
+        // If the server returned no coordinationId but the user is NOT a guest,
+        // that's a silent server error — don't show the sign-in prompt.
+        if (!hasEngagement && !isGuest) {
+          serverError = true;
+        }
+      } catch { /* non-JSON — treat as server error for safety */ serverError = true; }
+
+      if (serverError) {
+        setFullError("Something went wrong. Please try again.");
+        return;
+      }
+
+      if (!hasEngagement && isGuest) {
+        // Guest path: no coordination row was created (auth-gated).
+        // Store the requestId + HMAC claim token so the post-auth hook can claim it.
+        sessionStorage.setItem("guestConciergeRequestId", requestId);
+        if (claimToken) {
+          sessionStorage.setItem("guestConciergeClaimToken", claimToken);
+        }
+        setIsGuestFull(true);
+      }
+
       setSuccess({
         tier: "full",
         message: hasEngagement
@@ -146,10 +176,33 @@ export function DeliveryOptions({
           <CardDescription>{success.message}</CardDescription>
         </CardHeader>
         {success.tier === "full" && (
-          <CardContent>
-            <Button onClick={() => setLocation("/my-events")} data-testid="button-view-my-events">
-              View My Events
-            </Button>
+          <CardContent className="space-y-3">
+            {isGuestFull ? (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  Sign in or create a free account to track your coordination and receive your quote.
+                </p>
+                <Button
+                  className="w-full"
+                  onClick={() =>
+                    openSignInModal({
+                      title: "Sign in to track your coordination",
+                      description:
+                        "Create a free account or sign in to link this request to your profile and receive your personalized quote.",
+                      returnTo: "/my-events",
+                    })
+                  }
+                  data-testid="button-sign-in-to-track"
+                >
+                  <LogIn className="w-4 h-4 mr-2" />
+                  Sign in to track your coordination
+                </Button>
+              </>
+            ) : (
+              <Button onClick={() => setLocation("/my-events")} data-testid="button-view-my-events">
+                View My Events
+              </Button>
+            )}
           </CardContent>
         )}
       </Card>
@@ -280,12 +333,17 @@ export function DeliveryOptions({
             className="w-full"
             variant={route.full.available ? "default" : "outline"}
             disabled={!route.full.available || busy !== null}
-            onClick={handleFull}
+            onClick={() => { setFullError(null); handleFull(); }}
             data-testid="button-concierge-pick-full"
           >
             {busy === "full" ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Crown className="w-4 h-4 mr-2" />}
             {route.full.available ? "Request quote" : "Not available"}
           </Button>
+          {fullError && (
+            <p className="text-sm text-destructive" data-testid="text-full-error">
+              {fullError}
+            </p>
+          )}
         </CardContent>
       </Card>
     </div>

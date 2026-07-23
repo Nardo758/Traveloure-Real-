@@ -128,7 +128,13 @@ export function AdminSidebar() {
     refetchInterval: 30_000,
   });
 
+  const { data: stripeIncompleteData } = useQuery<{ count: number }>({
+    queryKey: ["/api/admin/providers/stripe-incomplete-count"],
+    refetchInterval: 60_000,
+  });
+
   const unreadCount = unreadNotifications.filter((n) => !n.isRead).length;
+  const stripeIncompleteCount = stripeIncompleteData?.count ?? 0;
 
   const handleLogout = () => {
     window.location.href = "/api/logout";
@@ -180,7 +186,9 @@ export function AdminSidebar() {
                     location === item.href ||
                     (item.href !== "/admin/dashboard" && location.startsWith(item.href));
                   const isNotifications = item.href === "/admin/notifications";
-                  const showBadge = isNotifications && unreadCount > 0;
+                  const isProviders = item.href === "/admin/providers";
+                  const badgeCount = isNotifications ? (unreadCount > 0 ? unreadCount : 0) : isProviders ? stripeIncompleteCount : 0;
+                  const showBadge = badgeCount > 0;
 
                   return (
                     <SidebarMenuItem key={item.title}>
@@ -202,7 +210,7 @@ export function AdminSidebar() {
                           <span className="text-[13px] flex-1">{item.title}</span>
                           {showBadge && (
                             <span className="ml-auto text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-red-500 text-white leading-none group-data-[collapsible=icon]:hidden">
-                              {unreadCount}
+                              {badgeCount}
                             </span>
                           )}
                         </Link>

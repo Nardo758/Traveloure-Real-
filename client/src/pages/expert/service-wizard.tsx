@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ExpertLayout } from "@/components/expert/expert-layout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -37,6 +37,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 import { cn } from "@/lib/utils";
+import { useApplicationGuard } from "@/hooks/use-application-guard";
 
 interface ServiceTemplate {
   id: string;
@@ -138,6 +139,12 @@ const SERVICE_TIER_FILTERS = [
   { label: "Specialized", value: "specialized" },
 ];
 
+interface ExpertRole {
+  role: string | null;
+  roleLabel: string | null;
+  applicationStatus: string | null;
+}
+
 export default function ServiceWizard() {
   const [startMode, setStartMode] = useState<'choose' | 'template' | 'scratch'>('choose');
   const [currentStep, setCurrentStep] = useState(1);
@@ -146,6 +153,25 @@ export default function ServiceWizard() {
   const [tierFilter, setTierFilter] = useState<string>("all");
   const { toast } = useToast();
   const [, navigate] = useLocation();
+
+  const { isLoading: guardLoading, requiresApplication } = useApplicationGuard();
+
+  const { data: expertRoleData, isLoading: roleLoading } = useQuery<ExpertRole>({
+    queryKey: ["/api/expert/role"],
+    enabled: !guardLoading && !requiresApplication,
+  });
+
+  useEffect(() => {
+    if (roleLoading || requiresApplication) return;
+    if (expertRoleData?.applicationStatus === "pending") {
+      toast({
+        title: "Application pending",
+        description: "Your expert application is under review. You can create services once it has been approved.",
+        variant: "destructive",
+      });
+      navigate("/expert/dashboard");
+    }
+  }, [roleLoading, requiresApplication, expertRoleData, toast, navigate]);
 
   const { data: categories = [] } = useQuery<{ id: string; name: string }[]>({
     queryKey: ["/api/service-categories"],

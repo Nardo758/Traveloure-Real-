@@ -37,6 +37,7 @@ import {
   Hotel,
   Server,
   ChevronDown,
+  RotateCcw,
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
@@ -110,6 +111,9 @@ interface RevenueSummary {
   totalPlatformFee: number;
   totalGross: number;
   bySource: Record<string, number>;
+  totalReversedGross: number;
+  totalReversedFee: number;
+  reversedBySource: Record<string, number>;
 }
 
 interface PlatformRevenue {
@@ -118,6 +122,7 @@ interface PlatformRevenue {
   sourceType: string;
   grossAmount: number;
   platformFee: number;
+  status?: string;
   trackingNumber?: string;
 }
 
@@ -207,6 +212,7 @@ function formatDate(dateStr: string | Date): string {
 function getSourceLabel(sourceType: string): string {
   const labels: Record<string, string> = {
     booking_commission: "Service Bookings",
+    coordination_fee: "Coordination Fees",
     template_commission: "Template Sales",
     affiliate_commission: "Affiliate Commissions",
     tip_commission: "Tips",
@@ -219,6 +225,7 @@ function getSourceLabel(sourceType: string): string {
 function getSourceColor(sourceType: string): string {
   const colors: Record<string, string> = {
     booking_commission: "bg-blue-500",
+    coordination_fee: "bg-indigo-500",
     template_commission: "bg-purple-500",
     affiliate_commission: "bg-green-500",
     tip_commission: "bg-amber-500",
@@ -289,6 +296,7 @@ function StreamCard({
 
 export default function AdminRevenue() {
   const [period, setPeriod] = useState<string>("this_month");
+  const [txnStatusFilter, setTxnStatusFilter] = useState<string>("all");
 
   const { startDate, endDate } = periodToDateRange(period);
 
@@ -313,7 +321,7 @@ export default function AdminRevenue() {
     refetchInterval: 120000,
   });
 
-  // Period-aware transactions for the transactions tab
+  // Period-aware transactions for the transactions tab (all statuses)
   const { data: transactions, isLoading: txnLoading } = useQuery<PlatformRevenue[]>({
     queryKey: ["/api/admin/revenue/transactions", startDate, endDate],
     queryFn: () =>
@@ -326,13 +334,26 @@ export default function AdminRevenue() {
     refetchInterval: 120000,
   });
 
+  // Period-aware reversed coordination fees for the Refunds tab
+  const { data: refunds, isLoading: refundsLoading } = useQuery<PlatformRevenue[]>({
+    queryKey: ["/api/admin/revenue/transactions", startDate, endDate, "reversed"],
+    queryFn: () =>
+      fetch(
+        `/api/admin/revenue/transactions?startDate=${startDate}&endDate=${endDate}&status=reversed`
+      ).then((r) => {
+        if (!r.ok) throw new Error("Failed to load refunds");
+        return r.json();
+      }),
+    refetchInterval: 120000,
+  });
+
   // All-time dashboard for expert/provider stats and daily trend (inherently all-time)
   const { data: dashboard, isLoading: dashboardLoading } = useQuery<RevenueDashboard>({
     queryKey: ["/api/admin/revenue/dashboard"],
     refetchInterval: 60000,
   });
 
-  const isLoading = unifiedLoading || summaryLoading || txnLoading || dashboardLoading;
+  const isLoading = unifiedLoading || summaryLoading || txnLoading || dashboardLoading || refundsLoading;
 
   const periodLabel =
     period === "this_month"
@@ -890,6 +911,17 @@ export default function AdminRevenue() {
             <TabsTrigger value="transactions" data-testid="tab-transactions">
               Transactions
             </TabsTrigger>
+            <TabsTrigger value="refunds" data-testid="tab-refunds">
+              <span className="flex items-center gap-1.5">
+                <RotateCcw className="w-3.5 h-3.5" />
+                Refunds
+                {(refunds?.length ?? 0) > 0 && (
+                  <Badge variant="destructive" className="text-xs px-1.5 py-0 ml-1 h-4">
+                    {refunds!.length}
+                  </Badge>
+                )}
+              </span>
+            </TabsTrigger>
             <TabsTrigger value="trends" data-testid="tab-trends">
               Daily Trends
             </TabsTrigger>
@@ -904,7 +936,7 @@ export default function AdminRevenue() {
                   Revenue by Source · {periodLabel}
                 </CardTitle>
                 <CardDescription>
-                  Platform earnings breakdown by revenue type for the selected period
+                  Platform earnings breakdown by revenue type for the selected period (excludes reversed entries)
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -939,6 +971,58 @@ export default function AdminRevenue() {
                     No revenue data for {periodLabel}. Data will appear here as transactions are
                     processed.
                   </p>
+                )}
+
+                {/* Reversals summary row */}
+                {(revenueSummary?.totalReversedFee ?? 0) > 0 && (
+                  <div
+                    className="border-t pt-4 mt-2 space-y-2"
+                    data-testid="source-reversed"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full bg-red-500" />
+                        <span className="text-sm font-medium text-red-600 dark:text-red-400">
+                          Reversed / Refunded
+                        </span>
+                        <Badge variant="outline" className="text-xs text-red-500 border-red-300">
+                          {Object.entries(revenueSummary?.reversedBySource || {})
+                            .map(([s]) => getSourceLabel(s))
+                            .join(", ")}
+                        </Badge>
+                      </div>
+                      <div className="text-right">
+                        <span className="text-sm font-medium text-red-600 dark:text-red-400">
+                          −{formatCurrency(revenueSummary!.totalReversedFee)}
+                        </span>
+                        <span className="text-xs text-muted-foreground ml-2">platform fee</span>
+                      </div>
+                    </div>
+                    <div className="h-3 bg-red-100 dark:bg-red-950 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-red-400 rounded-full"
+                        style={{
+                          width:
+                            totalSourceRevenue > 0
+                              ? `${Math.min(
+                                  (revenueSummary!.totalReversedFee / totalSourceRevenue) * 100,
+                                  100
+                                )}%`
+                              : "100%",
+                        }}
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Gross reversed: {formatCurrency(revenueSummary!.totalReversedGross)} · Net
+                      after reversals:{" "}
+                      <span className="font-semibold text-foreground">
+                        {formatCurrency(
+                          (revenueSummary?.totalPlatformFee ?? 0) -
+                            (revenueSummary?.totalReversedFee ?? 0)
+                        )}
+                      </span>
+                    </p>
+                  </div>
                 )}
               </CardContent>
             </Card>
@@ -1073,6 +1157,17 @@ export default function AdminRevenue() {
                     Revenue events from {startDate} to {endDate}
                   </CardDescription>
                 </div>
+                <Select value={txnStatusFilter} onValueChange={setTxnStatusFilter}>
+                  <SelectTrigger className="w-36" data-testid="select-txn-status">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All statuses</SelectItem>
+                    <SelectItem value="recorded">Recorded</SelectItem>
+                    <SelectItem value="reconciled">Reconciled</SelectItem>
+                    <SelectItem value="reversed">Reversed</SelectItem>
+                  </SelectContent>
+                </Select>
               </CardHeader>
               <CardContent>
                 <Table>
@@ -1080,17 +1175,175 @@ export default function AdminRevenue() {
                     <TableRow>
                       <TableHead>Date</TableHead>
                       <TableHead>Source</TableHead>
+                      <TableHead>Status</TableHead>
                       <TableHead>Tracking #</TableHead>
                       <TableHead className="text-right">Gross</TableHead>
                       <TableHead className="text-right">Platform Fee</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {(transactions || []).map((txn) => (
-                      <TableRow key={txn.id} data-testid={`row-transaction-${txn.id}`}>
+                    {(transactions || [])
+                      .filter((txn) =>
+                        txnStatusFilter === "all" ? true : txn.status === txnStatusFilter
+                      )
+                      .map((txn) => {
+                        const isReversed = txn.status === "reversed";
+                        return (
+                          <TableRow
+                            key={txn.id}
+                            data-testid={`row-transaction-${txn.id}`}
+                            className={isReversed ? "opacity-60" : ""}
+                          >
+                            <TableCell className="text-sm">{formatDate(txn.date)}</TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className="text-xs">
+                                {getSourceLabel(txn.sourceType)}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              {isReversed ? (
+                                <Badge
+                                  variant="destructive"
+                                  className="text-xs"
+                                  data-testid={`status-reversed-${txn.id}`}
+                                >
+                                  Reversed
+                                </Badge>
+                              ) : (
+                                <Badge
+                                  variant="secondary"
+                                  className="text-xs capitalize"
+                                  data-testid={`status-${txn.status ?? "recorded"}-${txn.id}`}
+                                >
+                                  {txn.status ?? "recorded"}
+                                </Badge>
+                              )}
+                            </TableCell>
+                            <TableCell className="font-mono text-xs">
+                              {txn.trackingNumber ? (
+                                <span className="flex items-center gap-1">
+                                  <FileText className="w-3 h-3" />
+                                  {txn.trackingNumber}
+                                </span>
+                              ) : (
+                                "-"
+                              )}
+                            </TableCell>
+                            <TableCell
+                              className={`text-right font-medium ${isReversed ? "line-through text-muted-foreground" : ""}`}
+                            >
+                              {formatCurrency(txn.grossAmount)}
+                            </TableCell>
+                            <TableCell
+                              className={`text-right font-medium ${
+                                isReversed
+                                  ? "line-through text-red-500"
+                                  : "text-green-600"
+                              }`}
+                            >
+                              {isReversed ? "−" : "+"}
+                              {formatCurrency(txn.platformFee)}
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    {(transactions || []).filter((txn) =>
+                      txnStatusFilter === "all" ? true : txn.status === txnStatusFilter
+                    ).length === 0 && (
+                      <TableRow>
+                        <TableCell
+                          colSpan={6}
+                          className="text-center text-muted-foreground py-8"
+                        >
+                          No{txnStatusFilter !== "all" ? ` ${txnStatusFilter}` : ""} transactions
+                          in {periodLabel}.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Refunds tab — reversed coordination fee entries */}
+          <TabsContent value="refunds" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <RotateCcw className="w-5 h-5 text-red-500" />
+                  Reversed Entries · {periodLabel}
+                </CardTitle>
+                <CardDescription>
+                  Platform revenue rows where a dispute or refund caused the entry to be reversed
+                  (status = reversed). These are excluded from all revenue totals above.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* Summary strip */}
+                {(refunds?.length ?? 0) > 0 && (
+                  <div className="flex flex-wrap gap-4 p-4 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900">
+                    <div>
+                      <p className="text-xs text-muted-foreground">Reversed entries</p>
+                      <p className="text-xl font-bold text-red-600" data-testid="text-refund-count">
+                        {refunds!.length}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Gross reversed</p>
+                      <p className="text-xl font-bold text-red-600" data-testid="text-refund-gross">
+                        {formatCurrency(revenueSummary?.totalReversedGross ?? 0)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Platform fee reversed</p>
+                      <p className="text-xl font-bold text-red-600" data-testid="text-refund-fee">
+                        {formatCurrency(revenueSummary?.totalReversedFee ?? 0)}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">By source type</p>
+                      <div className="flex flex-wrap gap-1 mt-0.5">
+                        {Object.entries(revenueSummary?.reversedBySource ?? {}).map(
+                          ([source, amount]) => (
+                            <Badge
+                              key={source}
+                              variant="outline"
+                              className="text-xs text-red-600 border-red-300"
+                              data-testid={`refund-source-${source}`}
+                            >
+                              {getSourceLabel(source)}: {formatCurrency(amount)}
+                            </Badge>
+                          )
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Source</TableHead>
+                      <TableHead>Tracking #</TableHead>
+                      <TableHead className="text-right">Gross Reversed</TableHead>
+                      <TableHead className="text-right">Fee Reversed</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {(refunds || []).map((txn) => (
+                      <TableRow
+                        key={txn.id}
+                        data-testid={`row-refund-${txn.id}`}
+                        className="bg-red-50/40 dark:bg-red-950/10"
+                      >
                         <TableCell className="text-sm">{formatDate(txn.date)}</TableCell>
                         <TableCell>
-                          <Badge variant="outline" className="text-xs">
+                          <Badge
+                            variant="outline"
+                            className="text-xs text-red-600 border-red-300"
+                          >
                             {getSourceLabel(txn.sourceType)}
                           </Badge>
                         </TableCell>
@@ -1104,22 +1357,22 @@ export default function AdminRevenue() {
                             "-"
                           )}
                         </TableCell>
-                        <TableCell className="text-right font-medium">
+                        <TableCell className="text-right font-medium text-red-600 line-through">
                           {formatCurrency(txn.grossAmount)}
                         </TableCell>
-                        <TableCell className="text-right text-green-600 font-medium">
-                          +{formatCurrency(txn.platformFee)}
+                        <TableCell className="text-right font-medium text-red-600">
+                          −{formatCurrency(txn.platformFee)}
                         </TableCell>
                       </TableRow>
                     ))}
-                    {(transactions || []).length === 0 && (
+                    {(refunds || []).length === 0 && (
                       <TableRow>
                         <TableCell
                           colSpan={5}
                           className="text-center text-muted-foreground py-8"
                         >
-                          No transactions in {periodLabel}. Transactions appear here as revenue
-                          is generated.
+                          No reversed entries in {periodLabel}. Reversed entries appear here when
+                          a dispute or refund causes a coordination fee to be clawed back.
                         </TableCell>
                       </TableRow>
                     )}

@@ -4,11 +4,16 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from "@/components/ui/dialog";
 import {
   Search, Building2, MapPin, CheckCircle, XCircle, Eye, Clock,
   Loader2, Calendar, Star, ShoppingBag, TrendingUp, Users,
   Camera, ChefHat, Car, Sparkles, Music, Waves, Dumbbell,
-  MoreHorizontal, ExternalLink, Package, DollarSign, AlertCircle,
+  MoreHorizontal, ExternalLink, Package, DollarSign, AlertCircle, PenLine,
+  CreditCard, Bell, Filter,
 } from "lucide-react";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -29,6 +34,7 @@ interface ProviderApplication {
   serviceOffers?: string[];
   description?: string;
   status: string;
+  rejectionMessage?: string | null;
   createdAt: string;
 }
 
@@ -64,6 +70,15 @@ interface PlatformProvider {
   totalBookings: number;
   totalRevenue: number;
   activeServices: number;
+  stripeAccountId: string | null;
+  stripeAccountStatus: string | null;
+  canReceivePayments: boolean;
+}
+
+function stripeStatus(provider: PlatformProvider) {
+  if (provider.stripeAccountStatus === "complete") return "complete";
+  if (provider.stripeAccountId) return "incomplete";
+  return "missing";
 }
 
 const SERVICE_TYPE_ICONS: Record<string, any> = {
@@ -95,10 +110,36 @@ function ServiceStatusBadge({ status }: { status: string }) {
   return <Badge className="bg-gray-100 text-gray-500 border-gray-200 text-xs">Draft</Badge>;
 }
 
+function StripeStatusBadge({ provider }: { provider: PlatformProvider }) {
+  const s = stripeStatus(provider);
+  if (s === "complete") {
+    return (
+      <Badge className="bg-green-100 text-green-700 border-green-200 text-xs gap-1">
+        <CreditCard className="w-3 h-3" /> Payouts Ready
+      </Badge>
+    );
+  }
+  if (s === "incomplete") {
+    return (
+      <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-xs gap-1">
+        <AlertCircle className="w-3 h-3" /> Setup Incomplete
+      </Badge>
+    );
+  }
+  return (
+    <Badge className="bg-red-100 text-red-700 border-red-200 text-xs gap-1">
+      <AlertCircle className="w-3 h-3" /> No Payout Setup
+    </Badge>
+  );
+}
+
 export default function AdminProviders() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState<"platform" | "applications">("platform");
   const [expandedProvider, setExpandedProvider] = useState<string | null>(null);
+  const [feedbackDialog, setFeedbackDialog] = useState<{ appId: string; current: string } | null>(null);
+  const [feedbackText, setFeedbackText] = useState("");
+  const [stripeFilter, setStripeFilter] = useState<"all" | "incomplete">("all");
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -112,6 +153,9 @@ export default function AdminProviders() {
 
   const pendingApps = applications.filter(a => a.status === "pending");
   const approvedApps = applications.filter(a => a.status === "approved");
+  const rejectedApps = applications.filter(a => a.status === "rejected");
+
+  const stripeIncompleteProviders = platformProviders.filter(p => stripeStatus(p) !== "complete");
 
   const updateStatusMutation = useMutation({
     mutationFn: async ({ id, status, rejectionMessage }: { id: string; status: string; rejectionMessage?: string }) => {
@@ -126,6 +170,21 @@ export default function AdminProviders() {
           ? "The provider is now active on the platform."
           : "The application has been rejected.",
       });
+    },
+  });
+
+  const updateRejectionReasonMutation = useMutation({
+    mutationFn: async ({ id, rejectionMessage }: { id: string; rejectionMessage: string }) => {
+      return apiRequest("PATCH", `/api/admin/provider-applications/${id}/rejection-reason`, { rejectionMessage });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/provider-applications"] });
+      setFeedbackDialog(null);
+      setFeedbackText("");
+      toast({ title: "Feedback Updated", description: "The provider has been notified of the updated rejection feedback." });
+    },
+    onError: (error: any) => {
+      toast({ variant: "destructive", title: "Failed to update feedback", description: error?.message ?? "Try again." });
     },
   });
 
@@ -152,7 +211,21 @@ export default function AdminProviders() {
     },
   });
 
+  const remindStripeMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      return apiRequest("POST", `/api/admin/providers/${userId}/remind-stripe`, {});
+    },
+    onSuccess: () => {
+      toast({ title: "Reminder Sent", description: "The provider has been notified to complete their Stripe Connect setup." });
+    },
+    onError: (error: any) => {
+      toast({ variant: "destructive", title: "Failed to send reminder", description: error?.message ?? "Try again." });
+    },
+  });
+
   const filteredPlatformProviders = platformProviders.filter(p => {
+    const matchesStripe = stripeFilter === "all" || stripeStatus(p) !== "complete";
+    if (!matchesStripe) return false;
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
     return p.businessName.toLowerCase().includes(q)
@@ -230,18 +303,55 @@ export default function AdminProviders() {
               </div>
             </CardContent>
           </Card>
-          <Card>
+          <Card className={stripeIncompleteProviders.length > 0 ? "border-red-200 bg-red-50/40" : ""}>
             <CardContent className="p-4 flex items-center gap-3">
-              <div className="w-10 h-10 rounded-lg bg-amber-50 flex items-center justify-center">
-                <Clock className="w-5 h-5 text-amber-600" />
+              <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${stripeIncompleteProviders.length > 0 ? "bg-red-100" : "bg-amber-50"}`}>
+                <CreditCard className={`w-5 h-5 ${stripeIncompleteProviders.length > 0 ? "text-red-600" : "text-amber-600"}`} />
               </div>
               <div>
-                <div className="text-xl font-bold text-amber-600">{pendingApps.length}</div>
-                <div className="text-xs text-gray-500">Pending Applications</div>
+                <div className={`text-xl font-bold ${stripeIncompleteProviders.length > 0 ? "text-red-600" : "text-gray-900"}`}>
+                  {stripeIncompleteProviders.length}
+                </div>
+                <div className="text-xs text-gray-500">Missing Payout Setup</div>
               </div>
             </CardContent>
           </Card>
         </div>
+
+        {/* Action Required Banner */}
+        {stripeIncompleteProviders.length > 0 && activeTab === "platform" && (
+          <Card className="border-red-200 bg-red-50/50">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-red-100 flex items-center justify-center flex-shrink-0">
+                    <AlertCircle className="w-5 h-5 text-red-600" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-red-800">
+                      {stripeIncompleteProviders.length} provider{stripeIncompleteProviders.length !== 1 ? "s" : ""} haven't completed Stripe Connect
+                    </p>
+                    <p className="text-xs text-red-600 mt-0.5">
+                      These providers can't receive payouts until they finish setup. You can filter to see them or send reminders individually.
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setStripeFilter(stripeFilter === "incomplete" ? "all" : "incomplete")}
+                  className={stripeFilter === "incomplete"
+                    ? "border-red-400 bg-red-100 text-red-800 hover:bg-red-200"
+                    : "border-red-300 text-red-700 hover:bg-red-100"}
+                  data-testid="button-filter-stripe-incomplete"
+                >
+                  <Filter className="w-3.5 h-3.5 mr-1.5" />
+                  {stripeFilter === "incomplete" ? "Show All Providers" : "Show Incomplete Only"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Tab Navigation + Search */}
         <div className="flex items-center justify-between gap-4">
@@ -269,15 +379,22 @@ export default function AdminProviders() {
               )}
             </Button>
           </div>
-          <div className="relative w-72">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <Input
-              placeholder="Search providers..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10"
-              data-testid="input-search-providers"
-            />
+          <div className="flex items-center gap-2">
+            {stripeFilter === "incomplete" && (
+              <Badge className="bg-red-100 text-red-700 border-red-200 text-xs gap-1">
+                <Filter className="w-3 h-3" /> Payout incomplete
+              </Badge>
+            )}
+            <div className="relative w-72">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <Input
+                placeholder="Search providers..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10"
+                data-testid="input-search-providers"
+              />
+            </div>
           </div>
         </div>
 
@@ -288,8 +405,12 @@ export default function AdminProviders() {
               <Card>
                 <CardContent className="py-16 text-center">
                   <Building2 className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                  <p className="text-gray-500 font-medium">No active service providers yet</p>
-                  <p className="text-sm text-gray-400 mt-1">Approve applications to see providers here.</p>
+                  <p className="text-gray-500 font-medium">
+                    {stripeFilter === "incomplete" ? "All providers have completed Stripe Connect" : "No active service providers yet"}
+                  </p>
+                  <p className="text-sm text-gray-400 mt-1">
+                    {stripeFilter === "incomplete" ? "Great! Everyone can receive payouts." : "Approve applications to see providers here."}
+                  </p>
                 </CardContent>
               </Card>
             ) : (
@@ -298,11 +419,12 @@ export default function AdminProviders() {
                 const isExpanded = expandedProvider === provider.id;
                 const initials = (provider.user?.name ?? provider.businessName)
                   .split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase();
+                const ss = stripeStatus(provider);
 
                 return (
                   <Card
                     key={provider.id}
-                    className="overflow-hidden"
+                    className={`overflow-hidden ${ss !== "complete" ? "border-red-200" : ""}`}
                     data-testid={`card-provider-${provider.id}`}
                   >
                     <CardContent className="p-0">
@@ -320,7 +442,7 @@ export default function AdminProviders() {
 
                         {/* Name & type */}
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-0.5">
+                          <div className="flex items-center gap-2 mb-0.5 flex-wrap">
                             <span className="font-semibold text-gray-900">{provider.businessName}</span>
                             <Badge variant="outline" className="text-xs">{provider.businessType}</Badge>
                             {provider.activeServices === 0 && (
@@ -328,6 +450,7 @@ export default function AdminProviders() {
                                 <AlertCircle className="w-3 h-3" /> No active services
                               </Badge>
                             )}
+                            <StripeStatusBadge provider={provider} />
                           </div>
                           <div className="flex items-center gap-3 text-xs text-gray-500">
                             <span className="flex items-center gap-1">
@@ -361,6 +484,34 @@ export default function AdminProviders() {
 
                         {/* Actions */}
                         <div className="flex items-center gap-2 flex-shrink-0">
+                          {/* Remind stripe if incomplete */}
+                          {ss !== "complete" && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => remindStripeMutation.mutate(provider.userId)}
+                              disabled={remindStripeMutation.isPending}
+                              className="border-red-300 text-red-700 hover:bg-red-50"
+                              data-testid={`button-remind-stripe-${provider.id}`}
+                              title="Send an in-app notification reminding this provider to complete Stripe Connect"
+                            >
+                              <Bell className="w-3.5 h-3.5 mr-1" />
+                              Remind
+                            </Button>
+                          )}
+                          {/* Earnings page link */}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            asChild
+                            data-testid={`button-earnings-${provider.id}`}
+                            title="View provider earnings page"
+                          >
+                            <a href={`/provider/earnings`} target="_blank" rel="noopener noreferrer">
+                              <ExternalLink className="w-3.5 h-3.5 mr-1" />
+                              Earnings
+                            </a>
+                          </Button>
                           {/* Verification toggle + reject */}
                           {(() => {
                             const vStatus = (provider as any).providerVerificationStatus;
@@ -385,7 +536,7 @@ export default function AdminProviders() {
                                     size="sm"
                                     onClick={() => {
                                       const reason = window.prompt("Reason for rejecting this provider's verification (shown to the provider):")?.trim();
-                                      if (reason === undefined || reason === null) return; // cancelled
+                                      if (reason === undefined || reason === null) return;
                                       verificationMutation.mutate({ userId: provider.userId, status: "rejected", reason: reason || undefined });
                                     }}
                                     disabled={verificationMutation.isPending}
@@ -619,9 +770,118 @@ export default function AdminProviders() {
                 {approvedApps.length} approved provider{approvedApps.length !== 1 ? "s" : ""} — switch to <button className="text-gray-900 font-medium underline" onClick={() => setActiveTab("platform")}>Service Providers</button> to see their listings.
               </div>
             )}
+
+            {/* Rejected applications */}
+            {rejectedApps.length > 0 && (
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <XCircle className="w-4 h-4 text-red-500" />
+                    Rejected Applications ({rejectedApps.length})
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {rejectedApps.map((app) => (
+                    <div
+                      key={app.id}
+                      className="p-4 border border-red-100 rounded-lg space-y-3 bg-red-50/30"
+                      data-testid={`card-rejected-${app.id}`}
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex items-center gap-3">
+                          <Avatar className="h-10 w-10">
+                            <AvatarFallback className="bg-red-100 text-red-700 text-sm">
+                              {app.businessName.split(" ").map(n => n[0]).join("").slice(0, 2)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <h3 className="font-semibold text-gray-900 text-sm">{app.businessName}</h3>
+                            <p className="text-xs text-gray-500">{app.email} · {app.country}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge className="bg-red-100 text-red-700 border-red-200 text-xs">Rejected</Badge>
+                          <Badge variant="outline" className="text-xs">
+                            <Calendar className="w-3 h-3 mr-1" />
+                            {new Date(app.createdAt).toLocaleDateString()}
+                          </Badge>
+                        </div>
+                      </div>
+
+                      {app.rejectionMessage && (
+                        <div className="bg-white border border-red-100 rounded p-3">
+                          <p className="text-xs text-gray-500 font-medium mb-1">Current feedback</p>
+                          <p className="text-sm text-gray-700">{app.rejectionMessage}</p>
+                        </div>
+                      )}
+                      {!app.rejectionMessage && (
+                        <p className="text-xs text-gray-400 italic">No feedback message provided.</p>
+                      )}
+
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setFeedbackText(app.rejectionMessage ?? "");
+                          setFeedbackDialog({ appId: app.id, current: app.rejectionMessage ?? "" });
+                        }}
+                        data-testid={`button-update-feedback-${app.id}`}
+                      >
+                        <PenLine className="w-4 h-4 mr-1" /> Update Feedback
+                      </Button>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            )}
           </div>
         )}
       </div>
+
+      {/* Update Feedback Dialog */}
+      <Dialog open={!!feedbackDialog} onOpenChange={(open) => { if (!open) { setFeedbackDialog(null); setFeedbackText(""); } }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Update Rejection Feedback</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <p className="text-sm text-gray-500">
+              Update the feedback message sent to the provider. They will be notified when you save.
+            </p>
+            <Textarea
+              value={feedbackText}
+              onChange={(e) => setFeedbackText(e.target.value)}
+              placeholder="Explain why the application was rejected and what the provider can improve..."
+              rows={5}
+              maxLength={2000}
+              data-testid="textarea-rejection-feedback"
+            />
+          </div>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => { setFeedbackDialog(null); setFeedbackText(""); }}
+              data-testid="button-cancel-feedback"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (!feedbackDialog || !feedbackText.trim()) return;
+                updateRejectionReasonMutation.mutate({ id: feedbackDialog.appId, rejectionMessage: feedbackText.trim() });
+              }}
+              disabled={updateRejectionReasonMutation.isPending || !feedbackText.trim()}
+              data-testid="button-save-feedback"
+            >
+              {updateRejectionReasonMutation.isPending ? (
+                <><Loader2 className="w-4 h-4 mr-1 animate-spin" /> Saving…</>
+              ) : (
+                "Save Feedback"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AdminLayout>
   );
 }

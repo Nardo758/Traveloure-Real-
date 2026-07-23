@@ -168,7 +168,9 @@ export interface IStorage {
   getLocalExpertForm(userId: string): Promise<LocalExpertForm | undefined>;
   getLocalExpertForms(status?: string): Promise<LocalExpertForm[]>;
   createLocalExpertForm(form: InsertLocalExpertForm & { userId: string }): Promise<LocalExpertForm>;
+  updateLocalExpertForm(id: string, form: Partial<InsertLocalExpertForm> & { status?: string; rejectionMessage?: string | null }): Promise<LocalExpertForm | undefined>;
   updateLocalExpertFormStatus(id: string, status: string, rejectionMessage?: string): Promise<LocalExpertForm | undefined>;
+  updateLocalExpertFormRejectionMessage(id: string, rejectionMessage: string): Promise<LocalExpertForm | undefined>;
   updateLocalExpertFormKnowledgeScore(id: string, knowledgeScore: unknown): Promise<void>;
   updateLocalExpertFormNotesStyle(userId: string, notesStyle: string): Promise<void>;
   updateLocalExpertFormNeighborhoods(userId: string, neighborhoods: string[], localityProof: string): Promise<void>;
@@ -182,6 +184,7 @@ export interface IStorage {
   getServiceProviderForms(status?: string): Promise<ServiceProviderForm[]>;
   createServiceProviderForm(form: InsertServiceProviderForm & { userId: string }): Promise<ServiceProviderForm>;
   updateServiceProviderFormStatus(id: string, status: string, rejectionMessage?: string): Promise<ServiceProviderForm | undefined>;
+  updateServiceProviderFormRejectionMessage(id: string, rejectionMessage: string): Promise<ServiceProviderForm | undefined>;
 
   // Provider Services
   getProviderServices(userId: string, filters?: { destination?: string; category?: string; activeOnly?: boolean }): Promise<ProviderService[]>;
@@ -260,7 +263,7 @@ export interface IStorage {
     sortBy?: "rating" | "price_low" | "price_high" | "reviews";
     limit?: number;
     offset?: number;
-  }): Promise<{ services: ProviderService[]; packages: ExpertTemplate[]; total: number }>;
+  }): Promise<{ services: (ProviderService & { providerFirstName?: string | null; providerLastName?: string | null; providerImageUrl?: string | null })[]; packages: ExpertTemplate[]; total: number }>;
 
   // Cart
   getCartItems(userId: string, experienceSlug?: string): Promise<any[]>;
@@ -488,7 +491,7 @@ export interface IStorage {
 
   // Platform Revenue
   recordPlatformRevenue(revenue: InsertPlatformRevenue): Promise<PlatformRevenue>;
-  getPlatformRevenue(filters?: { startDate?: Date; endDate?: Date; sourceType?: string }): Promise<PlatformRevenue[]>;
+  getPlatformRevenue(filters?: { startDate?: Date; endDate?: Date; sourceType?: string; status?: string }): Promise<PlatformRevenue[]>;
   getPlatformRevenueSummary(startDate?: Date, endDate?: Date): Promise<{
     totalGross: number;
     totalPlatformFee: number;
@@ -496,6 +499,9 @@ export interface IStorage {
     totalExpertEarnings: number;
     totalProviderEarnings: number;
     bySource: Record<string, number>;
+    totalReversedGross: number;
+    totalReversedFee: number;
+    reversedBySource: Record<string, number>;
   }>;
   
   // Daily Revenue Summary
@@ -896,6 +902,14 @@ export class DatabaseStorage implements IStorage {
     return newForm;
   }
 
+  async updateLocalExpertForm(id: string, form: Partial<InsertLocalExpertForm> & { status?: string; rejectionMessage?: string | null }): Promise<LocalExpertForm | undefined> {
+    const [updated] = await db.update(localExpertForms)
+      .set(form)
+      .where(eq(localExpertForms.id, id))
+      .returning();
+    return updated;
+  }
+
   async updateLocalExpertFormStatus(id: string, status: string, rejectionMessage?: string): Promise<LocalExpertForm | undefined> {
     const [updated] = await db.update(localExpertForms)
       .set({ status, rejectionMessage })
@@ -1003,6 +1017,14 @@ export class DatabaseStorage implements IStorage {
     return matchedIds.size;
   }
 
+  async updateLocalExpertFormRejectionMessage(id: string, rejectionMessage: string): Promise<LocalExpertForm | undefined> {
+    const [updated] = await db.update(localExpertForms)
+      .set({ rejectionMessage })
+      .where(eq(localExpertForms.id, id))
+      .returning();
+    return updated;
+  }
+
   // Kyoto Knowledge-Bar scored expertise gate (migration 114): persist the AI-scored rubric result.
   // Advisory — decision support for the admin queue; does not change status/approval.
   async updateLocalExpertFormKnowledgeScore(id: string, knowledgeScore: unknown): Promise<void> {
@@ -1061,6 +1083,14 @@ export class DatabaseStorage implements IStorage {
   async updateServiceProviderFormStatus(id: string, status: string, rejectionMessage?: string): Promise<ServiceProviderForm | undefined> {
     const [updated] = await db.update(serviceProviderForms)
       .set({ status, rejectionMessage })
+      .where(eq(serviceProviderForms.id, id))
+      .returning();
+    return updated;
+  }
+
+  async updateServiceProviderFormRejectionMessage(id: string, rejectionMessage: string): Promise<ServiceProviderForm | undefined> {
+    const [updated] = await db.update(serviceProviderForms)
+      .set({ rejectionMessage })
       .where(eq(serviceProviderForms.id, id))
       .returning();
     return updated;
@@ -1731,8 +1761,25 @@ export class DatabaseStorage implements IStorage {
       });
     }
 
+    const pageServices = filtered.slice(offset, offset + limit);
+
+    // Enrich page results with real provider name and profile image from users table
+    let enrichedServices: (ProviderService & { providerFirstName?: string | null; providerLastName?: string | null; providerImageUrl?: string | null })[] = pageServices;
+    if (pageServices.length > 0) {
+      const userIds = [...new Set(pageServices.map(s => s.userId))];
+      const userRows = await db
+        .select({ id: users.id, firstName: users.firstName, lastName: users.lastName, profileImageUrl: users.profileImageUrl })
+        .from(users)
+        .where(inArray(users.id, userIds));
+      const userMap = new Map(userRows.map(u => [u.id, u]));
+      enrichedServices = pageServices.map(s => {
+        const u = userMap.get(s.userId);
+        return { ...s, providerFirstName: u?.firstName ?? null, providerLastName: u?.lastName ?? null, providerImageUrl: u?.profileImageUrl ?? null };
+      });
+    }
+
     return {
-      services: filtered.slice(offset, offset + limit),
+      services: enrichedServices,
       packages,
       total: filtered.length
     };
@@ -3694,12 +3741,15 @@ export class DatabaseStorage implements IStorage {
     return newRevenue;
   }
 
-  async getPlatformRevenue(filters?: { startDate?: Date; endDate?: Date; sourceType?: string }): Promise<PlatformRevenue[]> {
+  async getPlatformRevenue(filters?: { startDate?: Date; endDate?: Date; sourceType?: string; status?: string }): Promise<PlatformRevenue[]> {
     let query = db.select().from(platformRevenue);
     
     const conditions = [];
     if (filters?.sourceType) {
       conditions.push(eq(platformRevenue.sourceType, filters.sourceType));
+    }
+    if (filters?.status) {
+      conditions.push(eq(platformRevenue.status, filters.status));
     }
     if (filters?.startDate) {
       conditions.push(sql`${platformRevenue.transactionDate} >= ${filters.startDate}`);
@@ -3722,22 +3772,37 @@ export class DatabaseStorage implements IStorage {
     totalExpertEarnings: number;
     totalProviderEarnings: number;
     bySource: Record<string, number>;
+    totalReversedGross: number;
+    totalReversedFee: number;
+    reversedBySource: Record<string, number>;
   }> {
     const revenues = await this.getPlatformRevenue({ startDate, endDate });
     
+    const active = revenues.filter(r => r.status !== 'reversed');
+    const reversed = revenues.filter(r => r.status === 'reversed');
+
     const bySource: Record<string, number> = {};
-    for (const r of revenues) {
+    for (const r of active) {
       const source = r.sourceType || 'other';
       bySource[source] = (bySource[source] || 0) + parseFloat(r.platformFee || '0');
     }
+
+    const reversedBySource: Record<string, number> = {};
+    for (const r of reversed) {
+      const source = r.sourceType || 'other';
+      reversedBySource[source] = (reversedBySource[source] || 0) + parseFloat(r.platformFee || '0');
+    }
     
     return {
-      totalGross: revenues.reduce((sum, r) => sum + parseFloat(r.grossAmount || '0'), 0),
-      totalPlatformFee: revenues.reduce((sum, r) => sum + parseFloat(r.platformFee || '0'), 0),
-      totalNet: revenues.reduce((sum, r) => sum + parseFloat(r.netAmount || '0'), 0),
-      totalExpertEarnings: revenues.reduce((sum, r) => sum + parseFloat(r.expertEarnings || '0'), 0),
-      totalProviderEarnings: revenues.reduce((sum, r) => sum + parseFloat(r.providerEarnings || '0'), 0),
+      totalGross: active.reduce((sum, r) => sum + parseFloat(r.grossAmount || '0'), 0),
+      totalPlatformFee: active.reduce((sum, r) => sum + parseFloat(r.platformFee || '0'), 0),
+      totalNet: active.reduce((sum, r) => sum + parseFloat(r.netAmount || '0'), 0),
+      totalExpertEarnings: active.reduce((sum, r) => sum + parseFloat(r.expertEarnings || '0'), 0),
+      totalProviderEarnings: active.reduce((sum, r) => sum + parseFloat(r.providerEarnings || '0'), 0),
       bySource,
+      totalReversedGross: reversed.reduce((sum, r) => sum + parseFloat(r.grossAmount || '0'), 0),
+      totalReversedFee: reversed.reduce((sum, r) => sum + parseFloat(r.platformFee || '0'), 0),
+      reversedBySource,
     };
   }
 

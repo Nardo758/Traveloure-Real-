@@ -14,8 +14,8 @@ import {
   Plane,
   PartyPopper,
 } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
 import { useLocation, Link } from "wouter";
+import { useApplicationGuard } from "@/hooks/use-application-guard";
 
 interface ServiceTemplate {
   id: string;
@@ -53,12 +53,12 @@ const ROLE_BADGE_STYLE: Record<string, { bg: string; text: string; icon: React.R
   },
 };
 
+
 export default function ServiceTemplates() {
   const [, navigate] = useLocation();
 
-  const { data: templates = [], isLoading } = useQuery<ServiceTemplate[]>({
-    queryKey: ["/api/expert/service-templates"],
-  });
+  const { isLoading, requiresApplication, templates: rawTemplates } = useApplicationGuard();
+  const templates = rawTemplates as ServiceTemplate[];
 
   const handleUseTemplate = (template: ServiceTemplate) => {
     const params = new URLSearchParams();
@@ -222,7 +222,7 @@ export default function ServiceTemplates() {
           )}
         </div>
 
-        {templates.length === 0 && !isLoading && (
+        {templates.length === 0 && !isLoading && !requiresApplication && (
           <div className="text-center py-12">
             <Package className="w-12 h-12 text-gray-400 mx-auto mb-4" />
             <h3 className="text-lg font-medium text-gray-900 mb-2">No templates available</h3>

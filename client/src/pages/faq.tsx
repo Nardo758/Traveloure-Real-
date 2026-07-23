@@ -112,7 +112,7 @@ const faqs = [
     category: "security",
     question: "What if I have an issue during my trip?",
     answer:
-      "Our 24/7 support team is available to help with any issues. You can reach us through the app, by email, or by phone. We also have local representatives in many destinations who can assist in person.",
+      "Our support team is available to help with issues during business hours. You can reach us through the app or by email. For urgent situations during your trip, contact your expert advisor directly through the app for the fastest response.",
   },
   {
     category: "security",

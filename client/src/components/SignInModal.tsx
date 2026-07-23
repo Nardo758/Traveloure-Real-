@@ -64,6 +64,28 @@ export function SignInModal({
     }
   };
 
+  const claimGuestConcierge = async () => {
+    try {
+      const requestId = sessionStorage.getItem("guestConciergeRequestId");
+      if (!requestId) return;
+      const claimToken = sessionStorage.getItem("guestConciergeClaimToken") ?? undefined;
+      const res = await fetch(`/api/concierge/requests/${requestId}/claim`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ claimToken }),
+      });
+      if (res.ok) {
+        sessionStorage.removeItem("guestConciergeRequestId");
+        sessionStorage.removeItem("guestConciergeClaimToken");
+      } else {
+        console.warn("[concierge] Guest concierge claim returned", res.status);
+      }
+    } catch (err) {
+      console.warn("[concierge] Guest concierge claim failed", err);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -97,7 +119,7 @@ export function SignInModal({
         throw new Error(data.message || "Authentication failed");
       }
 
-      await migrateGuestCart();
+      await Promise.all([migrateGuestCart(), claimGuestConcierge()]);
       queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
 
       toast({
@@ -142,6 +164,9 @@ export function SignInModal({
   };
 
   const handleReplitSignIn = () => {
+    if (returnTo) {
+      sessionStorage.setItem("traveloure_return_to", returnTo);
+    }
     window.location.href = "/api/login";
   };
 

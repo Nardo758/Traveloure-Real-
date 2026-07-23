@@ -120,6 +120,9 @@ export async function getProviderUserInfo(userId: string) {
     profileImageUrl: users.profileImageUrl,
     providerVerificationStatus: users.providerVerificationStatus,
     backgroundCheckConfirmed: users.backgroundCheckConfirmed,
+    stripeAccountId: users.stripeAccountId,
+    stripeAccountStatus: users.stripeAccountStatus,
+    canReceivePayments: users.canReceivePayments,
   }).from(users).where(eq(users.id, userId)).then(r => r[0] ?? null);
 }
 

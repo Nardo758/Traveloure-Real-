@@ -3,11 +3,11 @@ import { checkProviderPublishGate } from '../services/provider-publish.service';
 import { withQueryTimer } from '../utils/queryTimer';
 import { Router } from "express";
 import { storage } from "../storage";
+import { db } from "../db";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, isNull, asc } from "drizzle-orm";
-// NOTE: db is intentionally NOT imported here. All raw queries use experts-query.service.ts or storage.
 import {
   getLocalExpertFormByUserId, getServiceProviderFormByUserId, getProviderVerificationStatus,
   getExpertServiceOfferingById, getTravelPulseData,
@@ -210,14 +210,29 @@ router.get("/api/expert/service-templates", isAuthenticated, async (req, res) =>
     try {
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
 
-      // Resolve the expert's role from their application form
+      // Resolve the expert's role and application status from their application form
       const formRow = await db
-        .select({ expertType: localExpertForms.expertType })
+        .select({ expertType: localExpertForms.expertType, status: localExpertForms.status })
         .from(localExpertForms)
         .where(eq(localExpertForms.userId, userId))
         .then((r) => r[0]);
 
       const expertRole = formRow?.expertType ?? null; // null = no form submitted yet
+
+      // No application submitted — tell the client so it can prompt the user.
+      if (!formRow) {
+        return res.json({ requiresApplication: true, applicationRejected: false, pendingApproval: false, templates: [] });
+      }
+
+      // Application was rejected — block access to service creation.
+      if (formRow.status === "rejected") {
+        return res.json({ requiresApplication: false, applicationRejected: true, pendingApproval: false, templates: [] });
+      }
+
+      // Application is pending review — block access until approved.
+      if (formRow.status !== "approved") {
+        return res.json({ requiresApplication: false, applicationRejected: false, pendingApproval: true, templates: [] });
+      }
 
       // expertId and isActive columns dropped in migration 013; all ESO rows are platform templates.
       // Filter by targetRoles only.
@@ -265,7 +280,7 @@ router.get("/api/expert/service-templates", isAuthenticated, async (req, res) =>
         };
       });
 
-      res.json(templates);
+      res.json({ requiresApplication: false, applicationRejected: false, templates });
     } catch (err) {
       console.error("Error fetching expert service templates:", err);
       res.status(500).json({ message: "Failed to fetch service templates" });
@@ -280,12 +295,13 @@ router.get("/api/expert/role", isAuthenticated, async (req, res) => {
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
 
       const formRow = await db
-        .select({ expertType: localExpertForms.expertType })
+        .select({ expertType: localExpertForms.expertType, status: localExpertForms.status })
         .from(localExpertForms)
         .where(eq(localExpertForms.userId, userId))
         .then((r) => r[0]);
 
       const expertRole = formRow?.expertType ?? null;
+      const applicationStatus = formRow?.status ?? null;
 
       const ROLE_LABELS: Record<string, string> = {
         local_expert:        "Local Expert",
@@ -295,8 +311,9 @@ router.get("/api/expert/role", isAuthenticated, async (req, res) => {
       };
 
       res.json({
-        role:      expertRole,
-        roleLabel: expertRole ? (ROLE_LABELS[expertRole] ?? expertRole) : null,
+        role:              expertRole,
+        roleLabel:         expertRole ? (ROLE_LABELS[expertRole] ?? expertRole) : null,
+        applicationStatus: applicationStatus,
       });
     } catch (err) {
       console.error("Error fetching expert role:", err);
@@ -369,7 +386,7 @@ router.get("/api/expert/earnings/details", isAuthenticated, async (req, res) => 
 
 router.get("/api/expert/trips/:tripId/constraints", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any)?.id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || (user.role !== "expert" && user.role !== "admin")) {
@@ -418,7 +435,7 @@ router.get("/api/expert/trips/:tripId/constraints", isAuthenticated, async (req,
 
 router.get("/api/expert/trips/:tripId/vendors", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any)?.id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || (user.role !== "expert" && user.role !== "admin")) {
@@ -436,7 +453,7 @@ router.get("/api/expert/trips/:tripId/vendors", isAuthenticated, async (req, res
 
 router.post("/api/expert/trips/:tripId/vendors", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any)?.id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || (user.role !== "expert" && user.role !== "admin")) {
@@ -469,7 +486,7 @@ router.post("/api/expert/trips/:tripId/vendors", isAuthenticated, async (req, re
 
 router.put("/api/expert/vendors/:vendorId", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any)?.id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || (user.role !== "expert" && user.role !== "admin")) {
@@ -498,7 +515,7 @@ router.put("/api/expert/vendors/:vendorId", isAuthenticated, async (req, res) =>
 
 router.delete("/api/expert/vendors/:vendorId", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any)?.id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || (user.role !== "expert" && user.role !== "admin")) {

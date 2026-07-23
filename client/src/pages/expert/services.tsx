@@ -42,6 +42,11 @@ interface ServiceTemplate {
   roleBadge: string | null;
 }
 
+interface ServiceTemplatesResponse {
+  requiresApplication: boolean;
+  templates: ServiceTemplate[];
+}
+
 interface ExpertRole {
   role: string | null;
   roleLabel: string | null;
@@ -94,7 +99,7 @@ export default function ExpertServices() {
     queryKey: ["/api/expert/services"],
   });
 
-  const { data: templates = [] } = useQuery<ServiceTemplate[]>({
+  const { data: templatesData } = useQuery<ServiceTemplatesResponse>({
     queryKey: ["/api/expert/service-templates"],
   });
 
@@ -102,6 +107,7 @@ export default function ExpertServices() {
     queryKey: ["/api/expert/role"],
   });
 
+  const templates = templatesData?.templates ?? [];
   const templateCount = templates.length;
   const expertRoleLabel =
     templates.find((t) => t.roleBadge)?.roleBadge ??

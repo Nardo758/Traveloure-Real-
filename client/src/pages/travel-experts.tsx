@@ -30,11 +30,14 @@ import {
   Sparkles,
   Calendar,
   Briefcase,
+  XCircle,
+  AlertTriangle,
+  RefreshCw,
 } from "lucide-react";
 import { SiFacebook, SiInstagram } from "react-icons/si";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 
 const defaultSteps = [
@@ -149,6 +152,7 @@ const benefits = [
 
 export default function TravelExpertsPage() {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
   const [currentStep, setCurrentStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -263,6 +267,18 @@ export default function TravelExpertsPage() {
       });
     }
   }, [instagramData, toast]);
+
+  // Fetch existing application status (to show rejection reason if applicable)
+  const { data: applicationStatus } = useQuery<{
+    overallStatus: string;
+    rejectionMessage: string | null;
+  }>({
+    queryKey: ["/api/expert/application-status"],
+    retry: false,
+  });
+
+  const isRejected = applicationStatus?.overallStatus === "rejected";
+  const rejectionMessage = applicationStatus?.rejectionMessage;
 
   // Fetch experience types and service categories from API
   const { data: experienceTypes = [] } = useQuery<any[]>({
@@ -410,6 +426,7 @@ export default function TravelExpertsPage() {
       return apiRequest("POST", "/api/expert-application", applicationData);
     },
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/expert/service-templates"] });
       toast({
         title: "Application submitted!",
         description: "We'll review your application and get back to you within 48 hours.",
@@ -495,6 +512,43 @@ export default function TravelExpertsPage() {
       </div>
 
       <main className="container mx-auto px-4 max-w-2xl py-8">
+        {isRejected && (
+          <div
+            className="mb-6 rounded-xl border-2 border-red-300 bg-red-50 dark:bg-red-900/20 p-5"
+            data-testid="banner-application-rejected"
+          >
+            <div className="flex items-start gap-3">
+              <XCircle className="w-6 h-6 text-red-500 flex-shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <h3 className="font-semibold text-red-800 dark:text-red-300 text-base">
+                  Your previous application was not approved
+                </h3>
+                {rejectionMessage ? (
+                  <div className="mt-2 space-y-2">
+                    <div className="rounded-lg bg-red-100 dark:bg-red-900/30 px-4 py-3 border border-red-200 dark:border-red-700">
+                      <p className="text-sm font-medium text-red-700 dark:text-red-300 flex items-center gap-1.5 mb-1">
+                        <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+                        Reason from our review team:
+                      </p>
+                      <p className="text-sm text-red-800 dark:text-red-200 leading-relaxed" data-testid="text-rejection-reason">
+                        {rejectionMessage}
+                      </p>
+                    </div>
+                    <p className="text-sm text-red-700 dark:text-red-400 flex items-center gap-1.5">
+                      <RefreshCw className="w-3.5 h-3.5 flex-shrink-0" />
+                      Please address the feedback above and resubmit the form below.
+                    </p>
+                  </div>
+                ) : (
+                  <p className="mt-1 text-sm text-red-700 dark:text-red-400">
+                    Our review team did not leave a specific reason. Please review your application, make any improvements, and resubmit below.
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {offeringNameFromUrl && (
           <div
             className="mb-6 flex items-center gap-2 rounded-lg border border-[#2E8B8B]/30 bg-[#2E8B8B]/5 px-4 py-3 text-sm"

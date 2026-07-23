@@ -3,7 +3,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import {
   Search,
   UserCheck,
@@ -16,6 +18,9 @@ import {
   Clock,
   Loader2,
   Brain,
+  Pencil,
+  Save,
+  X,
 } from "lucide-react";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -37,6 +42,7 @@ interface ExpertApplication {
   languages?: string[];
   bio?: string;
   status: string;
+  rejectionMessage?: string | null;
   // EXP-OVR.P3: admin-editable per-expert commission override (expert-share %).
   // null = use category default. Honors §6.9 beta-recruitment terms.
   commissionOverrideExpertSharePercent?: string | null;
@@ -52,6 +58,73 @@ interface ExpertApplication {
     note?: string;
   } | null;
   localSpecialties?: string[];
+}
+
+function RejectionReasonEditor({
+  appId,
+  currentMessage,
+  onSaved,
+  isSaving,
+}: {
+  appId: string;
+  currentMessage?: string | null;
+  onSaved: (id: string, message: string) => void;
+  isSaving: boolean;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(currentMessage ?? "");
+
+  if (!editing) {
+    return (
+      <div className="flex items-start gap-2" data-testid={`rejection-reason-display-${appId}`}>
+        <p className="text-sm text-gray-700 flex-1 italic">
+          {currentMessage || <span className="text-gray-400">No reason recorded</span>}
+        </p>
+        <button
+          type="button"
+          onClick={() => { setDraft(currentMessage ?? ""); setEditing(true); }}
+          className="shrink-0 p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-gray-700"
+          title="Edit rejection reason"
+          data-testid={`button-edit-rejection-${appId}`}
+        >
+          <Pencil className="w-3.5 h-3.5" />
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2" data-testid={`rejection-reason-editor-${appId}`}>
+      <Textarea
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        rows={3}
+        className="text-sm resize-none"
+        placeholder="Enter rejection reason…"
+        maxLength={2000}
+        data-testid={`textarea-rejection-${appId}`}
+      />
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={() => { onSaved(appId, draft); setEditing(false); }}
+          disabled={isSaving || !draft.trim()}
+          className="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 rounded bg-red-600 text-white disabled:bg-gray-300 disabled:text-gray-400"
+          data-testid={`button-save-rejection-${appId}`}
+        >
+          <Save className="w-3 h-3" /> Save
+        </button>
+        <button
+          type="button"
+          onClick={() => setEditing(false)}
+          className="inline-flex items-center gap-1 text-xs px-2.5 py-1.5 rounded border border-gray-300 text-gray-600 hover:bg-gray-50"
+          data-testid={`button-cancel-rejection-${appId}`}
+        >
+          <X className="w-3 h-3" /> Cancel
+        </button>
+      </div>
+    </div>
+  );
 }
 
 // EXP-OVR.P3: inline editor for the per-expert commission override.
@@ -121,9 +194,14 @@ function CommissionOverrideEditor({
   );
 }
 
+const DEFAULT_REJECTION_MESSAGE = "Does not meet requirements at this time.";
+
 export default function AdminExperts() {
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeTab, setActiveTab] = useState<"applications" | "active">("applications");
+  const [activeTab, setActiveTab] = useState<"applications" | "active" | "rejected">("applications");
+  const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
+  const [rejectTargetId, setRejectTargetId] = useState<string | null>(null);
+  const [rejectReason, setRejectReason] = useState(DEFAULT_REJECTION_MESSAGE);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -137,6 +215,7 @@ export default function AdminExperts() {
 
   const pendingApps = applications.filter(a => a.status === "pending");
   const approvedApps = applications.filter(a => a.status === "approved");
+  const rejectedApps = applications.filter(a => a.status === "rejected");
 
   // EXP-OVR.P3: per-expert commission override mutation. Honors §6.9
   // beta-recruitment terms ("reduced commissions (20% vs 25%)").
@@ -177,6 +256,19 @@ export default function AdminExperts() {
     },
   });
 
+  const updateRejectionMutation = useMutation({
+    mutationFn: async ({ id, rejectionMessage }: { id: string; rejectionMessage: string }) => {
+      return apiRequest("PATCH", `/api/admin/expert-applications/${id}/rejection-reason`, { rejectionMessage });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/expert-applications"] });
+      toast({ title: "Rejection reason updated", description: "The applicant will see the updated message." });
+    },
+    onError: (error: any) => {
+      toast({ variant: "destructive", title: "Save failed", description: error?.message ?? "Try again." });
+    },
+  });
+
   const filteredPending = pendingApps.filter(app => {
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
@@ -189,6 +281,13 @@ export default function AdminExperts() {
     const q = searchQuery.toLowerCase();
     const name = `${app.firstName || ""} ${app.lastName || ""}`.toLowerCase();
     return name.includes(q) || (app.email || "").toLowerCase().includes(q);
+  });
+
+  const filteredRejected = rejectedApps.filter(app => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    const name = `${app.firstName || ""} ${app.lastName || ""}`.toLowerCase();
+    return name.includes(q) || (app.email || "").toLowerCase().includes(q) || (app.city || "").toLowerCase().includes(q);
   });
 
   if (isLoading) {
@@ -233,7 +332,7 @@ export default function AdminExperts() {
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <Button
             variant={activeTab === "applications" ? "default" : "outline"}
             onClick={() => setActiveTab("applications")}
@@ -247,6 +346,13 @@ export default function AdminExperts() {
             data-testid="button-tab-active"
           >
             <UserCheck className="w-4 h-4 mr-2" /> Approved Experts ({approvedApps.length})
+          </Button>
+          <Button
+            variant={activeTab === "rejected" ? "default" : "outline"}
+            onClick={() => setActiveTab("rejected")}
+            data-testid="button-tab-rejected"
+          >
+            <XCircle className="w-4 h-4 mr-2" /> Rejected ({rejectedApps.length})
           </Button>
         </div>
 
@@ -446,7 +552,11 @@ export default function AdminExperts() {
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => updateStatusMutation.mutate({ id: app.id, status: "rejected", rejectionMessage: "Does not meet requirements at this time." })}
+                          onClick={() => {
+                            setRejectTargetId(app.id);
+                            setRejectReason(DEFAULT_REJECTION_MESSAGE);
+                            setRejectDialogOpen(true);
+                          }}
                           disabled={updateStatusMutation.isPending}
                           data-testid={`button-reject-${app.id}`}
                         >
@@ -550,7 +660,115 @@ export default function AdminExperts() {
             </CardContent>
           </Card>
         )}
+
+        {activeTab === "rejected" && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <XCircle className="w-5 h-5 text-red-500" />
+                Rejected Applications
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {filteredRejected.length === 0 ? (
+                <p className="text-gray-500 text-center py-8">No rejected applications</p>
+              ) : (
+                filteredRejected.map((app) => (
+                  <div
+                    key={app.id}
+                    className="p-4 border border-red-100 bg-red-50 rounded-lg space-y-3"
+                    data-testid={`card-rejected-${app.id}`}
+                  >
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="flex items-center gap-3">
+                        <Avatar className="h-10 w-10">
+                          <AvatarFallback className="bg-red-100 text-red-700 text-sm">
+                            {`${(app.firstName || "?")[0]}${(app.lastName || "?")[0]}`}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <h3 className="font-semibold text-gray-900">{app.firstName} {app.lastName}</h3>
+                          <p className="text-sm text-gray-500">{app.email}</p>
+                          {(app.city || app.country) && (
+                            <p className="text-xs text-gray-400 flex items-center gap-1 mt-0.5">
+                              <MapPin className="w-3 h-3" /> {[app.city, app.country].filter(Boolean).join(", ")}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <Badge variant="outline" className="text-xs shrink-0">
+                        <Calendar className="w-3 h-3 mr-1" />
+                        {new Date(app.createdAt).toLocaleDateString()}
+                      </Badge>
+                    </div>
+
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-red-600">Rejection Reason</p>
+                      <RejectionReasonEditor
+                        appId={app.id}
+                        currentMessage={app.rejectionMessage}
+                        onSaved={(id, msg) => updateRejectionMutation.mutate({ id, rejectionMessage: msg })}
+                        isSaving={updateRejectionMutation.isPending}
+                      />
+                    </div>
+                  </div>
+                ))
+              )}
+            </CardContent>
+          </Card>
+        )}
       </div>
+
+      <Dialog open={rejectDialogOpen} onOpenChange={(open) => { setRejectDialogOpen(open); if (!open) setRejectTargetId(null); }}>
+        <DialogContent className="sm:max-w-md" data-testid="dialog-reject-application">
+          <DialogHeader>
+            <DialogTitle>Reject Application</DialogTitle>
+            <DialogDescription>
+              Enter the reason for rejection. The applicant will see this message.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-2">
+            <Textarea
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+              rows={4}
+              className="resize-none"
+              placeholder="Rejection reason…"
+              maxLength={2000}
+              data-testid="textarea-rejection-reason"
+            />
+          </div>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => { setRejectDialogOpen(false); setRejectTargetId(null); }}
+              data-testid="button-cancel-reject"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={!rejectReason.trim() || updateStatusMutation.isPending}
+              onClick={() => {
+                if (!rejectTargetId) return;
+                updateStatusMutation.mutate(
+                  { id: rejectTargetId, status: "rejected", rejectionMessage: rejectReason.trim() },
+                  {
+                    onSuccess: () => {
+                      setRejectDialogOpen(false);
+                      setRejectTargetId(null);
+                    },
+                  }
+                );
+              }}
+              data-testid="button-confirm-reject"
+            >
+              {updateStatusMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <XCircle className="w-4 h-4 mr-1" />}
+              Confirm Rejection
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AdminLayout>
   );
 }

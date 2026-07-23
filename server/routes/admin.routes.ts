@@ -518,10 +518,11 @@ router.get("/api/admin/concierge-requests", isAuthenticated, async (req, res) =>
         u.email       AS user_email,
         u.first_name  AS user_first_name,
         u.last_name   AS user_last_name,
-        cs.id                  AS coordination_id,
-        cs.status              AS coordination_status,
-        cs.fee_payment_status  AS fee_payment_status,
-        cs.assigned_expert_id  AS assigned_expert_id,
+        cs.id                          AS coordination_id,
+        cs.status                      AS coordination_status,
+        cs.fee_payment_status          AS fee_payment_status,
+        cs.revenue_reversal_missing    AS revenue_reversal_missing,
+        cs.assigned_expert_id          AS assigned_expert_id,
         ce.first_name          AS coordinator_first_name,
         ce.last_name           AS coordinator_last_name,
         ce.email               AS coordinator_email
@@ -1070,6 +1071,11 @@ router.patch("/api/admin/expert-applications/:id/status", isAuthenticated, async
       return res.status(403).json({ message: "Admin access required" });
     }
     const { status, rejectionMessage } = req.body;
+    const [existing] = await db
+      .select({ status: localExpertForms.status })
+      .from(localExpertForms)
+      .where(eq(localExpertForms.id, req.params.id));
+    const priorStatus = existing?.status;
     const updated = await storage.updateLocalExpertFormStatus(req.params.id, status, rejectionMessage);
     if (!updated) {
       return res.status(404).json({ message: "Application not found" });
@@ -1089,8 +1095,72 @@ router.patch("/api/admin/expert-applications/:id/status", isAuthenticated, async
         message: "Congratulations! Your expert application has been approved. Complete your Stripe Connect setup to start receiving payouts.",
         data: { link: "/expert/earnings" },
       });
+
+      // Send the applicant a congratulations email with a link to /expert/earnings
+      const [approvedApplicant] = await db
+        .select({ email: users.email, firstName: users.firstName })
+        .from(users)
+        .where(eq(users.id, updated.userId));
+      if (approvedApplicant?.email) {
+        try {
+          const { sendExpertApplicationApprovalEmail } = await import("../services/email.service");
+          sendExpertApplicationApprovalEmail({
+            toEmail: approvedApplicant.email,
+            firstName: approvedApplicant.firstName ?? null,
+          });
+        } catch (err) {
+          console.error("[admin] Failed to send expert approval email (non-fatal):", err);
+        }
+      }
     }
-    
+
+    // If rejected, send the applicant an email with the rejection reason (if any).
+    // Guard: only send when actually transitioning TO rejected — not on re-saves of the same status.
+    if (status === "rejected" && priorStatus !== "rejected") {
+      const [applicant] = await db
+        .select({ email: users.email, firstName: users.firstName })
+        .from(users)
+        .where(eq(users.id, updated.userId));
+      if (applicant?.email) {
+        try {
+          const { sendExpertApplicationRejectionEmail } = await import("../services/email.service");
+          sendExpertApplicationRejectionEmail({
+            toEmail: applicant.email,
+            firstName: applicant.firstName ?? null,
+            rejectionMessage: rejectionMessage ?? null,
+          });
+        } catch (err) {
+          console.error("[admin] Failed to send expert rejection email (non-fatal):", err);
+        }
+      }
+    }
+
+    res.json(updated);
+  });
+
+  // Admin: Update rejection reason only (without changing status)
+router.patch("/api/admin/expert-applications/:id/rejection-reason", isAuthenticated, async (req, res) => {
+    const user = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
+    if (!user || user.role !== "admin") {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+    const schema = z.object({ rejectionMessage: z.string().trim().min(1, "rejectionMessage must be a non-empty string").max(2000, "rejectionMessage must be 2000 characters or fewer") });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: parsed.error.errors[0].message });
+    }
+    const { rejectionMessage } = parsed.data;
+    const updated = await storage.updateLocalExpertFormRejectionMessage(req.params.id, rejectionMessage);
+    if (!updated) {
+      return res.status(404).json({ message: "Application not found" });
+    }
+    await insertNotification({
+      userId: updated.userId,
+      type: "rejection_reason_updated",
+      title: "Rejection Feedback Updated",
+      message: "An admin has updated the feedback on your expert application. Review the new message to understand what you can improve before reapplying.",
+      data: { link: "/expert-status" },
+    });
     res.json(updated);
   });
 
@@ -1219,11 +1289,48 @@ router.get("/api/admin/platform-service-providers", isAuthenticated, async (req,
         user: providerUser ? { id: providerUser.id, name: [providerUser.firstName, providerUser.lastName].filter(Boolean).join(" "), email: providerUser.email, profileImageUrl: providerUser.profileImageUrl } : null,
         providerVerificationStatus: providerUser?.providerVerificationStatus ?? "pending",
         backgroundCheckConfirmed: providerUser?.backgroundCheckConfirmed ?? false,
+        stripeAccountId: providerUser?.stripeAccountId ?? null,
+        stripeAccountStatus: providerUser?.stripeAccountStatus ?? null,
+        canReceivePayments: providerUser?.canReceivePayments ?? false,
         services, totalBookings, totalRevenue, activeServices,
       };
     }));
 
     res.json(enriched);
+  });
+
+  // Admin: Get count of providers missing Stripe Connect setup
+router.get("/api/admin/providers/stripe-incomplete-count", isAuthenticated, async (req, res) => {
+    const user = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
+    if (!user || user.role !== "admin") {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+    const approvedForms = await getApprovedProviderForms();
+    let count = 0;
+    for (const form of approvedForms) {
+      const providerUser = await getProviderUserInfo(form.userId);
+      if (!providerUser?.stripeAccountStatus || providerUser.stripeAccountStatus !== "complete") {
+        count++;
+      }
+    }
+    res.json({ count });
+  });
+
+  // Admin: Send a Stripe Connect reminder notification to a provider
+router.post("/api/admin/providers/:userId/remind-stripe", isAuthenticated, async (req, res) => {
+    const user = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
+    if (!user || user.role !== "admin") {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+    const { userId } = req.params;
+    await insertNotification({
+      userId,
+      type: "stripe_connect_reminder",
+      title: "Complete Your Payout Setup",
+      message: "An admin has sent you a reminder to complete your Stripe Connect setup so you can receive payouts. Visit your earnings page to get started.",
+      data: { link: "/provider/earnings" },
+    });
+    res.json({ ok: true });
   });
 
   // Admin: Update provider application status
@@ -1250,8 +1357,76 @@ router.patch("/api/admin/provider-applications/:id/status", isAuthenticated, asy
         message: "Congratulations! Your provider application has been approved. Complete your Stripe Connect setup to start receiving payouts.",
         data: { link: "/provider/earnings" },
       });
+      // Send approval email (fire-and-forget)
+      const providerUser = await storage.getUser(updated.userId);
+      if (providerUser?.email) {
+        const { sendProviderApplicationApprovalEmail } = await import("../services/email.service");
+        sendProviderApplicationApprovalEmail({
+          toEmail: providerUser.email,
+          firstName: providerUser.firstName ?? null,
+        });
+      }
+    }
+
+    if (status === "rejected") {
+      // Notify the user in-app
+      await insertNotification({
+        userId: updated.userId,
+        type: "application_rejected",
+        title: "Application Not Approved",
+        message: rejectionMessage
+          ? `Your provider application was not approved. Feedback: ${rejectionMessage}`
+          : "Unfortunately, your provider application was not approved at this time. You can review the feedback and reapply when you're ready.",
+        data: { link: "/provider-status", rejectionMessage: rejectionMessage ?? null },
+      });
+      // Send rejection email (fire-and-forget)
+      const providerUser = await storage.getUser(updated.userId);
+      if (providerUser?.email) {
+        const { sendProviderApplicationRejectionEmail } = await import("../services/email.service");
+        sendProviderApplicationRejectionEmail({
+          toEmail: providerUser.email,
+          firstName: providerUser.firstName ?? null,
+          rejectionMessage: rejectionMessage ?? null,
+        });
+      }
     }
     
+    res.json(updated);
+  });
+
+  // Admin: Update provider application rejection reason only (without changing status)
+router.patch("/api/admin/provider-applications/:id/rejection-reason", isAuthenticated, async (req, res) => {
+    const user = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
+    if (!user || user.role !== "admin") {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+    const schema = z.object({ rejectionMessage: z.string().trim().min(1, "rejectionMessage must be a non-empty string").max(2000, "rejectionMessage must be 2000 characters or fewer") });
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: parsed.error.errors[0].message });
+    }
+    const { rejectionMessage } = parsed.data;
+    const updated = await storage.updateServiceProviderFormRejectionMessage(req.params.id, rejectionMessage);
+    if (!updated) {
+      return res.status(404).json({ message: "Application not found" });
+    }
+    await insertNotification({
+      userId: updated.userId,
+      type: "rejection_reason_updated",
+      title: "Rejection Feedback Updated",
+      message: "An admin has updated the feedback on your provider application. Review the new message to understand what you can improve before reapplying.",
+      data: { link: "/provider-status" },
+    });
+    // Send updated rejection feedback email (fire-and-forget)
+    const providerUser = await storage.getUser(updated.userId);
+    if (providerUser?.email) {
+      const { sendProviderApplicationRejectionEmail } = await import("../services/email.service");
+      sendProviderApplicationRejectionEmail({
+        toEmail: providerUser.email,
+        firstName: providerUser.firstName ?? null,
+        rejectionMessage: rejectionMessage,
+      });
+    }
     res.json(updated);
   });
 
@@ -2684,8 +2859,9 @@ router.get("/api/admin/revenue/transactions", isAuthenticated, async (req, res) 
       const startDate = req.query.startDate ? new Date(String(req.query.startDate)) : undefined;
       const endDate = req.query.endDate ? new Date(String(req.query.endDate)) : undefined;
       const sourceType = req.query.sourceType ? String(req.query.sourceType) : undefined;
+      const status = req.query.status ? String(req.query.status) : undefined;
       
-      const transactions = await storage.getPlatformRevenue({ startDate, endDate, sourceType });
+      const transactions = await storage.getPlatformRevenue({ startDate, endDate, sourceType, status });
       res.json(transactions);
     } catch (error: any) {
       res.status(500).json({ message: "Failed to get revenue transactions", error: error.message });

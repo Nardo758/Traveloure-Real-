@@ -71,7 +71,7 @@ import { getFee, resolveCoordinationFee, getAvailableCoordinationCreditCents, cl
 import { buildEventTimeline, getEventVendorGaps } from "./services/event-coordination.service";
 import { trackAnthropicResponse } from "./services/ai-cost-tracker";
 import { revenueTrackingService } from "./services/revenue-tracking.service";
-import { experienceTypes as experienceTypesTable, coordinationStates, platformRevenue } from "@shared/schema";
+import { experienceTypes as experienceTypesTable, coordinationStates, coordinationFeeCredits, platformRevenue } from "@shared/schema";
 import Stripe from "stripe";
 import { sharedCache } from "./services/shared-cache.service";
 import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, createPublicProfile, getDisplayName, redactContactInfo } from "./utils/data-sanitizer";
@@ -579,7 +579,26 @@ export async function registerRoutes(
   // (inherits the blanket adminApiGuard registered above). New table, migration 123.
   app.use(serviceRequestsRoutes);
 
-  // Trips Routes
+  // Trips + Itinerary-Comparison Routes — was imported at line 95 but never mounted
+  // (§9 route-shadow class). Mounting here makes it the live handler for all paths
+  // it declares: /api/trips CRUD, /api/trips/:id/claim, /api/itinerary-comparisons/*
+  // The identical inline registrations below remain as-is (they become unreachable
+  // dead-code for those paths; inline /api/trips family is out of scope to remove).
+  app.use(tripsRoutes);
+
+  // Expert routes — role management, service templates, vendor coordination, constraints,
+  // provider blackout dates, assigned trips, knowledge nuggets, visa info, and more.
+  // Imported at line 98 but previously unmounted; mounting restores all /api/expert/* and
+  // /api/provider/blackout-dates endpoints for live consumers.
+  app.use(expertsRoutes);
+
+  // Cross-sell event tracking — POST /api/cross-sell-events (anonymous/auth),
+  // GET /api/cross-sell-events/provider-stats (auth), GET /api/admin/cross-sell/funnel (admin).
+  // Imported at line 103 but previously unmounted; mounting restores provider analytics
+  // and admin cross-sell funnel pages.
+  app.use(crossSellRoutes);
+
+  // Trips Routes (inline — superseded by tripsRoutes mount above; kept as-is per task scope)
   // GET /api/trips — list trips (auth only, since guests access via shareToken)
   app.get(api.trips.list.path, isAuthenticated, async (req, res) => {
     const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
@@ -1253,6 +1272,24 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       
       const existing = await storage.getLocalExpertForm(userId);
       if (existing) {
+        if (existing.status === "rejected") {
+          // Resubmission after rejection: upsert the existing row and reset to pending
+          const input = insertLocalExpertFormSchema.parse(req.body);
+          const form = await storage.updateLocalExpertForm(existing.id, {
+            ...input,
+            status: "pending",
+            rejectionMessage: null,
+          });
+          void scoreKnowledgeProof(
+            (form!.knowledgeProofAnswers as string[]) ?? [],
+            KNOWLEDGE_PROOF_QUESTIONS,
+            form!.localityProof ?? null,
+            form!.city ?? "",
+          )
+            .then((s) => storage.updateLocalExpertFormKnowledgeScore(form!.id, s))
+            .catch((e: any) => console.error("[expertise-scoring] persist failed:", e?.message));
+          return res.status(200).json(form);
+        }
         return res.status(400).json({ message: "You already have an application submitted" });
       }
 
@@ -1284,6 +1321,24 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const existing = await storage.getLocalExpertForm(userId);
       if (existing) {
+        if (existing.status === "rejected") {
+          // Resubmission after rejection: upsert the existing row and reset to pending
+          const input = insertLocalExpertFormSchema.parse(req.body);
+          const form = await storage.updateLocalExpertForm(existing.id, {
+            ...input,
+            status: "pending",
+            rejectionMessage: null,
+          });
+          void scoreKnowledgeProof(
+            (form!.knowledgeProofAnswers as string[]) ?? [],
+            KNOWLEDGE_PROOF_QUESTIONS,
+            form!.localityProof ?? null,
+            form!.city ?? "",
+          )
+            .then((s) => storage.updateLocalExpertFormKnowledgeScore(form!.id, s))
+            .catch((e: any) => console.error("[expertise-scoring] persist failed:", e?.message));
+          return res.status(200).json(form);
+        }
         return res.status(400).json({ message: "You already have an application submitted" });
       }
       const input = insertLocalExpertFormSchema.parse(req.body);
@@ -1445,6 +1500,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       res.json({
         steps,
         overallStatus: form?.status ?? "pending",
+        rejectionMessage: form?.status === "rejected" ? (form.rejectionMessage ?? null) : null,
         identityVerificationStatus: identityStatus,
         identityVerifiedAt: (form as any)?.identityVerifiedAt,
         form: form ? { id: form.id, status: form.status, firstName: (form as any).firstName, createdAt: (form as any).createdAt } : null,
@@ -1513,6 +1569,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       res.json({
         steps,
         overallStatus: form?.status ?? "pending",
+        rejectionMessage: form?.status === "rejected" ? (form.rejectionMessage ?? null) : null,
         identityVerificationStatus: identityStatus,
         identityVerifiedAt: (form as any)?.identityVerifiedAt,
         businessVerificationStatus: bizStatus,
@@ -5844,8 +5901,29 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const state = await storage.getCoordinationState(req.params.id);
       if (!state) return res.status(404).json({ message: "Coordination state not found" });
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
-      if (state.userId !== userId) return res.status(403).json({ message: "Unauthorized" });
+
+      const isTraveler = state.userId === userId;
+      const isCoordinator = state.assignedExpertId === userId;
+
+      if (!isTraveler && !isCoordinator) {
+        return res.status(403).json({ message: "Unauthorized" });
+      }
+
       const { status, ...historyEntry } = req.body;
+
+      // Coordinators can only advance status forward — never regress or cancel.
+      if (isCoordinator && !isTraveler) {
+        const FORWARD_ORDER = [
+          "intake", "expert_matching", "vendor_discovery", "itinerary_generation",
+          "optimization", "booking_coordination", "confirmed", "in_progress", "completed",
+        ];
+        const currentIdx = FORWARD_ORDER.indexOf(state.status ?? "intake");
+        const nextIdx = FORWARD_ORDER.indexOf(status);
+        if (nextIdx === -1 || nextIdx <= currentIdx) {
+          return res.status(403).json({ message: "Coordinators can only advance status forward" });
+        }
+      }
+
       const updated = await storage.updateCoordinationStatus(req.params.id, status, historyEntry);
       res.json(updated);
     } catch (error) {
@@ -5991,9 +6069,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         ? Math.round(budgetDollars * 100)
         : 0;
 
-      // Paid-signal credit (§7): surface the traveler's available paid-optimize credit in the QUOTE
-      // (read-only — not consumed here; consumption happens under the atomic claim in /pay).
-      const availableCreditCents = await getAvailableCoordinationCreditCents(userId);
+      // Paid-signal credit (§7, scoped by migration 126): surface the traveler's total available
+      // paid-optimize credit in the QUOTE, filtered to the same event type so cross-event bleeding
+      // is impossible (legacy null-event credits are still eligible). Read-only — not consumed here;
+      // consumption happens under the atomic claim in /pay.
+      const availableCreditCents = await getAvailableCoordinationCreditCents(userId, eventType);
       const fee = await resolveCoordinationFee(eventType, budgetCents, availableCreditCents);
       res.json({ ...fee, feePaymentStatus: state.feePaymentStatus });
     } catch (error) {
@@ -6019,6 +6099,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (state.feePaymentStatus === "paid") {
         return res.json({ alreadyPaid: true, feePaymentStatus: "paid" });
       }
+      if (state.feePaymentStatus === "refunded") {
+        return res.json({ alreadyRefunded: true, feePaymentStatus: "refunded" });
+      }
 
       // §15 step 1 — claim the state atomically (unpaid → pending). The `WHERE ... IN (unpaid)` guard
       // is the concurrency lock: only one caller wins. A loser returns the in-flight PI (or 409 if the
@@ -6034,6 +6117,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (claimed.length === 0) {
         const fresh = await storage.getCoordinationState(coordinationId);
         if (fresh?.feePaymentStatus === "paid") return res.json({ alreadyPaid: true, feePaymentStatus: "paid" });
+        if (fresh?.feePaymentStatus === "refunded") return res.json({ alreadyRefunded: true, feePaymentStatus: "refunded" });
         if (fresh?.feePaymentIntentId) {
           const stripeR = new Stripe(process.env.STRIPE_SECRET_KEY || "", { apiVersion: "2024-12-18.acacia" as any });
           const existingPi = await stripeR.paymentIntents.retrieve(fresh.feePaymentIntentId);
@@ -6055,9 +6139,22 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         const budgetDollars = Number((state.budget as any)?.amount);
         const budgetCents = Number.isFinite(budgetDollars) && budgetDollars > 0 ? Math.round(budgetDollars * 100) : 0;
 
-        // Consume the newest available paid-optimize credit (atomic — §15). Bind the charged net to
-        // the ACTUAL consumed amount so a race can't hand out an uncredited discount.
-        claimedCreditCents = await claimCoordinationCredit(userId, coordinationId);
+        // §7 / migration 126: Consume ALL eligible credits for this event type (atomic — §15).
+        //
+        // Step 1: compute the gross fee (0 credits) so we know the ceiling for credit consumption.
+        //   Passing 0 credits means resolveCoordinationFee returns feeCents = rawFeeCents (the floor
+        //   or percent, whichever is larger). We need this number to cap the claim so credits beyond
+        //   the ceiling are preserved for a future engagement rather than wasted.
+        const { feeCents: grossFeeCents } = await resolveCoordinationFee(eventType, budgetCents, 0);
+        //
+        // Step 2: atomically claim all eligible credits up to the gross fee ceiling, scoped to the
+        //   same event type as this coordination. Credits with event_type IS NULL (legacy) are also
+        //   eligible. Oldest credits are consumed first. The `consumed IS NULL` guard on the UPDATE
+        //   is the concurrency lock — two coordinations racing for the same credits, only one wins
+        //   each row.
+        claimedCreditCents = await claimCoordinationCredit(userId, coordinationId, eventType, grossFeeCents);
+        //
+        // Step 3: recompute the net fee with the actually-consumed credit total.
         const { feeCents: netFeeCents, breakdown, rule } = await resolveCoordinationFee(eventType, budgetCents, claimedCreditCents);
 
         // Fully-credited edge (only reachable if an admin sets a $0 floor AND 0% while a credit exists):
@@ -6169,6 +6266,151 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     } catch (error: any) {
       console.error("Error confirming coordination payment:", error);
       res.status(500).json({ message: "Failed to confirm coordination payment", error: error?.message });
+    }
+  });
+
+  // ── Coordination fee REFUND (admin-only) ─────────────────────────────────────────────────
+  // POST /api/coordination-states/:id/refund
+  // Reverses a paid coordination fee: issues a Stripe refund, releases the consumed credit row,
+  // flips the linked platform_revenue to 'reversed', and sets fee_payment_status = 'refunded'.
+  // Atomic guarantee: Stripe is called first; the DB transaction only runs on Stripe success,
+  // so a Stripe failure leaves the ledger untouched.
+  app.post("/api/coordination-states/:id/refund", isAuthenticated, async (req, res) => {
+    try {
+      const coordinationId = req.params.id;
+      const callerId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+
+      // Admin-only gate (inline, consistent with other admin checks in this file)
+      const [callerRow] = await db.select({ role: users.role }).from(users).where(eq(users.id, callerId));
+      if (!callerRow || callerRow.role !== "admin") {
+        return res.status(403).json({ message: "Admin access required" });
+      }
+
+      const state = await storage.getCoordinationState(coordinationId);
+      if (!state) return res.status(404).json({ message: "Coordination state not found" });
+
+      // Idempotency: already refunded → treat as success
+      if (state.feePaymentStatus === "refunded") {
+        return res.json({ alreadyRefunded: true, feePaymentStatus: "refunded" });
+      }
+
+      if (state.feePaymentStatus !== "paid") {
+        return res.status(400).json({
+          error: "not_paid",
+          message: `Coordination fee is in '${state.feePaymentStatus}' status — only 'paid' fees can be refunded.`,
+        });
+      }
+
+      const paymentIntentId = state.feePaymentIntentId;
+      if (!paymentIntentId) {
+        return res.status(400).json({ error: "no_payment_intent", message: "No payment intent on record for this coordination fee." });
+      }
+
+      const feeCents = state.feeAmountCents ?? 0;
+
+      // Step 1 — Stripe refund. Idempotency-keyed so retries are safe.
+      // A Stripe failure leaves the DB untouched (satisfies the atomicity contract).
+      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", { apiVersion: "2024-12-18.acacia" as any });
+      let stripeRefundId: string | null = null;
+      if (feeCents > 0) {
+        const stripeRefund = await stripe.refunds.create(
+          {
+            payment_intent: paymentIntentId,
+            amount: feeCents,
+            reason: "requested_by_customer",
+            metadata: { coordinationId, source: "coordination_fee_refund" },
+          },
+          { idempotencyKey: `coord-refund-${coordinationId}` },
+        );
+        stripeRefundId = stripeRefund.id;
+      }
+
+      // Step 2 — Atomic DB mutations: all three ledger/state writes in one transaction.
+      // Stripe call (step 1) already succeeded; a transaction failure here propagates as a 500
+      // so the admin can retry — the Stripe idempotency key prevents a duplicate charge on retry.
+      let reversedRevenueRows = 0;
+      const compensatingRows: Array<{ grossAmount: string; platformFee: string; netAmount: string; transactionDate: Date }> = [];
+      await db.transaction(async (tx) => {
+        // 2a. Release the consumed credit row (null out consumed_by / consumed_at).
+        await tx
+          .update(coordinationFeeCredits)
+          .set({ consumedByCoordinationId: null, consumedAt: null })
+          .where(eq(coordinationFeeCredits.consumedByCoordinationId, coordinationId));
+
+        // 2b. Reverse platform revenue (sourceId = paymentIntentId as recorded at pay/confirm).
+        //     Flip original row(s) to 'reversed' and insert a compensating negative entry per row
+        //     (double-entry: same pattern as reversePlatformRevenueForBooking in storage.ts).
+        const originals = await tx
+          .update(platformRevenue)
+          .set({ status: "reversed" })
+          .where(and(eq(platformRevenue.sourceId, paymentIntentId), ne(platformRevenue.status, "reversed")))
+          .returning();
+
+        reversedRevenueRows = originals.length;
+        const now = new Date();
+        for (const o of originals) {
+          const neg = (v: string | null) => String(-parseFloat(v || "0"));
+          const negGross = neg(o.grossAmount);
+          const negFee = neg(o.platformFee);
+          const negNet = neg(o.netAmount);
+          await tx.insert(platformRevenue).values({
+            sourceType: o.sourceType,
+            sourceId: o.sourceId,
+            trackingNumber: o.trackingNumber,
+            grossAmount: negGross,
+            platformFee: negFee,
+            netAmount: negNet,
+            processingFees: neg(o.processingFees),
+            currency: o.currency,
+            expertId: o.expertId,
+            expertEarnings: neg(o.expertEarnings),
+            providerId: o.providerId,
+            providerEarnings: neg(o.providerEarnings),
+            description: `Reversal of platform revenue ${o.id} (coordination ${coordinationId})`,
+            metadata: { reversalOf: o.id, reason: "coordination_fee_refund" },
+            status: "reversed",
+            transactionDate: now,
+          } as any);
+          compensatingRows.push({ grossAmount: negGross, platformFee: negFee, netAmount: negNet, transactionDate: now });
+        }
+
+        // 2c. Mark the coordination state as refunded (terminal state).
+        // If no revenue rows were reversed AND a real fee was charged, flag the ledger gap
+        // so admins can see and investigate it in the concierge panel.
+        await tx
+          .update(coordinationStates)
+          .set({
+            feePaymentStatus: "refunded",
+            revenueReversalMissing: originals.length === 0 && feeCents > 0,
+          })
+          .where(eq(coordinationStates.id, coordinationId));
+      });
+
+      // Step 3 — Update daily revenue summary for each compensating entry (analytics cache;
+      // runs outside the transaction like recordPlatformRevenue does in storage.ts). Fire-and-forget:
+      // a summary staleness is tolerable; a duplicate charge is not.
+      for (const row of compensatingRows) {
+        const date = row.transactionDate.toISOString().split("T")[0];
+        storage.updateDailyRevenueSummary(date, {
+          totalGross: row.grossAmount,
+          totalPlatformFee: row.platformFee,
+          totalNet: row.netAmount,
+        } as any).catch((e: any) =>
+          console.warn("[coordination refund] daily summary update failed (non-critical):", e)
+        );
+      }
+
+      const revenueReversalMissing = reversedRevenueRows === 0 && feeCents > 0;
+      return res.json({
+        success: true,
+        feePaymentStatus: "refunded",
+        stripeRefundId,
+        reversedRevenueRows,
+        revenueReversalMissing,
+      });
+    } catch (error: any) {
+      console.error("Error processing coordination fee refund:", error);
+      res.status(500).json({ message: "Failed to refund coordination fee", error: error?.message });
     }
   });
 
@@ -6603,9 +6845,47 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         status: "generated",
       }).returning();
 
+      // Create a backing trip so itinerary_items can FK-reference it.
+      const quickTrip = await storage.createTrip({
+        userId,
+        title: result.title || `${itineraryRequest.destination} Trip`,
+        destination: itineraryRequest.destination,
+        startDate: itineraryRequest.dates.start,
+        endDate: itineraryRequest.dates.end,
+        numberOfTravelers: travelers,
+        status: "draft",
+        eventType: "vacation",
+      });
+
+      // Insert itinerary_items rows so the booking service can resolve prices by DB ID.
+      const qsDailyItinerary = Array.isArray(result.dailyItinerary) ? result.dailyItinerary : [];
+      const qsInsertedItems: any[] = [];
+      for (const day of qsDailyItinerary) {
+        const activities = Array.isArray(day?.activities) ? day.activities : [];
+        for (const activity of activities) {
+          const [inserted] = await db.insert(itineraryItems).values({
+            tripId: quickTrip.id,
+            title: activity.name || activity.title || "Activity",
+            description: activity.description || "",
+            itemType: activity.type || "activity",
+            status: "planned",
+            dayNumber: day.day || 1,
+            startTime: activity.time || "",
+            durationMinutes: typeof activity.duration === "number" ? activity.duration : 60,
+            locationName: activity.location || itineraryRequest.destination,
+            estimatedCost: activity.estimatedCost != null ? String(activity.estimatedCost) : null,
+            currency: "USD",
+            suggestedBy: "ai",
+          }).returning();
+          qsInsertedItems.push({ ...activity, id: inserted.id });
+        }
+      }
+
       res.json({
         ...result,
         id: saved.id,
+        tripId: quickTrip.id,
+        itinerary: { items: qsInsertedItems },
         cityIntelligence: cityIntelligence ? {
           pulseScore: cityIntelligence.city?.pulseScore,
           trendingScore: cityIntelligence.city?.trendingScore,

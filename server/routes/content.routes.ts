@@ -4104,21 +4104,43 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { 
-        destination, 
-        dates, 
+        destination: destinationRaw,
+        destinations,
+        dates: datesRaw,
+        startDate: startDateRaw,
+        endDate: endDateRaw,
         travelers, 
         budget, 
-        eventType, 
+        eventType,
+        experienceType,
         interests, 
         pacePreference,
         mustSeeAttractions,
         dietaryRestrictions,
         mobilityConsiderations,
-        tripId
+        specialRequests,
+        tripId: tripIdParam,
       } = req.body;
 
+      // Normalize destination: accept either a string or an array of {city, country} objects
+      const destination: string | null =
+        destinationRaw && typeof destinationRaw === "string"
+          ? destinationRaw
+          : Array.isArray(destinations) && destinations.length > 0
+            ? destinations
+                .map((d: any) => [d.city, d.country].filter(Boolean).join(", "))
+                .join("; ")
+            : null;
+
+      // Normalize dates: accept either {start, end} object or flat startDate/endDate fields
+      const dates = datesRaw?.start
+        ? datesRaw
+        : startDateRaw && endDateRaw
+          ? { start: startDateRaw, end: endDateRaw }
+          : null;
+
       // Validate required fields
-      if (!destination || typeof destination !== "string") {
+      if (!destination) {
         return res.status(400).json({ message: "Destination is required" });
       }
       if (!dates?.start || !dates?.end) {
@@ -4173,7 +4195,7 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
       // Save generated itinerary to database
       const savedItinerary = await insertAiGeneratedItinerary({
         userId,
-        tripId: tripId || null,
+        tripId: tripIdParam || null,
         destination,
         startDate: dates.start,
         endDate: dates.end,
@@ -4202,6 +4224,58 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
         metadata: { destination, dates, travelers, interests, itineraryId: savedItinerary.id },
       });
 
+      // Ensure a trip row exists so we can insert itinerary_items (which FK on trips.id).
+      // Prefer the caller-supplied tripId; if absent, create a new draft trip.
+      let resolvedTripId: string = tripIdParam || "";
+      if (resolvedTripId) {
+        // Ownership check — reject if the trip doesn't belong to this user.
+        const isOwner = await verifyTripOwnership(resolvedTripId, userId);
+        if (!isOwner) {
+          return res.status(403).json({ message: "Forbidden: you do not own this trip" });
+        }
+      } else {
+        const newTrip = await storage.createTrip({
+          userId,
+          title: result.title || `${destination} Trip`,
+          destination,
+          startDate: dates.start,
+          endDate: dates.end,
+          numberOfTravelers: travelers,
+          status: "draft",
+          eventType: eventType || experienceType || "vacation",
+          specialRequests: specialRequests || null,
+        });
+        resolvedTripId = newTrip.id;
+      }
+
+      // Rebuild itinerary_items inside a transaction so a partial failure never
+      // leaves the trip with a mix of old and new items.
+      const dailyItinerary = Array.isArray(result.dailyItinerary) ? result.dailyItinerary : [];
+      const insertedItems: any[] = [];
+      await db.transaction(async (tx) => {
+        await tx.delete(itineraryItems).where(eq(itineraryItems.tripId, resolvedTripId));
+        for (const day of dailyItinerary) {
+          const activities = Array.isArray(day?.activities) ? day.activities : [];
+          for (const activity of activities) {
+            const [inserted] = await tx.insert(itineraryItems).values({
+              tripId: resolvedTripId,
+              title: activity.name || activity.title || "Activity",
+              description: activity.description || "",
+              itemType: activity.type || "activity",
+              status: "planned",
+              dayNumber: day.day || 1,
+              startTime: activity.time || "",
+              durationMinutes: typeof activity.duration === "number" ? activity.duration : 60,
+              locationName: activity.location || destination,
+              estimatedCost: activity.estimatedCost != null ? String(activity.estimatedCost) : null,
+              currency: "USD",
+              suggestedBy: "ai",
+            }).returning();
+            insertedItems.push({ ...activity, id: inserted.id });
+          }
+        }
+      });
+
       // NEW: Create comparison and trigger optimization
       const numericBudget = budget != null && !isNaN(Number(budget)) ? String(budget) : null;
       const comparison = await insertItineraryComparison({
@@ -4215,25 +4289,21 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
         status: 'generating',
       });
 
-      // Convert generated itinerary to baseline items (with defensive checks)
-      const dailyItinerary = Array.isArray(result.dailyItinerary) ? result.dailyItinerary : [];
-      const baselineItems = dailyItinerary.flatMap((day: any, dayIndex: number) => {
-        const activities = Array.isArray(day?.activities) ? day.activities : [];
-        return activities.map((activity: any) => ({
-          id: activity.id || `${day?.day || dayIndex + 1}-${activity.time || 'item'}`,
-          name: activity.name || activity.title || 'Activity',
-          description: activity.description || '',
-          serviceType: activity.type || 'activities',
-          price: activity.estimatedCost || 0,
-          rating: 4.5,
-          location: activity.location || destination,
-          duration: activity.duration || 60,
-          dayNumber: dayIndex + 1,
-          timeSlot: activity.time?.includes('morning') ? 'morning' 
-                  : activity.time?.includes('afternoon') ? 'afternoon' 
-                  : 'evening',
-        }));
-      });
+      // Convert generated itinerary to baseline items using the DB-inserted IDs
+      const baselineItems = insertedItems.map((activity: any, idx: number) => ({
+        id: activity.id,
+        name: activity.name || activity.title || 'Activity',
+        description: activity.description || '',
+        serviceType: activity.type || 'activities',
+        price: activity.estimatedCost || 0,
+        rating: 4.5,
+        location: activity.location || destination,
+        duration: typeof activity.duration === "number" ? activity.duration : 60,
+        dayNumber: activity.dayNumber || idx + 1,
+        timeSlot: activity.time?.includes('morning') ? 'morning'
+                : activity.time?.includes('afternoon') ? 'afternoon'
+                : 'evening',
+      }));
 
       // Get available services for optimization (reduced to 30 for faster AI processing)
       const availableServices = await getActiveProviderServices(30);
@@ -4256,7 +4326,7 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
           dates.end,
           budget,
           travelers,
-          tripId || undefined
+          resolvedTripId
           // Transport leg calculation is handled inside generateOptimizedItineraries
           // for each variant after metrics are finalized
         ).then(async (_optimResult) => {
@@ -4271,12 +4341,16 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
         await updateItineraryComparisonStatus(comparison.id, 'complete');
       }
 
-      // Return comparison ID immediately (include 'id' for backwards compatibility)
+      // Return comparison ID immediately.
+      // Also include tripId and itinerary.items with DB-assigned IDs so the
+      // PlanningWithBooking cart conversion can look up prices via booking.service.ts.
       res.json({
         success: true,
         id: savedItinerary.id,
+        tripId: resolvedTripId,
         comparisonId: comparison.id,
         itineraryId: savedItinerary.id,
+        itinerary: { items: insertedItems },
         message: 'Itinerary generated! Creating optimized variants...',
         ...result,
         createdAt: savedItinerary.createdAt,
@@ -7775,32 +7849,10 @@ router.post("/api/track/accommodation-preference", async (req, res) => {
     }
   });
 
-  // ─── Cross-sell Click Events ─────────────────────────────────────────────────
-  // POST /api/cross-sell-events
-  // Tracks clicks on cross-sell service chips. Lightweight write — persistence
-  // and analytics aggregation are handled by the "Cross-sell conversion tracking"
-  // downstream task. This endpoint simply validates and acknowledges.
-
-  const crossSellEventSchema = z.object({
-    sourceContentId: z.string().min(1),
-    sourceContentType: z.string().min(1),
-    targetServiceId: z.string().min(1),
-    eventType: z.enum(["click"]),
-  });
-
-  router.post("/api/cross-sell-events", async (req, res) => {
-    try {
-      const parsed = crossSellEventSchema.safeParse(req.body);
-      if (!parsed.success) {
-        return res.status(400).json({ error: "Invalid payload", details: parsed.error.flatten().fieldErrors });
-      }
-      // Lightweight acknowledgement — downstream conversion tracking task handles DB persistence.
-      res.status(201).json({ ok: true, received: parsed.data });
-    } catch (err: any) {
-      console.error("[cross-sell-events] error:", err.message);
-      res.status(500).json({ ok: false });
-    }
-  });
+  // POST /api/cross-sell-events — retired from this file.
+  // The full persisting handler (storage.recordCrossSellEvents) now lives in
+  // server/routes/cross-sell.routes.ts which is mounted in routes.ts. Keeping
+  // this stub would shadow the real handler because contentRoutes is mounted first.
 
   // ─── Content-to-Supply Matching ─────────────────────────────────────────────
   // GET /api/content-match?type=restaurant&neighborhood=arashiyama&city=Kyoto&limit=3

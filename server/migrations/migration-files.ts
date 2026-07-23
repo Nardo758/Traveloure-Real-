@@ -447,4 +447,23 @@ export const MIGRATION_FILES = [
   // the CHECK has no legacy rows to violate → no publish-time push trap. Enables the §14/§15-clean
   // POST /api/coordination-states/:id/pay (+ /pay/confirm).
   "125_coordination_fee_payments.sql",
+  // Migration 126 — Tighten coordination_fee_credits event scoping (CLAUDE.md §7 follow-ups resolved).
+  // Adds idx_coord_fee_credits_event_scoped on (user_id, event_type, created_at) WHERE consumed IS NULL
+  // for the new multi-credit, event-scoped claim query. The event_type column exists from migration 125;
+  // legacy credits (event_type IS NULL) remain eligible for any engagement (backward-compatible).
+  // Companion code change: getAvailableCoordinationCreditCents + claimCoordinationCredit now accept
+  // eventType, sum ALL eligible credits (not just the newest), and cap consumption at the gross fee.
+  "126_coordination_credit_event_scoping.sql",
+  // Migration 127 — Expand fee_payment_status CHECK to include 'refunded'. Migration 125 created the
+  // CHECK with only ('unpaid','pending','paid'). The admin refund endpoint (POST
+  // /api/coordination-states/:id/refund) sets fee_payment_status = 'refunded', which violated the
+  // old constraint at runtime. Idempotent: drops and recreates the constraint by name.
+  // (Originally authored as 126; renumbered to 127 after 126 was taken by coordination_credit_event_scoping.)
+  "127_coordination_fee_refunded_status.sql",
+  // Migration 128 — Add revenue_reversal_missing boolean flag to coordination_states. Set to true
+  // when a fee refund completes (Stripe + state marked refunded + credit released) but no
+  // platform_revenue row exists to reverse (reversedRevenueRows = 0 with feeCents > 0). Admins
+  // see a warning badge in the concierge panel and can investigate the ledger gap. Idempotent:
+  // ADD COLUMN IF NOT EXISTS.
+  "128_coordination_revenue_reversal_missing.sql",
 ] as const;

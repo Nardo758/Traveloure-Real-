@@ -105,7 +105,7 @@ const popularFAQs = [
   },
   {
     question: "What if I have an issue during my trip?",
-    answer: "We offer 24/7 support for active bookings. You can reach our emergency support team via the app or by calling our hotline."
+    answer: "Support is available for active bookings via the app or email. For urgent situations during your trip, contact your expert advisor directly through the app for the fastest response."
   },
   {
     question: "Can I get a refund?",
