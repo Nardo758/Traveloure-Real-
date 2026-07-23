@@ -52,7 +52,7 @@ const registerSchema = z.object({
 
 const loginSchema = z.object({
   email: z.string().email("Invalid email address"),
-  password: z.string().min(1, "Password is required"),
+  password: z.string().trim().min(1, "Password is required"),
 });
 
 export function setupEmailAuth(app: Express): void {
