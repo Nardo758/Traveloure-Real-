@@ -1,9 +1,10 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Train, Bus, ArrowRight, ExternalLink } from "lucide-react";
+import { Train, Bus, ArrowRight } from "lucide-react";
 import type { CatalogItem } from "@/types/catalog";
 import { BookWithExpertButton } from "./BookWithExpertButton";
+import { useAgentBooking } from "./useAgentBooking";
 
 interface GroundTransportCardProps {
   item: CatalogItem;
@@ -11,11 +12,8 @@ interface GroundTransportCardProps {
 }
 
 export function GroundTransportCard({ item, className }: GroundTransportCardProps) {
-  const handleBook = () => {
-    if (item.affiliateUrl || item.bookingUrl) {
-      window.open((item.affiliateUrl || item.bookingUrl)!, "_blank", "noopener");
-    }
-  };
+  // §16: no raw outbound — partner fulfilment goes through the booking-agent rail.
+  const { book: handleBook, isPending: bookPending, requested: bookRequested } = useAgentBooking(item, "transport");
 
   const isTrain = item.tags.includes("train");
   const Icon = isTrain ? Train : Bus;
@@ -60,10 +58,10 @@ export function GroundTransportCard({ item, className }: GroundTransportCardProp
               size="sm"
               onClick={handleBook}
               className="h-7 text-xs gap-1"
+              disabled={bookPending || bookRequested}
               data-testid={`button-book-transport-${item.id}`}
             >
-              Compare
-              <ExternalLink className="h-3 w-3" />
+              {bookRequested ? "Requested ✓" : "Book via agent"}
             </Button>
           </div>
           <BookWithExpertButton
