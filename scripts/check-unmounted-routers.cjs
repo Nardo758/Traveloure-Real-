@@ -21,9 +21,10 @@ const ROUTES_FILE = path.join(__dirname, "..", "server", "routes.ts");
 // Known-intentionally-dark routers: imported but deliberately not mounted, pending their own triage.
 // Each entry MUST carry a reason. Removing a router from this list without mounting it fails the guard.
 const ALLOWED_UNMOUNTED = {
-  expertsRoutes: "Dark experts.routes.ts — remaining families (workspace/vendors, knowledge-nuggets, visa, role) pending triage (§9).",
-  crossSellRoutes: "Dark cross-sell.routes.ts — cross-sell stats family pending triage (§9).",
-  tripsRoutes: "Dark trips.routes.ts — remaining logistics/anchor families pending triage; workspace handlers already ported out (§9).",
+  // All three formerly-dark routers are now MOUNTED (experts/cross-sell mounted for their
+  // consumer-backed families with zero path collisions; trips mounted LAST so its 32 unique
+  // consumer-backed endpoints are live while its 57 duplicate paths defer to the canonical
+  // inline copies). No routers are intentionally dark at present.
 };
 
 function fail(msg) {
