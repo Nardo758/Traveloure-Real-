@@ -93,7 +93,7 @@ import { experienceCatalogService } from "../services/experience-catalog.service
 import { opportunityEngineService } from "../services/opportunity-engine.service";
 import { aiUsageService } from "../services/ai-usage.service";
 import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, createPublicProfile, getDisplayName, redactContactInfo } from "../utils/data-sanitizer";
-import { transportLegs, sharedItineraries, mapsExportCache, expertUpdatedItineraries, affiliateProducts, contentRegistry } from "@shared/schema";
+import { transportLegs, sharedItineraries, mapsExportCache, expertUpdatedItineraries, affiliateProducts, affiliatePartners, contentRegistry } from "@shared/schema";
 import { calculateTransportLegs, regenerateMapsUrlsFromLegs } from "../services/transport-leg-calculator";
 import { buildGoogleNavUrl, buildAppleNavUrl } from "../services/maps-url-builder";
 import { generateKml } from "../services/kml-generator";
@@ -7444,7 +7444,13 @@ router.post("/api/content/affiliate-redirect", async (req, res) => {
         const [product] = await db
           .select()
           .from(affiliateProducts)
-          .where(eq(affiliateProducts.id, itemId))
+          .where(and(
+            eq(affiliateProducts.id, itemId),
+            eq(affiliateProducts.isActive, true),
+            // Partner-level read-gate (migration 121, audit G-SEC): never emit an affiliate URL for a
+            // product whose partner is not admin-approved. An unapproved product is treated as absent.
+            sql`EXISTS (SELECT 1 FROM ${affiliatePartners} WHERE ${affiliatePartners.id} = ${affiliateProducts.partnerId} AND ${affiliatePartners.approvalStatus} = 'approved')`,
+          ))
           .limit(1);
         if (!product) return res.status(404).json({ message: "Item not found" });
         affiliateUrl = product.affiliateUrl || product.productUrl || null;
