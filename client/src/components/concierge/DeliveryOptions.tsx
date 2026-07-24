@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Sparkles, UserCheck, Crown, Loader2, CheckCircle2, Clock, LogIn } from "lucide-react";
 import { useSignInModal } from "@/contexts/SignInModalContext";
+import { updateTripContext } from "@/lib/trip-context";
 
 export interface ConciergeRoute {
   ai: { priceCents: number; currency: string; available: boolean; disabled: boolean };
@@ -72,11 +73,13 @@ export function DeliveryOptions({
     try {
       await patchTier("ai");
       // Hand off intent + context to cart's existing payment flow.
-      sessionStorage.setItem("experienceContext", JSON.stringify({
+      // MERGE (not overwrite) — a clobbering write here used to destroy any
+      // dates/travelers/slug the traveler had already set upstream.
+      updateTripContext({
         experienceType: eventType,
         destination,
         intent,
-      }));
+      });
       setLocation(`/cart?step=cart&concierge=${requestId}`);
     } finally {
       setBusy(null);
