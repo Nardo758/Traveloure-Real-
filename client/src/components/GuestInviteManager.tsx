@@ -86,7 +86,7 @@ export function GuestInviteManager({ experienceId, eventName, eventDestination, 
     try {
       const response = await fetch(`/api/events/${experienceId}/invites`);
       const data = await response.json();
-      setInvites(data.invites);
+      if (response.ok) setInvites(data.invites ?? []);
     } catch (error) {
       console.error('Error fetching invites:', error);
     }
@@ -96,7 +96,7 @@ export function GuestInviteManager({ experienceId, eventName, eventDestination, 
     try {
       const response = await fetch(`/api/events/${experienceId}/invites/stats`);
       const data = await response.json();
-      setStats(data.stats);
+      if (response.ok) setStats(data.stats ?? null);
     } catch (error) {
       console.error('Error fetching stats:', error);
     }

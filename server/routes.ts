@@ -107,6 +107,7 @@ import { ALL_DMO_SOURCES, getMarketGapSummary } from "./content/providers/DMOSou
 import savedItemsRoutes from "./routes/saved-items.routes";
 import serviceRequestsRoutes from "./routes/service-requests.routes";
 import tripContextRoutes from "./routes/trip-context.routes";
+import guestInvitesRoutes from "./routes/guest-invites";
 import { CREDIT_PACKAGES } from "@shared/credit-packages";
 import { 
   insertTripParticipantSchema, 
@@ -580,6 +581,13 @@ export async function registerRoutes(
   // (inherits the blanket adminApiGuard registered above). New table, migration 123.
   app.use(serviceRequestsRoutes);
   app.use(tripContextRoutes);
+
+  // Guest-invite system (destination weddings/events): organizer invite management
+  // (session-authenticated + experience-ownership-gated, §14) and public token-based
+  // guest RSVP/origin/travel-plan endpoints (rate-limited; scoped to the token's own
+  // invite row; parent experience redacted to guest-safe fields). Was a never-imported
+  // dark file (the class the never-imported-router guard now catches) — A0 activation.
+  app.use(guestInvitesRoutes);
 
   // Trips + Itinerary-Comparison Routes — was imported at line 95 but never mounted
   // NOTE (§9 shadow fix): tripsRoutes is mounted LAST (just before `return httpServer`),
