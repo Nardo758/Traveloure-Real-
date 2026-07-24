@@ -61,6 +61,35 @@ or an expert engagement, never a dead end.
 
 ## Platform backlog
 
+**Filed follow-ups — durably tracked here so they don't evaporate (owner: decision-maker to schedule; unowned until then):**
+- **CI gate-integrity audit** (condition of the Lane 2a Phase 1 approval, Jul 24, 2026). The journey-2
+  Stage-3 exit gate was found green-while-never-firing: its `waitForResponse` matched a URL nothing
+  produced, so it fell through `catch { test.skip() }` (misread as "AI key absent") — a *skipped* test
+  greens the gate, so Stage-3 had stopped asserting. Lane 2a fixed journey-2 (matcher → the real
+  `/api/ai/generate-itinerary`, corrected the response-shape assertion, proven RED-and-GREEN locally).
+  **Residual + the audit:** the shape/status assertions still only run after a 200+redirect — an endpoint
+  **500 → no redirect → the same `catch` degrades to `test.skip`, not red**. Audit scope: (1) sweep every
+  `e2e/specs/*.spec.ts` for the `catch → test.skip` swallow pattern and classify each as legitimate
+  data-conditional skip vs assertion-hiding softness; (2) decide a policy so endpoint failure fails the gate
+  instead of skipping (e.g. distinguish "precondition absent" from "action fired but errored"). Owner-note:
+  this is the class, not the single test — journey-2 is patched, the sweep is the real work.
+- **Dedicated audit-log lane** (filed at Lane 0, Jul 2026). `authorizeTripLogistics` admin access is currently
+  audit-logged via pino inline (`server/utils/trip-logistics-auth.ts`) as an interim; the durable
+  structured audit-log surface (persisted, queryable) is its own lane.
+- **tsc-debt burn-down.** Clean `origin/main` carries a 254-error tsc baseline; every lane is gated at
+  "0 net-new" against it. Burning the 254 down (the `Server`/`PathParams` overload, the
+  `Set<string>` downlevelIteration in `shared/selection-controls.ts`, the `provider_services`/`users`
+  property drift) is a dedicated cleanup lane, not something any feature lane should absorb.
+
+**Observed (noted, not blocked — durable record so it doesn't evaporate):**
+- **Anchor free-text fields flow into generation prompts (Lane 2a, Jul 24, 2026).** A temporal anchor's
+  user-authored `description`/`location` are now interpolated into the Claude/Grok itinerary prompts
+  (`buildAnchorPromptBlock`). On an expert-assigned trip an *assigned expert* can therefore influence the
+  traveler's generation prompt. Blast radius is **itinerary content only** (no money path, no data
+  exfiltration surface) → noted-not-blocked. Same class as the email-template injection lesson: user-authored
+  text reaching an LLM prompt. If anchor authorship ever widens or the prompt output ever feeds a
+  higher-privilege action, revisit with sanitization/escaping.
+
 **Still open — genuinely gated (need environment access or real data, not buildable now):**
 - Knowledge-Bar Phase 3: calibrate the scoring rubric on real Kyoto submissions.
 
