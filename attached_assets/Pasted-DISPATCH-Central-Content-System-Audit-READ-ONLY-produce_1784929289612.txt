@@ -1,0 +1,35 @@
+DISPATCH — Central Content System Audit (READ-ONLY, produce a report)
+Goal: Audit the central content system end-to-end across four dimensions the decision-maker named — (1) all affiliates present, (2) structured properly, (3) correct location + availability tagging, (4) content actually flowing to every site surface. Do not change code or data. Produce docs/audits/central-content-audit.md with counts, evidence, and a prioritized gap table. Any fix that falls out of this comes back as its own PR under normal CLAUDE.md governance (§16 affiliate-outbound, D1a born-gated, §2 admin default-deny).
+
+Part 0 — Ground truth (read these first, don't assume)
+shared/content-surface-map.ts — the single source of truth: CONTENT_TYPES, PLATFORM_SURFACES (travelpulse-discover, experience-discovery, spontaneous, experience-template, itinerary), SURFACE_DEFAULT_CONTENT_TYPES, SURFACE_DEFAULT_AFFILIATE_CATEGORIES, TAB_CONTENT_TYPE_MAP, TAB_AFFILIATE_CATEGORIES.
+shared/content-origin.ts — origin taxonomy (platform / affiliate / sourced).
+Schema (shared/schema.ts): affiliate_partners (~3743), affiliate_products (~3781), content_registry (~4383), content_placement_rules (~6269), contentTypeEnum (~4350).
+Resolver: GET /api/content/discover in server/routes/content.routes.ts:~7117 (placement-rule + pulse + ILIKE fallback → normalized surface items).
+Parallel Travelpayouts feed: /api/catalog/* in content.routes.ts:~971–1400 (flights, hotels-look, agoda, booking, activities-gyg, klook, viator-feed, tiqets, wegotrip, cars, transfers, esim, insurance, ground-transport, nomad).
+Admin: client/src/pages/admin/content-mapping.tsx (Surface Map + Placement Rules + auto-index).
+Consumers: curated-content-section.tsx, UpsellSlot.tsx, plancard/*, spontaneous-discovery.tsx, experience-discovery.tsx, experience-template.tsx, discover.tsx, cart.tsx.
+Part 1 — Affiliate coverage ("has all the affiliates")
+Run against the workspace DB and report a table:
+
+Cross-reference the 14 /api/catalog/* Travelpayouts networks against affiliate_partners/affiliate_products: which networks feed the central system vs. live only through the parallel /api/catalog feed (the §16 filed "fold into central content system" gap)? List each network as central-fed / parallel-only / absent.
+Flag: partners with approval_status='submitted' (invisible on public reads per migration 121), partners with 0 active products, products with null affiliate_url (breaks the §16 agent-booking rail).
+Part 2 — Structural integrity ("structured properly")
+Verify every content_placement_rules.source_id still resolves to a live row in its content_source table (orphan check, both directions).
+Confirm contentTypeEnum values all appear in SURFACE_DEFAULT_CONTENT_TYPES / TAB_CONTENT_TYPE_MAP — flag any type that can never route to a surface.
+Part 3 — Location + availability tagging
+The resolver matches by ILIKE city/country/location — quantify how many active products would be unreachable by any city query (null/blank city AND country AND location). Cross-check against Kyoto (the §12 wedge): how much active affiliate inventory is actually Kyoto-tagged?
+Note §13: do not propose fabricating location/availability — null is the honest state; the fix is a real tagging pass, flagged not faked.
+Part 4 — Flow ("content is flowing to the parts of the site")
+For each of the 5 PLATFORM_SURFACES and a representative set of TAB_CONTENT_TYPE_MAP tabs, hit the resolver with a real Kyoto query and record item counts by type:
+
+For each surface: does the resolver return items? Do the client consumers actually render them (trace curated-content-section.tsx + each page)? Flag any surface whose backend returns rows but no consumer renders them, or vice-versa (the "surface-without-a-backend" / "backend-without-a-surface" traps from CLAUDE.md §9/§10).
+Confirm the resolver applies the D1a/approval gate (unapproved partners' products must not surface publicly) and origin labeling (affiliate → "Paid partner").
+Part 5 — Deliverable
+Write docs/audits/central-content-audit.md:
+
+Scorecard — one row per dimension (affiliates / structure / tagging / flow): PASS / GAPS / BROKEN + one-line verdict.
+Evidence — the query outputs and endpoint counts above.
+Gap table — #, dimension, severity (P0–P2), finding, affected surface/table, proposed fix (one line), governance note.
+The §16 question answered explicitly: is the /api/catalog Travelpayouts feed folded into the central system yet, or still parallel? Quantify what that means for coverage.
+Commit the report to a branch and open a draft PR titled audit: central content system (read-only findings). No product code or data changes in this PR. Then report back the scorecard so we decide which gaps to build.
