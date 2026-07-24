@@ -53,7 +53,7 @@ import {
   Route,
   Globe,
 } from "lucide-react";
-import { format } from "date-fns";
+import { format, parseISO } from "date-fns";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import StripeCheckout from "@/components/booking/StripeCheckout";
 import { UpsellSlot, UpsellErrorBoundary } from "@/components/UpsellSlot";
@@ -811,15 +811,6 @@ export default function CartPage() {
     await proceedOptimize(effStart, effEnd);
   };
 
-  // Trip-date header edits write straight to tripStartDate/tripEndDate and persist into the
-  // experience context so downstream steps + a returning visit keep the range.
-  const updateTripDates = (next: { start?: string; end?: string }) => {
-    const start = next.start ?? tripStartDate;
-    let end = next.end ?? tripEndDate;
-    if (start && end && new Date(end) < new Date(start)) end = start; // keep end >= start
-    updateTripContext({ startDate: start || undefined, endDate: end || undefined });
-  };
-
   // ── G3: Create Stripe PaymentIntent for the optimization fee ─────────────
   const requestOptimizationPayment = async () => {
     if (!user) {
@@ -1194,49 +1185,26 @@ export default function CartPage() {
           )}
         </div>
 
-        {/* Trip-date header — always-visible, editable trip date range (not a step, not a modal).
-            Seeds from the experience context; edits persist there for downstream steps. */}
+        {/* Trip-date header — read-only summary of the strip-owned trip dates (P3b).
+            Edits go through the shared EditTripPanel; the dates derive live from TripContext. */}
         {flowStep === "cart" && totalItemCount > 0 && (
           <div
-            className="flex flex-col sm:flex-row sm:items-end gap-3 px-4 py-3 mb-4 rounded-lg border border-border bg-card"
+            className="flex items-center gap-3 px-4 py-3 mb-4 rounded-lg border border-border bg-card"
             data-testid="header-trip-dates"
           >
-            <div className="flex items-center gap-2 text-sm font-medium shrink-0 sm:pb-2">
-              <Calendar className="w-4 h-4 text-primary" />
-              Travel dates
-            </div>
-            <div className="flex items-end gap-3 flex-1">
-              <div className="space-y-1 flex-1 max-w-[10rem]">
-                <Label htmlFor="header-start" className="text-xs text-muted-foreground">Start</Label>
-                <Input
-                  id="header-start"
-                  type="date"
-                  value={tripStartDate}
-                  onChange={(e) => updateTripDates({ start: e.target.value })}
-                  className="h-9"
-                  data-testid="input-header-start-date"
-                />
-              </div>
-              <div className="space-y-1 flex-1 max-w-[10rem]">
-                <Label htmlFor="header-end" className="text-xs text-muted-foreground">End</Label>
-                <Input
-                  id="header-end"
-                  type="date"
-                  min={tripStartDate || undefined}
-                  value={tripEndDate}
-                  onChange={(e) => updateTripDates({ end: e.target.value })}
-                  className="h-9"
-                  data-testid="input-header-end-date"
-                />
-              </div>
-            </div>
-            {(!tripStartDate || !tripEndDate) && (
-              <span className="text-xs text-muted-foreground sm:pb-2">Add dates to prepare your trip</span>
-            )}
+            <Calendar className="w-4 h-4 text-primary shrink-0" />
+            <span
+              className={`text-sm flex-1 ${tripStartDate && tripEndDate ? "font-medium" : "text-muted-foreground"}`}
+              data-testid="text-header-trip-dates"
+            >
+              {tripStartDate && tripEndDate
+                ? `${format(parseISO(tripStartDate), "MMM d")} → ${format(parseISO(tripEndDate), "MMM d")}`
+                : "Add your travel dates"}
+            </span>
             <Button
               variant="outline"
               size="sm"
-              className="shrink-0 sm:mb-1"
+              className="shrink-0"
               onClick={() => setEditTripOpen(true)}
               data-testid="button-edit-trip"
             >
