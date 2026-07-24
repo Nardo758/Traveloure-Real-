@@ -203,11 +203,16 @@ export function AffiliateTransportProducts({
           <Button
             variant="outline"
             className="w-full"
-            onClick={() => window.open(`https://12go.asia/en?affiliate_id=13805109${destination ? `&q=${encodeURIComponent(destination)}` : ''}`, '_blank')}
+            disabled={bookViaAgent.isPending}
+            onClick={() => bookViaAgent.mutate({
+              id: "browse",
+              name: `Ground transport${destination ? ` in ${destination}` : ""}`,
+              description: "Trains, buses, ferries via 12Go Asia",
+              affiliateUrl: `https://12go.asia/en?affiliate_id=13805109${destination ? `&q=${encodeURIComponent(destination)}` : ''}`,
+            } as AffiliateProduct)}
             data-testid="button-browse-12go"
           >
-            Browse Transportation Options
-            <ExternalLink className="h-4 w-4 ml-2" />
+            Find Transportation Options
           </Button>
         </CardContent>
       </Card>
