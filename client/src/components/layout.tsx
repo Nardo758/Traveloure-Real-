@@ -62,6 +62,7 @@ import { UserMenu } from "@/components/user-menu";
 import { NotificationBell } from "@/components/notification-bell";
 import { navGroupsConfig, authNavConfig, footerSectionsConfig } from "@/lib/nav-config";
 import { useTripContextSync } from "@/lib/trip-context";
+import { TripStrip } from "@/components/trip/trip-strip";
 
 // ── Icon maps ─────────────────────────────────────────────────────────────────
 // Icons are bound here so nav-config.ts stays a pure-data module with no React
@@ -307,12 +308,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
   // Hydrate the signed-in user's trip context from the server (P2/E2) — once per load.
   useTripContextSync();
 
-  const { data: cartData } = useQuery<{ itemCount: number }>({
-    queryKey: ["/api/cart"],
-    staleTime: 30_000,
-  });
-  const cartCount = cartData?.itemCount ?? 0;
-
   const isActive = (path: string) => location === path;
 
   return (
@@ -342,29 +337,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </div>
 
             <div className="flex items-center gap-2 flex-shrink-0">
-              {/* Trip-plan entry (the cart) — visible for all users. Labelled
-                  "Trip plan" for honesty: /cart is the 5-step planner
-                  (cart → trip → optimize → itinerary → payment), not a
-                  checkout (Sprint 2.2). */}
-              <Link
-                href="/cart"
-                title="Trip plan"
-                aria-label="Trip plan"
-                className="relative inline-flex items-center justify-center gap-1.5 p-2 rounded-md text-muted-foreground hover-elevate focus:outline-none"
-                data-testid="link-nav-cart"
-              >
-                <ShoppingCart className="h-5 w-5" />
-                <span className="hidden lg:inline text-sm font-medium">Trip plan</span>
-                {cartCount > 0 && (
-                  <span
-                    className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-white leading-none"
-                    data-testid="badge-cart-count"
-                  >
-                    {cartCount > 99 ? "99+" : cartCount}
-                  </span>
-                )}
-              </Link>
-
+              {/* Cart moved into the TripStrip (P3 rule 3) — the strip's cart
+                  chip is the site's single cart display. */}
               {!user && (
                 <div className="hidden lg:flex items-center gap-2">
                   <DropdownMenu>
@@ -559,6 +533,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
           )}
         </AnimatePresence>
       </nav>
+
+      {/* Global trip strip (P3): all trip state — destination, dates, party, cart —
+          on one bar; renders only when a trip is in progress. */}
+      <TripStrip />
 
       <main className="flex-1">
         {children}

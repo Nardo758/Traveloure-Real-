@@ -48,17 +48,15 @@ async function navigateCartToOptimizeStep(
 ) {
   await page.goto(`${BASE_URL}/cart`);
 
+  // Trip Details step removed (Trip-Strip P3): dates are set in the always-visible
+  // cart header; Continue resolves the trip and goes straight to the optimize step.
+  await page.getByTestId("input-header-start-date").fill(startDate);
+  await page.getByTestId("input-header-end-date").fill(endDate);
+
   const generateBtn = page.getByTestId("button-generate-itinerary-comparison");
   await expect(generateBtn).toBeVisible({ timeout: 10_000 });
   await generateBtn.click();
-
-  const confirmBtn = page.getByTestId("button-confirm-trip-details");
-  await expect(confirmBtn).toBeVisible({ timeout: 10_000 });
-
-  await page.getByTestId("input-trip-destination").fill(destination);
-  await page.getByTestId("input-trip-start-date").fill(startDate);
-  await page.getByTestId("input-trip-end-date").fill(endDate);
-  await confirmBtn.click();
+  void destination; // destination now flows from TripContext; resolve-trip infers otherwise
 }
 
 test.describe("Optimization Payment Gate (G3/G4)", () => {
@@ -92,7 +90,7 @@ test.describe("Optimization Payment Gate (G3/G4)", () => {
            'generated', NOW(), NOW(), NOW())
       `);
 
-      // ── 5. Navigate through cart → trip-details → optimize step ──────────
+      // ── 5. Navigate through cart → optimize step ──────────
       await navigateCartToOptimizeStep(
         page,
         "Tokyo, Japan",
@@ -160,7 +158,7 @@ test.describe("Optimization Payment Gate (G3/G4)", () => {
 
       await addServiceToCart(page, serviceId);
 
-      // ── 4. Navigate cart → trip-details → optimize step ──────────────────
+      // ── 4. Navigate cart → optimize step ──────────────────
       await navigateCartToOptimizeStep(
         page,
         "Paris, France",

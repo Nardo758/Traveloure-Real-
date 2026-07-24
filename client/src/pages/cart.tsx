@@ -171,7 +171,7 @@ interface OptimizationResult {
   warnings: string[];
 }
 
-type FlowStep = "cart" | "trip-details" | "optimize" | "itinerary" | "payment";
+type FlowStep = "cart" | "optimize" | "itinerary" | "payment";
 
 interface OptimizationPreview {
   estimatedSavingsPct: number;
@@ -769,7 +769,9 @@ export default function CartPage() {
         travelers: trip.numberOfTravelers || undefined,
       });
 
-      setFlowStep("trip-details");
+      // Trip Details step removed (Trip-Strip P3): the strip + EditTripPanel own
+      // trip state, so Continue goes straight into the optimization preview.
+      await fetchPreview();
     } catch (err: any) {
       toast({ variant: "destructive", title: "Trip preparation failed", description: err.message });
     } finally {
@@ -798,7 +800,8 @@ export default function CartPage() {
     const effStart = tripStartDate;
     const effEnd = tripEndDate;
     if (!effStart || !effEnd) {
-      toast({ variant: "destructive", title: "Add your travel dates", description: "Set your trip dates at the top of the cart to continue." });
+      setEditTripOpen(true);
+      toast({ title: "Add your travel dates", description: "Set your trip dates to continue." });
       return;
     }
     if (new Date(effEnd) < new Date(effStart)) {
@@ -815,42 +818,6 @@ export default function CartPage() {
     let end = next.end ?? tripEndDate;
     if (start && end && new Date(end) < new Date(start)) end = start; // keep end >= start
     updateTripContext({ startDate: start || undefined, endDate: end || undefined });
-  };
-
-  // ── G6: Save user edits to the trip details, then proceed to preview ─────
-  const handleConfirmTripDetails = async () => {
-    if (!resolvedTrip) return;
-
-    // Persist any user edits to the trip record (non-blocking on failure)
-    try {
-      await fetch(`/api/trips/${resolvedTrip.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          title: tripTitle,
-          destination: tripDestination,
-          startDate: tripStartDate,
-          endDate: tripEndDate,
-          numberOfTravelers: tripTravelers,
-        }),
-      });
-
-      // Update the trip context so the optimizer uses the confirmed values.
-      // Funnel PR2: the explicit experienceType replaces the silent "general"
-      // fallback — this is what getFee/complexityTier price against downstream.
-      updateTripContext({
-        tripId: resolvedTrip.id,
-        destination: tripDestination,
-        startDate: tripStartDate || undefined,
-        endDate: tripEndDate || undefined,
-        travelers: tripTravelers,
-        experienceType: tripEventType || undefined,
-      });
-    } catch { /* non-fatal */ }
-
-    // Proceed to the optimization preview step
-    await fetchPreview();
   };
 
   // ── G3: Create Stripe PaymentIntent for the optimization fee ─────────────
@@ -1147,7 +1114,6 @@ export default function CartPage() {
         {(() => {
           const steps: Array<{ key: FlowStep; label: string; icon: ReactNode; reachable: boolean }> = [
             { key: "cart", label: "Cart", icon: <ShoppingCart className="w-4 h-4" />, reachable: true },
-            { key: "trip-details", label: "Trip", icon: <MapPin className="w-4 h-4" />, reachable: !!resolvedTrip },
             { key: "optimize", label: "Optimize", icon: <Lock className="w-4 h-4" />, reachable: !!optimizationPreview },
             { key: "itinerary", label: "Itinerary", icon: <Sparkles className="w-4 h-4" />, reachable: !!optimizationResult },
             { key: "payment", label: "Payment", icon: <CreditCard className="w-4 h-4" />, reachable: (cart?.items?.length || 0) > 0 || !!checkoutPaymentIntent },
@@ -1187,11 +1153,8 @@ export default function CartPage() {
             onClick={() => {
               if (flowStep === "cart") {
                 window.history.back();
-              } else if (flowStep === "trip-details") {
-                setFlowStep("cart");
-                setResolvedTrip(null);
               } else if (flowStep === "optimize") {
-                setFlowStep("trip-details");
+                setFlowStep("cart");
                 setOptimizationPreview(null);
                 setOptimizationPayment(null);
               } else if (flowStep === "itinerary") {
@@ -1209,15 +1172,13 @@ export default function CartPage() {
           >
             <ArrowLeft className="w-4 h-4" />
             {flowStep === "cart" ? "Back" :
-              flowStep === "trip-details" ? "Cart" :
-              flowStep === "optimize" ? "Trip Details" :
+              flowStep === "optimize" ? "Cart" :
               flowStep === "itinerary" ? "Cart" :
               optimizationResult ? "Itinerary" : "Cart"}
           </Button>
           <div className="flex flex-col">
             <h1 className="text-2xl font-bold" data-testid="text-page-title">
               {flowStep === "cart" && "Your Cart"}
-              {flowStep === "trip-details" && "Your Trip Details"}
               {flowStep === "optimize" && "Unlock Full Optimization"}
               {flowStep === "itinerary" && "Your Optimized Itinerary"}
               {flowStep === "payment" && "Complete Payment"}
@@ -1737,7 +1698,7 @@ export default function CartPage() {
                           <div>
                             <h4 className="text-sm font-medium">Plan &amp; optimize this trip</h4>
                             <p className="text-xs text-muted-foreground mt-1">
-                              Next: confirm your trip details, then our AI organizes your selections into an itinerary with optimized alternatives.
+                              Next: our AI organizes your selections into an itinerary with optimized alternatives. Trip details live in the strip above — edit anytime.
                             </p>
                           </div>
                         </div>
@@ -1758,7 +1719,7 @@ export default function CartPage() {
                           ) : (
                             <MapPin className="w-4 h-4 mr-2" />
                           )}
-                          {resolvingTrip ? "Preparing trip..." : previewLoading ? "Analyzing..." : "Continue — Trip Details"}
+                          {resolvingTrip ? "Preparing trip..." : previewLoading ? "Analyzing your cart..." : "Continue — Optimize"}
                         </Button>
                       </div>
                       {(cart?.items?.length || 0) > 0 && (
@@ -1779,110 +1740,6 @@ export default function CartPage() {
                     </CardFooter>
                   </Card>
                 </div>
-              </div>
-            )}
-
-            {/* Step 1.5: Trip Details (G6) */}
-            {flowStep === "trip-details" && resolvedTrip && (
-              <div className="max-w-2xl mx-auto space-y-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <MapPin className="w-5 h-5 text-primary" />
-                      Confirm your trip
-                    </CardTitle>
-                    <p className="text-sm text-muted-foreground">
-                      We've pre-filled these from your cart. Review and edit before the AI optimizes your plan.
-                    </p>
-                  </CardHeader>
-                  <CardContent className="space-y-5">
-                    <div className="space-y-2">
-                      <Label htmlFor="trip-title">Trip name</Label>
-                      <Input
-                        id="trip-title"
-                        value={tripTitle}
-                        onChange={(e) => setTripTitle(e.target.value)}
-                        placeholder="My trip to Tokyo"
-                        data-testid="input-trip-title"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="trip-destination">Destination</Label>
-                      <Input
-                        id="trip-destination"
-                        value={tripDestination}
-                        onChange={(e) => setTripDestination(e.target.value)}
-                        placeholder="Tokyo, Japan"
-                        data-testid="input-trip-destination"
-                      />
-                    </div>
-
-                    {/* Funnel PR2: explicit "What are you planning?" — values map to the
-                        real complexityTier set (wedding/corporate = complex; proposal/
-                        honeymoon/anniversary = standard; trip = simple), so the answer
-                        drives the actual optimization fee tier, not just a label. */}
-                    <div className="space-y-2">
-                      <Label htmlFor="trip-event-type">What are you planning?</Label>
-                      <Select value={tripEventType} onValueChange={setTripEventType}>
-                        <SelectTrigger id="trip-event-type" data-testid="select-trip-event-type">
-                          <SelectValue placeholder="What are you planning?" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="trip">A trip</SelectItem>
-                          <SelectItem value="wedding">A wedding</SelectItem>
-                          <SelectItem value="proposal">A proposal</SelectItem>
-                          <SelectItem value="honeymoon">A honeymoon</SelectItem>
-                          <SelectItem value="anniversary">An anniversary</SelectItem>
-                          <SelectItem value="corporate">A corporate event</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    {/* Dates are edited in the trip-date header at the top of the cart; shown here read-only. */}
-                    <div className="space-y-1">
-                      <Label>Travel dates</Label>
-                      <div className="flex items-center gap-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-sm" data-testid="text-trip-dates-summary">
-                        <Calendar className="w-4 h-4 text-muted-foreground" />
-                        {tripStartDate && tripEndDate
-                          ? <span>{tripStartDate} → {tripEndDate}</span>
-                          : <span className="text-muted-foreground">Set your dates at the top of the cart</span>}
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="trip-travelers">Number of travelers</Label>
-                      <Input
-                        id="trip-travelers"
-                        type="number"
-                        min={1}
-                        max={20}
-                        value={tripTravelers}
-                        onChange={(e) => setTripTravelers(Math.max(1, parseInt(e.target.value) || 1))}
-                        data-testid="input-trip-travelers"
-                      />
-                    </div>
-                  </CardContent>
-                  <CardFooter className="flex flex-col gap-3">
-                    <Button
-                      className="w-full bg-primary hover:bg-primary/90"
-                      size="lg"
-                      onClick={handleConfirmTripDetails}
-                      disabled={previewLoading || !tripDestination.trim()}
-                      data-testid="button-confirm-trip-details"
-                    >
-                      {previewLoading ? (
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      ) : (
-                        <Wand2 className="w-4 h-4 mr-2" />
-                      )}
-                      {previewLoading ? "Analyzing your cart..." : "Confirm & Optimize"}
-                    </Button>
-                    <p className="text-xs text-center text-muted-foreground">
-                      This trip will appear on your dashboard
-                    </p>
-                  </CardFooter>
-                </Card>
               </div>
             )}
 
