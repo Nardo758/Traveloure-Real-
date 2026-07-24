@@ -92,7 +92,66 @@ export function updateTripContext(patch: TripContextPatch): TripContext {
   } catch {
     /* non-browser env */
   }
+  schedulePush(next);
   return next;
+}
+
+// ── Server persistence (migration 130) ────────────────────────────────────────
+// For signed-in users the context is mirrored to /api/trip-context so planning
+// survives browser restarts and crosses devices. Guests get a 401 which is
+// silently ignored — persistence is strictly best-effort.
+
+let pushTimer: ReturnType<typeof setTimeout> | undefined;
+
+function schedulePush(context: TripContext): void {
+  if (typeof fetch !== "function") return;
+  if (pushTimer) clearTimeout(pushTimer);
+  pushTimer = setTimeout(() => {
+    pushTimer = undefined;
+    fetch("/api/trip-context", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ context }),
+    }).catch(() => {
+      /* offline / guest — best-effort */
+    });
+  }, 1500);
+}
+
+let hydrated = false;
+
+/**
+ * Hydrate the local context from the server once per page load. The server copy
+ * seeds local ONLY when local is empty — an active local session always wins
+ * (it is the fresher intent; every local write pushes back to the server anyway).
+ */
+export async function hydrateTripContextFromServer(): Promise<void> {
+  if (hydrated) return;
+  hydrated = true;
+  try {
+    const res = await fetch("/api/trip-context", { credentials: "include" });
+    if (!res.ok) return; // 401 guest / error — nothing to hydrate
+    const data = await res.json().catch(() => null);
+    const server = data?.context;
+    if (!server || typeof server !== "object" || Object.keys(server).length === 0) return;
+    if (Object.keys(getTripContext()).length > 0) return; // local wins
+    try {
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(server));
+      window.dispatchEvent(new CustomEvent(CHANGE_EVENT));
+    } catch {
+      /* ignore */
+    }
+  } catch {
+    /* offline — ignore */
+  }
+}
+
+/** Mount once (traveler layout): hydrates the context from the server on load. */
+export function useTripContextSync(): void {
+  useEffect(() => {
+    void hydrateTripContextFromServer();
+  }, []);
 }
 
 export function clearTripContext(): void {
