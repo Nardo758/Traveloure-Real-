@@ -929,6 +929,29 @@ dialog on the discover-location empty/footer state + an admin triage page (`/adm
 "Service Requests"). No money path. **Filed:** notify-the-traveler when their request is marked fulfilled (ties to
 the email cluster); feed accepted requests into the supply-gap recommender.
 
+**Migration 129 (Jul 24, 2026; registered in `migration-files.ts`) — Content location normalization, Lane A Phase 1:**
+adds four **ADDITIVE NULLABLE** columns to `provider_services` — `latitude`/`longitude` `DECIMAL(10,7)`, `city`
+`VARCHAR`, `location_precision` `VARCHAR` (intended values `'neighborhood_centroid' | 'exact'`). **No DB CHECK, no
+NOT NULL, no DEFAULT** → no publish-time drizzle-push CHECK-failure trap (matches the migration-124/125 additive
+posture); the columns are also added to the `providerServices` pgTable in `shared/schema.ts` (nullable, matching).
+**Backfill NEVER FABRICATES:** for rows whose `neighborhood` resolves against `city_neighborhoods` (all 109 rows have
+`centroid_lat`/`centroid_lng` NOT NULL — a real coordinate source), it sets `latitude`/`longitude` = that
+neighborhood's centroid, `location_precision = 'neighborhood_centroid'`, and `city` = the neighborhood's city; rows
+without a resolvable neighborhood keep **all four columns NULL** (NULL is the honest state — the `location='Unknown'`
+lesson; **no city-center fallback, no `'Unknown'`**). **Match key = slug, not name (deviation from the brief, recorded):**
+`provider_services.neighborhood` stores a **slug** (documented "soft reference into `city_neighborhoods.slug`"), and
+`city_neighborhoods.slug` is globally unique (0 duplicate slugs), so a slug match is unambiguous and hits **30/30**
+neighborhood-bearing rows, vs a bare name (`LOWER(TRIM)`) match's 22/30 — matching by name would have silently dropped
+8 valid rows (e.g. slug `kyoto-station` vs name "Kyoto Station Area"). The UPDATE matches slug-first then falls back to
+name (the 011/012 `LOWER(TRIM)` pattern), `DISTINCT ON (id)` picking one neighborhood per row; guarded (`WHERE latitude
+IS NULL`) so re-runs are a no-op. **Additive, not repurposed:** the coverage/upsell engine does NOT read these columns
+for pricing/matching (Phase 0 finding — zero money/recommendation blast radius), and the ~14 free-text `ilike` location
+readers are **left untouched** (migrating readers is a later lane). Verified post-apply via `information_schema` (all 4
+present + nullable) and spot-checked (30 backfilled with 0 centroid mismatches, 9 NULL = the 9 rows with empty
+neighborhood). Ratified by the decision-maker (Lane A Phase 1). **Filed (later lanes):** migrate the free-text location
+readers onto these columns; add an `'exact'`-precision write path (geocoded addresses); optional CHECK on
+`location_precision` once the write paths are locked.
+
 **Migration 116 (Jul 15, 2026; registered in `migration-files.ts`) — Feed measurement: content_impressions completion:**
 analytics-only, no money semantics, fire-and-forget writes. The `content_impressions` table was created by
 migration 082 but **never had a writer** — the client feed's impression tracker
