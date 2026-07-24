@@ -466,4 +466,16 @@ export const MIGRATION_FILES = [
   // see a warning badge in the concierge panel and can investigate the ledger gap. Idempotent:
   // ADD COLUMN IF NOT EXISTS.
   "128_coordination_revenue_reversal_missing.sql",
+  // Migration 129 — Content location normalization, Lane A Phase 1. Adds four ADDITIVE NULLABLE
+  // columns to provider_services (latitude/longitude DECIMAL(10,7), city VARCHAR, location_precision
+  // VARCHAR) + a NEVER-FABRICATES backfill from city_neighborhoods centroids (109/109 rows have
+  // centroid_lat/lng NOT NULL). No DB CHECK / no NOT NULL / no DEFAULT → no publish-time drizzle-push
+  // trap (migration-124/125 additive posture). Backfill: provider_services.neighborhood is a SLUG
+  // (soft reference into city_neighborhoods.slug — globally unique), matched slug-first then name
+  // (LOWER(TRIM), the 011/012 pattern); a match sets lat/lng/city + location_precision =
+  // 'neighborhood_centroid'; a miss leaves all four NULL (NULL is the honest state — the
+  // location='Unknown' lesson; no city-center fallback). Coverage/upsell engine does NOT read these
+  // for pricing/matching, and the ~14 free-text ilike location readers are left untouched (columns
+  // ADDED, not repurposed). Guarded/idempotent.
+  "129_provider_services_location_coordinates.sql",
 ] as const;

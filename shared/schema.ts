@@ -569,7 +569,17 @@ export const providerServices = pgTable("provider_services", {
   transportProvided: varchar("transport_provided", { length: 20 }).default("not_applicable"), // yes, no, not_applicable
   // Neighborhood tag (v2 spec §5.1) — soft reference into city_neighborhoods.slug.
   neighborhood: varchar("neighborhood", { length: 100 }),
-  
+
+  // Content location normalization (Lane A Phase 1, migration 129) — additive nullable coordinate
+  // columns. Backfilled from city_neighborhoods centroids where the neighborhood slug resolves;
+  // NULL when unresolvable (NULL is the honest state — no city-center fallback). NOT read by the
+  // coverage/upsell engine for pricing/matching. No DB CHECK (additive-nullable only).
+  // location_precision intended values: 'neighborhood_centroid' | 'exact'.
+  latitude: decimal("latitude", { precision: 10, scale: 7 }),
+  longitude: decimal("longitude", { precision: 10, scale: 7 }),
+  city: varchar("city"),
+  locationPrecision: varchar("location_precision"),
+
   // What's Included & Requirements
   whatIncluded: jsonb("what_included").default([]), // Array of strings: ["3 hours shooting", "50+ edited photos"]
   requirements: jsonb("requirements").default([]), // What provider needs from traveler
