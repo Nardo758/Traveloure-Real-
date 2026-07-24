@@ -1371,9 +1371,66 @@ export default function ExperienceTemplatePage() {
     }
   };
 
-  const openExpertChat = () => {
-    // Open the Expert Help dialog with AI matching + chat tabs
+  // Tracks the last plan snapshot we shared with the expert queue, so repeated
+  // "Get Expert Help" clicks don't spam a new lead for an unchanged plan.
+  const lastSharedPlanRef = useRef<string>("");
+
+  // Build a snapshot of everything the traveler has planned so far — the
+  // "itinerary preview" work — to hand to the expert.
+  const buildPlanSnapshot = () => ({
+    source: "template" as const,
+    experienceType: experienceType?.name,
+    experienceSlug: slug,
+    destination,
+    originCity,
+    startDate: startDate ? startDate.toISOString().split("T")[0] : undefined,
+    endDate: endDate ? endDate.toISOString().split("T")[0] : undefined,
+    travelers: adults + kids,
+    interests: selectedInterests,
+    cartItems: cart.map((i) => ({
+      name: i.name,
+      category: i.type,
+      price: i.price,
+      provider: i.provider || "Provider",
+      quantity: i.quantity,
+    })),
+    cartTotal,
+  });
+
+  const openExpertChat = async () => {
+    // Open the Expert Help dialog with AI matching + chat tabs.
     setExpertHelpDialogOpen(true);
+
+    // Hand the traveler's current planning work to the expert queue so the
+    // expert can help with the plan-in-progress, not a blank slate. Best-effort
+    // and de-duplicated: only sends when signed in, a destination is set, and
+    // the plan changed since the last share.
+    if (!user || !destination.trim()) return;
+    const snapshot = buildPlanSnapshot();
+    const sig = JSON.stringify(snapshot);
+    if (sig === lastSharedPlanRef.current) return;
+    lastSharedPlanRef.current = sig;
+    try {
+      await fetch("/api/expert-requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          destination,
+          requestType: "template_inquiry",
+          notes: `Traveler is planning a ${experienceType?.name || "trip"} to ${destination}` +
+            (cart.length ? ` with ${cart.length} selected item(s) (~$${cartTotal}).` : "."),
+          optimizationContext: { planSnapshot: snapshot },
+        }),
+      });
+      toast({
+        title: "Shared with an expert",
+        description: "Your current plan was sent so an expert can jump right in.",
+      });
+    } catch {
+      // Non-fatal — the dialog is already open; allow a retry on the next click.
+      lastSharedPlanRef.current = "";
+    }
   };
   
   const openAiItineraryBuilder = () => {
@@ -1875,7 +1932,7 @@ export default function ExperienceTemplatePage() {
                 ) : (
                   <Sparkles className="w-4 h-4" />
                 )}
-                {creatingComparison ? "Creating..." : "Generate Itinerary"}
+                {creatingComparison ? "Building preview..." : "Itinerary Preview"}
               </Button>
             </div>
           </div>
@@ -2834,7 +2891,7 @@ export default function ExperienceTemplatePage() {
                 ) : (
                   <Sparkles className="w-3 h-3" />
                 )}
-                {creatingComparison ? "..." : "Generate"}
+                {creatingComparison ? "..." : "Preview"}
               </Button>
               </div>
             </div>
@@ -2874,7 +2931,7 @@ export default function ExperienceTemplatePage() {
                     className="bg-primary"
                   >
                     {creatingComparison ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4 mr-1" />}
-                    Generate
+                    Preview
                   </Button>
                 </div>
               )}
