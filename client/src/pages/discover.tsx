@@ -1347,7 +1347,7 @@ export default function DiscoverPage() {
                         </Link>
                       ) : (
                         <Link href="/expert-status">
-                          <Button size="sm" variant="outline" data-testid="button-become-expert-discover-header">
+                          <Button size="sm" variant="outline" data-testid="button-become-expert-packages">
                             Become an expert
                           </Button>
                         </Link>
@@ -1673,7 +1673,7 @@ export default function DiscoverPage() {
                 </Link>
               ) : (
                 <Link href="/expert-status">
-                  <Button size="lg" variant="outline" className="px-8" data-testid="button-become-expert-discover-footer">
+                  <Button size="lg" variant="outline" className="px-8" data-testid="button-become-expert-hero">
                     Become an expert
                   </Button>
                 </Link>
