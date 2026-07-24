@@ -1517,7 +1517,7 @@ export default function ExperienceTemplatePage() {
         if (isCustomVenue) {
           payload.customVenueId = item.id.replace("custom-", "");
         } else {
-          payload.serviceId = item.id;
+          payload.serviceId = item.id.startsWith("service-") ? item.id.replace("service-", "") : item.id;
         }
         await apiRequest("POST", "/api/cart", payload);
         queryClient.invalidateQueries({ queryKey: ["/api/cart", slug] });
