@@ -1,9 +1,10 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { MapPin, Clock, Star, ExternalLink, Ticket } from "lucide-react";
+import { MapPin, Clock, Star, Ticket } from "lucide-react";
 import type { CatalogItem } from "@/types/catalog";
 import { BookWithExpertButton } from "./BookWithExpertButton";
+import { useAgentBooking } from "./useAgentBooking";
 
 interface ActivityCardProps {
   item: CatalogItem;
@@ -22,11 +23,8 @@ const PROVIDER_META: Record<string, { label: string; color: string }> = {
 };
 
 export function ActivityCard({ item, className }: ActivityCardProps) {
-  const handleBook = () => {
-    if (item.affiliateUrl || item.bookingUrl) {
-      window.open((item.affiliateUrl || item.bookingUrl)!, "_blank", "noopener");
-    }
-  };
+  // §16: no raw outbound — partner fulfilment goes through the booking-agent rail.
+  const { book: handleBook, isPending: bookPending, requested: bookRequested } = useAgentBooking(item, "activities");
 
   const meta = PROVIDER_META[item.provider] || { label: item.provider, color: "bg-gray-100 text-gray-700" };
   const isQuestTour = item.categories.includes("quest-tour") || item.categories.includes("walking-tour");
@@ -95,11 +93,11 @@ export function ActivityCard({ item, className }: ActivityCardProps) {
               onClick={handleBook}
               variant="outline"
               className="h-7 text-xs gap-1"
+              disabled={bookPending || bookRequested}
               data-testid={`button-book-activity-${item.id}`}
             >
               <Ticket className="h-3 w-3" />
-              Book
-              <ExternalLink className="h-3 w-3" />
+              {bookRequested ? "Requested ✓" : "Book via agent"}
             </Button>
           </div>
           <BookWithExpertButton

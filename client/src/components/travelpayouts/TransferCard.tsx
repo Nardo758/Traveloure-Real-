@@ -1,9 +1,10 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Car, Clock, ExternalLink, Star } from "lucide-react";
+import { Car, Clock, Star } from "lucide-react";
 import type { CatalogItem } from "@/types/catalog";
 import { BookWithExpertButton } from "./BookWithExpertButton";
+import { useAgentBooking } from "./useAgentBooking";
 
 interface TransferCardProps {
   item: CatalogItem;
@@ -11,11 +12,8 @@ interface TransferCardProps {
 }
 
 export function TransferCard({ item, className }: TransferCardProps) {
-  const handleBook = () => {
-    if (item.affiliateUrl || item.bookingUrl) {
-      window.open((item.affiliateUrl || item.bookingUrl)!, "_blank", "noopener");
-    }
-  };
+  // §16: no raw outbound — partner fulfilment goes through the booking-agent rail.
+  const { book: handleBook, isPending: bookPending, requested: bookRequested } = useAgentBooking(item, "transfers");
 
   return (
     <Card className={`overflow-hidden hover:shadow-md transition-shadow ${className ?? ""}`} data-testid={`card-transfer-${item.id}`}>
@@ -70,10 +68,10 @@ export function TransferCard({ item, className }: TransferCardProps) {
               size="sm"
               onClick={handleBook}
               className="h-7 text-xs gap-1"
+              disabled={bookPending || bookRequested}
               data-testid={`button-book-transfer-${item.id}`}
             >
-              Book Transfer
-              <ExternalLink className="h-3 w-3" />
+              {bookRequested ? "Requested ✓" : "Book via agent"}
             </Button>
           </div>
           <BookWithExpertButton
