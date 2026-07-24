@@ -348,26 +348,25 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 <ShoppingCart className="w-5 h-5" />
               </Link>
 
-              {/* Trip plan — auth-gated; links to the active trip when one exists */}
-              {user && tripCtx.tripId && (
+              {/* Trip plan — visible for all users; guests are prompted to sign in on click */}
+              {user ? (
                 <Link
-                  href={`/trip/${tripCtx.tripId}`}
+                  href={tripCtx.tripId ? `/trip/${tripCtx.tripId}` : "/my-trips"}
                   className="hidden lg:inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-primary transition-colors px-2 py-1"
                   data-testid="link-nav-trip-plan"
                 >
                   <Map className="w-4 h-4" />
                   Trip plan
                 </Link>
-              )}
-              {user && !tripCtx.tripId && (
-                <Link
-                  href="/my-trips"
-                  className="hidden lg:inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-primary transition-colors px-2 py-1"
+              ) : (
+                <button
+                  onClick={() => openSignInModal()}
+                  className="hidden lg:inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-primary transition-colors px-2 py-1 bg-transparent border-0 cursor-pointer"
                   data-testid="link-nav-trip-plan"
                 >
                   <Map className="w-4 h-4" />
                   Trip plan
-                </Link>
+                </button>
               )}
 
               {!user && (
