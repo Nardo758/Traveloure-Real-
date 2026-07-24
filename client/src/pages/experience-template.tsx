@@ -1868,31 +1868,6 @@ export default function ExperienceTemplatePage() {
                 <MessageCircle className="w-4 h-4" />
                 Get Expert Help
               </Button>
-              {/* Separate Cart Button */}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  // Store experience context for cart page
-                  updateTripContext({
-                    title: `${experienceType.name} Experience`,
-                    experienceType: experienceType.name,
-                    experienceSlug: slug,
-                    destination,
-                    startDate,
-                    endDate,
-                    travelers: adults + kids
-                  });
-                  setLocation("/cart");
-                }}
-                className="gap-1.5"
-                data-testid="button-cart-ribbon"
-              >
-                <ShoppingCart className="w-4 h-4" />
-                <span data-testid="text-cart-items">{cart.length}</span>
-                <span className="text-muted-foreground">|</span>
-                <span data-testid="text-cart-total">${cartTotal.toLocaleString()}</span>
-              </Button>
               {/* Generate Itinerary Button - Creates comparison directly */}
               <Button
                 size="sm"
@@ -2965,28 +2940,6 @@ export default function ExperienceTemplatePage() {
               >
                 <MessageCircle className="w-3 h-3" />
                 Expert
-              </Button>
-              {/* Mobile Cart Button */}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  updateTripContext({
-                    title: `${experienceType.name} Experience`,
-                    experienceType: experienceType.name,
-                    experienceSlug: slug,
-                    destination,
-                    startDate,
-                    endDate,
-                    travelers: adults + kids
-                  });
-                  setLocation("/cart");
-                }}
-                className="gap-1 px-2"
-                data-testid="button-cart-ribbon-mobile"
-              >
-                <ShoppingCart className="w-3 h-3" />
-                <span data-testid="text-cart-items-mobile">{cart.length}</span>
               </Button>
               {/* Mobile Generate Itinerary Button */}
               <Button

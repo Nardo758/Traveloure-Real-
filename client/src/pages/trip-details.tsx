@@ -215,6 +215,20 @@ export default function TripDetails() {
   });
   const linkedExperience = allUserExperiences?.find((e) => e.tripId === id) ?? null;
 
+  const EVENT_TRIP_TYPES = new Set(["wedding", "honeymoon", "proposal", "anniversary", "birthday", "corporate"]);
+  const isEventTrip = !!linkedExperience || EVENT_TRIP_TYPES.has((trip?.eventType || "").toLowerCase());
+
+  const createGuestListMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/user-experiences", {
+      tripId: id,
+      title: trip?.title || trip?.destination || "My Event",
+      location: trip?.destination || "",
+      eventDate: trip?.startDate || new Date().toISOString(),
+    }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/user-experiences"] }),
+    onError: () => toast({ title: "Could not set up guest list", variant: "destructive" }),
+  });
+
   const { data: expertsData, isLoading: expertsLoading } = useQuery<Expert[]>({
     queryKey: [`/api/trip-experts?destination=${encodeURIComponent(trip?.destination || "")}`],
     enabled: expertPickerOpen && !!trip?.destination,
@@ -488,7 +502,7 @@ export default function TripDetails() {
                       <Package className="w-3.5 h-3.5" />
                       Logistics
                     </TabsTrigger>
-                    {linkedExperience && (
+                    {isEventTrip && (
                       <TabsTrigger value="guests" data-testid="tab-guests" className="gap-1">
                         <UserPlus className="w-3.5 h-3.5" />
                         Guests
@@ -1124,14 +1138,40 @@ export default function TripDetails() {
                   )}
                 </TabsContent>
 
-                {linkedExperience && (
+                {isEventTrip && (
                   <TabsContent value="guests" className="mt-0">
-                    <GuestInviteManager
-                      experienceId={linkedExperience.id}
-                      eventName={linkedExperience.title || trip?.title || trip?.destination || "Your event"}
-                      eventDestination={linkedExperience.location || trip?.destination || ""}
-                      eventDate={(linkedExperience.eventDate as string | null) || (trip?.startDate as unknown as string) || new Date().toISOString()}
-                    />
+                    {linkedExperience ? (
+                      <GuestInviteManager
+                        experienceId={linkedExperience.id}
+                        eventName={linkedExperience.title || trip?.title || trip?.destination || "Your event"}
+                        eventDestination={linkedExperience.location || trip?.destination || ""}
+                        eventDate={(linkedExperience.eventDate as string | null) || (trip?.startDate as unknown as string) || new Date().toISOString()}
+                      />
+                    ) : (
+                      <div className="py-14 flex flex-col items-center gap-4 text-center">
+                        <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center">
+                          <UserPlus className="w-7 h-7 text-primary" />
+                        </div>
+                        <div>
+                          <p className="font-semibold text-foreground mb-1">Set up your guest list</p>
+                          <p className="text-sm text-muted-foreground max-w-xs">
+                            Track RSVPs, send invites, and manage attendees for{" "}
+                            {trip?.title || trip?.destination || "this event"}.
+                          </p>
+                        </div>
+                        <Button
+                          onClick={() => createGuestListMutation.mutate()}
+                          disabled={createGuestListMutation.isPending}
+                          data-testid="button-setup-guest-list"
+                        >
+                          {createGuestListMutation.isPending ? (
+                            <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Setting up…</>
+                          ) : (
+                            <><UserPlus className="w-4 h-4 mr-2" />Set up guest list</>
+                          )}
+                        </Button>
+                      </div>
+                    )}
                   </TabsContent>
                 )}
               </div>
