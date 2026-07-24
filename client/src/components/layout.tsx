@@ -33,7 +33,6 @@ import {
   UserCheck,
   HelpCircle,
   FileText,
-  ShoppingCart,
   PartyPopper,
   Baby,
   Gift,
@@ -61,7 +60,7 @@ import { cn } from "@/lib/utils";
 import { UserMenu } from "@/components/user-menu";
 import { NotificationBell } from "@/components/notification-bell";
 import { navGroupsConfig, authNavConfig, footerSectionsConfig } from "@/lib/nav-config";
-import { useTripContextSync, useTripContext } from "@/lib/trip-context";
+import { useTripContextSync } from "@/lib/trip-context";
 import { TripStrip } from "@/components/trip/trip-strip";
 
 // ── Icon maps ─────────────────────────────────────────────────────────────────
@@ -305,7 +304,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const { openSignInModal } = useSignInModal();
   const [location] = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [tripCtx] = useTripContext();
   // Hydrate the signed-in user's trip context from the server (P2/E2) — once per load.
   useTripContextSync();
 
