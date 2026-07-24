@@ -66,7 +66,7 @@ import { budgetService } from "./services/budget.service";
 import { itineraryIntelligenceService } from "./services/itinerary-intelligence.service";
 import { emergencyService } from "./services/emergency.service";
 import { aiUsageService } from "./services/ai-usage.service";
-import { complexityTier } from "./services/smart-sequencing.service";
+import { complexityTier, buildAnchorPromptBlock, validateAnchorConflicts } from "./services/smart-sequencing.service";
 import { getFee, resolveCoordinationFee, getAvailableCoordinationCreditCents, claimCoordinationCredit, releaseCoordinationCredit } from "./services/optimization-fee.service";
 import { buildEventTimeline, getEventVendorGaps } from "./services/event-coordination.service";
 import { trackAnthropicResponse } from "./services/ai-cost-tracker";
@@ -752,38 +752,12 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/trips/generate-itinerary", aiRateLimit, isAuthenticated, async (req, res) => {
-    const { tripId } = req.body;
-    if (!tripId) {
-      return res.status(400).json({ message: "tripId is required in the request body" });
-    }
-    const trip = await storage.getTrip(tripId);
-    if (!trip) return res.status(404).json({ message: "Trip not found" });
-    const itinerary = await storage.createGeneratedItinerary({
-      tripId: trip.id,
-      itineraryData: {
-        days: [
-          { day: 1, activities: [
-            { time: "10:00 AM", title: "Visit City Center", description: "Explore the main square." },
-            { time: "2:00 PM", title: "Lunch at Local Cafe", description: "Try the famous pastry." }
-          ]},
-          { day: 2, activities: [
-            { time: "09:00 AM", title: "Museum Tour", description: "Learn about local history." },
-            { time: "4:00 PM", title: "Sunset View", description: "Best view in the city." }
-          ]}
-        ]
-      },
-      status: "generated"
-    });
-    // Fire-and-forget: T3 funnel event
-    trackFunnelEvent({
-      userId: (req.user as any)?.claims?.sub,
-      tripId: tripId,
-      eventType: "itinerary_generated",
-      funnelStage: "T3",
-    }).catch(() => {});
-    res.status(201).json(itinerary);
-  });
+  // REMOVED (Lane 2a): the hardcoded 2-day "Visit City Center" stub that served
+  // POST /api/trips/generate-itinerary. It had zero client producers (whole-repo grep),
+  // and returned fake fixed content. Real generation lives at the two AI paths:
+  //   • POST /api/trips/:id/generate-itinerary  (Claude, below)
+  //   • POST /api/ai/generate-itinerary          (Grok, content.routes.ts)
+  // A duplicate copy in trips.routes.ts was deleted in the same change.
 
   app.post(api.trips.generateItinerary.path, isAuthenticated, async (req, res) => {
     try {
@@ -799,13 +773,24 @@ export async function registerRoutes(
 
       let itineraryData: any;
 
+      // Anchor-aware generation (Lane 2a): fetch the trip's immovable temporal
+      // commitments and steer the generator around them. Empty for the vast
+      // majority of trips → anchorBlock is "" and the prompt is unchanged.
+      const [tripAnchors, tripBoundaries] = await Promise.all([
+        storage.getTemporalAnchors(trip.id),
+        storage.getDayBoundaries(trip.id),
+      ]);
+      const anchorBlock = buildAnchorPromptBlock(tripAnchors, tripBoundaries, trip.startDate);
+
       // Dedup key covers all parameters that affect the AI output.
       // Generic (non-personalised) — preferences string is included so
-      // trips with different prefs get independent AI calls.
-      const dedupKey = `itinerary:claude:${destination}:${duration}:${travelers}:${preferences}`;
+      // trips with different prefs get independent AI calls. The anchor block
+      // is folded in verbatim so two same-destination trips with different
+      // anchors don't share a cached generation (in-memory map key; length is fine).
+      const dedupKey = `itinerary:claude:${destination}:${duration}:${travelers}:${preferences}${anchorBlock ? `:${anchorBlock}` : ""}`;
 
       try {
-        const prompt = `Create a detailed ${duration}-day travel itinerary for ${destination} for ${travelers} traveler(s).${preferences ? ` Preferences: ${preferences}.` : ""}
+        const prompt = `Create a detailed ${duration}-day travel itinerary for ${destination} for ${travelers} traveler(s).${preferences ? ` Preferences: ${preferences}.` : ""}${anchorBlock}
 
 Return ONLY valid JSON in this exact structure:
 {
@@ -861,6 +846,21 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             ],
           })),
         };
+      }
+
+      // Post-generation anchor validation (Lane 2a): warn, never block. Attaches
+      // conflict notes onto the plan so the data exists (Lane 4 renders it). Skips
+      // to a no-op { hasConstraints:false } when the trip has no anchors/boundaries.
+      try {
+        itineraryData.anchorValidation = validateAnchorConflicts(
+          itineraryData.days || [],
+          tripAnchors,
+          tripBoundaries,
+          trip.startDate,
+          new Date().toISOString(),
+        );
+      } catch (vErr) {
+        console.error("anchor validation failed (non-blocking):", vErr);
       }
 
       // Upsert: update if exists, create if not
