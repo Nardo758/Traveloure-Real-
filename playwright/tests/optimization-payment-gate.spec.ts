@@ -48,10 +48,12 @@ async function navigateCartToOptimizeStep(
 ) {
   await page.goto(`${BASE_URL}/cart`);
 
-  // Trip Details step removed (Trip-Strip P3): dates are set in the always-visible
-  // cart header; Continue resolves the trip and goes straight to the optimize step.
-  await page.getByTestId("input-header-start-date").fill(startDate);
-  await page.getByTestId("input-header-end-date").fill(endDate);
+  // Trip-Strip P3b: the cart header is now a read-only date summary — dates are
+  // set through the shared EditTripPanel behind the header's "Edit trip" button.
+  await page.getByTestId("button-edit-trip").click();
+  await page.getByTestId("input-etp-start-date").fill(startDate);
+  await page.getByTestId("input-etp-end-date").fill(endDate);
+  await page.getByTestId("button-etp-save").click();
 
   const generateBtn = page.getByTestId("button-generate-itinerary-comparison");
   await expect(generateBtn).toBeVisible({ timeout: 10_000 });
