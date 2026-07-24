@@ -17,10 +17,10 @@ import {
   MapPin,
   Star,
   AlertCircle,
-  ExternalLink,
   Loader2,
 } from "lucide-react";
 import type { CatalogItem } from "@/types/catalog";
+import { useContentAgentBooking } from "@/hooks/use-content-agent-booking";
 
 interface EventItem extends CatalogItem {
   type: "event";
@@ -28,6 +28,32 @@ interface EventItem extends CatalogItem {
   isFree?: boolean;
   isSoldOut?: boolean;
   venueName?: string | null;
+}
+
+/**
+ * §16 (item ④): Fever is a partner source, so "Get Tickets" routes through the agent-booking rail —
+ * never a raw window.open(affiliateUrl). Extracted to a child so the hook isn't called inside a map.
+ */
+function FeverTicketsButton({ event }: { event: EventItem }) {
+  const { book, isPending, requested } = useContentAgentBooking({
+    itemName: event.title,
+    itemDescription: [event.description, event.venueName, event.destination].filter(Boolean).join(" · ") || null,
+    partnerName: event.provider || "Fever",
+    partnerCategory: "event",
+    affiliateUrl: event.affiliateUrl || event.bookingUrl,
+  });
+  return (
+    <Button
+      size="sm"
+      className="text-xs"
+      onClick={book}
+      disabled={isPending || requested}
+      data-testid={`button-get-tickets-${event.id}`}
+    >
+      {isPending ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <Ticket className="h-3 w-3 mr-1" />}
+      {requested ? "Requested" : "Get Tickets"}
+    </Button>
+  );
 }
 
 interface FeverEventsSectionProps {
@@ -274,17 +300,7 @@ export function FeverEventsSection({ destination, startDate, endDate }: FeverEve
                   </div>
 
                   {(event.affiliateUrl || event.bookingUrl) && !event.isSoldOut && (
-                    <Button
-                      size="sm"
-                      className="text-xs"
-                      onClick={() =>
-                        window.open(event.affiliateUrl || event.bookingUrl || "#", "_blank", "noopener,noreferrer")
-                      }
-                      data-testid={`button-get-tickets-${event.id}`}
-                    >
-                      <ExternalLink className="h-3 w-3 mr-1" />
-                      Get Tickets
-                    </Button>
+                    <FeverTicketsButton event={event} />
                   )}
                   {event.isSoldOut && (
                     <Badge variant="destructive" className="text-xs">
