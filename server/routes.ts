@@ -66,7 +66,7 @@ import { budgetService } from "./services/budget.service";
 import { itineraryIntelligenceService } from "./services/itinerary-intelligence.service";
 import { emergencyService } from "./services/emergency.service";
 import { aiUsageService } from "./services/ai-usage.service";
-import { complexityTier } from "./services/smart-sequencing.service";
+import { complexityTier, buildAnchorPromptBlock, validateAnchorConflicts } from "./services/smart-sequencing.service";
 import { getFee, resolveCoordinationFee, getAvailableCoordinationCreditCents, claimCoordinationCredit, releaseCoordinationCredit } from "./services/optimization-fee.service";
 import { buildEventTimeline, getEventVendorGaps } from "./services/event-coordination.service";
 import { trackAnthropicResponse } from "./services/ai-cost-tracker";
@@ -106,6 +106,8 @@ import { createDMOCrawler } from "./content/scrapers/DMOCrawler";
 import { ALL_DMO_SOURCES, getMarketGapSummary } from "./content/providers/DMOSourceRegistry";
 import savedItemsRoutes from "./routes/saved-items.routes";
 import serviceRequestsRoutes from "./routes/service-requests.routes";
+import tripContextRoutes from "./routes/trip-context.routes";
+import guestInvitesRoutes from "./routes/guest-invites";
 import { CREDIT_PACKAGES } from "@shared/credit-packages";
 import { 
   insertTripParticipantSchema, 
@@ -578,6 +580,14 @@ export async function registerRoutes(
   // POST/GET /api/service-requests (session-scoped) + /api/admin/service-requests
   // (inherits the blanket adminApiGuard registered above). New table, migration 123.
   app.use(serviceRequestsRoutes);
+  app.use(tripContextRoutes);
+
+  // Guest-invite system (destination weddings/events): organizer invite management
+  // (session-authenticated + experience-ownership-gated, §14) and public token-based
+  // guest RSVP/origin/travel-plan endpoints (rate-limited; scoped to the token's own
+  // invite row; parent experience redacted to guest-safe fields). Was a never-imported
+  // dark file (the class the never-imported-router guard now catches) — A0 activation.
+  app.use(guestInvitesRoutes);
 
   // Trips + Itinerary-Comparison Routes — was imported at line 95 but never mounted
   // NOTE (§9 shadow fix): tripsRoutes is mounted LAST (just before `return httpServer`),
@@ -752,38 +762,12 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/trips/generate-itinerary", aiRateLimit, isAuthenticated, async (req, res) => {
-    const { tripId } = req.body;
-    if (!tripId) {
-      return res.status(400).json({ message: "tripId is required in the request body" });
-    }
-    const trip = await storage.getTrip(tripId);
-    if (!trip) return res.status(404).json({ message: "Trip not found" });
-    const itinerary = await storage.createGeneratedItinerary({
-      tripId: trip.id,
-      itineraryData: {
-        days: [
-          { day: 1, activities: [
-            { time: "10:00 AM", title: "Visit City Center", description: "Explore the main square." },
-            { time: "2:00 PM", title: "Lunch at Local Cafe", description: "Try the famous pastry." }
-          ]},
-          { day: 2, activities: [
-            { time: "09:00 AM", title: "Museum Tour", description: "Learn about local history." },
-            { time: "4:00 PM", title: "Sunset View", description: "Best view in the city." }
-          ]}
-        ]
-      },
-      status: "generated"
-    });
-    // Fire-and-forget: T3 funnel event
-    trackFunnelEvent({
-      userId: (req.user as any)?.claims?.sub,
-      tripId: tripId,
-      eventType: "itinerary_generated",
-      funnelStage: "T3",
-    }).catch(() => {});
-    res.status(201).json(itinerary);
-  });
+  // REMOVED (Lane 2a): the hardcoded 2-day "Visit City Center" stub that served
+  // POST /api/trips/generate-itinerary. It had zero client producers (whole-repo grep),
+  // and returned fake fixed content. Real generation lives at the two AI paths:
+  //   • POST /api/trips/:id/generate-itinerary  (Claude, below)
+  //   • POST /api/ai/generate-itinerary          (Grok, content.routes.ts)
+  // A duplicate copy in trips.routes.ts was deleted in the same change.
 
   app.post(api.trips.generateItinerary.path, isAuthenticated, async (req, res) => {
     try {
@@ -799,13 +783,24 @@ export async function registerRoutes(
 
       let itineraryData: any;
 
+      // Anchor-aware generation (Lane 2a): fetch the trip's immovable temporal
+      // commitments and steer the generator around them. Empty for the vast
+      // majority of trips → anchorBlock is "" and the prompt is unchanged.
+      const [tripAnchors, tripBoundaries] = await Promise.all([
+        storage.getTemporalAnchors(trip.id),
+        storage.getDayBoundaries(trip.id),
+      ]);
+      const anchorBlock = buildAnchorPromptBlock(tripAnchors, tripBoundaries, trip.startDate);
+
       // Dedup key covers all parameters that affect the AI output.
       // Generic (non-personalised) — preferences string is included so
-      // trips with different prefs get independent AI calls.
-      const dedupKey = `itinerary:claude:${destination}:${duration}:${travelers}:${preferences}`;
+      // trips with different prefs get independent AI calls. The anchor block
+      // is folded in verbatim so two same-destination trips with different
+      // anchors don't share a cached generation (in-memory map key; length is fine).
+      const dedupKey = `itinerary:claude:${destination}:${duration}:${travelers}:${preferences}${anchorBlock ? `:${anchorBlock}` : ""}`;
 
       try {
-        const prompt = `Create a detailed ${duration}-day travel itinerary for ${destination} for ${travelers} traveler(s).${preferences ? ` Preferences: ${preferences}.` : ""}
+        const prompt = `Create a detailed ${duration}-day travel itinerary for ${destination} for ${travelers} traveler(s).${preferences ? ` Preferences: ${preferences}.` : ""}${anchorBlock}
 
 Return ONLY valid JSON in this exact structure:
 {
@@ -861,6 +856,21 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             ],
           })),
         };
+      }
+
+      // Post-generation anchor validation (Lane 2a): warn, never block. Attaches
+      // conflict notes onto the plan so the data exists (Lane 4 renders it). Skips
+      // to a no-op { hasConstraints:false } when the trip has no anchors/boundaries.
+      try {
+        itineraryData.anchorValidation = validateAnchorConflicts(
+          itineraryData.days || [],
+          tripAnchors,
+          tripBoundaries,
+          trip.startDate,
+          new Date().toISOString(),
+        );
+      } catch (vErr) {
+        console.error("anchor validation failed (non-blocking):", vErr);
       }
 
       // Upsert: update if exists, create if not
@@ -4936,18 +4946,38 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { experienceSlug, userExperienceId } = req.body;
 
+      // External (affiliate/AI) cart items live only in the client's sessionStorage —
+      // they have no cart_items rows. The client sends a minimal descriptor list so an
+      // external-only cart can still resolve a trip. Prices are deliberately ignored
+      // (no money decision here; the trip is a draft container).
+      const externalItems: Array<{ name?: string; date?: string; city?: string }> =
+        (Array.isArray(req.body.externalItems) ? req.body.externalItems.slice(0, 50) : [])
+          .filter((e: any) => e && typeof e === "object")
+          .map((e: any) => ({
+            name: typeof e.name === "string" ? e.name.slice(0, 200) : undefined,
+            date: typeof e.date === "string" ? e.date.slice(0, 30) : undefined,
+            city: typeof e.city === "string" ? e.city.slice(0, 120) : undefined,
+          }));
+      const isYmd = (s: any): s is string => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s);
+      const bodyStart = isYmd(req.body.startDate) ? req.body.startDate : null;
+      const bodyEnd = isYmd(req.body.endDate) ? req.body.endDate : null;
+      const destinationHint =
+        typeof req.body.destination === "string" ? req.body.destination.trim().slice(0, 120) : "";
+
       // 1. Get all cart items for this user (optionally filtered by experience slug)
       const items: any[] = experienceSlug
         ? await storage.getCartItems(userId, experienceSlug)
         : await storage.getCartItems(userId);
 
-      // Guard: empty cart cannot generate a meaningful trip
-      if (!items || items.length === 0) {
+      // Guard: a cart with neither platform nor external items cannot generate a meaningful trip
+      if ((!items || items.length === 0) && externalItems.length === 0) {
         return res.status(400).json({ message: "Cannot resolve trip: cart is empty" });
       }
 
-      // 2. Reuse an existing tripId if any cart item already has one
-      const existingTripId = items.find((i) => i.tripId)?.tripId;
+      // 2. Reuse an existing trip: a cart item's tripId, or the client's remembered tripId
+      // (external-only carts have no cart_items rows to remember it on) — ownership-checked.
+      const existingTripId = items.find((i) => i.tripId)?.tripId
+        ?? (typeof req.body.tripId === "string" ? req.body.tripId : undefined);
       if (existingTripId) {
         const trip = await storage.getTrip(existingTripId);
         if (trip && trip.userId === userId) {
@@ -4955,7 +4985,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
 
-      // 3. Infer destination: most common city across cart items
+      // 3. Infer destination: most common city across cart items, then external items,
+      // then the client's experience-context hint
       const cityCounts: Record<string, number> = {};
       for (const item of items) {
         const city =
@@ -4964,27 +4995,40 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           null;
         if (city) cityCounts[city] = (cityCounts[city] || 0) + 1;
       }
+      for (const ext of externalItems) {
+        if (ext.city) cityCounts[ext.city] = (cityCounts[ext.city] || 0) + 1;
+      }
       const destination =
         Object.entries(cityCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ||
+        destinationHint ||
         "Your Destination";
 
-      // 4. Infer start date: earliest scheduledDate, or today + 30 days
-      const scheduledDates = items
-        .map((i) => (i.scheduledDate ? new Date(i.scheduledDate) : null))
-        .filter(Boolean) as Date[];
+      // 4. Start date: the traveler's explicit header dates win; else earliest
+      // scheduledDate across platform + external items; else today + 30 days
+      const scheduledDates = [
+        ...items.map((i) => (i.scheduledDate ? new Date(i.scheduledDate) : null)),
+        ...externalItems.map((e) => (e.date ? new Date(e.date) : null)),
+      ].filter((d): d is Date => d instanceof Date && !isNaN(d.getTime()));
       const defaultStart = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-      const inferredStart =
-        scheduledDates.length > 0
+      const inferredStart = bodyStart
+        ? new Date(`${bodyStart}T00:00:00Z`)
+        : scheduledDates.length > 0
           ? scheduledDates.reduce((min, d) => (d < min ? d : min), scheduledDates[0])
           : defaultStart;
-      const inferredEnd = new Date(inferredStart.getTime() + 7 * 24 * 60 * 60 * 1000);
+      const inferredEnd = bodyEnd && (!bodyStart || bodyEnd >= bodyStart)
+        ? new Date(`${bodyEnd}T00:00:00Z`)
+        : new Date(inferredStart.getTime() + 7 * 24 * 60 * 60 * 1000);
 
       const startDate = inferredStart.toISOString().split("T")[0];
       const endDate = inferredEnd.toISOString().split("T")[0];
 
-      // 5. Resolve user_experience via slug (server-side) to get guestCount for party size
+      // 5. Party size: the client's trip context wins (validated), then the
+      // user_experience guestCount resolved via slug, then contentMeta, then 2.
+      const bodyTravelers = Number.isInteger(req.body.travelers) && req.body.travelers >= 1 && req.body.travelers <= 500
+        ? (req.body.travelers as number)
+        : null;
       let resolvedUserExperienceId: string | null = userExperienceId || null;
-      let inferredTravelers = 2; // default fallback
+      let inferredTravelers = bodyTravelers ?? 2; // default fallback
 
       if (experienceSlug) {
         // Resolve experienceType by slug, then find the user's experience row
@@ -5008,7 +5052,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
           if (userExp) {
             resolvedUserExperienceId = resolvedUserExperienceId || userExp.id;
-            if (userExp.guestCount && userExp.guestCount > 0) {
+            if (!bodyTravelers && userExp.guestCount && userExp.guestCount > 0) {
               inferredTravelers = userExp.guestCount;
             }
           }
@@ -5019,7 +5063,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const metaTravelers = items
         .map((i) => (i.contentMeta as any)?.travelers || (i.contentMeta as any)?.numberOfTravelers)
         .filter((v) => typeof v === "number" && v > 0);
-      if (metaTravelers.length > 0 && inferredTravelers === 2) {
+      if (!bodyTravelers && metaTravelers.length > 0 && inferredTravelers === 2) {
         inferredTravelers = Math.max(...metaTravelers);
       }
 

@@ -59,6 +59,7 @@ import {
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
+import { updateTripContext } from "@/lib/trip-context";
 import type { ExperienceType } from "@shared/schema";
 
 interface DayActivity {
@@ -401,17 +402,21 @@ export default function QuickStartItinerary() {
     // Store cart items in sessionStorage with experience context (matches experience-template format)
     sessionStorage.setItem(`externalCart_${experienceSlug}`, JSON.stringify(externalCartItems));
     
-    // Also store trip context
-    const tripContext = {
+    // Store the trip details in the shared TripContext so the experience page
+    // and cart actually see them (the old tripContext_<slug> key had no readers
+    // — quick-start's dates/travelers were silently lost).
+    updateTripContext({
+      experienceSlug,
       destination: customDestination || destination,
-      country: customCountry || country,
-      startDate: startDate ? format(startDate, "yyyy-MM-dd") : null,
-      endDate: endDate ? format(endDate, "yyyy-MM-dd") : null,
+      startDate,
+      endDate,
       travelers: adults + kids,
-      interests,
-      itineraryId: itinerary.id,
-    };
-    sessionStorage.setItem(`tripContext_${experienceSlug}`, JSON.stringify(tripContext));
+      contextFields: {
+        country: customCountry || country,
+        interests,
+        itineraryId: itinerary.id,
+      },
+    });
     
     // Navigate to experience builder (note: route is /experiences/:slug)
     const params = new URLSearchParams();

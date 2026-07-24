@@ -1,4 +1,5 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
+import { authorizeTripLogistics } from '../utils/trip-logistics-auth';
 import { withQueryTimer } from '../utils/queryTimer';
 import path from "path";
 import fs from "fs";
@@ -312,31 +313,8 @@ router.delete(api.trips.delete.path, isAuthenticated, async (req, res) => {
   });
 
 
-router.post("/api/trips/generate-itinerary", isAuthenticated, async (req, res) => {
-    const { tripId } = req.body;
-    if (!tripId) {
-      return res.status(400).json({ message: "tripId is required in the request body" });
-    }
-    const trip = await storage.getTrip(tripId);
-    if (!trip) return res.status(404).json({ message: "Trip not found" });
-    const itinerary = await storage.createGeneratedItinerary({
-      tripId: trip.id,
-      itineraryData: {
-        days: [
-          { day: 1, activities: [
-            { time: "10:00 AM", title: "Visit City Center", description: "Explore the main square." },
-            { time: "2:00 PM", title: "Lunch at Local Cafe", description: "Try the famous pastry." }
-          ]},
-          { day: 2, activities: [
-            { time: "09:00 AM", title: "Museum Tour", description: "Learn about local history." },
-            { time: "4:00 PM", title: "Sunset View", description: "Best view in the city." }
-          ]}
-        ]
-      },
-      status: "generated"
-    });
-    res.status(201).json(itinerary);
-  });
+// REMOVED (Lane 2a): duplicate of the hardcoded 2-day stub (see routes.ts). Zero
+// producers; real generation is the Claude/Grok AI paths. Deleted with its inline twin.
 
 
 router.post(api.trips.generateItinerary.path, isAuthenticated, async (req, res) => {
@@ -1718,13 +1696,10 @@ router.get("/api/trips/:tripId/anchors", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims?.sub;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const user = await storage.getUser(userId);
-      if (!user) return res.status(401).json({ message: "Not authenticated" });
       const trip = await storage.getTrip(req.params.tripId);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
-      if (trip.userId !== userId && user.role !== "admin" && user.role !== "expert") {
-        return res.status(403).json({ message: "Not authorized to access this trip" });
-      }
+      const denied = await authorizeTripLogistics(req.params.tripId, userId, `${req.method} ${req.path}`);
+      if (denied) return res.status(denied.status).json({ message: denied.message });
 
       const anchors = await storage.getTemporalAnchors(req.params.tripId);
       res.json(anchors);
@@ -1734,17 +1709,29 @@ router.get("/api/trips/:tripId/anchors", isAuthenticated, async (req, res) => {
   });
 
 
+// Route-boundary coercion for anchor datetimes. JSON cannot carry a JS Date, so
+// the shared Drizzle `anchorDatetime` contract (a strict z.date()) is unsatisfiable
+// over HTTP — every client would 400. We coerce HERE (not in the shared schema, which
+// stays untouched) so any caller — this UI, the expert workspace, future callers — can
+// send an ISO string. z.coerce.date() still REJECTS non-dates (Invalid Date → 400).
+const anchorCreateInput = insertTemporalAnchorSchema.extend({
+  anchorDatetime: z.coerce.date(),
+});
+// Update: all fields optional; tripId omitted so an anchor can't be reassigned to
+// another trip (mass-assign guard). Same coercion on anchorDatetime.
+const anchorUpdateInput = insertTemporalAnchorSchema
+  .omit({ tripId: true })
+  .partial()
+  .extend({ anchorDatetime: z.coerce.date().optional() });
+
 router.post("/api/trips/:tripId/anchors", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims?.sub;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const user = await storage.getUser(userId);
-      if (!user) return res.status(401).json({ message: "Not authenticated" });
       const trip = await storage.getTrip(req.params.tripId);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
-      if (trip.userId !== userId && user.role !== "admin" && user.role !== "expert") {
-        return res.status(403).json({ message: "Not authorized to access this trip" });
-      }
+      const denied = await authorizeTripLogistics(req.params.tripId, userId, `${req.method} ${req.path}`);
+      if (denied) return res.status(denied.status).json({ message: denied.message });
 
       const body = { ...req.body, tripId: req.params.tripId };
 
@@ -1760,7 +1747,7 @@ router.post("/api/trips/:tripId/anchors", isAuthenticated, async (req, res) => {
         delete body.suggestedTime;
       }
 
-      const input = insertTemporalAnchorSchema.parse(body);
+      const input = anchorCreateInput.parse(body);
       const anchor = await storage.createTemporalAnchor(input);
       res.status(201).json(anchor);
     } catch (err) {
@@ -1776,12 +1763,24 @@ router.put("/api/anchors/:id", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims?.sub;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const user = await storage.getUser(userId);
-      if (!user) return res.status(401).json({ message: "Not authenticated" });
-      const updated = await storage.updateTemporalAnchor(req.params.id, req.body);
+      // Resolve the anchor → its owning trip, then apply owner ‖ assigned ‖ admin.
+      // Unknown id → 404; forbidden → 403 below, per codebase convention. NOTE: because
+      // unknown (404) and forbidden (403) differ, anchor-id existence is enumerable by an
+      // authenticated user — accepted as low-sensitivity (anchor ids carry no secret).
+      const existing = await storage.getTemporalAnchorById(req.params.id);
+      if (!existing) return res.status(404).json({ message: "Anchor not found" });
+      const denied = await authorizeTripLogistics(existing.tripId, userId, `${req.method} ${req.path}`);
+      if (denied) return res.status(denied.status).json({ message: denied.message });
+      // Validate-then-mutate: coerce the datetime + reject tripId reassignment
+      // (was: raw req.body passed straight to the update — an unvalidated contract gap).
+      const updates = anchorUpdateInput.parse(req.body);
+      const updated = await storage.updateTemporalAnchor(req.params.id, updates);
       if (!updated) return res.status(404).json({ message: "Anchor not found" });
       res.json(updated);
     } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: error.errors[0].message });
+      }
       res.status(500).json({ message: "Failed to update anchor", error: error.message });
     }
   });
@@ -1791,8 +1790,14 @@ router.delete("/api/anchors/:id", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any).claims?.sub;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const user = await storage.getUser(userId);
-      if (!user) return res.status(401).json({ message: "Not authenticated" });
+      // Resolve the anchor → its owning trip, then apply owner ‖ assigned ‖ admin.
+      // Unknown id → 404; forbidden → 403 below, per codebase convention. NOTE: because
+      // unknown (404) and forbidden (403) differ, anchor-id existence is enumerable by an
+      // authenticated user — accepted as low-sensitivity (anchor ids carry no secret).
+      const existing = await storage.getTemporalAnchorById(req.params.id);
+      if (!existing) return res.status(404).json({ message: "Anchor not found" });
+      const denied = await authorizeTripLogistics(existing.tripId, userId, `${req.method} ${req.path}`);
+      if (denied) return res.status(denied.status).json({ message: denied.message });
       await storage.deleteTemporalAnchor(req.params.id);
       res.status(204).send();
     } catch (error: any) {
@@ -1807,13 +1812,10 @@ router.get("/api/trips/:tripId/day-boundaries", isAuthenticated, async (req, res
     try {
       const userId = (req.user as any).claims?.sub;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const user = await storage.getUser(userId);
-      if (!user) return res.status(401).json({ message: "Not authenticated" });
       const trip = await storage.getTrip(req.params.tripId);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
-      if (trip.userId !== userId && user.role !== "admin" && user.role !== "expert") {
-        return res.status(403).json({ message: "Not authorized to access this trip" });
-      }
+      const denied = await authorizeTripLogistics(req.params.tripId, userId, `${req.method} ${req.path}`);
+      if (denied) return res.status(denied.status).json({ message: denied.message });
 
       const boundaries = await storage.getDayBoundaries(req.params.tripId);
       res.json(boundaries);
@@ -1827,13 +1829,10 @@ router.post("/api/trips/:tripId/day-boundaries", isAuthenticated, async (req, re
     try {
       const userId = (req.user as any).claims?.sub;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const user = await storage.getUser(userId);
-      if (!user) return res.status(401).json({ message: "Not authenticated" });
       const trip = await storage.getTrip(req.params.tripId);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
-      if (trip.userId !== userId && user.role !== "admin" && user.role !== "expert") {
-        return res.status(403).json({ message: "Not authorized to access this trip" });
-      }
+      const denied = await authorizeTripLogistics(req.params.tripId, userId, `${req.method} ${req.path}`);
+      if (denied) return res.status(denied.status).json({ message: denied.message });
 
       const input = insertDayBoundarySchema.parse({ ...req.body, tripId: req.params.tripId });
       const boundary = await storage.createDayBoundary(input);
@@ -1853,13 +1852,10 @@ router.post("/api/trips/:tripId/validate-schedule", isAuthenticated, async (req,
     try {
       const userId = (req.user as any).claims?.sub;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const user = await storage.getUser(userId);
-      if (!user) return res.status(401).json({ message: "Not authenticated" });
       const trip = await storage.getTrip(req.params.tripId);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
-      if (trip.userId !== userId && user.role !== "admin" && user.role !== "expert") {
-        return res.status(403).json({ message: "Not authorized to access this trip" });
-      }
+      const denied = await authorizeTripLogistics(req.params.tripId, userId, `${req.method} ${req.path}`);
+      if (denied) return res.status(denied.status).json({ message: denied.message });
 
       const anchors = await storage.getTemporalAnchors(req.params.tripId);
       const boundaries = await storage.getDayBoundaries(req.params.tripId);
@@ -1929,13 +1925,10 @@ router.post("/api/trips/:tripId/anchors/:anchorId/impacts", isAuthenticated, asy
     try {
       const userId = (req.user as any).claims?.sub;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const user = await storage.getUser(userId);
-      if (!user) return res.status(401).json({ message: "Not authenticated" });
       const trip = await storage.getTrip(req.params.tripId);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
-      if (trip.userId !== userId && user.role !== "admin" && user.role !== "expert") {
-        return res.status(403).json({ message: "Not authorized to access this trip" });
-      }
+      const denied = await authorizeTripLogistics(req.params.tripId, userId, `${req.method} ${req.path}`);
+      if (denied) return res.status(denied.status).json({ message: denied.message });
 
       const { detectAnchorImpacts } = await import('../services/logistics-presets.service');
       const impacts = await detectAnchorImpacts(req.params.tripId, req.params.anchorId);
@@ -1952,13 +1945,10 @@ router.post("/api/trips/:tripId/anchor-suggestions", isAuthenticated, async (req
     try {
       const userId = (req.user as any).claims?.sub;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const user = await storage.getUser(userId);
-      if (!user) return res.status(401).json({ message: "Not authenticated" });
       const trip = await storage.getTrip(req.params.tripId);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
-      if (trip.userId !== userId && user.role !== "admin" && user.role !== "expert") {
-        return res.status(403).json({ message: "Not authorized to access this trip" });
-      }
+      const denied = await authorizeTripLogistics(req.params.tripId, userId, `${req.method} ${req.path}`);
+      if (denied) return res.status(denied.status).json({ message: denied.message });
 
       const { templateSlug } = req.body;
       const startDate = trip.startDate?.toString() || new Date().toISOString().split('T')[0];
@@ -1987,13 +1977,10 @@ router.get("/api/trips/:tripId/anchor-optimization", isAuthenticated, async (req
     try {
       const userId = (req.user as any).claims?.sub;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
-      const user = await storage.getUser(userId);
-      if (!user) return res.status(401).json({ message: "Not authenticated" });
       const trip = await storage.getTrip(req.params.tripId);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
-      if (trip.userId !== userId && user.role !== "admin" && user.role !== "expert") {
-        return res.status(403).json({ message: "Not authorized to access this trip" });
-      }
+      const denied = await authorizeTripLogistics(req.params.tripId, userId, `${req.method} ${req.path}`);
+      if (denied) return res.status(denied.status).json({ message: denied.message });
 
       const { analyzeAnchorOptimization } = await import('../services/anchor-suggestion.service');
       const tips = await analyzeAnchorOptimization(req.params.tripId);

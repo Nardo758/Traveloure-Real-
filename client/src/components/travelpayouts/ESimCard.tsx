@@ -1,8 +1,9 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Wifi, Clock, Globe, ExternalLink, Signal } from "lucide-react";
+import { Wifi, Clock, Globe, Signal } from "lucide-react";
 import type { CatalogItem } from "@/types/catalog";
+import { useAgentBooking } from "./useAgentBooking";
 
 interface ESimCardProps {
   item: CatalogItem;
@@ -11,11 +12,8 @@ interface ESimCardProps {
 }
 
 export function ESimCard({ item, compact = false, className }: ESimCardProps) {
-  const handleBuy = () => {
-    if (item.affiliateUrl || item.bookingUrl) {
-      window.open((item.affiliateUrl || item.bookingUrl)!, "_blank", "noopener");
-    }
-  };
+  // §16: no raw outbound — partner fulfilment goes through the booking-agent rail.
+  const { book: handleBuy, isPending: bookPending, requested: bookRequested } = useAgentBooking(item, "esim");
 
   const dataInfo = item.description?.split("·")[0]?.trim();
   const validityInfo = item.description?.split("·")[1]?.trim();
@@ -92,10 +90,10 @@ export function ESimCard({ item, compact = false, className }: ESimCardProps) {
             size="sm"
             onClick={handleBuy}
             className="h-7 text-xs gap-1 bg-violet-600 hover:bg-violet-700"
+            disabled={bookPending || bookRequested}
             data-testid={`button-buy-esim-${item.id}`}
           >
-            Get eSIM
-            <ExternalLink className="h-3 w-3" />
+            {bookRequested ? "Requested ✓" : "Get via agent"}
           </Button>
         </div>
       </CardContent>

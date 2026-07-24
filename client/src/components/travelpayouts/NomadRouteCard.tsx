@@ -1,8 +1,9 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Plane, Globe, ArrowRight, ExternalLink, Clock } from "lucide-react";
+import { Plane, Globe, ArrowRight, Clock } from "lucide-react";
 import type { CatalogItem } from "@/types/catalog";
+import { useAgentBooking } from "./useAgentBooking";
 
 interface NomadRouteCardProps {
   item: CatalogItem;
@@ -10,11 +11,8 @@ interface NomadRouteCardProps {
 }
 
 export function NomadRouteCard({ item, className }: NomadRouteCardProps) {
-  const handleBook = () => {
-    if (item.affiliateUrl || item.bookingUrl) {
-      window.open((item.affiliateUrl || item.bookingUrl)!, "_blank", "noopener");
-    }
-  };
+  // §16: no raw outbound — partner fulfilment goes through the booking-agent rail.
+  const { book: handleBook, isPending: bookPending, requested: bookRequested } = useAgentBooking(item, "flights");
 
   const citySegments = item.description?.split(", ") ?? [];
 
@@ -89,11 +87,11 @@ export function NomadRouteCard({ item, className }: NomadRouteCardProps) {
             size="sm"
             onClick={handleBook}
             className="h-7 text-xs gap-1 bg-teal-600 hover:bg-teal-700"
+            disabled={bookPending || bookRequested}
             data-testid={`button-book-nomad-${item.id}`}
           >
             <Plane className="h-3 w-3" />
-            View Route
-            <ExternalLink className="h-3 w-3" />
+            {bookRequested ? "Requested ✓" : "Book via agent"}
           </Button>
         </div>
       </CardContent>

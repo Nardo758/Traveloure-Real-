@@ -636,7 +636,24 @@ a guard. Claim the row atomically **first**, then make the external call — so 
 - **Coordination cancel-reversal — CLEAN.** No earning is ever credited for coordination (the fee is quote-only, never
   captured; no `createExpertEarning` tied to coordination/`booking_concierge`). Nothing to reverse on cancel. Closed.
 
-### Escrow/hold/release spine — build status (design of record: `docs/design/escrow-spine.md`)
+### §16 — Affiliate-outbound rule (agent-booking, ratified Jul 23, 2026)
+
+**GOVERNING RULE (decision-maker directive):** affiliate/partner content must behave like the Discover feeds —
+**no surface may send the traveler off-site with a raw `window.open(affiliateUrl)`**. Any "book" action on
+partner-fulfilled content routes through the in-platform **booking-agent rail**:
+`POST /api/affiliate-booking-requests` (the rail Discover's `unified-result-card` already uses) — the server
+auto-assigns a booking agent (expert), **keeps the affiliate URL server-side** (it is deliberately never returned
+to the client; the agent books through it, preserving commission and preventing disintermediation), and the
+confirmed booking is logged onto the traveler's trip (migration 051 `affiliate_booking_requests.trip_id`).
+Tracked *informational* outbound (e.g. the curated-content `POST /api/content/affiliate-redirect`, which records
+into `affiliate_clicks` before redirecting) remains allowed — the prohibition is on **untracked raw outbound and
+off-site *booking* CTAs**. First application: all 10 Travelpayouts card types
+(`client/src/components/travelpayouts/*Card.tsx`) — previously every card's "Book" was a raw
+`window.open(affiliateUrl || bookingUrl)` (untracked, funnel-leaking, inconsistent with the Amadeus add-to-cart
+hotels on the same page); now they share `useAgentBooking` → the booking-agent rail. **Filed (architectural,
+per the same directive):** fold the parallel `/api/catalog/*` Travelpayouts feed into the CENTRAL content system
+(content registry / `affiliate_products` + placement rules) so all content lives in one system — a design job
+(live-priced API feeds vs registry rows), not a mechanical move; do not build a third content home in the interim.
 
 The earning ledger is an escrow state machine: **`held → releasable → paid_out`**, plus **`reversed`**, with a
 `dispute_state`. All phases are **landed on `main`** (Jul 14, 2026):
@@ -911,6 +928,43 @@ publish-time drizzle-push remap trap.** Endpoints in a **mounted** router (`serv
 dialog on the discover-location empty/footer state + an admin triage page (`/admin/service-requests`, sidebar
 "Service Requests"). No money path. **Filed:** notify-the-traveler when their request is marked fulfilled (ties to
 the email cluster); feed accepted requests into the supply-gap recommender.
+
+**Migration 129 (Jul 24, 2026; registered in `migration-files.ts`) — Content location normalization, Lane A Phase 1:**
+adds four **ADDITIVE NULLABLE** columns to `provider_services` — `latitude`/`longitude` `DECIMAL(10,7)`, `city`
+`VARCHAR`, `location_precision` `VARCHAR` (intended values `'neighborhood_centroid' | 'exact'`). **No DB CHECK, no
+NOT NULL, no DEFAULT** → no publish-time drizzle-push CHECK-failure trap (matches the migration-124/125 additive
+posture); the columns are also added to the `providerServices` pgTable in `shared/schema.ts` (nullable, matching).
+**Backfill NEVER FABRICATES:** for rows whose `neighborhood` resolves against `city_neighborhoods` (all 109 rows have
+`centroid_lat`/`centroid_lng` NOT NULL — a real coordinate source), it sets `latitude`/`longitude` = that
+neighborhood's centroid, `location_precision = 'neighborhood_centroid'`, and `city` = the neighborhood's city; rows
+without a resolvable neighborhood keep **all four columns NULL** (NULL is the honest state — the `location='Unknown'`
+lesson; **no city-center fallback, no `'Unknown'`**). **Match key = slug, not name (deviation from the brief, recorded):**
+`provider_services.neighborhood` stores a **slug** (documented "soft reference into `city_neighborhoods.slug`"), and
+`city_neighborhoods.slug` is globally unique (0 duplicate slugs), so a slug match is unambiguous and hits **30/30**
+neighborhood-bearing rows, vs a bare name (`LOWER(TRIM)`) match's 22/30 — matching by name would have silently dropped
+8 valid rows (e.g. slug `kyoto-station` vs name "Kyoto Station Area"). The UPDATE matches slug-first then falls back to
+name (the 011/012 `LOWER(TRIM)` pattern), `DISTINCT ON (id)` picking one neighborhood per row; guarded (`WHERE latitude
+IS NULL`) so re-runs are a no-op. **Additive, not repurposed:** the coverage/upsell engine does NOT read these columns
+for pricing/matching (Phase 0 finding — zero money/recommendation blast radius), and the ~14 free-text `ilike` location
+readers are **left untouched** (migrating readers is a later lane). Verified post-apply via `information_schema` (all 4
+present + nullable) and spot-checked (30 backfilled with 0 centroid mismatches, 9 NULL = the 9 rows with empty
+neighborhood). Ratified by the decision-maker (Lane A Phase 1). **Filed (later lanes):** migrate the free-text location
+readers onto these columns; add an `'exact'`-precision write path (geocoded addresses); optional CHECK on
+`location_precision` once the write paths are locked.
+
+**Migration 130 (Jul 24, 2026; registered in `migration-files.ts`) — TripContext server persistence (P2/E2):**
+new table `trip_contexts` (`user_id` varchar PK, FK → `users` `ON DELETE CASCADE`; `context` jsonb NOT NULL
+DEFAULT `'{}'`; `updated_at`). **Additive new table, no CHECK** → no publish-time drizzle-push trap. Purpose:
+the client-side TripContext (sessionStorage `experienceContext`, formalized by the P1 module PR #298) dies with
+the browser session and never crosses devices — for signed-in users the context is now mirrored server-side so
+planning survives restarts (the precedence rule's server tier below the `trips` row). Endpoints in a **mounted**
+router (`server/routes/trip-context.routes.ts`, `app.use` in routes.ts — §9): `GET /api/trip-context` +
+`PUT /api/trip-context`, both `isAuthenticated`, **self-scoped to the session user (§14 — user id never from
+body)**; PUT is a **zod allow-list** of the TripContext fields with length caps (never raw `req.body` into the
+jsonb), upsert `ON CONFLICT (user_id)`. Client (`client/src/lib/trip-context.ts`): `useTripContextSync()`
+hydrates once per load (server → local **only when local is empty** — an active local session always wins) and
+every `updateTripContext` debounce-pushes (fire-and-forget; 401 for guests silently ignored). No money path.
+Part of the ratified Trip-Strip program (docs/ROADMAP.md, P2 row).
 
 **Migration 116 (Jul 15, 2026; registered in `migration-files.ts`) — Feed measurement: content_impressions completion:**
 analytics-only, no money semantics, fire-and-forget writes. The `content_impressions` table was created by

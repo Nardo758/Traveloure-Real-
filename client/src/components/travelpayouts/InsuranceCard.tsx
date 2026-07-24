@@ -1,16 +1,14 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ShieldCheck, Star, ExternalLink, Clock } from "lucide-react";
+import { ShieldCheck, Star, Clock } from "lucide-react";
 import type { CatalogItem } from "@/types/catalog";
 import { BookWithExpertButton } from "./BookWithExpertButton";
+import { useAgentBooking } from "./useAgentBooking";
 
 export function InsuranceCard({ item, className }: { item: CatalogItem; className?: string }) {
-  const handleBuy = () => {
-    if (item.affiliateUrl || item.bookingUrl) {
-      window.open((item.affiliateUrl || item.bookingUrl)!, "_blank", "noopener");
-    }
-  };
+  // §16: no raw outbound — partner fulfilment goes through the booking-agent rail.
+  const { book: handleBuy, isPending: bookPending, requested: bookRequested } = useAgentBooking(item, "insurance");
 
   const highlights = item.tags.filter(t => !["safetywing", "insurance", "travel-insurance"].includes(t));
 
@@ -62,9 +60,10 @@ export function InsuranceCard({ item, className }: { item: CatalogItem; classNam
               size="sm"
               onClick={handleBuy}
               className="h-7 text-xs gap-1 bg-teal-600 hover:bg-teal-700"
+              disabled={bookPending || bookRequested}
               data-testid={`button-buy-insurance-${item.id}`}
             >
-              Get Plan<ExternalLink className="h-3 w-3" />
+              {bookRequested ? "Requested ✓" : "Get via agent"}
             </Button>
           </div>
           <BookWithExpertButton

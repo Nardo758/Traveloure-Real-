@@ -80,6 +80,7 @@ import { claudeService } from "../services/claude.service";
 import { getTransitRoute, getMultipleTransitRoutes, TransitRequestSchema } from "../services/routes.service";
 import { aiOrchestrator } from "../services/ai-orchestrator";
 import { grokService } from "../services/grok.service";
+import { buildAnchorPromptBlock, validateAnchorConflicts } from "../services/smart-sequencing.service";
 import { feverService } from "../services/fever.service";
 import { partnerEventsCacheService } from "../services/partner-events-cache.service";
 import { expertMatchScores, aiGeneratedItineraries, destinationIntelligence, localExpertForms, expertAiTasks, aiInteractions, destinationEvents, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, expertServiceCategories, cityNeighborhoods, travelPulseHiddenGems } from "@shared/schema";
@@ -4153,12 +4154,26 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
         ? interests
         : ["sightseeing", "local culture", "food"];
 
+      // Anchor-aware generation (Lane 2a): if this request targets an existing
+      // trip, steer Grok around that trip's immovable temporal commitments.
+      // No trip / no anchors → anchorBlock is "" and the prompt is unchanged.
+      let tripAnchors: Awaited<ReturnType<typeof storage.getTemporalAnchors>> = [];
+      let tripBoundaries: Awaited<ReturnType<typeof storage.getDayBoundaries>> = [];
+      if (tripIdParam && (await verifyTripOwnership(tripIdParam, userId))) {
+        [tripAnchors, tripBoundaries] = await Promise.all([
+          storage.getTemporalAnchors(tripIdParam),
+          storage.getDayBoundaries(tripIdParam),
+        ]);
+      }
+      const anchorBlock = buildAnchorPromptBlock(tripAnchors, tripBoundaries, dates.start);
+
       // Generate itinerary using Grok — deduplicated + circuit-broken.
       //
       // Dedup key: all params that affect AI output so concurrent requests for
       // the same trip params share a single Grok call instead of N identical calls.
       // personalisation fields (dietary, mobility, mustSee) are included so users
-      // with different needs still get their own AI call.
+      // with different needs still get their own AI call. The anchor block is folded
+      // in so trips with different fixed commitments don't share a cached generation.
       const dedupKey = [
         "itinerary:grok",
         destination,
@@ -4172,6 +4187,7 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
         JSON.stringify((mobilityConsiderations || []).slice().sort()),
         budget ?? "",
         eventType ?? "",
+        anchorBlock,
       ].join(":");
 
       const { grokService } = await import("../services/grok.service");
@@ -4188,6 +4204,7 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
             mustSeeAttractions: mustSeeAttractions || [],
             dietaryRestrictions: dietaryRestrictions || [],
             mobilityConsiderations: mobilityConsiderations || [],
+            immovableConstraints: anchorBlock,
           })
         )
       );
@@ -4341,6 +4358,34 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
         await updateItineraryComparisonStatus(comparison.id, 'complete');
       }
 
+      // Post-generation anchor validation (Lane 2a): warn, never block. Only
+      // meaningful when the (owned) target trip carries anchors/boundaries — a
+      // no-op { hasConstraints:false } otherwise. Returned on the plan payload so
+      // Lane 4 can render conflicts. (Grok's dailyItinerary is a bare array, so it
+      // is surfaced on the response rather than nested inside itineraryData.)
+      let anchorValidation: ReturnType<typeof validateAnchorConflicts> | undefined;
+      try {
+        const daysForValidation = (Array.isArray(result.dailyItinerary) ? result.dailyItinerary : []).map(
+          (d: any) => ({
+            day: d.day,
+            activities: (Array.isArray(d.activities) ? d.activities : []).map((a: any) => ({
+              title: a.name || a.title,
+              time: a.time,
+              durationMinutes: typeof a.duration === "number" ? a.duration : undefined,
+            })),
+          }),
+        );
+        anchorValidation = validateAnchorConflicts(
+          daysForValidation,
+          tripAnchors,
+          tripBoundaries,
+          dates.start,
+          new Date().toISOString(),
+        );
+      } catch (vErr) {
+        console.error("anchor validation failed (non-blocking):", vErr);
+      }
+
       // Return comparison ID immediately.
       // Also include tripId and itinerary.items with DB-assigned IDs so the
       // PlanningWithBooking cart conversion can look up prices via booking.service.ts.
@@ -4351,6 +4396,7 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
         comparisonId: comparison.id,
         itineraryId: savedItinerary.id,
         itinerary: { items: insertedItems },
+        anchorValidation,
         message: 'Itinerary generated! Creating optimized variants...',
         ...result,
         createdAt: savedItinerary.createdAt,

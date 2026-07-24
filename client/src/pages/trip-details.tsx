@@ -6,6 +6,7 @@ import { TemporalAnchorManager, ScheduleValidator, EnergyBudgetDisplay, AnchorSu
 import { Button } from "@/components/ui/button";
 import { format, differenceInDays, isValid } from "date-fns";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -23,6 +24,8 @@ import { getTemplateConfig, type PlanCardDay, type PlanCardActivity, type PlanCa
 import { PlanCard } from "@/components/plancard/PlanCard";
 import { EscalationCTA } from "@/components/plancard/EscalationCTA";
 import EnhancedPlanningModal from "@/components/EnhancedPlanningModal";
+import { GuestInviteManager } from "@/components/GuestInviteManager";
+import type { UserExperience } from "@shared/schema";
 
 type Section = "activities" | "transport";
 
@@ -118,6 +121,7 @@ export default function TripDetails() {
   const [section, setSection] = useState<Section>(initialSection);
   const [selectedDay, setSelectedDay] = useState(1);
   const [showFullItinerary, setShowFullItinerary] = useState(false);
+  const [showAnchorCapture, setShowAnchorCapture] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [shareLink, setShareLink] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -199,6 +203,17 @@ export default function TripDetails() {
     queryKey: [`/api/trips/${id}/expert-advisor`],
     enabled: !!id,
   });
+
+  // Guest-invite surface (A1): a trip born from an event experience template (wedding/
+  // proposal/birthday…) has a user_experiences row linked via tripId — that link is the
+  // Event-class signal. When present, the Guests tab surfaces the organizer's invite
+  // manager. Rides the live session-scoped GET /api/user-experiences (owner-only data).
+  const { data: allUserExperiences } = useQuery<UserExperience[]>({
+    queryKey: ["/api/user-experiences"],
+    enabled: !!user && !!id,
+    staleTime: 30_000,
+  });
+  const linkedExperience = allUserExperiences?.find((e) => e.tripId === id) ?? null;
 
   const { data: expertsData, isLoading: expertsLoading } = useQuery<Expert[]>({
     queryKey: [`/api/trip-experts?destination=${encodeURIComponent(trip?.destination || "")}`],
@@ -473,6 +488,12 @@ export default function TripDetails() {
                       <Package className="w-3.5 h-3.5" />
                       Logistics
                     </TabsTrigger>
+                    {linkedExperience && (
+                      <TabsTrigger value="guests" data-testid="tab-guests" className="gap-1">
+                        <UserPlus className="w-3.5 h-3.5" />
+                        Guests
+                      </TabsTrigger>
+                    )}
                   </TabsList>
 
                   <div className="hidden md:flex gap-2">
@@ -515,6 +536,36 @@ export default function TripDetails() {
 
               <div className="p-6">
                 <TabsContent value="itinerary" className="mt-0 space-y-6">
+                  {/* Flight & hotel time capture — surfaced in the primary trip view
+                      (was only reachable in the buried Logistics tab). Reuses the
+                      canonical TemporalAnchorManager filtered to the 4 flight/hotel
+                      anchor types. Optional; never blocks. */}
+                  {id && (
+                    <Collapsible open={showAnchorCapture} onOpenChange={setShowAnchorCapture}>
+                      <CollapsibleTrigger asChild>
+                        <Button
+                          variant="outline"
+                          className="w-full justify-between"
+                          data-testid="button-toggle-anchor-capture"
+                        >
+                          <span className="flex items-center gap-2">
+                            <Plane className="w-4 h-4 text-blue-600" />
+                            Add flight &amp; hotel times (optional)
+                          </span>
+                          <ChevronRight className={`w-4 h-4 transition-transform ${showAnchorCapture ? "rotate-90" : ""}`} />
+                        </Button>
+                      </CollapsibleTrigger>
+                      <CollapsibleContent className="pt-3">
+                        <TemporalAnchorManager
+                          tripId={id}
+                          allowedTypes={["flight_arrival", "flight_departure", "hotel_checkin", "hotel_checkout"]}
+                          title="Flight & hotel times"
+                          description="Add arrival, departure, and check-in/out times so we can build a realistic plan around them."
+                        />
+                      </CollapsibleContent>
+                    </Collapsible>
+                  )}
+
                   {/* Itinerary Timeline */}
                   {(itineraryLoading || generatePlan.isPending) ? (
                     <div className="space-y-6">
@@ -1072,6 +1123,17 @@ export default function TripDetails() {
                     </>
                   )}
                 </TabsContent>
+
+                {linkedExperience && (
+                  <TabsContent value="guests" className="mt-0">
+                    <GuestInviteManager
+                      experienceId={linkedExperience.id}
+                      eventName={linkedExperience.title || trip?.title || trip?.destination || "Your event"}
+                      eventDestination={linkedExperience.location || trip?.destination || ""}
+                      eventDate={(linkedExperience.eventDate as string | null) || (trip?.startDate as unknown as string) || new Date().toISOString()}
+                    />
+                  </TabsContent>
+                )}
               </div>
             </Tabs>
           </CardContent>

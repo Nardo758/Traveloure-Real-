@@ -74,11 +74,8 @@ import {
   Bus,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { format } from "date-fns";
 import { trackSearchEvent } from "@/lib/analytics";
 import { useAuth } from "@/hooks/use-auth";
-import { Calendar as CalendarComponent } from "@/components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ExperienceMap } from "@/components/experience-map";
 import { ExpertChatWidget, CheckoutExpertBanner } from "@/components/expert-chat-widget";
 import { AIMatchedExpertsSection } from "@/components/ai-matched-experts-section";
@@ -106,6 +103,8 @@ import { ESimCard } from "@/components/travelpayouts/ESimCard";
 import { HotelCard } from "@/components/travelpayouts/HotelCard";
 import type { CatalogItem } from "@/types/catalog";
 import { CuratedContentSection } from "@/components/curated-content-section";
+import { updateTripContext, useTripContext } from "@/lib/trip-context";
+import { EditTripPanel } from "@/components/trip/edit-trip-panel";
 
 interface VenueResult {
   id: string;
@@ -861,6 +860,12 @@ export default function ExperienceTemplatePage() {
   };
   
   const [destination, setDestination] = useState(getInitialDestination);
+  // Destination-prompt modal: the content sections (curated, venues, catalog) all require a
+  // destination and render empty without one. When the template is opened without a destination
+  // (e.g. from an experience card / landing link that carries no ?destination=), prompt for it up
+  // front so the page populates instead of looking broken.
+  const [showDestPrompt, setShowDestPrompt] = useState(false);
+  const [destPromptInput, setDestPromptInput] = useState("");
   const [originCity, setOriginCity] = useState(initialSettings?.originCity ?? "");
   const [originCode, setOriginCode] = useState(initialSettings?.originCode ?? "");
   const [startDate, setStartDate] = useState<Date | undefined>(initialSettings?.startDate ? new Date(initialSettings.startDate) : undefined);
@@ -885,6 +890,15 @@ export default function ExperienceTemplatePage() {
   const [hotelSortBy, setHotelSortBy] = useState<"price" | "rating">(initialSettings?.hotelSortBy ?? "price");
   const [adults, setAdults] = useState(initialSettings?.adults ?? 2);
   const [kids, setKids] = useState(initialSettings?.kids ?? 0);
+  // P3b: the global Trip Strip owns the destination/dates/party quartet — this
+  // page no longer renders its own controls for them. State vars stay (many
+  // downstream catalog queries + context writes read them); they now sync FROM
+  // the site-wide TripContext, and the shared EditTripPanel is the edit surface.
+  const [tripCtx] = useTripContext();
+  const [editTripOpen, setEditTripOpen] = useState(false);
+  // Flips true once the mount-time context→local sync has run, so the persist
+  // effect can't write stale local defaults over the strip's values first.
+  const [ctxApplied, setCtxApplied] = useState(false);
   const [serviceCategoryFilter, setServiceCategoryFilter] = useState("all");
   const [serviceDistanceFilter, setServiceDistanceFilter] = useState("any");
   // P4: controlled state for DB contextFields inputs
@@ -986,7 +1000,33 @@ export default function ExperienceTemplatePage() {
       setDetailsSubmitted(settings?.detailsSubmitted ?? false);
     }
   }, [slug, destinationsFromQuery, destinationFromQuery, countryFromQuery]);
-  
+
+  // P3b context→local sync: on mount and on every TripContext change, the
+  // context wins over the per-slug searchSettings for the quartet. An explicit
+  // ?destination= query param (fresh navigation intent) still wins for the
+  // destination field — and reverse-syncs INTO the context via the persist
+  // effect below. Guarded field-by-field so the reverse-sync can't loop.
+  useEffect(() => {
+    const hasDestFromQuery = !!(destinationsFromQuery || destinationFromQuery);
+    if (tripCtx.destination && !hasDestFromQuery && tripCtx.destination !== destination) {
+      setDestination(tripCtx.destination);
+    }
+    if (tripCtx.startDate && tripCtx.startDate !== startDate?.toISOString().split("T")[0]) {
+      const next = new Date(tripCtx.startDate);
+      if (!isNaN(next.getTime())) setStartDate(next);
+    }
+    if (tripCtx.endDate && tripCtx.endDate !== endDate?.toISOString().split("T")[0]) {
+      const next = new Date(tripCtx.endDate);
+      if (!isNaN(next.getTime())) setEndDate(next);
+    }
+    if (tripCtx.travelers && tripCtx.travelers > 0 && tripCtx.travelers !== adults + kids) {
+      setAdults(tripCtx.travelers);
+      setKids(0);
+    }
+    setCtxApplied(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tripCtx.destination, tripCtx.startDate, tripCtx.endDate, tripCtx.travelers, slug]);
+
   // Persist search settings to sessionStorage whenever they change
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -1014,11 +1054,26 @@ export default function ExperienceTemplatePage() {
       detailsSubmitted,
     };
     sessionStorage.setItem(`searchSettings_${slug}`, JSON.stringify(settingsToSave));
+    // P3b reverse-sync: any remaining internal setter (destination prompt, query
+    // params, trip queue) still propagates to the site-wide TripContext. Merge
+    // semantics + empty values skipped, so blanks never clobber the strip.
+    // Gated on ctxApplied so the mount pass can't write stale local defaults
+    // over the context before the context→local sync has applied.
+    if (ctxApplied) {
+      updateTripContext({
+        destination: destination.trim() || undefined,
+        startDate,
+        endDate,
+        travelers: adults + kids,
+        experienceSlug: slug,
+        experienceType: experienceType?.name,
+      });
+    }
   }, [
     slug, destination, originCity, originCode, startDate, endDate, activeTab,
     searchQuery, priceRange, minRating, sortBy, selectedFilters, selectedInterests,
     flightMaxPrice, flightStops, flightSortBy, hotelMaxPrice, hotelStarRating,
-    hotelSortBy, adults, kids, detailsSubmitted
+    hotelSortBy, adults, kids, detailsSubmitted, ctxApplied, experienceType?.name
   ]);
   
   const [cartOpen, setCartOpen] = useState(false);
@@ -1135,6 +1190,26 @@ export default function ExperienceTemplatePage() {
     geocodeDestination();
   }, [destination]);
 
+  // Prompt for a destination on mount when none was provided (no ?destination= and no saved
+  // settings). At mount `destination` already reflects saved settings, so this won't flash for
+  // returning users. Once a destination is set (typed here or in the settings panel), close it.
+  useEffect(() => {
+    if (!destination.trim() && !destinationFromQuery && !destinationsFromQuery) {
+      setShowDestPrompt(true);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    if (destination.trim()) setShowDestPrompt(false);
+  }, [destination]);
+
+  const confirmDestPrompt = () => {
+    const d = destPromptInput.trim();
+    if (!d) return;
+    setDestination(d);
+    setShowDestPrompt(false);
+  };
+
   const { data: customVenues = [] } = useQuery<CustomVenue[]>({
     queryKey: ["/api/custom-venues", { experienceType: slug }],
     enabled: !!slug,
@@ -1235,26 +1310,21 @@ export default function ExperienceTemplatePage() {
     return null;
   }, [startDate, endDate]);
 
-  const handleEndDateSelect = (date: Date | undefined) => {
-    if (date && startDate && date < startDate) {
-      setEndDate(startDate);
-    } else {
-      setEndDate(date);
-    }
-  };
-
   const canGenerateItinerary = !dateError && destination.trim();
 
   const generateItinerary = async () => {
     if (!canGenerateItinerary || cart.length === 0) return;
     setGeneratingItinerary(true);
     
-    // Store experience context for cart page to use
-    const experienceContext = {
+    // Store experience context for cart page to use (dates normalized to
+    // YYYY-MM-DD by the module — the previous full-ISO write broke date inputs).
+    updateTripContext({
       experienceType: experienceType?.name,
+      experienceSlug: slug,
       destination,
-      startDate: startDate?.toISOString(),
-      endDate: endDate?.toISOString(),
+      startDate,
+      endDate,
+      travelers: adults + kids,
       // P4: include DB contextField values in AI itinerary prompt payload
       contextFields: Object.keys(contextValues).length > 0 ? contextValues : undefined,
       selectedServices: cart.map(item => ({
@@ -1263,8 +1333,7 @@ export default function ExperienceTemplatePage() {
         price: item.price,
         category: item.type
       }))
-    };
-    sessionStorage.setItem("experienceContext", JSON.stringify(experienceContext));
+    });
     
     // CON-A.P1: free preview path. Full LLM lives behind /api/optimization-payments
     // (Concierge surface, Phase 6) — this surface ships the heuristic preview only.
@@ -1361,15 +1430,15 @@ export default function ExperienceTemplatePage() {
         setLocalExternalCart(prev => [...prev, { ...item, quantity: item.quantity || 1 }]);
         toast({ title: "Added to cart", description: `${item.name} added to your cart` });
       }
-      sessionStorage.setItem("experienceContext", JSON.stringify({
-        title: `${experienceType?.name || slug} Experience`,
-        experienceType: experienceType?.name || slug,
-        experienceSlug: slug,
-        destination,
-        startDate: startDate?.toISOString().split('T')[0],
-        endDate: endDate?.toISOString().split('T')[0],
-        travelers: adults + kids
-      }));
+      updateTripContext({
+                    title: `${experienceType?.name || slug} Experience`,
+                    experienceType: experienceType?.name || slug,
+                    experienceSlug: slug,
+                    destination,
+                    startDate,
+                    endDate,
+                    travelers: adults + kids
+                  });
       return;
     }
     
@@ -1399,15 +1468,15 @@ export default function ExperienceTemplatePage() {
       }
     }
     // Store experience context and navigate to full cart page
-    sessionStorage.setItem("experienceContext", JSON.stringify({
-      title: `${experienceType?.name || slug} Experience`,
-      experienceType: experienceType?.name || slug,
-      experienceSlug: slug,
-      destination,
-      startDate: startDate?.toISOString().split('T')[0],
-      endDate: endDate?.toISOString().split('T')[0],
-      travelers: adults + kids
-    }));
+    updateTripContext({
+                    title: `${experienceType?.name || slug} Experience`,
+                    experienceType: experienceType?.name || slug,
+                    experienceSlug: slug,
+                    destination,
+                    startDate,
+                    endDate,
+                    travelers: adults + kids
+                  });
     setLocation("/cart");
   };
 
@@ -1805,15 +1874,15 @@ export default function ExperienceTemplatePage() {
                 size="sm"
                 onClick={() => {
                   // Store experience context for cart page
-                  sessionStorage.setItem("experienceContext", JSON.stringify({
+                  updateTripContext({
                     title: `${experienceType.name} Experience`,
                     experienceType: experienceType.name,
                     experienceSlug: slug,
                     destination,
-                    startDate: startDate?.toISOString().split('T')[0],
-                    endDate: endDate?.toISOString().split('T')[0],
+                    startDate,
+                    endDate,
                     travelers: adults + kids
-                  }));
+                  });
                   setLocation("/cart");
                 }}
                 className="gap-1.5"
@@ -1849,54 +1918,23 @@ export default function ExperienceTemplatePage() {
                 <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
                   {experienceType.name} Details
                 </h2>
-                <div className="flex items-center gap-3">
-                  <Users className="w-4 h-4 text-gray-500" />
-                  <Select value={adults.toString()} onValueChange={(v) => setAdults(parseInt(v))}>
-                    <SelectTrigger className="w-[110px] h-8" data-testid="select-adults">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => {
-                        const unitLabel = experienceType.headcountLabel || 'adult';
-                        return (
-                          <SelectItem key={n} value={n.toString()} data-testid={`select-adults-${n}`}>
-                            {n} {n === 1 ? unitLabel : unitLabel + 's'}
-                          </SelectItem>
-                        );
-                      })}
-                    </SelectContent>
-                  </Select>
-                  {experienceType.showKids !== false && (
-                    <Select value={kids.toString()} onValueChange={(v) => setKids(parseInt(v))}>
-                      <SelectTrigger className="w-[100px] h-8" data-testid="select-kids">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {[0, 1, 2, 3, 4, 5, 6, 7, 8].map((n) => (
-                          <SelectItem key={n} value={n.toString()} data-testid={`select-kids-${n}`}>
-                            {n} {n === 1 ? 'kid' : 'kids'}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                </div>
+                <Users className="w-4 h-4 text-gray-500" />
               </div>
-              
+
               <div className="space-y-4">
-                <div>
-                  <Label htmlFor="location" className="text-sm font-medium">
-                    {experienceType.locationLabel ?? "Destination city"}
-                  </Label>
-                  <Input
-                    id="location"
-                    placeholder="Eg: Paris, New York, Japan"
-                    value={destination}
-                    onChange={(e) => setDestination(e.target.value)}
-                    className="mt-1"
-                    data-testid="input-location"
-                  />
-                </div>
+                {/* P3b: destination/dates/travelers now live in the global Trip Strip */}
+                <button
+                  type="button"
+                  onClick={() => setEditTripOpen(true)}
+                  className="w-full flex items-center gap-2 rounded-lg border border-dashed border-border bg-muted/50 px-3 py-2.5 text-sm text-muted-foreground hover:bg-muted transition-colors text-left"
+                  data-testid="button-template-edit-trip"
+                >
+                  <Calendar className="w-4 h-4 text-primary shrink-0" />
+                  <span>
+                    Trip details (destination, dates, travelers) are in the bar above —{" "}
+                    <span className="font-medium text-primary underline">Edit trip</span>
+                  </span>
+                </button>
 
                 {experienceType.showOriginCity !== "hide" && (
                 <div>
@@ -1951,82 +1989,11 @@ export default function ExperienceTemplatePage() {
                   </div>
                 ))}
 
-                <div>
-                  <Label className="text-sm font-medium">Event Dates:</Label>
-                  <div className="grid grid-cols-2 gap-2 mt-1">
-                    <div>
-                      <span className="text-sm text-muted-foreground">
-                        {slug === "wedding" ? "Ceremony Date" : "From"}
-                      </span>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className={cn(
-                              "w-full mt-1 justify-start text-left font-normal",
-                              !startDate && "text-muted-foreground",
-                              dateError && "border-red-500"
-                            )}
-                            data-testid="button-start-date"
-                          >
-                            <Calendar className="mr-2 h-4 w-4" />
-                            {startDate ? format(startDate, "M/d/yyyy") : "Select"}
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0">
-                          <CalendarComponent
-                            mode="single"
-                            selected={startDate}
-                            onSelect={setStartDate}
-                            initialFocus
-                          />
-                        </PopoverContent>
-                      </Popover>
-                    </div>
-                    <div>
-                      <span className="text-sm text-muted-foreground">
-                        {slug === "wedding" ? "End Date (Optional)" : "To"}
-                      </span>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className={cn(
-                              "w-full mt-1 justify-start text-left font-normal",
-                              !endDate && "text-muted-foreground",
-                              dateError && "border-red-500"
-                            )}
-                            data-testid="button-end-date"
-                          >
-                            <Calendar className="mr-2 h-4 w-4" />
-                            {endDate ? format(endDate, "M/d/yyyy") : "Select"}
-                          </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-auto p-0">
-                          <CalendarComponent
-                            mode="single"
-                            selected={endDate}
-                            onSelect={handleEndDateSelect}
-                            disabled={(date) => startDate ? date < startDate : false}
-                            initialFocus
-                          />
-                        </PopoverContent>
-                      </Popover>
-                    </div>
-                  </div>
-                  {dateError && (
-                    <p className="text-xs text-red-500 mt-1" data-testid="text-date-error">{dateError}</p>
-                  )}
-                  {slug === "wedding" && (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      The ceremony date is required. Add an end date if your wedding spans multiple days (rehearsal, ceremony, reception).
-                    </p>
-                  )}
-                </div>
+                {dateError && (
+                  <p className="text-xs text-red-500" data-testid="text-date-error">{dateError}</p>
+                )}
 
-                <Button 
+                <Button
                   className="w-full bg-primary  text-white"
                   disabled={!!dateError || !destination.trim()}
                   onClick={() => {
@@ -2888,15 +2855,15 @@ export default function ExperienceTemplatePage() {
                   <Button
                     size="sm"
                     onClick={() => {
-                      sessionStorage.setItem("experienceContext", JSON.stringify({
-                        title: `${experienceType?.name} Experience`,
-                        experienceType: experienceType?.name,
-                        experienceSlug: slug,
-                        destination,
-                        startDate: startDate?.toISOString().split('T')[0],
-                        endDate: endDate?.toISOString().split('T')[0],
-                        travelers: adults + kids
-                      }));
+                      updateTripContext({
+                    title: `${experienceType?.name} Experience`,
+                    experienceType: experienceType?.name,
+                    experienceSlug: slug,
+                    destination,
+                    startDate,
+                    endDate,
+                    travelers: adults + kids
+                  });
                       setLocation("/cart");
                     }}
                     className="bg-primary"
@@ -3004,14 +2971,15 @@ export default function ExperienceTemplatePage() {
                 variant="outline"
                 size="sm"
                 onClick={() => {
-                  sessionStorage.setItem("experienceContext", JSON.stringify({
+                  updateTripContext({
                     title: `${experienceType.name} Experience`,
                     experienceType: experienceType.name,
+                    experienceSlug: slug,
                     destination,
-                    startDate: startDate?.toISOString().split('T')[0],
-                    endDate: endDate?.toISOString().split('T')[0],
+                    startDate,
+                    endDate,
                     travelers: adults + kids
-                  }));
+                  });
                   setLocation("/cart");
                 }}
                 className="gap-1 px-2"
@@ -3091,48 +3059,19 @@ export default function ExperienceTemplatePage() {
                 <Users className="w-4 h-4 text-gray-400" />
               </div>
               <div className="space-y-3">
-                <div>
-                  <Label className="text-sm font-medium">{experienceType.locationLabel ?? "Destination city"}</Label>
-                  <Input
-                    placeholder="Eg: Paris, New York"
-                    value={destination}
-                    onChange={(e) => setDestination(e.target.value)}
-                    className="mt-1"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <span className="text-xs text-muted-foreground">From</span>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button variant="outline" size="sm" className="w-full mt-1 justify-start text-xs">
-                          <Calendar className="mr-1 h-3 w-3" />
-                          {startDate ? format(startDate, "M/d/yy") : "Select"}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0">
-                        <CalendarComponent mode="single" selected={startDate} onSelect={setStartDate} />
-                      </PopoverContent>
-                    </Popover>
-                  </div>
-                  <div>
-                    <span className="text-xs text-muted-foreground">To</span>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <Button variant="outline" size="sm" className="w-full mt-1 justify-start text-xs">
-                          <Calendar className="mr-1 h-3 w-3" />
-                          {endDate ? format(endDate, "M/d/yy") : "Select"}
-                        </Button>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0">
-                        <CalendarComponent mode="single" selected={endDate} onSelect={handleEndDateSelect} disabled={(date) => startDate ? date < startDate : false} />
-                      </PopoverContent>
-                    </Popover>
-                  </div>
-                </div>
-                <Button className="w-full bg-primary  text-white" disabled={!!dateError}>
-                  Submit Details
-                </Button>
+                {/* P3b: destination/dates/travelers now live in the global Trip Strip */}
+                <button
+                  type="button"
+                  onClick={() => setEditTripOpen(true)}
+                  className="w-full flex items-center gap-2 rounded-lg border border-dashed border-border bg-muted/50 px-3 py-2.5 text-sm text-muted-foreground hover:bg-muted transition-colors text-left"
+                  data-testid="button-template-edit-trip-mobile"
+                >
+                  <Calendar className="w-4 h-4 text-primary shrink-0" />
+                  <span>
+                    Trip details are in the bar above —{" "}
+                    <span className="font-medium text-primary underline">Edit trip</span>
+                  </span>
+                </button>
               </div>
             </CardContent>
           </Card>
@@ -3448,7 +3387,8 @@ export default function ExperienceTemplatePage() {
                     variant="outline"
                     onClick={() => {
                       setAiItineraryDialogOpen(false);
-                      document.querySelector('[data-testid="input-location"]')?.scrollIntoView({ behavior: 'smooth' });
+                      // P3b: the quartet lives in the Trip Strip — open the shared panel
+                      setEditTripOpen(true);
                     }}
                     data-testid="button-close-itinerary-dialog"
                   >
@@ -3475,6 +3415,43 @@ export default function ExperienceTemplatePage() {
             </div>
           </DialogContent>
         </Dialog>
+
+        {/* Destination prompt — opens when the template loads without a destination, so the
+            content sections (curated, venues, catalog) have a city to populate from. */}
+        <Dialog open={showDestPrompt} onOpenChange={setShowDestPrompt}>
+          <DialogContent className="max-w-md" data-testid="dialog-choose-destination">
+            <DialogHeader>
+              <DialogTitle>Where are you headed?</DialogTitle>
+              <DialogDescription>
+                Choose a destination so we can show venues, activities, and recommendations for your{" "}
+                {(experienceType?.name || "experience").toLowerCase()}.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-1.5 py-2">
+              <Label htmlFor="dest-prompt-input">Destination city</Label>
+              <Input
+                id="dest-prompt-input"
+                placeholder="Eg: Kyoto, Paris, New York"
+                value={destPromptInput}
+                onChange={(e) => setDestPromptInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") confirmDestPrompt(); }}
+                autoFocus
+                data-testid="input-choose-destination"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setShowDestPrompt(false)} data-testid="button-skip-destination">
+                Skip for now
+              </Button>
+              <Button onClick={confirmDestPrompt} disabled={!destPromptInput.trim()} data-testid="button-confirm-destination">
+                Continue
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* P3b: shared edit surface for the strip-owned quartet (destination/dates/party) */}
+        <EditTripPanel open={editTripOpen} onOpenChange={setEditTripOpen} />
       </div>
     </Layout>
   );

@@ -3,6 +3,8 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import { getGuestSessionId } from "@/lib/guestSession";
+import { getTripContext, updateTripContext, useTripContext, type TripContext } from "@/lib/trip-context";
+import { EditTripPanel } from "@/components/trip/edit-trip-panel";
 import { Link, useLocation, useSearch } from "wouter";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -18,6 +20,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
@@ -50,7 +53,7 @@ import {
   Route,
   Globe,
 } from "lucide-react";
-import { format } from "date-fns";
+import { format, parseISO } from "date-fns";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import StripeCheckout from "@/components/booking/StripeCheckout";
 import { UpsellSlot, UpsellErrorBoundary } from "@/components/UpsellSlot";
@@ -168,7 +171,7 @@ interface OptimizationResult {
   warnings: string[];
 }
 
-type FlowStep = "cart" | "trip-details" | "optimize" | "itinerary" | "payment";
+type FlowStep = "cart" | "optimize" | "itinerary" | "payment";
 
 interface OptimizationPreview {
   estimatedSavingsPct: number;
@@ -229,9 +232,18 @@ export default function CartPage() {
   const [resolvedTrip, setResolvedTrip] = useState<{ id: string; title: string; destination: string; startDate: string; endDate: string; numberOfTravelers: number } | null>(null);
   const [tripTitle, setTripTitle] = useState("");
   const [tripDestination, setTripDestination] = useState("");
-  const [tripStartDate, setTripStartDate] = useState("");
-  const [tripEndDate, setTripEndDate] = useState("");
-  const [tripTravelers, setTripTravelers] = useState(2);
+  // Trip-date range — edited in the always-visible header at the top of the cart (not a step/modal).
+  // Seeded from the experience context so an experience-template flow's up-front dates carry over.
+  // Live trip context (P2): dates derive from the shared TripContext hook so an
+  // edit anywhere (EditTripPanel, another surface) reflects here immediately.
+  const [liveTripCtx] = useTripContext();
+  const tripStartDate = liveTripCtx.startDate || "";
+  const tripEndDate = liveTripCtx.endDate || "";
+  const [editTripOpen, setEditTripOpen] = useState(false);
+  const [tripTravelers, setTripTravelers] = useState(() => {
+    const t = getTripContext().travelers;
+    return t && t > 0 ? t : 2;
+  });
 
   // Guest cart pending items (stored when unauthenticated users click add-to-cart)
   const [guestPendingIds, setGuestPendingIds] = useState<string[]>(() => {
@@ -280,24 +292,18 @@ export default function CartPage() {
     });
   }, [user, authLoading, guestPendingIds]);
 
-  // Load experience context from sessionStorage on mount
+  // Load experience context on mount
   useEffect(() => {
-    const storedContext = sessionStorage.getItem("experienceContext");
-    if (storedContext) {
-      try {
-        const context = JSON.parse(storedContext);
-        if (context.experienceSlug) {
-          setExperienceSlug(context.experienceSlug);
-          setExperienceTitle(context.title || context.experienceType);
-        } else {
-          // Use experienceType + destination as fallback key to avoid cross-experience contamination
-          const fallbackKey = `${context.experienceType || 'general'}_${context.destination || 'default'}`.replace(/\s+/g, '-').toLowerCase();
-          setExperienceSlug(fallbackKey);
-          setExperienceTitle(context.title || context.experienceType);
-        }
-      } catch (e) {
-        console.error("Failed to parse experience context");
-        setExperienceSlug("general");
+    const context = getTripContext();
+    if (Object.keys(context).length > 0) {
+      if (context.experienceSlug) {
+        setExperienceSlug(context.experienceSlug);
+        setExperienceTitle(context.title || context.experienceType || null);
+      } else {
+        // Use experienceType + destination as fallback key to avoid cross-experience contamination
+        const fallbackKey = `${context.experienceType || 'general'}_${context.destination || 'default'}`.replace(/\s+/g, '-').toLowerCase();
+        setExperienceSlug(fallbackKey);
+        setExperienceTitle(context.title || context.experienceType || null);
       }
     } else {
       setExperienceSlug("general");
@@ -621,14 +627,8 @@ export default function CartPage() {
       setCartNudge(null);
       return;
     }
-    let eventType: string | undefined;
-    try {
-      const stored = sessionStorage.getItem("experienceContext");
-      if (stored) {
-        const ctx = JSON.parse(stored);
-        eventType = ctx.experienceType || ctx.eventType;
-      }
-    } catch { /* ignore */ }
+    const ctxForEvent = getTripContext();
+    const eventType: string | undefined = ctxForEvent.experienceType || ctxForEvent.eventType;
     const items = [
       ...platformItems.map((item: any) => ({
         serviceType: item.service?.serviceType || "sightseeing",
@@ -669,14 +669,8 @@ export default function CartPage() {
       return;
     }
 
-    let eventType: string | undefined;
-    try {
-      const stored = sessionStorage.getItem("experienceContext");
-      if (stored) {
-        const ctx = JSON.parse(stored);
-        eventType = ctx.experienceType || ctx.eventType;
-      }
-    } catch { /* ignore */ }
+    const ctxForEvent = getTripContext();
+    const eventType: string | undefined = ctxForEvent.experienceType || ctxForEvent.eventType;
 
     const items = [
       ...platformItems.map(item => ({
@@ -714,6 +708,77 @@ export default function CartPage() {
   };
 
   // ── G6: Resolve (or auto-create) a trip before entering the optimize gate ─
+  // The heavy lifting; runs once a trip date is known (already set, or just collected via the modal).
+  const proceedOptimize = async (effStart: string, effEnd: string) => {
+    setResolvingTrip(true);
+    try {
+      const ctxAtResolve = getTripContext();
+      const ctxExperienceSlug = ctxAtResolve.experienceSlug || undefined;
+      const ctxUserExperienceId = ctxAtResolve.userExperienceId || ctxAtResolve.id || undefined;
+      const ctxDestination = ctxAtResolve.destination || ctxAtResolve.city || undefined;
+      const ctxTripId = ctxAtResolve.tripId || undefined;
+
+      const res = await fetch("/api/cart/resolve-trip", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          experienceSlug: ctxExperienceSlug,
+          userExperienceId: ctxUserExperienceId,
+          tripId: ctxTripId,
+          startDate: effStart || undefined,
+          endDate: effEnd || undefined,
+          destination: ctxDestination,
+          travelers: ctxAtResolve.travelers || undefined,
+          // External (affiliate/AI) items exist only in sessionStorage — send a
+          // minimal descriptor list so an external-only cart can resolve a trip.
+          // No prices sent: the server ignores them by design.
+          externalItems: externalItems.map((item) => ({
+            name: item.name,
+            date: item.date,
+          })),
+        }),
+      });
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error((e as any).message || "Could not prepare trip"); }
+      const data = await res.json();
+      const trip = data.trip;
+
+      setResolvedTrip(trip);
+      setTripTitle(trip.title || "");
+      setTripDestination(trip.destination || "");
+      // The user's explicitly-set header dates WIN over a reused trip's stored dates — a returning
+      // trip must not silently clobber a fresh edit. Fall back to the trip's dates only when the
+      // header had none (defensive: handleOptimizeClick already requires them).
+      setTripTravelers(trip.numberOfTravelers || 2);
+      // Prefill "What are you planning?" from an existing template context
+      // (wedding/proposal template flows keep their type); default "trip".
+      {
+        const ctx = getTripContext();
+        setTripEventType(ctx.experienceType || ctx.eventType || "trip");
+      }
+
+      // Persist the resolved tripId (and the dates) into the experience context so
+      // downstream steps (createComparison, requestOptimizationPayment) pick it up
+      // The user's explicit header dates WIN over a reused trip's stored dates;
+      // fall back to the trip's dates only when none were set (dates derive from
+      // the context hook, so this single write updates the header display too).
+      updateTripContext({
+        tripId: trip.id,
+        startDate: effStart || trip.startDate || undefined,
+        endDate: effEnd || trip.endDate || undefined,
+        travelers: trip.numberOfTravelers || undefined,
+      });
+
+      // Trip Details step removed (Trip-Strip P3): the strip + EditTripPanel own
+      // trip state, so Continue goes straight into the optimization preview.
+      await fetchPreview();
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Trip preparation failed", description: err.message });
+    } finally {
+      setResolvingTrip(false);
+    }
+  };
+
   const handleOptimizeClick = async () => {
     if (!user) {
       openSignInModal();
@@ -730,99 +795,20 @@ export default function CartPage() {
       return;
     }
 
-    setResolvingTrip(true);
-    try {
-      let ctxExperienceSlug: string | undefined;
-      let ctxUserExperienceId: string | undefined;
-      try {
-        const stored = sessionStorage.getItem("experienceContext");
-        if (stored) {
-          const ctx = JSON.parse(stored);
-          ctxExperienceSlug = ctx.experienceSlug || undefined;
-          ctxUserExperienceId = ctx.userExperienceId || ctx.id || undefined;
-        }
-      } catch { /* ignore */ }
-
-      const res = await fetch("/api/cart/resolve-trip", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ experienceSlug: ctxExperienceSlug, userExperienceId: ctxUserExperienceId }),
-      });
-      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error((e as any).message || "Could not prepare trip"); }
-      const data = await res.json();
-      const trip = data.trip;
-
-      setResolvedTrip(trip);
-      setTripTitle(trip.title || "");
-      setTripDestination(trip.destination || "");
-      setTripStartDate(trip.startDate || "");
-      setTripEndDate(trip.endDate || "");
-      setTripTravelers(trip.numberOfTravelers || 2);
-      // Prefill "What are you planning?" from an existing template context
-      // (wedding/proposal template flows keep their type); default "trip".
-      try {
-        const stored = sessionStorage.getItem("experienceContext");
-        const ctx = stored ? JSON.parse(stored) : {};
-        setTripEventType(ctx.experienceType || ctx.eventType || "trip");
-      } catch {
-        setTripEventType("trip");
-      }
-
-      // Persist the resolved tripId back into the experience context so
-      // downstream steps (createComparison, requestOptimizationPayment) pick it up
-      try {
-        const stored = sessionStorage.getItem("experienceContext");
-        const ctx = stored ? JSON.parse(stored) : {};
-        ctx.tripId = trip.id;
-        sessionStorage.setItem("experienceContext", JSON.stringify(ctx));
-      } catch { /* ignore */ }
-
-      setFlowStep("trip-details");
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "Trip preparation failed", description: err.message });
-    } finally {
-      setResolvingTrip(false);
+    // Every trip needs dates before it can be prepared. Dates live in the always-visible trip-date
+    // header at the top of the cart (not a step, not a modal) — if unset, nudge the user there.
+    const effStart = tripStartDate;
+    const effEnd = tripEndDate;
+    if (!effStart || !effEnd) {
+      setEditTripOpen(true);
+      toast({ title: "Add your travel dates", description: "Set your trip dates to continue." });
+      return;
     }
-  };
-
-  // ── G6: Save user edits to the trip details, then proceed to preview ─────
-  const handleConfirmTripDetails = async () => {
-    if (!resolvedTrip) return;
-
-    // Persist any user edits to the trip record (non-blocking on failure)
-    try {
-      await fetch(`/api/trips/${resolvedTrip.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          title: tripTitle,
-          destination: tripDestination,
-          startDate: tripStartDate,
-          endDate: tripEndDate,
-          numberOfTravelers: tripTravelers,
-        }),
-      });
-
-      // Update sessionStorage so the optimizer uses the confirmed values
-      try {
-        const stored = sessionStorage.getItem("experienceContext");
-        const ctx = stored ? JSON.parse(stored) : {};
-        ctx.tripId = resolvedTrip.id;
-        ctx.destination = tripDestination;
-        ctx.startDate = tripStartDate;
-        ctx.endDate = tripEndDate;
-        ctx.travelers = tripTravelers;
-        // Funnel PR2: the explicit answer replaces the silent "general" fallback —
-        // this is what getFee/complexityTier price against downstream.
-        if (tripEventType) ctx.experienceType = tripEventType;
-        sessionStorage.setItem("experienceContext", JSON.stringify(ctx));
-      } catch { /* ignore */ }
-    } catch { /* non-fatal */ }
-
-    // Proceed to the optimization preview step
-    await fetchPreview();
+    if (new Date(effEnd) < new Date(effStart)) {
+      toast({ variant: "destructive", title: "Invalid dates", description: "End date can't be before the start date." });
+      return;
+    }
+    await proceedOptimize(effStart, effEnd);
   };
 
   // ── G3: Create Stripe PaymentIntent for the optimization fee ─────────────
@@ -835,16 +821,9 @@ export default function CartPage() {
     setPaymentLoading(true);
     try {
       // Send DB identifiers so the server derives the tier server-side
-      let tripId: string | undefined;
-      let userExperienceId: string | undefined;
-      try {
-        const stored = sessionStorage.getItem("experienceContext");
-        if (stored) {
-          const ctx = JSON.parse(stored);
-          tripId = ctx.tripId;
-          userExperienceId = ctx.userExperienceId || ctx.id;
-        }
-      } catch { /* ignore */ }
+      const ctxAtPayment = getTripContext();
+      const tripId: string | undefined = ctxAtPayment.tripId;
+      const userExperienceId: string | undefined = ctxAtPayment.userExperienceId || ctxAtPayment.id;
 
       const res = await fetch("/api/optimization-payments", {
         method: "POST",
@@ -903,15 +882,7 @@ export default function CartPage() {
     }
     setCreatingComparison(true);
     
-    let experienceContext: { title?: string; destination?: string; startDate?: string; endDate?: string; travelers?: number; experienceType?: string; tripId?: string; userExperienceId?: string; id?: string } | undefined;
-    const storedContext = sessionStorage.getItem("experienceContext");
-    if (storedContext) {
-      try {
-        experienceContext = JSON.parse(storedContext);
-      } catch (e) {
-        console.error("Failed to parse experience context");
-      }
-    }
+    const experienceContext: TripContext | undefined = getTripContext();
 
     // Build baseline items from platform items
     const platformBaselineItems = platformItems.map(item => ({
@@ -1016,15 +987,7 @@ export default function CartPage() {
     setGenerating(true);
     
     // Try to get experience context from session storage
-    let experienceContext: { title?: string; destination?: string; startDate?: string; endDate?: string; travelers?: number; experienceType?: string; tripId?: string; userExperienceId?: string; id?: string } | undefined;
-    const storedContext = sessionStorage.getItem("experienceContext");
-    if (storedContext) {
-      try {
-        experienceContext = JSON.parse(storedContext);
-      } catch (e) {
-        console.error("Failed to parse experience context");
-      }
-    }
+    const experienceContext: TripContext | undefined = getTripContext();
     
     // Build services from platform items
     const platformServices = platformItems.map(item => ({
@@ -1142,7 +1105,6 @@ export default function CartPage() {
         {(() => {
           const steps: Array<{ key: FlowStep; label: string; icon: ReactNode; reachable: boolean }> = [
             { key: "cart", label: "Cart", icon: <ShoppingCart className="w-4 h-4" />, reachable: true },
-            { key: "trip-details", label: "Trip", icon: <MapPin className="w-4 h-4" />, reachable: !!resolvedTrip },
             { key: "optimize", label: "Optimize", icon: <Lock className="w-4 h-4" />, reachable: !!optimizationPreview },
             { key: "itinerary", label: "Itinerary", icon: <Sparkles className="w-4 h-4" />, reachable: !!optimizationResult },
             { key: "payment", label: "Payment", icon: <CreditCard className="w-4 h-4" />, reachable: (cart?.items?.length || 0) > 0 || !!checkoutPaymentIntent },
@@ -1182,11 +1144,8 @@ export default function CartPage() {
             onClick={() => {
               if (flowStep === "cart") {
                 window.history.back();
-              } else if (flowStep === "trip-details") {
-                setFlowStep("cart");
-                setResolvedTrip(null);
               } else if (flowStep === "optimize") {
-                setFlowStep("trip-details");
+                setFlowStep("cart");
                 setOptimizationPreview(null);
                 setOptimizationPayment(null);
               } else if (flowStep === "itinerary") {
@@ -1204,15 +1163,13 @@ export default function CartPage() {
           >
             <ArrowLeft className="w-4 h-4" />
             {flowStep === "cart" ? "Back" :
-              flowStep === "trip-details" ? "Cart" :
-              flowStep === "optimize" ? "Trip Details" :
+              flowStep === "optimize" ? "Cart" :
               flowStep === "itinerary" ? "Cart" :
               optimizationResult ? "Itinerary" : "Cart"}
           </Button>
           <div className="flex flex-col">
             <h1 className="text-2xl font-bold" data-testid="text-page-title">
               {flowStep === "cart" && "Your Cart"}
-              {flowStep === "trip-details" && "Your Trip Details"}
               {flowStep === "optimize" && "Unlock Full Optimization"}
               {flowStep === "itinerary" && "Your Optimized Itinerary"}
               {flowStep === "payment" && "Complete Payment"}
@@ -1227,6 +1184,35 @@ export default function CartPage() {
             <Badge variant="secondary" data-testid="badge-item-count">{totalItemCount} items</Badge>
           )}
         </div>
+
+        {/* Trip-date header — read-only summary of the strip-owned trip dates (P3b).
+            Edits go through the shared EditTripPanel; the dates derive live from TripContext. */}
+        {flowStep === "cart" && totalItemCount > 0 && (
+          <div
+            className="flex items-center gap-3 px-4 py-3 mb-4 rounded-lg border border-border bg-card"
+            data-testid="header-trip-dates"
+          >
+            <Calendar className="w-4 h-4 text-primary shrink-0" />
+            <span
+              className={`text-sm flex-1 ${tripStartDate && tripEndDate ? "font-medium" : "text-muted-foreground"}`}
+              data-testid="text-header-trip-dates"
+            >
+              {tripStartDate && tripEndDate
+                ? `${format(parseISO(tripStartDate), "MMM d")} → ${format(parseISO(tripEndDate), "MMM d")}`
+                : "Add your travel dates"}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              className="shrink-0"
+              onClick={() => setEditTripOpen(true)}
+              data-testid="button-edit-trip"
+            >
+              Edit trip
+            </Button>
+          </div>
+        )}
+        <EditTripPanel open={editTripOpen} onOpenChange={setEditTripOpen} />
 
         {/* Guest nudge — only shown when unauthenticated and there are items */}
         {!user && !authLoading && totalItemCount > 0 && flowStep === "cart" && (
@@ -1680,7 +1666,7 @@ export default function CartPage() {
                           <div>
                             <h4 className="text-sm font-medium">Plan &amp; optimize this trip</h4>
                             <p className="text-xs text-muted-foreground mt-1">
-                              Next: confirm your trip details, then our AI organizes your selections into an itinerary with optimized alternatives.
+                              Next: our AI organizes your selections into an itinerary with optimized alternatives. Trip details live in the strip above — edit anytime.
                             </p>
                           </div>
                         </div>
@@ -1701,7 +1687,7 @@ export default function CartPage() {
                           ) : (
                             <MapPin className="w-4 h-4 mr-2" />
                           )}
-                          {resolvingTrip ? "Preparing trip..." : previewLoading ? "Analyzing..." : "Continue — Trip Details"}
+                          {resolvingTrip ? "Preparing trip..." : previewLoading ? "Analyzing your cart..." : "Continue — Optimize"}
                         </Button>
                       </div>
                       {(cart?.items?.length || 0) > 0 && (
@@ -1722,122 +1708,6 @@ export default function CartPage() {
                     </CardFooter>
                   </Card>
                 </div>
-              </div>
-            )}
-
-            {/* Step 1.5: Trip Details (G6) */}
-            {flowStep === "trip-details" && resolvedTrip && (
-              <div className="max-w-2xl mx-auto space-y-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <MapPin className="w-5 h-5 text-primary" />
-                      Confirm your trip
-                    </CardTitle>
-                    <p className="text-sm text-muted-foreground">
-                      We've pre-filled these from your cart. Review and edit before the AI optimizes your plan.
-                    </p>
-                  </CardHeader>
-                  <CardContent className="space-y-5">
-                    <div className="space-y-2">
-                      <Label htmlFor="trip-title">Trip name</Label>
-                      <Input
-                        id="trip-title"
-                        value={tripTitle}
-                        onChange={(e) => setTripTitle(e.target.value)}
-                        placeholder="My trip to Tokyo"
-                        data-testid="input-trip-title"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="trip-destination">Destination</Label>
-                      <Input
-                        id="trip-destination"
-                        value={tripDestination}
-                        onChange={(e) => setTripDestination(e.target.value)}
-                        placeholder="Tokyo, Japan"
-                        data-testid="input-trip-destination"
-                      />
-                    </div>
-
-                    {/* Funnel PR2: explicit "What are you planning?" — values map to the
-                        real complexityTier set (wedding/corporate = complex; proposal/
-                        honeymoon/anniversary = standard; trip = simple), so the answer
-                        drives the actual optimization fee tier, not just a label. */}
-                    <div className="space-y-2">
-                      <Label htmlFor="trip-event-type">What are you planning?</Label>
-                      <Select value={tripEventType} onValueChange={setTripEventType}>
-                        <SelectTrigger id="trip-event-type" data-testid="select-trip-event-type">
-                          <SelectValue placeholder="What are you planning?" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="trip">A trip</SelectItem>
-                          <SelectItem value="wedding">A wedding</SelectItem>
-                          <SelectItem value="proposal">A proposal</SelectItem>
-                          <SelectItem value="honeymoon">A honeymoon</SelectItem>
-                          <SelectItem value="anniversary">An anniversary</SelectItem>
-                          <SelectItem value="corporate">A corporate event</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="trip-start">Start date</Label>
-                        <Input
-                          id="trip-start"
-                          type="date"
-                          value={tripStartDate}
-                          onChange={(e) => setTripStartDate(e.target.value)}
-                          data-testid="input-trip-start-date"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="trip-end">End date</Label>
-                        <Input
-                          id="trip-end"
-                          type="date"
-                          value={tripEndDate}
-                          onChange={(e) => setTripEndDate(e.target.value)}
-                          data-testid="input-trip-end-date"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="trip-travelers">Number of travelers</Label>
-                      <Input
-                        id="trip-travelers"
-                        type="number"
-                        min={1}
-                        max={20}
-                        value={tripTravelers}
-                        onChange={(e) => setTripTravelers(Math.max(1, parseInt(e.target.value) || 1))}
-                        data-testid="input-trip-travelers"
-                      />
-                    </div>
-                  </CardContent>
-                  <CardFooter className="flex flex-col gap-3">
-                    <Button
-                      className="w-full bg-primary hover:bg-primary/90"
-                      size="lg"
-                      onClick={handleConfirmTripDetails}
-                      disabled={previewLoading || !tripDestination.trim()}
-                      data-testid="button-confirm-trip-details"
-                    >
-                      {previewLoading ? (
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      ) : (
-                        <Wand2 className="w-4 h-4 mr-2" />
-                      )}
-                      {previewLoading ? "Analyzing your cart..." : "Confirm & Optimize"}
-                    </Button>
-                    <p className="text-xs text-center text-muted-foreground">
-                      This trip will appear on your dashboard
-                    </p>
-                  </CardFooter>
-                </Card>
               </div>
             )}
 
@@ -2549,6 +2419,7 @@ export default function CartPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
     </>
   );
 }

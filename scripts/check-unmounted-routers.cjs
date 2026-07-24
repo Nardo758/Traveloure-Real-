@@ -80,8 +80,87 @@ if (offenders.length > 0) {
   );
 }
 
+// ────────────────────────────────────────────────────────────────────────────
+// Second check: server/routes/*.ts files that are NEVER IMPORTED anywhere.
+// The imported-but-unmounted check above can't see these — a route file with no
+// import statement referencing it is even darker (guest-invites.ts sat this way
+// for months: ~9 endpoints + a routed schema, zero imports, all 200-HTML).
+// ────────────────────────────────────────────────────────────────────────────
+
+// Route files that are deliberately never imported, each WITH a reason.
+const ALLOWED_UNIMPORTED = {
+  // (none at present — guest-invites.ts, the file that exposed this class, is now
+  //  imported + mounted. Add entries here ONLY with a documented reason.)
+};
+
+const SERVER_DIR = path.join(__dirname, "..", "server");
+const ROUTES_DIR = path.join(SERVER_DIR, "routes");
+
+/** Recursively collect .ts files under a directory (skips node_modules just in case). */
+function collectTsFiles(dir) {
+  const out = [];
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (entry.name === "node_modules") continue;
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) out.push(...collectTsFiles(full));
+    else if (entry.name.endsWith(".ts")) out.push(full);
+  }
+  return out;
+}
+
+const routeFiles = fs
+  .readdirSync(ROUTES_DIR)
+  .filter((f) => f.endsWith(".ts"))
+  .map((f) => f.replace(/\.ts$/, ""));
+
+// Comment-stripped concatenation of every server .ts file EXCEPT the routes dir itself
+// (a routes file importing a sibling doesn't make either of them live — liveness comes
+// from being imported by routes.ts / index.ts / services / other server code).
+const serverSources = collectTsFiles(SERVER_DIR)
+  .filter((f) => !f.startsWith(ROUTES_DIR + path.sep))
+  .map((f) =>
+    fs
+      .readFileSync(f, "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .split("\n")
+      .map((line) => line.replace(/^\s*\/\/.*$/, "").replace(/([^:])\/\/.*$/, "$1"))
+      .join("\n"),
+  )
+  .join("\n");
+
+const neverImported = routeFiles.filter((base) => {
+  if (base in ALLOWED_UNIMPORTED) return false;
+  // Match any import/require specifier ending in routes/<base> (with or without .ts/.js).
+  const specRe = new RegExp(
+    "from\\s+[\"'][^\"']*routes/" + base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?:\\.[tj]s)?[\"']",
+  );
+  return !specRe.test(serverSources);
+});
+
+const staleUnimportedAllow = Object.keys(ALLOWED_UNIMPORTED).filter((base) => {
+  const specRe = new RegExp(
+    "from\\s+[\"'][^\"']*routes/" + base.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?:\\.[tj]s)?[\"']",
+  );
+  return specRe.test(serverSources);
+});
+
+if (staleUnimportedAllow.length > 0) {
+  fail(
+    "these route files are in ALLOWED_UNIMPORTED but ARE imported — remove them from the list:\n" +
+      staleUnimportedAllow.map((b) => `  • ${b}.ts`).join("\n"),
+  );
+}
+
+if (neverImported.length > 0) {
+  fail(
+    "these server/routes/*.ts files are NEVER IMPORTED by any server code outside server/routes/ — every endpoint in them is DEAD (200-HTML):\n" +
+      neverImported.map((b) => `  • server/routes/${b}.ts`).join("\n") +
+      "\n\nFix: import + mount the router in server/routes.ts (or, if genuinely deferred, add it to ALLOWED_UNIMPORTED in this script WITH a reason). See CLAUDE.md §9.",
+  );
+}
+
 const allowN = Object.keys(ALLOWED_UNMOUNTED).length;
 console.log(
   `✅ Unmounted-router guard: ${imported.length} imported route module(s), ${mounted.size} mounted, ` +
-    `${allowN} allow-listed dark. No new unmounted routers.`,
+    `${allowN} allow-listed dark; ${routeFiles.length} route file(s) on disk, none never-imported.`,
 );
