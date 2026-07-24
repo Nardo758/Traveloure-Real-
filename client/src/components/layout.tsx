@@ -61,7 +61,7 @@ import { cn } from "@/lib/utils";
 import { UserMenu } from "@/components/user-menu";
 import { NotificationBell } from "@/components/notification-bell";
 import { navGroupsConfig, authNavConfig, footerSectionsConfig } from "@/lib/nav-config";
-import { useTripContextSync } from "@/lib/trip-context";
+import { useTripContextSync, useTripContext } from "@/lib/trip-context";
 import { TripStrip } from "@/components/trip/trip-strip";
 
 // ── Icon maps ─────────────────────────────────────────────────────────────────
@@ -305,6 +305,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const { openSignInModal } = useSignInModal();
   const [location] = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [tripCtx] = useTripContext();
   // Hydrate the signed-in user's trip context from the server (P2/E2) — once per load.
   useTripContextSync();
 
@@ -337,8 +338,38 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </div>
 
             <div className="flex items-center gap-2 flex-shrink-0">
-              {/* Cart moved into the TripStrip (P3 rule 3) — the strip's cart
-                  chip is the site's single cart display. */}
+              {/* Cart icon — always visible; the TripStrip shows the full chip with count + total */}
+              <Link
+                href="/cart"
+                className="hidden lg:inline-flex items-center justify-center rounded-md w-9 h-9 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                data-testid="link-nav-cart"
+                aria-label="Cart"
+              >
+                <ShoppingCart className="w-5 h-5" />
+              </Link>
+
+              {/* Trip plan — auth-gated; links to the active trip when one exists */}
+              {user && tripCtx.tripId && (
+                <Link
+                  href={`/trip/${tripCtx.tripId}`}
+                  className="hidden lg:inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-primary transition-colors px-2 py-1"
+                  data-testid="link-nav-trip-plan"
+                >
+                  <Map className="w-4 h-4" />
+                  Trip plan
+                </Link>
+              )}
+              {user && !tripCtx.tripId && (
+                <Link
+                  href="/my-trips"
+                  className="hidden lg:inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-primary transition-colors px-2 py-1"
+                  data-testid="link-nav-trip-plan"
+                >
+                  <Map className="w-4 h-4" />
+                  Trip plan
+                </Link>
+              )}
+
               {!user && (
                 <div className="hidden lg:flex items-center gap-2">
                   <DropdownMenu>

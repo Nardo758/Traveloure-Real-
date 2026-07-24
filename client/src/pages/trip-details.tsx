@@ -215,6 +215,9 @@ export default function TripDetails() {
   });
   const linkedExperience = allUserExperiences?.find((e) => e.tripId === id) ?? null;
 
+  const EVENT_TRIP_TYPES = new Set(["wedding", "honeymoon", "proposal", "anniversary", "birthday", "corporate"]);
+  const isEventTrip = !!linkedExperience || EVENT_TRIP_TYPES.has((trip?.eventType || "").toLowerCase());
+
   const { data: expertsData, isLoading: expertsLoading } = useQuery<Expert[]>({
     queryKey: [`/api/trip-experts?destination=${encodeURIComponent(trip?.destination || "")}`],
     enabled: expertPickerOpen && !!trip?.destination,
@@ -488,7 +491,7 @@ export default function TripDetails() {
                       <Package className="w-3.5 h-3.5" />
                       Logistics
                     </TabsTrigger>
-                    {linkedExperience && (
+                    {isEventTrip && (
                       <TabsTrigger value="guests" data-testid="tab-guests" className="gap-1">
                         <UserPlus className="w-3.5 h-3.5" />
                         Guests
@@ -1124,14 +1127,22 @@ export default function TripDetails() {
                   )}
                 </TabsContent>
 
-                {linkedExperience && (
+                {isEventTrip && (
                   <TabsContent value="guests" className="mt-0">
-                    <GuestInviteManager
-                      experienceId={linkedExperience.id}
-                      eventName={linkedExperience.title || trip?.title || trip?.destination || "Your event"}
-                      eventDestination={linkedExperience.location || trip?.destination || ""}
-                      eventDate={(linkedExperience.eventDate as string | null) || (trip?.startDate as unknown as string) || new Date().toISOString()}
-                    />
+                    {linkedExperience ? (
+                      <GuestInviteManager
+                        experienceId={linkedExperience.id}
+                        eventName={linkedExperience.title || trip?.title || trip?.destination || "Your event"}
+                        eventDestination={linkedExperience.location || trip?.destination || ""}
+                        eventDate={(linkedExperience.eventDate as string | null) || (trip?.startDate as unknown as string) || new Date().toISOString()}
+                      />
+                    ) : (
+                      <div className="py-12 text-center text-muted-foreground">
+                        <UserPlus className="w-10 h-10 mx-auto mb-3 opacity-40" />
+                        <p className="font-medium mb-1">Guest list not set up yet</p>
+                        <p className="text-sm">Start from an experience template (e.g. Wedding) to enable guest invites &amp; RSVP tracking.</p>
+                      </div>
+                    )}
                   </TabsContent>
                 )}
               </div>

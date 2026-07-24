@@ -120,7 +120,7 @@ export const navGroupsConfig: NavGroupConfig[] = [
     ],
   },
   { name: "Ways to earn", href: "/earn" },
-  // Contact removed from the nav (Trip-Strip P3 rule 4) — the footer's Contact Us covers it.
+  { name: "Contact", href: "/contact" },
 ];
 
 export const authNavConfig: AuthNavConfig[] = [
