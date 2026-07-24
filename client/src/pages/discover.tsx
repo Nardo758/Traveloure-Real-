@@ -855,7 +855,7 @@ export default function DiscoverPage() {
                 <TabsList className="bg-card border p-1 w-full overflow-x-auto flex justify-start gap-1 scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent">
                   <TabsTrigger
                     value="travelpulse"
-                    className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground whitespace-nowrap flex-shrink-0"
+                    className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground whitespace-nowrap flex-shrink-0 min-h-11"
                     data-testid="tab-travelpulse"
                   >
                     <TrendingUp className="w-4 h-4 mr-2" />
@@ -863,7 +863,7 @@ export default function DiscoverPage() {
                   </TabsTrigger>
                   <TabsTrigger
                     value="packages"
-                    className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground whitespace-nowrap flex-shrink-0"
+                    className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground whitespace-nowrap flex-shrink-0 min-h-11"
                     data-testid="tab-packages"
                   >
                     <Award className="w-4 h-4 mr-2" />
@@ -871,7 +871,7 @@ export default function DiscoverPage() {
                   </TabsTrigger>
                   <TabsTrigger
                     value="events"
-                    className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground whitespace-nowrap flex-shrink-0"
+                    className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground whitespace-nowrap flex-shrink-0 min-h-11"
                     data-testid="tab-events"
                   >
                     <Calendar className="w-4 h-4 mr-2" />
@@ -879,7 +879,7 @@ export default function DiscoverPage() {
                   </TabsTrigger>
                   <TabsTrigger
                     value="services"
-                    className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground whitespace-nowrap flex-shrink-0"
+                    className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground whitespace-nowrap flex-shrink-0 min-h-11"
                     data-testid="tab-services"
                   >
                     <Building2 className="w-4 h-4 mr-2" />
