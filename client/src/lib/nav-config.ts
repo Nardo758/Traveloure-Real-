@@ -123,7 +123,6 @@ export const navGroupsConfig: NavGroupConfig[] = [
 ];
 
 export const authNavConfig: AuthNavConfig[] = [
-  { href: "/my-trips", label: "Trip plan" },
   { href: "/dashboard", label: "My Plans" },
   { href: "/discover", label: "Discover" },
   { href: "/concierge", label: "Concierge" },
