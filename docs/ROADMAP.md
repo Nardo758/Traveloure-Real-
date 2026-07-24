@@ -89,6 +89,21 @@ or an expert engagement, never a dead end.
   exfiltration surface) → noted-not-blocked. Same class as the email-template injection lesson: user-authored
   text reaching an LLM prompt. If anchor authorship ever widens or the prompt output ever feeds a
   higher-privilege action, revisit with sanitization/escaping.
+- **Grok anchor fetch is owner-only; expert-triggered generation is anchor-blind (Lane 2a, Jul 24, 2026).**
+  The anchor fetch in content.routes.ts (`POST /api/ai/generate-itinerary`) gates the query on `verifyTripOwnership`
+  before calling `getTemporalAnchors()`. An expert generating an itinerary for an existing trip (not owner of that
+  trip) hits a 403/404 before the anchor query fires → no anchor injection on expert-triggered generation.
+  **Filed to Lane 4 (expert-flow queue):** wire anchor fetch to expert-role-and-trip-assignment check, so an
+  expert coordinator can also inject anchors on a trip they're assigned to. Owner-note: the traveler tier
+  (Lane 2a) is complete; the expert-assisted tier (Lane 4) must gate differently.
+- **Claude dedup key carries user-authored anchor text as cross-user cache key material (Lane 2a, Jul 24, 2026).**
+  The anchor block (`buildAnchorPromptBlock()` output) is folded verbatim into the Claude dedup key to avoid
+  sharing cached generations across trips with different anchors. However, the anchor block contains user-authored
+  field text (`description`, `location`) — if Claude's in-memory cache (currently per-request, ephemeral) ever
+  becomes persistent (Redis, DB, across-server), the cache key becomes shared cross-user material. Blast radius:
+  cache collision (wrong itinerary returned) and text visibility (user descriptions in cache keys). **Filed to
+  Observed list:** revisit when cache persistence is designed, to decide whether to hash the anchor text or
+  exclude user fields from the key. Interim note: current in-memory ephemeral cache is safe.
 
 **Still open — genuinely gated (need environment access or real data, not buildable now):**
 - Knowledge-Bar Phase 3: calibrate the scoring rubric on real Kyoto submissions.
