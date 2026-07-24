@@ -163,6 +163,7 @@ const BookingDemo = lazy(() => import("@/pages/booking-demo"));
 const MyItineraryPage = lazy(() => import("@/pages/my-itinerary"));
 const ItineraryViewPage = lazy(() => import("@/pages/itinerary-view"));
 const SharedTripPage = lazy(() => import("@/pages/shared-trip"));
+const GuestInvitePage = lazy(() => import("@/pages/GuestInvitePage").then((m) => ({ default: m.GuestInvitePage })));
 const VisaHelpPage = lazy(() => import("@/pages/visa-help"));
 import { Loader2 } from "lucide-react";
 
@@ -342,6 +343,10 @@ function Router() {
       </Route>
       <Route path="/trips/shared/:token">
         <SharedTripPage />
+      </Route>
+      {/* Guest invite RSVP page — public by unguessable token (guests don't have accounts) */}
+      <Route path="/invite/:token">
+        <Layout><GuestInvitePage /></Layout>
       </Route>
       <Route path="/bookings">
         {() => <ProtectedRoute component={MyBookingsPage} />}
