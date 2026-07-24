@@ -270,3 +270,57 @@ test.describe('D — Tapping a mobile menu link navigates and closes the panel',
     expect(page.url()).toContain('/earn');
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Section E — button-become-expert-nav (testid rename verification)
+//
+// The "Become an Expert / Join as Partner" navbar trigger previously shared a
+// generic testid across multiple page locations.  It is now split:
+//   button-become-expert-nav     — desktop navbar DropdownMenuTrigger
+//   button-become-expert-packages — packages tab empty state (discover.tsx)
+//   button-become-expert-hero    — bottom CTA section (discover.tsx)
+//   button-become-expert-experts — experts page CTA (experts.tsx)
+//   button-become-expert-about   — about page CTA (about.tsx)
+//
+// These tests verify the navbar-specific id is correct and functional.
+// ─────────────────────────────────────────────────────────────────────────────
+
+test.describe('E — button-become-expert-nav in the desktop navbar', () => {
+  test('E1: at 1280 px the Join-as-Partner trigger has testid button-become-expert-nav and is visible', async ({ page }) => {
+    await page.setViewportSize(DESKTOP_1280);
+    await gotoHome(page);
+
+    const navBtn = page.getByTestId('button-become-expert-nav');
+    await expect(navBtn).toBeVisible();
+    // Confirm it is a button element (DropdownMenuTrigger renders a <button>)
+    await expect(navBtn).toHaveRole('button');
+  });
+
+  test('E2: button-become-expert-nav is NOT visible at 375 px (hamburger breakpoint hides desktop nav)', async ({ page }) => {
+    await page.setViewportSize(MOBILE_375);
+    await gotoHome(page);
+
+    // The whole desktop nav row is hidden below lg — the nav button must not be visible
+    await expect(page.getByTestId('button-become-expert-nav')).not.toBeVisible();
+  });
+
+  test('E3: clicking button-become-expert-nav opens the partner role dropdown', async ({ page }) => {
+    await page.setViewportSize(DESKTOP_1280);
+    await gotoHome(page);
+
+    await page.getByTestId('button-become-expert-nav').click();
+    await page.waitForTimeout(400);
+
+    // The dropdown contains role links (link-partner-{label}) — at least one must appear
+    const partnerLinks = page.locator('[data-testid^="link-partner-"]');
+    await expect(partnerLinks.first()).toBeVisible();
+  });
+
+  test('E4: no element still carries the retired button-join-partner testid', async ({ page }) => {
+    await page.setViewportSize(DESKTOP_1280);
+    await gotoHome(page);
+
+    // Old testid must be gone — not attached anywhere in the DOM
+    await expect(page.getByTestId('button-join-partner')).not.toBeAttached();
+  });
+});
