@@ -487,4 +487,10 @@ export const MIGRATION_FILES = [
   // booking_type). No DB CHECK → no publish-time push trap; enum value sets validated at zod layer.
   // No backfill (§13 — the 9 existing products stay NULL until a real admin tagging pass).
   "131_affiliate_availability_and_cta.sql",
+  // 132: DMO content in the central content system (approach A) — adds 'dmo_content' to the
+  // content_type enum (idempotent ADD VALUE, migration-0009 pattern) so DMO/scraped research can be
+  // registered into content_registry as the 'sourced' origin. EXPERT-WORKSPACE-ONLY: sourced content
+  // is hard-excluded from the traveler resolver (content-query.service.ts) + not in any surface map.
+  // Additive, no CHECK → no publish-time push trap.
+  "132_content_type_dmo_content.sql",
 ] as const;

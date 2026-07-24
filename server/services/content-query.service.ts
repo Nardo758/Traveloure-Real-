@@ -18,6 +18,7 @@ import {
   trips, serviceBookings, expertMatchScores,
   experienceTypes,
 } from "@shared/schema";
+import { contentOriginFor } from "@shared/content-origin";
 
 // ─── Health ───────────────────────────────────────────────────────────────────
 
@@ -402,11 +403,14 @@ export async function getAffiliateProductsByIds(ids: string[]): Promise<any[]> {
 
 export async function getContentRegistryByIds(ids: string[]): Promise<any[]> {
   if (!ids.length) return [];
-  return db.select().from(contentRegistry)
+  const rows = await db.select().from(contentRegistry)
     .where(and(
       eq(contentRegistry.status, "published"),
       inArray(contentRegistry.id, ids),
     ));
+  // Hard invariant: never return 'sourced' (DMO) content to a traveler surface, even if an admin
+  // placement rule points at it.
+  return rows.filter(r => contentOriginFor(r.contentType) !== "sourced");
 }
 
 export async function getAffiliateProductsByLocation(params: {
@@ -442,6 +446,10 @@ export async function getContentRegistryByLocation(params: {
   allowedContentTypes: string[];
   excludeIds?: string[];
 }): Promise<any[]> {
+  // Hard invariant: 'sourced' (DMO) content is EXPERT-WORKSPACE-ONLY and never reaches a traveler
+  // surface. Filter it out of the allowed set even if a surface map ever mistakenly includes it.
+  const travelerTypes = params.allowedContentTypes.filter(t => contentOriginFor(t) !== "sourced");
+  if (!travelerTypes.length) return [];
   const locationFilter = sql`(
     ${contentRegistry.metadata}->>'location' ILIKE ${"%" + params.city + "%"}
     OR ${contentRegistry.metadata}->>'city' ILIKE ${"%" + params.city + "%"}
@@ -452,7 +460,7 @@ export async function getContentRegistryByLocation(params: {
   const conditions = [
     eq(contentRegistry.status, "published"),
     locationFilter,
-    inArray(contentRegistry.contentType, params.allowedContentTypes as any),
+    inArray(contentRegistry.contentType, travelerTypes as any),
     ...(params.excludeIds?.length
       ? [sql`${contentRegistry.id}::text != ALL(ARRAY[${sql.raw(params.excludeIds.map(id => `'${id.replace(/'/g, "''")}'`).join(","))}]::text[])`]
       : []),
