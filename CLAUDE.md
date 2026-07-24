@@ -636,7 +636,24 @@ a guard. Claim the row atomically **first**, then make the external call — so 
 - **Coordination cancel-reversal — CLEAN.** No earning is ever credited for coordination (the fee is quote-only, never
   captured; no `createExpertEarning` tied to coordination/`booking_concierge`). Nothing to reverse on cancel. Closed.
 
-### Escrow/hold/release spine — build status (design of record: `docs/design/escrow-spine.md`)
+### §16 — Affiliate-outbound rule (agent-booking, ratified Jul 23, 2026)
+
+**GOVERNING RULE (decision-maker directive):** affiliate/partner content must behave like the Discover feeds —
+**no surface may send the traveler off-site with a raw `window.open(affiliateUrl)`**. Any "book" action on
+partner-fulfilled content routes through the in-platform **booking-agent rail**:
+`POST /api/affiliate-booking-requests` (the rail Discover's `unified-result-card` already uses) — the server
+auto-assigns a booking agent (expert), **keeps the affiliate URL server-side** (it is deliberately never returned
+to the client; the agent books through it, preserving commission and preventing disintermediation), and the
+confirmed booking is logged onto the traveler's trip (migration 051 `affiliate_booking_requests.trip_id`).
+Tracked *informational* outbound (e.g. the curated-content `POST /api/content/affiliate-redirect`, which records
+into `affiliate_clicks` before redirecting) remains allowed — the prohibition is on **untracked raw outbound and
+off-site *booking* CTAs**. First application: all 10 Travelpayouts card types
+(`client/src/components/travelpayouts/*Card.tsx`) — previously every card's "Book" was a raw
+`window.open(affiliateUrl || bookingUrl)` (untracked, funnel-leaking, inconsistent with the Amadeus add-to-cart
+hotels on the same page); now they share `useAgentBooking` → the booking-agent rail. **Filed (architectural,
+per the same directive):** fold the parallel `/api/catalog/*` Travelpayouts feed into the CENTRAL content system
+(content registry / `affiliate_products` + placement rules) so all content lives in one system — a design job
+(live-priced API feeds vs registry rows), not a mechanical move; do not build a third content home in the interim.
 
 The earning ledger is an escrow state machine: **`held → releasable → paid_out`**, plus **`reversed`**, with a
 `dispute_state`. All phases are **landed on `main`** (Jul 14, 2026):

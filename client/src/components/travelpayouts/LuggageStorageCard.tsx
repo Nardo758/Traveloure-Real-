@@ -1,16 +1,14 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { MapPin, ShoppingBag, Star, ExternalLink } from "lucide-react";
+import { MapPin, ShoppingBag, Star } from "lucide-react";
 import type { CatalogItem } from "@/types/catalog";
 import { BookWithExpertButton } from "./BookWithExpertButton";
+import { useAgentBooking } from "./useAgentBooking";
 
 export function LuggageStorageCard({ item, className }: { item: CatalogItem; className?: string }) {
-  const handleBook = () => {
-    if (item.affiliateUrl || item.bookingUrl) {
-      window.open((item.affiliateUrl || item.bookingUrl)!, "_blank", "noopener");
-    }
-  };
+  // §16: no raw outbound — partner fulfilment goes through the booking-agent rail.
+  const { book: handleBook, isPending: bookPending, requested: bookRequested } = useAgentBooking(item, "luggage-storage");
 
   return (
     <Card className={`overflow-hidden hover:shadow-md transition-shadow border-amber-100 ${className ?? ""}`} data-testid={`card-luggage-${item.id}`}>
@@ -56,9 +54,10 @@ export function LuggageStorageCard({ item, className }: { item: CatalogItem; cla
               size="sm"
               onClick={handleBook}
               className="h-7 text-xs gap-1 bg-amber-600 hover:bg-amber-700"
+              disabled={bookPending || bookRequested}
               data-testid={`button-book-luggage-${item.id}`}
             >
-              Book<ExternalLink className="h-3 w-3" />
+              {bookRequested ? "Requested ✓" : "Book via agent"}
             </Button>
           </div>
           <BookWithExpertButton

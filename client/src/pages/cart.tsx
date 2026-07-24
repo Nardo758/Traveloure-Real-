@@ -18,6 +18,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
 import {
@@ -229,8 +230,14 @@ export default function CartPage() {
   const [resolvedTrip, setResolvedTrip] = useState<{ id: string; title: string; destination: string; startDate: string; endDate: string; numberOfTravelers: number } | null>(null);
   const [tripTitle, setTripTitle] = useState("");
   const [tripDestination, setTripDestination] = useState("");
-  const [tripStartDate, setTripStartDate] = useState("");
-  const [tripEndDate, setTripEndDate] = useState("");
+  // Trip-date range — edited in the always-visible header at the top of the cart (not a step/modal).
+  // Seeded from the experience context so an experience-template flow's up-front dates carry over.
+  const [tripStartDate, setTripStartDate] = useState(() => {
+    try { return JSON.parse(sessionStorage.getItem("experienceContext") || "{}").startDate || ""; } catch { return ""; }
+  });
+  const [tripEndDate, setTripEndDate] = useState(() => {
+    try { return JSON.parse(sessionStorage.getItem("experienceContext") || "{}").endDate || ""; } catch { return ""; }
+  });
   const [tripTravelers, setTripTravelers] = useState(2);
 
   // Guest cart pending items (stored when unauthenticated users click add-to-cart)
@@ -714,22 +721,8 @@ export default function CartPage() {
   };
 
   // ── G6: Resolve (or auto-create) a trip before entering the optimize gate ─
-  const handleOptimizeClick = async () => {
-    if (!user) {
-      openSignInModal();
-      return;
-    }
-    if (previewLoading || resolvingTrip) return;
-    if (isLoading) {
-      toast({ title: "Loading cart...", description: "Please wait a moment" });
-      return;
-    }
-    const platformItems = cart?.items || [];
-    if (platformItems.length === 0 && externalItems.length === 0) {
-      toast({ variant: "destructive", title: "Cart is empty", description: "Add items to your cart first" });
-      return;
-    }
-
+  // The heavy lifting; runs once a trip date is known (already set, or just collected via the modal).
+  const proceedOptimize = async (effStart: string, effEnd: string) => {
     setResolvingTrip(true);
     try {
       let ctxExperienceSlug: string | undefined;
@@ -756,8 +749,11 @@ export default function CartPage() {
       setResolvedTrip(trip);
       setTripTitle(trip.title || "");
       setTripDestination(trip.destination || "");
-      setTripStartDate(trip.startDate || "");
-      setTripEndDate(trip.endDate || "");
+      // The user's explicitly-set header dates WIN over a reused trip's stored dates — a returning
+      // trip must not silently clobber a fresh edit. Fall back to the trip's dates only when the
+      // header had none (defensive: handleOptimizeClick already requires them).
+      setTripStartDate(effStart || trip.startDate || "");
+      setTripEndDate(effEnd || trip.endDate || "");
       setTripTravelers(trip.numberOfTravelers || 2);
       // Prefill "What are you planning?" from an existing template context
       // (wedding/proposal template flows keep their type); default "trip".
@@ -769,12 +765,14 @@ export default function CartPage() {
         setTripEventType("trip");
       }
 
-      // Persist the resolved tripId back into the experience context so
+      // Persist the resolved tripId (and the dates) into the experience context so
       // downstream steps (createComparison, requestOptimizationPayment) pick it up
       try {
         const stored = sessionStorage.getItem("experienceContext");
         const ctx = stored ? JSON.parse(stored) : {};
         ctx.tripId = trip.id;
+        if (effStart) ctx.startDate = effStart;
+        if (effEnd) ctx.endDate = effEnd;
         sessionStorage.setItem("experienceContext", JSON.stringify(ctx));
       } catch { /* ignore */ }
 
@@ -784,6 +782,53 @@ export default function CartPage() {
     } finally {
       setResolvingTrip(false);
     }
+  };
+
+  const handleOptimizeClick = async () => {
+    if (!user) {
+      openSignInModal();
+      return;
+    }
+    if (previewLoading || resolvingTrip) return;
+    if (isLoading) {
+      toast({ title: "Loading cart...", description: "Please wait a moment" });
+      return;
+    }
+    const platformItems = cart?.items || [];
+    if (platformItems.length === 0 && externalItems.length === 0) {
+      toast({ variant: "destructive", title: "Cart is empty", description: "Add items to your cart first" });
+      return;
+    }
+
+    // Every trip needs dates before it can be prepared. Dates live in the always-visible trip-date
+    // header at the top of the cart (not a step, not a modal) — if unset, nudge the user there.
+    const effStart = tripStartDate;
+    const effEnd = tripEndDate;
+    if (!effStart || !effEnd) {
+      toast({ variant: "destructive", title: "Add your travel dates", description: "Set your trip dates at the top of the cart to continue." });
+      return;
+    }
+    if (new Date(effEnd) < new Date(effStart)) {
+      toast({ variant: "destructive", title: "Invalid dates", description: "End date can't be before the start date." });
+      return;
+    }
+    await proceedOptimize(effStart, effEnd);
+  };
+
+  // Trip-date header edits write straight to tripStartDate/tripEndDate and persist into the
+  // experience context so downstream steps + a returning visit keep the range.
+  const updateTripDates = (next: { start?: string; end?: string }) => {
+    const start = next.start ?? tripStartDate;
+    let end = next.end ?? tripEndDate;
+    if (start && end && new Date(end) < new Date(start)) end = start; // keep end >= start
+    setTripStartDate(start);
+    setTripEndDate(end);
+    try {
+      const ctx = JSON.parse(sessionStorage.getItem("experienceContext") || "{}");
+      ctx.startDate = start;
+      ctx.endDate = end;
+      sessionStorage.setItem("experienceContext", JSON.stringify(ctx));
+    } catch { /* ignore */ }
   };
 
   // ── G6: Save user edits to the trip details, then proceed to preview ─────
@@ -1227,6 +1272,48 @@ export default function CartPage() {
             <Badge variant="secondary" data-testid="badge-item-count">{totalItemCount} items</Badge>
           )}
         </div>
+
+        {/* Trip-date header — always-visible, editable trip date range (not a step, not a modal).
+            Seeds from the experience context; edits persist there for downstream steps. */}
+        {flowStep === "cart" && totalItemCount > 0 && (
+          <div
+            className="flex flex-col sm:flex-row sm:items-end gap-3 px-4 py-3 mb-4 rounded-lg border border-border bg-card"
+            data-testid="header-trip-dates"
+          >
+            <div className="flex items-center gap-2 text-sm font-medium shrink-0 sm:pb-2">
+              <Calendar className="w-4 h-4 text-primary" />
+              Travel dates
+            </div>
+            <div className="flex items-end gap-3 flex-1">
+              <div className="space-y-1 flex-1 max-w-[10rem]">
+                <Label htmlFor="header-start" className="text-xs text-muted-foreground">Start</Label>
+                <Input
+                  id="header-start"
+                  type="date"
+                  value={tripStartDate}
+                  onChange={(e) => updateTripDates({ start: e.target.value })}
+                  className="h-9"
+                  data-testid="input-header-start-date"
+                />
+              </div>
+              <div className="space-y-1 flex-1 max-w-[10rem]">
+                <Label htmlFor="header-end" className="text-xs text-muted-foreground">End</Label>
+                <Input
+                  id="header-end"
+                  type="date"
+                  min={tripStartDate || undefined}
+                  value={tripEndDate}
+                  onChange={(e) => updateTripDates({ end: e.target.value })}
+                  className="h-9"
+                  data-testid="input-header-end-date"
+                />
+              </div>
+            </div>
+            {(!tripStartDate || !tripEndDate) && (
+              <span className="text-xs text-muted-foreground sm:pb-2">Add dates to prepare your trip</span>
+            )}
+          </div>
+        )}
 
         {/* Guest nudge — only shown when unauthenticated and there are items */}
         {!user && !authLoading && totalItemCount > 0 && flowStep === "cart" && (
@@ -1782,26 +1869,14 @@ export default function CartPage() {
                       </Select>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="trip-start">Start date</Label>
-                        <Input
-                          id="trip-start"
-                          type="date"
-                          value={tripStartDate}
-                          onChange={(e) => setTripStartDate(e.target.value)}
-                          data-testid="input-trip-start-date"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="trip-end">End date</Label>
-                        <Input
-                          id="trip-end"
-                          type="date"
-                          value={tripEndDate}
-                          onChange={(e) => setTripEndDate(e.target.value)}
-                          data-testid="input-trip-end-date"
-                        />
+                    {/* Dates are edited in the trip-date header at the top of the cart; shown here read-only. */}
+                    <div className="space-y-1">
+                      <Label>Travel dates</Label>
+                      <div className="flex items-center gap-2 rounded-md border border-border bg-muted/30 px-3 py-2 text-sm" data-testid="text-trip-dates-summary">
+                        <Calendar className="w-4 h-4 text-muted-foreground" />
+                        {tripStartDate && tripEndDate
+                          ? <span>{tripStartDate} → {tripEndDate}</span>
+                          : <span className="text-muted-foreground">Set your dates at the top of the cart</span>}
                       </div>
                     </div>
 
@@ -2549,6 +2624,7 @@ export default function CartPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
     </>
   );
 }
