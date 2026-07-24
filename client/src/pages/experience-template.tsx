@@ -77,6 +77,7 @@ import { cn } from "@/lib/utils";
 import { trackSearchEvent } from "@/lib/analytics";
 import { useAuth } from "@/hooks/use-auth";
 import { ExperienceMap } from "@/components/experience-map";
+import { ItineraryPreviewPanel } from "@/components/experience/itinerary-preview-panel";
 import { ExpertChatWidget, CheckoutExpertBanner } from "@/components/expert-chat-widget";
 import { AIMatchedExpertsSection } from "@/components/ai-matched-experts-section";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -905,6 +906,8 @@ export default function ExperienceTemplatePage() {
   const [contextValues, setContextValues] = useState<Record<string, string>>({});
   const [detailsSubmitted, setDetailsSubmitted] = useState(initialSettings?.detailsSubmitted ?? false);
   const [showMobileMap, setShowMobileMap] = useState(false);
+  // Right-panel view toggle: the map, or the live Itinerary Preview of the plan-so-far.
+  const [rightPanelView, setRightPanelView] = useState<"map" | "preview">("map");
   
   
   // Wedding mode state (planning vs guest activities)
@@ -1371,9 +1374,66 @@ export default function ExperienceTemplatePage() {
     }
   };
 
-  const openExpertChat = () => {
-    // Open the Expert Help dialog with AI matching + chat tabs
+  // Tracks the last plan snapshot we shared with the expert queue, so repeated
+  // "Get Expert Help" clicks don't spam a new lead for an unchanged plan.
+  const lastSharedPlanRef = useRef<string>("");
+
+  // Build a snapshot of everything the traveler has planned so far — the
+  // "itinerary preview" work — to hand to the expert.
+  const buildPlanSnapshot = () => ({
+    source: "template" as const,
+    experienceType: experienceType?.name,
+    experienceSlug: slug,
+    destination,
+    originCity,
+    startDate: startDate ? startDate.toISOString().split("T")[0] : undefined,
+    endDate: endDate ? endDate.toISOString().split("T")[0] : undefined,
+    travelers: adults + kids,
+    interests: selectedInterests,
+    cartItems: cart.map((i) => ({
+      name: i.name,
+      category: i.type,
+      price: i.price,
+      provider: i.provider || "Provider",
+      quantity: i.quantity,
+    })),
+    cartTotal,
+  });
+
+  const openExpertChat = async () => {
+    // Open the Expert Help dialog with AI matching + chat tabs.
     setExpertHelpDialogOpen(true);
+
+    // Hand the traveler's current planning work to the expert queue so the
+    // expert can help with the plan-in-progress, not a blank slate. Best-effort
+    // and de-duplicated: only sends when signed in, a destination is set, and
+    // the plan changed since the last share.
+    if (!user || !destination.trim()) return;
+    const snapshot = buildPlanSnapshot();
+    const sig = JSON.stringify(snapshot);
+    if (sig === lastSharedPlanRef.current) return;
+    lastSharedPlanRef.current = sig;
+    try {
+      await fetch("/api/expert-requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          destination,
+          requestType: "template_inquiry",
+          notes: `Traveler is planning a ${experienceType?.name || "trip"} to ${destination}` +
+            (cart.length ? ` with ${cart.length} selected item(s) (~$${cartTotal}).` : "."),
+          optimizationContext: { planSnapshot: snapshot },
+        }),
+      });
+      toast({
+        title: "Shared with an expert",
+        description: "Your current plan was sent so an expert can jump right in.",
+      });
+    } catch {
+      // Non-fatal — the dialog is already open; allow a retry on the next click.
+      lastSharedPlanRef.current = "";
+    }
   };
   
   const openAiItineraryBuilder = () => {
@@ -1875,7 +1935,7 @@ export default function ExperienceTemplatePage() {
                 ) : (
                   <Sparkles className="w-4 h-4" />
                 )}
-                {creatingComparison ? "Creating..." : "Generate Itinerary"}
+                {creatingComparison ? "Building preview..." : "Itinerary Preview"}
               </Button>
             </div>
           </div>
@@ -2737,27 +2797,82 @@ export default function ExperienceTemplatePage() {
             <div className="w-1 h-8 bg-gray-400 dark:bg-gray-500 rounded-full" />
           </PanelResizeHandle>
 
-          <Panel defaultSize={40} minSize={20} maxSize={60} className="relative">
-            <ExperienceMap
-              providers={mapProviders}
-              selectedProviderIds={selectedProviderIds}
-              destination={destination}
-              destinationCenter={destinationCenter}
-              onAddToCart={(provider) => addToCart({
-                id: provider.id,
-                type: provider.category,
-                name: provider.name,
-                price: provider.price,
-                quantity: 1,
-                provider: "Platform Provider"
-              })}
-              onRemoveFromCart={removeFromCart}
-              height="100%"
-              activityLocations={activityLocations}
-              hotelLocation={hotelLocation}
-              transitRoutes={transitRoutes}
-              highlightedActivityId={highlightedActivityId}
-            />
+          <Panel defaultSize={40} minSize={20} maxSize={60} className="relative flex flex-col">
+            {/* Map | Preview tab — the right panel shows the live map or the
+                Itinerary Preview of the plan-so-far. */}
+            <div className="flex-shrink-0 flex items-center gap-1 border-b bg-background px-2 py-1.5">
+              <button
+                type="button"
+                onClick={() => setRightPanelView("map")}
+                className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                  rightPanelView === "map" ? "bg-primary text-white" : "text-muted-foreground hover:bg-muted"
+                }`}
+                data-testid="tab-right-map"
+              >
+                <MapPin className="w-4 h-4" />
+                Map
+              </button>
+              <button
+                type="button"
+                onClick={() => setRightPanelView("preview")}
+                className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                  rightPanelView === "preview" ? "bg-primary text-white" : "text-muted-foreground hover:bg-muted"
+                }`}
+                data-testid="tab-right-preview"
+              >
+                <Sparkles className="w-4 h-4" />
+                Itinerary Preview
+                {cart.length > 0 && (
+                  <span className="ml-0.5 rounded-full bg-primary/15 px-1.5 text-[11px] font-semibold text-primary">
+                    {cart.length}
+                  </span>
+                )}
+              </button>
+            </div>
+            <div className="flex-1 min-h-0 relative">
+              {rightPanelView === "map" ? (
+                <ExperienceMap
+                  providers={mapProviders}
+                  selectedProviderIds={selectedProviderIds}
+                  destination={destination}
+                  destinationCenter={destinationCenter}
+                  onAddToCart={(provider) => addToCart({
+                    id: provider.id,
+                    type: provider.category,
+                    name: provider.name,
+                    price: provider.price,
+                    quantity: 1,
+                    provider: "Platform Provider"
+                  })}
+                  onRemoveFromCart={removeFromCart}
+                  height="100%"
+                  activityLocations={activityLocations}
+                  hotelLocation={hotelLocation}
+                  transitRoutes={transitRoutes}
+                  highlightedActivityId={highlightedActivityId}
+                />
+              ) : (
+                <ItineraryPreviewPanel
+                  destination={destination}
+                  startDate={startDate}
+                  endDate={endDate}
+                  travelers={adults + kids}
+                  items={cart.map((i) => ({
+                    id: i.id,
+                    name: i.name,
+                    type: i.type,
+                    price: i.price,
+                    quantity: i.quantity,
+                    provider: i.provider,
+                  }))}
+                  total={cartTotal}
+                  onRemove={removeFromCart}
+                  onGenerate={createComparison}
+                  generating={creatingComparison}
+                  canGenerate={canGenerateItinerary}
+                />
+              )}
+            </div>
           </Panel>
         </PanelGroup>
 
@@ -2834,7 +2949,7 @@ export default function ExperienceTemplatePage() {
                 ) : (
                   <Sparkles className="w-3 h-3" />
                 )}
-                {creatingComparison ? "..." : "Generate"}
+                {creatingComparison ? "..." : "Preview"}
               </Button>
               </div>
             </div>
@@ -2874,7 +2989,7 @@ export default function ExperienceTemplatePage() {
                     className="bg-primary"
                   >
                     {creatingComparison ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4 mr-1" />}
-                    Generate
+                    Preview
                   </Button>
                 </div>
               )}

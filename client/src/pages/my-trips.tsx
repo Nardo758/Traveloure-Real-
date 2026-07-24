@@ -51,6 +51,7 @@ export default function MyTrips() {
   const [typeFilter, setTypeFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [, setLocation] = useLocation();
 
   if (isLoading) {
     return (
@@ -114,8 +115,6 @@ export default function MyTrips() {
     if (elapsed > total) return 100;
     return Math.round((elapsed / total) * 100);
   };
-
-  const [, setLocation] = useLocation();
 
   const TripCard = ({ trip }: { trip: any }) => {
     const Icon = eventTypeIcons[trip.eventType || "vacation"] || Plane;
