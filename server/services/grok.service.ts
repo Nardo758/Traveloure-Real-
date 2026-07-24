@@ -161,6 +161,12 @@ export interface AutonomousItineraryRequest {
   dietaryRestrictions?: string[];
   mobilityConsiderations?: string[];
   travelPulseContext?: TravelPulseContext;
+  /**
+   * Pre-formatted "IMMOVABLE CONSTRAINTS" block (Lane 2a) from the trip's temporal
+   * anchors / day boundaries. Empty string when the trip has none — appended verbatim
+   * to the user prompt so generation schedules around fixed flight/hotel commitments.
+   */
+  immovableConstraints?: string;
 }
 
 export interface AutonomousItineraryResult {
@@ -687,7 +693,7 @@ IMPORTANT: Incorporate this real-time intelligence into your recommendations. Pr
 ${request.mustSeeAttractions?.length ? `- Must-See: ${request.mustSeeAttractions.join(", ")}` : ""}
 ${request.dietaryRestrictions?.length ? `- Dietary: ${request.dietaryRestrictions.join(", ")}` : ""}
 ${request.mobilityConsiderations?.length ? `- Mobility: ${request.mobilityConsiderations.join(", ")}` : ""}
-${travelPulseSection}
+${travelPulseSection}${request.immovableConstraints || ""}
 
 Create a detailed, actionable itinerary that incorporates the real-time destination intelligence above.`;
 
