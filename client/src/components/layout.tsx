@@ -338,26 +338,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </div>
 
             <div className="flex items-center gap-2 flex-shrink-0">
-              {/* Trip plan — visible for all users; guests are prompted to sign in on click */}
-              {user ? (
-                <Link
-                  href={tripCtx.tripId ? `/trip/${tripCtx.tripId}` : "/my-trips"}
-                  className="hidden lg:inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-primary transition-colors px-2 py-1"
-                  data-testid="link-nav-trip-plan"
-                >
-                  <Map className="w-4 h-4" />
-                  Trip plan
-                </Link>
-              ) : (
-                <button
-                  onClick={() => openSignInModal()}
-                  className="hidden lg:inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-primary transition-colors px-2 py-1 bg-transparent border-0 cursor-pointer"
-                  data-testid="link-nav-trip-plan"
-                >
-                  <Map className="w-4 h-4" />
-                  Trip plan
-                </button>
-              )}
 
               {!user && (
                 <div className="hidden lg:flex items-center gap-2">
