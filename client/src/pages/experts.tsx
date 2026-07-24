@@ -624,7 +624,7 @@ export default function ExpertsPage() {
                   <Button
                     size="lg"
                     className="bg-primary hover:bg-primary/90 text-white px-8"
-                    data-testid="button-become-expert"
+                    data-testid="button-become-expert-experts"
                   >
                     {config.cta}
                   </Button>
