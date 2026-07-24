@@ -1,0 +1,92 @@
+You are a Senior QA Engineer specializing 
+in search and input validation.
+Test ONLY the navbar search bar on Traveloure.
+
+FIND THE SEARCH BAR:
+Locate the search component in navbar.
+Show me the component file and current 
+testid/placeholder text.
+
+RUN THESE 15 TEST CASES:
+
+Test 1 — Valid destination search:
+Input: "Tokyo"
+Expected: Results appear, relevant 
+experts/destinations shown, no error.
+
+Test 2 — Valid expert name search:
+Input: Name of a real expert in DB
+Expected: Expert appears in results.
+
+Test 3 — Empty search submit:
+Input: (blank), press Enter or click search
+Expected: Validation message OR 
+show all results, NOT a crash or 404.
+
+Test 4 — Single character:
+Input: "a"
+Expected: Results or minimum length 
+validation message.
+
+Test 5 — Very long string (500 chars):
+Input: "Tokyo" repeated 100 times
+Expected: Truncated or rejected cleanly,
+not a server crash or layout break.
+
+Test 6 — Special characters:
+Input: "!@#$%^&*()"
+Expected: Sanitized, no results,
+no XSS, no SQL injection possible.
+
+Test 7 — SQL injection:
+Input: "'; DROP TABLE users; --"
+Expected: Treated as plain text search,
+no DB error, zero results returned.
+
+Test 8 — XSS payload:
+Input: "<script>alert('xss')</script>"
+Expected: Displayed as plain text if shown,
+script tag NEVER executes.
+
+Test 9 — Emoji search:
+Input: "🗼" (Tokyo Tower emoji)
+Expected: Handled gracefully, no crash.
+
+Test 10 — Unicode/Arabic text:
+Input: "طوكيو" (Tokyo in Arabic)
+Expected: Handled gracefully, 
+search fires without encoding error.
+
+Test 11 — Spaces only:
+Input: "     " (5 spaces)
+Expected: Treated as empty, 
+validation shown, not searched.
+
+Test 12 — Rapid typing (autocomplete):
+Type one character per 50ms for 10 chars.
+Expected: Debounced — not 10 API calls,
+maximum 1-2 API calls after typing stops.
+
+Test 13 — Search then navigate away:
+Start typing in search, click a navbar link.
+Expected: Search state cleared,
+no orphaned API calls, no console errors.
+
+Test 14 — Search while logged out:
+Access search bar without logging in.
+Expected: Search works for public content
+OR shows login prompt — not a crash.
+
+Test 15 — No results:
+Input: "xyzabc123nonexistent"
+Expected: "No results found" message,
+not a blank white area or error.
+
+CHECK PERFORMANCE:
+After each search, check network tab:
+Is there exactly 1 API call per search?
+Or are there N+1 calls firing?
+Is the search debounced (300-500ms delay)?
+
+REPORT: Pass/Fail per test, 
+API calls made, any console errors found.
