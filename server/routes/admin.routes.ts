@@ -898,10 +898,32 @@ router.post("/api/admin/dmo/intake/:id/approve", isAuthenticated, async (req, re
       )
       .returning();
     if (!updated) return res.status(409).json({ message: "Not pending intake (already approved or rejected)" });
+    // Register the approved DMO row into the central content_registry as 'sourced' origin (approach A).
+    // Best-effort — never blocks the intake approval. sourced content is expert-only (resolver-gated).
+    try {
+      const { registerDmoContentById } = await import("../services/dmo-registry-sync.service");
+      await registerDmoContentById(updated.id);
+    } catch { /* non-blocking */ }
     res.json({ message: "Approved into the expert library", item: updated });
   } catch (err: any) {
     console.error("DMO intake approve error:", err);
     res.status(500).json({ message: "Approve failed", error: err.message });
+  }
+});
+
+// Backfill: register ALL existing dmo_raw_content into the central registry as 'sourced' (idempotent).
+router.post("/api/admin/dmo/sync-registry", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const { syncDmoContentToRegistry } = await import("../services/dmo-registry-sync.service");
+    const result = await syncDmoContentToRegistry();
+    res.json({ message: `Synced DMO content into the central registry`, ...result });
+  } catch (err: any) {
+    console.error("DMO registry sync error:", err);
+    res.status(500).json({ message: "Sync failed", error: err.message });
   }
 });
 

@@ -4372,6 +4372,7 @@ export const contentTypeEnum = pgEnum("content_type", [
   "media",
   "tip",
   "affiliate_product",
+  "dmo_content",
   "other"
 ]);
 
