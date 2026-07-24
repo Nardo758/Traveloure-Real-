@@ -1825,15 +1825,9 @@ export default function ExperienceTemplatePage() {
         <PanelGroup direction="horizontal" className="h-screen hidden lg:flex">
           <Panel defaultSize={60} minSize={40} maxSize={80} className="h-full flex flex-col overflow-hidden">
           <div className="flex-1 overflow-y-auto min-h-0">
-          {/* Hero Section with ribbon bar */}
-          <div className="relative h-56 md:h-72 lg:h-80 flex-shrink-0 overflow-hidden">
-            <div 
-              className="absolute inset-0 bg-cover bg-center"
-              style={{ backgroundImage: `url('${experienceType.heroImage ?? ""}')` }}
-            />
-
-            {/* White ribbon bar with Credits, Expert Help, Cart, Generate Itinerary */}
-            <div className="absolute top-0 left-0 right-0 bg-white/90 backdrop-blur-sm px-4 py-2 flex items-center justify-end gap-3 z-10">
+          {/* Ribbon bar with Credits, Expert Help, Generate Itinerary */}
+          <div className="flex-shrink-0 border-b bg-white/90 backdrop-blur-sm">
+            <div className="px-4 py-2 flex items-center justify-end gap-3">
               {linkedTripId && (
                 <Link href={`/trip/${linkedTripId}`} className="mr-auto">
                   <Button
