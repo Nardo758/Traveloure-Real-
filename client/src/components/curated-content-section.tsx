@@ -34,6 +34,11 @@ interface CuratedItem {
   price_display: string | null;
   affiliate_url: string | null;
   source: string;
+  // Item ⑤: platform-vs-external grouping. origin = "platform" | "affiliate" | "sourced";
+  // originLabel is the traveler disclosure ("" for platform, "Paid partner" for affiliate).
+  origin?: "platform" | "affiliate" | "sourced";
+  originLabel?: string;
+  bookingType?: "in_platform_bookable" | "affiliate_bookable" | "informational" | null;
   rating: number | null;
   city: string | null;
   country: string | null;
@@ -209,10 +214,15 @@ function CuratedCard({
         window.open(data.url, "_blank", "noopener,noreferrer");
       }
     } catch {
-      // Fallback: open client-side affiliate_url if server redirect fails
-      if (item.affiliate_url) {
-        window.open(item.affiliate_url, "_blank", "noopener,noreferrer");
-      }
+      // §16 (G8): NO untracked raw-outbound fallback. The old fallback opened item.affiliate_url
+      // directly when the tracked redirect failed, bypassing the affiliate_clicks record. Fail
+      // visibly instead of leaking an untracked off-site booking.
+      toast({
+        title: "Couldn't open booking",
+        description: "Please try again in a moment.",
+        variant: "destructive",
+        duration: 3000,
+      });
     }
   };
 
@@ -436,6 +446,21 @@ export function CuratedContentSection({
     setAddToTripOpen(true);
   };
 
+  // Item ⑤: group platform-generated content vs paid partners. An item is "external" when its
+  // origin is affiliate (or, defensively, when it carries an affiliate_url); everything else is
+  // platform-originated. Two clearly-labelled sections rather than one undifferentiated grid.
+  const isExternal = (item: CuratedItem) => item.origin === "affiliate" || !!item.affiliate_url;
+  const platformItems = items.filter(i => !isExternal(i));
+  const partnerItems = items.filter(isExternal);
+
+  const grid = (list: CuratedItem[]) => (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      {list.map(item => (
+        <CuratedCard key={item.id} item={item} onAddToTrip={handleAddToTrip} />
+      ))}
+    </div>
+  );
+
   return (
     <div className={`mb-6 ${className}`} data-testid="section-curated-content">
       <div className="flex items-center gap-2 mb-3">
@@ -447,15 +472,28 @@ export function CuratedContentSection({
         <span className="text-xs text-muted-foreground">in {destination}</span>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {items.map(item => (
-          <CuratedCard
-            key={item.id}
-            item={item}
-            onAddToTrip={handleAddToTrip}
-          />
-        ))}
-      </div>
+      {platformItems.length > 0 && (
+        <div className="mb-5" data-testid="curated-group-platform">
+          <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+            From Traveloure
+          </div>
+          {grid(platformItems)}
+        </div>
+      )}
+
+      {partnerItems.length > 0 && (
+        <div data-testid="curated-group-partner">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              Paid partners
+            </span>
+            <Badge variant="outline" className="text-[9px] text-muted-foreground border-muted-foreground/30">
+              Paid partner
+            </Badge>
+          </div>
+          {grid(partnerItems)}
+        </div>
+      )}
 
       <AddToTripDialog
         item={addToTripItem}
