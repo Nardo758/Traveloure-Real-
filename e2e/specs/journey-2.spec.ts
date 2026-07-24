@@ -131,17 +131,22 @@ test.describe('Journey 2A — AI itinerary generation flow', () => {
     // ── Smoke-assert the real Grok generate response shape ───────────────
     // Catches regressions in the /api/ai/generate-itinerary route (missing fields,
     // wrong status) independently of whatever the UI renders after the redirect.
-    // Grok returns 200 with { success, tripId, comparisonId }.
+    // The route returns 200 with the AutonomousItineraryResult spread onto the body:
+    //   { success, tripId, comparisonId, status:'generated', dailyItinerary:[{day,activities}], ... }
+    // NOTE: this is the Grok shape (dailyItinerary), NOT the deleted stub's
+    // { itinerary:{ itineraryData:{ days } } } — asserting the wrong shape is how a
+    // rerouted gate silently stops firing (see the matcher fix above).
     expect(generateResponse, 'generate-itinerary response was captured').not.toBeNull();
     expect(generateResponse!.status(), 'generate-itinerary HTTP status').toBe(200);
 
     const body = await generateResponse!.json();
     expect(body, 'response body is an object').toBeTruthy();
     expect(body.tripId, 'tripId is present').toBeTruthy();
+    expect(body.comparisonId, 'comparisonId is present (redirect target)').toBeTruthy();
     expect(body.status, 'status field').toBe('generated');
-    expect(Array.isArray(body.itineraryData?.days), 'itineraryData.days is an array').toBe(true);
-    expect(body.itineraryData.days.length, 'at least one day returned').toBeGreaterThan(0);
-    const day1 = body.itineraryData.days[0];
+    expect(Array.isArray(body.dailyItinerary), 'dailyItinerary is an array').toBe(true);
+    expect(body.dailyItinerary.length, 'at least one day returned').toBeGreaterThan(0);
+    const day1 = body.dailyItinerary[0];
     expect(typeof day1.day, 'day.day is a number').toBe('number');
     expect(Array.isArray(day1.activities), 'day.activities is an array').toBe(true);
     expect(day1.activities.length, 'at least one activity on day 1').toBeGreaterThan(0);
