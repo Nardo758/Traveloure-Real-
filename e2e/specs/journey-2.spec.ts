@@ -96,9 +96,13 @@ test.describe('Journey 2A — AI itinerary generation flow', () => {
     // Arm the response interceptor BEFORE clicking so the promise is racing
     // from the moment the request fires.  waitForResponse resolves with the
     // first matching response regardless of whether the redirect has happened.
+    // The EnhancedPlanningModal POSTs the REAL Grok generator at /api/ai/generate-itinerary.
+    // (Was matching /api/trips/generate-itinerary — a path the modal never fires, so this
+    //  promise could never resolve and the test silently skipped via the catch below. The
+    //  hardcoded stub that owned that path was deleted in Lane 2a.)
     const generateResponsePromise = page.waitForResponse(
       (resp) =>
-        resp.url().includes('/api/trips/generate-itinerary') && resp.request().method() === 'POST',
+        resp.url().includes('/api/ai/generate-itinerary') && resp.request().method() === 'POST',
       { timeout: 60_000 },
     );
 
@@ -109,7 +113,7 @@ test.describe('Journey 2A — AI itinerary generation flow', () => {
     // stays green rather than burning 60 s and then failing.
     let generateResponse: Awaited<typeof generateResponsePromise> | null = null;
     try {
-      await page.waitForURL(/\/itinerary-comparison\/|\/trips\//, { timeout: 60_000 });
+      await page.waitForURL(/\/itinerary-comparison\/|\/trip\//, { timeout: 60_000 });
       generateResponse = await generateResponsePromise;
     } catch {
       const isErrorPage = await page
@@ -124,19 +128,25 @@ test.describe('Journey 2A — AI itinerary generation flow', () => {
       return;
     }
 
-    // ── Smoke-assert the generate-itinerary response shape ───────────────
-    // Catches regressions in the stub/route (missing fields, wrong status)
-    // independently of whatever the UI renders after the redirect.
+    // ── Smoke-assert the real Grok generate response shape ───────────────
+    // Catches regressions in the /api/ai/generate-itinerary route (missing fields,
+    // wrong status) independently of whatever the UI renders after the redirect.
+    // The route returns 200 with the AutonomousItineraryResult spread onto the body:
+    //   { success, tripId, comparisonId, status:'generated', dailyItinerary:[{day,activities}], ... }
+    // NOTE: this is the Grok shape (dailyItinerary), NOT the deleted stub's
+    // { itinerary:{ itineraryData:{ days } } } — asserting the wrong shape is how a
+    // rerouted gate silently stops firing (see the matcher fix above).
     expect(generateResponse, 'generate-itinerary response was captured').not.toBeNull();
-    expect(generateResponse!.status(), 'generate-itinerary HTTP status').toBe(201);
+    expect(generateResponse!.status(), 'generate-itinerary HTTP status').toBe(200);
 
     const body = await generateResponse!.json();
     expect(body, 'response body is an object').toBeTruthy();
     expect(body.tripId, 'tripId is present').toBeTruthy();
+    expect(body.comparisonId, 'comparisonId is present (redirect target)').toBeTruthy();
     expect(body.status, 'status field').toBe('generated');
-    expect(Array.isArray(body.itineraryData?.days), 'itineraryData.days is an array').toBe(true);
-    expect(body.itineraryData.days.length, 'at least one day returned').toBeGreaterThan(0);
-    const day1 = body.itineraryData.days[0];
+    expect(Array.isArray(body.dailyItinerary), 'dailyItinerary is an array').toBe(true);
+    expect(body.dailyItinerary.length, 'at least one day returned').toBeGreaterThan(0);
+    const day1 = body.dailyItinerary[0];
     expect(typeof day1.day, 'day.day is a number').toBe('number');
     expect(Array.isArray(day1.activities), 'day.activities is an array').toBe(true);
     expect(day1.activities.length, 'at least one activity on day 1').toBeGreaterThan(0);
