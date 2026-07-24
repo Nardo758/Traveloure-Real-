@@ -47,7 +47,7 @@ const menuGroups = [
       { title: "Experts", href: "/chat", icon: Compass },
       { title: "Bookings", href: "/bookings", icon: Package },
       { title: "My events", href: "/my-events", icon: Crown },
-      { title: "Trip plan", href: "/cart", icon: ShoppingCart },
+      { title: "Trip Cart", href: "/cart", icon: ShoppingCart },
     ],
   },
   {
