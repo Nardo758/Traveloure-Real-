@@ -5406,6 +5406,7 @@ export class DatabaseStorage implements IStorage {
       .set({
         inviteViewedAt: firstViewedAt ?? new Date(),
         lastViewedAt: new Date(),
+        viewCount: sql`COALESCE(${eventInvites.viewCount}, 0) + 1`,
       })
       .where(eq(eventInvites.uniqueToken, token));
   }
