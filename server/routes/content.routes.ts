@@ -71,6 +71,7 @@ import {
   SURFACE_DEFAULT_AFFILIATE_CATEGORIES,
   SURFACE_SLUGS,
 } from "@shared/content-surface-map";
+import { contentOriginFor, CONTENT_ORIGIN_TRAVELER_LABEL } from "@shared/content-origin";
 import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant } from "../itinerary-optimizer";
 import { amadeusService } from "../services/amadeus.service";
 import { viatorService } from "../services/viator.service";
@@ -7241,6 +7242,12 @@ router.get("/api/content/discover", async (req, res) => {
         price_display: p.price ? `${p.currency || "USD"} ${parseFloat(p.price).toFixed(0)}` : null,
         affiliate_url: p.affiliateUrl || p.productUrl || null,
         source: "Affiliate Partner",
+        // Item ⑤: canonical origin + disclosure label (was a hardcoded "Affiliate Partner" — G7).
+        origin: "affiliate" as const,
+        originLabel: CONTENT_ORIGIN_TRAVELER_LABEL.affiliate, // "Paid partner"
+        // Item ④: CTA classifier so the shared resolveContentCTA can pick the right button.
+        bookingType: p.bookingType ?? null,
+        availabilityStatus: p.availabilityStatus ?? null,
         rating: p.rating ? parseFloat(String(p.rating)) : null,
         city: p.city || null,
         country: p.country || null,
@@ -7271,6 +7278,10 @@ router.get("/api/content/discover", async (req, res) => {
           price_display: meta.price ? `USD ${parseFloat(meta.price).toFixed(0)}` : null,
           affiliate_url: affiliateUrl,
           source: "Traveloure Curated",
+          // Item ⑤: registry content is platform-origin unless its type says otherwise; a registry row
+          // carrying an affiliate link is disclosed as a paid partner.
+          origin: affiliateUrl ? ("affiliate" as const) : contentOriginFor(r.contentType),
+          originLabel: affiliateUrl ? CONTENT_ORIGIN_TRAVELER_LABEL.affiliate : CONTENT_ORIGIN_TRAVELER_LABEL[contentOriginFor(r.contentType)],
           rating: meta.rating ? parseFloat(String(meta.rating)) : null,
           city: meta.city || meta.location || city,
           country: meta.country || country,
