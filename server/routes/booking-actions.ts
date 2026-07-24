@@ -148,7 +148,12 @@ router.post('/expert-requests', isAuthenticated, async (req, res) => {
 
     const isTripBased = !!tripId && !variantId;
 
-    if (!isTripBased && (!variantId || !comparisonId)) {
+    // A template-sourced lead carries the traveler's in-progress plan snapshot
+    // (cart + destination/dates/travelers) instead of an optimizer comparison —
+    // it lets an expert jump into a plan before it has been optimized.
+    const hasPlanSnapshot = !!optimizationContext?.planSnapshot;
+
+    if (!isTripBased && !hasPlanSnapshot && (!variantId || !comparisonId)) {
       return res.status(400).json({ error: 'Missing required fields: variantId and comparisonId are required for optimizer-based requests' });
     }
     if (!destination && !optimizationContext?.destination) {
