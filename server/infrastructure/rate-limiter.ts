@@ -118,7 +118,15 @@ export const authRateLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000,
   maxRequests: 20,
   keyGenerator: (req) => `auth:${req.ip || "unknown"}:${req.path}`,
-  skip: (req) => req.method === "GET",
+  skip: (req) => {
+    if (req.method === "GET") return true;
+    // Skip for loopback in non-production (E2E tests run from localhost)
+    if (process.env.NODE_ENV !== "production") {
+      const ip = req.ip ?? "";
+      if (ip === "127.0.0.1" || ip === "::1" || ip.endsWith(":127.0.0.1")) return true;
+    }
+    return false;
+  },
 });
 
 export const strictRateLimiter = createRateLimiter({
