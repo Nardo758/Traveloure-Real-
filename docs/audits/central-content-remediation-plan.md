@@ -4,6 +4,43 @@
 **Basis:** `docs/audits/central-content-audit.md` (combined audit) + two follow-up scans (action-button rules;
 content-governance rules). Everything here is read-only findings + a sequenced plan.
 
+---
+
+## RATIFIED DECISIONS (decision-maker, 2026-07-24)
+
+1. **Availability tagging = normalized status _plus_ optional date-range.** Add BOTH: an
+   `availability_status` enum (`available | seasonal | limited | sold_out`, NULL=unknown, §13) **and** optional
+   `available_from` / `available_to` date columns. Null stays null — never fabricated.
+2. **Dark surfaces — audited (verdicts below, evidence-backed).**
+   - **`experience-discovery` → RETIRE.** Page is fully orphaned (no importer, only the `/discover-experiences`→
+     `/discover` redirect); docs treat it as already-consolidated (`PHASE_2_CLOSEOUT.md`); its unique catalog-browse
+     survives live in `TravelpayoutsSection`/`fever-events-section`. Remove from `PLATFORM_SURFACES` + both
+     `SURFACE_DEFAULT_*` maps + the `admin/content-mapping` icon map; delete `pages/experience-discovery.tsx`; keep
+     the redirect for bookmark continuity.
+   - **`spontaneous` → KEEP, do NOT delete — it's a Phase-3 wire, not dead.** UNSAFE to retire: a **live landing
+     "Live Intel" CTA** (`landing.tsx:94`) points at `/spontaneous`, there's an explicit **Phase-3 roadmap commitment**
+     (`PHASE_2_CLOSEOUT.md`, `PHASE_4_RUNBOOK.md`) to reuse `SpontaneousDiscovery`'s time-window engine in the
+     discover-location happening-now strip, and its `/api/spontaneous/quick-search` engine is unique. Leave the
+     component + redirect as-is; the real WIRE (mount in `discover-location` + pass `surface="spontaneous"`) is
+     **deferred to Phase 3, out of scope for this effort.**
+   - **`itinerary` → RETIRE the surface-map entry, KEEP the route redirect.** No consumer sends `surface=itinerary`
+     and `TripDetails` renders no `CuratedContentSection`, so the *content surface* is dead — remove it from the maps.
+     But the `/itinerary/:id`→`/trip` redirect is **load-bearing** (many live PlanCard/HeroSection links) — keep it.
+     *Optional additive:* wire `CuratedContentSection surface="itinerary"` into the TripDetails itinerary tab for
+     curated add-ons (a taste call, not required). Separate cleanup: `pages/itinerary.tsx` is dead (imported at
+     `App.tsx:115`, never routed).
+3. **CTA rule table = approved WITH two edits** (see the revised table in ④):
+   - **(a)** Affiliate/partner content with **booking intent → the agent rail** (`/api/affiliate-booking-requests`),
+     never an off-site "Book" button. **Purely informational** affiliate content → a non-booking **"View details"**
+     via the tracked redirect (no "Book" wording); remove the untracked `window.open` fallback.
+   - **(b)** Affiliate/partner content that is **genuinely in-platform-bookable → add-to-cart**; **affiliate-link-only
+     → agent rail** (Amadeus add-to-cart hotels are the documented in-platform-bookable case, kept).
+   - **New requirement this creates:** the CTA engine needs an **item-level classification** —
+     `in_platform_bookable` (→cart) · `affiliate_bookable` (→agent rail) · `informational` (→tracked "View").
+     This classifier is a design input for P4 (and P1 tagging can carry the flag).
+4. **§16 unification = IN SCOPE NOW (P7).** Design the catalog→`affiliate_products` ingestion for the 7 parallel
+   stacks as part of this effort (not deferred). Still a real design job — not mechanical, not a third content home.
+
 > **Framing.** The content system isn't broken by one bug — it's **starved, parallel-bypassed, and rule-scattered**.
 > The fixes fall into three buckets: **(A) unstarve** the central feed (tag → index → gate), **(B) unify** the scattered
 > action-button + origin logic behind one rule source, **(C) reconcile** the parallel stacks (the big §16 design job).
@@ -37,10 +74,10 @@ were hand-entered without it.
 `experience-discovery` (page orphaned, `/discover-experiences`→`/discover`), `spontaneous` (orphaned **and** omits the
 `surface=` param), `itinerary` (no consumer at all) render nothing. And even the live ones return 0 because of ①+③.
 
-**Fix (decision-per-surface, needs ratification):**
-- **`spontaneous`** — the "happening-now" fold-in is a documented future phase. Either wire `spontaneous-discovery` into `/discover` **and** pass `surface="spontaneous"`, or retire the surface from `PLATFORM_SURFACES` so it isn't advertised as live.
-- **`experience-discovery`** — decide: restore the page, or delete the surface + its default maps (it currently redirects to `/discover`, which already covers it).
-- **`itinerary`** — either wire `CuratedContentSection` into `TripDetails` (curated add-ons on an itinerary), or drop the surface.
+**Fix (RATIFIED per the surface audit — see Ratified Decisions #2):**
+- **`experience-discovery` → RETIRE** the surface + maps + orphaned page; keep the redirect.
+- **`spontaneous` → KEEP** (component + redirect); the WIRE is a Phase-3 item, **out of scope here** (live landing CTA + roadmap dependency make deletion unsafe).
+- **`itinerary` → RETIRE the surface-map entry**, keep the load-bearing route redirect; optionally wire curated add-ons into TripDetails (taste call).
 - **Behavior contract** stays governed by `SURFACE_DEFAULT_CONTENT_TYPES` + `TAB_CONTENT_TYPE_MAP`; don't fold the **upsell** rail (`/api/upsell/*`) in — it's a separate, intentional pipeline (constraint below).
 
 ---
@@ -123,12 +160,13 @@ platform-vs-external split.
 | **P0 — G-SEC** | Approval gate on `getAffiliateProductsByIds` + affiliate-redirect | ③ | none — land immediately, **before P2** |
 | **P1 — Tagging** | Backfill 9 products + require city/country at write; ★ define "availability" semantics | ① | ★ availability decision |
 | **P2 — Push** | Run/fix `auto-index`; standardize package ordering | ③ | after P0+P1 |
-| **P3 — Surfaces ★** | Wire-or-retire `spontaneous`/`experience-discovery`/`itinerary` | ② | ★ per-surface decision |
-| **P4 — CTA engine ★** | `useContentCTA` rule resolver; migrate 6+ surfaces to agent rail; kill raw `window.open`; keep impression chain | ④ | ★ ratify CTA rule table |
+| **P3 — Surfaces** | RETIRE experience-discovery (+ orphaned page) + itinerary map-entry; KEEP spontaneous (Phase-3) + itinerary redirect | ② | ratified |
+| **P4 — CTA engine** | `useContentCTA(item)` resolver keyed on the new `in_platform_bookable`/`affiliate_bookable`/`informational` classifier; migrate 6+ surfaces to agent rail; kill raw `window.open`; relabel informational to "View"; keep impression chain | ④ | ratified (classifier is P1/P4 design input) |
 | **P5 — Origin grouping** | Wire `contentOriginFor` + grouped "From Traveloure / Paid partners" sections + fix label | ⑤ | after P4 (shared cards) |
-| **P6 — Hygiene** | `getPlatformStats` 4.9 fix, enum/map docs, auto-index logging | ⑥ | anytime |
-| **P7 — §16 unification ★** | Design catalog→`affiliate_products` ingestion for the 7 parallel stacks | ①③ | ★ big design job — not mechanical, not a 3rd home |
+| **P6 — Hygiene** | `getPlatformStats` 4.9 fix, enum/map docs, auto-index logging, dead `pages/itinerary.tsx` | ⑥ | anytime |
+| **P7 — §16 unification** | Design catalog→`affiliate_products` ingestion for the 7 parallel stacks (IN SCOPE) | ①③ | design job — not mechanical, not a 3rd home |
 
-**Decisions I need from you before building:** (a) what "availability tagging" means (P1); (b) wire-vs-retire for each of the 3 dark surfaces (P3); (c) sign-off on the canonical CTA rule table (P4); (d) whether §16 unification (P7) is in scope now or stays filed.
+**All four decisions ratified (see Ratified Decisions).** Availability = status+date-range; surfaces = retire-2/keep-spontaneous;
+CTA = approved with the bookable-classifier edits; §16 = in scope now.
 
-**Safe to start without any decision:** P0 (G-SEC) and P6 (hygiene) — both small, both decision-independent.
+**Safe to start immediately (decision-independent):** P0 (G-SEC) and P6 (hygiene).
