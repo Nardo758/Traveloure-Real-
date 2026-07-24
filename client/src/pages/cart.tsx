@@ -727,12 +727,16 @@ export default function CartPage() {
     try {
       let ctxExperienceSlug: string | undefined;
       let ctxUserExperienceId: string | undefined;
+      let ctxDestination: string | undefined;
+      let ctxTripId: string | undefined;
       try {
         const stored = sessionStorage.getItem("experienceContext");
         if (stored) {
           const ctx = JSON.parse(stored);
           ctxExperienceSlug = ctx.experienceSlug || undefined;
           ctxUserExperienceId = ctx.userExperienceId || ctx.id || undefined;
+          ctxDestination = ctx.destination || ctx.city || undefined;
+          ctxTripId = ctx.tripId || undefined;
         }
       } catch { /* ignore */ }
 
@@ -740,7 +744,21 @@ export default function CartPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ experienceSlug: ctxExperienceSlug, userExperienceId: ctxUserExperienceId }),
+        body: JSON.stringify({
+          experienceSlug: ctxExperienceSlug,
+          userExperienceId: ctxUserExperienceId,
+          tripId: ctxTripId,
+          startDate: effStart || undefined,
+          endDate: effEnd || undefined,
+          destination: ctxDestination,
+          // External (affiliate/AI) items exist only in sessionStorage — send a
+          // minimal descriptor list so an external-only cart can resolve a trip.
+          // No prices sent: the server ignores them by design.
+          externalItems: externalItems.map((item) => ({
+            name: item.name,
+            date: item.date,
+          })),
+        }),
       });
       if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error((e as any).message || "Could not prepare trip"); }
       const data = await res.json();

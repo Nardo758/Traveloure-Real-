@@ -4936,18 +4936,38 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { experienceSlug, userExperienceId } = req.body;
 
+      // External (affiliate/AI) cart items live only in the client's sessionStorage —
+      // they have no cart_items rows. The client sends a minimal descriptor list so an
+      // external-only cart can still resolve a trip. Prices are deliberately ignored
+      // (no money decision here; the trip is a draft container).
+      const externalItems: Array<{ name?: string; date?: string; city?: string }> =
+        (Array.isArray(req.body.externalItems) ? req.body.externalItems.slice(0, 50) : [])
+          .filter((e: any) => e && typeof e === "object")
+          .map((e: any) => ({
+            name: typeof e.name === "string" ? e.name.slice(0, 200) : undefined,
+            date: typeof e.date === "string" ? e.date.slice(0, 30) : undefined,
+            city: typeof e.city === "string" ? e.city.slice(0, 120) : undefined,
+          }));
+      const isYmd = (s: any): s is string => typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s);
+      const bodyStart = isYmd(req.body.startDate) ? req.body.startDate : null;
+      const bodyEnd = isYmd(req.body.endDate) ? req.body.endDate : null;
+      const destinationHint =
+        typeof req.body.destination === "string" ? req.body.destination.trim().slice(0, 120) : "";
+
       // 1. Get all cart items for this user (optionally filtered by experience slug)
       const items: any[] = experienceSlug
         ? await storage.getCartItems(userId, experienceSlug)
         : await storage.getCartItems(userId);
 
-      // Guard: empty cart cannot generate a meaningful trip
-      if (!items || items.length === 0) {
+      // Guard: a cart with neither platform nor external items cannot generate a meaningful trip
+      if ((!items || items.length === 0) && externalItems.length === 0) {
         return res.status(400).json({ message: "Cannot resolve trip: cart is empty" });
       }
 
-      // 2. Reuse an existing tripId if any cart item already has one
-      const existingTripId = items.find((i) => i.tripId)?.tripId;
+      // 2. Reuse an existing trip: a cart item's tripId, or the client's remembered tripId
+      // (external-only carts have no cart_items rows to remember it on) — ownership-checked.
+      const existingTripId = items.find((i) => i.tripId)?.tripId
+        ?? (typeof req.body.tripId === "string" ? req.body.tripId : undefined);
       if (existingTripId) {
         const trip = await storage.getTrip(existingTripId);
         if (trip && trip.userId === userId) {
@@ -4955,7 +4975,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
 
-      // 3. Infer destination: most common city across cart items
+      // 3. Infer destination: most common city across cart items, then external items,
+      // then the client's experience-context hint
       const cityCounts: Record<string, number> = {};
       for (const item of items) {
         const city =
@@ -4964,20 +4985,29 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           null;
         if (city) cityCounts[city] = (cityCounts[city] || 0) + 1;
       }
+      for (const ext of externalItems) {
+        if (ext.city) cityCounts[ext.city] = (cityCounts[ext.city] || 0) + 1;
+      }
       const destination =
         Object.entries(cityCounts).sort((a, b) => b[1] - a[1])[0]?.[0] ||
+        destinationHint ||
         "Your Destination";
 
-      // 4. Infer start date: earliest scheduledDate, or today + 30 days
-      const scheduledDates = items
-        .map((i) => (i.scheduledDate ? new Date(i.scheduledDate) : null))
-        .filter(Boolean) as Date[];
+      // 4. Start date: the traveler's explicit header dates win; else earliest
+      // scheduledDate across platform + external items; else today + 30 days
+      const scheduledDates = [
+        ...items.map((i) => (i.scheduledDate ? new Date(i.scheduledDate) : null)),
+        ...externalItems.map((e) => (e.date ? new Date(e.date) : null)),
+      ].filter((d): d is Date => d instanceof Date && !isNaN(d.getTime()));
       const defaultStart = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
-      const inferredStart =
-        scheduledDates.length > 0
+      const inferredStart = bodyStart
+        ? new Date(`${bodyStart}T00:00:00Z`)
+        : scheduledDates.length > 0
           ? scheduledDates.reduce((min, d) => (d < min ? d : min), scheduledDates[0])
           : defaultStart;
-      const inferredEnd = new Date(inferredStart.getTime() + 7 * 24 * 60 * 60 * 1000);
+      const inferredEnd = bodyEnd && (!bodyStart || bodyEnd >= bodyStart)
+        ? new Date(`${bodyEnd}T00:00:00Z`)
+        : new Date(inferredStart.getTime() + 7 * 24 * 60 * 60 * 1000);
 
       const startDate = inferredStart.toISOString().split("T")[0];
       const endDate = inferredEnd.toISOString().split("T")[0];
