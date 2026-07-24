@@ -392,6 +392,10 @@ export async function getAffiliateProductsByIds(ids: string[]): Promise<any[]> {
   return db.select().from(affiliateProducts)
     .where(and(
       eq(affiliateProducts.isActive, true),
+      // Phase 4 partner-level read-gate (migration 121): a placement rule must never surface a
+      // product whose partner is not admin-approved. This mirrors getAffiliateProductsByLocation —
+      // the two public read paths must gate identically (audit G-SEC).
+      sql`EXISTS (SELECT 1 FROM ${affiliatePartners} WHERE ${affiliatePartners.id} = ${affiliateProducts.partnerId} AND ${affiliatePartners.approvalStatus} = 'approved')`,
       inArray(affiliateProducts.id, ids),
     ));
 }
@@ -481,9 +485,11 @@ export async function getPlatformStats(): Promise<{
   const [reviewCount] = await db.select({ count: count() }).from(serviceReviews);
   const [bookingCount] = await db.select({ count: count() }).from(serviceBookings);
   const allReviews = await db.select({ rating: serviceReviews.rating }).from(serviceReviews);
+  // §13: never fabricate a rating. With zero reviews the honest average is "0" (the frontend can
+  // render "New"); the old "4.9" fallback invented a score over an empty aggregate (the PR #177 class).
   const avgRating = allReviews.length > 0
     ? (allReviews.reduce((sum, r) => sum + (r.rating || 0), 0) / allReviews.length).toFixed(1)
-    : "4.9";
+    : "0";
   const allTrips = await db.select({ destination: trips.destination }).from(trips);
   const uniqueCountries = new Set(
     allTrips.map(t => t.destination?.split(",").pop()?.trim()).filter(Boolean),

@@ -112,7 +112,6 @@ const DealsPage = lazy(() => import("@/pages/deals"));
 const PaymentPage = lazy(() => import("@/pages/payment"));
 const TravelExpertsPage = lazy(() => import("@/pages/travel-experts"));
 const ServicesProviderPage = lazy(() => import("@/pages/services-provider"));
-const ItineraryPage = lazy(() => import("@/pages/itinerary"));
 const CreditsBillingPage = lazy(() => import("@/pages/credits-billing"));
 const ExpertStatusPage = lazy(() => import("@/pages/expert-status"));
 const ProviderStatusPage = lazy(() => import("@/pages/provider-status"));

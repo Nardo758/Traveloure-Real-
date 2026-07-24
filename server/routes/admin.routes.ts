@@ -5278,14 +5278,21 @@ router.post("/api/admin/content-placement-rules/auto-index", requireAdminLocal, 
       // 2. Scan affiliate_products
       const products = await getActiveAffiliateProducts();
 
+      // §13 no-silent-caps: count inventory dropped for want of a matching TravelPulse city so the
+      // response reports coverage honestly instead of silently under-indexing.
+      let affiliateSkippedNoCity = 0;
+      let registrySkippedNoCity = 0;
+
       for (const p of products) {
         const cityKey = (p.city ?? "").toLowerCase();
-        const cityData = cityLookup.get(cityKey) ||
-          Array.from(cityLookup.values()).find(c =>
-            cityKey.includes(c.cityName.toLowerCase()) ||
-            c.cityName.toLowerCase().includes(cityKey)
-          );
-        if (!cityData) continue;
+        const cityData = cityKey
+          ? (cityLookup.get(cityKey) ||
+            Array.from(cityLookup.values()).find(c =>
+              cityKey.includes(c.cityName.toLowerCase()) ||
+              c.cityName.toLowerCase().includes(cityKey)
+            ))
+          : undefined;
+        if (!cityData) { affiliateSkippedNoCity++; continue; }
 
         // Determine which surfaces this product's category matches
         const surfaces = (SURFACE_SLUGS as readonly string[]).filter(slug => {
@@ -5316,7 +5323,7 @@ router.post("/api/admin/content-placement-rules/auto-index", requireAdminLocal, 
       for (const r of registryItems) {
         const meta = (r.metadata ?? {}) as Record<string, any>;
         const rawCity: string = meta.city ?? meta.location ?? meta.destination ?? "";
-        if (!rawCity) continue;
+        if (!rawCity) { registrySkippedNoCity++; continue; }
 
         const cityKey = rawCity.toLowerCase().split(",")[0].trim();
         const cityData = cityLookup.get(cityKey) ||
@@ -5324,7 +5331,7 @@ router.post("/api/admin/content-placement-rules/auto-index", requireAdminLocal, 
             cityKey.includes(c.cityName.toLowerCase()) ||
             c.cityName.toLowerCase().includes(cityKey)
           );
-        if (!cityData) continue;
+        if (!cityData) { registrySkippedNoCity++; continue; }
 
         // Determine surfaces from content type
         const surfaces = (SURFACE_SLUGS as readonly string[]).filter(slug => {
@@ -5349,13 +5356,19 @@ router.post("/api/admin/content-placement-rules/auto-index", requireAdminLocal, 
       }
 
       const created = await storage.bulkUpsertContentPlacementRules(rulesToUpsert);
+      const totalSkippedNoCity = affiliateSkippedNoCity + registrySkippedNoCity;
       res.json({
         created,
         total: rulesToUpsert.length,
         cities: cities.length,
         affiliateScanned: products.length,
         registryScanned: registryItems.length,
-        message: `Auto-indexed ${created} new rules across ${cities.length} TravelPulse cities`,
+        // §13 no-silent-caps: surface inventory that couldn't be placed for want of a matching city.
+        skippedNoCity: totalSkippedNoCity,
+        affiliateSkippedNoCity,
+        registrySkippedNoCity,
+        message: `Auto-indexed ${created} new rules across ${cities.length} TravelPulse cities` +
+          (totalSkippedNoCity > 0 ? ` (${totalSkippedNoCity} items skipped — no matching city)` : ""),
       });
     } catch (err: any) {
       console.error("[ContentMap] auto-index error:", err);
