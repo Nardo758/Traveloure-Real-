@@ -170,3 +170,35 @@ platform-vs-external split.
 CTA = approved with the bookable-classifier edits; §16 = in scope now.
 
 **Safe to start immediately (decision-independent):** P0 (G-SEC) and P6 (hygiene).
+
+---
+
+## BUILD STATUS (2026-07-24)
+
+| Phase | State | Commits |
+|---|---|---|
+| **P0 — G-SEC** | ✅ LANDED | approval gate on `getAffiliateProductsByIds` + `/api/content/affiliate-redirect` |
+| **P1 — Tagging + classifier** | ✅ LANDED | migration 131 (availability_status/from/to + booking_type); `shared/content-cta.ts` rule engine. *Data backfill of the 9 products = workspace admin task (no fabrication).* |
+| **P2 — Push (ordering)** | ✅ LANDED (code) | unifiedSearch package ordering aligned. *Running `auto-index` to populate rules = a workspace admin action (button on /admin/content-mapping), after P1 tagging.* |
+| **P3 — Surfaces** | ✅ LANDED | retired experience-discovery + itinerary map-entry; kept spontaneous + itinerary redirect |
+| **P4 — CTA engine** | 🟡 PARTIAL | `useContentAgentBooking` hook + Fever + TravelPulse migrated to the agent rail; G8 untracked-fallback removed. **Remaining surfaces** below. |
+| **P5 — Origin grouping** | ✅ LANDED | resolver stamps origin; CuratedContentSection groups "From Traveloure" / "Paid partners"; G7 label fixed |
+| **P6 — Hygiene** | ✅ LANDED | getPlatformStats 4.9→honest; auto-index skip logging; dead ItineraryPage import |
+| **P7 — §16 unification** | ✅ DESIGNED | `docs/audits/s16-catalog-unification-design.md` (U1–U5). Build TBD (Kyoto-first). |
+
+### P4 — remaining surface migrations (filed, need per-component care)
+Each has its own booking context / an existing rail, so it's not a blind find-replace:
+- **12Go / affiliate transport** (`affiliate-transport-products.tsx:96,191`, `TwelveGoTransport.tsx:76`,
+  `trip-transport-planner.tsx:617,1033`) — raw `window.open(affiliateUrl)`; migrate to `useContentAgentBooking`.
+- **Transport-leg cards** (`plancard/TransportSection.tsx:323`, `itinerary/TransportBookingCard.tsx`) — mixed
+  `checkoutUrl`/tracked vs raw `externalUrl`; migrate only the raw-affiliate branches, keep real checkout flows.
+- **spontaneous-discovery.tsx:430** — has its OWN tracked rail (`/api/spontaneous/:id/book`); the affiliate branch
+  should defer to that rail or the agent rail — reconcile, don't blindly replace.
+- **CuratedCard affiliate branch** — apply `resolveContentCTA`: booking-intent → agent rail, informational → "View".
+The `useContentAgentBooking` hook + the Fever/TravelPulse child-component pattern are the proven template for all of these.
+
+### Workspace (data) actions — needed to make the feed non-empty, cannot be done in code (§13)
+1. Tag the 9 `affiliate_products` with real city/country/availability (admin).
+2. Run **auto-index** (`POST /api/admin/content-placement-rules/auto-index`, button on `/admin/content-mapping`) to
+   populate `content_placement_rules` from the now-tagged products + registry.
+3. Approve any `submitted` partners so their products pass the G-SEC gate.
