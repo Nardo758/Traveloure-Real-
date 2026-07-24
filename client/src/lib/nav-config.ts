@@ -120,7 +120,6 @@ export const navGroupsConfig: NavGroupConfig[] = [
     ],
   },
   { name: "Ways to earn", href: "/earn" },
-  { name: "Contact", href: "/contact" },
 ];
 
 export const authNavConfig: AuthNavConfig[] = [

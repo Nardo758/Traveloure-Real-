@@ -338,16 +338,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </div>
 
             <div className="flex items-center gap-2 flex-shrink-0">
-              {/* Cart icon — always visible; the TripStrip shows the full chip with count + total */}
-              <Link
-                href="/cart"
-                className="hidden lg:inline-flex items-center justify-center rounded-md w-9 h-9 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
-                data-testid="link-nav-cart"
-                aria-label="Cart"
-              >
-                <ShoppingCart className="w-5 h-5" />
-              </Link>
-
               {/* Trip plan — visible for all users; guests are prompted to sign in on click */}
               {user ? (
                 <Link
