@@ -1231,6 +1231,14 @@ export const influencerCuratedContent = pgTable("influencer_curated_content", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// TripContext server persistence (migration 130, Trip-Strip P2/E2): mirrors the
+// client sessionStorage trip context for signed-in users. Self-scoped by user_id.
+export const tripContexts = pgTable("trip_contexts", {
+  userId: varchar("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  context: jsonb("context").notNull().default({}),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 export const userExperiences = pgTable("user_experiences", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   trackingNumber: varchar("tracking_number", { length: 20 }).unique(),

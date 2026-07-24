@@ -61,6 +61,7 @@ import { cn } from "@/lib/utils";
 import { UserMenu } from "@/components/user-menu";
 import { NotificationBell } from "@/components/notification-bell";
 import { navGroupsConfig, authNavConfig, footerSectionsConfig } from "@/lib/nav-config";
+import { useTripContextSync } from "@/lib/trip-context";
 
 // ── Icon maps ─────────────────────────────────────────────────────────────────
 // Icons are bound here so nav-config.ts stays a pure-data module with no React
@@ -303,6 +304,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const { openSignInModal } = useSignInModal();
   const [location] = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  // Hydrate the signed-in user's trip context from the server (P2/E2) — once per load.
+  useTripContextSync();
 
   const { data: cartData } = useQuery<{ itemCount: number }>({
     queryKey: ["/api/cart"],

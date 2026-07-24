@@ -3,7 +3,8 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import { getGuestSessionId } from "@/lib/guestSession";
-import { getTripContext, updateTripContext, type TripContext } from "@/lib/trip-context";
+import { getTripContext, updateTripContext, useTripContext, type TripContext } from "@/lib/trip-context";
+import { EditTripPanel } from "@/components/trip/edit-trip-panel";
 import { Link, useLocation, useSearch } from "wouter";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -233,9 +234,16 @@ export default function CartPage() {
   const [tripDestination, setTripDestination] = useState("");
   // Trip-date range — edited in the always-visible header at the top of the cart (not a step/modal).
   // Seeded from the experience context so an experience-template flow's up-front dates carry over.
-  const [tripStartDate, setTripStartDate] = useState(() => getTripContext().startDate || "");
-  const [tripEndDate, setTripEndDate] = useState(() => getTripContext().endDate || "");
-  const [tripTravelers, setTripTravelers] = useState(2);
+  // Live trip context (P2): dates derive from the shared TripContext hook so an
+  // edit anywhere (EditTripPanel, another surface) reflects here immediately.
+  const [liveTripCtx] = useTripContext();
+  const tripStartDate = liveTripCtx.startDate || "";
+  const tripEndDate = liveTripCtx.endDate || "";
+  const [editTripOpen, setEditTripOpen] = useState(false);
+  const [tripTravelers, setTripTravelers] = useState(() => {
+    const t = getTripContext().travelers;
+    return t && t > 0 ? t : 2;
+  });
 
   // Guest cart pending items (stored when unauthenticated users click add-to-cart)
   const [guestPendingIds, setGuestPendingIds] = useState<string[]>(() => {
@@ -721,6 +729,7 @@ export default function CartPage() {
           startDate: effStart || undefined,
           endDate: effEnd || undefined,
           destination: ctxDestination,
+          travelers: ctxAtResolve.travelers || undefined,
           // External (affiliate/AI) items exist only in sessionStorage — send a
           // minimal descriptor list so an external-only cart can resolve a trip.
           // No prices sent: the server ignores them by design.
@@ -740,8 +749,6 @@ export default function CartPage() {
       // The user's explicitly-set header dates WIN over a reused trip's stored dates — a returning
       // trip must not silently clobber a fresh edit. Fall back to the trip's dates only when the
       // header had none (defensive: handleOptimizeClick already requires them).
-      setTripStartDate(effStart || trip.startDate || "");
-      setTripEndDate(effEnd || trip.endDate || "");
       setTripTravelers(trip.numberOfTravelers || 2);
       // Prefill "What are you planning?" from an existing template context
       // (wedding/proposal template flows keep their type); default "trip".
@@ -752,10 +759,14 @@ export default function CartPage() {
 
       // Persist the resolved tripId (and the dates) into the experience context so
       // downstream steps (createComparison, requestOptimizationPayment) pick it up
+      // The user's explicit header dates WIN over a reused trip's stored dates;
+      // fall back to the trip's dates only when none were set (dates derive from
+      // the context hook, so this single write updates the header display too).
       updateTripContext({
         tripId: trip.id,
-        startDate: effStart || undefined,
-        endDate: effEnd || undefined,
+        startDate: effStart || trip.startDate || undefined,
+        endDate: effEnd || trip.endDate || undefined,
+        travelers: trip.numberOfTravelers || undefined,
       });
 
       setFlowStep("trip-details");
@@ -803,8 +814,6 @@ export default function CartPage() {
     const start = next.start ?? tripStartDate;
     let end = next.end ?? tripEndDate;
     if (start && end && new Date(end) < new Date(start)) end = start; // keep end >= start
-    setTripStartDate(start);
-    setTripEndDate(end);
     updateTripContext({ startDate: start || undefined, endDate: end || undefined });
   };
 
@@ -1263,8 +1272,18 @@ export default function CartPage() {
             {(!tripStartDate || !tripEndDate) && (
               <span className="text-xs text-muted-foreground sm:pb-2">Add dates to prepare your trip</span>
             )}
+            <Button
+              variant="outline"
+              size="sm"
+              className="shrink-0 sm:mb-1"
+              onClick={() => setEditTripOpen(true)}
+              data-testid="button-edit-trip"
+            >
+              Edit trip
+            </Button>
           </div>
         )}
+        <EditTripPanel open={editTripOpen} onOpenChange={setEditTripOpen} />
 
         {/* Guest nudge — only shown when unauthenticated and there are items */}
         {!user && !authLoading && totalItemCount > 0 && flowStep === "cart" && (

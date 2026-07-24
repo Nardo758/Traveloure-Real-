@@ -952,6 +952,20 @@ neighborhood). Ratified by the decision-maker (Lane A Phase 1). **Filed (later l
 readers onto these columns; add an `'exact'`-precision write path (geocoded addresses); optional CHECK on
 `location_precision` once the write paths are locked.
 
+**Migration 130 (Jul 24, 2026; registered in `migration-files.ts`) — TripContext server persistence (P2/E2):**
+new table `trip_contexts` (`user_id` varchar PK, FK → `users` `ON DELETE CASCADE`; `context` jsonb NOT NULL
+DEFAULT `'{}'`; `updated_at`). **Additive new table, no CHECK** → no publish-time drizzle-push trap. Purpose:
+the client-side TripContext (sessionStorage `experienceContext`, formalized by the P1 module PR #298) dies with
+the browser session and never crosses devices — for signed-in users the context is now mirrored server-side so
+planning survives restarts (the precedence rule's server tier below the `trips` row). Endpoints in a **mounted**
+router (`server/routes/trip-context.routes.ts`, `app.use` in routes.ts — §9): `GET /api/trip-context` +
+`PUT /api/trip-context`, both `isAuthenticated`, **self-scoped to the session user (§14 — user id never from
+body)**; PUT is a **zod allow-list** of the TripContext fields with length caps (never raw `req.body` into the
+jsonb), upsert `ON CONFLICT (user_id)`. Client (`client/src/lib/trip-context.ts`): `useTripContextSync()`
+hydrates once per load (server → local **only when local is empty** — an active local session always wins) and
+every `updateTripContext` debounce-pushes (fire-and-forget; 401 for guests silently ignored). No money path.
+Part of the ratified Trip-Strip program (docs/ROADMAP.md, P2 row).
+
 **Migration 116 (Jul 15, 2026; registered in `migration-files.ts`) — Feed measurement: content_impressions completion:**
 analytics-only, no money semantics, fire-and-forget writes. The `content_impressions` table was created by
 migration 082 but **never had a writer** — the client feed's impression tracker
