@@ -150,3 +150,57 @@ or an expert engagement, never a dead end.
   `explore.tsx` and the `help-me-decide` sample-package page were deleted (both routes
   now redirect to `/discover`); `chat.tsx` was wired to real experts; `provider/profile`
   carries no fabricated ratings. Zero `rating: 4.x` literals remain in the client.
+
+---
+
+# Trip-Strip & Destination-Event Program (ratified Jul 24, 2026)
+
+> Spec of record: the page-by-page mockup artifact (decision-maker ratified) + task queue
+> #150–#154. Premise (decision-maker): a user plans an experience in ANOTHER COUNTRY and
+> INVITES OTHERS — an organizer abroad plus guests traveling from their own origins. The
+> trip strip is the state spine; the (fully built, fully dark) guest-invite system is the
+> people spine. Governing rules: one mount / in-progress visibility / cart-in-strip /
+> slim nav / one-control-per-fact / browse-never-writes.
+
+## Phase P — TripContext spine
+
+| # | Item | Size | Status / Notes |
+|---|------|------|-------|
+| P1 | **TripContext module** — typed owner of the trip blob, merge-by-default, YYYY-MM-DD boundary; all 10 writers + 13 readers converted; fixes D1–D4 (concierge clobber, mobile slug drop, date drift, quick-start dead write) | M | ✅ Built + proven (13-check gate) — **PR #298 open, green, awaiting merge** |
+| P2 | **Live propagation + EditTripPanel** — cart header on `useTripContext`; travelers fallback ctx→guestCount→2; build the shared **EditTripPanel** (destination · dates · party · trip name · "What are you planning?") — the durable artifact reused by P3's strip, template empty-state, and Continue-flow guard. Do NOT invest in the Trip Details step beyond hook-wiring (P3 deletes it). **Includes E2: server-persisted TripContext for signed-in users** (sessionStorage dies with the tab; persist via/alongside `user_experiences` so planning survives restarts + crosses devices — the precedence rule's server tier) | M–L | Task #151 |
+| P3 | **The strip** (ratified Option A) — one mount in traveler layout; visible when any context set OR cart non-empty; **cart chip = the site's single cart display** (nav cart + template-ribbon cart removed); **Contact leaves the nav**; vocabulary classes Travel/Event/Couple; template reformat (delete the generic quartet from `/experiences/:slug`); **cart flow collapses to 4 steps** (Trip Details step deleted; Continue resolves from strip state; missing fields open EditTripPanel); server-truth mode post-tripId; edit-locked on checkout/payment; city-hero one-way "Set as trip destination"; calendar stays independent ("Use as trip date" only) | L | Task #152 · blocked by P2 |
+
+## Phase A — Guest-invite activation (the "invite others" half)
+
+Fully built, fully dark: `server/routes/guest-invites.ts` (~9 endpoints — organizer
+create/list/stats, token RSVP, **guest origin capture**, travel plans, accommodation
+prefs, per-guest recommendations) is never imported; `GuestInvitePage.tsx` unrouted;
+`GuestInviteManager.tsx` zero importers. Activation, not construction.
+
+| # | Item | Size | Status / Notes |
+|---|------|------|-------|
+| A0 | **Security audit then mount** — every endpoint reviewed against §14/§2 BEFORE mounting (predates the security passes; organizer endpoints must verify experience ownership; token endpoints deliberately public-by-token); mount per the §9 EA-console activation pattern. Also: extend the unmounted-router guard to catch **never-imported** route files (this find's class) | M | Task #153 · independent of P2/P3 — can run in parallel |
+| A1 | **Route + surface** — `/invite/:token` → GuestInvitePage; GuestInviteManager into the Event-class template + trip page. Behavioral proof: create invite → token RSVP + origin → stats reflect | S–M | Task #153 |
+| A2 | **TripContext `origin`** — organizer's home city/country; the international framing (destination abroad ≠ home) the templates' existing eSIM/flight logic reads | S | Task #154 · rides P3 |
+| A3 | **Invite-aware Event-class strip** — party chip becomes live RSVP state ("✉️ 60 invited · 41 going" → manager); "Invite guests" action in EditTripPanel | S–M | Task #154 · blocked by A0/A1 + P3 |
+
+## Phase E — Destination-event enhancements (value order; scope each with decision-maker before build)
+
+| # | Item | Size | Notes |
+|---|------|------|-------|
+| E1 | **Guest cost-splitting** — each guest pays their share via their invite page (per-person budget / cost-split / deposit-schedule fields already seeded in template tabs; Stripe + escrow rails exist). Every §14/§15 rule applies: server-derived per-guest amounts, idempotent collection. The monetization multiplier — every guest becomes a payer | L | After A-phase; own money lane + decision-maker ratification of the split model |
+| E2 | **Server-persisted TripContext** | — | Folded into P2 (above) |
+| E3 | **Date polling** — guests vote on date windows from the invite page before dates lock; poll close writes the winning window into TripContext; strip shows "📅 Polling 12 guests…" | M | After A1; pairs with invite flow |
+| E4 | **Group arrival dashboard** — organizer view over `guest_travel_plans` (who lands when, arrival waves, unbooked guests); `multi-person-coordination.tsx` exists as a base. Justifies the §7 coordination fee visibly | M | After A1 |
+| E5 | **Per-guest visa flags** — cross guest origins × destination against visa requirements ("3 of your guests need a visa for Japan"); visa-help page exists; dark visa endpoint family in experts.routes.ts needs its own A0-style triage first | M | After A1 + visa-family triage |
+| E6 | **Hotel-block management** — organizer reserves a block (provider inventory/Amadeus); guests pick into it from the invite page (`hotel_block` accommodation pref already in the schema). Routes guest lodging spend through the marketplace | L | After A1; supply-side scoping (Kyoto wedge §12) |
+| E7 | **Guest read-only itinerary** — attach the live itinerary-share view (trips.routes' 32 live endpoints) to the invite token so RSVP'd guests watch the event plan evolve | S | After A1 |
+| E8 | **Trip switcher on the strip** — multiple in-progress experiences (Kyoto wedding + NYC trip) without context clobber; dropdown on the strip lead; cheap once E2's server persistence provides the list | S–M | After P3 + P2/E2 |
+
+**Honorable mentions (unscoped):** RSVP-deadline nudges (rides the filed email cluster);
+gift registry / honeymoon fund (EA gifting DNA); coordinator visibility on the guest
+invite page (trust + §16 disintermediation-resistance).
+
+**Sequencing picture:** P1 (merge) → P2+E2 ∥ A0/A1 → P3 → A2/A3 → E1/E3/E4 (then E5–E8
+by value). Each phase lands via its own PR + gates; money-touching items (E1, E6) get
+their own security lanes per §14/§15.

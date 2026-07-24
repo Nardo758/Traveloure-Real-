@@ -106,6 +106,7 @@ import { ESimCard } from "@/components/travelpayouts/ESimCard";
 import { HotelCard } from "@/components/travelpayouts/HotelCard";
 import type { CatalogItem } from "@/types/catalog";
 import { CuratedContentSection } from "@/components/curated-content-section";
+import { updateTripContext } from "@/lib/trip-context";
 
 interface VenueResult {
   id: string;
@@ -1275,12 +1276,15 @@ export default function ExperienceTemplatePage() {
     if (!canGenerateItinerary || cart.length === 0) return;
     setGeneratingItinerary(true);
     
-    // Store experience context for cart page to use
-    const experienceContext = {
+    // Store experience context for cart page to use (dates normalized to
+    // YYYY-MM-DD by the module — the previous full-ISO write broke date inputs).
+    updateTripContext({
       experienceType: experienceType?.name,
+      experienceSlug: slug,
       destination,
-      startDate: startDate?.toISOString(),
-      endDate: endDate?.toISOString(),
+      startDate,
+      endDate,
+      travelers: adults + kids,
       // P4: include DB contextField values in AI itinerary prompt payload
       contextFields: Object.keys(contextValues).length > 0 ? contextValues : undefined,
       selectedServices: cart.map(item => ({
@@ -1289,8 +1293,7 @@ export default function ExperienceTemplatePage() {
         price: item.price,
         category: item.type
       }))
-    };
-    sessionStorage.setItem("experienceContext", JSON.stringify(experienceContext));
+    });
     
     // CON-A.P1: free preview path. Full LLM lives behind /api/optimization-payments
     // (Concierge surface, Phase 6) — this surface ships the heuristic preview only.
@@ -1387,15 +1390,15 @@ export default function ExperienceTemplatePage() {
         setLocalExternalCart(prev => [...prev, { ...item, quantity: item.quantity || 1 }]);
         toast({ title: "Added to cart", description: `${item.name} added to your cart` });
       }
-      sessionStorage.setItem("experienceContext", JSON.stringify({
-        title: `${experienceType?.name || slug} Experience`,
-        experienceType: experienceType?.name || slug,
-        experienceSlug: slug,
-        destination,
-        startDate: startDate?.toISOString().split('T')[0],
-        endDate: endDate?.toISOString().split('T')[0],
-        travelers: adults + kids
-      }));
+      updateTripContext({
+                    title: `${experienceType?.name || slug} Experience`,
+                    experienceType: experienceType?.name || slug,
+                    experienceSlug: slug,
+                    destination,
+                    startDate,
+                    endDate,
+                    travelers: adults + kids
+                  });
       return;
     }
     
@@ -1425,15 +1428,15 @@ export default function ExperienceTemplatePage() {
       }
     }
     // Store experience context and navigate to full cart page
-    sessionStorage.setItem("experienceContext", JSON.stringify({
-      title: `${experienceType?.name || slug} Experience`,
-      experienceType: experienceType?.name || slug,
-      experienceSlug: slug,
-      destination,
-      startDate: startDate?.toISOString().split('T')[0],
-      endDate: endDate?.toISOString().split('T')[0],
-      travelers: adults + kids
-    }));
+    updateTripContext({
+                    title: `${experienceType?.name || slug} Experience`,
+                    experienceType: experienceType?.name || slug,
+                    experienceSlug: slug,
+                    destination,
+                    startDate,
+                    endDate,
+                    travelers: adults + kids
+                  });
     setLocation("/cart");
   };
 
@@ -1831,15 +1834,15 @@ export default function ExperienceTemplatePage() {
                 size="sm"
                 onClick={() => {
                   // Store experience context for cart page
-                  sessionStorage.setItem("experienceContext", JSON.stringify({
+                  updateTripContext({
                     title: `${experienceType.name} Experience`,
                     experienceType: experienceType.name,
                     experienceSlug: slug,
                     destination,
-                    startDate: startDate?.toISOString().split('T')[0],
-                    endDate: endDate?.toISOString().split('T')[0],
+                    startDate,
+                    endDate,
                     travelers: adults + kids
-                  }));
+                  });
                   setLocation("/cart");
                 }}
                 className="gap-1.5"
@@ -2914,15 +2917,15 @@ export default function ExperienceTemplatePage() {
                   <Button
                     size="sm"
                     onClick={() => {
-                      sessionStorage.setItem("experienceContext", JSON.stringify({
-                        title: `${experienceType?.name} Experience`,
-                        experienceType: experienceType?.name,
-                        experienceSlug: slug,
-                        destination,
-                        startDate: startDate?.toISOString().split('T')[0],
-                        endDate: endDate?.toISOString().split('T')[0],
-                        travelers: adults + kids
-                      }));
+                      updateTripContext({
+                    title: `${experienceType?.name} Experience`,
+                    experienceType: experienceType?.name,
+                    experienceSlug: slug,
+                    destination,
+                    startDate,
+                    endDate,
+                    travelers: adults + kids
+                  });
                       setLocation("/cart");
                     }}
                     className="bg-primary"
@@ -3030,14 +3033,15 @@ export default function ExperienceTemplatePage() {
                 variant="outline"
                 size="sm"
                 onClick={() => {
-                  sessionStorage.setItem("experienceContext", JSON.stringify({
+                  updateTripContext({
                     title: `${experienceType.name} Experience`,
                     experienceType: experienceType.name,
+                    experienceSlug: slug,
                     destination,
-                    startDate: startDate?.toISOString().split('T')[0],
-                    endDate: endDate?.toISOString().split('T')[0],
+                    startDate,
+                    endDate,
                     travelers: adults + kids
-                  }));
+                  });
                   setLocation("/cart");
                 }}
                 className="gap-1 px-2"

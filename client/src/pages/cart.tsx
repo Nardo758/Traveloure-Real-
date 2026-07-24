@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import { getGuestSessionId } from "@/lib/guestSession";
+import { getTripContext, updateTripContext, type TripContext } from "@/lib/trip-context";
 import { Link, useLocation, useSearch } from "wouter";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -232,12 +233,8 @@ export default function CartPage() {
   const [tripDestination, setTripDestination] = useState("");
   // Trip-date range — edited in the always-visible header at the top of the cart (not a step/modal).
   // Seeded from the experience context so an experience-template flow's up-front dates carry over.
-  const [tripStartDate, setTripStartDate] = useState(() => {
-    try { return JSON.parse(sessionStorage.getItem("experienceContext") || "{}").startDate || ""; } catch { return ""; }
-  });
-  const [tripEndDate, setTripEndDate] = useState(() => {
-    try { return JSON.parse(sessionStorage.getItem("experienceContext") || "{}").endDate || ""; } catch { return ""; }
-  });
+  const [tripStartDate, setTripStartDate] = useState(() => getTripContext().startDate || "");
+  const [tripEndDate, setTripEndDate] = useState(() => getTripContext().endDate || "");
   const [tripTravelers, setTripTravelers] = useState(2);
 
   // Guest cart pending items (stored when unauthenticated users click add-to-cart)
@@ -287,24 +284,18 @@ export default function CartPage() {
     });
   }, [user, authLoading, guestPendingIds]);
 
-  // Load experience context from sessionStorage on mount
+  // Load experience context on mount
   useEffect(() => {
-    const storedContext = sessionStorage.getItem("experienceContext");
-    if (storedContext) {
-      try {
-        const context = JSON.parse(storedContext);
-        if (context.experienceSlug) {
-          setExperienceSlug(context.experienceSlug);
-          setExperienceTitle(context.title || context.experienceType);
-        } else {
-          // Use experienceType + destination as fallback key to avoid cross-experience contamination
-          const fallbackKey = `${context.experienceType || 'general'}_${context.destination || 'default'}`.replace(/\s+/g, '-').toLowerCase();
-          setExperienceSlug(fallbackKey);
-          setExperienceTitle(context.title || context.experienceType);
-        }
-      } catch (e) {
-        console.error("Failed to parse experience context");
-        setExperienceSlug("general");
+    const context = getTripContext();
+    if (Object.keys(context).length > 0) {
+      if (context.experienceSlug) {
+        setExperienceSlug(context.experienceSlug);
+        setExperienceTitle(context.title || context.experienceType || null);
+      } else {
+        // Use experienceType + destination as fallback key to avoid cross-experience contamination
+        const fallbackKey = `${context.experienceType || 'general'}_${context.destination || 'default'}`.replace(/\s+/g, '-').toLowerCase();
+        setExperienceSlug(fallbackKey);
+        setExperienceTitle(context.title || context.experienceType || null);
       }
     } else {
       setExperienceSlug("general");
@@ -628,14 +619,8 @@ export default function CartPage() {
       setCartNudge(null);
       return;
     }
-    let eventType: string | undefined;
-    try {
-      const stored = sessionStorage.getItem("experienceContext");
-      if (stored) {
-        const ctx = JSON.parse(stored);
-        eventType = ctx.experienceType || ctx.eventType;
-      }
-    } catch { /* ignore */ }
+    const ctxForEvent = getTripContext();
+    const eventType: string | undefined = ctxForEvent.experienceType || ctxForEvent.eventType;
     const items = [
       ...platformItems.map((item: any) => ({
         serviceType: item.service?.serviceType || "sightseeing",
@@ -676,14 +661,8 @@ export default function CartPage() {
       return;
     }
 
-    let eventType: string | undefined;
-    try {
-      const stored = sessionStorage.getItem("experienceContext");
-      if (stored) {
-        const ctx = JSON.parse(stored);
-        eventType = ctx.experienceType || ctx.eventType;
-      }
-    } catch { /* ignore */ }
+    const ctxForEvent = getTripContext();
+    const eventType: string | undefined = ctxForEvent.experienceType || ctxForEvent.eventType;
 
     const items = [
       ...platformItems.map(item => ({
@@ -725,20 +704,11 @@ export default function CartPage() {
   const proceedOptimize = async (effStart: string, effEnd: string) => {
     setResolvingTrip(true);
     try {
-      let ctxExperienceSlug: string | undefined;
-      let ctxUserExperienceId: string | undefined;
-      let ctxDestination: string | undefined;
-      let ctxTripId: string | undefined;
-      try {
-        const stored = sessionStorage.getItem("experienceContext");
-        if (stored) {
-          const ctx = JSON.parse(stored);
-          ctxExperienceSlug = ctx.experienceSlug || undefined;
-          ctxUserExperienceId = ctx.userExperienceId || ctx.id || undefined;
-          ctxDestination = ctx.destination || ctx.city || undefined;
-          ctxTripId = ctx.tripId || undefined;
-        }
-      } catch { /* ignore */ }
+      const ctxAtResolve = getTripContext();
+      const ctxExperienceSlug = ctxAtResolve.experienceSlug || undefined;
+      const ctxUserExperienceId = ctxAtResolve.userExperienceId || ctxAtResolve.id || undefined;
+      const ctxDestination = ctxAtResolve.destination || ctxAtResolve.city || undefined;
+      const ctxTripId = ctxAtResolve.tripId || undefined;
 
       const res = await fetch("/api/cart/resolve-trip", {
         method: "POST",
@@ -775,24 +745,18 @@ export default function CartPage() {
       setTripTravelers(trip.numberOfTravelers || 2);
       // Prefill "What are you planning?" from an existing template context
       // (wedding/proposal template flows keep their type); default "trip".
-      try {
-        const stored = sessionStorage.getItem("experienceContext");
-        const ctx = stored ? JSON.parse(stored) : {};
+      {
+        const ctx = getTripContext();
         setTripEventType(ctx.experienceType || ctx.eventType || "trip");
-      } catch {
-        setTripEventType("trip");
       }
 
       // Persist the resolved tripId (and the dates) into the experience context so
       // downstream steps (createComparison, requestOptimizationPayment) pick it up
-      try {
-        const stored = sessionStorage.getItem("experienceContext");
-        const ctx = stored ? JSON.parse(stored) : {};
-        ctx.tripId = trip.id;
-        if (effStart) ctx.startDate = effStart;
-        if (effEnd) ctx.endDate = effEnd;
-        sessionStorage.setItem("experienceContext", JSON.stringify(ctx));
-      } catch { /* ignore */ }
+      updateTripContext({
+        tripId: trip.id,
+        startDate: effStart || undefined,
+        endDate: effEnd || undefined,
+      });
 
       setFlowStep("trip-details");
     } catch (err: any) {
@@ -841,12 +805,7 @@ export default function CartPage() {
     if (start && end && new Date(end) < new Date(start)) end = start; // keep end >= start
     setTripStartDate(start);
     setTripEndDate(end);
-    try {
-      const ctx = JSON.parse(sessionStorage.getItem("experienceContext") || "{}");
-      ctx.startDate = start;
-      ctx.endDate = end;
-      sessionStorage.setItem("experienceContext", JSON.stringify(ctx));
-    } catch { /* ignore */ }
+    updateTripContext({ startDate: start || undefined, endDate: end || undefined });
   };
 
   // ── G6: Save user edits to the trip details, then proceed to preview ─────
@@ -868,20 +827,17 @@ export default function CartPage() {
         }),
       });
 
-      // Update sessionStorage so the optimizer uses the confirmed values
-      try {
-        const stored = sessionStorage.getItem("experienceContext");
-        const ctx = stored ? JSON.parse(stored) : {};
-        ctx.tripId = resolvedTrip.id;
-        ctx.destination = tripDestination;
-        ctx.startDate = tripStartDate;
-        ctx.endDate = tripEndDate;
-        ctx.travelers = tripTravelers;
-        // Funnel PR2: the explicit answer replaces the silent "general" fallback —
-        // this is what getFee/complexityTier price against downstream.
-        if (tripEventType) ctx.experienceType = tripEventType;
-        sessionStorage.setItem("experienceContext", JSON.stringify(ctx));
-      } catch { /* ignore */ }
+      // Update the trip context so the optimizer uses the confirmed values.
+      // Funnel PR2: the explicit experienceType replaces the silent "general"
+      // fallback — this is what getFee/complexityTier price against downstream.
+      updateTripContext({
+        tripId: resolvedTrip.id,
+        destination: tripDestination,
+        startDate: tripStartDate || undefined,
+        endDate: tripEndDate || undefined,
+        travelers: tripTravelers,
+        experienceType: tripEventType || undefined,
+      });
     } catch { /* non-fatal */ }
 
     // Proceed to the optimization preview step
@@ -898,16 +854,9 @@ export default function CartPage() {
     setPaymentLoading(true);
     try {
       // Send DB identifiers so the server derives the tier server-side
-      let tripId: string | undefined;
-      let userExperienceId: string | undefined;
-      try {
-        const stored = sessionStorage.getItem("experienceContext");
-        if (stored) {
-          const ctx = JSON.parse(stored);
-          tripId = ctx.tripId;
-          userExperienceId = ctx.userExperienceId || ctx.id;
-        }
-      } catch { /* ignore */ }
+      const ctxAtPayment = getTripContext();
+      const tripId: string | undefined = ctxAtPayment.tripId;
+      const userExperienceId: string | undefined = ctxAtPayment.userExperienceId || ctxAtPayment.id;
 
       const res = await fetch("/api/optimization-payments", {
         method: "POST",
@@ -966,15 +915,7 @@ export default function CartPage() {
     }
     setCreatingComparison(true);
     
-    let experienceContext: { title?: string; destination?: string; startDate?: string; endDate?: string; travelers?: number; experienceType?: string; tripId?: string; userExperienceId?: string; id?: string } | undefined;
-    const storedContext = sessionStorage.getItem("experienceContext");
-    if (storedContext) {
-      try {
-        experienceContext = JSON.parse(storedContext);
-      } catch (e) {
-        console.error("Failed to parse experience context");
-      }
-    }
+    const experienceContext: TripContext | undefined = getTripContext();
 
     // Build baseline items from platform items
     const platformBaselineItems = platformItems.map(item => ({
@@ -1079,15 +1020,7 @@ export default function CartPage() {
     setGenerating(true);
     
     // Try to get experience context from session storage
-    let experienceContext: { title?: string; destination?: string; startDate?: string; endDate?: string; travelers?: number; experienceType?: string; tripId?: string; userExperienceId?: string; id?: string } | undefined;
-    const storedContext = sessionStorage.getItem("experienceContext");
-    if (storedContext) {
-      try {
-        experienceContext = JSON.parse(storedContext);
-      } catch (e) {
-        console.error("Failed to parse experience context");
-      }
-    }
+    const experienceContext: TripContext | undefined = getTripContext();
     
     // Build services from platform items
     const platformServices = platformItems.map(item => ({
