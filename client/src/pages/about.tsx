@@ -368,7 +368,7 @@ export default function AboutPage() {
                 Start Planning <ArrowRight className="w-4 h-4 ml-2" />
               </Button>
               <Link href="/partner-with-us">
-                <Button size="lg" variant="outline" className="border-white text-white hover:bg-white/10" data-testid="button-become-expert">
+                <Button size="lg" variant="outline" className="border-white text-white hover:bg-white/10" data-testid="button-become-expert-about">
                   Become an Expert
                 </Button>
               </Link>
