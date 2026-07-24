@@ -482,4 +482,9 @@ export const MIGRATION_FILES = [
   // trip_contexts (user_id PK -> users, context jsonb, updated_at). No CHECK ->
   // no publish-time push trap. See CLAUDE.md migration-130 note.
   "130_trip_contexts.sql",
+  // 131: Content availability tagging + CTA booking classifier (remediation P1) — four ADDITIVE
+  // NULLABLE columns on affiliate_products (availability_status, available_from, available_to,
+  // booking_type). No DB CHECK → no publish-time push trap; enum value sets validated at zod layer.
+  // No backfill (§13 — the 9 existing products stay NULL until a real admin tagging pass).
+  "131_affiliate_availability_and_cta.sql",
 ] as const;
