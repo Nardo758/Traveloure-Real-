@@ -478,4 +478,8 @@ export const MIGRATION_FILES = [
   // for pricing/matching, and the ~14 free-text ilike location readers are left untouched (columns
   // ADDED, not repurposed). Guarded/idempotent.
   "129_provider_services_location_coordinates.sql",
+  // 130: TripContext server persistence (Trip-Strip P2/E2) — additive new table
+  // trip_contexts (user_id PK -> users, context jsonb, updated_at). No CHECK ->
+  // no publish-time push trap. See CLAUDE.md migration-130 note.
+  "130_trip_contexts.sql",
 ] as const;

@@ -106,6 +106,7 @@ import { createDMOCrawler } from "./content/scrapers/DMOCrawler";
 import { ALL_DMO_SOURCES, getMarketGapSummary } from "./content/providers/DMOSourceRegistry";
 import savedItemsRoutes from "./routes/saved-items.routes";
 import serviceRequestsRoutes from "./routes/service-requests.routes";
+import tripContextRoutes from "./routes/trip-context.routes";
 import { CREDIT_PACKAGES } from "@shared/credit-packages";
 import { 
   insertTripParticipantSchema, 
@@ -578,6 +579,7 @@ export async function registerRoutes(
   // POST/GET /api/service-requests (session-scoped) + /api/admin/service-requests
   // (inherits the blanket adminApiGuard registered above). New table, migration 123.
   app.use(serviceRequestsRoutes);
+  app.use(tripContextRoutes);
 
   // Trips + Itinerary-Comparison Routes — was imported at line 95 but never mounted
   // NOTE (§9 shadow fix): tripsRoutes is mounted LAST (just before `return httpServer`),
@@ -5012,9 +5014,13 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const startDate = inferredStart.toISOString().split("T")[0];
       const endDate = inferredEnd.toISOString().split("T")[0];
 
-      // 5. Resolve user_experience via slug (server-side) to get guestCount for party size
+      // 5. Party size: the client's trip context wins (validated), then the
+      // user_experience guestCount resolved via slug, then contentMeta, then 2.
+      const bodyTravelers = Number.isInteger(req.body.travelers) && req.body.travelers >= 1 && req.body.travelers <= 500
+        ? (req.body.travelers as number)
+        : null;
       let resolvedUserExperienceId: string | null = userExperienceId || null;
-      let inferredTravelers = 2; // default fallback
+      let inferredTravelers = bodyTravelers ?? 2; // default fallback
 
       if (experienceSlug) {
         // Resolve experienceType by slug, then find the user's experience row
@@ -5038,7 +5044,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
           if (userExp) {
             resolvedUserExperienceId = resolvedUserExperienceId || userExp.id;
-            if (userExp.guestCount && userExp.guestCount > 0) {
+            if (!bodyTravelers && userExp.guestCount && userExp.guestCount > 0) {
               inferredTravelers = userExp.guestCount;
             }
           }
@@ -5049,7 +5055,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const metaTravelers = items
         .map((i) => (i.contentMeta as any)?.travelers || (i.contentMeta as any)?.numberOfTravelers)
         .filter((v) => typeof v === "number" && v > 0);
-      if (metaTravelers.length > 0 && inferredTravelers === 2) {
+      if (!bodyTravelers && metaTravelers.length > 0 && inferredTravelers === 2) {
         inferredTravelers = Math.max(...metaTravelers);
       }
 
