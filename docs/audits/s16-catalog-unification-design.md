@@ -43,11 +43,27 @@ surfaced by the central resolver. The central feed has ~9 hand-entered products.
 
 ## Build phases (each its own PR, Kyoto-scoped per §12)
 
-- **U1 — Partner rows.** Seed `affiliate_partners` for the commissionable sources above (born `submitted`; admin approves). Classify Amadeus/SerpAPI explicitly as data/informational in a doc. Dedup the pre-existing manual Musement/Klook/12Go rows.
-- **U2 — One ingest adapter, one network.** Build a `catalog-ingest.service.ts` that takes a network's live response and upserts normalized `affiliate_products` (location + availability + booking_type at write; dedup on `(partner_id, external_id)`). Prove it on **one** network (Travelpayouts Tiqets or GetYourGuide, Kyoto) end-to-end: ingest → auto-index → appears in `/api/content/discover` with the right CTA + origin group.
-- **U3 — Fan out** the adapter to the rest of the Travelpayouts networks + Fever + Viator-direct, Kyoto-first. Key-gated + spend-capped (the DMO-ingestion pattern); no keys ⇒ no writes (§13).
-- **U4 — Retire the parallel path per-network** only after its DB rows are proven live: switch the client surface from `/api/catalog/<net>` to the central feed, then mark the live endpoint deprecated. Keep the endpoint until the switch is proven (no live-surface outage).
-- **U5 — Dedup + reconciliation.** The Klook central partner vs Travelpayouts Klook, Viator-direct vs viator-feed — one canonical path each; the other marked inactive.
+- **U1 — Partner rows. ✅ LANDED.** `catalog-ingest.service.ts` `ensureCatalogPartner` lazily creates the
+  network's `affiliate_partners` row (born `submitted`, D1a; `source='travelpayouts'`) on first ingest —
+  no startup cost, idempotent (dedup on name+source). Amadeus/SerpAPI are classified as data/informational
+  in the per-stack table above (not registered as commissionable partners).
+- **U2 — One ingest adapter. ✅ LANDED (3 networks wired).** `catalog-ingest.service.ts`:
+  `ingestNetwork(networkKey, city)` key-gates on the Travelpayouts token (§13 — no token ⇒ `ready:false`,
+  zero writes), fetches via the existing per-network service, and `upsertCatalogItem` normalizes each item
+  into `affiliate_products` — **tag-at-ingest** (city/country/coordinates from the item; NULL if
+  unresolvable, no guessed city), `booking_type='affiliate_bookable'` (the CTA classifier), **dedup on
+  `(partner_id, external_id)`** (§15 idempotent — re-run updates in place) — then mirrors into
+  `content_registry` via `registerAffiliateProduct`. Networks wired: **Tiqets, GetYourGuide, Klook**
+  (all Kyoto-capable). Admin trigger: `POST /api/admin/catalog/ingest` (`{city, network?}`, adminApiGuard).
+  **Live fetch is deploy-only** (the agent proxy 403s the external APIs); the DB upsert half is provable in
+  the workspace. Once ingested + auto-indexed, the rows ride the P0–P6 spine automatically (approved gate,
+  origin grouping, CTA engine).
+- **U3 — Fan out** the remaining Travelpayouts networks + Fever + Viator-direct (same adapter; add entries to
+  `CATALOG_NETWORKS`). Key-gated + spend-capped, Kyoto-first.
+- **U4 — Retire the parallel path per-network** only after its DB rows are proven live: switch the client
+  surface from `/api/catalog/<net>` to the central feed, then deprecate the live endpoint (no outage).
+- **U5 — Dedup + reconciliation.** The Klook central partner vs Travelpayouts Klook, Viator-direct vs
+  viator-feed — one canonical path each; the other marked inactive.
 
 ## Constraints (from the governance scan — do not violate)
 
