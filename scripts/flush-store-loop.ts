@@ -149,8 +149,15 @@ async function main() {
 
     console.log("\n━━ 5: buyer purchase (Stripe boundary honest-failure, then verified-payment fulfilment) ━━");
     const buyAttempt = await buyer.req("POST", `/api/ready-made/${listingId}/purchase`);
-    check("dummy-key Stripe create fails HONESTLY (5xx, no purchase row, no fake success)",
-      buyAttempt.status >= 500, `${buyAttempt.status} ${buyAttempt.text.slice(0, 120)}`);
+    const stripeReal = buyAttempt.status === 202 && !!buyAttempt.json?.clientSecret;
+    const strikeDummy = buyAttempt.status >= 500;
+    check(
+      stripeReal
+        ? "real STRIPE_SECRET_KEY → 202 + clientSecret (live PaymentIntent created)"
+        : "dummy-key Stripe create fails HONESTLY (5xx, no purchase row, no fake success)",
+      stripeReal || strikeDummy,
+      `${buyAttempt.status} ${buyAttempt.text.slice(0, 120)}`,
+    );
     const orphanCheck = await db.select({ id: readyMadePurchases.id }).from(readyMadePurchases)
       .where(eq(readyMadePurchases.readyMadeTripId, listingId));
     check("failed Stripe create left NO purchase row (no pre-payment state)", orphanCheck.length === 0, `${orphanCheck.length}`);
