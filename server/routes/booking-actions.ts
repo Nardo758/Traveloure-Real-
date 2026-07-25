@@ -14,6 +14,8 @@ import { authorizeTripLogistics } from '../utils/trip-logistics-auth';
 import { isTripAuthor } from '../utils/trip-authorship';
 import { getUserId } from '../utils/auth';
 import { storage } from '../storage';
+import { db } from '../db';
+import { notifications } from '@shared/schema';
 import { EXPERT_SHARE_RATE } from '../services/commission';
 import {
   completeExpertRequest,
@@ -187,7 +189,7 @@ router.post('/expert-requests', isAuthenticated, async (req, res) => {
     Promise.all([
       import('../services/lead-routing.service'),
       import('../services/booking-actions.service'),
-    ]).then(([{ leadRoutingService }, { assignExpertAdvisorToRequest, createExpertAssignmentNotification, getTripLabel }]) => {
+    ]).then(([{ leadRoutingService }, { assignExpertAdvisorToRequest, ensureTripAdvisorRow, createExpertAssignmentNotification, getTripLabel }]) => {
       leadRoutingService.routeLead({
         destination: resolvedDestination,
         topic: requestType,
@@ -200,6 +202,11 @@ router.post('/expert-requests', isAuthenticated, async (req, res) => {
         if (!result.assignedExpertId) return;
         await assignExpertAdvisorToRequest(requestId, result.assignedExpertId);
         if (tripId) {
+          // F1: without this row the routed lead never appears in Assigned Trips and the
+          // workspace refuses the expert — the notification below pointed at unreachable work.
+          await ensureTripAdvisorRow(tripId, result.assignedExpertId, notes ?? null).catch(err =>
+            console.error('[ExpertRequests] Failed to create advisor row for routed lead:', err)
+          );
           const tripLabel = await getTripLabel(tripId);
           await createExpertAssignmentNotification(result.assignedExpertId, tripId, tripLabel).catch(err =>
             console.error('[ExpertRequests] Failed to create assignment notification:', err)
@@ -858,6 +865,34 @@ router.patch("/expert/assignments/:assignmentId/workspace-status", isAuthenticat
       return res.status(400).json({ message: `Cannot transition workspace status from '${current}' to '${workspaceStatus}'. Allowed: ${validTransitions[current]?.join(", ") || "none"}` });
     }
     const updated = await storage.updateExpertAssignmentWorkspaceStatus(assignmentId, workspaceStatus);
+
+    // F2 (workstation-flows audit): delivery was SILENT — the expert advanced the status and the
+    // traveler was never told, discovering changes only by reopening their trip. Notify the trip
+    // owner on both outward transitions, mirroring the suggestion loop's notification symmetry.
+    // Best-effort: a notification failure never fails the status change.
+    try {
+      const trip = await storage.getTrip(assignment.tripId);
+      if (trip?.userId) {
+        const copy =
+          workspaceStatus === "in_review"
+            ? { title: "Your itinerary is ready for review", message: "Your expert sent an itinerary update for your review." }
+            : { title: "Your itinerary has been delivered", message: "Your expert marked your itinerary as complete." };
+        await db.insert(notifications).values({
+          userId: trip.userId,
+          type: "itinerary_update",
+          title: copy.title,
+          message: copy.message,
+          relatedId: assignment.tripId,
+          relatedType: "trip",
+          // The notifications page links via data.workspacePath — for a TRAVELER that must be
+          // their own trip view, never the expert workspace.
+          data: { tripId: assignment.tripId, workspacePath: `/trip/${assignment.tripId}?tab=itinerary` },
+        } as any);
+      }
+    } catch (notifyErr) {
+      console.error("[Expert] workspace-status notify failed (non-fatal):", notifyErr);
+    }
+
     res.json(updated);
   } catch (err) {
     console.error("[Expert] workspace-status error:", err);
