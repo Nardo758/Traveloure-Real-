@@ -32,6 +32,7 @@ import {
   PenSquare,
   Library,
   Map,
+  Store,
 } from "lucide-react";
 
 function buildMenuGroups(expertType?: string | null) {
@@ -56,6 +57,9 @@ function buildMenuGroups(expertType?: string | null) {
       items: [
         { title: isEventPlanner ? "Packages" : isLocalExpert ? "Local Packages" : "Services", href: "/expert/services", icon: Briefcase },
         { title: "Ready Made Trips", href: "/expert/templates", icon: Map },
+        // Distinct product from the line above (that one is the expert_templates guides lane).
+        // Spec v3 §0a names this one "Trips by Locals"; the templates relabel is decision D1.
+        { title: "Trips by Locals", href: "/expert/ready-made", icon: Store },
         { title: "Booking Partners", href: "/expert/booking-partners", icon: Link2 },
         { title: isEventPlanner ? "Promo Content" : isLocalExpert ? "Local Guides" : "Content Studio", href: "/expert/content-studio", icon: Palette },
         { title: "DMO Library", href: "/expert/dmo-library", icon: Library },

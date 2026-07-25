@@ -18,8 +18,10 @@ import { z } from "zod";
 import { db } from "../db";
 import { storage } from "../storage";
 import { trips, readyMadeTrips, tripExpertAdvisors } from "@shared/schema";
-import { and, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { getAuthoredTrip } from "../utils/trip-authorship";
+import { getBand } from "../services/commission";
+import { unsplashService } from "../services/unsplash.service";
 
 const router = Router();
 
@@ -143,6 +145,253 @@ router.get("/api/expert/workspace-context/:tripId", isAuthenticated, async (req,
   } catch (err: any) {
     console.error("[ready-made] workspace-context error:", err);
     res.status(500).json({ message: "Failed to resolve workspace context", error: err.message });
+  }
+});
+
+// ─── Phase 2: listing edit, hero picker, earnings preview ────────────────────
+
+/**
+ * Load a listing ONLY if the caller authored it. The listing's own `author_id` is the
+ * gate (not the trip's) — they are written together in the create transaction, and using
+ * the row you are about to mutate as its own gate leaves no room for them to disagree.
+ */
+async function loadAuthorListing(id: string, userId: string) {
+  const [row] = await db
+    .select()
+    .from(readyMadeTrips)
+    .where(and(eq(readyMadeTrips.id, id), eq(readyMadeTrips.authorId, userId)))
+    .limit(1);
+  return row ?? null;
+}
+
+/** D2 (Leon, 2026-07-25): "Unsplash proves the photo" — enforced here, not just in the picker UI. */
+const UNSPLASH_IMAGE_HOSTS = new Set(["images.unsplash.com", "plus.unsplash.com"]);
+
+function isUnsplashImageUrl(url: string): boolean {
+  try {
+    const u = new URL(url);
+    return u.protocol === "https:" && UNSPLASH_IMAGE_HOSTS.has(u.hostname);
+  } catch {
+    return false;
+  }
+}
+
+const heroMetaSchema = z.object({
+  unsplashId: z.string().trim().min(1).max(120),
+  photographer: z.string().trim().min(1).max(200),
+  profileUrl: z.string().trim().url().max(500),
+  downloadLocation: z.string().trim().url().max(500).optional(),
+  description: z.string().trim().max(500).nullable().optional(),
+});
+
+/**
+ * The expert-editable allow-list. Deliberately EXCLUDES every column an author must not
+ * self-set: `status` (approval is the gate they cannot satisfy — D1a), `authorId`,
+ * `sourceTripId`, `feeBandKey` (the platform's economics — §8), `insideCounts` (snapshotted
+ * at approval), `buildReview`, `badge` (a platform trust marker), `rejectionReason`,
+ * every review/submission timestamp, and `active`. Never `req.body` spread — this is
+ * the marketplace Gap-2 mass-assignment lesson (§10).
+ */
+const patchListingSchema = z
+  .object({
+    title: z.string().trim().min(1).max(200),
+    market: z.string().trim().min(1).max(100),
+    durationDays: z.number().int().min(1).max(30),
+    bestSeason: z.string().trim().max(60).nullable(),
+    pricingMode: z.enum(["fixed", "per_traveler"]), // mirrors the migration-133 CHECK
+    priceCents: z.number().int().min(500).max(500_000).nullable(), // $5–$5,000, USD-only v1
+    heroImageUrl: z.string().trim().url().max(1000).nullable(),
+    heroImageMeta: heroMetaSchema.nullable(),
+  })
+  .partial()
+  .strict();
+
+/**
+ * Material fields — a change to any of these on an APPROVED listing drops it back to
+ * `submitted` for re-review (the §10 A3 rule, widened past price because a ready-made
+ * trip's headline claims ARE the product: what it's called, how long it runs, what it
+ * costs, and the photo that sells it).
+ */
+const MATERIAL_FIELDS = ["title", "durationDays", "pricingMode", "priceCents", "heroImageUrl"] as const;
+
+router.patch("/api/expert/ready-made/:id", isAuthenticated, async (req, res) => {
+  try {
+    const userId = sessionUserId(req);
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+    const existing = await loadAuthorListing(req.params.id, userId);
+    if (!existing) return res.status(404).json({ message: "Listing not found" });
+
+    const parsed = patchListingSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ message: "Invalid input", errors: parsed.error.flatten() });
+    }
+    const patch = parsed.data;
+    if (Object.keys(patch).length === 0) {
+      return res.status(400).json({ message: "No editable fields supplied" });
+    }
+
+    // Hero integrity (D2): a hero must be an Unsplash image URL carrying its attribution.
+    // Both are required together — an image without its photographer credit is a rights
+    // problem, and a credit without an Unsplash-hosted URL defeats the provenance rule.
+    if (patch.heroImageUrl != null) {
+      if (!isUnsplashImageUrl(patch.heroImageUrl)) {
+        return res.status(400).json({
+          message: "Hero image must be chosen from the Unsplash picker (images.unsplash.com)",
+        });
+      }
+      const meta = patch.heroImageMeta ?? (existing.heroImageMeta as any);
+      if (!meta?.unsplashId || !meta?.photographer || !meta?.profileUrl) {
+        return res.status(400).json({ message: "Hero image requires Unsplash attribution metadata" });
+      }
+    }
+    if (patch.heroImageUrl === null) patch.heroImageMeta = null; // clearing the hero clears its credit
+
+    // A3 re-review: an approved listing whose headline claims change re-enters the queue.
+    const materialChange =
+      existing.status === "approved" &&
+      MATERIAL_FIELDS.some((f) => {
+        const next = (patch as any)[f];
+        return next !== undefined && JSON.stringify(next) !== JSON.stringify((existing as any)[f]);
+      });
+
+    const [updated] = await db
+      .update(readyMadeTrips)
+      .set({
+        ...patch,
+        ...(materialChange
+          ? { status: "submitted", reviewedAt: null, reviewedBy: null, rejectionReason: null }
+          : {}),
+        updatedAt: new Date(),
+      } as any)
+      .where(eq(readyMadeTrips.id, existing.id))
+      .returning();
+
+    // Keep the source trip's title in step with the listing's. They are born identical in the
+    // create transaction, and the author edits ONE title in the UI — letting them drift leaves the
+    // builder's own header/rail showing a stale name and no way to tell which one is real.
+    if (patch.title !== undefined) {
+      await db
+        .update(trips)
+        .set({ title: patch.title } as any)
+        .where(eq(trips.id, existing.sourceTripId));
+    }
+
+    // Unsplash API compliance: a hotlinked photo that is displayed prominently must ping
+    // its download_location. Fire-and-forget — never fail the author's save on it.
+    const dl = (patch.heroImageMeta as any)?.downloadLocation;
+    if (patch.heroImageUrl && dl) {
+      unsplashService.trackDownload(dl).catch(() => {});
+    }
+
+    res.json({ listing: updated, reReviewRequired: materialChange });
+  } catch (err: any) {
+    console.error("[ready-made] patch error:", err);
+    res.status(500).json({ message: "Failed to update listing", error: err.message });
+  }
+});
+
+/** The author's own listings (console list — ungated on approval, like every owner console). */
+router.get("/api/expert/ready-made/mine", isAuthenticated, async (req, res) => {
+  try {
+    const userId = sessionUserId(req);
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+    const rows = await db
+      .select()
+      .from(readyMadeTrips)
+      .where(eq(readyMadeTrips.authorId, userId))
+      .orderBy(desc(readyMadeTrips.updatedAt));
+    res.json({ listings: rows });
+  } catch (err: any) {
+    console.error("[ready-made] mine error:", err);
+    res.status(500).json({ message: "Failed to load listings", error: err.message });
+  }
+});
+
+/**
+ * Earnings preview — the author's share, resolved from the `ready_made_trip` fee band.
+ * §8: NO rate literal. If the band is missing or not a percent band we return
+ * `available:false` rather than falling back to a made-up split — a preview that invents
+ * the number the author will be paid is worse than no preview (§13).
+ */
+router.get("/api/expert/ready-made/:id/earnings-preview", isAuthenticated, async (req, res) => {
+  try {
+    const userId = sessionUserId(req);
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+    const listing = await loadAuthorListing(req.params.id, userId);
+    if (!listing) return res.status(404).json({ message: "Listing not found" });
+
+    const band = await getBand(listing.feeBandKey);
+    if (!band || band.rateType !== "percent") {
+      return res.json({
+        available: false,
+        reason: band ? "fee_band_not_percent" : "fee_band_missing",
+        bandKey: listing.feeBandKey,
+      });
+    }
+
+    const platformFeeRate = band.rate;
+    const expertShareRate = 1 - platformFeeRate;
+    const priceCents = listing.priceCents ?? null;
+
+    res.json({
+      available: true,
+      bandKey: listing.feeBandKey,
+      pricingMode: listing.pricingMode,
+      platformFeeRate,
+      expertShareRate,
+      priceCents,
+      // Null until the author sets a price — never a placeholder amount.
+      platformFeeCents: priceCents === null ? null : Math.round(priceCents * platformFeeRate),
+      expertEarningsCents: priceCents === null ? null : priceCents - Math.round(priceCents * platformFeeRate),
+    });
+  } catch (err: any) {
+    console.error("[ready-made] earnings-preview error:", err);
+    res.status(500).json({ message: "Failed to resolve earnings preview", error: err.message });
+  }
+});
+
+/**
+ * Hero-image search (Unsplash proxy). Author-role-gated so the platform key can't be used
+ * as an open image proxy. `ready:false` is the HONEST unconfigured answer — an empty
+ * results array would read as "no photos match", which is a different claim (§13).
+ */
+router.get("/api/expert/ready-made/hero-search", isAuthenticated, async (req, res) => {
+  try {
+    const userId = sessionUserId(req);
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+    const user = await storage.getUser(userId);
+    if (!user || !AUTHOR_ROLES.has(user.role ?? "")) {
+      return res.status(403).json({ message: "Ready-made authoring requires a local expert or trip advisor role" });
+    }
+
+    if (!unsplashService.isReady()) {
+      return res.json({ ready: false, reason: "unsplash_not_configured", results: [] });
+    }
+
+    const q = String(req.query.q ?? "").trim().slice(0, 120);
+    if (!q) return res.status(400).json({ message: "Missing search query" });
+
+    const photos = await unsplashService.searchPhotos(q, { perPage: 12, orientation: "landscape" });
+    res.json({
+      ready: true,
+      results: photos.map((p) => ({
+        // The picker hands these straight back to PATCH — same shape the hero validator expects.
+        url: p.url,
+        thumbnailUrl: p.thumbnailUrl,
+        description: p.description,
+        meta: {
+          unsplashId: p.photoId,
+          photographer: p.photographerName,
+          profileUrl: p.photographerUrl,
+          downloadLocation: p.downloadLocationUrl,
+          description: p.description,
+        },
+      })),
+    });
+  } catch (err: any) {
+    console.error("[ready-made] hero-search error:", err);
+    res.status(500).json({ message: "Hero search failed", error: err.message });
   }
 });
 

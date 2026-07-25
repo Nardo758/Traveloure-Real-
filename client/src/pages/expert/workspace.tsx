@@ -9,6 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DmoPickerModal } from "@/components/expert/dmo-picker-modal";
 import { ServicePickerModal } from "@/components/expert/service-picker-modal";
+import ReadyMadeListingPanel, { type ReadyMadeListing } from "@/components/expert/ready-made-listing-panel";
 import { APIProvider, Map, AdvancedMarker, InfoWindow } from "@vis.gl/react-google-maps";
 import {
   Menu, Bell, MapPin, ChevronRight, Pencil, Sparkles, Link2, PenSquare,
@@ -337,22 +338,64 @@ export default function ExpertWorkspace() {
   }, [browseQuery]);
 
   // ── Data fetching ──
-  const { data: assignedTrips, isLoading: tripsLoading } = useQuery<AssignedTrip[]>({ queryKey: ["/api/expert/assigned-trips"] });
-  const trip = assignedTrips?.find(t => t.trip_id === tripId);
+  // Mode resolution is the SERVER's call (ready-made brief §2): assignment (an advisor row exists)
+  // vs authoring (this expert is the trip's author). The client never infers it from a role string.
+  const { data: workspaceCtx, isLoading: ctxLoading } = useQuery<{
+    mode: "assignment" | "authoring";
+    trip: any;
+    listing?: ReadyMadeListing | null;
+  }>({
+    queryKey: [`/api/expert/workspace-context/${tripId}`],
+    enabled: !!tripId,
+    retry: false,
+  });
+  const isAuthoring = workspaceCtx?.mode === "authoring";
+  const listing = (workspaceCtx?.listing ?? null) as ReadyMadeListing | null;
+
+  // The listing is the first thing an author needs; open on it once the mode resolves. Guarded by a
+  // ref so it lands once and never yanks the panel back while the author is working elsewhere.
+  const authoringTabDefaulted = useRef(false);
+  useEffect(() => {
+    if (isAuthoring && !authoringTabDefaulted.current) {
+      authoringTabDefaulted.current = true;
+      setRightTab("listing");
+    }
+  }, [isAuthoring]);
+
+  const { data: assignedTrips, isLoading: tripsLoading } = useQuery<AssignedTrip[]>({
+    queryKey: ["/api/expert/assigned-trips"],
+    enabled: !isAuthoring, // an authoring trip is never in the assignment list (it has no advisor row)
+  });
+  const assignedTrip = assignedTrips?.find(t => t.trip_id === tripId);
+  // Authoring trips carry userId=NULL and no traveler, so they cannot come from assigned-trips.
+  // Shape the context's trip row into the same view model the whole page already reads.
+  const trip: AssignedTrip | undefined = assignedTrip ?? (isAuthoring && workspaceCtx?.trip ? {
+    trip_id: workspaceCtx.trip.id,
+    trip_title: workspaceCtx.trip.title ?? "Untitled ready-made trip",
+    destination: workspaceCtx.trip.destination ?? "",
+    start_date: workspaceCtx.trip.startDate ?? "",
+    end_date: workspaceCtx.trip.endDate ?? "",
+    traveler_name: "", // there is no traveler — an authoring trip is built for sale, not for a client
+    status: workspaceCtx.trip.status ?? "draft",
+    assigned_at: "",
+    suggestion_count: 0,
+  } : undefined);
 
   const { data: itineraryData, isLoading: itemsLoading } = useQuery<ItineraryData>({
     queryKey: [`/api/trips/${tripId}/itinerary-items`],
     enabled: !!tripId,
   });
 
+  // Assignment-only reads. In authoring mode there is no client booking to take commission on and
+  // no advisory assignment to advance — the listing panel's fee-band preview is the earnings surface.
   const { data: commission, isLoading: commissionLoading } = useQuery<CommissionData>({
     queryKey: [`/api/trips/${tripId}/commission`],
-    enabled: !!tripId,
+    enabled: !!tripId && !isAuthoring,
   });
 
   const { data: assignment, isLoading: assignmentLoading } = useQuery<MyAssignment>({
     queryKey: [`/api/trips/${tripId}/my-assignment`],
-    enabled: !!tripId,
+    enabled: !!tripId && !isAuthoring,
   });
 
   const { data: providers } = useQuery<any[]>({
@@ -372,7 +415,11 @@ export default function ExpertWorkspace() {
   });
 
   const tripExperienceType = workspaceConstraints?.tripExperienceType ?? null;
-  const isEvent = ["wedding", "proposal", "corporate", "birthday"].includes(tripExperienceType ?? "");
+  // Event coordination is a per-CLIENT engagement (a coordination_states row for a real traveler).
+  // A ready-made trip is built for sale with no traveler yet, so the Event Coord surface has
+  // nothing to coordinate — suppress it in authoring mode rather than show an empty engagement.
+  const isEvent =
+    !isAuthoring && ["wedding", "proposal", "corporate", "birthday"].includes(tripExperienceType ?? "");
 
   // ── Event Coordination (Stage 2) ─────────────────────────────────────
   const { data: eventCoordState } = useQuery<any>({
@@ -683,13 +730,14 @@ export default function ExpertWorkspace() {
   const optimizerScores = workspaceConstraints?.optimizerScores || null;
   const totalConstraintIssues = anchorConflicts.reduce((sum, c) => sum + c.impacts.length, 0) + energyTracking.filter(e => e.recoveryNeeded).length + boundaryViolations.length;
 
-  const isLoading = tripsLoading || assignmentLoading;
+  const isLoading = ctxLoading || (!isAuthoring && (tripsLoading || assignmentLoading));
 
   // No trip open → a real launchpad (not a dead-end): open a client trip to plan, or start creating.
   if (!tripId) {
     const homeCards: Array<{ title: string; desc: string; href: string; icon: any; primary?: boolean }> = [
       { title: "Assigned Trips", desc: "Open a client trip to build its itinerary", href: "/expert/assigned-trips", icon: MapPin, primary: true },
-      { title: "Ready Made Trips", desc: "Build sellable itineraries travelers can buy", href: "/expert/templates", icon: FileText },
+      { title: "Trips by Locals", desc: "Build a full trip once and sell it as a copyable plan", href: "/expert/ready-made", icon: Store },
+      { title: "Ready Made Trips", desc: "Sell a written itinerary guide travelers can read", href: "/expert/templates", icon: FileText },
       { title: "DMO Library", desc: "Research Kyoto content to build from", href: "/expert/dmo-library", icon: Search },
       { title: "Content Studio", desc: "Create promo & social content", href: "/expert/content-studio", icon: Sparkles },
     ];
@@ -735,11 +783,11 @@ export default function ExpertWorkspace() {
     </div>
   );
 
-  if (!trip && !tripsLoading) return (
+  if (!trip && !tripsLoading && !ctxLoading) return (
     <main style={{ padding: 40, textAlign: "center" }}>
       <Users style={{ width: 48, height: 48, color: G[300], margin: "0 auto 16px" }} />
       <h1 style={{ fontSize: 18, fontWeight: 600, color: G[900], margin: "0 0 8px" }}>Trip not found</h1>
-      <div style={{ fontSize: 14, color: G[500], marginBottom: 20 }}>This trip isn't assigned to you, or it no longer exists.</div>
+      <div style={{ fontSize: 14, color: G[500], marginBottom: 20 }}>This trip isn't assigned to you, you didn't author it, or it no longer exists.</div>
       <button onClick={() => safeNavigate("/expert/assigned-trips")} data-testid="button-back-assigned" style={{ padding: "8px 20px", borderRadius: 8, background: P, color: "white", border: "none", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>View Assigned Trips</button>
     </main>
   );
@@ -768,41 +816,62 @@ export default function ExpertWorkspace() {
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <button onClick={() => setCollapsed(!collapsed)} data-testid="button-toggle-sidebar" style={{ background: "none", border: "none", cursor: "pointer", padding: 4, color: G[500], display: "flex" }}><Menu style={{ width: 20, height: 20 }} /></button>
           <button onClick={() => safeNavigate("/expert/dashboard")} data-testid="button-back-dashboard" style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 4, color: G[400], fontSize: 13 }}><ArrowLeft style={{ width: 14, height: 14 }} /></button>
-          <span style={{ fontSize: 15, fontWeight: 700, color: G[900] }}>Itinerary Workspace</span>
+          <span style={{ fontSize: 15, fontWeight: 700, color: G[900] }}>
+            {isAuthoring ? "Ready-Made Builder" : "Itinerary Workspace"}
+          </span>
           <ChevronRight style={{ width: 14, height: 14, color: G[400] }} />
-          <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 10px", background: G[50], borderRadius: 99, border: `1px solid ${G[200]}` }}>
-            <Lock style={{ width: 11, height: 11, color: G[400] }} />
-            <span style={{ fontSize: 13, color: G[600], fontWeight: 500 }} data-testid="text-client-identity">
-              {identityRevealed ? travelerName : `Client #${travelerCode}`}
-            </span>
-            <button onClick={() => setIdentityRevealed(!identityRevealed)} data-testid="button-reveal-identity" style={{ background: "none", border: "none", cursor: "pointer", display: "flex", padding: 0, color: G[400] }}>
-              {identityRevealed ? <EyeOff style={{ width: 13, height: 13 }} /> : <Eye style={{ width: 13, height: 13 }} />}
-            </button>
-          </div>
+          {isAuthoring ? (
+            // No client to protect — an authoring trip has no traveler. Show what's being built
+            // instead of a "Client #……" chip that would imply someone is waiting on it.
+            <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 10px", background: G[50], borderRadius: 99, border: `1px solid ${G[200]}` }}>
+              <Store style={{ width: 11, height: 11, color: G[400] }} />
+              <span style={{ fontSize: 13, color: G[600], fontWeight: 500 }} data-testid="text-authoring-identity">
+                {trip?.destination || "Ready-made trip"} · for sale
+              </span>
+            </div>
+          ) : (
+            <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "3px 10px", background: G[50], borderRadius: 99, border: `1px solid ${G[200]}` }}>
+              <Lock style={{ width: 11, height: 11, color: G[400] }} />
+              <span style={{ fontSize: 13, color: G[600], fontWeight: 500 }} data-testid="text-client-identity">
+                {identityRevealed ? travelerName : `Client #${travelerCode}`}
+              </span>
+              <button onClick={() => setIdentityRevealed(!identityRevealed)} data-testid="button-reveal-identity" style={{ background: "none", border: "none", cursor: "pointer", display: "flex", padding: 0, color: G[400] }}>
+                {identityRevealed ? <EyeOff style={{ width: 13, height: 13 }} /> : <Eye style={{ width: 13, height: 13 }} />}
+              </button>
+            </div>
+          )}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 12px", background: "#F0FDF4", borderRadius: 99, border: "1px solid #BBF7D0" }}>
             <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#16A34A" }} />
             <span style={{ fontSize: 12, fontWeight: 600, color: "#15803D" }}>AI: Active</span>
           </div>
-          <Av i={travelerName.charAt(0).toUpperCase() + (travelerName.split(" ")[1]?.[0] || "").toUpperCase()} s={32} />
+          {!isAuthoring && (
+            <Av i={travelerName.charAt(0).toUpperCase() + (travelerName.split(" ")[1]?.[0] || "").toUpperCase()} s={32} />
+          )}
         </div>
       </header>
 
-      {/* ── Approval Bar ── */}
-      <ApprovalBar current={workspaceStatus} onSubmit={() => advanceStatusMutation.mutate()} isPending={advanceStatusMutation.isPending} />
+      {/* ── Approval Bar ── (assignment lifecycle: draft → in_review → delivered to the client.
+           An authoring trip has no client to deliver to; its lifecycle is the LISTING's
+           draft → submitted → approved, shown in the listing panel.) */}
+      {!isAuthoring && (
+        <ApprovalBar current={workspaceStatus} onSubmit={() => advanceStatusMutation.mutate()} isPending={advanceStatusMutation.isPending} />
+      )}
 
       {/* ── Expert Notes ── */}
       <div style={{ background: "#FEFCE8", borderBottom: `1px solid #FEF08A`, padding: "8px 18px", display: "flex", alignItems: "flex-start", gap: 10, flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6, paddingTop: 2, flexShrink: 0 }}>
           <div style={{ width: 22, height: 22, borderRadius: 7, background: "#EAB308", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><StickyNote style={{ width: 12, height: 12, color: "white" }} /></div>
           <div>
-            <div style={{ fontSize: 11, fontWeight: 700, color: "#713F12", letterSpacing: "0.02em" }}>Expert Notes</div>
+            <div style={{ fontSize: 11, fontWeight: 700, color: "#713F12", letterSpacing: "0.02em" }}>
+              {isAuthoring ? "Build Notes" : "Expert Notes"}
+            </div>
             <div style={{ fontSize: 10, color: "#A16207", display: "flex", alignItems: "center", gap: 3 }}><Lock style={{ width: 9, height: 9 }} /> Only you can see this</div>
           </div>
         </div>
         <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 3 }}>
-          <textarea value={noteText} onChange={e => handleNoteChange(e.target.value)} placeholder="Add private notes about this client, their preferences, things to avoid..." data-testid="textarea-expert-notes" style={{ width: "100%", minHeight: 48, padding: "6px 9px", fontSize: 11, color: "#713F12", lineHeight: 1.55, background: "white", border: "1px solid #FDE68A", borderRadius: 8, resize: "none", outline: "none", fontFamily: "inherit", boxSizing: "border-box" as any }} />
+          <textarea value={noteText} onChange={e => handleNoteChange(e.target.value)} placeholder={isAuthoring ? "Notes to yourself about this build — what to add, what to verify, what to avoid…" : "Add private notes about this client, their preferences, things to avoid..."} data-testid="textarea-expert-notes" style={{ width: "100%", minHeight: 48, padding: "6px 9px", fontSize: 11, color: "#713F12", lineHeight: 1.55, background: "white", border: "1px solid #FDE68A", borderRadius: 8, resize: "none", outline: "none", fontFamily: "inherit", boxSizing: "border-box" as any }} />
           <div style={{ height: 14, display: "flex", alignItems: "center", gap: 4 }}>
             {noteSaveStatus === "saving" && (
               <span data-testid="text-notes-saving" style={{ fontSize: 10, color: "#A16207", display: "flex", alignItems: "center", gap: 3 }}>
@@ -821,14 +890,17 @@ export default function ExpertWorkspace() {
             )}
           </div>
         </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 4, flexShrink: 0, paddingTop: 2 }}>
-          <Bdg c="amber">Step {["draft","in_review","delivered"].indexOf(workspaceStatus) + 1} of 3</Bdg>
-          {workspaceStatus !== "delivered" && (
-            <button onClick={() => advanceStatusMutation.mutate()} disabled={advanceStatusMutation.isPending} data-testid="button-mark-complete" style={{ padding: "5px 10px", borderRadius: 7, fontSize: 11, fontWeight: 600, background: "#EAB308", color: "white", border: "none", cursor: "pointer", whiteSpace: "nowrap" }}>
-              Mark Complete →
-            </button>
-          )}
-        </div>
+        {/* The 3-step deliver-to-client progression only exists for an assignment. */}
+        {!isAuthoring && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 4, flexShrink: 0, paddingTop: 2 }}>
+            <Bdg c="amber">Step {["draft","in_review","delivered"].indexOf(workspaceStatus) + 1} of 3</Bdg>
+            {workspaceStatus !== "delivered" && (
+              <button onClick={() => advanceStatusMutation.mutate()} disabled={advanceStatusMutation.isPending} data-testid="button-mark-complete" style={{ padding: "5px 10px", borderRadius: 7, fontSize: 11, fontWeight: 600, background: "#EAB308", color: "white", border: "none", cursor: "pointer", whiteSpace: "nowrap" }}>
+                Mark Complete →
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* ── Body ── */}
@@ -843,25 +915,45 @@ export default function ExpertWorkspace() {
               <div style={{ borderRadius: 10, overflow: "hidden", marginBottom: 11, border: `1px solid ${G[200]}` }}>
                 <div style={{ height: 64, background: "linear-gradient(135deg,#FF385C22,#FF6B8A33)", display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
                   <span style={{ fontSize: 24 }}>✈️</span>
-                  <div style={{ position: "absolute", bottom: 6, right: 8, background: "white", borderRadius: 6, padding: "2px 6px", fontSize: 10, fontWeight: 600, color: P }}>
-                    {trip ? `${Math.max(1, Math.ceil((new Date(trip.end_date).getTime() - new Date(trip.start_date).getTime()) / 86400000))} nights` : "—"}
-                  </div>
+                  {/* Nights are derived from the trip's dates. An authoring trip's dates are
+                      placeholders (the buyer's clone gets real ones), so a nights count here would
+                      contradict the listing's own duration — the listing line below is the truth. */}
+                  {!isAuthoring && (
+                    <div style={{ position: "absolute", bottom: 6, right: 8, background: "white", borderRadius: 6, padding: "2px 6px", fontSize: 10, fontWeight: 600, color: P }}>
+                      {trip ? `${Math.max(1, Math.ceil((new Date(trip.end_date).getTime() - new Date(trip.start_date).getTime()) / 86400000))} nights` : "—"}
+                    </div>
+                  )}
                   <div style={{ position: "absolute", top: 6, left: 8, display: "flex", alignItems: "center", gap: 4, background: "rgba(0,0,0,0.35)", borderRadius: 99, padding: "2px 7px" }}>
-                    <Lock style={{ width: 9, height: 9, color: "white" }} /><span style={{ fontSize: 9, color: "white", fontWeight: 600 }}>PRIVATE</span>
+                    {isAuthoring ? (
+                      <><Store style={{ width: 9, height: 9, color: "white" }} /><span style={{ fontSize: 9, color: "white", fontWeight: 600 }}>FOR SALE</span></>
+                    ) : (
+                      <><Lock style={{ width: 9, height: 9, color: "white" }} /><span style={{ fontSize: 9, color: "white", fontWeight: 600 }}>PRIVATE</span></>
+                    )}
                   </div>
                 </div>
                 <div style={{ padding: "9px 11px" }}>
                   <div style={{ fontSize: 14, fontWeight: 700, color: G[900] }}>{tripTitle}</div>
-                  {trip && <div style={{ fontSize: 11, color: G[500], marginTop: 2 }}>📅 {formatDate(trip.start_date)} – {formatDate(trip.end_date)}</div>}
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 7 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
-                      <Av i={identityRevealed ? (travelerName.charAt(0).toUpperCase() + (travelerName.split(" ")[1]?.[0] || "").toUpperCase()) : "??"} s={20} />
-                      <span style={{ fontSize: 12, color: G[700], fontWeight: 500 }} data-testid="text-left-rail-client">{identityRevealed ? travelerName : `Client #${travelerCode}`}</span>
+                  {/* Authoring trips carry placeholder dates (the BUYER's clone gets real ones), so a
+                      date range here would be a fiction. Show what actually defines the listing. */}
+                  {isAuthoring ? (
+                    <div style={{ fontSize: 11, color: G[500], marginTop: 2 }}>
+                      🗓️ {listing?.durationDays ?? "—"} days{listing?.bestSeason ? ` · best in ${listing.bestSeason}` : ""}
                     </div>
-                    <button onClick={() => setIdentityRevealed(!identityRevealed)} data-testid="button-left-rail-reveal" style={{ display: "flex", alignItems: "center", gap: 3, background: "none", border: `1px solid ${G[200]}`, borderRadius: 99, padding: "2px 7px", fontSize: 10, color: G[500], cursor: "pointer", fontWeight: 600 }}>
-                      {identityRevealed ? <><EyeOff style={{ width: 9, height: 9 }} /> Hide</> : <><Eye style={{ width: 9, height: 9 }} /> Reveal</>}
-                    </button>
-                  </div>
+                  ) : (
+                    trip && <div style={{ fontSize: 11, color: G[500], marginTop: 2 }}>📅 {formatDate(trip.start_date)} – {formatDate(trip.end_date)}</div>
+                  )}
+                  {/* Identity reveal is a client-privacy control; there is no client in authoring mode. */}
+                  {!isAuthoring && (
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 7 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                        <Av i={identityRevealed ? (travelerName.charAt(0).toUpperCase() + (travelerName.split(" ")[1]?.[0] || "").toUpperCase()) : "??"} s={20} />
+                        <span style={{ fontSize: 12, color: G[700], fontWeight: 500 }} data-testid="text-left-rail-client">{identityRevealed ? travelerName : `Client #${travelerCode}`}</span>
+                      </div>
+                      <button onClick={() => setIdentityRevealed(!identityRevealed)} data-testid="button-left-rail-reveal" style={{ display: "flex", alignItems: "center", gap: 3, background: "none", border: `1px solid ${G[200]}`, borderRadius: 99, padding: "2px 7px", fontSize: 10, color: G[500], cursor: "pointer", fontWeight: 600 }}>
+                        {identityRevealed ? <><EyeOff style={{ width: 9, height: 9 }} /> Hide</> : <><Eye style={{ width: 9, height: 9 }} /> Reveal</>}
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -879,7 +971,11 @@ export default function ExpertWorkspace() {
                     <div style={{ width: 7, height: 7, borderRadius: "50%", background: P, flexShrink: 0 }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 11, fontWeight: 600, color: G[700] }}>Status</div>
-                      <div style={{ fontSize: 10, color: G[400] }}>{trip?.status === "accepted" ? "Active assignment" : "Pending acceptance"}</div>
+                      <div style={{ fontSize: 10, color: G[400] }} data-testid="text-left-rail-status">
+                        {isAuthoring
+                          ? ({ draft: "Draft listing", submitted: "Listing in review", approved: "Listing approved", rejected: "Listing needs changes" }[listing?.status ?? "draft"])
+                          : (trip?.status === "accepted" ? "Active assignment" : "Pending acceptance")}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -967,14 +1063,18 @@ export default function ExpertWorkspace() {
                 <button key={t.k} onClick={() => setCTab(t.k)} data-testid={`tab-center-${t.k}`} style={{ padding: "5px 12px", borderRadius: 7, fontSize: 13, fontWeight: 500, background: cTab === t.k ? `${P}12` : "none", color: cTab === t.k ? P : G[500], border: cTab === t.k ? `1.5px solid ${P}40` : "1.5px solid transparent", cursor: "pointer" }}>{t.l}</button>
               ))}
             </div>
-            <div style={{ display: "flex", gap: 8 }}>
-              <button onClick={() => safeNavigate("/chat")} data-testid="button-open-chat" style={{ padding: "5px 12px", borderRadius: 8, fontSize: 13, fontWeight: 600, background: "white", color: G[700], border: `1.5px solid ${G[200]}`, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
-                <MessageSquare style={{ width: 13, height: 13 }} /> Chat
-              </button>
-              <button onClick={() => advanceStatusMutation.mutate()} disabled={advanceStatusMutation.isPending || workspaceStatus === "delivered"} data-testid="button-send-edits" style={{ padding: "5px 12px", borderRadius: 8, fontSize: 13, fontWeight: 600, background: P, color: "white", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 5, opacity: workspaceStatus === "delivered" ? 0.5 : 1 }}>
-                <Send style={{ width: 13, height: 13 }} /> Send Edits
-              </button>
-            </div>
+            {/* Chat + Send Edits both address the CLIENT. An authoring trip has no client to
+                message or deliver to — its outbound step is submitting the listing for review. */}
+            {!isAuthoring && (
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={() => safeNavigate("/chat")} data-testid="button-open-chat" style={{ padding: "5px 12px", borderRadius: 8, fontSize: 13, fontWeight: 600, background: "white", color: G[700], border: `1.5px solid ${G[200]}`, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
+                  <MessageSquare style={{ width: 13, height: 13 }} /> Chat
+                </button>
+                <button onClick={() => advanceStatusMutation.mutate()} disabled={advanceStatusMutation.isPending || workspaceStatus === "delivered"} data-testid="button-send-edits" style={{ padding: "5px 12px", borderRadius: 8, fontSize: 13, fontWeight: 600, background: P, color: "white", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 5, opacity: workspaceStatus === "delivered" ? 0.5 : 1 }}>
+                  <Send style={{ width: 13, height: 13 }} /> Send Edits
+                </button>
+              </div>
+            )}
           </div>
 
           <div style={{ flex: 1, overflowY: "auto", padding: "14px 16px" }}>
@@ -1104,17 +1204,32 @@ export default function ExpertWorkspace() {
         <aside style={{ width: 380, background: "white", borderLeft: `1px solid ${G[200]}`, display: "flex", flexDirection: "column", overflow: "hidden", flexShrink: 0 }}>
           <div style={{ borderBottom: `1px solid ${G[200]}`, padding: "0 10px", display: "flex", gap: 0, flexShrink: 0, overflowX: "auto" }}>
             {[
+              // Authoring: the listing IS the primary panel, and "Earnings" (per-client commission)
+              // is replaced by the listing panel's fee-band share preview.
+              ...(isAuthoring ? [{ k: "listing", l: "🏷️ Listing" }] : []),
               { k: "gaps", l: totalConstraintIssues > 0 ? `⚠️ Schedule Check (${totalConstraintIssues})` : "⚠️ Schedule Check" },
               ...(isEvent ? [{ k: "event-coord", l: "📅 Event Coord" }] : []),
               { k: "browse", l: "🔍 Browse" },
-              { k: "commission", l: "💰 Earnings" },
+              ...(isAuthoring ? [] : [{ k: "commission", l: "💰 Earnings" }]),
               { k: "providers", l: "👥 Providers" },
               { k: "affiliates", l: "🔗 Affiliates" },
-              { k: "partner-bookings", l: "🛍️ Partner Bookings" },
+              ...(isAuthoring ? [] : [{ k: "partner-bookings", l: "🛍️ Partner Bookings" }]),
             ].map(t => (
               <button key={t.k} onClick={() => setRightTab(t.k)} data-testid={`tab-right-${t.k}`} style={{ padding: "10px 7px", fontSize: 11, fontWeight: 600, cursor: "pointer", background: "none", border: "none", borderBottom: rightTab === t.k ? `2px solid ${P}` : "2px solid transparent", color: rightTab === t.k ? P : G[500], marginBottom: -1, whiteSpace: "nowrap" }}>{t.l}</button>
             ))}
           </div>
+
+          {/* Listing Tab (authoring only) */}
+          {rightTab === "listing" && isAuthoring && (
+            listing ? (
+              <ReadyMadeListingPanel listing={listing} tripId={tripId!} />
+            ) : (
+              <div style={{ flex: 1, padding: "18px 14px", fontSize: 12.5, color: G[500], lineHeight: 1.55 }}>
+                This trip has no ready-made listing attached, so there's nothing to price or publish.
+                Start a new one from the Ready Made Trips console.
+              </div>
+            )
+          )}
 
           {/* Schedule Check Tab */}
           {rightTab === "gaps" && (
