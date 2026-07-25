@@ -542,6 +542,73 @@ router.get("/api/ready-made", async (_req, res) => {
   }
 });
 
+// ─── Public detail (Phase 4) — the SAME redacted DTO for buyers and the author's preview ─────
+//
+// Approved+active → public. Non-approved → ONLY the author (explicit session check), flagged
+// preview:true so the page renders exactly what a buyer would see (preview-as-buyer: what the
+// author ships is what they previewed). Never exposes sourceTripId — the itinerary is the paid
+// product; a buyer reaches it only through their own clone.
+router.get("/api/ready-made/:id", async (req, res) => {
+  try {
+    const rows = await db
+      .select({
+        id: readyMadeTrips.id,
+        title: readyMadeTrips.title,
+        planType: readyMadeTrips.planType,
+        market: readyMadeTrips.market,
+        durationDays: readyMadeTrips.durationDays,
+        bestSeason: readyMadeTrips.bestSeason,
+        pricingMode: readyMadeTrips.pricingMode,
+        priceCents: readyMadeTrips.priceCents,
+        heroImageUrl: readyMadeTrips.heroImageUrl,
+        heroImageMeta: readyMadeTrips.heroImageMeta,
+        badge: readyMadeTrips.badge,
+        insideCounts: readyMadeTrips.insideCounts,
+        status: readyMadeTrips.status,
+        active: readyMadeTrips.active,
+        authorId: readyMadeTrips.authorId,
+        authorFirstName: users.firstName,
+        authorRole: users.role,
+      })
+      .from(readyMadeTrips)
+      .innerJoin(users, eq(users.id, readyMadeTrips.authorId))
+      .where(eq(readyMadeTrips.id, req.params.id))
+      .limit(1);
+    const row = rows[0];
+    if (!row) return res.status(404).json({ message: "Trip not found" });
+
+    const isPublic = row.status === "approved" && row.active;
+    const sessionUser = (req as any).isAuthenticated?.() ? sessionUserId(req) : null;
+    const isAuthorPreview = !isPublic && sessionUser !== null && sessionUser === row.authorId;
+    if (!isPublic && !isAuthorPreview) {
+      return res.status(404).json({ message: "Trip not found" }); // no draft-listing oracle
+    }
+
+    res.json({
+      listing: {
+        id: row.id,
+        title: row.title,
+        planType: row.planType,
+        market: row.market,
+        durationDays: row.durationDays,
+        bestSeason: row.bestSeason,
+        pricingMode: row.pricingMode,
+        priceCents: row.priceCents,
+        heroImageUrl: row.heroImageUrl,
+        heroImageMeta: row.heroImageMeta,
+        badge: row.badge,
+        insideCounts: row.insideCounts,
+        authorName: row.authorFirstName ?? "Expert",
+        section: row.authorRole === "local_expert" ? "trips_by_locals" : "advisor",
+      },
+      preview: isAuthorPreview,
+    });
+  } catch (err: any) {
+    console.error("[ready-made] detail error:", err);
+    res.status(500).json({ message: "Failed to load trip" });
+  }
+});
+
 // ─── Purchase → verify → clone (commerce lane; mirrors the template 2-step at routes.ts:3086) ──
 //
 // §14: the charge amount is the LISTING's priceCents — server-derived, never req.body. §15: the

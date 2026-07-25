@@ -469,6 +469,28 @@ async function main() {
     await db.update(readyMadeTrips).set({ status: "rejected", rejectionReason: "gate reset" } as any)
       .where(eq(readyMadeTrips.id, listingId));
 
+    console.log("\n── 5f: public detail + author preview (Phase 4 redacted DTO) ──");
+    // Listing is currently 'rejected' (5e reset). Anonymous → 404 (no draft oracle).
+    const anonDetail = makeActor();
+    const anonRejected = await anonDetail.req("GET", `/api/ready-made/${listingId}`);
+    check("non-approved listing is 404 to the public (no draft oracle)", anonRejected.status === 404);
+    // The AUTHOR gets the same redacted DTO flagged preview.
+    const authorPreview = await author.req("GET", `/api/ready-made/${listingId}`);
+    check("author preview of unapproved listing → 200 + preview:true",
+      authorPreview.status === 200 && authorPreview.json?.preview === true);
+    check("preview DTO is the redacted teaser (no sourceTripId/status leak)",
+      authorPreview.json?.listing && !("sourceTripId" in authorPreview.json.listing) &&
+      !("status" in authorPreview.json.listing));
+    const strangerPreviewDetail = await stranger.req("GET", `/api/ready-made/${listingId}`);
+    check("another expert cannot preview it", strangerPreviewDetail.status === 404, `got ${strangerPreviewDetail.status}`);
+    // Approved → public, preview:false.
+    await db.update(readyMadeTrips).set({ status: "approved" } as any).where(eq(readyMadeTrips.id, listingId));
+    const publicDetail = await anonDetail.req("GET", `/api/ready-made/${listingId}`);
+    check("approved listing public → 200 + preview:false",
+      publicDetail.status === 200 && publicDetail.json?.preview === false &&
+      publicDetail.json?.listing?.section === "trips_by_locals");
+    await db.update(readyMadeTrips).set({ status: "rejected" } as any).where(eq(readyMadeTrips.id, listingId));
+
     console.log("\n── 6: hero-search key gate (§13 honest unavailability) ──");
     const search = await author.req("GET", "/api/expert/ready-made/hero-search?q=kyoto");
     if (process.env.UNSPLASH_ACCESS_KEY) {
