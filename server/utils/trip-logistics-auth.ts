@@ -16,6 +16,7 @@
  */
 import { storage } from "../storage";
 import { verifyTripOwnership } from "./trip-ownership";
+import { isTripAuthor } from "./trip-authorship";
 import { logger } from "../infrastructure/logger";
 
 export async function authorizeTripLogistics(
@@ -30,6 +31,10 @@ export async function authorizeTripLogistics(
 
   // Expert assigned to this specific trip (trip_expert_advisors) — role-agnostic.
   if (await storage.isExpertAssignedToTrip(tripId, userId)) return null;
+
+  // Authoring mode (ready-made brief §2): the expert who AUTHORS this trip. Explicit named check —
+  // deliberately NOT routed through getTripRole (known pre-launch bypass).
+  if (await isTripAuthor(tripId, userId)) return null;
 
   // Admin: allowed, but audit-logged (interim; dedicated audit-log lane filed).
   const user = await storage.getUser(userId);

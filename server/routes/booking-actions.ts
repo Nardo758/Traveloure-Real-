@@ -11,6 +11,7 @@ import { trackFunnelEvent } from '../utils/funnelTracker';
 import { bookingService } from '../services/booking.service';
 import { verifyTripOwnership } from '../utils/trip-ownership';
 import { authorizeTripLogistics } from '../utils/trip-logistics-auth';
+import { isTripAuthor } from '../utils/trip-authorship';
 import { getUserId } from '../utils/auth';
 import { storage } from '../storage';
 import { EXPERT_SHARE_RATE } from '../services/commission';
@@ -886,7 +887,10 @@ router.get("/trips/:tripId/expert-notes", isAuthenticated, async (req, res) => {
     const owned = await verifyTripOwnership(tripId, userId);
     if (!owned) {
       const assignment = await storage.getTripExpertAdvisoryAssignment(tripId, userId);
-      if (!assignment) return res.status(403).json({ message: "Not authorized to view notes for this trip" });
+      // Authoring mode (ready-made brief §2): the author reads their own build's notes.
+      if (!assignment && !(await isTripAuthor(tripId, userId))) {
+        return res.status(403).json({ message: "Not authorized to view notes for this trip" });
+      }
     }
     const expertNotes = await storage.getTripExpertNotes(tripId);
     res.json({ expertNotes });
@@ -1000,7 +1004,10 @@ router.get("/trips/:tripId/workspace-constraints", isAuthenticated, async (req, 
         // admins pass through
       } else {
         const assigned = await storage.isExpertAssignedToTrip(tripId, userId);
-        if (!assigned) return res.status(403).json({ message: "Access denied" });
+        // Authoring mode (ready-made brief §2): the author sees their own build's constraints.
+        if (!assigned && !(await isTripAuthor(tripId, userId))) {
+          return res.status(403).json({ message: "Access denied" });
+        }
       }
     }
 

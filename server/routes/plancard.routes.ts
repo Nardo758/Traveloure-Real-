@@ -7,6 +7,7 @@ import {
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { getTripRole, canMutateTrip } from "../utils/trip-role";
+import { isTripAuthor } from "../utils/trip-authorship";
 import { geocodeAddress } from "../utils/geocode";
 
 const router = Router();
@@ -160,7 +161,12 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
       // Legacy fallback: check trip_expert_advisors for assigned experts
       const assignment = await storage.getTripExpertAdvisoryAssignment(tripId, userId);
       const isAssignedExpert = assignment && ['pending', 'accepted'].includes(assignment.status);
-      if (!isAssignedExpert) {
+      // Authoring mode (ready-made brief §2/§4): the trip's AUTHOR may render their own build.
+      // A PARALLEL named branch beside getTripRole — the helper itself is deliberately untouched
+      // (known pre-launch bypass, separate fix). getTripRole returns null for an author (no
+      // collaborator/advisor row), so without this branch authoring mode 403s its own itinerary.
+      const isAuthor = isAssignedExpert ? false : await isTripAuthor(tripId, userId);
+      if (!isAssignedExpert && !isAuthor) {
         return res.status(403).json({ error: "Access denied" });
       }
     }
