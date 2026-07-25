@@ -147,6 +147,14 @@ export default function ExpertReadyMade() {
                   >
                     {s.label}
                   </span>
+                  {/* Preview-as-buyer: the exact redacted page a buyer sees (server flags preview). */}
+                  <span
+                    onClick={(e) => { e.stopPropagation(); setLocation(`/ready-made/${l.id}`); }}
+                    data-testid={`preview-ready-made-${l.id}`}
+                    style={{ flexShrink: 0, padding: "3px 9px", borderRadius: 99, border: `1px solid ${G[200]}`, color: G[500], fontSize: 10.5, fontWeight: 700, cursor: "pointer" }}
+                  >
+                    Preview
+                  </span>
                 </button>
               );
             })}

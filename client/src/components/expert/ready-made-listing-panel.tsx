@@ -43,6 +43,12 @@ export interface ReadyMadeListing {
   heroImageMeta: { photographer?: string; profileUrl?: string } | null;
   status: "draft" | "submitted" | "approved" | "rejected";
   rejectionReason: string | null;
+  buildReview?: {
+    score: number;
+    issues: Array<{ type: string; severity: string; message: string }>;
+    suggestions: Array<{ type: string; message: string }>;
+    reviewedAt: string;
+  } | null;
 }
 
 interface EarningsPreview {
@@ -186,6 +192,22 @@ export default function ReadyMadeListingPanel({
       toast({ title: "Submitted for review", description: "It goes live in the store once an admin approves it." });
     },
     onError: (e: Error) => toast({ title: "Not ready to submit", description: e.message, variant: "destructive" }),
+  });
+
+  const buildReview = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/expert/ready-made/${listing.id}/build-review`, {
+        method: "POST", headers: { "content-type": "application/json" }, credentials: "include",
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.message ?? "Review failed");
+      return body;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [`/api/expert/workspace-context/${tripId}`] });
+      toast({ title: "Build review complete", description: "Advisory only — you can still submit whenever you're ready." });
+    },
+    onError: (e: Error) => toast({ title: "Review failed", description: e.message, variant: "destructive" }),
   });
 
   const status = STATUS_COPY[listing.status];
@@ -379,6 +401,40 @@ export default function ReadyMadeListingPanel({
           </button>
         </div>
       )}
+
+      {/* AI Build Review — the optimizer's analysis engine applied to this build (advisory only;
+          it NEVER gates submit). Same code as the paid AI optimization, different application. */}
+      <div style={{ borderTop: `1px solid ${G[200]}`, paddingTop: 12, marginBottom: 14 }}>
+        <span style={label}>AI build review</span>
+        <div style={{ fontSize: 11, color: G[500], lineHeight: 1.5, marginBottom: 8 }}>
+          Runs the trip optimizer over your build — overloaded days, travel time, meal gaps, pacing.
+          Advisory only; it never blocks submitting.
+        </div>
+        <button
+          onClick={() => buildReview.mutate()}
+          disabled={buildReview.isPending}
+          data-testid="button-build-review"
+          style={{ width: "100%", padding: "7px", borderRadius: 8, border: `1px solid ${G[200]}`, background: "white", fontSize: 12, fontWeight: 600, color: G[600], cursor: "pointer" }}
+        >
+          {buildReview.isPending ? "Reviewing…" : listing.buildReview ? "Re-run review" : "Review my build"}
+        </button>
+        {listing.buildReview && (
+          <div style={{ marginTop: 8, background: G[50], borderRadius: 9, padding: "9px 11px" }} data-testid="build-review-result">
+            <div style={{ fontSize: 13, fontWeight: 800, color: listing.buildReview.score >= 80 ? "#15803D" : listing.buildReview.score >= 60 ? "#B45309" : "#991B1B" }}>
+              Score: {listing.buildReview.score}/100
+            </div>
+            {listing.buildReview.issues.length === 0 && listing.buildReview.suggestions.length === 0 && (
+              <div style={{ fontSize: 11, color: G[500], marginTop: 4 }}>No issues found.</div>
+            )}
+            {listing.buildReview.issues.map((i, idx) => (
+              <div key={idx} style={{ fontSize: 11, color: i.severity === "high" ? "#991B1B" : "#B45309", marginTop: 4 }}>• {i.message}</div>
+            ))}
+            {listing.buildReview.suggestions.map((sg, idx) => (
+              <div key={idx} style={{ fontSize: 11, color: G[600], marginTop: 4 }}>◦ {sg.message}</div>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* Factory wire B: hand this build to Content Studio as a prefilled social-post draft. */}
       <div style={{ marginBottom: 14 }}>

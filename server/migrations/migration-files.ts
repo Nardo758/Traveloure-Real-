@@ -502,4 +502,7 @@ export const MIGRATION_FILES = [
   // The "Type of Plan" line of the store's quality structure; required by the submit gate, vocab
   // validated in code (shared/ready-made-plan-types.ts).
   "134_ready_made_plan_type.sql",
+  // 135: clone_trip_id FK → ON DELETE SET NULL (constraint swap, no data/CHECK — no publish trap).
+  // Without it, revoking a refunded clone OR a buyer deleting their own cloned trip 23503'd.
+  "135_ready_made_clone_fk_set_null.sql",
 ] as const;

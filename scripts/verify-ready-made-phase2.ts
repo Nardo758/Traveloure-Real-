@@ -14,8 +14,9 @@
  * it created (listings, trips, users) in a finally block.
  */
 import { db } from "../server/db";
-import { users, trips, readyMadeTrips, itineraryItems } from "@shared/schema";
-import { eq, sql } from "drizzle-orm";
+import { users, trips, readyMadeTrips, readyMadePurchases, itineraryItems, expertEarnings } from "@shared/schema";
+import { and, eq, sql } from "drizzle-orm";
+import { fulfillReadyMadePurchase, refundReadyMadePurchaseLedger } from "../server/services/ready-made-purchase.service";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:5000";
 const PASSWORD = "VerifyPhase2!2026";
@@ -361,6 +362,193 @@ async function main() {
       !(feedRejected.json?.listings ?? []).some((l: any) => l.id === listingId));
 
     await db.delete(users).where(eq(users.email, adminEmail));
+
+    console.log("\n── 5d: purchase gates + clone fulfillment (commerce lane) ──");
+    // Restore an APPROVED, priced listing (the shelf/buy gate state).
+    await db.update(readyMadeTrips)
+      .set({ status: "approved", priceCents: 9900 } as any)
+      .where(eq(readyMadeTrips.id, listingId));
+
+    // Pre-Stripe gates over HTTP (the Stripe call itself needs a real key — deploy-only).
+    const buyOwn = await author.req("POST", `/api/ready-made/${listingId}/purchase`);
+    check("author cannot buy their own listing", buyOwn.status === 400, `got ${buyOwn.status}`);
+    const buyMissing = await stranger.req("POST", `/api/ready-made/00000000-0000-0000-0000-000000000000/purchase`);
+    check("unknown listing → 404", buyMissing.status === 404, `got ${buyMissing.status}`);
+    await db.update(readyMadeTrips).set({ status: "submitted" } as any).where(eq(readyMadeTrips.id, listingId));
+    const buyUnapproved = await stranger.req("POST", `/api/ready-made/${listingId}/purchase`);
+    check("unapproved listing not purchasable (buy gate = shelf gate)", buyUnapproved.status === 400, `got ${buyUnapproved.status}`);
+    await db.update(readyMadeTrips).set({ status: "approved" } as any).where(eq(readyMadeTrips.id, listingId));
+
+    // Fulfillment, Stripe-free: insert the purchase row a VERIFIED payment would create
+    // (confirm's insert), then run the real fulfillment service.
+    const strangerId = (await db.select({ id: users.id }).from(users).where(eq(users.email, strangerEmail)))[0].id;
+    const [purchaseRow] = await db.insert(readyMadePurchases).values({
+      buyerId: strangerId, readyMadeTripId: listingId, pricePaidCents: 9900,
+      currency: "USD", stripePaymentIntentId: `pi_gate_${stamp}`, status: "paid",
+    } as any).returning();
+
+    const fulfil = await fulfillReadyMadePurchase(purchaseRow.id);
+    check("fulfil: purchase paid → cloned", fulfil.purchase.status === "cloned" && !fulfil.alreadyFulfilled);
+    check("clone trip created and linked", !!fulfil.cloneTripId);
+
+    const [cloneTrip] = await db.select().from(trips).where(eq(trips.id, fulfil.cloneTripId!));
+    check("BUYER owns the clone (their traveler surfaces see it)", cloneTrip?.userId === strangerId);
+    check("clone is a normal trip, never authoring-mode", cloneTrip?.authorId === null);
+    const cloneItems = await db.select({ dayNumber: itineraryItems.dayNumber, title: itineraryItems.title })
+      .from(itineraryItems).where(eq(itineraryItems.tripId, fulfil.cloneTripId!));
+    check("all 3 itinerary items copied into the clone", cloneItems.length === 3,
+      JSON.stringify(cloneItems.map((i) => i.dayNumber)));
+
+    // Author credited on the escrow spine: born held, D7 7-day window, band-resolved share.
+    const [earning] = await db.select().from(expertEarnings)
+      .where(and(eq(expertEarnings.referenceId, purchaseRow.id), eq(expertEarnings.type, "ready_made_sale")));
+    check("author earning recorded (type ready_made_sale)", !!earning);
+    check("earning born HELD on the escrow spine", earning?.status === "held", earning?.status);
+    const expectedShare = (9900 / 100) * (1 - 0.25); // band default_rate restored to 0.25 in §5
+    check("share is band-resolved (75% of $99 = $74.25)", Number(earning?.amount) === expectedShare,
+      `${earning?.amount}`);
+    const daysOut = earning?.availableAt
+      ? Math.round((new Date(earning.availableAt).getTime() - Date.now()) / 86400000) : -1;
+    check("availableAt ≈ +7 days (D7 ready_made_sale window)", daysOut >= 6 && daysOut <= 8, `${daysOut}d`);
+
+    // §15 both directions: re-fulfil is a no-op — same clone, no second trip, no second earning.
+    const refulfil = await fulfillReadyMadePurchase(purchaseRow.id);
+    check("re-fulfil idempotent (same clone, alreadyFulfilled)",
+      refulfil.alreadyFulfilled && refulfil.cloneTripId === fulfil.cloneTripId);
+    const earnCount = await db.select({ id: expertEarnings.id }).from(expertEarnings)
+      .where(eq(expertEarnings.referenceId, purchaseRow.id));
+    check("exactly ONE earning after duplicate fulfil", earnCount.length === 1, `${earnCount.length}`);
+
+    // Owned listing blocks a second purchase attempt up front.
+    const buyAgain = await stranger.req("POST", `/api/ready-made/${listingId}/purchase`);
+    check("buyer who owns the trip gets 409 on re-purchase", buyAgain.status === 409, `got ${buyAgain.status}`);
+
+    console.log("\n── 5e: D7 refund — ledger half (escrow-window enforced) ──");
+    // Wrong buyer → 404 (no purchase-id oracle).
+    const authorId2 = (await db.select({ id: users.id }).from(users).where(eq(users.email, authorEmail)))[0].id;
+    const wrongBuyer = await refundReadyMadePurchaseLedger(purchaseRow.id, authorId2);
+    check("refund by a non-buyer → 404", !wrongBuyer.ok && wrongBuyer.status === 404);
+
+    // Window closed: backdate the purchase past the 7-day window → 409, nothing reversed.
+    await db.update(readyMadePurchases)
+      .set({ purchasedAt: new Date(Date.now() - 9 * 86400000) } as any)
+      .where(eq(readyMadePurchases.id, purchaseRow.id));
+    const closed = await refundReadyMadePurchaseLedger(purchaseRow.id, strangerId);
+    check("refund after the D7 window → 409 refund_window_closed",
+      !closed.ok && closed.status === 409 && closed.message.includes("refund_window_closed"));
+    const [stillCloned] = await db.select().from(readyMadePurchases).where(eq(readyMadePurchases.id, purchaseRow.id));
+    check("window-closed refund left the purchase untouched", stillCloned.status === "cloned");
+
+    // Inside the window: full refund effects.
+    await db.update(readyMadePurchases)
+      .set({ purchasedAt: new Date() } as any)
+      .where(eq(readyMadePurchases.id, purchaseRow.id));
+    const refunded = await refundReadyMadePurchaseLedger(purchaseRow.id, strangerId);
+    check("refund inside the window succeeds", refunded.ok && !("alreadyRefunded" in refunded && refunded.alreadyRefunded));
+    const [afterRefund] = await db.select().from(readyMadePurchases).where(eq(readyMadePurchases.id, purchaseRow.id));
+    check("purchase → 'refunded'", afterRefund.status === "refunded");
+    const [reversedEarning] = await db.select().from(expertEarnings)
+      .where(eq(expertEarnings.referenceId, purchaseRow.id));
+    check("author's escrowed earning REVERSED (never paid out inside the window)",
+      reversedEarning?.status === "reversed", reversedEarning?.status);
+    const cloneGone = await db.select({ id: trips.id }).from(trips).where(eq(trips.id, fulfil.cloneTripId!));
+    check("clone trip revoked — a refunded buyer keeps nothing", cloneGone.length === 0);
+
+    const dupRefund = await refundReadyMadePurchaseLedger(purchaseRow.id, strangerId);
+    check("duplicate refund idempotent (alreadyRefunded, no error)",
+      dupRefund.ok && dupRefund.alreadyRefunded === true);
+    const earnAfterDup = await db.select({ id: expertEarnings.id, status: expertEarnings.status })
+      .from(expertEarnings).where(eq(expertEarnings.referenceId, purchaseRow.id));
+    check("still exactly one reversed earning after duplicate refund",
+      earnAfterDup.length === 1 && earnAfterDup[0].status === "reversed");
+
+    // Cleanup the commerce fixtures (clone already revoked by the refund).
+    await db.delete(expertEarnings).where(eq(expertEarnings.referenceId, purchaseRow.id));
+    await db.delete(readyMadePurchases).where(eq(readyMadePurchases.id, purchaseRow.id));
+    // Back to rejected for the downstream sections' expectations.
+    await db.update(readyMadeTrips).set({ status: "rejected", rejectionReason: "gate reset" } as any)
+      .where(eq(readyMadeTrips.id, listingId));
+
+    console.log("\n── 5f: public detail + author preview (Phase 4 redacted DTO) ──");
+    // Listing is currently 'rejected' (5e reset). Anonymous → 404 (no draft oracle).
+    const anonDetail = makeActor();
+    const anonRejected = await anonDetail.req("GET", `/api/ready-made/${listingId}`);
+    check("non-approved listing is 404 to the public (no draft oracle)", anonRejected.status === 404);
+    // The AUTHOR gets the same redacted DTO flagged preview.
+    const authorPreview = await author.req("GET", `/api/ready-made/${listingId}`);
+    check("author preview of unapproved listing → 200 + preview:true",
+      authorPreview.status === 200 && authorPreview.json?.preview === true);
+    check("preview DTO is the redacted teaser (no sourceTripId/status leak)",
+      authorPreview.json?.listing && !("sourceTripId" in authorPreview.json.listing) &&
+      !("status" in authorPreview.json.listing));
+    const strangerPreviewDetail = await stranger.req("GET", `/api/ready-made/${listingId}`);
+    check("another expert cannot preview it", strangerPreviewDetail.status === 404, `got ${strangerPreviewDetail.status}`);
+    // Approved → public, preview:false.
+    await db.update(readyMadeTrips).set({ status: "approved" } as any).where(eq(readyMadeTrips.id, listingId));
+    const publicDetail = await anonDetail.req("GET", `/api/ready-made/${listingId}`);
+    check("approved listing public → 200 + preview:false",
+      publicDetail.status === 200 && publicDetail.json?.preview === false &&
+      publicDetail.json?.listing?.section === "trips_by_locals");
+    await db.update(readyMadeTrips).set({ status: "rejected" } as any).where(eq(readyMadeTrips.id, listingId));
+
+    console.log("\n── 5g: AI build review (optimizer engine, advisory) + buyer purchases list ──");
+    // Build review reuses the optimizer's analyzeItinerary on the AUTHORING trip (decision-maker:
+    // "same code as the AI optimization but applied differently"). Advisory: never gates submit.
+    const review = await author.req("POST", `/api/expert/ready-made/${listingId}/build-review`);
+    check("author can run the build review", review.status === 200, `${review.status} ${review.text.slice(0, 160)}`);
+    check("review returns a numeric score + issue/suggestion arrays",
+      typeof review.json?.buildReview?.score === "number" &&
+      Array.isArray(review.json?.buildReview?.issues) && Array.isArray(review.json?.buildReview?.suggestions),
+      JSON.stringify(review.json?.buildReview ?? {}).slice(0, 160));
+    check("engine provenance is the optimizer's analyzer",
+      review.json?.buildReview?.engine === "itinerary-intelligence", review.json?.buildReview?.engine);
+    const [reviewedRow] = await db.select({ buildReview: readyMadeTrips.buildReview })
+      .from(readyMadeTrips).where(eq(readyMadeTrips.id, listingId));
+    check("verdict PERSISTED to the listing (admin queue sees the same score)",
+      (reviewedRow?.buildReview as any)?.score === review.json?.buildReview?.score &&
+      !!(reviewedRow?.buildReview as any)?.reviewedAt);
+    const strangerReview = await stranger.req("POST", `/api/expert/ready-made/${listingId}/build-review`);
+    check("another expert cannot run a review on this listing", strangerReview.status === 404, `got ${strangerReview.status}`);
+    const anonReview = await makeActor().req("POST", `/api/expert/ready-made/${listingId}/build-review`);
+    check("unauthenticated build review is 401", anonReview.status === 401, `got ${anonReview.status}`);
+
+    // Buyer purchases list: session-scoped, refundEligible computed SERVER-side on the D7 clock.
+    const strangerId5g = (await db.select({ id: users.id }).from(users).where(eq(users.email, strangerEmail)))[0].id;
+    const [freshPurchase] = await db.insert(readyMadePurchases).values({
+      buyerId: strangerId5g, readyMadeTripId: listingId, pricePaidCents: 9900,
+      currency: "USD", stripePaymentIntentId: `pi_gate5g_${stamp}`, status: "cloned",
+      purchasedAt: new Date(),
+    } as any).returning();
+    try {
+      const minePurchases = await stranger.req("GET", "/api/ready-made/purchases/mine");
+      const mineRow = (minePurchases.json?.purchases ?? []).find((p: any) => p.id === freshPurchase.id);
+      check("buyer sees their purchase with the listing teaser joined",
+        !!mineRow && mineRow.title === "Three days in Higashiyama" && mineRow.pricePaidCents === 9900,
+        JSON.stringify(mineRow ?? {}).slice(0, 160));
+      check("fresh purchase is refund-eligible (inside the D7 window)",
+        mineRow?.refundEligible === true, `${mineRow?.refundEligible}`);
+      const notMine = await author.req("GET", "/api/ready-made/purchases/mine");
+      check("purchases list is buyer-scoped (author does not see it)",
+        !(notMine.json?.purchases ?? []).some((p: any) => p.id === freshPurchase.id));
+
+      await db.update(readyMadePurchases)
+        .set({ purchasedAt: new Date(Date.now() - 9 * 86400000) } as any)
+        .where(eq(readyMadePurchases.id, freshPurchase.id));
+      const stale = await stranger.req("GET", "/api/ready-made/purchases/mine");
+      const staleRow = (stale.json?.purchases ?? []).find((p: any) => p.id === freshPurchase.id);
+      check("past the D7 window → refundEligible false (server clock, same as the refund gate)",
+        staleRow?.refundEligible === false, `${staleRow?.refundEligible}`);
+
+      await db.update(readyMadePurchases)
+        .set({ purchasedAt: new Date(), status: "refunded" } as any)
+        .where(eq(readyMadePurchases.id, freshPurchase.id));
+      const refundedList = await stranger.req("GET", "/api/ready-made/purchases/mine");
+      const refundedRow = (refundedList.json?.purchases ?? []).find((p: any) => p.id === freshPurchase.id);
+      check("a refunded purchase is never refund-eligible again",
+        refundedRow?.refundEligible === false, `${refundedRow?.refundEligible}`);
+    } finally {
+      await db.delete(readyMadePurchases).where(eq(readyMadePurchases.id, freshPurchase.id));
+    }
 
     console.log("\n── 6: hero-search key gate (§13 honest unavailability) ──");
     const search = await author.req("GET", "/api/expert/ready-made/hero-search?q=kyoto");
