@@ -1,0 +1,15 @@
+restart the Replit server — migrations 133 and 134 apply at startup (runMigrations()), so querying before a restart will look like the columns are missing, same as before.
+
+What's on the branch since the last sync (8 commits, ~27 ahead of main)
+6331fa71 + b41dc525 — the Store pipeline, seller side. Dual-mode Workstation (Ready-Made Builder inside it), Store Listings console, plan-type quality structure, Unsplash-proven hero, fee-band earnings preview, and the submit gate (no empty days, named refusals).
+9959ca80 + ed8ed0d4 — the expert console consolidation. 13 pages deleted (~4,200 lines), Clients/Verification/Booking Partners merged away, wizard retirement completed, the three dark endpoint families mounted (Content Studio's library saves now), plus the two factory wires.
+c15f9478 + 63b1c1ca — the flow audit + F1–F5. Most importantly F1: paid routed expert requests now create the advisor row and land in Assigned Trips; plus delivery notifications, chat⇄workstation handoffs, notification deep-links, coordination-assign notification.
+c3a1526b — the Store pipeline, admin + shelf side (just landed): the admin approval queue as a "Store Listings" section on the existing approvals page, insideCounts snapshotted from the real build at the approved transition (atomic, 409 on double-approve), and the public GET /api/ready-made shelf feed — approved-only teaser DTO with the Trips-by-Locals vs Advisor section, no sourceTripId exposed.
+Verifying it landed in Replit
+Every lane has a self-cleaning gate script you can run there against the Replit DB (each prints pass/fail per assertion):
+
+Quick manual smoke: log in as an expert → sidebar shows the consolidated menu → Store Listings → "New store listing" → builder opens with the Listing panel → fill plan type/price/hero → Submit; then as admin, Ready Made Trips → Approvals → the Store Listings section shows it with build coverage → Approve; then curl /api/ready-made shows the teaser with the snapshot.
+
+Two migrations land here (133, 134) — both additive-nullable/new-table with CHECKs only at creation, so there's no publish-time drizzle-push remap trap; no prod preflight needed.
+
+What remains in the lane, filed and not blocking this pull: the purchase→clone→escrow commerce flow, the consumer shelf UI + branded page render (deliberately un-surfaced until the buy loop closes, per the §10 lesson), the AI Build Review, and your open call on the existing expert_templates stock.
