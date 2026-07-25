@@ -17,7 +17,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { db } from "../db";
 import { storage } from "../storage";
-import { trips, readyMadeTrips, tripExpertAdvisors, itineraryItems, users } from "@shared/schema";
+import { trips, readyMadeTrips, readyMadePurchases, tripExpertAdvisors, itineraryItems, users } from "@shared/schema";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { READY_MADE_PLAN_TYPE_KEYS, type ReadyMadePlanTypeKey } from "@shared/ready-made-plan-types";
 import { getAuthoredTrip } from "../utils/trip-authorship";
@@ -539,6 +539,158 @@ router.get("/api/ready-made", async (_req, res) => {
   } catch (err: any) {
     console.error("[ready-made] public feed error:", err);
     res.status(500).json({ message: "Failed to load store listings" });
+  }
+});
+
+// ─── Purchase → verify → clone (commerce lane; mirrors the template 2-step at routes.ts:3086) ──
+//
+// §14: the charge amount is the LISTING's priceCents — server-derived, never req.body. §15: the
+// Stripe idempotencyKey is deterministic per (listing, buyer) so a retry reuses the same
+// PaymentIntent, and ready_made_purchases' UNIQUE stripe_payment_intent_id makes /confirm
+// replay-safe (one purchase row per payment, ever). ready_made_purchases has NO pre-payment
+// state by design (migration 133): the row is created only AFTER Stripe verifies `succeeded`,
+// so an abandoned checkout leaves nothing behind.
+
+router.post("/api/ready-made/:id/purchase", isAuthenticated, async (req, res) => {
+  try {
+    const userId = sessionUserId(req);
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+    const [listing] = await db
+      .select()
+      .from(readyMadeTrips)
+      .where(eq(readyMadeTrips.id, req.params.id))
+      .limit(1);
+    if (!listing) return res.status(404).json({ message: "Listing not found" });
+    // The buy gate = the shelf gate (§10): admin approval + active.
+    if (listing.status !== "approved" || !listing.active) {
+      return res.status(400).json({ message: "This trip is not available for purchase" });
+    }
+    if (listing.authorId === userId) {
+      return res.status(400).json({ message: "You cannot purchase your own listing" });
+    }
+    if (listing.priceCents === null || listing.priceCents <= 0) {
+      return res.status(400).json({ message: "This listing has no price set" });
+    }
+
+    // One active purchase per buyer+listing (the migration-133 partial unique, checked up front
+    // so the buyer gets a clear answer instead of a paid second PI failing at confirm).
+    const [existing] = await db
+      .select({ id: readyMadePurchases.id, status: readyMadePurchases.status, cloneTripId: readyMadePurchases.cloneTripId })
+      .from(readyMadePurchases)
+      .where(and(
+        eq(readyMadePurchases.buyerId, userId),
+        eq(readyMadePurchases.readyMadeTripId, listing.id),
+        inArray(readyMadePurchases.status, ["paid", "cloned"]),
+      ))
+      .limit(1);
+    if (existing) {
+      return res.status(409).json({ message: "You already own this trip", purchase: existing });
+    }
+
+    const Stripe = (await import("stripe")).default;
+    const stripeClient = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
+      apiVersion: "2024-12-18.acacia" as any,
+    });
+    const paymentIntent = await stripeClient.paymentIntents.create(
+      {
+        amount: listing.priceCents, // §14: server-derived from the listing, price locked at PI creation
+        currency: "usd",
+        metadata: {
+          type: "ready_made_purchase",
+          listingId: listing.id,
+          buyerId: userId,
+        },
+        description: `Traveloure ready-made trip: ${listing.title}`,
+        automatic_payment_methods: { enabled: true },
+      },
+      // §15: retrying the purchase re-uses the same PI instead of minting a second charge.
+      { idempotencyKey: `rm-buy-${listing.id}-${userId}` },
+    );
+
+    return res.status(202).json({
+      clientSecret: paymentIntent.client_secret,
+      paymentIntentId: paymentIntent.id,
+      listing: {
+        id: listing.id,
+        title: listing.title,
+        planType: listing.planType,
+        market: listing.market,
+        durationDays: listing.durationDays,
+        priceCents: listing.priceCents,
+        pricingMode: listing.pricingMode,
+        heroImageUrl: listing.heroImageUrl,
+      },
+    });
+  } catch (err: any) {
+    console.error("[ready-made] purchase error:", err);
+    res.status(500).json({ message: "Failed to initiate purchase" });
+  }
+});
+
+router.post("/api/ready-made/:id/purchase/confirm", isAuthenticated, async (req, res) => {
+  try {
+    const userId = sessionUserId(req);
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+    const { paymentIntentId } = req.body ?? {};
+    if (!paymentIntentId) return res.status(400).json({ message: "paymentIntentId is required" });
+
+    // Never trust client-reported payment state — retrieve from Stripe.
+    const Stripe = (await import("stripe")).default;
+    const stripeClient = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
+      apiVersion: "2024-12-18.acacia" as any,
+    });
+    const intent = await stripeClient.paymentIntents.retrieve(paymentIntentId);
+
+    if (intent.status !== "succeeded") {
+      return res.status(402).json({ message: `Payment not completed (status: ${intent.status})`, stripeStatus: intent.status });
+    }
+    // IDOR guard: the intent must be a ready-made purchase of THIS listing by THIS session user.
+    if (
+      intent.metadata?.type !== "ready_made_purchase" ||
+      intent.metadata?.listingId !== req.params.id ||
+      intent.metadata?.buyerId !== userId
+    ) {
+      return res.status(400).json({ message: "PaymentIntent does not match this purchase" });
+    }
+
+    // Record the purchase — the UNIQUE stripe_payment_intent_id is the replay guard (§15):
+    // a duplicate confirm inserts nothing and falls through to fulfil idempotently.
+    const inserted = await db
+      .insert(readyMadePurchases)
+      .values({
+        buyerId: userId,
+        readyMadeTripId: req.params.id,
+        pricePaidCents: intent.amount, // what Stripe actually captured — never re-read the listing
+        currency: (intent.currency ?? "usd").toUpperCase(),
+        stripePaymentIntentId: intent.id,
+        status: "paid",
+      } as any)
+      .onConflictDoNothing({ target: readyMadePurchases.stripePaymentIntentId })
+      .returning({ id: readyMadePurchases.id });
+
+    const purchaseId =
+      inserted[0]?.id ??
+      (await db
+        .select({ id: readyMadePurchases.id })
+        .from(readyMadePurchases)
+        .where(eq(readyMadePurchases.stripePaymentIntentId, intent.id))
+        .limit(1))[0]?.id;
+    if (!purchaseId) return res.status(500).json({ message: "Failed to record purchase" });
+
+    // Fulfil: clone into the buyer's editable trip + credit the author (idempotent, §15 claim).
+    const result = await (await import("../services/ready-made-purchase.service")).fulfillReadyMadePurchase(purchaseId);
+
+    res.json({
+      purchase: result.purchase,
+      cloneTripId: result.cloneTripId,
+      alreadyFulfilled: result.alreadyFulfilled,
+      // The buyer's next stop: their own editable copy.
+      redirect: result.cloneTripId ? `/trip/${result.cloneTripId}?tab=itinerary` : null,
+    });
+  } catch (err: any) {
+    console.error("[ready-made] purchase confirm error:", err);
+    res.status(500).json({ message: "Failed to confirm purchase" });
   }
 });
 
