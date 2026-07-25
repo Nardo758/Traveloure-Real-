@@ -67,6 +67,7 @@ import { TripQueueIndicator } from "@/components/TripQueueIndicator";
 import { SEOHead } from "@/components/seo-head";
 import { AIMatchedExpertsSection } from "@/components/ai-matched-experts-section";
 import { CardGridSkeleton } from "@/components/ui/loading-skeleton";
+import { planTypeLabel } from "@shared/ready-made-plan-types";
 import { trackSearchEvent } from "@/lib/analytics";
 import { CuratedContentSection } from "@/components/curated-content-section";
 
@@ -581,6 +582,14 @@ export default function DiscoverPage() {
   });
 
   // Expert Templates Query
+  // Phase-4 shelf: approved cloneable store listings (server-gated teaser feed).
+  const { data: readyMadeShelfData } = useQuery<{ listings: Array<{
+    id: string; title: string; planType: string | null; market: string; durationDays: number;
+    pricingMode: string; priceCents: number | null; heroImageUrl: string | null;
+    authorName: string; section: "trips_by_locals" | "advisor";
+  }> }>({ queryKey: ["/api/ready-made"], staleTime: 60_000 });
+  const readyMadeShelf = readyMadeShelfData?.listings;
+
   const { data: expertTemplates, isLoading: templatesLoading } = useQuery<ExpertTemplate[]>({
     queryKey: ["/api/expert-templates"],
   });
@@ -1312,6 +1321,55 @@ export default function DiscoverPage() {
 
               {/* Trip Packages Tab */}
               <TabsContent value="packages">
+                {/* Cloneable trips shelf (Phase 4): approved store listings from GET /api/ready-made,
+                    sectioned by author type per the ratified store model. Surfaced now that the buy
+                    loop (purchase→clone→refund) is closed end-to-end (§10 B4). Hidden entirely when
+                    the shelf is empty — never an empty aisle. */}
+                {readyMadeShelf && readyMadeShelf.length > 0 && (
+                  <div className="mb-10">
+                    {(["trips_by_locals", "advisor"] as const).map((section) => {
+                      const rows = readyMadeShelf.filter((l) => l.section === section);
+                      if (rows.length === 0) return null;
+                      return (
+                        <div key={section} className="mb-8">
+                          <h2 className="text-xl font-semibold mb-1">
+                            {section === "trips_by_locals" ? "Trips by Locals" : "Trips by Travel Advisors"}
+                          </h2>
+                          <p className="text-sm text-muted-foreground mb-4">
+                            {section === "trips_by_locals"
+                              ? "Complete trips built by vetted local experts — buy one and it becomes your own editable plan"
+                              : "Complete trips built by travel advisors — yours to edit after purchase"}
+                          </p>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {rows.map((l) => (
+                              <Link key={l.id} href={`/ready-made/${l.id}`}>
+                                <Card className="overflow-hidden cursor-pointer hover:shadow-md transition-shadow h-full" data-testid={`rm-shelf-card-${l.id}`}>
+                                  {l.heroImageUrl && (
+                                    <img src={l.heroImageUrl} alt={l.title} className="w-full h-36 object-cover" />
+                                  )}
+                                  <CardContent className="p-4">
+                                    <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                                      {planTypeLabel(l.planType) ?? "Trip plan"}
+                                    </div>
+                                    <div className="font-semibold truncate">{l.title}</div>
+                                    <div className="text-sm text-muted-foreground">
+                                      {l.market} · {l.durationDays} days · by {l.authorName}
+                                    </div>
+                                    <div className="mt-2 font-bold">
+                                      {l.priceCents === null ? "—" : `$${(l.priceCents / 100).toFixed(2)}`}
+                                      {l.pricingMode === "per_traveler" && <span className="text-xs font-normal text-muted-foreground"> /traveler</span>}
+                                    </div>
+                                  </CardContent>
+                                </Card>
+                              </Link>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
                 {/* Ready Made Trips Section (traveler-facing label = "Ready Made Trips"; seller console keeps "templates") */}
                 <div className="mb-10">
                   <div className="flex items-center justify-between mb-6">

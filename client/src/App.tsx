@@ -128,6 +128,7 @@ const ExpertAnalytics = lazy(() => import("@/pages/expert/analytics"));
 const ExpertContentStudio = lazy(() => import("@/pages/expert/content-studio"));
 const ExpertTemplates = lazy(() => import("@/pages/expert/templates"));
 const ExpertReadyMade = lazy(() => import("@/pages/expert/ready-made"));
+const ReadyMadeDetailPage = lazy(() => import("@/pages/ready-made-detail"));
 const ExpertSettings = lazy(() => import("@/pages/expert/settings"));
 const ExpertServiceForm = lazy(() => import("@/pages/expert/service-form"));
 const ProviderServiceForm = lazy(() => import("@/pages/provider/service-form"));
@@ -285,6 +286,11 @@ function Router() {
         </PageErrorBoundary>
       </Route>
       {/* Marketplace Phase B2: public package detail + purchase (content-gated server-side) */}
+      {/* Ready Made Trips store detail (Phase 4): public teaser + purchase→clone; the author of
+          an unapproved listing sees the same page flagged Preview. */}
+      <Route path="/ready-made/:id">
+        {() => <ReadyMadeDetailPage />}
+      </Route>
       <Route path="/expert-templates/:id">
         <ExpertTemplateDetail />
       </Route>
