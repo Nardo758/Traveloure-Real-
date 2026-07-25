@@ -14,8 +14,9 @@
  * it created (listings, trips, users) in a finally block.
  */
 import { db } from "../server/db";
-import { users, trips, readyMadeTrips, itineraryItems } from "@shared/schema";
-import { eq, sql } from "drizzle-orm";
+import { users, trips, readyMadeTrips, readyMadePurchases, itineraryItems, expertEarnings } from "@shared/schema";
+import { and, eq, sql } from "drizzle-orm";
+import { fulfillReadyMadePurchase } from "../server/services/ready-made-purchase.service";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:5000";
 const PASSWORD = "VerifyPhase2!2026";
@@ -361,6 +362,74 @@ async function main() {
       !(feedRejected.json?.listings ?? []).some((l: any) => l.id === listingId));
 
     await db.delete(users).where(eq(users.email, adminEmail));
+
+    console.log("\n── 5d: purchase gates + clone fulfillment (commerce lane) ──");
+    // Restore an APPROVED, priced listing (the shelf/buy gate state).
+    await db.update(readyMadeTrips)
+      .set({ status: "approved", priceCents: 9900 } as any)
+      .where(eq(readyMadeTrips.id, listingId));
+
+    // Pre-Stripe gates over HTTP (the Stripe call itself needs a real key — deploy-only).
+    const buyOwn = await author.req("POST", `/api/ready-made/${listingId}/purchase`);
+    check("author cannot buy their own listing", buyOwn.status === 400, `got ${buyOwn.status}`);
+    const buyMissing = await stranger.req("POST", `/api/ready-made/00000000-0000-0000-0000-000000000000/purchase`);
+    check("unknown listing → 404", buyMissing.status === 404, `got ${buyMissing.status}`);
+    await db.update(readyMadeTrips).set({ status: "submitted" } as any).where(eq(readyMadeTrips.id, listingId));
+    const buyUnapproved = await stranger.req("POST", `/api/ready-made/${listingId}/purchase`);
+    check("unapproved listing not purchasable (buy gate = shelf gate)", buyUnapproved.status === 400, `got ${buyUnapproved.status}`);
+    await db.update(readyMadeTrips).set({ status: "approved" } as any).where(eq(readyMadeTrips.id, listingId));
+
+    // Fulfillment, Stripe-free: insert the purchase row a VERIFIED payment would create
+    // (confirm's insert), then run the real fulfillment service.
+    const strangerId = (await db.select({ id: users.id }).from(users).where(eq(users.email, strangerEmail)))[0].id;
+    const [purchaseRow] = await db.insert(readyMadePurchases).values({
+      buyerId: strangerId, readyMadeTripId: listingId, pricePaidCents: 9900,
+      currency: "USD", stripePaymentIntentId: `pi_gate_${stamp}`, status: "paid",
+    } as any).returning();
+
+    const fulfil = await fulfillReadyMadePurchase(purchaseRow.id);
+    check("fulfil: purchase paid → cloned", fulfil.purchase.status === "cloned" && !fulfil.alreadyFulfilled);
+    check("clone trip created and linked", !!fulfil.cloneTripId);
+
+    const [cloneTrip] = await db.select().from(trips).where(eq(trips.id, fulfil.cloneTripId!));
+    check("BUYER owns the clone (their traveler surfaces see it)", cloneTrip?.userId === strangerId);
+    check("clone is a normal trip, never authoring-mode", cloneTrip?.authorId === null);
+    const cloneItems = await db.select({ dayNumber: itineraryItems.dayNumber, title: itineraryItems.title })
+      .from(itineraryItems).where(eq(itineraryItems.tripId, fulfil.cloneTripId!));
+    check("all 3 itinerary items copied into the clone", cloneItems.length === 3,
+      JSON.stringify(cloneItems.map((i) => i.dayNumber)));
+
+    // Author credited on the escrow spine: born held, D7 7-day window, band-resolved share.
+    const [earning] = await db.select().from(expertEarnings)
+      .where(and(eq(expertEarnings.referenceId, purchaseRow.id), eq(expertEarnings.type, "ready_made_sale")));
+    check("author earning recorded (type ready_made_sale)", !!earning);
+    check("earning born HELD on the escrow spine", earning?.status === "held", earning?.status);
+    const expectedShare = (9900 / 100) * (1 - 0.25); // band default_rate restored to 0.25 in §5
+    check("share is band-resolved (75% of $99 = $74.25)", Number(earning?.amount) === expectedShare,
+      `${earning?.amount}`);
+    const daysOut = earning?.availableAt
+      ? Math.round((new Date(earning.availableAt).getTime() - Date.now()) / 86400000) : -1;
+    check("availableAt ≈ +7 days (D7 ready_made_sale window)", daysOut >= 6 && daysOut <= 8, `${daysOut}d`);
+
+    // §15 both directions: re-fulfil is a no-op — same clone, no second trip, no second earning.
+    const refulfil = await fulfillReadyMadePurchase(purchaseRow.id);
+    check("re-fulfil idempotent (same clone, alreadyFulfilled)",
+      refulfil.alreadyFulfilled && refulfil.cloneTripId === fulfil.cloneTripId);
+    const earnCount = await db.select({ id: expertEarnings.id }).from(expertEarnings)
+      .where(eq(expertEarnings.referenceId, purchaseRow.id));
+    check("exactly ONE earning after duplicate fulfil", earnCount.length === 1, `${earnCount.length}`);
+
+    // Owned listing blocks a second purchase attempt up front.
+    const buyAgain = await stranger.req("POST", `/api/ready-made/${listingId}/purchase`);
+    check("buyer who owns the trip gets 409 on re-purchase", buyAgain.status === 409, `got ${buyAgain.status}`);
+
+    // Cleanup the commerce fixtures (clone cascade removes its items).
+    await db.delete(expertEarnings).where(eq(expertEarnings.referenceId, purchaseRow.id));
+    await db.delete(readyMadePurchases).where(eq(readyMadePurchases.id, purchaseRow.id));
+    if (fulfil.cloneTripId) await db.delete(trips).where(eq(trips.id, fulfil.cloneTripId));
+    // Back to rejected for the downstream sections' expectations.
+    await db.update(readyMadeTrips).set({ status: "rejected", rejectionReason: "gate reset" } as any)
+      .where(eq(readyMadeTrips.id, listingId));
 
     console.log("\n── 6: hero-search key gate (§13 honest unavailability) ──");
     const search = await author.req("GET", "/api/expert/ready-made/hero-search?q=kyoto");
