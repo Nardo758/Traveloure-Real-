@@ -21,6 +21,7 @@ import { trips, readyMadeTrips, readyMadePurchases, tripExpertAdvisors, itinerar
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { READY_MADE_PLAN_TYPE_KEYS, type ReadyMadePlanTypeKey } from "@shared/ready-made-plan-types";
 import { getAuthoredTrip } from "../utils/trip-authorship";
+import { holdWindowDays } from "../config/earnings-hold.config";
 import { getBand } from "../services/commission";
 import { unsplashService } from "../services/unsplash.service";
 
@@ -370,6 +371,86 @@ router.post("/api/expert/ready-made/:id/submit", isAuthenticated, async (req, re
   } catch (err: any) {
     console.error("[ready-made] submit error:", err);
     res.status(500).json({ message: "Failed to submit listing", error: err.message });
+  }
+});
+
+/**
+ * AI Build Review (decision-maker directive: "use the same code as the AI optimization but
+ * applied differently") — runs the optimizer's OWN analysis engine
+ * (itineraryIntelligenceService.analyzeItinerary: overloaded days, excessive travel, meal gaps,
+ * energy profile, score) over the AUTHORING trip instead of a traveler's plan. ADVISORY ONLY —
+ * it never gates submit (the Knowledge-Bar advisory precedent); the verdict persists to
+ * ready_made_trips.build_review (migration 133) so the ADMIN QUEUE sees the same score the
+ * author saw. This path is the engine's heuristic core, so it runs keyless — nothing fabricated,
+ * nothing blocked (§13).
+ */
+router.post("/api/expert/ready-made/:id/build-review", isAuthenticated, async (req, res) => {
+  try {
+    const userId = sessionUserId(req);
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+    const listing = await loadAuthorListing(req.params.id, userId);
+    if (!listing) return res.status(404).json({ message: "Listing not found" });
+
+    const { itineraryIntelligenceService } = await import("../services/itinerary-intelligence.service");
+    const analysis = await itineraryIntelligenceService.analyzeItinerary(listing.sourceTripId);
+
+    const buildReview = {
+      score: analysis.score,
+      issues: analysis.issues,
+      suggestions: analysis.suggestions,
+      engine: "itinerary-intelligence", // provenance: the optimizer's analyzer, applied to a build
+      reviewedAt: new Date().toISOString(),
+    };
+    await db
+      .update(readyMadeTrips)
+      .set({ buildReview, updatedAt: new Date() } as any)
+      .where(eq(readyMadeTrips.id, listing.id));
+
+    res.json({ buildReview });
+  } catch (err: any) {
+    console.error("[ready-made] build-review error:", err);
+    res.status(500).json({ message: "Failed to run build review" });
+  }
+});
+
+/** The buyer's ready-made purchases (my-bookings surface) — session-scoped, with listing teaser. */
+router.get("/api/ready-made/purchases/mine", isAuthenticated, async (req, res) => {
+  try {
+    const userId = sessionUserId(req);
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+    const rows = await db
+      .select({
+        id: readyMadePurchases.id,
+        status: readyMadePurchases.status,
+        pricePaidCents: readyMadePurchases.pricePaidCents,
+        currency: readyMadePurchases.currency,
+        purchasedAt: readyMadePurchases.purchasedAt,
+        cloneTripId: readyMadePurchases.cloneTripId,
+        listingId: readyMadeTrips.id,
+        title: readyMadeTrips.title,
+        planType: readyMadeTrips.planType,
+        market: readyMadeTrips.market,
+        heroImageUrl: readyMadeTrips.heroImageUrl,
+      })
+      .from(readyMadePurchases)
+      .innerJoin(readyMadeTrips, eq(readyMadeTrips.id, readyMadePurchases.readyMadeTripId))
+      .where(eq(readyMadePurchases.buyerId, userId))
+      .orderBy(desc(readyMadePurchases.purchasedAt));
+
+    const windowMs = holdWindowDays("ready_made_sale") * 24 * 60 * 60 * 1000;
+    res.json({
+      purchases: rows.map((r) => ({
+        ...r,
+        // Server-authoritative refund eligibility — the client renders it, never computes it.
+        refundEligible:
+          (r.status === "paid" || r.status === "cloned") &&
+          !!r.purchasedAt &&
+          Date.now() <= new Date(r.purchasedAt).getTime() + windowMs,
+      })),
+    });
+  } catch (err: any) {
+    console.error("[ready-made] purchases mine error:", err);
+    res.status(500).json({ message: "Failed to load purchases" });
   }
 });
 
