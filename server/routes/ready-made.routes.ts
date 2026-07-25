@@ -17,7 +17,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { db } from "../db";
 import { storage } from "../storage";
-import { trips, readyMadeTrips, tripExpertAdvisors, itineraryItems } from "@shared/schema";
+import { trips, readyMadeTrips, tripExpertAdvisors, itineraryItems, users } from "@shared/schema";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { READY_MADE_PLAN_TYPE_KEYS, type ReadyMadePlanTypeKey } from "@shared/ready-made-plan-types";
 import { getAuthoredTrip } from "../utils/trip-authorship";
@@ -474,6 +474,71 @@ router.get("/api/expert/ready-made/hero-search", isAuthenticated, async (req, re
   } catch (err: any) {
     console.error("[ready-made] hero-search error:", err);
     res.status(500).json({ message: "Hero search failed", error: err.message });
+  }
+});
+
+// ─── Public store feed (task #158 — the shelf's data source) ─────────────────
+//
+// Serves ONLY approved + active listings (the F2/§10 read-gate pattern: approval is enforced at
+// the API, regardless of which client renders it), as a TEASER DTO: card fields + the
+// approval-time insideCounts snapshot + author identity for the shelf's sections — "Trips by
+// Locals" (local_expert authors) vs Advisor content (the ratified store model: sectioning is by
+// author type). Deliberately OMITS sourceTripId — the itinerary is the paid product; a buyer
+// reaches it only through the purchase→clone flow (not yet built).
+//
+// The consumer shelf UI stays un-surfaced until purchase→clone closes the buy loop end-to-end
+// (the §10 B4 lesson: safety/delivery before surfacing) — this endpoint is the server-gated feed
+// waiting for it, provable now.
+//
+// Ordering is honest recency of approval — no sales/rating signals exist for this product yet,
+// so nothing is fabricated to rank by (§13).
+router.get("/api/ready-made", async (_req, res) => {
+  try {
+    const rows = await db
+      .select({
+        id: readyMadeTrips.id,
+        title: readyMadeTrips.title,
+        planType: readyMadeTrips.planType,
+        market: readyMadeTrips.market,
+        durationDays: readyMadeTrips.durationDays,
+        bestSeason: readyMadeTrips.bestSeason,
+        pricingMode: readyMadeTrips.pricingMode,
+        priceCents: readyMadeTrips.priceCents,
+        heroImageUrl: readyMadeTrips.heroImageUrl,
+        heroImageMeta: readyMadeTrips.heroImageMeta,
+        badge: readyMadeTrips.badge,
+        insideCounts: readyMadeTrips.insideCounts,
+        reviewedAt: readyMadeTrips.reviewedAt,
+        authorFirstName: users.firstName,
+        authorRole: users.role,
+      })
+      .from(readyMadeTrips)
+      .innerJoin(users, eq(users.id, readyMadeTrips.authorId))
+      .where(and(eq(readyMadeTrips.status, "approved"), eq(readyMadeTrips.active, true)))
+      .orderBy(desc(readyMadeTrips.reviewedAt));
+
+    res.json({
+      listings: rows.map((r) => ({
+        id: r.id,
+        title: r.title,
+        planType: r.planType,
+        market: r.market,
+        durationDays: r.durationDays,
+        bestSeason: r.bestSeason,
+        pricingMode: r.pricingMode,
+        priceCents: r.priceCents,
+        heroImageUrl: r.heroImageUrl,
+        heroImageMeta: r.heroImageMeta,
+        badge: r.badge,
+        insideCounts: r.insideCounts,
+        authorName: r.authorFirstName ?? "Expert",
+        // The consumer shelf section (ratified store model): by author TYPE.
+        section: r.authorRole === "local_expert" ? "trips_by_locals" : "advisor",
+      })),
+    });
+  } catch (err: any) {
+    console.error("[ready-made] public feed error:", err);
+    res.status(500).json({ message: "Failed to load store listings" });
   }
 });
 

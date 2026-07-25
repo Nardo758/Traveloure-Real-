@@ -287,6 +287,81 @@ async function main() {
     check("plan-type change on an approved listing → back to 'submitted'",
       planFlip.json?.listing?.status === "submitted" && planFlip.json?.reReviewRequired === true);
 
+    console.log("\n── 5c: admin approval + insideCounts snapshot + public shelf feed ──");
+    // Admin actor (registered like the others, promoted in DB — same as an approved application).
+    const adminEmail = `rm2-admin-${stamp}@t.test`;
+    const admin = makeActor();
+    {
+      let reg = await admin.req("POST", "/api/auth/register", {
+        email: adminEmail, password: PASSWORD, firstName: "Verify", lastName: "Admin",
+      });
+      if (reg.status === 429) {
+        const waitSec = Number(reg.json?.retryAfter ?? 60) + 2;
+        console.log(`  ⏳ register rate-limited — waiting ${waitSec}s`);
+        await new Promise((r) => setTimeout(r, waitSec * 1000));
+        reg = await admin.req("POST", "/api/auth/register", {
+          email: adminEmail, password: PASSWORD, firstName: "Verify", lastName: "Admin",
+        });
+      }
+      await db.update(users).set({ role: "admin" } as any).where(eq(users.email, adminEmail));
+      await admin.req("POST", "/api/auth/login", { email: adminEmail, password: PASSWORD });
+    }
+
+    // Ensure the listing is 'submitted' with a priced, plan-typed, 3-day build (state from 5b).
+    await db.update(readyMadeTrips)
+      .set({ status: "submitted", priceCents: 9900 } as any)
+      .where(eq(readyMadeTrips.id, listingId));
+
+    const nonAdminPending = await author.req("GET", "/api/admin/ready-made/pending");
+    check("non-admin cannot read the queue (§2 default-deny)",
+      nonAdminPending.status === 401 || nonAdminPending.status === 403, `got ${nonAdminPending.status}`);
+
+    const pending = await admin.req("GET", "/api/admin/ready-made/pending");
+    const pendingRow = (pending.json?.pending ?? []).find((p: any) => p.id === listingId);
+    check("submitted listing appears in the admin queue", !!pendingRow, JSON.stringify(pending.json).slice(0, 160));
+    check("queue row carries author identity + build coverage",
+      pendingRow?.author_role === "local_expert" && pendingRow?.item_count === 3 && pendingRow?.days_with_items === 3,
+      JSON.stringify({ role: pendingRow?.author_role, items: pendingRow?.item_count, days: pendingRow?.days_with_items }));
+
+    const feedBefore = await author.req("GET", "/api/ready-made");
+    check("shelf feed hides the SUBMITTED listing (approval read-gate)",
+      !(feedBefore.json?.listings ?? []).some((l: any) => l.id === listingId));
+
+    const rejectNoReason = await admin.req("POST", `/api/admin/ready-made/${listingId}/reject`, {});
+    check("reject without a reason refused", rejectNoReason.status === 400, `got ${rejectNoReason.status}`);
+
+    const approved = await admin.req("POST", `/api/admin/ready-made/${listingId}/approve`, {});
+    check("admin approve → 'approved'", approved.status === 200 && approved.json?.listing?.status === "approved",
+      `${approved.status}`);
+    const snap = approved.json?.listing?.insideCounts;
+    check("insideCounts SNAPSHOT taken from the real build (3 days, 3 items)",
+      snap?.days === 3 && snap?.items === 3 && typeof snap?.byType === "object",
+      JSON.stringify(snap));
+    check("reviewer stamped", !!approved.json?.listing?.reviewedBy && !!approved.json?.listing?.reviewedAt);
+
+    const dupApprove = await admin.req("POST", `/api/admin/ready-made/${listingId}/approve`, {});
+    check("double-approve → 409 (atomic conditional, §15)", dupApprove.status === 409, `got ${dupApprove.status}`);
+
+    const feedAfter = await author.req("GET", "/api/ready-made");
+    const shelfRow = (feedAfter.json?.listings ?? []).find((l: any) => l.id === listingId);
+    check("APPROVED listing appears on the public shelf feed", !!shelfRow);
+    check("shelf row is a teaser: no sourceTripId, has plan type + snapshot + author section",
+      shelfRow && !("sourceTripId" in shelfRow) && shelfRow.planType === "road_trip_itinerary" &&
+      shelfRow.insideCounts?.days === 3 && shelfRow.section === "trips_by_locals",
+      JSON.stringify(shelfRow ?? {}).slice(0, 200));
+
+    // Reject path on a fresh submitted state.
+    await db.update(readyMadeTrips).set({ status: "submitted" } as any).where(eq(readyMadeTrips.id, listingId));
+    const rejected = await admin.req("POST", `/api/admin/ready-made/${listingId}/reject`, { reason: "Day 2 needs a lunch stop" });
+    check("reject with reason → 'rejected' + reason persisted",
+      rejected.status === 200 && rejected.json?.listing?.status === "rejected" &&
+      rejected.json?.listing?.rejectionReason === "Day 2 needs a lunch stop");
+    const feedRejected = await author.req("GET", "/api/ready-made");
+    check("REJECTED listing is off the shelf feed",
+      !(feedRejected.json?.listings ?? []).some((l: any) => l.id === listingId));
+
+    await db.delete(users).where(eq(users.email, adminEmail));
+
     console.log("\n── 6: hero-search key gate (§13 honest unavailability) ──");
     const search = await author.req("GET", "/api/expert/ready-made/hero-search?q=kyoto");
     if (process.env.UNSPLASH_ACCESS_KEY) {
