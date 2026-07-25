@@ -380,6 +380,28 @@ export default function ReadyMadeListingPanel({
         </div>
       )}
 
+      {/* Factory wire B: hand this build to Content Studio as a prefilled social-post draft. */}
+      <div style={{ marginBottom: 14 }}>
+        <button
+          onClick={() => {
+            const params = new URLSearchParams({
+              prefill: "1",
+              title: listing.title,
+              destination: listing.market,
+              type: "itinerary",
+            });
+            window.location.assign(`/expert/content-studio?${params.toString()}`);
+          }}
+          data-testid="button-create-social-post"
+          style={{
+            width: "100%", padding: "7px", borderRadius: 8, border: `1px solid ${G[200]}`,
+            background: "white", fontSize: 12, fontWeight: 600, color: G[600], cursor: "pointer",
+          }}
+        >
+          Create social post from this trip
+        </button>
+      </div>
+
       {/* Author's take — resolved from the fee band, never computed here (§8). */}
       <div style={{ borderTop: `1px solid ${G[200]}`, paddingTop: 12 }}>
         <span style={label}>Your share</span>

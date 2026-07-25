@@ -273,7 +273,7 @@ export default function ExpertDashboard() {
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-lg">My Clients ({analytics?.summary?.pendingBookings || 0})</CardTitle>
-                  <Link href="/expert/clients">
+                  <Link href="/expert/assigned-trips?view=clients">
                     <Button variant="ghost" size="sm" className="text-primary" data-testid="link-view-all-clients">
                       View All <ArrowRight className="w-4 h-4 ml-1" />
                     </Button>
