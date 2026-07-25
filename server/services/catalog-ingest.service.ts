@@ -80,14 +80,65 @@ export const CATALOG_NETWORKS: NetworkDef[] = [
     category: "activity",
     fetch: async (city) => (await import("./travelpayouts/klook.service")).searchKlook({ destination: city, limit: 40 }),
   },
+  // U3 fan-out — the rest of the CITY-BASED catalog networks (activities/tours/hotels/services).
+  {
+    key: "viator-feed",
+    partnerName: "Viator",
+    websiteUrl: "https://www.viator.com",
+    category: "activity",
+    fetch: async (city) => (await import("./travelpayouts/viator-feed.service")).searchViatorFeedProducts({ destination: city, limit: 40 }),
+  },
+  {
+    key: "wegotrip",
+    partnerName: "WeGoTrip",
+    websiteUrl: "https://wegotrip.com",
+    category: "activity",
+    fetch: async (city) => (await import("./travelpayouts/wegotrip.service")).searchWeGoTripProducts({ destination: city, limit: 40 }),
+  },
+  {
+    key: "agoda",
+    partnerName: "Agoda",
+    websiteUrl: "https://www.agoda.com",
+    category: "accommodation",
+    fetch: async (city) => (await import("./travelpayouts/agoda.service")).searchAgoda({ destination: city, limit: 40 }),
+  },
+  {
+    key: "booking",
+    partnerName: "Booking.com",
+    websiteUrl: "https://www.booking.com",
+    category: "accommodation",
+    fetch: async (city) => (await import("./travelpayouts/booking.service")).searchBooking({ destination: city, limit: 40 }),
+  },
+  {
+    key: "hotellook",
+    partnerName: "Hotellook",
+    websiteUrl: "https://www.hotellook.com",
+    category: "accommodation",
+    fetch: async (city) => (await import("./travelpayouts/hotellook.service")).searchHotellook({ destination: city, limit: 40 }),
+  },
+  {
+    key: "stasher",
+    partnerName: "Stasher",
+    websiteUrl: "https://stasher.com",
+    category: "service",
+    fetch: async (city) => (await import("./travelpayouts/stasher.service")).searchStasher({ destination: city, limit: 40 }),
+  },
+  // NOT ingested (by design): route-computed networks — flights (aviasales/kiwi), transfers
+  // (gettransfer/kiwitaxi/welcomepickups/omio/busbud), cars (discovercars/rentalcars). These are
+  // per-query/per-route, not a browseable city catalog, so they stay the parallel live-passthrough.
+  // Fever events flow through their own `destination_events` pipeline, not affiliate_products.
+  // Viator-direct (viator.service.ts) is the U5 dedup target of this "viator-feed" path — not added.
 ];
 
 // ─── Partner seed (U1) ──────────────────────────────────────────────────────────────────────────
 
 /** Ensure the network's affiliate_partners row exists (born 'submitted', D1a). Returns its id. */
 export async function ensureCatalogPartner(net: NetworkDef): Promise<string> {
+  // U5 dedup: reuse ANY existing partner with this name regardless of source — so ingesting "Klook"
+  // (or "Viator") merges into the pre-existing manual partner instead of creating a duplicate. The
+  // ingested products then inherit that partner's (already-vetted) approval status.
   const [existing] = await db.select().from(affiliatePartners)
-    .where(and(eq(affiliatePartners.name, net.partnerName), eq(affiliatePartners.source, "travelpayouts")))
+    .where(eq(affiliatePartners.name, net.partnerName))
     .limit(1);
   if (existing) return existing.id;
   const [created] = await db.insert(affiliatePartners).values({

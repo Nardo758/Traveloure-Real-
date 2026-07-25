@@ -58,12 +58,29 @@ surfaced by the central resolver. The central feed has ~9 hand-entered products.
   **Live fetch is deploy-only** (the agent proxy 403s the external APIs); the DB upsert half is provable in
   the workspace. Once ingested + auto-indexed, the rows ride the P0–P6 spine automatically (approved gate,
   origin grouping, CTA engine).
-- **U3 — Fan out** the remaining Travelpayouts networks + Fever + Viator-direct (same adapter; add entries to
-  `CATALOG_NETWORKS`). Key-gated + spend-capped, Kyoto-first.
-- **U4 — Retire the parallel path per-network** only after its DB rows are proven live: switch the client
-  surface from `/api/catalog/<net>` to the central feed, then deprecate the live endpoint (no outage).
-- **U5 — Dedup + reconciliation.** The Klook central partner vs Travelpayouts Klook, Viator-direct vs
-  viator-feed — one canonical path each; the other marked inactive.
+- **U3 — Fan out. ✅ LANDED (9 city-based catalog networks).** `CATALOG_NETWORKS` now covers Tiqets,
+  GetYourGuide, Klook, **Viator (viator-feed), WeGoTrip, Agoda, Booking.com, Hotellook, Stasher** — the full
+  set of networks that expose a **browseable city catalog** (activities / tours / hotels / services).
+  **Deliberately NOT ingested** (documented in-code): the **route-computed** networks — flights
+  (aviasales, kiwi), transfers (gettransfer, kiwitaxi, welcomepickups, omio, busbud), cars (discovercars,
+  rentalcars) — are per-query/per-route, not a catalog of items for a city, so they correctly stay the
+  parallel live-passthrough. **Fever** events keep their own `destination_events` pipeline (a calendar
+  surface, not affiliate inventory). **Viator-direct** is folded into the `viator-feed` path, not a
+  separate ingest (that's the U5 dedup).
+- **U5 — Dedup. ✅ partner-level LANDED; product-level is deploy-gated.** `ensureCatalogPartner` now reuses
+  **any existing partner by name** (across sources), so ingesting "Klook"/"Viator" **merges into the
+  pre-existing manual partner** instead of creating a duplicate — the two-Klook problem is closed at the
+  source, and ingested products inherit the vetted partner's approval. Product-level de-dup (same tour from
+  two feeds) is naturally handled by the `(partner_id, external_id)` key within a partner; cross-feed
+  duplicates can only be reconciled once live data exists (deploy-gated).
+- **U4 — Retire the parallel `/api/catalog/<net>` paths. ⛔ DEPLOY-GATED — intentionally NOT done in code.**
+  Retiring a live endpoint now would **blank the surfaces that use it**, because the central feed for these
+  networks is empty until (a) deploy-ingestion runs (deploy-only, key-gated), (b) the partner is approved,
+  and (c) auto-index runs. The correct, non-outage sequence is: **first deploy → ingest → approve → auto-index
+  → verify the central feed serves the network → THEN** switch the client surface off `/api/catalog/<net>`
+  and deprecate the endpoint, one network at a time. Doing it before that verification is the exact
+  live-surface outage the design warns against — so U4 is a **post-first-ingestion operational step**, not a
+  code change to make blind.
 
 ## Constraints (from the governance scan — do not violate)
 
