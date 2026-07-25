@@ -38,6 +38,30 @@ Every phase below covers BOTH roles; the expert-side pass changes the per-phase 
   needs one new GROUP BY type aggregate. Two blockers filed before any tip/coordination slice ships:
   the un-charged tip endpoint (FOLLOWUPS L1 🔴) and the coordinator-pay gap (L2 🔴, decision-maker call).
 
+## Backoffice IA concept — Workspace-as-hub (decision-maker-directed, Jul 25, 2026)
+
+The unified console follows a **make / distribute split**, per the decision-maker's workflow framing:
+
+- **Workspace = the make surface**, for BOTH roles, extending the existing server-resolved dual-mode shell
+  (`workspace.tsx` — assignment vs authoring; a provider mode is a third case of the same mechanism):
+  - Expert mode: trip/listing builder + **DMO Library folds in** (its consumers already live here — the
+    `dmo-picker-modal` is wired into the trip builder; the §12 model defines DMO content as workspace
+    *ingredients*) + **Content Studio's creation half folds in** (nugget composer, share-asset creation —
+    the Studio's content library has no backend, so the fold moves UI, not data). Standalone DMO research
+    stays reachable via the existing no-trip launchpad.
+  - Provider mode: **wraps the canonical ServiceForm (§5 one-builder rule — wrap, never fork)** +
+    availability/slot editor + share-asset creation.
+- **Share & Promote = the distribute surface** (both roles): event-driven posting prompts, captions,
+  short links, and the Instagram publish rail (pending the Tier-2 decision). Distribution stays OUT of the
+  Workspace because its triggers fire from operational state (new 5★ review, empty slots), not from an
+  authoring session.
+- Consequence: **both role navs share one structure** — Dashboard · Orders · Calendar · Workspace ·
+  Messages / My Offerings · Share & Promote · Reviews · Earnings · Analytics (+ AI Assistant expert-only) —
+  implemented by extending the expert sidebar's existing `buildMenuGroups(role)` and deleting the duplicate
+  provider sidebar component.
+
+Visual reference: the sidebar-comparison artifact (Workspace-as-hub iteration) + the Gap Atlas.
+
 ---
 
 ## Phase 1 — Public Backoffice Pages (Primitives #1–2 foundation)
