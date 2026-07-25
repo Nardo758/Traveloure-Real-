@@ -356,10 +356,12 @@ export default function MyBookingsPage() {
       return body;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/ready-made/purchases/mine"] });
       toast({ title: "Refund issued", description: "Your payment is being returned; the trip copy has been removed." });
     },
     onError: (e: Error) => toast({ title: "Refund failed", description: e.message, variant: "destructive" }),
+    // Refetch on EITHER outcome: a 502 means the ledger already flipped to refunded (the server
+    // retries only the Stripe leg), so the list must stop offering the refund button.
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ["/api/ready-made/purchases/mine"] }),
   });
 
   if (authLoading) {
