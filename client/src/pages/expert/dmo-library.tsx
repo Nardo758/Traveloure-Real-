@@ -247,16 +247,35 @@ export default function DmoLibrary() {
                       </Badge>
                     ))}
                   </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="w-full mt-auto"
-                    onClick={() => openItem(item)}
-                    data-testid={`button-review-${item.id}`}
-                  >
-                    Review &amp; refine
-                    <ArrowRight className="w-4 h-4 ml-2" />
-                  </Button>
+                  <div className="mt-auto space-y-1.5">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => openItem(item)}
+                      data-testid={`button-review-${item.id}`}
+                    >
+                      Review &amp; refine
+                      <ArrowRight className="w-4 h-4 ml-2" />
+                    </Button>
+                    {/* Factory wire B: library item → Content Studio prefilled draft (the DMO
+                        "Create social post" follow-up — research becomes social content). */}
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="w-full text-muted-foreground"
+                      onClick={() =>
+                        navigate(
+                          `/expert/content-studio?prefill=1&title=${encodeURIComponent(item.name ?? "")}` +
+                            `&destination=Kyoto&type=travel-guide` +
+                            `&description=${encodeURIComponent((item.description ?? "").slice(0, 500))}`,
+                        )
+                      }
+                      data-testid={`button-social-post-${item.id}`}
+                    >
+                      Create social post
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             ))}

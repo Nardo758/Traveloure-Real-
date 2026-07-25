@@ -37,7 +37,6 @@ const NotFound = lazy(() => import("@/pages/not-found"));
 const SignupPage = lazy(() => import("@/pages/Signup").then((m) => ({ default: m.SignupPage })));
 const BookingConfirmationPage = lazy(() => import("@/pages/BookingConfirmationPage"));
 const ExpertDashboard = lazy(() => import("@/pages/expert/dashboard"));
-const ExpertClients = lazy(() => import("@/pages/expert/clients"));
 const ExpertEarnings = lazy(() => import("@/pages/expert/earnings"));
 const ExpertProfile = lazy(() => import("@/pages/expert/profile"));
 const ExpertAIAssistant = lazy(() => import("@/pages/expert/ai-assistant"));
@@ -115,8 +114,6 @@ const ServicesProviderPage = lazy(() => import("@/pages/services-provider"));
 const CreditsBillingPage = lazy(() => import("@/pages/credits-billing"));
 const ExpertStatusPage = lazy(() => import("@/pages/expert-status"));
 const ProviderStatusPage = lazy(() => import("@/pages/provider-status"));
-const ExpertContractCategories = lazy(() => import("@/pages/expert/contract-categories"));
-const ExpertBookingPartners = lazy(() => import("@/pages/expert/booking-partners"));
 const AdminFeeBands = lazy(() => import("@/pages/admin/fee-bands"));
 const AdminOfferingTypes = lazy(() => import("@/pages/admin/offering-types"));
 const AdminCategoryFees = lazy(() => import("@/pages/admin/category-fees"));
@@ -131,12 +128,9 @@ const ExpertAnalytics = lazy(() => import("@/pages/expert/analytics"));
 const ExpertContentStudio = lazy(() => import("@/pages/expert/content-studio"));
 const ExpertTemplates = lazy(() => import("@/pages/expert/templates"));
 const ExpertReadyMade = lazy(() => import("@/pages/expert/ready-made"));
-const ExpertClientDetail = lazy(() => import("@/pages/expert/client-detail"));
 const ExpertSettings = lazy(() => import("@/pages/expert/settings"));
-const ExpertVerification = lazy(() => import("@/pages/expert/verification"));
 const ExpertServiceForm = lazy(() => import("@/pages/expert/service-form"));
 const ProviderServiceForm = lazy(() => import("@/pages/provider/service-form"));
-const ServiceWizard = lazy(() => import("@/pages/expert/service-wizard"));
 const ExpertWorkspace = lazy(() => import("@/pages/expert/workspace"));
 const DmoLibrary = lazy(() => import("@/pages/expert/dmo-library"));
 const CartPage = lazy(() => import("@/pages/cart"));
@@ -525,7 +519,7 @@ function Router() {
         <Redirect to="/chat" />
       </Route>
       <Route path="/expert/clients">
-        {() => <ProtectedRoute component={ExpertClients} requiredRole="expert" />}
+        <Redirect to="/expert/assigned-trips" />
       </Route>
       <Route path="/expert/assigned-trips">
         {() => <ProtectedRoute component={ExpertAssignedTrips} requiredRole="expert" />}
@@ -536,8 +530,10 @@ function Router() {
       <Route path="/expert/services">
         {() => <ProtectedRoute component={ExpertServices} requiredRole="expert" />}
       </Route>
+      {/* Wizard retired (§5 Phase 3): ServiceForm is the single offering-creation surface;
+          it absorbed the wizard's from-template gallery + requirements field in Phase 2. */}
       <Route path="/expert/services/new">
-        {() => <ProtectedRoute component={ServiceWizard} requiredRole="expert" />}
+        {() => <ProtectedRoute component={ExpertServiceForm} requiredRole="expert" />}
       </Route>
       <Route path="/expert/services/:id/edit">
         {() => <ProtectedRoute component={ExpertServiceForm} requiredRole="expert" />}
@@ -578,22 +574,19 @@ function Router() {
         {() => <ProtectedRoute component={ExpertContentStudio} requiredRole="expert" />}
       </Route>
       <Route path="/expert/clients/:id">
-        {() => <ProtectedRoute component={ExpertClientDetail} requiredRole="expert" />}
+        {() => <Redirect to="/expert/assigned-trips" />}
       </Route>
       <Route path="/expert/settings">
         {() => <ProtectedRoute component={ExpertSettings} requiredRole="expert" />}
       </Route>
       <Route path="/expert/verification">
-        {() => <ProtectedRoute component={ExpertVerification} requiredRole="expert" />}
+        <Redirect to="/expert/settings" />
       </Route>
       <Route path="/expert/profile">
         {() => <ProtectedRoute component={ExpertProfile} requiredRole="expert" />}
       </Route>
-      <Route path="/expert/contract-categories">
-        {() => <ProtectedRoute component={ExpertContractCategories} requiredRole="expert" />}
-      </Route>
       <Route path="/expert/booking-partners">
-        {() => <ProtectedRoute component={ExpertBookingPartners} requiredRole="expert" />}
+        <Redirect to="/expert/workspace" />
       </Route>
       <Route path="/expert/service-wizard">
         <Redirect to="/expert/services/new" />
