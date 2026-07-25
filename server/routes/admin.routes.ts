@@ -42,6 +42,7 @@ import {
   expertOfferingTypes, insertExpertOfferingTypeSchema,
   localExpertForms, expertRequests,
   coordinationStates,
+  readyMadeTrips,
 } from "@shared/schema";
 import {
   TAB_CONTENT_TYPE_MAP,
@@ -589,10 +590,36 @@ router.post("/api/admin/coordination-states/:id/assign-coordinator", isAuthentic
       .update(coordinationStates)
       .set({ assignedExpertId: expertId, updatedAt: new Date() })
       .where(eq(coordinationStates.id, req.params.id))
-      .returning({ id: coordinationStates.id, assignedExpertId: coordinationStates.assignedExpertId });
+      .returning({
+        id: coordinationStates.id,
+        assignedExpertId: coordinationStates.assignedExpertId,
+        tripId: coordinationStates.tripId,
+        experienceType: coordinationStates.experienceType,
+        destination: coordinationStates.destination,
+      });
     if (!updated) {
       return res.status(404).json({ message: "Coordination engagement not found" });
     }
+
+    // F5 (workstation-flows audit): the assignment previously happened in silence — the expert
+    // found out only if they visited Assigned Trips. Best-effort notification, never fails the assign.
+    try {
+      await db.insert(notifications).values({
+        userId: expertId,
+        type: "booking_request",
+        title: "New event coordination assignment",
+        message: `You've been assigned to coordinate a ${updated.experienceType} in ${updated.destination ?? "TBC"}. Find it under Event coordination on Assigned Trips.`,
+        relatedId: updated.id,
+        relatedType: "coordination_state",
+        data: {
+          ...(updated.tripId ? { tripId: updated.tripId } : {}),
+          workspacePath: updated.tripId ? `/expert/workspace/${updated.tripId}` : "/expert/assigned-trips",
+        },
+      } as any);
+    } catch (notifyErr) {
+      console.error("Admin assign-coordinator notify failed (non-fatal):", notifyErr);
+    }
+
     res.json({ success: true, coordinationId: updated.id, assignedExpertId: updated.assignedExpertId });
   } catch (err: any) {
     if (err instanceof z.ZodError) {
@@ -600,6 +627,128 @@ router.post("/api/admin/coordination-states/:id/assign-coordinator", isAuthentic
     }
     console.error("Admin assign-coordinator error:", err);
     res.status(500).json({ message: "Failed to assign coordinator" });
+  }
+});
+
+// ─── Ready-Made store-listing approvals (task #158; the §10 shared-queue pattern, NOT a fork) ───
+// Same lifecycle vocabulary as expert_templates/provider_services: submitted → approved|rejected,
+// reject-reason required, §15 atomic conditional transitions. Approval is the gate the author
+// cannot self-satisfy (D1a) — the submit endpoint can only ever reach 'submitted'.
+
+// GET /api/admin/ready-made/pending — submitted listings + author identity + build coverage.
+router.get("/api/admin/ready-made/pending", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const result = await db.execute(sql`
+      SELECT
+        rmt.id, rmt.title, rmt.plan_type, rmt.market, rmt.duration_days, rmt.best_season,
+        rmt.pricing_mode, rmt.price_cents, rmt.hero_image_url, rmt.submitted_at,
+        rmt.source_trip_id,
+        u.first_name AS author_first_name, u.last_name AS author_last_name, u.role AS author_role,
+        (SELECT COUNT(*) FROM itinerary_items ii WHERE ii.trip_id = rmt.source_trip_id)::int AS item_count,
+        (SELECT COUNT(DISTINCT ii.day_number) FROM itinerary_items ii WHERE ii.trip_id = rmt.source_trip_id)::int AS days_with_items
+      FROM ready_made_trips rmt
+      JOIN users u ON u.id = rmt.author_id
+      WHERE rmt.status = 'submitted' AND rmt.active = true
+      ORDER BY rmt.submitted_at ASC NULLS LAST
+    `);
+    res.json({ pending: result.rows ?? [] });
+  } catch (err: any) {
+    console.error("Admin ready-made pending error:", err);
+    res.status(500).json({ message: "Failed to fetch pending store listings" });
+  }
+});
+
+// POST /api/admin/ready-made/:id/approve — approve + SNAPSHOT insideCounts at this transition.
+// The snapshot is taken here (not at read time) so the public card never recomputes from a trip
+// the author keeps editing — what was approved is what the shelf describes.
+router.post("/api/admin/ready-made/:id/approve", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const [listing] = await db
+      .select({ id: readyMadeTrips.id, sourceTripId: readyMadeTrips.sourceTripId })
+      .from(readyMadeTrips)
+      .where(eq(readyMadeTrips.id, req.params.id))
+      .limit(1);
+    if (!listing) return res.status(404).json({ message: "Listing not found" });
+
+    // insideCounts from the REAL build (never fabricated, §13): distinct days, total items,
+    // and the per-type breakdown the store card renders as "what's inside".
+    const typeRows = await db
+      .select({ itemType: itineraryItems.itemType, count: sql<number>`count(*)::int` })
+      .from(itineraryItems)
+      .where(eq(itineraryItems.tripId, listing.sourceTripId))
+      .groupBy(itineraryItems.itemType);
+    const dayRows = await db
+      .select({ dayNumber: itineraryItems.dayNumber })
+      .from(itineraryItems)
+      .where(eq(itineraryItems.tripId, listing.sourceTripId))
+      .groupBy(itineraryItems.dayNumber);
+    const insideCounts = {
+      days: dayRows.length,
+      items: typeRows.reduce((sum, r) => sum + r.count, 0),
+      byType: Object.fromEntries(typeRows.map((r) => [r.itemType ?? "activity", r.count])),
+      snapshotAt: new Date().toISOString(),
+    };
+
+    // §15: the transition is the concurrency guard — a double-approve (or an approve racing a
+    // reject) matches 0 rows and returns 409 with no second snapshot.
+    const [updated] = await db
+      .update(readyMadeTrips)
+      .set({
+        status: "approved",
+        insideCounts,
+        reviewedAt: new Date(),
+        reviewedBy: user.id,
+        rejectionReason: null,
+        updatedAt: new Date(),
+      } as any)
+      .where(and(eq(readyMadeTrips.id, req.params.id), eq(readyMadeTrips.status, "submitted")))
+      .returning();
+    if (!updated) {
+      return res.status(409).json({ message: "Listing is not awaiting review" });
+    }
+    res.json({ success: true, listing: updated });
+  } catch (err: any) {
+    console.error("Admin ready-made approve error:", err);
+    res.status(500).json({ message: "Failed to approve listing" });
+  }
+});
+
+// POST /api/admin/ready-made/:id/reject — reason required (the author sees it verbatim).
+router.post("/api/admin/ready-made/:id/reject", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const reason = String(req.body?.reason ?? "").trim();
+    if (!reason) return res.status(400).json({ message: "A rejection reason is required" });
+
+    const [updated] = await db
+      .update(readyMadeTrips)
+      .set({
+        status: "rejected",
+        rejectionReason: reason.slice(0, 2000),
+        reviewedAt: new Date(),
+        reviewedBy: user.id,
+        updatedAt: new Date(),
+      } as any)
+      .where(and(eq(readyMadeTrips.id, req.params.id), eq(readyMadeTrips.status, "submitted")))
+      .returning();
+    if (!updated) {
+      return res.status(409).json({ message: "Listing is not awaiting review" });
+    }
+    res.json({ success: true, listing: updated });
+  } catch (err: any) {
+    console.error("Admin ready-made reject error:", err);
+    res.status(500).json({ message: "Failed to reject listing" });
   }
 });
 

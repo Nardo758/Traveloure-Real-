@@ -101,6 +101,7 @@ import {
   type CommissionRates,
 } from "../services/commission";
 import { getTripRole, canMutateTrip } from "../utils/trip-role";
+import { isTripAuthor } from "../utils/trip-authorship";
 
 import { trackAnthropicResponse } from "../services/ai-cost-tracker";
 
@@ -2988,7 +2989,10 @@ router.patch("/api/trips/:tripId/itinerary-items/:itemId", isAuthenticated, asyn
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { tripId, itemId } = req.params;
       const tripRole = await getTripRole(tripId, userId);
-      if (!canMutateTrip(tripRole)) {
+      // Authoring mode (ready-made brief §2/§4): PARALLEL named author branch beside getTripRole —
+      // the helper is deliberately untouched (known pre-launch bypass, separate fix).
+      const authorMayMutate = canMutateTrip(tripRole) ? false : await isTripAuthor(tripId, userId);
+      if (!canMutateTrip(tripRole) && !authorMayMutate) {
         return res.status(403).json({ message: tripRole === "friend" ? "Friends can only suggest changes, not edit activities directly" : "Access denied" });
       }
       const existing = await storage.getItineraryItemByIdAndTrip(itemId, tripId);
@@ -3010,7 +3014,9 @@ router.delete("/api/trips/:tripId/itinerary-items/:itemId", isAuthenticated, asy
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { tripId, itemId } = req.params;
       const tripRole = await getTripRole(tripId, userId);
-      if (!canMutateTrip(tripRole)) {
+      // Authoring mode (ready-made brief §2/§4): parallel named author branch (see PATCH above).
+      const authorMayMutate = canMutateTrip(tripRole) ? false : await isTripAuthor(tripId, userId);
+      if (!canMutateTrip(tripRole) && !authorMayMutate) {
         return res.status(403).json({ message: tripRole === "friend" ? "Friends cannot remove activities" : "Access denied" });
       }
       const existing = await storage.getItineraryItemByIdAndTrip(itemId, tripId);

@@ -493,4 +493,13 @@ export const MIGRATION_FILES = [
   // is hard-excluded from the traveler resolver (content-query.service.ts) + not in any surface map.
   // Additive, no CHECK → no publish-time push trap.
   "132_content_type_dmo_content.sql",
+  // 133: Ready-Made Trips (Trips by Locals) Phase 1 — trips.author_id + itinerary_items.gem_id
+  // (additive nullable), four NEW tables (ready_made_trips/ready_made_purchases/boards/board_items —
+  // CHECKs created WITH the tables, no legacy rows → no publish-push trap), 'ready_made_trip' fee band
+  // (platform take 0.25, max 0.25 = the 75% expert floor). See spec v3 + authoring brief v1.1.
+  "133_ready_made_trips.sql",
+  // 134: ready_made_trips.plan_type (additive nullable, no CHECK/DEFAULT — no publish-push trap).
+  // The "Type of Plan" line of the store's quality structure; required by the submit gate, vocab
+  // validated in code (shared/ready-made-plan-types.ts).
+  "134_ready_made_plan_type.sql",
 ] as const;

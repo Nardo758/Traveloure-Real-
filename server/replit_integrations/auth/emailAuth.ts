@@ -296,7 +296,7 @@ export function setupEmailAuth(app: Express): void {
       if (!parsed.success) {
         // Same generic 200 to avoid leaking whether the body was even shaped right.
         return res.status(200).json({
-          message: "We'll send password reset instructions to that address if it's on file.",
+          message: "If an account exists for that email, we've sent a reset link.",
         });
       }
       const email = parsed.data.email.toLowerCase();
@@ -337,13 +337,13 @@ export function setupEmailAuth(app: Express): void {
 
       // Always 200 with a generic message — no account enumeration.
       return res.status(200).json({
-        message: "We'll send password reset instructions to that address if it's on file.",
+        message: "If an account exists for that email, we've sent a reset link.",
       });
     } catch (error) {
       console.error("Forgot password error:", error);
       // Still 200 — no enumeration via 500.
       return res.status(200).json({
-        message: "We'll send password reset instructions to that address if it's on file.",
+        message: "If an account exists for that email, we've sent a reset link.",
       });
     }
   });

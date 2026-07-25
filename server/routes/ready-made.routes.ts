@@ -1,0 +1,545 @@
+/**
+ * ready-made.routes.ts — Ready-Made Trips authoring, Phase 1 (brief v1.1 §1–2, spec v3).
+ *
+ * Two endpoints:
+ *  • POST /api/expert/ready-made — create the authoring pair: a trip with userId=NULL +
+ *    authorId=caller (traveler-surface exclusion by construction, §2a) and a ready_made_trips
+ *    listing row born 'draft' (D1a). Role-gated per D3: local_expert | travel_expert (+ admin),
+ *    resolved by DB lookup (§2-style — never the session's possibly-stale role string).
+ *  • GET /api/expert/workspace-context/:tripId — server-side mode resolution for the dual-mode
+ *    workspace: assignment row exists → 'assignment'; else trip.authorId === caller → 'authoring';
+ *    else 403/404. The client is TOLD the mode; it never infers it.
+ *
+ * Auth rules (brief §2, hard): the authoring check is isTripAuthor (explicit, present-value
+ * comparison). NEVER routed through getTripRole/canMutateTrip.
+ */
+import { Router } from "express";
+import { z } from "zod";
+import { db } from "../db";
+import { storage } from "../storage";
+import { trips, readyMadeTrips, tripExpertAdvisors, itineraryItems, users } from "@shared/schema";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { READY_MADE_PLAN_TYPE_KEYS, type ReadyMadePlanTypeKey } from "@shared/ready-made-plan-types";
+import { getAuthoredTrip } from "../utils/trip-authorship";
+import { getBand } from "../services/commission";
+import { unsplashService } from "../services/unsplash.service";
+
+const router = Router();
+
+const AUTHOR_ROLES = new Set(["local_expert", "travel_expert", "admin"]); // D3 (Leon, 2026-07-25)
+
+function sessionUserId(req: any): string | null {
+  return (req.user as any)?.claims?.sub ?? (req.user as any)?.id ?? null;
+}
+
+function isAuthenticated(req: any, res: any, next: any) {
+  if (!req.isAuthenticated || !req.isAuthenticated()) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+  next();
+}
+
+const createReadyMadeSchema = z.object({
+  title: z.string().trim().min(1).max(200).default("Untitled ready-made trip"),
+  market: z.string().trim().min(1).max(100).default("Kyoto"), // §12: Kyoto-only launch (server default, not client-trusted scope)
+  durationDays: z.number().int().min(1).max(30).default(3),
+});
+
+// ─── Create the authoring pair ───────────────────────────────────────────────
+router.post("/api/expert/ready-made", isAuthenticated, async (req, res) => {
+  try {
+    const userId = sessionUserId(req);
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+    // D3 role gate — DB lookup, not the session role string.
+    const user = await storage.getUser(userId);
+    if (!user || !AUTHOR_ROLES.has(user.role ?? "")) {
+      return res.status(403).json({ message: "Ready-made authoring requires a local expert or trip advisor role" });
+    }
+
+    const parsed = createReadyMadeSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ message: "Invalid input", errors: parsed.error.flatten() });
+    }
+    const { title, market, durationDays } = parsed.data;
+
+    // Placeholder dates: authoring trips are templates-in-the-making, not scheduled travel; the
+    // buyer's CLONE gets real dates. trips.start/end are NOT NULL so we anchor a synthetic window.
+    const start = new Date();
+    const end = new Date(start.getTime() + (durationDays - 1) * 24 * 60 * 60 * 1000);
+    const fmt = (d: Date) => d.toISOString().slice(0, 10);
+
+    const result = await db.transaction(async (tx) => {
+      const [trip] = await tx
+        .insert(trips)
+        .values({
+          userId: null,          // §2a: NULL owner = excluded from every traveler surface
+          authorId: userId,      // authoring-mode scope key
+          title,
+          destination: market,
+          startDate: fmt(start),
+          endDate: fmt(end),
+          status: "draft",
+          numberOfTravelers: 2,
+          adults: 2,
+          kids: 0,
+        } as any)
+        .returning();
+
+      const [listing] = await tx
+        .insert(readyMadeTrips)
+        .values({
+          authorId: userId,
+          sourceTripId: trip.id,
+          market,
+          title,
+          durationDays,
+          status: "draft",       // born-draft (D1a) — approval only via the admin action
+        } as any)
+        .returning();
+
+      return { trip, listing };
+    });
+
+    res.status(201).json({
+      tripId: result.trip.id,
+      listingId: result.listing.id,
+      mode: "authoring",
+      redirect: `/expert/workspace/${result.trip.id}`,
+    });
+  } catch (err: any) {
+    console.error("[ready-made] create error:", err);
+    res.status(500).json({ message: "Failed to create ready-made trip", error: err.message });
+  }
+});
+
+// ─── Workspace mode resolution (dual-mode bootstrap) ─────────────────────────
+router.get("/api/expert/workspace-context/:tripId", isAuthenticated, async (req, res) => {
+  try {
+    const userId = sessionUserId(req);
+    const tripId = req.params.tripId;
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+    // Assignment mode first: an advisor row for this caller on this trip.
+    const [assignment] = await db
+      .select()
+      .from(tripExpertAdvisors)
+      .where(and(eq(tripExpertAdvisors.tripId, tripId), eq(tripExpertAdvisors.localExpertId, userId)))
+      .limit(1);
+    if (assignment) {
+      const [trip] = await db.select().from(trips).where(eq(trips.id, tripId)).limit(1);
+      if (!trip) return res.status(404).json({ message: "Trip not found" });
+      return res.json({ mode: "assignment", trip, assignment });
+    }
+
+    // Authoring mode: explicit present-value author check (never getTripRole).
+    const authored = await getAuthoredTrip(tripId, userId);
+    if (authored) {
+      const [listing] = await db
+        .select()
+        .from(readyMadeTrips)
+        .where(eq(readyMadeTrips.sourceTripId, tripId))
+        .limit(1);
+      return res.json({ mode: "authoring", trip: authored, listing: listing ?? null });
+    }
+
+    return res.status(403).json({ message: "Not assigned to this trip and not its author" });
+  } catch (err: any) {
+    console.error("[ready-made] workspace-context error:", err);
+    res.status(500).json({ message: "Failed to resolve workspace context", error: err.message });
+  }
+});
+
+// ─── Phase 2: listing edit, hero picker, earnings preview ────────────────────
+
+/**
+ * Load a listing ONLY if the caller authored it. The listing's own `author_id` is the
+ * gate (not the trip's) — they are written together in the create transaction, and using
+ * the row you are about to mutate as its own gate leaves no room for them to disagree.
+ */
+async function loadAuthorListing(id: string, userId: string) {
+  const [row] = await db
+    .select()
+    .from(readyMadeTrips)
+    .where(and(eq(readyMadeTrips.id, id), eq(readyMadeTrips.authorId, userId)))
+    .limit(1);
+  return row ?? null;
+}
+
+/** D2 (Leon, 2026-07-25): "Unsplash proves the photo" — enforced here, not just in the picker UI. */
+const UNSPLASH_IMAGE_HOSTS = new Set(["images.unsplash.com", "plus.unsplash.com"]);
+
+function isUnsplashImageUrl(url: string): boolean {
+  try {
+    const u = new URL(url);
+    return u.protocol === "https:" && UNSPLASH_IMAGE_HOSTS.has(u.hostname);
+  } catch {
+    return false;
+  }
+}
+
+const heroMetaSchema = z.object({
+  unsplashId: z.string().trim().min(1).max(120),
+  photographer: z.string().trim().min(1).max(200),
+  profileUrl: z.string().trim().url().max(500),
+  downloadLocation: z.string().trim().url().max(500).optional(),
+  description: z.string().trim().max(500).nullable().optional(),
+});
+
+/**
+ * The expert-editable allow-list. Deliberately EXCLUDES every column an author must not
+ * self-set: `status` (approval is the gate they cannot satisfy — D1a), `authorId`,
+ * `sourceTripId`, `feeBandKey` (the platform's economics — §8), `insideCounts` (snapshotted
+ * at approval), `buildReview`, `badge` (a platform trust marker), `rejectionReason`,
+ * every review/submission timestamp, and `active`. Never `req.body` spread — this is
+ * the marketplace Gap-2 mass-assignment lesson (§10).
+ */
+const patchListingSchema = z
+  .object({
+    title: z.string().trim().min(1).max(200),
+    market: z.string().trim().min(1).max(100),
+    durationDays: z.number().int().min(1).max(30),
+    // Closed vocabulary — the "Type of Plan" line of the store's quality structure.
+    planType: z.enum(READY_MADE_PLAN_TYPE_KEYS as [ReadyMadePlanTypeKey, ...ReadyMadePlanTypeKey[]]).nullable(),
+    bestSeason: z.string().trim().max(60).nullable(),
+    pricingMode: z.enum(["fixed", "per_traveler"]), // mirrors the migration-133 CHECK
+    priceCents: z.number().int().min(500).max(500_000).nullable(), // $5–$5,000, USD-only v1
+    heroImageUrl: z.string().trim().url().max(1000).nullable(),
+    heroImageMeta: heroMetaSchema.nullable(),
+  })
+  .partial()
+  .strict();
+
+/**
+ * Material fields — a change to any of these on an APPROVED listing drops it back to
+ * `submitted` for re-review (the §10 A3 rule, widened past price because a ready-made
+ * trip's headline claims ARE the product: what it's called, how long it runs, what it
+ * costs, and the photo that sells it).
+ */
+const MATERIAL_FIELDS = ["title", "durationDays", "planType", "pricingMode", "priceCents", "heroImageUrl"] as const;
+
+router.patch("/api/expert/ready-made/:id", isAuthenticated, async (req, res) => {
+  try {
+    const userId = sessionUserId(req);
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+    const existing = await loadAuthorListing(req.params.id, userId);
+    if (!existing) return res.status(404).json({ message: "Listing not found" });
+
+    const parsed = patchListingSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ message: "Invalid input", errors: parsed.error.flatten() });
+    }
+    const patch = parsed.data;
+    if (Object.keys(patch).length === 0) {
+      return res.status(400).json({ message: "No editable fields supplied" });
+    }
+
+    // Hero integrity (D2): a hero must be an Unsplash image URL carrying its attribution.
+    // Both are required together — an image without its photographer credit is a rights
+    // problem, and a credit without an Unsplash-hosted URL defeats the provenance rule.
+    if (patch.heroImageUrl != null) {
+      if (!isUnsplashImageUrl(patch.heroImageUrl)) {
+        return res.status(400).json({
+          message: "Hero image must be chosen from the Unsplash picker (images.unsplash.com)",
+        });
+      }
+      const meta = patch.heroImageMeta ?? (existing.heroImageMeta as any);
+      if (!meta?.unsplashId || !meta?.photographer || !meta?.profileUrl) {
+        return res.status(400).json({ message: "Hero image requires Unsplash attribution metadata" });
+      }
+    }
+    if (patch.heroImageUrl === null) patch.heroImageMeta = null; // clearing the hero clears its credit
+
+    // A3 re-review: an approved listing whose headline claims change re-enters the queue.
+    const materialChange =
+      existing.status === "approved" &&
+      MATERIAL_FIELDS.some((f) => {
+        const next = (patch as any)[f];
+        return next !== undefined && JSON.stringify(next) !== JSON.stringify((existing as any)[f]);
+      });
+
+    const [updated] = await db
+      .update(readyMadeTrips)
+      .set({
+        ...patch,
+        ...(materialChange
+          ? { status: "submitted", reviewedAt: null, reviewedBy: null, rejectionReason: null }
+          : {}),
+        updatedAt: new Date(),
+      } as any)
+      .where(eq(readyMadeTrips.id, existing.id))
+      .returning();
+
+    // Keep the source trip's title in step with the listing's. They are born identical in the
+    // create transaction, and the author edits ONE title in the UI — letting them drift leaves the
+    // builder's own header/rail showing a stale name and no way to tell which one is real.
+    if (patch.title !== undefined) {
+      await db
+        .update(trips)
+        .set({ title: patch.title } as any)
+        .where(eq(trips.id, existing.sourceTripId));
+    }
+
+    // Unsplash API compliance: a hotlinked photo that is displayed prominently must ping
+    // its download_location. Fire-and-forget — never fail the author's save on it.
+    const dl = (patch.heroImageMeta as any)?.downloadLocation;
+    if (patch.heroImageUrl && dl) {
+      unsplashService.trackDownload(dl).catch(() => {});
+    }
+
+    res.json({ listing: updated, reReviewRequired: materialChange });
+  } catch (err: any) {
+    console.error("[ready-made] patch error:", err);
+    res.status(500).json({ message: "Failed to update listing", error: err.message });
+  }
+});
+
+/**
+ * Submit for review — the PUSH half of the workstation→store pipeline (decision-maker,
+ * 2026-07-25: "what we need to fix is how the workstation pushes and saves these content").
+ *
+ * The gate enforces the store's QUALITY STRUCTURE before anything reaches the admin queue:
+ * a declared plan type (the structure's headline), an Unsplash-proven hero, a price, and a
+ * build with no empty days (every day 1..durationDays has at least one itinerary item). The
+ * refusal names each missing requirement so the author knows exactly what to fix — never a
+ * bare 400.
+ *
+ * §15: the transition is an atomic conditional UPDATE (draft|rejected → submitted); a
+ * double-click or a race with an admin decision matches 0 rows and returns 409 instead of
+ * silently re-submitting. Approval itself stays admin-only (D1a) — this endpoint can never
+ * set 'approved'.
+ */
+router.post("/api/expert/ready-made/:id/submit", isAuthenticated, async (req, res) => {
+  try {
+    const userId = sessionUserId(req);
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+    const listing = await loadAuthorListing(req.params.id, userId);
+    if (!listing) return res.status(404).json({ message: "Listing not found" });
+
+    const missing: Array<{ requirement: string; message: string }> = [];
+    if (!listing.planType) {
+      missing.push({ requirement: "planType", message: "Choose a plan type (Hiking Itinerary, Road Trip Itinerary, …)" });
+    }
+    if (!listing.heroImageUrl || !(listing.heroImageMeta as any)?.photographer) {
+      missing.push({ requirement: "hero", message: "Pick a cover photo from the Unsplash picker" });
+    }
+    if (listing.priceCents === null || listing.priceCents === undefined) {
+      missing.push({ requirement: "price", message: "Set a price" });
+    }
+
+    // No empty days: the buyer is purchasing a complete plan, not a scaffold.
+    const dayRows = await db
+      .select({ dayNumber: itineraryItems.dayNumber, count: sql<number>`count(*)::int` })
+      .from(itineraryItems)
+      .where(eq(itineraryItems.tripId, listing.sourceTripId))
+      .groupBy(itineraryItems.dayNumber);
+    const daysWithItems = new Set(dayRows.map((r) => r.dayNumber));
+    const emptyDays = Array.from({ length: listing.durationDays }, (_, i) => i + 1)
+      .filter((d) => !daysWithItems.has(d));
+    if (emptyDays.length > 0) {
+      missing.push({
+        requirement: "itinerary",
+        message: `Day${emptyDays.length > 1 ? "s" : ""} ${emptyDays.join(", ")} ${emptyDays.length > 1 ? "have" : "has"} no items yet — every day needs at least one`,
+      });
+    }
+
+    if (missing.length > 0) {
+      return res.status(400).json({ message: "Not ready to submit", missing });
+    }
+
+    const [updated] = await db
+      .update(readyMadeTrips)
+      .set({
+        status: "submitted",
+        submittedAt: new Date(),
+        rejectionReason: null,
+        reviewedAt: null,
+        reviewedBy: null,
+        updatedAt: new Date(),
+      } as any)
+      .where(and(
+        eq(readyMadeTrips.id, listing.id),
+        inArray(readyMadeTrips.status, ["draft", "rejected"]),
+      ))
+      .returning();
+    if (!updated) {
+      return res.status(409).json({ message: "Listing is already submitted or approved", status: listing.status });
+    }
+
+    res.json({ listing: updated });
+  } catch (err: any) {
+    console.error("[ready-made] submit error:", err);
+    res.status(500).json({ message: "Failed to submit listing", error: err.message });
+  }
+});
+
+/** The author's own listings (console list — ungated on approval, like every owner console). */
+router.get("/api/expert/ready-made/mine", isAuthenticated, async (req, res) => {
+  try {
+    const userId = sessionUserId(req);
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+    const rows = await db
+      .select()
+      .from(readyMadeTrips)
+      .where(eq(readyMadeTrips.authorId, userId))
+      .orderBy(desc(readyMadeTrips.updatedAt));
+    res.json({ listings: rows });
+  } catch (err: any) {
+    console.error("[ready-made] mine error:", err);
+    res.status(500).json({ message: "Failed to load listings", error: err.message });
+  }
+});
+
+/**
+ * Earnings preview — the author's share, resolved from the `ready_made_trip` fee band.
+ * §8: NO rate literal. If the band is missing or not a percent band we return
+ * `available:false` rather than falling back to a made-up split — a preview that invents
+ * the number the author will be paid is worse than no preview (§13).
+ */
+router.get("/api/expert/ready-made/:id/earnings-preview", isAuthenticated, async (req, res) => {
+  try {
+    const userId = sessionUserId(req);
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+    const listing = await loadAuthorListing(req.params.id, userId);
+    if (!listing) return res.status(404).json({ message: "Listing not found" });
+
+    const band = await getBand(listing.feeBandKey);
+    if (!band || band.rateType !== "percent") {
+      return res.json({
+        available: false,
+        reason: band ? "fee_band_not_percent" : "fee_band_missing",
+        bandKey: listing.feeBandKey,
+      });
+    }
+
+    const platformFeeRate = band.rate;
+    const expertShareRate = 1 - platformFeeRate;
+    const priceCents = listing.priceCents ?? null;
+
+    res.json({
+      available: true,
+      bandKey: listing.feeBandKey,
+      pricingMode: listing.pricingMode,
+      platformFeeRate,
+      expertShareRate,
+      priceCents,
+      // Null until the author sets a price — never a placeholder amount.
+      platformFeeCents: priceCents === null ? null : Math.round(priceCents * platformFeeRate),
+      expertEarningsCents: priceCents === null ? null : priceCents - Math.round(priceCents * platformFeeRate),
+    });
+  } catch (err: any) {
+    console.error("[ready-made] earnings-preview error:", err);
+    res.status(500).json({ message: "Failed to resolve earnings preview", error: err.message });
+  }
+});
+
+/**
+ * Hero-image search (Unsplash proxy). Author-role-gated so the platform key can't be used
+ * as an open image proxy. `ready:false` is the HONEST unconfigured answer — an empty
+ * results array would read as "no photos match", which is a different claim (§13).
+ */
+router.get("/api/expert/ready-made/hero-search", isAuthenticated, async (req, res) => {
+  try {
+    const userId = sessionUserId(req);
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+    const user = await storage.getUser(userId);
+    if (!user || !AUTHOR_ROLES.has(user.role ?? "")) {
+      return res.status(403).json({ message: "Ready-made authoring requires a local expert or trip advisor role" });
+    }
+
+    if (!unsplashService.isReady()) {
+      return res.json({ ready: false, reason: "unsplash_not_configured", results: [] });
+    }
+
+    const q = String(req.query.q ?? "").trim().slice(0, 120);
+    if (!q) return res.status(400).json({ message: "Missing search query" });
+
+    const photos = await unsplashService.searchPhotos(q, { perPage: 12, orientation: "landscape" });
+    res.json({
+      ready: true,
+      results: photos.map((p) => ({
+        // The picker hands these straight back to PATCH — same shape the hero validator expects.
+        url: p.url,
+        thumbnailUrl: p.thumbnailUrl,
+        description: p.description,
+        meta: {
+          unsplashId: p.photoId,
+          photographer: p.photographerName,
+          profileUrl: p.photographerUrl,
+          downloadLocation: p.downloadLocationUrl,
+          description: p.description,
+        },
+      })),
+    });
+  } catch (err: any) {
+    console.error("[ready-made] hero-search error:", err);
+    res.status(500).json({ message: "Hero search failed", error: err.message });
+  }
+});
+
+// ─── Public store feed (task #158 — the shelf's data source) ─────────────────
+//
+// Serves ONLY approved + active listings (the F2/§10 read-gate pattern: approval is enforced at
+// the API, regardless of which client renders it), as a TEASER DTO: card fields + the
+// approval-time insideCounts snapshot + author identity for the shelf's sections — "Trips by
+// Locals" (local_expert authors) vs Advisor content (the ratified store model: sectioning is by
+// author type). Deliberately OMITS sourceTripId — the itinerary is the paid product; a buyer
+// reaches it only through the purchase→clone flow (not yet built).
+//
+// The consumer shelf UI stays un-surfaced until purchase→clone closes the buy loop end-to-end
+// (the §10 B4 lesson: safety/delivery before surfacing) — this endpoint is the server-gated feed
+// waiting for it, provable now.
+//
+// Ordering is honest recency of approval — no sales/rating signals exist for this product yet,
+// so nothing is fabricated to rank by (§13).
+router.get("/api/ready-made", async (_req, res) => {
+  try {
+    const rows = await db
+      .select({
+        id: readyMadeTrips.id,
+        title: readyMadeTrips.title,
+        planType: readyMadeTrips.planType,
+        market: readyMadeTrips.market,
+        durationDays: readyMadeTrips.durationDays,
+        bestSeason: readyMadeTrips.bestSeason,
+        pricingMode: readyMadeTrips.pricingMode,
+        priceCents: readyMadeTrips.priceCents,
+        heroImageUrl: readyMadeTrips.heroImageUrl,
+        heroImageMeta: readyMadeTrips.heroImageMeta,
+        badge: readyMadeTrips.badge,
+        insideCounts: readyMadeTrips.insideCounts,
+        reviewedAt: readyMadeTrips.reviewedAt,
+        authorFirstName: users.firstName,
+        authorRole: users.role,
+      })
+      .from(readyMadeTrips)
+      .innerJoin(users, eq(users.id, readyMadeTrips.authorId))
+      .where(and(eq(readyMadeTrips.status, "approved"), eq(readyMadeTrips.active, true)))
+      .orderBy(desc(readyMadeTrips.reviewedAt));
+
+    res.json({
+      listings: rows.map((r) => ({
+        id: r.id,
+        title: r.title,
+        planType: r.planType,
+        market: r.market,
+        durationDays: r.durationDays,
+        bestSeason: r.bestSeason,
+        pricingMode: r.pricingMode,
+        priceCents: r.priceCents,
+        heroImageUrl: r.heroImageUrl,
+        heroImageMeta: r.heroImageMeta,
+        badge: r.badge,
+        insideCounts: r.insideCounts,
+        authorName: r.authorFirstName ?? "Expert",
+        // The consumer shelf section (ratified store model): by author TYPE.
+        section: r.authorRole === "local_expert" ? "trips_by_locals" : "advisor",
+      })),
+    });
+  } catch (err: any) {
+    console.error("[ready-made] public feed error:", err);
+    res.status(500).json({ message: "Failed to load store listings" });
+  }
+});
+
+export default router;

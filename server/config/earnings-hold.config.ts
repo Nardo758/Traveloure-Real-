@@ -26,6 +26,9 @@ const EARNINGS_HOLD_WINDOWS: Record<string, number> = {
   template_sale:        envDays('EARNINGS_HOLD_DAYS_TEMPLATE', 14),   // digital good — longer chargeback tail
   template_commission:  envDays('EARNINGS_HOLD_DAYS_TEMPLATE', 14),
   affiliate_commission: envDays('EARNINGS_HOLD_DAYS_AFFILIATE', DEFAULT_WINDOW_DAYS),
+  // D7 (ready-made, ratified 2026-07-25): 7-day escrow window; the admin stale-content refund is
+  // grantable only while the earning is still in escrow — after release, no refund.
+  ready_made_sale:      envDays('EARNINGS_HOLD_DAYS_READY_MADE', 7),
   tip:                  envDays('EARNINGS_HOLD_DAYS_TIP', 0),         // clears immediately
   referral_bonus:       envDays('EARNINGS_HOLD_DAYS_REFERRAL', 0),    // platform-funded bonus — no chargeback risk
 };

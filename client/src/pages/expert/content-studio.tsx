@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useLocation, useSearch } from "wouter";
@@ -336,6 +336,28 @@ export default function ContentStudio() {
   const watchContentType = form.watch("contentType");
   const watchDestination = form.watch("destination");
   const watchPublishToInstagram = form.watch("publishToInstagram");
+
+  // Factory wire B (sidebar audit, ratified 2026-07-25): the Workspace and DMO Library hand a
+  // build or library item to the studio as a prefilled draft via query params
+  // (?prefill=1&title=…&destination=…&type=…&description=…). Applied once per arrival — the
+  // studio stays the author of the content; the params only seed the form.
+  const prefillApplied = useRef(false);
+  useEffect(() => {
+    if (prefillApplied.current) return;
+    const params = new URLSearchParams(searchParams);
+    if (params.get("prefill") !== "1") return;
+    prefillApplied.current = true;
+    const title = params.get("title");
+    const destination = params.get("destination");
+    const type = params.get("type");
+    const description = params.get("description");
+    if (title) form.setValue("title", title.slice(0, 255));
+    if (destination) form.setValue("destination", destination.slice(0, 120));
+    if (type && contentTypes.some((t) => t.id === type)) form.setValue("contentType", type);
+    if (description) form.setValue("description", description.slice(0, 2000));
+    setPageSection("content");
+    setIsCreateOpen(true);
+  }, [searchParams, form]);
 
   const handleGenerateHashtags = () => {
     if (watchDestination && watchContentType) {

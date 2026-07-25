@@ -17,7 +17,6 @@ import {
   Home,
   Bot,
   MessageSquare,
-  Users,
   Calendar,
   Briefcase,
   DollarSign,
@@ -26,12 +25,11 @@ import {
   LogOut,
   Palette,
   Settings,
-  Link2,
-  ShieldCheck,
   MapPin,
   PenSquare,
   Library,
   Map,
+  Store,
 } from "lucide-react";
 
 function buildMenuGroups(expertType?: string | null) {
@@ -43,20 +41,28 @@ function buildMenuGroups(expertType?: string | null) {
     {
       label: "Work",
       items: [
+        // Sidebar-audit consolidation (ratified 2026-07-25): "Clients" removed — it re-rendered
+        // /api/expert/assigned-trips with no data of its own; the grouped-by-client view now lives
+        // ON Assigned Trips. "Messages" points straight at /chat (the /expert/messages routes were
+        // already bare redirects). "Verification & Payouts" and "Booking Partners" removed below.
         { title: "Dashboard", href: "/expert/dashboard", icon: Home },
         { title: isEventPlanner ? "Events" : "Bookings", href: "/expert/bookings", icon: Calendar },
-        { title: isEA ? "Executives" : "Clients", href: "/expert/clients", icon: Users },
         { title: "Assigned Trips", href: "/expert/assigned-trips", icon: MapPin },
         { title: "Workspace", href: "/expert/workspace", icon: PenSquare },
-        { title: "Messages", href: "/expert/messages", icon: MessageSquare },
+        { title: "Messages", href: "/chat", icon: MessageSquare },
       ],
     },
     {
       label: "Business",
       items: [
         { title: isEventPlanner ? "Packages" : isLocalExpert ? "Local Packages" : "Services", href: "/expert/services", icon: Briefcase },
-        { title: "Ready Made Trips", href: "/expert/templates", icon: Map },
-        { title: "Booking Partners", href: "/expert/booking-partners", icon: Link2 },
+        // Seller-side vocabulary (§10 label standard): "Ready Made Trips" is the CONSUMER store
+        // page; the seller console keeps "Itinerary Templates" (the Airbnb listings/homes split).
+        // "Store Listings" is the workstation→store pipeline console (decision-maker model,
+        // 2026-07-25: one store, stocked from the Workstation; "Trips by Locals" is a consumer
+        // shelf section by author type, never a seller-console name).
+        { title: "Itinerary Templates", href: "/expert/templates", icon: Map },
+        { title: "Store Listings", href: "/expert/ready-made", icon: Store },
         { title: isEventPlanner ? "Promo Content" : isLocalExpert ? "Local Guides" : "Content Studio", href: "/expert/content-studio", icon: Palette },
         { title: "DMO Library", href: "/expert/dmo-library", icon: Library },
         { title: "Analytics", href: "/expert/analytics", icon: BarChart3 },
@@ -68,7 +74,8 @@ function buildMenuGroups(expertType?: string | null) {
       items: [
         { title: "AI Assistant", href: "/expert/ai-assistant", icon: Bot },
         { title: "Profile", href: "/expert/profile", icon: User },
-        { title: "Verification & Payouts", href: "/expert/verification", icon: ShieldCheck },
+        // Verification & Payouts merged into Settings — the two pages hit the identical five
+        // endpoints, and Settings already opens on its Verification tab.
         { title: "Settings", href: "/expert/settings", icon: Settings },
       ],
     },
