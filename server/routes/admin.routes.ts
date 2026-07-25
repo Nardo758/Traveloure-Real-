@@ -927,6 +927,35 @@ router.post("/api/admin/dmo/sync-registry", isAuthenticated, async (req, res) =>
   }
 });
 
+// §16 catalog unification (P7): ingest Travelpayouts network inventory into the central
+// affiliate_products + content_registry. Key-gated (§13 — no token ⇒ ready:false, zero writes).
+// Body: { city (required), network? } — one network or all. Kyoto-first (§12).
+router.post("/api/admin/catalog/ingest", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  const city = typeof req.body?.city === "string" ? req.body.city.trim() : "";
+  if (!city) return res.status(400).json({ message: "city is required" });
+  const network = typeof req.body?.network === "string" ? req.body.network.trim() : "";
+  try {
+    const svc = await import("../services/catalog-ingest.service");
+    const result = network
+      ? [await svc.ingestNetwork(network, city)]
+      : await svc.ingestAllNetworks(city);
+    const ready = result.some(r => r.ready);
+    res.json({
+      message: ready ? `Ingested catalog inventory for ${city}` : "No Travelpayouts token — nothing ingested (§13 key-gate)",
+      ready,
+      city,
+      results: result,
+    });
+  } catch (err: any) {
+    console.error("Catalog ingest error:", err);
+    res.status(500).json({ message: "Ingest failed", error: err.message });
+  }
+});
+
 // Reject raw content at intake — it never enters the expert library. Stays hidden.
 router.post("/api/admin/dmo/intake/:id/reject", isAuthenticated, async (req, res) => {
   const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);

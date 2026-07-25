@@ -184,7 +184,7 @@ CTA = approved with the bookable-classifier edits; §16 = in scope now.
 | **P4 — CTA engine** | 🟡 PARTIAL | `useContentAgentBooking` hook + Fever + TravelPulse migrated to the agent rail; G8 untracked-fallback removed. **Remaining surfaces** below. |
 | **P5 — Origin grouping** | ✅ LANDED | resolver stamps origin; CuratedContentSection groups "From Traveloure" / "Paid partners"; G7 label fixed |
 | **P6 — Hygiene** | ✅ LANDED | getPlatformStats 4.9→honest; auto-index skip logging; dead ItineraryPage import |
-| **P7 — §16 unification** | ✅ DESIGNED | `docs/audits/s16-catalog-unification-design.md` (U1–U5). Build TBD (Kyoto-first). |
+| **P7 — §16 unification** | 🟡 STARTED | Design (U1–U5) + **U1+U2 BUILT**: `catalog-ingest.service.ts` (partner seed + normalize/upsert for Tiqets/GetYourGuide/Klook, tag-at-ingest, §13/§15 gates) + `POST /api/admin/catalog/ingest`. Live fetch deploy-only. U3–U5 remain (fan-out + parallel-path retirement). |
 
 ### P4 — remaining surface migrations (filed, need per-component care)
 Each has its own booking context / an existing rail, so it's not a blind find-replace:
