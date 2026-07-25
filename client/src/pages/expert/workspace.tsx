@@ -246,6 +246,7 @@ function AddItemModal({ dayNumber, tripId, onClose, onItemAdded }: { dayNumber: 
 interface AssignedTrip {
   trip_id: string; trip_title: string; destination: string;
   start_date: string; end_date: string; traveler_name: string;
+  traveler_user_id?: string; // served by /api/expert/assigned-trips; used for the chat deep-link
   status: string; assigned_at: string; suggestion_count: number;
 }
 interface ItineraryItem {
@@ -1067,7 +1068,8 @@ export default function ExpertWorkspace() {
                 message or deliver to — its outbound step is submitting the listing for review. */}
             {!isAuthoring && (
               <div style={{ display: "flex", gap: 8 }}>
-                <button onClick={() => safeNavigate("/chat")} data-testid="button-open-chat" style={{ padding: "5px 12px", borderRadius: 8, fontSize: 13, fontWeight: 600, background: "white", color: G[700], border: `1.5px solid ${G[200]}`, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
+                {/* F3: land in THIS client's thread, not the chat lobby — /chat already reads ?clientId. */}
+                <button onClick={() => safeNavigate(trip?.traveler_user_id ? `/chat?clientId=${trip.traveler_user_id}` : "/chat")} data-testid="button-open-chat" style={{ padding: "5px 12px", borderRadius: 8, fontSize: 13, fontWeight: 600, background: "white", color: G[700], border: `1.5px solid ${G[200]}`, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
                   <MessageSquare style={{ width: 13, height: 13 }} /> Chat
                 </button>
                 <button onClick={() => advanceStatusMutation.mutate()} disabled={advanceStatusMutation.isPending || workspaceStatus === "delivered"} data-testid="button-send-edits" style={{ padding: "5px 12px", borderRadius: 8, fontSize: 13, fontWeight: 600, background: P, color: "white", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 5, opacity: workspaceStatus === "delivered" ? 0.5 : 1 }}>

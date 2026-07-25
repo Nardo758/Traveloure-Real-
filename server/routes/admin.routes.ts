@@ -589,10 +589,36 @@ router.post("/api/admin/coordination-states/:id/assign-coordinator", isAuthentic
       .update(coordinationStates)
       .set({ assignedExpertId: expertId, updatedAt: new Date() })
       .where(eq(coordinationStates.id, req.params.id))
-      .returning({ id: coordinationStates.id, assignedExpertId: coordinationStates.assignedExpertId });
+      .returning({
+        id: coordinationStates.id,
+        assignedExpertId: coordinationStates.assignedExpertId,
+        tripId: coordinationStates.tripId,
+        experienceType: coordinationStates.experienceType,
+        destination: coordinationStates.destination,
+      });
     if (!updated) {
       return res.status(404).json({ message: "Coordination engagement not found" });
     }
+
+    // F5 (workstation-flows audit): the assignment previously happened in silence — the expert
+    // found out only if they visited Assigned Trips. Best-effort notification, never fails the assign.
+    try {
+      await db.insert(notifications).values({
+        userId: expertId,
+        type: "booking_request",
+        title: "New event coordination assignment",
+        message: `You've been assigned to coordinate a ${updated.experienceType} in ${updated.destination ?? "TBC"}. Find it under Event coordination on Assigned Trips.`,
+        relatedId: updated.id,
+        relatedType: "coordination_state",
+        data: {
+          ...(updated.tripId ? { tripId: updated.tripId } : {}),
+          workspacePath: updated.tripId ? `/expert/workspace/${updated.tripId}` : "/expert/assigned-trips",
+        },
+      } as any);
+    } catch (notifyErr) {
+      console.error("Admin assign-coordinator notify failed (non-fatal):", notifyErr);
+    }
+
     res.json({ success: true, coordinationId: updated.id, assignedExpertId: updated.assignedExpertId });
   } catch (err: any) {
     if (err instanceof z.ZodError) {
