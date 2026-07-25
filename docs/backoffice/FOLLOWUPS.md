@@ -536,4 +536,42 @@ backoffice reviews panel should adopt it verbatim.
 
 ---
 
+## M. Real Defects Discovered by the Role-Fit Verification Pass (Jul 25, 2026 — verified, file:line)
+
+### M1: 🔴 EA routing leak — executive assistants boot into the expert console
+`client/src/lib/role-utils.ts:1` EXPERT_ROLES includes `executive_assistant`, so (a) the sign-in redirect
+(`SignInModal.tsx:136` → `getRoleHomePath`) sends **every EA to `/expert/dashboard`** — the
+`/ea/dashboard` branch at role-utils.ts:7 is unreachable dead code; (b) every
+`requiredRole="expert"` ProtectedRoute admits EAs (services, templates, ready-made, content-studio,
+workspace, dmo-library). Contradicts `user-menu.tsx:26` (its own EXPERT_ROLES excludes EA) and
+`ActiveConsoleContext.tsx:25` (maps EA → "ea"). Fix = remove EA from role-utils EXPERT_ROLES (aligns with
+the rest of the client's intent). Companion decision: the **deliberate** server-side DMO grant
+(`expert-workspace.routes.ts:35` names executive_assistant) either survives with a future EA-console entry
+point or is removed in the same change — do not leave a backend-without-a-surface dangling. → W0.1.
+
+### M2: 🔴 Knowledge-nugget API is role-ungated (any authenticated user)
+`expert-console.routes.ts:204-259` CRUD is `isAuthenticated` only; `/api/expert/knowledge-nuggets` is
+absent from `EXPERT_SELF_SERVICE_PREFIXES` (routes.ts:292-307) so the isExpert backstop never applies —
+any logged-in traveler can create/edit nuggets today. The "local_expert-only" gate exists only client-side
+(content-studio.tsx:205). → W0.2.
+
+### M3: event_planner 403 dead-end on Store Listings
+`ready-made.routes.ts:30` AUTHOR_ROLES excludes event_planner (deliberate), but three client surfaces are
+unconditional — sidebar "Store Listings" (expert-sidebar.tsx:65), the workspace launchpad card
+(workspace.tsx:740), and the create button (ready-made.tsx:80) — so an event planner clicking through gets
+only a 403 toast. The Workspace hub's role tool matrix fixes this class; cheap interim fix → W0.3.
+
+### M4: Review responses publish instantly with zero admin visibility
+`POST /api/expert/reviews/:id/respond` (routes.ts:4299) → `addReviewResponse` (storage.ts:1647) sets
+`responseText` live immediately; the admin review-moderation queue never fetches or renders responseText
+(review-moderation.tsx:26-38; admin.routes.ts:4806 enrichment omits it), and the only admin lever removes
+the ENTIRE review — the wrong tool. Fix: enrich + render + a response-scoped clear action. → W0.7.
+
+### M5 (minor, pre-existing): generic `expert` role client/server gate mismatch on DMO
+The generic `expert` role passes the client `requiredRole="expert"` gate for `/expert/dmo-library` but is
+NOT in the server DMO allow-list (`expert-workspace.routes.ts:35`) → 403 on the API behind a rendered page.
+Cosmetic sibling: admin sidebar "Services" active-state doesn't match `/admin/service-approvals`.
+
+---
+
 **End Phase 0 Discovered Follow-Ups — Ready for Prioritization**
