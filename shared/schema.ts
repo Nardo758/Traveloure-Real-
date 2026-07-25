@@ -6807,6 +6807,10 @@ export const readyMadeTrips = pgTable("ready_made_trips", {
   heroImageUrl: text("hero_image_url"),
   heroImageMeta: jsonb("hero_image_meta"), // { unsplashId, photographer, profileUrl, downloadLocation }
   durationDays: integer("duration_days").notNull(),
+  // "Type of Plan" — the headline of the store's quality structure (migration 134). NULL only in
+  // draft; the submit gate requires it. Vocabulary: shared/ready-made-plan-types.ts (code-validated,
+  // no DB CHECK, so the editorial list can grow without a schema migration).
+  planType: varchar("plan_type", { length: 60 }),
   bestSeason: varchar("best_season", { length: 60 }),
   pricingMode: varchar("pricing_mode", { length: 20 }).notNull().default("fixed"), // CHECK fixed|per_traveler
   priceCents: integer("price_cents"), // display/charge base; USD-only v1; resolved with fee band

@@ -56,10 +56,13 @@ function buildMenuGroups(expertType?: string | null) {
       label: "Business",
       items: [
         { title: isEventPlanner ? "Packages" : isLocalExpert ? "Local Packages" : "Services", href: "/expert/services", icon: Briefcase },
-        { title: "Ready Made Trips", href: "/expert/templates", icon: Map },
-        // Distinct product from the line above (that one is the expert_templates guides lane).
-        // Spec v3 §0a names this one "Trips by Locals"; the templates relabel is decision D1.
-        { title: "Trips by Locals", href: "/expert/ready-made", icon: Store },
+        // Seller-side vocabulary (§10 label standard): "Ready Made Trips" is the CONSUMER store
+        // page; the seller console keeps "Itinerary Templates" (the Airbnb listings/homes split).
+        // "Store Listings" is the workstation→store pipeline console (decision-maker model,
+        // 2026-07-25: one store, stocked from the Workstation; "Trips by Locals" is a consumer
+        // shelf section by author type, never a seller-console name).
+        { title: "Itinerary Templates", href: "/expert/templates", icon: Map },
+        { title: "Store Listings", href: "/expert/ready-made", icon: Store },
         { title: "Booking Partners", href: "/expert/booking-partners", icon: Link2 },
         { title: isEventPlanner ? "Promo Content" : isLocalExpert ? "Local Guides" : "Content Studio", href: "/expert/content-studio", icon: Palette },
         { title: "DMO Library", href: "/expert/dmo-library", icon: Library },

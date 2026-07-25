@@ -498,4 +498,8 @@ export const MIGRATION_FILES = [
   // CHECKs created WITH the tables, no legacy rows → no publish-push trap), 'ready_made_trip' fee band
   // (platform take 0.25, max 0.25 = the 75% expert floor). See spec v3 + authoring brief v1.1.
   "133_ready_made_trips.sql",
+  // 134: ready_made_trips.plan_type (additive nullable, no CHECK/DEFAULT — no publish-push trap).
+  // The "Type of Plan" line of the store's quality structure; required by the submit gate, vocab
+  // validated in code (shared/ready-made-plan-types.ts).
+  "134_ready_made_plan_type.sql",
 ] as const;

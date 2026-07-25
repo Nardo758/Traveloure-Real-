@@ -14,7 +14,7 @@
  * it created (listings, trips, users) in a finally block.
  */
 import { db } from "../server/db";
-import { users, trips, readyMadeTrips } from "@shared/schema";
+import { users, trips, readyMadeTrips, itineraryItems } from "@shared/schema";
 import { eq, sql } from "drizzle-orm";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:5000";
@@ -225,6 +225,67 @@ async function main() {
     check("unpriced listing returns NULL amounts, not a placeholder",
       noPrice.json?.available === true && noPrice.json?.priceCents === null &&
       noPrice.json?.expertEarningsCents === null);
+
+    console.log("\n── 5b: submit gate — the workstation→store push ──");
+    // Reset to a draft with hero+price but NO plan type and NO items.
+    await db.update(readyMadeTrips)
+      .set({ status: "draft", planType: null, priceCents: 9900 } as any)
+      .where(eq(readyMadeTrips.id, listingId));
+
+    const notReady = await author.req("POST", `/api/expert/ready-made/${listingId}/submit`);
+    const missingReqs = (notReady.json?.missing ?? []).map((m: any) => m.requirement);
+    check("incomplete listing refused with NAMED requirements (not a bare 400)",
+      notReady.status === 400 && missingReqs.includes("planType") && missingReqs.includes("itinerary"),
+      `${notReady.status} ${JSON.stringify(missingReqs)}`);
+
+    const badPlanType = await author.req("PATCH", `/api/expert/ready-made/${listingId}`, { planType: "scam_plan" });
+    check("plan type outside the vocabulary rejected", badPlanType.status === 400, `got ${badPlanType.status}`);
+    const setPlan = await author.req("PATCH", `/api/expert/ready-made/${listingId}`, { planType: "hiking_itinerary" });
+    check("vocabulary plan type accepted + persisted",
+      setPlan.status === 200 && setPlan.json?.listing?.planType === "hiking_itinerary");
+
+    // Fill days 1 and 3 only — day 2 stays empty, and the refusal must SAY so.
+    for (const day of [1, 3]) {
+      await db.insert(itineraryItems).values({
+        tripId, title: `Gate item day ${day}`, dayNumber: day, itemType: "activity",
+      } as any);
+    }
+    const emptyDay = await author.req("POST", `/api/expert/ready-made/${listingId}/submit`);
+    check("empty day named in the refusal (no scaffold reaches the shelf)",
+      emptyDay.status === 400 &&
+      (emptyDay.json?.missing ?? []).some((m: any) => m.requirement === "itinerary" && m.message.includes("2")),
+      JSON.stringify(emptyDay.json?.missing));
+
+    await db.insert(itineraryItems).values({
+      tripId, title: "Gate item day 2", dayNumber: 2, itemType: "activity",
+    } as any);
+    const submitted = await author.req("POST", `/api/expert/ready-made/${listingId}/submit`);
+    check("complete listing submits (draft → submitted, submittedAt stamped)",
+      submitted.status === 200 && submitted.json?.listing?.status === "submitted" &&
+      !!submitted.json?.listing?.submittedAt,
+      `${submitted.status} ${submitted.json?.listing?.status}`);
+    check("submit can NEVER self-approve (D1a)", submitted.json?.listing?.status !== "approved");
+
+    const dupSubmit = await author.req("POST", `/api/expert/ready-made/${listingId}/submit`);
+    check("double-submit → 409 (atomic conditional, §15)", dupSubmit.status === 409, `got ${dupSubmit.status}`);
+
+    // Rejected → resubmit clears the rejection.
+    await db.update(readyMadeTrips)
+      .set({ status: "rejected", rejectionReason: "needs work" } as any)
+      .where(eq(readyMadeTrips.id, listingId));
+    const resubmit = await author.req("POST", `/api/expert/ready-made/${listingId}/submit`);
+    check("rejected → resubmit allowed + rejection reason cleared",
+      resubmit.status === 200 && resubmit.json?.listing?.status === "submitted" &&
+      resubmit.json?.listing?.rejectionReason === null);
+
+    const strangerSubmit = await stranger.req("POST", `/api/expert/ready-made/${listingId}/submit`);
+    check("another expert cannot submit this listing", strangerSubmit.status === 404, `got ${strangerSubmit.status}`);
+
+    // planType is a headline claim: changing it on an approved listing re-enters review (§10 A3).
+    await db.update(readyMadeTrips).set({ status: "approved" } as any).where(eq(readyMadeTrips.id, listingId));
+    const planFlip = await author.req("PATCH", `/api/expert/ready-made/${listingId}`, { planType: "road_trip_itinerary" });
+    check("plan-type change on an approved listing → back to 'submitted'",
+      planFlip.json?.listing?.status === "submitted" && planFlip.json?.reReviewRequired === true);
 
     console.log("\n── 6: hero-search key gate (§13 honest unavailability) ──");
     const search = await author.req("GET", "/api/expert/ready-made/hero-search?q=kyoto");

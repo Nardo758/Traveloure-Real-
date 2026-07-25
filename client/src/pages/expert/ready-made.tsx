@@ -1,13 +1,15 @@
 /**
- * /expert/ready-made — the author's console for Trips by Locals (Ready-Made Phase 2).
+ * /expert/ready-made — Store Listings: the seller console of the workstation→store pipeline.
  *
- * This is the ENTRY POINT for the authoring lane: start a new ready-made trip (which creates the
- * authoring trip + its draft listing and drops you into the workspace builder), and see the ones
- * you've already started with their approval state.
+ * Decision-maker model (2026-07-25): "Ready Made Trips" is the ONE commerce store where Local
+ * Experts and Trip Advisors sell their content; the Workstation is the factory; "Trips by Locals"
+ * is a consumer shelf section inside the store (Local Expert content vs Advisor content), not a
+ * product or a console name. This page is the seller's view of that pipeline: start a new store
+ * listing (creates the authoring trip + draft listing and opens the workspace builder) and track
+ * each listing's approval state on its way to the shelf.
  *
- * Deliberately separate from /expert/templates, which is the `expert_templates` GUIDES lane
- * (view-only knowledge products, jsonb itineraries, no clone) — spec v3 §0a. Same words, different
- * product; do not merge them.
+ * `expert_templates` (/expert/templates) is the older store-itinerary console being folded into
+ * this one factory — its existing stock keeps selling until the migration decision lands.
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
@@ -15,6 +17,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Loader2, Map as MapIcon, Plus } from "lucide-react";
 import type { ReadyMadeListing } from "@/components/expert/ready-made-listing-panel";
+import { planTypeLabel } from "@shared/ready-made-plan-types";
 
 const G: Record<number, string> = {
   50: "#F9FAFB", 200: "#E5E7EB", 400: "#9CA3AF",
@@ -67,11 +70,11 @@ export default function ExpertReadyMade() {
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
             <MapIcon style={{ width: 22, height: 22, color: G[900] }} />
-            <h1 style={{ fontSize: 22, fontWeight: 700, color: G[900], margin: 0 }}>Trips by Locals</h1>
+            <h1 style={{ fontSize: 22, fontWeight: 700, color: G[900], margin: 0 }}>Store Listings</h1>
           </div>
           <div style={{ fontSize: 13.5, color: G[500], marginTop: 6, maxWidth: 520, lineHeight: 1.5 }}>
-            Build a complete trip once, then sell it as many times as you like. A buyer gets their own
-            editable copy — you keep authoring the original.
+            Build a complete trip once, then sell it in the Ready Made Trips store as many times as you
+            like. A buyer gets their own editable copy — you keep authoring the original.
           </div>
         </div>
         <button
@@ -85,7 +88,7 @@ export default function ExpertReadyMade() {
           }}
         >
           {create.isPending ? <Loader2 style={{ width: 14, height: 14 }} className="animate-spin" /> : <Plus style={{ width: 14, height: 14 }} />}
-          New ready-made trip
+          New store listing
         </button>
       </div>
 
@@ -100,10 +103,10 @@ export default function ExpertReadyMade() {
             data-testid="empty-ready-made"
             style={{ border: `1.5px dashed ${G[200]}`, borderRadius: 14, padding: "34px 22px", textAlign: "center", background: G[50] }}
           >
-            <div style={{ fontSize: 15, fontWeight: 700, color: G[900], marginBottom: 6 }}>No ready-made trips yet</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: G[900], marginBottom: 6 }}>No store listings yet</div>
             <div style={{ fontSize: 13, color: G[500], lineHeight: 1.55, maxWidth: 400, margin: "0 auto" }}>
-              Start one and the builder opens with an empty itinerary. Add days and places, set a price,
-              pick a cover photo, then submit it for review.
+              Start one and the builder opens with an empty itinerary. Add days and places, choose a plan
+              type, set a price, pick a cover photo, then submit it for review.
             </div>
           </div>
         ) : (
@@ -132,7 +135,7 @@ export default function ExpertReadyMade() {
                       {l.title}
                     </div>
                     <div style={{ fontSize: 12, color: G[500], marginTop: 3 }}>
-                      {l.market} · {l.durationDays} days
+                      {planTypeLabel(l.planType) ?? "No plan type yet"} · {l.market} · {l.durationDays} days
                       {/* Honest empty state: an unpriced listing shows "No price yet", never $0. */}
                       {" · "}
                       {l.priceCents === null ? "No price yet" : `$${(l.priceCents / 100).toFixed(2)}${l.pricingMode === "per_traveler" ? " / traveler" : ""}`}

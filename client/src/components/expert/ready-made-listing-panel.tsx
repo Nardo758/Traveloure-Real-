@@ -18,7 +18,8 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Check, ImageIcon, Loader2, Search, X } from "lucide-react";
+import { Check, ImageIcon, Loader2, Search, Send, X } from "lucide-react";
+import { READY_MADE_PLAN_TYPES } from "@shared/ready-made-plan-types";
 
 // Same neutral scale as the workspace right rail this panel is rendered inside
 // (client/src/pages/expert/workspace.tsx) so it doesn't read as a foreign element. The primary
@@ -34,6 +35,7 @@ export interface ReadyMadeListing {
   title: string;
   market: string;
   durationDays: number;
+  planType: string | null;
   bestSeason: string | null;
   pricingMode: "fixed" | "per_traveler";
   priceCents: number | null;
@@ -89,6 +91,7 @@ export default function ReadyMadeListingPanel({
   const qc = useQueryClient();
   const [draft, setDraft] = useState({
     title: listing.title,
+    planType: listing.planType ?? "",
     bestSeason: listing.bestSeason ?? "",
     durationDays: String(listing.durationDays),
     pricingMode: listing.pricingMode,
@@ -143,6 +146,7 @@ export default function ReadyMadeListingPanel({
   const saveDetails = () => {
     const patch: Record<string, unknown> = {
       title: draft.title.trim(),
+      planType: draft.planType === "" ? null : draft.planType,
       bestSeason: draft.bestSeason.trim() === "" ? null : draft.bestSeason.trim(),
       pricingMode: draft.pricingMode,
     };
@@ -161,9 +165,33 @@ export default function ReadyMadeListingPanel({
     save.mutate(patch);
   };
 
+  const submit = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/expert/ready-made/${listing.id}/submit`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        credentials: "include",
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const detail = Array.isArray(body.missing)
+          ? body.missing.map((m: { message: string }) => m.message).join(" · ")
+          : body.message;
+        throw new Error(detail ?? "Could not submit the listing");
+      }
+      return body as { listing: ReadyMadeListing };
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [`/api/expert/workspace-context/${tripId}`] });
+      toast({ title: "Submitted for review", description: "It goes live in the store once an admin approves it." });
+    },
+    onError: (e: Error) => toast({ title: "Not ready to submit", description: e.message, variant: "destructive" }),
+  });
+
   const status = STATUS_COPY[listing.status];
   const dirty =
     draft.title !== listing.title ||
+    draft.planType !== (listing.planType ?? "") ||
     draft.bestSeason !== (listing.bestSeason ?? "") ||
     draft.durationDays !== String(listing.durationDays) ||
     draft.pricingMode !== listing.pricingMode ||
@@ -244,6 +272,20 @@ export default function ReadyMadeListingPanel({
             style={field}
           />
         </div>
+        <div>
+          <span style={label}>Type of plan</span>
+          <select
+            value={draft.planType}
+            onChange={(e) => setDraft((d) => ({ ...d, planType: e.target.value }))}
+            data-testid="select-listing-plan-type"
+            style={{ ...field, cursor: "pointer", color: draft.planType === "" ? G[400] : undefined }}
+          >
+            <option value="">Choose a plan type…</option>
+            {READY_MADE_PLAN_TYPES.map((t) => (
+              <option key={t.key} value={t.key}>{t.label}</option>
+            ))}
+          </select>
+        </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
           <div>
             <span style={label}>Days</span>
@@ -308,6 +350,35 @@ export default function ReadyMadeListingPanel({
           {dirty ? "Save listing details" : "Saved"}
         </button>
       </div>
+
+      {/* Submit for review — the push into the store. Only offered from draft / needs-changes;
+          the SERVER is the authority on readiness (plan type, hero, price, no empty days) and
+          names exactly what's missing, so this button is honest even when incomplete. */}
+      {(listing.status === "draft" || listing.status === "rejected") && (
+        <div style={{ borderTop: `1px solid ${G[200]}`, paddingTop: 12, marginBottom: 14 }}>
+          <span style={label}>{listing.status === "rejected" ? "Resubmit" : "Publish to the store"}</span>
+          <div style={{ fontSize: 11, color: G[500], lineHeight: 1.5, marginBottom: 8 }}>
+            Needs a plan type, a cover photo, a price, and no empty days. An admin reviews it before it
+            appears in Ready Made Trips.
+          </div>
+          <button
+            onClick={() => submit.mutate()}
+            disabled={submit.isPending || dirty}
+            data-testid="button-submit-listing"
+            title={dirty ? "Save your listing details first" : undefined}
+            style={{
+              width: "100%", padding: "8px", borderRadius: 8, border: "none", fontSize: 12.5, fontWeight: 700,
+              background: !dirty && !submit.isPending ? "#15803D" : G[200],
+              color: !dirty && !submit.isPending ? "white" : G[400],
+              cursor: !dirty && !submit.isPending ? "pointer" : "not-allowed",
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+            }}
+          >
+            {submit.isPending ? <Loader2 style={{ width: 12, height: 12 }} className="animate-spin" /> : <Send style={{ width: 12, height: 12 }} />}
+            {listing.status === "rejected" ? "Resubmit for review" : "Submit for review"}
+          </button>
+        </div>
+      )}
 
       {/* Author's take — resolved from the fee band, never computed here (§8). */}
       <div style={{ borderTop: `1px solid ${G[200]}`, paddingTop: 12 }}>

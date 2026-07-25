@@ -736,8 +736,8 @@ export default function ExpertWorkspace() {
   if (!tripId) {
     const homeCards: Array<{ title: string; desc: string; href: string; icon: any; primary?: boolean }> = [
       { title: "Assigned Trips", desc: "Open a client trip to build its itinerary", href: "/expert/assigned-trips", icon: MapPin, primary: true },
-      { title: "Trips by Locals", desc: "Build a full trip once and sell it as a copyable plan", href: "/expert/ready-made", icon: Store },
-      { title: "Ready Made Trips", desc: "Sell a written itinerary guide travelers can read", href: "/expert/templates", icon: FileText },
+      { title: "Store Listings", desc: "Build trips & plans to sell in the Ready Made Trips store", href: "/expert/ready-made", icon: Store },
+      { title: "Itinerary Templates", desc: "Manage your existing store itineraries", href: "/expert/templates", icon: FileText },
       { title: "DMO Library", desc: "Research Kyoto content to build from", href: "/expert/dmo-library", icon: Search },
       { title: "Content Studio", desc: "Create promo & social content", href: "/expert/content-studio", icon: Sparkles },
     ];

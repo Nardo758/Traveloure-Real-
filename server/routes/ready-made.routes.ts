@@ -17,8 +17,9 @@ import { Router } from "express";
 import { z } from "zod";
 import { db } from "../db";
 import { storage } from "../storage";
-import { trips, readyMadeTrips, tripExpertAdvisors } from "@shared/schema";
-import { and, desc, eq } from "drizzle-orm";
+import { trips, readyMadeTrips, tripExpertAdvisors, itineraryItems } from "@shared/schema";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { READY_MADE_PLAN_TYPE_KEYS, type ReadyMadePlanTypeKey } from "@shared/ready-made-plan-types";
 import { getAuthoredTrip } from "../utils/trip-authorship";
 import { getBand } from "../services/commission";
 import { unsplashService } from "../services/unsplash.service";
@@ -197,6 +198,8 @@ const patchListingSchema = z
     title: z.string().trim().min(1).max(200),
     market: z.string().trim().min(1).max(100),
     durationDays: z.number().int().min(1).max(30),
+    // Closed vocabulary — the "Type of Plan" line of the store's quality structure.
+    planType: z.enum(READY_MADE_PLAN_TYPE_KEYS as [ReadyMadePlanTypeKey, ...ReadyMadePlanTypeKey[]]).nullable(),
     bestSeason: z.string().trim().max(60).nullable(),
     pricingMode: z.enum(["fixed", "per_traveler"]), // mirrors the migration-133 CHECK
     priceCents: z.number().int().min(500).max(500_000).nullable(), // $5–$5,000, USD-only v1
@@ -212,7 +215,7 @@ const patchListingSchema = z
  * trip's headline claims ARE the product: what it's called, how long it runs, what it
  * costs, and the photo that sells it).
  */
-const MATERIAL_FIELDS = ["title", "durationDays", "pricingMode", "priceCents", "heroImageUrl"] as const;
+const MATERIAL_FIELDS = ["title", "durationDays", "planType", "pricingMode", "priceCents", "heroImageUrl"] as const;
 
 router.patch("/api/expert/ready-made/:id", isAuthenticated, async (req, res) => {
   try {
@@ -288,6 +291,85 @@ router.patch("/api/expert/ready-made/:id", isAuthenticated, async (req, res) => 
   } catch (err: any) {
     console.error("[ready-made] patch error:", err);
     res.status(500).json({ message: "Failed to update listing", error: err.message });
+  }
+});
+
+/**
+ * Submit for review — the PUSH half of the workstation→store pipeline (decision-maker,
+ * 2026-07-25: "what we need to fix is how the workstation pushes and saves these content").
+ *
+ * The gate enforces the store's QUALITY STRUCTURE before anything reaches the admin queue:
+ * a declared plan type (the structure's headline), an Unsplash-proven hero, a price, and a
+ * build with no empty days (every day 1..durationDays has at least one itinerary item). The
+ * refusal names each missing requirement so the author knows exactly what to fix — never a
+ * bare 400.
+ *
+ * §15: the transition is an atomic conditional UPDATE (draft|rejected → submitted); a
+ * double-click or a race with an admin decision matches 0 rows and returns 409 instead of
+ * silently re-submitting. Approval itself stays admin-only (D1a) — this endpoint can never
+ * set 'approved'.
+ */
+router.post("/api/expert/ready-made/:id/submit", isAuthenticated, async (req, res) => {
+  try {
+    const userId = sessionUserId(req);
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+    const listing = await loadAuthorListing(req.params.id, userId);
+    if (!listing) return res.status(404).json({ message: "Listing not found" });
+
+    const missing: Array<{ requirement: string; message: string }> = [];
+    if (!listing.planType) {
+      missing.push({ requirement: "planType", message: "Choose a plan type (Hiking Itinerary, Road Trip Itinerary, …)" });
+    }
+    if (!listing.heroImageUrl || !(listing.heroImageMeta as any)?.photographer) {
+      missing.push({ requirement: "hero", message: "Pick a cover photo from the Unsplash picker" });
+    }
+    if (listing.priceCents === null || listing.priceCents === undefined) {
+      missing.push({ requirement: "price", message: "Set a price" });
+    }
+
+    // No empty days: the buyer is purchasing a complete plan, not a scaffold.
+    const dayRows = await db
+      .select({ dayNumber: itineraryItems.dayNumber, count: sql<number>`count(*)::int` })
+      .from(itineraryItems)
+      .where(eq(itineraryItems.tripId, listing.sourceTripId))
+      .groupBy(itineraryItems.dayNumber);
+    const daysWithItems = new Set(dayRows.map((r) => r.dayNumber));
+    const emptyDays = Array.from({ length: listing.durationDays }, (_, i) => i + 1)
+      .filter((d) => !daysWithItems.has(d));
+    if (emptyDays.length > 0) {
+      missing.push({
+        requirement: "itinerary",
+        message: `Day${emptyDays.length > 1 ? "s" : ""} ${emptyDays.join(", ")} ${emptyDays.length > 1 ? "have" : "has"} no items yet — every day needs at least one`,
+      });
+    }
+
+    if (missing.length > 0) {
+      return res.status(400).json({ message: "Not ready to submit", missing });
+    }
+
+    const [updated] = await db
+      .update(readyMadeTrips)
+      .set({
+        status: "submitted",
+        submittedAt: new Date(),
+        rejectionReason: null,
+        reviewedAt: null,
+        reviewedBy: null,
+        updatedAt: new Date(),
+      } as any)
+      .where(and(
+        eq(readyMadeTrips.id, listing.id),
+        inArray(readyMadeTrips.status, ["draft", "rejected"]),
+      ))
+      .returning();
+    if (!updated) {
+      return res.status(409).json({ message: "Listing is already submitted or approved", status: listing.status });
+    }
+
+    res.json({ listing: updated });
+  } catch (err: any) {
+    console.error("[ready-made] submit error:", err);
+    res.status(500).json({ message: "Failed to submit listing", error: err.message });
   }
 });
 
