@@ -16,6 +16,28 @@ The five primitives ranked by provider pain (dispatch §2):
 
 **Sequencing rationale:** Phases 1–3 build the core backoffice (link, availability, attribution, payments). Phases 4–5 build the social engine and analytics (proof content, performance data).
 
+## ⚠️ Role coverage (added Jul 25 after the expert-side mapping pass — see EXPERT_SIDE_MAP.md)
+
+Every phase below covers BOTH roles; the expert-side pass changes the per-phase weight:
+
+- **Phase 1:** Two of the expert's three lanes (templates, Ready Made Trips) are ALREADY complete
+  "one link that books and pays" digital storefronts — the expert Phase-1 work is identity stitching
+  (the template/ready-made detail pages render no expert identity/link), share buttons, and handle/slug.
+  The calendar work applies only to human-delivered services and serves both roles from the same
+  `vendor_availability_slots` substrate.
+- **Phase 2:** three purchase rails, zero functioning attribution — `service_bookings.source` write-dead,
+  `ready_made_purchases.attributionRef` exists-but-write-dead (wire it), `template_purchases` needs a new
+  nullable column. Expert referral loop machinery exists with all three links missing (FOLLOWUPS L4).
+- **Phase 3:** repeat-pair + rails-rate logic applies per-lane; digital lanes (templates/ready-made) keep
+  their own take-rate bands (`ready_made_trip` band, template split) — the source dimension applies to the
+  service-booking band only unless the decision-maker extends it.
+- **Phase 4:** for EXPERTS a built-but-broken Tier-2 Instagram auto-post rail already exists
+  (server complete; one-line client bug + env + token-refresh from working). **Decision required:**
+  activate for experts or leave dormant — the dispatch's "Tier 2 deferred" premise predates this finding.
+- **Phase 5:** the earnings-by-source view is expert-first (5 live ledger types vs the provider's ~1);
+  needs one new GROUP BY type aggregate. Two blockers filed before any tip/coordination slice ships:
+  the un-charged tip endpoint (FOLLOWUPS L1 🔴) and the coordinator-pay gap (L2 🔴, decision-maker call).
+
 ---
 
 ## Phase 1 — Public Backoffice Pages (Primitives #1–2 foundation)

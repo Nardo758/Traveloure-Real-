@@ -481,4 +481,59 @@ fine — but its copy must never pass through that sanitizer, and the sanitizer 
 
 ---
 
+## L. Real Defects Discovered by the EXPERT-Side Mapping Pass (Jul 25, 2026 — verified, file:line)
+
+### L1: 🔴 Tip endpoint credits earnings with NO payment (money-safety, latent)
+`POST /api/expert/:expertId/tip` (`server/routes.ts:3419` → `storage.createExpertTip:3298`) records the
+client-sent amount as a born-`held` `expert_earnings` row + a `tip_commission` `platform_revenue` row with
+**no Stripe charge anywhere in the flow**. Zero client consumers today (grep confirms), so unreachable from
+the UI — but the endpoint is live and the money-endpoint guard apparently doesn't flag it. Before any tip
+surface ships, add the payment leg (PaymentIntent + verified confirm — the coordination-fee §7 pattern).
+Candidate for gating/disabling now.
+
+### L2: 🔴 Coordinator compensation gap (design decision required)
+An expert assigned as coordinator (`coordination_states.assignedExpertId`) placing third-party vendor
+bookings earns $0 — no earning-creation site references coordination at all; the workspace commission
+endpoint (`booking-actions.ts:957`) is a read-only projection. The stated design ("paid on the bookings
+they place", `revenue-tracking.service.ts:70`) only pays a coordinator who is the booked service's own
+provider. Decision-maker call (§7 fee is 100%-platform).
+
+### L3: Content Studio Instagram publish has never worked (one-line bug)
+`content-studio.tsx:308` calls `apiRequest('/api/instagram/publish', {method:'POST',…})` — URL in the
+method slot (real signature `(method, url, data)`, `queryClient.ts:23-27`); the request never reaches the
+server. Also `content-studio.tsx:849` "Post to Instagram" dropdown item has no onClick. The server rail
+(`server/routes/instagram.ts`, mounted) is complete: OAuth→long-lived token on users, publish, carousel,
+rate-limit. Additional gaps if activated: Meta env vars unset; no token-refresh job (~60-day expiry);
+content library not persisted (`mockContent = []`) so `instagramPostId` state is lost.
+
+### L4: Fabricated referral code + dead crediting machinery (§13-class)
+`GET /api/expert/referrals` (routes.ts:3476) fabricates a non-persisted, non-redeemable `REF-<userid>`
+fallback. Nothing writes `local_expert_forms.referral_code`; `createExpertReferral`/`getReferralByCode`/
+`updateReferralStatus` (which correctly creates an escrow-held $50 `referral_bonus` earning) have zero
+callers; signup `?ref=` dies in funnel analytics. The loop needs: generate-at-approval, redeem-at-signup,
+qualify-on-first-booking.
+
+### L5: Expert earnings activity feed omits 4 of 5 streams
+`GET /api/expert/earnings` transactions are built only from service bookings with hardcoded type
+`'service_booking'` (routes.ts:3376-3386) — template/ready-made/tip/referral earnings never appear, so a
+multi-stream earner's visible transactions don't sum to their (correct) totals. Read the ledger instead.
+
+### L6: `ready_made_purchases.attributionRef` is write-dead
+The column exists (schema.ts:6840, migration 133) purpose-built for share-link first-touch — the purchase
+confirm insert (`ready-made.routes.ts:807`) never sets it; zero writers, zero readers. Phase 2 wires it.
+
+### L7: Expert dashboard + analytics fabricated/dead content (§13 sweep list)
+Dashboard: hardcoded TravelPulseTicker items, 65% progress bar, "This Month" label over an all-time sum
+(routes.ts:4410). Analytics endpoint: fabricated funnel (×3.5/×0.85), CLV ×1.8/repeatRate 35, hardcoded
+seasonalDemand map (routes.ts:4589), benchmark literals; revenue-optimization projections ×1.15/×1.5 and
+split-percentage string-literal fallbacks (routes.ts:3540, §8-adjacent). Client: hardcoded achievements/
+suggestedPricing (analytics.tsx:220-245); dead-render sections reading fields no endpoint returns
+(recentReviews/monthlyMetrics/overallStats). Replace-or-remove list for the Phase-5 analytics build.
+
+### L8: Review-respond endpoint is backend-without-a-surface
+`POST /api/expert/reviews/:id/respond` (routes.ts:4299, owner-gated) has zero client consumers. The
+backoffice reviews panel should adopt it verbatim.
+
+---
+
 **End Phase 0 Discovered Follow-Ups — Ready for Prioritization**
