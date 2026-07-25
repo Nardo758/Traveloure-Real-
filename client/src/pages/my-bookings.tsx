@@ -323,6 +323,7 @@ function PurchasedPackageCard({ purchase }: { purchase: PurchasedPackage }) {
 export default function MyBookingsPage() {
   const { user, isLoading: authLoading } = useAuth();
   const { openSignInModal } = useSignInModal();
+  const { toast } = useToast();
   const [reviewDialogOpen, setReviewDialogOpen] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
 
@@ -334,6 +335,31 @@ export default function MyBookingsPage() {
   const { data: purchasedPackages } = useQuery<PurchasedPackage[]>({
     queryKey: ["/api/my-purchased-templates"],
     enabled: !!user,
+  });
+
+  // Ready-made STORE purchases (cloneable trips) — refundEligible is SERVER-computed on the
+  // D7/escrow clock; the client renders it, never re-derives the window.
+  const { data: rmPurchasesData } = useQuery<{ purchases: Array<{
+    id: string; status: string; pricePaidCents: number; purchasedAt: string | null;
+    cloneTripId: string | null; title: string; market: string; heroImageUrl: string | null;
+    refundEligible: boolean;
+  }> }>({ queryKey: ["/api/ready-made/purchases/mine"], enabled: !!user });
+  const rmPurchases = rmPurchasesData?.purchases ?? [];
+
+  const rmRefund = useMutation({
+    mutationFn: async (purchaseId: string) => {
+      const res = await fetch(`/api/ready-made/purchases/${purchaseId}/refund`, {
+        method: "POST", headers: { "content-type": "application/json" }, credentials: "include",
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.message ?? "Refund failed");
+      return body;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ready-made/purchases/mine"] });
+      toast({ title: "Refund issued", description: "Your payment is being returned; the trip copy has been removed." });
+    },
+    onError: (e: Error) => toast({ title: "Refund failed", description: e.message, variant: "destructive" }),
   });
 
   if (authLoading) {
@@ -453,6 +479,38 @@ export default function MyBookingsPage() {
 
             {/* Purchased expert packages — Phase B3 delivery surface */}
             <TabsContent value="packages" className="space-y-4">
+              {/* Ready-made STORE purchases — the buyer's clone + the D7 refund action.
+                  Without this block the refund endpoint had zero callers (backend-without-surface). */}
+              {rmPurchases.length > 0 && (
+                <div className="space-y-3 mb-6" data-testid="rm-purchases">
+                  <h3 className="font-semibold">Ready Made Trips you bought</h3>
+                  {rmPurchases.map((p) => (
+                    <div key={p.id} className="flex items-center gap-3 border border-border rounded-xl p-3" data-testid={`rm-purchase-${p.id}`}>
+                      {p.heroImageUrl && <img src={p.heroImageUrl} alt="" className="w-16 h-12 object-cover rounded-lg flex-shrink-0" />}
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium truncate">{p.title}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {p.market} · ${(p.pricePaidCents / 100).toFixed(2)} ·{" "}
+                          {p.status === "refunded" ? "Refunded" : p.status === "revoked" ? "Revoked" : "Purchased"}
+                        </div>
+                      </div>
+                      {p.cloneTripId && p.status !== "refunded" && (
+                        <Button size="sm" variant="outline" asChild data-testid={`button-open-clone-${p.id}`}>
+                          <Link href={`/trip/${p.cloneTripId}?tab=itinerary`}>Open my trip</Link>
+                        </Button>
+                      )}
+                      {p.refundEligible ? (
+                        <Button size="sm" variant="ghost" className="text-destructive" disabled={rmRefund.isPending}
+                          onClick={() => rmRefund.mutate(p.id)} data-testid={`button-refund-${p.id}`}>
+                          Request refund
+                        </Button>
+                      ) : (p.status === "paid" || p.status === "cloned") ? (
+                        <span className="text-[11px] text-muted-foreground flex-shrink-0">Refund window closed</span>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              )}
               {(purchasedPackages ?? []).length === 0 ? (
                 <EmptyState message="No purchased trips yet" />
               ) : (

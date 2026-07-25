@@ -491,6 +491,65 @@ async function main() {
       publicDetail.json?.listing?.section === "trips_by_locals");
     await db.update(readyMadeTrips).set({ status: "rejected" } as any).where(eq(readyMadeTrips.id, listingId));
 
+    console.log("\n── 5g: AI build review (optimizer engine, advisory) + buyer purchases list ──");
+    // Build review reuses the optimizer's analyzeItinerary on the AUTHORING trip (decision-maker:
+    // "same code as the AI optimization but applied differently"). Advisory: never gates submit.
+    const review = await author.req("POST", `/api/expert/ready-made/${listingId}/build-review`);
+    check("author can run the build review", review.status === 200, `${review.status} ${review.text.slice(0, 160)}`);
+    check("review returns a numeric score + issue/suggestion arrays",
+      typeof review.json?.buildReview?.score === "number" &&
+      Array.isArray(review.json?.buildReview?.issues) && Array.isArray(review.json?.buildReview?.suggestions),
+      JSON.stringify(review.json?.buildReview ?? {}).slice(0, 160));
+    check("engine provenance is the optimizer's analyzer",
+      review.json?.buildReview?.engine === "itinerary-intelligence", review.json?.buildReview?.engine);
+    const [reviewedRow] = await db.select({ buildReview: readyMadeTrips.buildReview })
+      .from(readyMadeTrips).where(eq(readyMadeTrips.id, listingId));
+    check("verdict PERSISTED to the listing (admin queue sees the same score)",
+      (reviewedRow?.buildReview as any)?.score === review.json?.buildReview?.score &&
+      !!(reviewedRow?.buildReview as any)?.reviewedAt);
+    const strangerReview = await stranger.req("POST", `/api/expert/ready-made/${listingId}/build-review`);
+    check("another expert cannot run a review on this listing", strangerReview.status === 404, `got ${strangerReview.status}`);
+    const anonReview = await makeActor().req("POST", `/api/expert/ready-made/${listingId}/build-review`);
+    check("unauthenticated build review is 401", anonReview.status === 401, `got ${anonReview.status}`);
+
+    // Buyer purchases list: session-scoped, refundEligible computed SERVER-side on the D7 clock.
+    const strangerId5g = (await db.select({ id: users.id }).from(users).where(eq(users.email, strangerEmail)))[0].id;
+    const [freshPurchase] = await db.insert(readyMadePurchases).values({
+      buyerId: strangerId5g, readyMadeTripId: listingId, pricePaidCents: 9900,
+      currency: "USD", stripePaymentIntentId: `pi_gate5g_${stamp}`, status: "cloned",
+      purchasedAt: new Date(),
+    } as any).returning();
+    try {
+      const minePurchases = await stranger.req("GET", "/api/ready-made/purchases/mine");
+      const mineRow = (minePurchases.json?.purchases ?? []).find((p: any) => p.id === freshPurchase.id);
+      check("buyer sees their purchase with the listing teaser joined",
+        !!mineRow && mineRow.title === "Three days in Higashiyama" && mineRow.pricePaidCents === 9900,
+        JSON.stringify(mineRow ?? {}).slice(0, 160));
+      check("fresh purchase is refund-eligible (inside the D7 window)",
+        mineRow?.refundEligible === true, `${mineRow?.refundEligible}`);
+      const notMine = await author.req("GET", "/api/ready-made/purchases/mine");
+      check("purchases list is buyer-scoped (author does not see it)",
+        !(notMine.json?.purchases ?? []).some((p: any) => p.id === freshPurchase.id));
+
+      await db.update(readyMadePurchases)
+        .set({ purchasedAt: new Date(Date.now() - 9 * 86400000) } as any)
+        .where(eq(readyMadePurchases.id, freshPurchase.id));
+      const stale = await stranger.req("GET", "/api/ready-made/purchases/mine");
+      const staleRow = (stale.json?.purchases ?? []).find((p: any) => p.id === freshPurchase.id);
+      check("past the D7 window → refundEligible false (server clock, same as the refund gate)",
+        staleRow?.refundEligible === false, `${staleRow?.refundEligible}`);
+
+      await db.update(readyMadePurchases)
+        .set({ purchasedAt: new Date(), status: "refunded" } as any)
+        .where(eq(readyMadePurchases.id, freshPurchase.id));
+      const refundedList = await stranger.req("GET", "/api/ready-made/purchases/mine");
+      const refundedRow = (refundedList.json?.purchases ?? []).find((p: any) => p.id === freshPurchase.id);
+      check("a refunded purchase is never refund-eligible again",
+        refundedRow?.refundEligible === false, `${refundedRow?.refundEligible}`);
+    } finally {
+      await db.delete(readyMadePurchases).where(eq(readyMadePurchases.id, freshPurchase.id));
+    }
+
     console.log("\n── 6: hero-search key gate (§13 honest unavailability) ──");
     const search = await author.req("GET", "/api/expert/ready-made/hero-search?q=kyoto");
     if (process.env.UNSPLASH_ACCESS_KEY) {
