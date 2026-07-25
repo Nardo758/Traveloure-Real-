@@ -12,10 +12,10 @@
  */
 import { db } from "../db";
 import { storage } from "../storage";
-import { trips, itineraryItems, readyMadeTrips, readyMadePurchases } from "@shared/schema";
-import { and, eq } from "drizzle-orm";
+import { trips, itineraryItems, readyMadeTrips, readyMadePurchases, expertEarnings } from "@shared/schema";
+import { and, eq, inArray } from "drizzle-orm";
 import { getBand, PLATFORM_FEE_RATE } from "./commission";
-import { availableAtFor } from "../config/earnings-hold.config";
+import { availableAtFor, holdWindowDays } from "../config/earnings-hold.config";
 
 export interface FulfillResult {
   purchase: typeof readyMadePurchases.$inferSelect;
@@ -128,4 +128,81 @@ export async function fulfillReadyMadePurchase(purchaseId: string): Promise<Fulf
   } as any);
 
   return { purchase: claimed, cloneTripId: cloneTrip.id, alreadyFulfilled: false };
+}
+
+export type RefundLedgerResult =
+  | { ok: true; purchase: typeof readyMadePurchases.$inferSelect; alreadyRefunded: boolean }
+  | { ok: false; status: number; message: string };
+
+/**
+ * D7 refund — LEDGER half (the Stripe refund itself is the route's job, keyed idempotently).
+ *
+ * Ratified rule: refundable only while the money is in escrow — "no refund after the money is
+ * released in 7 days". The window is the SAME clock as the earning's escrow release
+ * (holdWindowDays('ready_made_sale')), so a refund can never chase money that has already
+ * cleared to the author — the dispute-window alignment lesson from the escrow spine.
+ *
+ * Effects, §15-ordered: atomic cloned|paid → refunded claim (a duplicate refund matches 0 rows
+ * and returns alreadyRefunded so the route can still retry the idempotent Stripe leg), reverse
+ * the author's held/releasable earning (paid_out is never auto-clawed-back — unreachable inside
+ * the window by construction), and REVOKE the product: the clone trip is deleted. A refunded
+ * buyer does not keep the itinerary they were refunded for.
+ */
+export async function refundReadyMadePurchaseLedger(
+  purchaseId: string,
+  buyerId: string,
+): Promise<RefundLedgerResult> {
+  const [purchase] = await db
+    .select()
+    .from(readyMadePurchases)
+    .where(eq(readyMadePurchases.id, purchaseId))
+    .limit(1);
+  // 404 for not-yours too — don't leak other buyers' purchase ids.
+  if (!purchase || purchase.buyerId !== buyerId) {
+    return { ok: false, status: 404, message: "Purchase not found" };
+  }
+  if (purchase.status === "refunded") {
+    return { ok: true, purchase, alreadyRefunded: true };
+  }
+  if (purchase.status === "revoked") {
+    return { ok: false, status: 409, message: "Purchase is not refundable" };
+  }
+
+  const purchasedAt = purchase.purchasedAt ? new Date(purchase.purchasedAt) : null;
+  const windowMs = holdWindowDays("ready_made_sale") * 24 * 60 * 60 * 1000;
+  if (!purchasedAt || Date.now() > purchasedAt.getTime() + windowMs) {
+    return {
+      ok: false,
+      status: 409,
+      message: `refund_window_closed: refunds are available for ${holdWindowDays("ready_made_sale")} days after purchase`,
+    };
+  }
+
+  const [claimed] = await db
+    .update(readyMadePurchases)
+    .set({ status: "refunded" } as any)
+    .where(and(eq(readyMadePurchases.id, purchaseId), inArray(readyMadePurchases.status, ["paid", "cloned"])))
+    .returning();
+  if (!claimed) {
+    // Lost a race with another refund call — treat as already refunded (idempotent).
+    const [current] = await db.select().from(readyMadePurchases).where(eq(readyMadePurchases.id, purchaseId)).limit(1);
+    return { ok: true, purchase: current, alreadyRefunded: true };
+  }
+
+  // Reverse the author's escrowed earning (held/releasable only — the ratified reversal rule).
+  await db
+    .update(expertEarnings)
+    .set({ status: "reversed" } as any)
+    .where(and(
+      eq(expertEarnings.referenceId, purchaseId),
+      eq(expertEarnings.type, "ready_made_sale"),
+      inArray(expertEarnings.status, ["held", "releasable"]),
+    ));
+
+  // Revoke the product: the clone (and its items, by cascade) goes with the refund.
+  if (claimed.cloneTripId) {
+    await db.delete(trips).where(eq(trips.id, claimed.cloneTripId));
+  }
+
+  return { ok: true, purchase: claimed, alreadyRefunded: false };
 }
