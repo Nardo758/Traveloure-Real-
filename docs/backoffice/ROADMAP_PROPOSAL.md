@@ -62,6 +62,20 @@ The unified console follows a **make / distribute split**, per the decision-make
 
 Visual reference: the sidebar-comparison artifact (Workspace-as-hub iteration) + the Gap Atlas.
 
+**Role-fit verification (Jul 25 pass — full verdicts in IMPLEMENTATION_MAP.md):**
+- **EA is OUT of the unified backoffice** — the EA console (own layout/sidebar/RBAC, sells nothing) stays
+  untouched. The pass found EAs currently leak into the expert console (FOLLOWUPS M1) — fixed in Wave 0.
+- **Expert subtypes fit via a role-computed tool matrix** in the Workspace hub (`f(user.role)` at render):
+  event_planner keeps templates/DMO/share tools but never sees ready-made authoring (server-excluded —
+  today's unconditional entries are a 403 dead-end, M3); nugget composer stays local_expert-only (and its
+  ungated server API gets closed, M2).
+- **Admin absorbs the redesign unchanged** (all five pipeline queues exist); four additions carried in the
+  map: handle reserved-words + admin lever, short-link admin surface (ships WITH Phase 2),
+  review-response moderation (M4, Wave 0), share-asset persistence decision before any IG activation.
+- **Traveler surfaces untouched** (verified zero links into folded pages outside the role sidebars).
+
+Execution designation per work item (agent tiers, token estimates, human-read stops): **IMPLEMENTATION_MAP.md**.
+
 ---
 
 ## Phase 1 — Public Backoffice Pages (Primitives #1–2 foundation)
