@@ -131,6 +131,8 @@ import {
   type CommissionRates,
 } from "./services/commission";
 import { calculateCommission, BookingType } from "./utils/commissionCalculator";
+// Ready-made authoring mode (brief §2): explicit present-value author check. Never getTripRole.
+import { isTripAuthor } from "./utils/trip-authorship";
 
 // ─── Service-category → booking_fee_configs category mapping ─────────────────
 // serviceCategories.slug values are detailed provider-category slugs (e.g.
@@ -7666,7 +7668,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const { tripId } = req.params;
       const owned = await verifyTripOwnership(tripId, userId);
       const assigned = owned ? true : await storage.isExpertAssignedToTrip(tripId, userId);
-      if (!owned && !assigned) return res.status(403).json({ message: "Access denied" });
+      // Authoring mode (ready-made brief §2): the trip's author may read its own build.
+      const authored = (owned || assigned) ? false : await isTripAuthor(tripId, userId);
+      if (!owned && !assigned && !authored) return res.status(403).json({ message: "Access denied" });
       const items = await storage.getItineraryItems(tripId);
       const grouped: Record<number, typeof items> = {};
       for (const item of items) {
@@ -7720,7 +7724,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const { tripId } = req.params;
       const owned = await verifyTripOwnership(tripId, userId);
       const assigned = owned ? true : await storage.isExpertAssignedToTrip(tripId, userId);
-      if (!owned && !assigned) return res.status(403).json({ message: "Access denied" });
+      // Authoring mode (ready-made brief §2): the trip's author may build it.
+      const authored = (owned || assigned) ? false : await isTripAuthor(tripId, userId);
+      if (!owned && !assigned && !authored) return res.status(403).json({ message: "Access denied" });
       const parsed = insertItineraryItemSchema.safeParse({ ...req.body, tripId });
       if (!parsed.success) return res.status(400).json({ message: "Invalid data", errors: parsed.error.errors });
       const item = await storage.createItineraryItem(parsed.data as any);
