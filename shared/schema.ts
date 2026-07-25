@@ -6838,7 +6838,7 @@ export const readyMadePurchases = pgTable("ready_made_purchases", {
   // Idempotency anchor (§15): unique — a webhook/confirm retry can never double-clone.
   stripePaymentIntentId: varchar("stripe_payment_intent_id").notNull().unique(),
   attributionRef: varchar("attribution_ref", { length: 64 }), // share-link first-touch (map §4)
-  cloneTripId: varchar("clone_trip_id").references(() => trips.id),
+  cloneTripId: varchar("clone_trip_id").references(() => trips.id, { onDelete: "set null" }), // migration 135
   // Row is inserted only AFTER capture, so born-'paid' is correct (unlike the template pre-payment row).
   status: varchar("status", { length: 20 }).notNull().default("paid"), // CHECK paid|cloned|refunded|revoked
   purchasedAt: timestamp("purchased_at").notNull().defaultNow(),

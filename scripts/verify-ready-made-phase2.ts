@@ -16,7 +16,7 @@
 import { db } from "../server/db";
 import { users, trips, readyMadeTrips, readyMadePurchases, itineraryItems, expertEarnings } from "@shared/schema";
 import { and, eq, sql } from "drizzle-orm";
-import { fulfillReadyMadePurchase } from "../server/services/ready-made-purchase.service";
+import { fulfillReadyMadePurchase, refundReadyMadePurchaseLedger } from "../server/services/ready-made-purchase.service";
 
 const BASE = process.env.BASE_URL ?? "http://localhost:5000";
 const PASSWORD = "VerifyPhase2!2026";
@@ -423,10 +423,48 @@ async function main() {
     const buyAgain = await stranger.req("POST", `/api/ready-made/${listingId}/purchase`);
     check("buyer who owns the trip gets 409 on re-purchase", buyAgain.status === 409, `got ${buyAgain.status}`);
 
-    // Cleanup the commerce fixtures (clone cascade removes its items).
+    console.log("\n── 5e: D7 refund — ledger half (escrow-window enforced) ──");
+    // Wrong buyer → 404 (no purchase-id oracle).
+    const authorId2 = (await db.select({ id: users.id }).from(users).where(eq(users.email, authorEmail)))[0].id;
+    const wrongBuyer = await refundReadyMadePurchaseLedger(purchaseRow.id, authorId2);
+    check("refund by a non-buyer → 404", !wrongBuyer.ok && wrongBuyer.status === 404);
+
+    // Window closed: backdate the purchase past the 7-day window → 409, nothing reversed.
+    await db.update(readyMadePurchases)
+      .set({ purchasedAt: new Date(Date.now() - 9 * 86400000) } as any)
+      .where(eq(readyMadePurchases.id, purchaseRow.id));
+    const closed = await refundReadyMadePurchaseLedger(purchaseRow.id, strangerId);
+    check("refund after the D7 window → 409 refund_window_closed",
+      !closed.ok && closed.status === 409 && closed.message.includes("refund_window_closed"));
+    const [stillCloned] = await db.select().from(readyMadePurchases).where(eq(readyMadePurchases.id, purchaseRow.id));
+    check("window-closed refund left the purchase untouched", stillCloned.status === "cloned");
+
+    // Inside the window: full refund effects.
+    await db.update(readyMadePurchases)
+      .set({ purchasedAt: new Date() } as any)
+      .where(eq(readyMadePurchases.id, purchaseRow.id));
+    const refunded = await refundReadyMadePurchaseLedger(purchaseRow.id, strangerId);
+    check("refund inside the window succeeds", refunded.ok && !("alreadyRefunded" in refunded && refunded.alreadyRefunded));
+    const [afterRefund] = await db.select().from(readyMadePurchases).where(eq(readyMadePurchases.id, purchaseRow.id));
+    check("purchase → 'refunded'", afterRefund.status === "refunded");
+    const [reversedEarning] = await db.select().from(expertEarnings)
+      .where(eq(expertEarnings.referenceId, purchaseRow.id));
+    check("author's escrowed earning REVERSED (never paid out inside the window)",
+      reversedEarning?.status === "reversed", reversedEarning?.status);
+    const cloneGone = await db.select({ id: trips.id }).from(trips).where(eq(trips.id, fulfil.cloneTripId!));
+    check("clone trip revoked — a refunded buyer keeps nothing", cloneGone.length === 0);
+
+    const dupRefund = await refundReadyMadePurchaseLedger(purchaseRow.id, strangerId);
+    check("duplicate refund idempotent (alreadyRefunded, no error)",
+      dupRefund.ok && dupRefund.alreadyRefunded === true);
+    const earnAfterDup = await db.select({ id: expertEarnings.id, status: expertEarnings.status })
+      .from(expertEarnings).where(eq(expertEarnings.referenceId, purchaseRow.id));
+    check("still exactly one reversed earning after duplicate refund",
+      earnAfterDup.length === 1 && earnAfterDup[0].status === "reversed");
+
+    // Cleanup the commerce fixtures (clone already revoked by the refund).
     await db.delete(expertEarnings).where(eq(expertEarnings.referenceId, purchaseRow.id));
     await db.delete(readyMadePurchases).where(eq(readyMadePurchases.id, purchaseRow.id));
-    if (fulfil.cloneTripId) await db.delete(trips).where(eq(trips.id, fulfil.cloneTripId));
     // Back to rejected for the downstream sections' expectations.
     await db.update(readyMadeTrips).set({ status: "rejected", rejectionReason: "gate reset" } as any)
       .where(eq(readyMadeTrips.id, listingId));

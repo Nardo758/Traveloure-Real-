@@ -694,4 +694,45 @@ router.post("/api/ready-made/:id/purchase/confirm", isAuthenticated, async (req,
   }
 });
 
+// ─── D7 refund — buyer-initiated, inside the escrow window only ──────────────
+//
+// Ledger-first, Stripe-second (the dispute-uphold posture): the atomic status claim + earning
+// reversal + clone revocation run first; the Stripe refund uses a DETERMINISTIC idempotencyKey
+// (`rm-refund-<purchaseId>`), so if Stripe fails the buyer can retry — the ledger half returns
+// alreadyRefunded and the Stripe leg re-runs idempotently until it succeeds. §14: the refund
+// amount is the full PaymentIntent (Stripe derives it from the PI — no client amount).
+router.post("/api/ready-made/purchases/:id/refund", isAuthenticated, async (req, res) => {
+  try {
+    const userId = sessionUserId(req);
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+    const { refundReadyMadePurchaseLedger } = await import("../services/ready-made-purchase.service");
+    const ledger = await refundReadyMadePurchaseLedger(req.params.id, userId);
+    if (!ledger.ok) return res.status(ledger.status).json({ message: ledger.message });
+
+    const Stripe = (await import("stripe")).default;
+    const stripeClient = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
+      apiVersion: "2024-12-18.acacia" as any,
+    });
+    try {
+      const refund = await stripeClient.refunds.create(
+        { payment_intent: ledger.purchase.stripePaymentIntentId },
+        { idempotencyKey: `rm-refund-${ledger.purchase.id}` },
+      );
+      return res.json({ success: true, refundId: refund.id, purchase: ledger.purchase });
+    } catch (stripeErr: any) {
+      // Ledger is settled; the money leg failed. Say so honestly — a retry of this endpoint
+      // re-runs ONLY the idempotent Stripe refund (ledger returns alreadyRefunded).
+      console.error("[ready-made] refund Stripe leg failed:", stripeErr?.message);
+      return res.status(502).json({
+        message: "Refund recorded but the payment reversal failed — please retry",
+        purchase: ledger.purchase,
+      });
+    }
+  } catch (err: any) {
+    console.error("[ready-made] refund error:", err);
+    res.status(500).json({ message: "Failed to refund purchase" });
+  }
+});
+
 export default router;
