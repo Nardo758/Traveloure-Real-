@@ -5,6 +5,30 @@
 
 ---
 
+## ⚠️ CORRECTIONS (Jul 25, 2026 — verified ground-truth pass; SUPERSEDES the sections below where they conflict)
+
+A 5-agent verification pass re-checked this audit's citations against the repo. **Several citations below are
+fabricated or wrong.** Where a section conflicts with this table, the table wins. (Repo lesson: this is the
+absence-compared-to-absence bug class — CLAUDE.md dispatch §B5 warned about exactly this.)
+
+| # | Audit claim (below) | Verified reality |
+|---|--------------------|------------------|
+| 1 | **B5:** `server/routes/redirects.routes.ts` handles `/r/:code`; a `redirects` table exists | **FABRICATED — neither exists.** No redirects router (full listing of `server/routes/`, 27 files), zero `redirect` matches in `shared/schema.ts`. What DOES exist: share-**token** infra — `sharedTrips` (schema.ts:5811, with `views`/`bookings` counters + `expiresAt`), `sharedItineraries` (schema.ts:4990), public resolvers (`booking-actions.ts:363,428`; `trips.routes.ts:2001`), and the T7 `viral_share` funnel event carrying `refToken` (booking-actions.ts:406-414). A short-code table + 302 handler is a net-new build (in a MOUNTED router per §9). |
+| 2 | **D14:** `server/services/messaging.service.ts` with `sendMessage(userId, channel, templateKey, data)`; `server/templates/*.hbs` | **FABRICATED — no such file, no templates dir.** Real infra: `server/services/email.service.ts:101` `sendEmail()` via Resend (HTML built inline). `server/services/messages.service.ts:152` is a *different* `sendMessage` — in-app user↔expert chat. A channel abstraction is net-new, layered on `email.service.ts`. |
+| 3 | **D12/F4:** `expert_reviews` table | **FABRICATED — no such table.** Real review tables: `service_reviews` (schema.ts:772, booking-gated + moderated), `review_ratings` (schema.ts:152), `template_reviews` (schema.ts:3986), `review_moderation_logs` (schema.ts:793). `GET /api/experts/:id/reviews` exists but lives in `server/routes.ts:2526` and reads `service_reviews` via `provider_services.providerId` — there is no expert-level review store (matches the §13 filed gap: expert cards honestly show "New"). |
+| 4 | **A2:** OG tags emitted from `server/index.ts:180-195` | **Wrong file + fabricated quoted markup.** Static OG tags live in `client/index.html:12-23` (og:title "Traveloure — AI-Powered Travel Planning with Local Experts", og:image `/og-cover.png`). `server/index.ts:179-201` is the env readiness check. **Missed precedent (changes the Phase-1 approach):** `trips.routes.ts:2860` `GET /itinerary-view/:token` ALREADY does server-side per-route OG injection — Express intercepts the SPA route before the Vite catch-all, looks up the entity, string-injects `<title>`/og:* into index.html. No edge function needed; replicate this handler shape. `seo-head.tsx` is client-JS-only (invisible to WhatsApp/FB crawlers). |
+| 5 | **A3/B4:** tables `users` (in schema.ts) / `service_providers` | **Location + existence corrections.** `users` is defined in `shared/models/auth.ts:38-82` (NOT schema.ts) — confirmed no handle/slug/username. **There is NO `service_providers` table at all** — provider identity = `users` + `service_provider_forms` (schema.ts:427). A provider-handle column lands on `users` (auth.ts). Slug precedents to copy: `service_categories.slug`, `city_neighborhoods.slug`, `boards.slug` (unique, routed `/collections/:slug`). `ready_made_trips` also has no slug (checked). |
+| 6 | **B4:** `service_bookings.source` values `direct\|cross_sell\|expert_rec`, written at checkout | **Half-fabricated + write-side DEAD.** Column exists (schema.ts:754, default `'direct'`) but the vocabulary is `direct \| cross_sell` only — `expert_rec` appears nowhere in the codebase. **Nothing writes it:** the live `/api/checkout` insert (payments.routes.ts:473-490) never sets `source` or `crossSellSourceContentId`, so every booking is `'direct'` and the cross-sell conversion readers (cross-sell.routes.ts:99,187,196) count a value that is never written — structurally zero. Phase 2 must build the write path, not extend it. |
+| 7 | **B6:** "no query-param parsing for ?ref= at signup" | **Wrong — parsing EXISTS, persistence doesn't.** `Signup.tsx:7-9` parses `?ref=` + `?source=` and posts both to `/api/auth/register`; `emailAuth.ts:107` fires `trackFunnelEvent` (account_created, source, refToken) into `funnel_events.properties` jsonb. Attribution is analytics-only — no `users` column — so "which user came from which link" is a jsonb event query today. Adding `users.acquired_via_provider_id` remains the Phase-2 item; the capture spine already exists. |
+| 8 | **A2:** "minimal viable path = edge function" recommendation | **Superseded by #4:** the proven in-repo pattern is the Express route-interception (`trips.routes.ts:2860`), which works on the current deploy with zero new infra. The roadmap's Phase-1 SSR approach is corrected accordingly. |
+
+Claims that **survived** verification: no handle/slug anywhere (A3 — true); no satori/sharp/canvas in
+package.json (E15 — true; only `pdfkit` for PDFs and an external Unsplash og:image URL); provider settings
+page + mounted `provider.routes.ts` (true, routes.ts:576); the checkout rail's §14/§15 posture (true —
+required idempotencyKey with DB dedup, server-derived pricing via `resolveCommissionRates`).
+
+---
+
 ## A. Public Surface
 
 ### A1: Do ANY public (unauthenticated) provider or offering routes exist today? What renders at them?

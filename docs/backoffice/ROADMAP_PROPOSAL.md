@@ -37,21 +37,25 @@ The five primitives ranked by provider pain (dispatch §2):
    - `/p/:handle/packages/:template-slug` → expert template detail page
    - Client routes: new component `ProviderPublicProfile.tsx`, new component `OfferingPublicCheckout.tsx`
 
-3. **SSR + OG tags (link preview):**
-   - Implement edge-function solution (Option A from A2 audit)
-   - Routes intercepted at edge: `/p/:handle`, `/p/:handle/*`
-   - OG data resolved: offering title, description, price, provider name, teaser image
-   - Fallback: static title if edge function fails (graceful degradation)
+3. **SSR + OG tags (link preview) — CORRECTED (see PHASE0_AUDIT.md Corrections #4/#8):**
+   - No edge function. Replicate the PROVEN in-repo pattern: `trips.routes.ts:2860` (`GET /itinerary-view/:token`)
+     — an Express route registered before the Vite catch-all that looks up the entity, string-injects
+     `<title>`/og:*/twitter:* into index.html, and `next()`s on miss.
+   - Intercept `/p/:handle` and `/p/:handle/:slug` the same way; OG data from the approved service row
+     (title, description, price, provider name, `serviceImage`).
+   - Fallback: the static `client/index.html:12-23` tags (what every route serves today).
 
-4. **Double-booking prevention:**
-   - `POST /api/checkout` adds conflict check:
-     ```sql
-     SELECT COUNT(*) FROM service_bookings 
-     WHERE service_id=:serviceId AND booking_start < :end AND booking_end > :start 
-     AND status IN ('confirmed','completed')
-     ```
-   - If count > 0: return 409 (conflict), client re-prompts
-   - Repeat check at `POST /api/checkout/confirm` (TOCTOU guard)
+4. **Double-booking prevention — CORRECTED (see integration map):**
+   - `service_bookings` has NO first-class date column (`scheduledDate` is buried in the `bookingDetails`
+     jsonb) — the naive overlap query above cannot be indexed or made atomic against it.
+   - Real substrate: `vendor_availability_slots` (schema.ts:1611 — per-service slots with `capacity`,
+     `bookedCount`, `fully_booked` status) + the already-public `GET /api/vendor-availability/:serviceId`
+     (routes.ts:5767, zero client consumers today). The existing `storage.bookSlot` (storage.ts:2318) is a
+     non-atomic check-then-set and is NOT called by any checkout path — do not reuse it as-is.
+   - Fix shape: at `/api/checkout`, claim the slot atomically —
+     `UPDATE vendor_availability_slots SET booked_count = booked_count + 1 WHERE id = :slot AND booked_count < capacity RETURNING id`
+     (the §15 atomic-conditional pattern) — 0 rows → 409 `SLOT_TAKEN`. The 409/SLOT_TAKEN UX contract
+     already exists end-to-end on the legacy process-cart path (bookings.ts:88 + BookingFlowModal.tsx:169-177) — reuse it.
 
 5. **Custody labeling:**
    - Platform merchant (Traveloure is the seller):
@@ -136,16 +140,24 @@ The five primitives ranked by provider pain (dispatch §2):
 ### Scope
 
 1. **Schema changes:**
-   - Add `provider_id` FK to `service_bookings` (VARCHAR, nullable)
-   - Add `acquired_via_provider_id` FK to `users` (nullable, FK → `service_providers`)
-   - Add `campaign_id` VARCHAR to `service_bookings` (nullable, for future social campaigns)
+   - `service_bookings` already has `providerId` (schema.ts:754 area) — what's missing is the
+     acquisition-source stamp: extend the `source` vocabulary (today `direct | cross_sell`, and note the
+     write path is DEAD — checkout never sets it; see PHASE0_AUDIT.md Corrections #6) plus a companion
+     source-id column mirroring the existing `crossSellSourceContentId` (schema.ts:755) shape
+   - Add `acquired_via_provider_id` to `users` (**in `shared/models/auth.ts`**, nullable — there is NO
+     `service_providers` table; the FK targets `users`; see Corrections #5)
    - Migration: additive-nullable, backfill null (no historic data to remap)
 
-2. **Short-link generation:**
-   - Extend `redirects` table with `provider_id`, `offering_id` (nullable), `campaign_id` (nullable)
+2. **Short-link generation — CORRECTED (Corrections #1: no redirects table/router exists):**
+   - NEW table (e.g. `share_links`): short code (unique), `provider_id`/`user_id`, `offering_id` (nullable),
+     `campaign_id` (nullable), counters. Model on the existing `sharedTrips` share-token infra
+     (schema.ts:5811 — `shareToken` + `views`/`bookings` counters + `expiresAt`) but with short codes.
+   - NEW `GET /r/:code` 302 handler — in a MOUNTED `server/routes/*.ts` router per CLAUDE.md §9,
+     never inline in routes.ts.
    - New service: `shortLinkService.generateProviderLink(provider_id, offering_id?, campaign_id?)`
-   - Returns: `tvl.to/{code}` or similar (platform domain TBD; use existing redirects table capacity)
    - Call site: provider settings page, offering detail page (copy link button)
+   - Reuse the existing funnel `refToken` spine (booking-actions.ts:406-414 viral_share event) for the
+     analytics side.
 
 3. **Link resolution at checkout:**
    - New middleware/route: `GET /r/:code` (or path-based equivalent)
