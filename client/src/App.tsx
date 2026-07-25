@@ -130,6 +130,7 @@ const AdminQAChecklist = lazy(() => import("@/pages/admin/qa-checklist"));
 const ExpertAnalytics = lazy(() => import("@/pages/expert/analytics"));
 const ExpertContentStudio = lazy(() => import("@/pages/expert/content-studio"));
 const ExpertTemplates = lazy(() => import("@/pages/expert/templates"));
+const ExpertReadyMade = lazy(() => import("@/pages/expert/ready-made"));
 const ExpertClientDetail = lazy(() => import("@/pages/expert/client-detail"));
 const ExpertSettings = lazy(() => import("@/pages/expert/settings"));
 const ExpertVerification = lazy(() => import("@/pages/expert/verification"));
@@ -564,6 +565,11 @@ function Router() {
       </Route>
       <Route path="/expert/templates">
         {() => <ProtectedRoute component={ExpertTemplates} requiredRole="expert" />}
+      </Route>
+      {/* Trips by Locals authoring console — a DIFFERENT product from /expert/templates
+          (that's the expert_templates Guides lane). See spec v3 §0a. */}
+      <Route path="/expert/ready-made">
+        {() => <ProtectedRoute component={ExpertReadyMade} requiredRole="expert" />}
       </Route>
       <Route path="/expert/content-studio">
         {() => <ProtectedRoute component={ExpertContentStudio} requiredRole="expert" />}
