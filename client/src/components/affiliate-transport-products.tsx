@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Train, Bus, Ship, ExternalLink, Clock, MapPin, AlertCircle } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 interface AffiliateProduct {
   id: string;
@@ -77,6 +78,8 @@ export function AffiliateTransportProducts({
   
   const products = response?.products || [];
 
+  const { toast } = useToast();
+
   const trackClick = useMutation({
     mutationFn: async (productId: string) => {
       try {
@@ -87,13 +90,25 @@ export function AffiliateTransportProducts({
     }
   });
 
+  // §16 (item ④): a specific affiliate-product "Book" routes through the in-platform agent rail —
+  // never a raw window.open(affiliateUrl). The server keeps the URL private and an agent books it.
+  const bookViaAgent = useMutation({
+    mutationFn: (product: AffiliateProduct) =>
+      apiRequest("POST", "/api/affiliate-booking-requests", {
+        itemName: product.name,
+        itemDescription: product.description || product.shortDescription || null,
+        partnerName: "12Go Asia",
+        partnerCategory: "transport",
+        affiliateUrl: product.affiliateUrl,
+        travelers: 1,
+      }),
+    onSuccess: () => toast({ title: "Booking request sent", description: "Our booking agent will handle this and add it to your trip." }),
+    onError: (e: any) => toast({ variant: "destructive", title: "Couldn't send request", description: e?.message || "Please try again." }),
+  });
+
   const handleBookNow = async (product: AffiliateProduct) => {
-    try {
-      await trackClick.mutateAsync(product.id);
-    } catch {
-      // Continue even if tracking fails
-    }
-    window.open(product.affiliateUrl, '_blank', 'noopener,noreferrer');
+    try { await trackClick.mutateAsync(product.id); } catch { /* proceed */ }
+    bookViaAgent.mutate(product);
   };
 
   const handleAddToCart = async (product: AffiliateProduct) => {
@@ -188,11 +203,16 @@ export function AffiliateTransportProducts({
           <Button
             variant="outline"
             className="w-full"
-            onClick={() => window.open(`https://12go.asia/en?affiliate_id=13805109${destination ? `&q=${encodeURIComponent(destination)}` : ''}`, '_blank')}
+            disabled={bookViaAgent.isPending}
+            onClick={() => bookViaAgent.mutate({
+              id: "browse",
+              name: `Ground transport${destination ? ` in ${destination}` : ""}`,
+              description: "Trains, buses, ferries via 12Go Asia",
+              affiliateUrl: `https://12go.asia/en?affiliate_id=13805109${destination ? `&q=${encodeURIComponent(destination)}` : ''}`,
+            } as AffiliateProduct)}
             data-testid="button-browse-12go"
           >
-            Browse Transportation Options
-            <ExternalLink className="h-4 w-4 ml-2" />
+            Find Transportation Options
           </Button>
         </CardContent>
       </Card>

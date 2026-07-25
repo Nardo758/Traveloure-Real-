@@ -1748,8 +1748,12 @@ export class DatabaseStorage implements IStorage {
         .from(expertTemplates)
         .where(and(...pkgConditions))
         .orderBy(
+          // Remediation P2: standardize package quality ordering to match the recommender +
+          // upsell-query (featured → salesCount → averageRating → recency). unifiedSearch was the
+          // one site dropping the averageRating tier, so search silently ranked packages differently.
           desc(expertTemplates.isFeatured),
           desc(expertTemplates.salesCount),
+          desc(expertTemplates.averageRating),
           desc(expertTemplates.createdAt)
         )
         .limit(6);

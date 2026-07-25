@@ -898,10 +898,61 @@ router.post("/api/admin/dmo/intake/:id/approve", isAuthenticated, async (req, re
       )
       .returning();
     if (!updated) return res.status(409).json({ message: "Not pending intake (already approved or rejected)" });
+    // Register the approved DMO row into the central content_registry as 'sourced' origin (approach A).
+    // Best-effort — never blocks the intake approval. sourced content is expert-only (resolver-gated).
+    try {
+      const { registerDmoContentById } = await import("../services/dmo-registry-sync.service");
+      await registerDmoContentById(updated.id);
+    } catch { /* non-blocking */ }
     res.json({ message: "Approved into the expert library", item: updated });
   } catch (err: any) {
     console.error("DMO intake approve error:", err);
     res.status(500).json({ message: "Approve failed", error: err.message });
+  }
+});
+
+// Backfill: register ALL existing dmo_raw_content into the central registry as 'sourced' (idempotent).
+router.post("/api/admin/dmo/sync-registry", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const { syncDmoContentToRegistry } = await import("../services/dmo-registry-sync.service");
+    const result = await syncDmoContentToRegistry();
+    res.json({ message: `Synced DMO content into the central registry`, ...result });
+  } catch (err: any) {
+    console.error("DMO registry sync error:", err);
+    res.status(500).json({ message: "Sync failed", error: err.message });
+  }
+});
+
+// §16 catalog unification (P7): ingest Travelpayouts network inventory into the central
+// affiliate_products + content_registry. Key-gated (§13 — no token ⇒ ready:false, zero writes).
+// Body: { city (required), network? } — one network or all. Kyoto-first (§12).
+router.post("/api/admin/catalog/ingest", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  const city = typeof req.body?.city === "string" ? req.body.city.trim() : "";
+  if (!city) return res.status(400).json({ message: "city is required" });
+  const network = typeof req.body?.network === "string" ? req.body.network.trim() : "";
+  try {
+    const svc = await import("../services/catalog-ingest.service");
+    const result = network
+      ? [await svc.ingestNetwork(network, city)]
+      : await svc.ingestAllNetworks(city);
+    const ready = result.some(r => r.ready);
+    res.json({
+      message: ready ? `Ingested catalog inventory for ${city}` : "No Travelpayouts token — nothing ingested (§13 key-gate)",
+      ready,
+      city,
+      results: result,
+    });
+  } catch (err: any) {
+    console.error("Catalog ingest error:", err);
+    res.status(500).json({ message: "Ingest failed", error: err.message });
   }
 });
 
@@ -5278,14 +5329,21 @@ router.post("/api/admin/content-placement-rules/auto-index", requireAdminLocal, 
       // 2. Scan affiliate_products
       const products = await getActiveAffiliateProducts();
 
+      // §13 no-silent-caps: count inventory dropped for want of a matching TravelPulse city so the
+      // response reports coverage honestly instead of silently under-indexing.
+      let affiliateSkippedNoCity = 0;
+      let registrySkippedNoCity = 0;
+
       for (const p of products) {
         const cityKey = (p.city ?? "").toLowerCase();
-        const cityData = cityLookup.get(cityKey) ||
-          Array.from(cityLookup.values()).find(c =>
-            cityKey.includes(c.cityName.toLowerCase()) ||
-            c.cityName.toLowerCase().includes(cityKey)
-          );
-        if (!cityData) continue;
+        const cityData = cityKey
+          ? (cityLookup.get(cityKey) ||
+            Array.from(cityLookup.values()).find(c =>
+              cityKey.includes(c.cityName.toLowerCase()) ||
+              c.cityName.toLowerCase().includes(cityKey)
+            ))
+          : undefined;
+        if (!cityData) { affiliateSkippedNoCity++; continue; }
 
         // Determine which surfaces this product's category matches
         const surfaces = (SURFACE_SLUGS as readonly string[]).filter(slug => {
@@ -5316,7 +5374,7 @@ router.post("/api/admin/content-placement-rules/auto-index", requireAdminLocal, 
       for (const r of registryItems) {
         const meta = (r.metadata ?? {}) as Record<string, any>;
         const rawCity: string = meta.city ?? meta.location ?? meta.destination ?? "";
-        if (!rawCity) continue;
+        if (!rawCity) { registrySkippedNoCity++; continue; }
 
         const cityKey = rawCity.toLowerCase().split(",")[0].trim();
         const cityData = cityLookup.get(cityKey) ||
@@ -5324,7 +5382,7 @@ router.post("/api/admin/content-placement-rules/auto-index", requireAdminLocal, 
             cityKey.includes(c.cityName.toLowerCase()) ||
             c.cityName.toLowerCase().includes(cityKey)
           );
-        if (!cityData) continue;
+        if (!cityData) { registrySkippedNoCity++; continue; }
 
         // Determine surfaces from content type
         const surfaces = (SURFACE_SLUGS as readonly string[]).filter(slug => {
@@ -5349,13 +5407,19 @@ router.post("/api/admin/content-placement-rules/auto-index", requireAdminLocal, 
       }
 
       const created = await storage.bulkUpsertContentPlacementRules(rulesToUpsert);
+      const totalSkippedNoCity = affiliateSkippedNoCity + registrySkippedNoCity;
       res.json({
         created,
         total: rulesToUpsert.length,
         cities: cities.length,
         affiliateScanned: products.length,
         registryScanned: registryItems.length,
-        message: `Auto-indexed ${created} new rules across ${cities.length} TravelPulse cities`,
+        // §13 no-silent-caps: surface inventory that couldn't be placed for want of a matching city.
+        skippedNoCity: totalSkippedNoCity,
+        affiliateSkippedNoCity,
+        registrySkippedNoCity,
+        message: `Auto-indexed ${created} new rules across ${cities.length} TravelPulse cities` +
+          (totalSkippedNoCity > 0 ? ` (${totalSkippedNoCity} items skipped — no matching city)` : ""),
       });
     } catch (err: any) {
       console.error("[ContentMap] auto-index error:", err);

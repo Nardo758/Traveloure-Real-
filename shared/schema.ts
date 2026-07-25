@@ -3806,7 +3806,15 @@ export const affiliateProducts = pgTable("affiliate_products", {
   highlights: jsonb("highlights").$type<string[]>().default([]),
   includes: jsonb("includes").$type<string[]>().default([]),
   tags: jsonb("tags").$type<string[]>().default([]),
-  availability: varchar("availability", { length: 200 }),
+  availability: varchar("availability", { length: 200 }), // legacy free-text
+  // Remediation P1 (migration 131) — normalized availability + CTA booking classifier.
+  // All NULLABLE, no DB CHECK (values validated at zod/ORM layer → no publish-time drizzle-push trap).
+  availabilityStatus: varchar("availability_status", { length: 20 }), // available|seasonal|limited|sold_out; null=unknown (§13)
+  availableFrom: date("available_from"),
+  availableTo: date("available_to"),
+  // CTA classifier (P4): in_platform_bookable → add-to-cart · affiliate_bookable → agent rail ·
+  // informational → tracked "View". NULL → resolver treats affiliate content as affiliate_bookable.
+  bookingType: varchar("booking_type", { length: 24 }),
   bookingInfo: text("booking_info"),
   metadata: jsonb("metadata"),
   isActive: boolean("is_active").default(true),
@@ -4364,6 +4372,7 @@ export const contentTypeEnum = pgEnum("content_type", [
   "media",
   "tip",
   "affiliate_product",
+  "dmo_content",
   "other"
 ]);
 

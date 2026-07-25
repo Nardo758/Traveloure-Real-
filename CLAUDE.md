@@ -488,6 +488,23 @@ This document captures architectural decisions to maintain consistency across co
       own** — it is always transformed into one of those three outputs first. Admin approval sits at
       **intake** (admin pre-filters what raw scraped content enters the expert library — ratified "B"),
       not at a per-item publish-to-Discover step.
+    - **DMO in the CENTRAL content system — LANDED (approach A, migration 132; ratified Jul 24, 2026).**
+      Decision-maker directive: DMO/scraped content **is included in the central content system** (so there
+      is ONE content system with a complete origin taxonomy) **but only surfaces in the Expert Workspace +
+      the rest of the content flows normally** — i.e. DMO is the **`sourced`** origin
+      (`shared/content-origin.ts`), EXPERT-WORKSPACE-ONLY, **never a traveler surface**. Mechanism: migration
+      132 adds `dmo_content` to the `content_type` enum (idempotent ADD VALUE, migration-0009 pattern); DMO
+      rows are mirrored into `content_registry` as `contentType='dmo_content'` (origin `sourced`) by
+      `dmo-registry-sync.service.ts` — **register-on-approve** (the admin intake-approve endpoint registers
+      the row it approves) + an idempotent **backfill** (`POST /api/admin/dmo/sync-registry`). `dmo_raw_content`
+      remains the working store + the Expert Workspace read path (unchanged); the registry mirror is additive,
+      for one-system admin visibility / reporting / tracking-number lineage. **HARD INVARIANT (enforced two
+      ways):** `sourced` never reaches a traveler surface — (1) no `SURFACE_DEFAULT_CONTENT_TYPES` lists
+      `dmo_content`, and (2) the traveler resolver (`content-query.service.ts` `getContentRegistryByLocation`
+      + `getContentRegistryByIds`) **hard-excludes** any type whose `contentOriginFor` is `sourced`, even if a
+      placement rule or surface map ever points at it. Registering DMO centrally does NOT make it
+      traveler-visible; it becomes a Discover surface only after an expert transforms it into a
+      platform-origin trip / Ready Made Trip (the §10 queue). Additive, no CHECK → no publish-time push trap.
     - **Admin intake gate — LANDED (Jul 19, 2026, migration 118).** Scraped/DMO content is now born
       **hidden from experts** (`dmo_raw_content.expert_workspace_visible` default flipped `true → false` at
       both the ORM `shared/schema.ts` and the DB column, migration 118 — default-only, **no backfill, no
