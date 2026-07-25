@@ -29,9 +29,13 @@ function sql(query: string): string {
   const db = process.env.DATABASE_URL;
   if (!db) throw new Error("DATABASE_URL is not set");
   const escaped = query.replace(/'/g, `'\\''`);
-  return execSync(`psql '${db}' -t -A -c '${escaped}'`, {
+  const out = execSync(`psql '${db}' -t -A -c '${escaped}'`, {
     encoding: "utf8",
-  }).trim();
+  });
+  // psql -t/-A suppress column headers but INSERT/UPDATE/DELETE still emit a
+  // command tag (e.g. "INSERT 0 1") on a trailing line after RETURNING values.
+  // Take only the first non-empty line so callers get a clean scalar value.
+  return out.split("\n").map((l) => l.trim()).filter(Boolean)[0] ?? "";
 }
 
 async function registerUser(

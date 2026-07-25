@@ -12,7 +12,7 @@
  *   2. Tier-level default row (event_type IS NULL)
  *   3. Code-level DEFAULT_FEE_CENTS fallback (§4.8 standard: $9.99 across tiers). fee-literal-ok: comment
  */
-import { and, eq, isNull, or, inArray } from "drizzle-orm";
+import { and, desc, eq, isNull, or, inArray } from "drizzle-orm";
 import { db } from "../db";
 import { optimizationFees, feeBands, coordinationFeeCredits } from "@shared/schema";
 import { complexityTier } from "./smart-sequencing.service";
@@ -69,6 +69,7 @@ export async function getFee(
         eq(optimizationFees.eventType, eventType),
         eq(optimizationFees.isActive, true),
       ))
+      .orderBy(desc(optimizationFees.isDisabled))
       .limit(1);
     if (evRow) {
       return {
