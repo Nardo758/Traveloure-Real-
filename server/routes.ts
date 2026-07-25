@@ -98,6 +98,7 @@ import adminRoutes from "./routes/admin.routes";
 import expertsRoutes from "./routes/experts.routes";
 import eaRoutes from "./routes/ea.routes";
 import providerRoutes from "./routes/provider.routes";
+import readyMadeRoutes from "./routes/ready-made.routes";
 import contentRoutes, { seedDatabase, registerDiscoveryRoutes } from "./routes/content.routes";
 import paymentsRoutes from "./routes/payments.routes";
 import crossSellRoutes from "./routes/cross-sell.routes";
@@ -570,6 +571,10 @@ export async function registerRoutes(
 
   // Provider supply tools — /api/provider/settings (Kyoto-supply activation); provider-role gated
   app.use(providerRoutes);
+
+  // Ready-Made Trips authoring (Phase 1) — POST /api/expert/ready-made + workspace-context mode
+  // resolution. Author auth = explicit authorId check (never getTripRole). Mounted per §9.
+  app.use(readyMadeRoutes);
 
   // Saved items / dashboard Wishlist — GET/POST/DELETE /api/saved-items (session-scoped, owner-gated).
   // Was imported-but-unmounted, so the dashboard Wishlist hit the Vite catch-all and never loaded;
