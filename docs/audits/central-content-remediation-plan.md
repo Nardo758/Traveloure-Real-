@@ -184,7 +184,7 @@ CTA = approved with the bookable-classifier edits; §16 = in scope now.
 | **P4 — CTA engine** | 🟡 PARTIAL | `useContentAgentBooking` hook + Fever + TravelPulse migrated to the agent rail; G8 untracked-fallback removed. **Remaining surfaces** below. |
 | **P5 — Origin grouping** | ✅ LANDED | resolver stamps origin; CuratedContentSection groups "From Traveloure" / "Paid partners"; G7 label fixed |
 | **P6 — Hygiene** | ✅ LANDED | getPlatformStats 4.9→honest; auto-index skip logging; dead ItineraryPage import |
-| **P7 — §16 unification** | 🟡 STARTED | Design (U1–U5) + **U1+U2 BUILT**: `catalog-ingest.service.ts` (partner seed + normalize/upsert for Tiqets/GetYourGuide/Klook, tag-at-ingest, §13/§15 gates) + `POST /api/admin/catalog/ingest`. Live fetch deploy-only. U3–U5 remain (fan-out + parallel-path retirement). |
+| **P7 — §16 unification** | ✅ **code-complete** | **U1+U2+U3+U5 built.** `catalog-ingest.service.ts` ingests **9 city-based catalog networks** (Tiqets, GetYourGuide, Klook, Viator-feed, WeGoTrip, Agoda, Booking, Hotellook, Stasher) → `affiliate_products` + `content_registry` (tag-at-ingest, §13/§15 gates, partner-dedup by name). `POST /api/admin/catalog/ingest`. Route-computed nets (flights/transfers/cars) + Fever intentionally excluded. **U4 (retire parallel paths) is deploy-gated** — a post-first-ingestion op, not a blind code change (would blank live surfaces). All code that can be safely written is written. |
 
 ### P4 — remaining surface migrations (filed, need per-component care)
 Each has its own booking context / an existing rail, so it's not a blind find-replace:
