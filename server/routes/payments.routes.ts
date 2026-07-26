@@ -571,8 +571,9 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         }
       }
       
-      // Canonical commission summary for the cart surface
-      const cartCommission = calculateCommission(subtotal, BookingType.EXPERIENCE_CART);
+      // R3/F6: commissionRate is now the REAL charged ratio (platformFee/subtotal), not the
+      // calculateCommission display literal (0.30) that matched no actual rate. Display-only field.
+      const effectiveCommissionRate = subtotal > 0 ? Number((platformFee / subtotal).toFixed(4)) : 0;
 
       res.status(201).json({
         success: true,
@@ -583,7 +584,7 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         total: total.toFixed(2),
         paymentIntent,
         bookingType: BookingType.EXPERIENCE_CART,
-        commissionRate: cartCommission.commissionRate,
+        commissionRate: effectiveCommissionRate,
         message: "Booking created successfully. Complete payment.",
       });
     } catch (err: any) {
