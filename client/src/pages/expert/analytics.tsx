@@ -38,6 +38,7 @@ import {
   PlusCircle,
 } from "lucide-react";
 import { ExpertServiceRecommendations } from "@/components/expert/service-recommendations";
+import { LinkAnalyticsPanel } from "@/components/backoffice/link-analytics-panel";
 
 interface AnalyticsDashboard {
   expertProfile: {
@@ -439,6 +440,7 @@ export default function ExpertAnalytics() {
                 <TabsTrigger value="opportunities" data-testid="tab-opportunities">Opportunities</TabsTrigger>
                 <TabsTrigger value="funnel" data-testid="tab-funnel">Conversion Funnel</TabsTrigger>
                 <TabsTrigger value="revenue" data-testid="tab-revenue">Revenue by Service</TabsTrigger>
+                <TabsTrigger value="links" data-testid="tab-links">Share Links</TabsTrigger>
                 <TabsTrigger value="market" data-testid="tab-market">Market Intelligence</TabsTrigger>
                 <TabsTrigger value="lifetime" data-testid="tab-lifetime">Client Value</TabsTrigger>
                 <TabsTrigger value="performance" data-testid="tab-performance">Performance</TabsTrigger>
@@ -508,6 +510,10 @@ export default function ExpertAnalytics() {
                     )}
                   </CardContent>
                 </Card>
+              </TabsContent>
+
+              <TabsContent value="links">
+                <LinkAnalyticsPanel />
               </TabsContent>
 
               <TabsContent value="market">

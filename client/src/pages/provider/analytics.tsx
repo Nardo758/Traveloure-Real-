@@ -18,6 +18,7 @@ import {
   ShoppingCart,
 } from "lucide-react";
 import { ProviderServiceRecommendations } from "@/components/provider/service-recommendations";
+import { LinkAnalyticsPanel } from "@/components/backoffice/link-analytics-panel";
 
 interface ProviderAnalytics {
   summary: {
@@ -298,6 +299,9 @@ export default function ProviderAnalytics() {
             )}
           </CardContent>
         </Card>
+
+        {/* Share Link Analytics (S5) */}
+        <LinkAnalyticsPanel />
 
         {/* Service Recommendations */}
         <ProviderServiceRecommendations />
