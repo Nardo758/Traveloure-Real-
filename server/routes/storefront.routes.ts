@@ -19,9 +19,9 @@ import { Router } from "express";
 import { z } from "zod";
 import fs from "fs";
 import path from "path";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { db } from "../db";
-import { users, providerServices, expertTemplates, readyMadeTrips } from "@shared/schema";
+import { users, providerServices, expertTemplates, readyMadeTrips, localExpertForms, serviceProviderForms } from "@shared/schema";
 
 const router = Router();
 
@@ -106,6 +106,43 @@ router.patch("/api/me/handle", isAuthenticated, async (req: any, res) => {
   }
 });
 
+// V.1 — admin-switchable identity-verification gate for public storefront visibility.
+// Reads platform_settings.storefront_require_verified ("true"/"false"); absent/error = "false"
+// (today's behavior, unchanged). Mirrors the commission.ts:resolveInsuranceFromCategory
+// platform_settings read pattern (raw SQL, best-effort, safe default on any failure).
+async function isStorefrontVerificationRequired(): Promise<boolean> {
+  try {
+    const result = await db.execute(sql`
+      SELECT setting_value
+      FROM platform_settings
+      WHERE setting_key = 'storefront_require_verified'
+    `);
+    const row = (result.rows as any[])?.[0];
+    return row?.setting_value === "true";
+  } catch {
+    return false;
+  }
+}
+
+// V.1 — has this owner completed identity verification on EITHER form? Checked regardless of
+// current role (a user's stored role can be ambiguous relative to which onboarding form they
+// filled out), so verified-in-either counts.
+async function isOwnerIdentityVerified(userId: string): Promise<boolean> {
+  const [localExpertForm] = await db
+    .select({ status: localExpertForms.identityVerificationStatus })
+    .from(localExpertForms)
+    .where(eq(localExpertForms.userId, userId))
+    .limit(1);
+  if (localExpertForm?.status === "verified") return true;
+
+  const [providerForm] = await db
+    .select({ status: serviceProviderForms.identityVerificationStatus })
+    .from(serviceProviderForms)
+    .where(eq(serviceProviderForms.userId, userId))
+    .limit(1);
+  return providerForm?.status === "verified";
+}
+
 async function loadStorefront(handle: string) {
   const normalized = handle.trim().toLowerCase();
   if (!HANDLE_RE.test(normalized)) return null;
@@ -124,6 +161,15 @@ async function loadStorefront(handle: string) {
     .where(and(eq(users.handle, normalized), eq(users.isDeleted, false), eq(users.isSuspended, false)))
     .limit(1);
   if (!owner) return null;
+
+  // V.1 — enabled by admin flipping platform_settings.storefront_require_verified to "true" once
+  // V.2/V.3 verification-flow sequencing lands; build-while-pending preserved (handle claim + the
+  // owner's own console are never gated here — only this public read path). Default "false"
+  // keeps today's behavior unchanged.
+  if (await isStorefrontVerificationRequired()) {
+    const verified = await isOwnerIdentityVerified(owner.id);
+    if (!verified) return null;
+  }
 
   // Lane 1: custom services — public read-gate is approval_status='approved' (F2) + active.
   const services = await db
@@ -178,6 +224,24 @@ async function loadStorefront(handle: string) {
   // No approved inventory → no public page (an unvetted earner is not publishable).
   if (total === 0) return null;
 
+  // S7 — earner-level rating aggregate (§13-honest), same formula as
+  // storage.getExpertsWithProfiles: a review-count-WEIGHTED mean over the earner's
+  // own approved services (Lane 1, already fetched above — no extra query, no second
+  // parallel aggregate). Null when there are no reviews so the client renders "New",
+  // never a fabricated number.
+  let weightedSum = 0;
+  let totalReviews = 0;
+  for (const s of services) {
+    const rc = Number(s.reviewCount ?? 0);
+    const ar = s.averageRating != null ? Number(s.averageRating) : null;
+    if (rc > 0 && ar != null && !Number.isNaN(ar)) {
+      weightedSum += ar * rc;
+      totalReviews += rc;
+    }
+  }
+  const earnerAverageRating =
+    totalReviews > 0 ? Math.round((weightedSum / totalReviews) * 100) / 100 : null;
+
   return {
     earner: {
       name: [owner.firstName, owner.lastName].filter(Boolean).join(" ") || "Traveloure earner",
@@ -185,6 +249,8 @@ async function loadStorefront(handle: string) {
       profileImageUrl: owner.profileImageUrl ?? null,
       role: owner.role,
       handle: owner.handle,
+      averageRating: earnerAverageRating,
+      reviewCount: totalReviews,
     },
     services,
     templates,
@@ -247,6 +313,67 @@ router.get("/p/:handle", async (req, res, next) => {
     return res.status(200).set({ "Content-Type": "text/html" }).end(template);
   } catch (err) {
     console.error("[storefront] OG injection error:", err);
+    return next(); // fall through to SPA on any error
+  }
+});
+
+// Server-side OG injection for /services/:id — same pattern as /p/:handle.
+router.get("/services/:id", async (req, res, next) => {
+  try {
+    const [service] = await db
+      .select({
+        id: providerServices.id,
+        serviceName: providerServices.serviceName,
+        description: providerServices.description,
+        price: providerServices.price,
+        serviceImage: providerServices.serviceImage,
+      })
+      .from(providerServices)
+      .where(
+        and(
+          eq(providerServices.id, req.params.id),
+          eq(providerServices.approvalStatus, "approved"),
+          eq(providerServices.status, "active"),
+        ),
+      )
+      .limit(1);
+
+    if (!service) return next(); // SPA renders its own not-found
+
+    const title = `${service.serviceName} | Traveloure`;
+    const description =
+      service.description?.substring(0, 160) ??
+      `Book ${service.serviceName} on Traveloure — secure checkout, verified reviews.`;
+    const shareUrl = `${req.protocol}://${req.get("host")}/services/${service.id}`;
+    const ogImage =
+      service.serviceImage ??
+      `${req.protocol}://${req.get("host")}/og-cover.png`;
+
+    const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+    const ogTags = [
+      `<title>${esc(title)}</title>`,
+      `<meta name="description" content="${esc(description)}" />`,
+      `<meta property="og:type" content="website" />`,
+      `<meta property="og:url" content="${esc(shareUrl)}" />`,
+      `<meta property="og:title" content="${esc(title)}" />`,
+      `<meta property="og:description" content="${esc(description)}" />`,
+      `<meta property="og:image" content="${esc(ogImage)}" />`,
+      `<meta property="og:site_name" content="Traveloure" />`,
+      `<meta name="twitter:card" content="summary_large_image" />`,
+      `<meta name="twitter:title" content="${esc(title)}" />`,
+      `<meta name="twitter:description" content="${esc(description)}" />`,
+    ].join("\n    ");
+
+    const clientTemplateDev = path.resolve(process.cwd(), "client", "index.html");
+    const clientTemplateProd = path.resolve(__dirname, "public", "index.html");
+    const templatePath = fs.existsSync(clientTemplateDev) ? clientTemplateDev : clientTemplateProd;
+    if (!fs.existsSync(templatePath)) return next();
+
+    let template = fs.readFileSync(templatePath, "utf-8");
+    template = template.replace("<head>", `<head>\n    ${ogTags}`);
+    return res.status(200).set({ "Content-Type": "text/html" }).end(template);
+  } catch (err) {
+    console.error("[storefront] OG injection error (service):", err);
     return next(); // fall through to SPA on any error
   }
 });

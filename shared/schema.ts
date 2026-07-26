@@ -750,9 +750,13 @@ export const serviceBookings = pgTable("service_bookings", {
   // Visa / specialty service metadata collected during booking intake
   bookingMetadata: jsonb("booking_metadata").default({}),
 
-  // Attribution
-  source: varchar("source", { length: 30 }).default("direct"), // direct | cross_sell
+  // Attribution (S4): source vocabulary is direct | link | cross_sell, DERIVED SERVER-SIDE at
+  // checkout (payments.routes.ts) — 'link' only when acquisitionRef resolves to a real
+  // short_links.code (migration 139). App-enforced, no DB CHECK. acquisitionRef is a soft
+  // reference (no FK) so deleting a link never breaks historical attribution.
+  source: varchar("source", { length: 30 }).default("direct"),
   crossSellSourceContentId: varchar("cross_sell_source_content_id", { length: 255 }),
+  acquisitionRef: varchar("acquisition_ref", { length: 12 }),
 
   // Idempotency: set by the client on checkout; checked server-side before insert.
   // Unique partial index (WHERE NOT NULL) prevents duplicate bookings on retries.
@@ -6873,3 +6877,24 @@ export type ReadyMadePurchase = typeof readyMadePurchases.$inferSelect;
 export type InsertReadyMadePurchase = z.infer<typeof insertReadyMadePurchaseSchema>;
 export type Board = typeof boards.$inferSelect;
 export type BoardItem = typeof boardItems.$inferSelect;
+
+// short_links — backoffice S3 short-link + click store (migration 139). NO CHECK on target_type —
+// vocabulary ('storefront'|'service'|'template'|'ready_made') is app-enforced (short-links.routes.ts),
+// same posture as users.handle (migration 136): a CHECK over an app-layer vocabulary is the
+// publish-time push trap. target_id is nullable (storefront links carry no target_id — the owner's
+// handle is resolved at redirect time, never baked into the row).
+export const shortLinks = pgTable("short_links", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  code: varchar("code", { length: 12 }).notNull().unique(),
+  ownerUserId: varchar("owner_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  targetType: varchar("target_type", { length: 30 }).notNull(),
+  targetId: varchar("target_id"),
+  clicks: integer("clicks").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_short_links_owner_user_id").on(table.ownerUserId),
+]);
+
+export const insertShortLinkSchema = createInsertSchema(shortLinks).omit({ id: true, clicks: true, createdAt: true });
+export type ShortLink = typeof shortLinks.$inferSelect;
+export type InsertShortLink = z.infer<typeof insertShortLinkSchema>;

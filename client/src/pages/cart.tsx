@@ -57,6 +57,7 @@ import { format, parseISO } from "date-fns";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import StripeCheckout from "@/components/booking/StripeCheckout";
 import { UpsellSlot, UpsellErrorBoundary } from "@/components/UpsellSlot";
+import { getAcquisitionRef } from "@/lib/acquisition";
 
 const SUPPORTED_CURRENCIES = [
   { code: "USD", label: "USD – US Dollar" },
@@ -505,6 +506,9 @@ export default function CartPage() {
       const res = await apiRequest("POST", "/api/checkout", {
         currency: displayCurrency,
         idempotencyKey: checkoutIdempotencyKey,
+        // S4: raw captured short-link code; the SERVER derives the attribution source
+        // (direct | link | cross_sell) — the client never asserts it.
+        ...(getAcquisitionRef() ? { ref: getAcquisitionRef() } : {}),
       });
       return res.json();
     },

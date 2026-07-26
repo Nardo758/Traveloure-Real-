@@ -12,9 +12,9 @@
  */
 import { db } from "../db";
 import { storage } from "../storage";
-import { trips, itineraryItems, readyMadeTrips, readyMadePurchases, expertEarnings } from "@shared/schema";
-import { and, eq, inArray } from "drizzle-orm";
-import { getBand, PLATFORM_FEE_RATE } from "./commission";
+import { trips, itineraryItems, readyMadeTrips, readyMadePurchases, expertEarnings, platformRevenue } from "@shared/schema";
+import { and, eq, inArray, ne } from "drizzle-orm";
+import { getBand, PLATFORM_FEE_RATE, PROCESSING_FEE_RATE } from "./commission";
 import { availableAtFor, holdWindowDays } from "../config/earnings-hold.config";
 
 export interface FulfillResult {
@@ -127,6 +127,35 @@ export async function fulfillReadyMadePurchase(purchaseId: string): Promise<Fulf
     availableAt: availableAtFor("ready_made_sale"),
   } as any);
 
+  // Record platform revenue for this sale — mirrors the booking_commission pattern
+  // (server/services/booking.service.ts:721-729). §15: guarded by hasPlatformRevenueForSource
+  // so a retry of this function never double-records; non-fatal so a bookkeeping failure never
+  // blocks the buyer's fulfilled clone.
+  try {
+    if (!(await storage.hasPlatformRevenueForSource(purchase.id))) {
+      const grossAmount = purchase.pricePaidCents / 100;
+      const platformFee = grossAmount - expertShare;
+      const processingFees = platformFee * PROCESSING_FEE_RATE;
+      const netAmount = platformFee - processingFees;
+      await storage.recordPlatformRevenue({
+        sourceType: "ready_made_commission",
+        sourceId: purchase.id,
+        grossAmount: String(grossAmount),
+        platformFee: String(platformFee),
+        netAmount: String(netAmount),
+        processingFees: String(processingFees),
+        currency: purchase.currency || "USD",
+        expertId: listing.authorId,
+        expertEarnings: String(expertShare),
+        description: `Ready-made trip sale commission: ${listing.title}`,
+        status: "recorded",
+        transactionDate: new Date(),
+      } as any);
+    }
+  } catch (err) {
+    console.error(`Failed to record platform revenue for ready-made purchase ${purchase.id}:`, err);
+  }
+
   return { purchase: claimed, cloneTripId: cloneTrip.id, alreadyFulfilled: false };
 }
 
@@ -198,6 +227,42 @@ export async function refundReadyMadePurchaseLedger(
       eq(expertEarnings.type, "ready_made_sale"),
       inArray(expertEarnings.status, ["held", "releasable"]),
     ));
+
+  // Mirror storage.reversePlatformRevenueForBooking's double-entry reversal (server/storage.ts:3615-3638):
+  // the atomic status flip (WHERE status <> 'reversed') IS the idempotency guard — a duplicate refund
+  // call finds 0 rows and inserts no second compensating entry. Non-fatal: bookkeeping must never
+  // block the refund ledger.
+  try {
+    const now = new Date();
+    const reversedRows = await db
+      .update(platformRevenue)
+      .set({ status: "reversed" } as any)
+      .where(and(eq(platformRevenue.sourceId, purchaseId), ne(platformRevenue.status, "reversed")))
+      .returning();
+    for (const o of reversedRows) {
+      const neg = (v: string | null) => String(-parseFloat(v || "0"));
+      await storage.recordPlatformRevenue({
+        sourceType: o.sourceType,
+        sourceId: o.sourceId,
+        trackingNumber: o.trackingNumber,
+        grossAmount: neg(o.grossAmount),
+        platformFee: neg(o.platformFee),
+        netAmount: neg(o.netAmount),
+        processingFees: neg(o.processingFees),
+        currency: o.currency,
+        expertId: o.expertId,
+        expertEarnings: neg(o.expertEarnings),
+        providerId: o.providerId,
+        providerEarnings: neg(o.providerEarnings),
+        description: `Reversal of platform revenue ${o.id} (ready-made purchase ${purchaseId})`,
+        metadata: { reversalOf: o.id, reason: "ready_made_refund" },
+        status: "reversed",
+        transactionDate: now,
+      } as any);
+    }
+  } catch (err) {
+    console.error(`Failed to reverse platform revenue for ready-made purchase ${purchaseId}:`, err);
+  }
 
   // Revoke the product: the clone (and its items, by cascade) goes with the refund.
   if (claimed.cloneTripId) {
