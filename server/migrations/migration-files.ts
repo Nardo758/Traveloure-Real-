@@ -547,4 +547,9 @@ export const MIGRATION_FILES = [
   // support" trio (already removed from expert-detail.tsx by #200; service-detail.tsx never showed
   // any policy at all — NULL is the honest default, not a fabricated claim).
   "144_service_cancellation_policy.sql",
+  // 145: C3 slot-aware checkout — additive nullable slot_id on cart_items + service_bookings
+  // (FK -> vendor_availability_slots ON DELETE SET NULL; idempotent dup-object guard). No
+  // CHECK/DEFAULT/backfill — no publish-push trap. Capacity enforcement is the atomic
+  // storage.bookSlot claim (§15), not a constraint.
+  "145_slot_aware_checkout.sql",
 ] as const;

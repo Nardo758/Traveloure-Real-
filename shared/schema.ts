@@ -770,6 +770,10 @@ export const serviceBookings = pgTable("service_bookings", {
   source: varchar("source", { length: 30 }).default("direct"),
   crossSellSourceContentId: varchar("cross_sell_source_content_id", { length: 255 }),
   acquisitionRef: varchar("acquisition_ref", { length: 12 }),
+  // C3 (migration 145): the availability slot this booking claimed capacity on — stamped only
+  // AFTER the atomic bookSlot claim succeeded at checkout. SET NULL on slot deletion; the
+  // bookingDetails snapshot keeps the human-readable schedule regardless.
+  slotId: varchar("slot_id").references(() => vendorAvailabilitySlots.id, { onDelete: "set null" }),
 
   // Idempotency: set by the client on checkout; checked server-side before insert.
   // Unique partial index (WHERE NOT NULL) prevents duplicate bookings on retries.
@@ -944,6 +948,10 @@ export const cartItems = pgTable("cart_items", {
   quantity: integer("quantity").default(1),
   tripId: varchar("trip_id").references(() => trips.id, { onDelete: "set null" }),
   scheduledDate: timestamp("scheduled_date"),
+  // C3 (migration 145): the traveler's picked availability slot. Nullable — non-dated services
+  // and content items carry no slot. The capacity CLAIM happens at checkout (atomic bookSlot),
+  // never at add-to-cart, so an abandoned cart can't hold a slot hostage.
+  slotId: varchar("slot_id").references(() => vendorAvailabilitySlots.id, { onDelete: "set null" }),
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
 });

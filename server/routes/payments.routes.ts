@@ -349,9 +349,39 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
 
       // Get cart items
       const cartData = await storage.getCartItems(userId);
-      
+
       if (cartData.length === 0) {
         return res.status(400).json({ message: "Cart is empty" });
+      }
+
+      // ── C3 (§15): ATOMIC slot claims BEFORE any booking row or Stripe call ─────────────
+      // Each slot-bound item claims capacity via storage.bookSlot (conditional UPDATE ...
+      // WHERE booked_count < capacity RETURNING — the DB row transition IS the concurrency
+      // guard). If ANY item's slot just filled, release the slots already claimed in this
+      // request (compensation) and abort with 409 slot_unavailable — no bookings created,
+      // nothing charged. Claims that succeed stay claimed while the booking completes; if
+      // payment later fails the booking sits payment_pending and the slot stays held — the
+      // release on abandoned/refunded bookings is a filed follow-up alongside the existing
+      // payment_pending recovery design (webhook completes; admin refund path can release).
+      const claimedSlotIds: string[] = [];
+      for (const item of cartData) {
+        const itemSlotId = (item as any).slotId as string | null | undefined;
+        if (!itemSlotId || !item.service) continue;
+        const claimed = await storage.bookSlot(itemSlotId);
+        if (!claimed) {
+          for (const releaseId of claimedSlotIds) {
+            await storage.releaseSlot(releaseId).catch((e: any) =>
+              console.error(`[checkout] slot compensation release failed for ${releaseId}:`, e));
+          }
+          return res.status(409).json({
+            success: false,
+            error: "slot_unavailable",
+            serviceId: item.serviceId,
+            serviceName: item.service?.serviceName,
+            message: `The time slot for "${item.service?.serviceName ?? "an item"}" was just booked. Please pick another time.`,
+          });
+        }
+        claimedSlotIds.push(itemSlotId);
       }
       
       // safeParseRate: returns fallback when value is missing, non-numeric, or outside [0,1]
@@ -522,6 +552,9 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
           // S4: first real writer of the attribution columns (source existed unwritten).
           source: acquisitionSource,
           ...(acquisitionRef ? { acquisitionRef } : {}),
+          // C3: stamped only because the atomic bookSlot claim above already succeeded for
+          // this item — the booking row records WHICH slot's capacity it holds.
+          ...((item as any).slotId ? { slotId: (item as any).slotId } : {}),
           ...(idempotencyKey ? { idempotencyKey } : {}),
         } as any);
         
