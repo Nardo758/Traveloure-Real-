@@ -505,4 +505,8 @@ export const MIGRATION_FILES = [
   // 135: clone_trip_id FK → ON DELETE SET NULL (constraint swap, no data/CHECK — no publish trap).
   // Without it, revoking a refunded clone OR a buyer deleting their own cloned trip 23503'd.
   "135_ready_made_clone_fk_set_null.sql",
+  // 136: users.handle (additive nullable + UNIQUE, no CHECK — no publish-push trap). The public
+  // storefront identity (/p/{handle}, backoffice Phase 1a). Format + reserved words enforced in
+  // storefront.routes.ts, deliberately NOT a DB CHECK.
+  "136_users_handle.sql",
 ] as const;
