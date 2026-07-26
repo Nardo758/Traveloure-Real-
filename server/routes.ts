@@ -304,12 +304,14 @@ export async function registerRoutes(
     "/api/expert/revenue-optimization",
     "/api/expert/services",
     "/api/expert/dashboard",
+    "/api/expert/assigned-trips",
   ];
   const PROVIDER_SELF_SERVICE_PREFIXES = [
     "/api/provider/services",
     "/api/provider/verification-status",
     "/api/provider/request-verification-review",
     "/api/provider/dashboard",
+    "/api/provider/earnings",
   ];
   app.use((req: any, res: any, next: any) => {
     if (req.method === "OPTIONS") return next();
