@@ -969,6 +969,20 @@ neighborhood). Ratified by the decision-maker (Lane A Phase 1). **Filed (later l
 readers onto these columns; add an `'exact'`-precision write path (geocoded addresses); optional CHECK on
 `location_precision` once the write paths are locked.
 
+**Migration 136 (Jul 26, 2026; registered in `migration-files.ts`) — users.handle (backoffice Phase 1a):**
+adds **additive nullable** `users.handle` VARCHAR(30) + UNIQUE constraint (no CHECK, no DEFAULT → no publish-time
+drizzle-push trap; PG UNIQUE permits multiple NULLs so existing rows are untouched). Format + reserved-word rules are
+**app-layer** (`server/routes/storefront.routes.ts`), deliberately NOT a DB CHECK. The idempotency guard catches
+`duplicate_object OR duplicate_table` (a UNIQUE's backing index raises the latter on re-run — proven behaviorally).
+Companion (same commit): mounted `storefront.routes.ts` (§9) — `PATCH /api/me/handle` (§14 session-only, earner
+roles, reserved list, 409 on collision), public `GET /api/storefront/:handle` (approved-only offerings across the
+three lanes — F2/§10/Ready-Made read-gates; 404 when zero approved items, so an unvetted earner has no public page),
+and `GET /p/:handle` server-side OG injection (the `trips.routes.ts` `/itinerary-view/:token` route-interception
+pattern). Client: `/p/:handle` storefront page, HandleClaimCard in expert+provider Settings, and the cross-lane
+My Offerings table (pure client aggregation — no new backend). Mockup source of truth: `docs/backoffice/mockups/`
++ `docs/backoffice/MOCKUP_CODE_AUDIT.md`. **Filed (V.1, before marketing pushes):** additionally gate /p/ visibility
+on identity/KYB verification once Phase 0.5 sequencing lands.
+
 **Migration 130 (Jul 24, 2026; registered in `migration-files.ts`) — TripContext server persistence (P2/E2):**
 new table `trip_contexts` (`user_id` varchar PK, FK → `users` `ON DELETE CASCADE`; `context` jsonb NOT NULL
 DEFAULT `'{}'`; `updated_at`). **Additive new table, no CHECK** → no publish-time drizzle-push trap. Purpose:
