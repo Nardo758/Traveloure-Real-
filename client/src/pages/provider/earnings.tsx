@@ -45,6 +45,8 @@ export default function ProviderEarnings() {
       if (msg.includes("payout_request_pending")) {
         setRequested(true);
         toast({ title: "Request already pending", description: "You already have a payout request under review." });
+      } else if (msg.includes("stripe_not_connected")) {
+        toast({ title: "Stripe account required", description: "Connect your Stripe account before requesting a payout. Finish setup in Settings.", variant: "destructive" });
       } else if (msg.includes("below_minimum")) {
         toast({ title: "Below minimum", description: "The minimum payout is $10.00.", variant: "destructive" });
       } else if (msg.includes("no_balance")) {

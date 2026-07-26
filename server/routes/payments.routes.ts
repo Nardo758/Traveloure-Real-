@@ -719,6 +719,12 @@ router.get("/api/invoices/my", isAuthenticated, async (req, res) => {
 
 router.post("/api/stripe/connect/onboard", isAuthenticated, async (req, res) => {
     try {
+      // Honest degrade (§13): without a live Stripe key every call below throws a raw
+      // Stripe SDK auth error, which the catch below would otherwise surface as a
+      // generic 500. Never fake a connected/ready status — tell the earner plainly.
+      if (!process.env.STRIPE_SECRET_KEY) {
+        return res.status(503).json({ error: "stripe_unavailable", message: "Payouts onboarding is not yet available. Please check back soon." });
+      }
       const userId = (req.user as any).claims?.sub;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
@@ -765,6 +771,12 @@ router.get("/api/stripe/connect/status", isAuthenticated, async (req, res) => {
       if (!account.stripeAccountId) {
         return res.json({ connected: false, status: 'not_connected' });
       }
+      // Honest degrade (§13): an account was previously connected but the key is now
+      // absent (e.g. this environment) — report the last-known DB status rather than
+      // calling Stripe and surfacing a raw SDK error, or worse, faking "active".
+      if (!process.env.STRIPE_SECRET_KEY) {
+        return res.json({ connected: true, accountId: account.stripeAccountId, status: account.stripeAccountStatus ?? 'unknown', degraded: true });
+      }
 
       const { stripeConnectService } = await import('../services/stripe-connect.service');
       const status = await stripeConnectService.getAccountStatus(account.stripeAccountId);
@@ -787,6 +799,10 @@ router.get("/api/stripe/connect/status", isAuthenticated, async (req, res) => {
 
 router.get("/api/stripe/connect/dashboard", isAuthenticated, async (req, res) => {
     try {
+      // Honest degrade (§13): same reasoning as onboard/status above.
+      if (!process.env.STRIPE_SECRET_KEY) {
+        return res.status(503).json({ error: "stripe_unavailable", message: "Payouts onboarding is not yet available. Please check back soon." });
+      }
       const userId = (req.user as any).claims?.sub;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
@@ -883,6 +899,20 @@ router.get("/api/fee-bands/:bandKey", async (req, res) => {
       const isExpert = EXPERT_ROLES.has(user.role ?? "");
       if (!isProvider && !isExpert) {
         return res.status(403).json({ error: "Only providers and experts can request payouts" });
+      }
+
+      // §13: the admin processing step (PATCH /api/admin/payouts/:id) already refuses to
+      // transfer to a recipient without an active Stripe Connect account — but only AFTER
+      // the earner has already been told "Payout requested" and the request sits in the
+      // admin queue with no way back to explain why it stalled. Surface the same honest,
+      // actionable block up front so a not-ready earner learns why immediately instead of
+      // a request that can never be fulfilled. §14: read is session-scoped (own account).
+      const payoutAccount = await storage.getUserStripeAccount(userId);
+      if (!payoutAccount.stripeAccountId || !payoutAccount.canReceivePayments) {
+        return res.status(400).json({
+          error: "stripe_not_connected",
+          message: "Connect your Stripe account before requesting a payout. Finish setup in Settings to get started.",
+        });
       }
 
       // §15: one open request at a time — a pending/processing payout blocks a duplicate.
