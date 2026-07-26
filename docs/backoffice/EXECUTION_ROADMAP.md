@@ -52,7 +52,7 @@ checking this table.
 | ID | Item | Tier | Est. | Depends | Notes |
 |----|------|------|------|---------|-------|
 | V.1 ✅ `29899773` (default OFF — flip platform_settings.storefront_require_verified to "true" after V.2/V.3) | Gate /p/ visibility + publish on `identityVerificationStatus='verified'` (F2-style read-gate; build-while-pending preserved) | Sonnet | ~55k | S1 | Interim gate today = zero-approved-items 404 |
-| V.2 | Sequence Identity/KYB into application flow | Sonnet | ~50k | — | Existing `/api/identity/*` endpoints |
+| V.2 ✅ (already existed — ground-truthed Jul 26) | Sequence Identity/KYB into application flow | Sonnet | ~50k | — | The full path predates this task (commit `5fbe0552`): pre-approval verify flows on expert/provider-status pages + Verification cards in both Settings consoles, wired to the live `/api/identity/*` + webhook status writers; honest degrade when Persona keys absent. V.1 flip now waits only on V.3 |
 | V.3 | Connect onboarding sequenced into go-live | Sonnet | ~45k | — | Payout money-block already exists |
 | V.4 | `provider` vs `service_provider` vocab normalization | Haiku | ~25k | — | Grep-enumerated |
 | V.5 ✅ `ee069bfe` | Env-keys launch checklist + readiness log line | Haiku | ~10k | — | — |
