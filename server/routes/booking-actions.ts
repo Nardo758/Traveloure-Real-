@@ -202,10 +202,17 @@ router.post('/expert-requests', isAuthenticated, async (req, res) => {
       if (!owns) return res.status(403).json({ error: 'You do not own this trip' });
     }
 
+    // R6: stamp the verified PI onto the request so completion can find the PAID signal and
+    // credit the expert split from the LEDGER row (never from the client-writable expert_fee).
+    const persistedContext =
+      paymentIntentId && verifiedFee !== undefined
+        ? { ...(optimizationContext ?? {}), paymentIntentId }
+        : optimizationContext;
+
     const { requestId, queuePosition } = await bookingService.submitExpertRequest({
       userId: resolvedUserId, tripId, variantId, comparisonId,
       destination: resolvedDestination, requestType,
-      expertFee: verifiedFee ?? expertFee, notes, optimizationContext,
+      expertFee: verifiedFee ?? expertFee, notes, optimizationContext: persistedContext,
     });
 
     // "book with an expert" requests originating from a Partnerize-backed

@@ -103,9 +103,19 @@ difference) or aligns.
 - **F3 = fix ratified.** Landed: tier amounts are now admin-editable `fee_bands` rows (migration 137,
   code constants remain the documented safe-failure fallback); `expert_review_fee` platform_revenue is
   recorded idempotently at BOTH completion paths (checkout-session webhook + verified-PI request
-  creation, which also stops trusting client-sent expertFee on paid requests). Expert-compensation
-  split for completed review work = FILED DECISION (fee is 100% platform at capture, coordination
-  precedent, until ratified).
+  creation, which also stops trusting client-sent expertFee on paid requests).
+- **R6 = RATIFIED + LANDED (Jul 26, 2026): expert-compensation split on completed review work is
+  expert 75% / platform 25%, admin-editable** ("platform gets 25% but more importantly is the
+  ability to change the splits in the admin panel"). Mechanism: the fee stays 100%-platform at
+  CAPTURE; when the assigned expert completes the request (`completeExpertRequest`), the
+  capture-time `platform_revenue` row (sourceId = the verified PaymentIntent stamped onto the
+  request at create) is atomically re-split — `expert_id IS NULL` conditional UPDATE is both the
+  §15 idempotency guard and the concurrency claim — and a held expert earning is created on the
+  escrow spine (clears via the release scheduler). The split resolves from
+  `fee_bands.expert_review_expert_share` (migration 142, default 0.75; code constant survives only
+  as the safe-failure fallback, §8). Amount always from the LEDGER row, never the client-writable
+  `expert_fee` column (§14). Free-lead requests (no PI) credit nothing; legacy paid requests
+  created before the PI stamp are grandfathered (manual handling if any exist).
 - **All fees admin-adjustable** — standing directive; anything currently a constant migrates to
   `fee_bands`/`platform_settings` when touched.
 - **M0 = SCRATCHED.** Link-channel pricing is IDENTICAL to platform pricing — no flat fee, no

@@ -91,7 +91,7 @@ checking this table.
 | R3 ✅ `0505e13a` | F6 + F1 disclosure: /pricing + checkout disclose the service fee (F1 ratified model); gate/label Power Pass card; kill the 0.30 display literal | Haiku | ~25k | — | Honesty sweep, §13 class |
 | R4 | F7: wire `createAffiliateEarning` at agent-booking confirm sites so reconciliation has a spine | Sonnet | ~45k | — | 70/30 split constants → fee_bands while touching (standing directive) |
 | R5 | Credits fulfillment (lifts the F2 501 gate): `credit_purchase` webhook + real balance ledger + revenue row | Fable 🔴 | ~80k | — | Only when credits become a priority |
-| R6 | ⛔ Expert-compensation split on completed review work (fee is 100% platform at capture today) | decision → Sonnet | ~30k | — | Credit expert share at `expert_requests` completion |
+| R6 ✅ (ratified + landed) | Expert-compensation split on completed review work: expert **75% / platform 25%**, admin-editable via `fee_bands.expert_review_expert_share` (migration 142). Credited at `completeExpertRequest` from the capture-time `platform_revenue` ledger row (atomic re-split, §15 idempotent; earning born `held` on the escrow spine). Legacy paid requests without a stamped PI are grandfathered (manual handling). | Fable 🔴 | ~30k | — | Ratified Jul 26: "platform gets 25% but more importantly is the ability to change the splits in the admin panel" |
 
 ## Singles (independent, cheap — fill idle capacity)
 
