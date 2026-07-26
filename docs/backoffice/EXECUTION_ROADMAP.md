@@ -63,7 +63,7 @@ checking this table.
 |----|------|------|------|---------|-------|
 | C0 | ⛔ **Consolidation decision:** 3 availability tables (`provider_availability`, `provider_availability_schedule`, `vendor_availability_slots`) → 1 canonical | Fable analysis ~30k → decision | ~30k | — | §4-class decision; blocks all of Wave C |
 | C1 ✅ `e0323cbb` (found the availability-manager writer dead — filed for C2) | Next-availability compute + My Offerings "Next Availability" column | Sonnet | ~45k | C0 | — |
-| C2 | Public availability calendar on offering page (booked/available days) | Sonnet | ~60k | C1 | Read-only first |
+| C2 ✅ | Public availability calendar on offering page (booked/available days) | Sonnet | ~60k | C1 | Landed: repaired the dead slot writer (client sent a weekly shape the server never accepted — every save 400d) + ADDED the missing §14 ownership check on POST /api/provider/availability (any provider could create slots on another's service); public month read is F2-gated (approved-only, proven both directions). Filed: blackout-dates GET wiring; recurring-pattern generator (schedule layer) |
 | C3 | 🔴 Slot-aware checkout + conflict detection ("this slot just booked") | Fable | ~100k | C2 | §15 atomic slot claim; the money-path centerpiece |
 
 ## Wave SH — Share & social engine (mockup 4)

@@ -5820,18 +5820,31 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     }
   });
 
+  // C2 repair: the client (provider-availability-manager.tsx) previously POSTed a
+  // {dayOfWeek, startTime, endTime, isAvailable, pricingModifier} weekly-schedule shape
+  // that this handler's zod never accepted (it required serviceId + date) — every real
+  // submit 400d, so no slots ever existed. Aligned the zod to the actual
+  // vendor_availability_slots columns (C0-canonical: date + startTime/endTime + capacity,
+  // no dayOfWeek/isAvailable/notes — those columns don't exist on this table) and added
+  // the missing §14 ownership check: serviceId must belong to the session's own
+  // provider_services row, or a provider could create slots on another provider's service.
   app.post("/api/provider/availability", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const availabilityInput = z.object({
         serviceId: z.string().min(1),
-        dayOfWeek: z.number().min(0).max(6).optional(),
-        startTime: z.string().optional(),
-        endTime: z.string().optional(),
-        date: z.string().min(1),
-        isAvailable: z.boolean().optional(),
-        notes: z.string().max(500).optional(),
+        date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "date must be YYYY-MM-DD"),
+        startTime: z.string().min(1).max(10),
+        endTime: z.string().min(1).max(10),
+        capacity: z.number().int().min(1).max(1000).optional(),
       }).parse(req.body);
+
+      // §14 ownership check: a provider must not create slots on another provider's service.
+      const ownedService = await storage.getProviderServiceById(availabilityInput.serviceId);
+      if (!ownedService || ownedService.userId !== userId) {
+        return res.status(403).json({ message: "You do not own this service" });
+      }
+
       const slot = await storage.createVendorAvailabilitySlot({ ...availabilityInput, providerId: userId });
       res.status(201).json(slot);
     } catch (error) {
@@ -5847,12 +5860,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     try {
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const updateInput = z.object({
-        dayOfWeek: z.number().min(0).max(6).optional(),
-        startTime: z.string().optional(),
-        endTime: z.string().optional(),
-        date: z.string().optional(),
-        isAvailable: z.boolean().optional(),
-        notes: z.string().max(500).optional(),
+        date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "date must be YYYY-MM-DD").optional(),
+        startTime: z.string().min(1).max(10).optional(),
+        endTime: z.string().min(1).max(10).optional(),
+        capacity: z.number().int().min(1).max(1000).optional(),
+        status: z.enum(["available", "blocked"]).optional(),
       }).parse(req.body);
       const existingSlot = await storage.getVendorAvailabilitySlot(req.params.id);
       if (!existingSlot) return res.status(404).json({ message: "Slot not found" });
