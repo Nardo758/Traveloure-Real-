@@ -32,6 +32,7 @@ import { Link } from "wouter";
 import { ExpertConstraintDashboard, ExpertCoordinationHub } from "@/components/logistics";
 import { TravelPulseTicker } from "@/components/shared/travel-pulse-ticker";
 import { PayoutBanner } from "@/components/expert/PayoutBanner";
+import { MyOfferingsTable } from "@/components/backoffice/my-offerings-table";
 
 interface AnalyticsDashboard {
   summary: {
@@ -153,8 +154,11 @@ export default function ExpertDashboard() {
           <h1 className="text-2xl font-bold text-console-darkest" data-testid="text-expert-welcome">
             Welcome back, Expert!
           </h1>
-          <p className="text-console-mid mt-1">{analytics?.summary?.pendingBookings || 0} active clients • Top Destination Expert</p>
+          <p className="text-console-mid mt-1">{analytics?.summary?.pendingBookings || 0} active clients</p>
         </div>
+
+        {/* Backoffice Phase 1c: unified cross-lane offerings table (mockup "My Offerings") */}
+        <MyOfferingsTable />
 
         {/* Stripe Connect Setup Banner — not yet connected */}
         {stripeStatus && !stripeStatus.connected && (
@@ -220,14 +224,8 @@ export default function ExpertDashboard() {
           ))}
         </div>
 
-        {/* TravelPulse Ticker */}
-        <TravelPulseTicker items={[
-          { city: "Kyoto", text: "Spring season: cultural tours booming", type: "up" },
-          { city: "Tokyo", text: "Tech tours trending +80% this month", type: "up" },
-          { city: "Pricing", text: "Your rates: premium tier ✓", type: "neutral" },
-          { city: "Demand", text: "Expert consultation: peak hours noon-3PM", type: "up" },
-          { city: "Trends", text: "AI itineraries: 45% of bookings", type: "up" },
-        ]} />
+        {/* TravelPulse Ticker — removed fabricated trending data per §13 */}
+        {/* <TravelPulseTicker items={[]} /> */}
 
         {/* Two-Panel Layout: Left 60%, Right 40% */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -453,9 +451,7 @@ export default function ExpertDashboard() {
                   <p className="text-sm text-console-mid">This Month</p>
                   <p className="text-3xl font-bold text-console-darkest">${(analytics?.summary?.totalRevenue ?? 0).toLocaleString()}</p>
                 </div>
-                <div className="h-1 bg-console-light rounded-full overflow-hidden">
-                  <div className="h-full bg-green-500" style={{ width: "65%" }}></div>
-                </div>
+                {/* Progress bar removed — fabricated 65% width per §13 */}
               </CardContent>
             </Card>
 

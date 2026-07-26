@@ -621,6 +621,16 @@ class StripePaymentService {
   /**
    * Handle successful expert service payment (called from webhook)
    */
+  /** Retrieve a PaymentIntent for server-side verification; null on any error (treated as
+   *  unverified by callers — the safe failure direction for a payment check). */
+  async retrievePaymentIntent(paymentIntentId: string): Promise<Stripe.PaymentIntent | null> {
+    try {
+      return await stripe.paymentIntents.retrieve(paymentIntentId);
+    } catch {
+      return null;
+    }
+  }
+
   async handleExpertServicePayment(session: Stripe.Checkout.Session) {
     try {
       const { userId, variantId, comparisonId, destination, serviceType, notes } = session.metadata || {};
@@ -644,6 +654,23 @@ class StripePaymentService {
       `);
 
       console.log(`Expert service payment completed for user ${userId}`);
+
+      // F3 (revenue-model review): this fee was collected but never ledgered. Record it as 100%
+      // platform revenue at capture (coordination-fee precedent — the reviewing expert is paid via
+      // the earnings ledger when the work completes, split = filed decision). Idempotent on the
+      // Stripe session id (§15 — checkout.session webhooks redeliver).
+      try {
+        const { revenueTrackingService } = await import("./revenue-tracking.service");
+        await revenueTrackingService.recordRevenueEventOnce({
+          sourceType: "expert_review_fee",
+          sourceId: session.id,
+          grossAmount: (session.amount_total || 0) / 100,
+          description: `Expert ${serviceType} fee — ${destination}`,
+          metadata: { userId, serviceType, destination },
+        });
+      } catch (revErr) {
+        console.error("[expert-service] revenue record failed (non-fatal):", revErr);
+      }
 
       // Fire-and-forget: T5 funnel event (expert requested after payment)
       try {

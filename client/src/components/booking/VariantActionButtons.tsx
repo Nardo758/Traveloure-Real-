@@ -246,7 +246,7 @@ export default function VariantActionButtons({
       if (!response.ok) throw new Error('Failed to generate share link');
 
       const data = await response.json();
-      const link = `${window.location.origin}/shared-trip/${data.shareToken}`;
+      const link = `${window.location.origin}/trips/shared/${data.shareToken}`;
       setShareLink(link);
     } catch (error) {
       console.error('Share error:', error);
@@ -620,7 +620,7 @@ export function VariantOptionsMenu({ variant, comparison, userId }: VariantOptio
       if (!response.ok) throw new Error('Failed to generate share link');
 
       const data = await response.json();
-      const link = `${window.location.origin}/shared-trip/${data.shareToken}`;
+      const link = `${window.location.origin}/trips/shared/${data.shareToken}`;
       setShareLink(link);
     } catch (error) {
       console.error('Share error:', error);

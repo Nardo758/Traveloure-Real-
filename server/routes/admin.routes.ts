@@ -4816,7 +4816,17 @@ router.get("/api/admin/reviews", isAuthenticated, async (req, res) => {
         const service = await storage.getProviderServiceById(r.serviceId);
         const logs = await getReviewModerationLogs(r.id);
         return {
-          ...r,
+          id: r.id,
+          serviceId: r.serviceId,
+          travelerId: r.travelerId,
+          rating: r.rating,
+          reviewText: r.reviewText ?? null,
+          responseText: r.responseText ?? null,
+          responseAt: r.responseAt ?? null,
+          status: r.status,
+          flagReason: r.flagReason ?? null,
+          moderatedAt: r.moderatedAt ?? null,
+          createdAt: r.createdAt,
           travelerName: traveler ? [traveler.firstName, traveler.lastName].filter(Boolean).join(" ") || traveler.email : "Unknown",
           serviceName: service?.serviceName ?? "Unknown Service",
           logs,
@@ -4851,6 +4861,27 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
     } catch (err) {
       console.error("Admin review status error:", err);
       res.status(500).json({ message: "Failed to update review status" });
+    }
+  });
+
+  // Response-scoped moderation (W0.7): clears an inappropriate provider/expert RESPONSE
+  // (responseText/responseAt) without touching the traveler's review, its status, or the
+  // service rating. Logged to review_moderation_logs as 'response_cleared'.
+  router.post("/api/admin/reviews/:id/clear-response", isAuthenticated, async (req, res) => {
+    try {
+      const actorId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const adminCheck = await getAdminRole(actorId);
+      if (!adminCheck || adminCheck.role !== "admin") return res.status(403).json({ message: "Admin access required" });
+      const review = await getReviewById(req.params.id);
+      if (!review) return res.status(404).json({ message: "Review not found" });
+      if (!review.responseText) return res.status(400).json({ message: "Review has no response to clear" });
+      const { reason } = req.body;
+      const updated = await updateServiceReviewStatus(req.params.id, { responseText: null, responseAt: null });
+      await insertReviewModerationLog({ reviewId: req.params.id, action: "response_cleared", actorId, reason: reason ?? null });
+      res.json(updated);
+    } catch (err) {
+      console.error("Admin clear-response error:", err);
+      res.status(500).json({ message: "Failed to clear review response" });
     }
   });
 
@@ -5254,7 +5285,7 @@ router.get("/api/admin/routing-queue", isAuthenticated, async (req, res) => {
         FROM expert_requests er
         LEFT JOIN users u ON u.id = er.user_id
         LEFT JOIN users eu ON eu.id = er.assigned_expert_id
-        LEFT JOIN lead_routing_logs lrl ON lrl.trip_id = er.trip_id
+        LEFT JOIN lead_routing_logs lrl ON lrl.trip_id::text = er.trip_id
           AND lrl.assigned_expert_id = er.assigned_expert_id
         WHERE er.assigned_expert_id IS NOT NULL
           AND er.status NOT IN ('confirmed', 'completed', 'cancelled')

@@ -64,6 +64,9 @@ export const users = pgTable("users", {
   backgroundCheckConfirmed: boolean("background_check_confirmed").default(false),
   // Multi-currency: user's preferred display/charge currency
   preferredCurrency: varchar("preferred_currency", { length: 3 }).default("USD"),
+  // Public storefront handle (/p/{handle}) — backoffice Phase 1a (migration 136). Nullable =
+  // not claimed. Format + reserved words enforced app-side in storefront.routes.ts (no DB CHECK).
+  handle: varchar("handle", { length: 30 }).unique(),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
   // Soft-delete: never hard-delete users (bookings/Stripe/tax records must persist).

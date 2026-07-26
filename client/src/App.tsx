@@ -129,6 +129,7 @@ const ExpertContentStudio = lazy(() => import("@/pages/expert/content-studio"));
 const ExpertTemplates = lazy(() => import("@/pages/expert/templates"));
 const ExpertReadyMade = lazy(() => import("@/pages/expert/ready-made"));
 const ReadyMadeDetailPage = lazy(() => import("@/pages/ready-made-detail"));
+const StorefrontPage = lazy(() => import("@/pages/storefront"));
 const ExpertSettings = lazy(() => import("@/pages/expert/settings"));
 const ExpertServiceForm = lazy(() => import("@/pages/expert/service-form"));
 const ProviderServiceForm = lazy(() => import("@/pages/provider/service-form"));
@@ -293,6 +294,11 @@ function Router() {
       </Route>
       <Route path="/expert-templates/:id">
         <ExpertTemplateDetail />
+      </Route>
+      {/* Public earner storefront (backoffice Phase 1b) — the mockup's /p/{handle} "one link
+          that books and pays". Server injects OG tags for crawlers; SPA renders here. */}
+      <Route path="/p/:handle">
+        {() => <StorefrontPage />}
       </Route>
       <Route path="/local-experts">
         <Layout><ExpertsPage /></Layout>

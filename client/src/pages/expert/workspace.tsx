@@ -367,6 +367,12 @@ export default function ExpertWorkspace() {
     queryKey: ["/api/expert/assigned-trips"],
     enabled: !isAuthoring, // an authoring trip is never in the assignment list (it has no advisor row)
   });
+
+  const { data: expertRoleData } = useQuery<{ role: string; roleLabel: string | null; applicationStatus: string | null }>({
+    queryKey: ["/api/expert/role"],
+  });
+  const isEventPlanner = expertRoleData?.role === "event_planner";
+
   const assignedTrip = assignedTrips?.find(t => t.trip_id === tripId);
   // Authoring trips carry userId=NULL and no traveler, so they cannot come from assigned-trips.
   // Shape the context's trip row into the same view model the whole page already reads.
@@ -737,7 +743,7 @@ export default function ExpertWorkspace() {
   if (!tripId) {
     const homeCards: Array<{ title: string; desc: string; href: string; icon: any; primary?: boolean }> = [
       { title: "Assigned Trips", desc: "Open a client trip to build its itinerary", href: "/expert/assigned-trips", icon: MapPin, primary: true },
-      { title: "Store Listings", desc: "Build trips & plans to sell in the Ready Made Trips store", href: "/expert/ready-made", icon: Store },
+      ...(isEventPlanner ? [] : [{ title: "Store Listings", desc: "Build trips & plans to sell in the Ready Made Trips store", href: "/expert/ready-made", icon: Store }]),
       { title: "Itinerary Templates", desc: "Manage your existing store itineraries", href: "/expert/templates", icon: FileText },
       { title: "DMO Library", desc: "Research Kyoto content to build from", href: "/expert/dmo-library", icon: Search },
       { title: "Content Studio", desc: "Create promo & social content", href: "/expert/content-studio", icon: Sparkles },
