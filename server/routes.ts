@@ -6359,10 +6359,16 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
 
         const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", { apiVersion: "2024-12-18.acacia" as any });
+        // FP-1/FP-2 parity: attach the durable customer so this sheet ALSO offers saved cards
+        // and can vault a new one (the optimize + cart sheets already do) — the asymmetry FP-2's
+        // ground-truth flagged.
+        const { stripePaymentService: fpService } = await import("./services/stripe-payment.service");
+        const coordCustomerId = await fpService.getOrCreateCustomer(userId).catch(() => null);
         const paymentIntent = await stripe.paymentIntents.create(
           {
             amount: netFeeCents,
             currency: "usd",
+            ...(coordCustomerId ? { customer: coordCustomerId, setup_future_usage: "off_session" as const } : {}),
             metadata: {
               type: "coordination_fee",
               coordinationId,
