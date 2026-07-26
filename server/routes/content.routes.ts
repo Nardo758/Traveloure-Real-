@@ -1954,6 +1954,52 @@ router.get("/api/services/:id", async (req, res) => {
     res.json(service);
   });
 
+  // C2: public read-only availability calendar for a service's detail page.
+  // Same F2 read-gate as GET /api/services/:id above (approved + active only) — an
+  // unapproved/submitted listing must not leak its schedule any more than its own
+  // detail page would. Reads the C0-canonical vendor_availability_slots table only
+  // (never provider_availability_schedule/provider_availability). No booking-slot
+  // selection here — that is C3's cart/checkout concern, untouched.
+  router.get("/api/services/:id/availability", async (req, res) => {
+    try {
+      const service = await storage.getProviderServiceById(req.params.id);
+      if (!service || service.status !== "active" || service.approvalStatus !== "approved") {
+        return res.status(404).json({ message: "Service not found" });
+      }
+
+      const monthParam = typeof req.query.month === "string" ? req.query.month : undefined;
+      const now = new Date();
+      const month = monthParam && /^\d{4}-\d{2}$/.test(monthParam)
+        ? monthParam
+        : `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+      const [yearStr, monthStr] = month.split("-");
+      const year = parseInt(yearStr, 10);
+      const monthIndex = parseInt(monthStr, 10) - 1;
+      const startDate = `${month}-01`;
+      const lastDay = new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate();
+      const endDate = `${month}-${String(lastDay).padStart(2, "0")}`;
+
+      const slots = await storage.getVendorAvailabilitySlotsInRange(req.params.id, startDate, endDate);
+      const days = slots.map((slot) => {
+        const capacity = slot.capacity ?? 1;
+        const bookedCount = slot.bookedCount ?? 0;
+        const remaining = Math.max(capacity - bookedCount, 0);
+        return {
+          date: slot.date,
+          startTime: slot.startTime,
+          endTime: slot.endTime,
+          remaining,
+          status: remaining <= 0 ? "fully_booked" : (slot.status || "available"),
+        };
+      });
+
+      res.json({ month, days });
+    } catch (err) {
+      console.error("Error fetching service availability:", err);
+      res.status(500).json({ message: "Failed to fetch availability" });
+    }
+  });
+
   // Public provider verification status (for service detail page badge)
 
 router.get("/api/services", async (req, res) => {

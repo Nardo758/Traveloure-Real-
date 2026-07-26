@@ -357,6 +357,7 @@ export interface IStorage {
 
   // Vendor Availability Slots
   getVendorAvailabilitySlots(serviceId: string, date?: string): Promise<VendorAvailabilitySlot[]>;
+  getVendorAvailabilitySlotsInRange(serviceId: string, startDate: string, endDate: string): Promise<VendorAvailabilitySlot[]>;
   getProviderAvailabilitySlots(providerId: string): Promise<VendorAvailabilitySlot[]>;
   getVendorAvailabilitySlot(id: string): Promise<VendorAvailabilitySlot | undefined>;
   createVendorAvailabilitySlot(slot: InsertVendorAvailabilitySlot): Promise<VendorAvailabilitySlot>;
@@ -2290,6 +2291,17 @@ export class DatabaseStorage implements IStorage {
     const conditions = [eq(vendorAvailabilitySlots.serviceId, serviceId)];
     if (date) conditions.push(eq(vendorAvailabilitySlots.date, date));
     return await db.select().from(vendorAvailabilitySlots).where(and(...conditions)).orderBy(vendorAvailabilitySlots.date);
+  }
+
+  // C2: month-range read for the public per-service availability calendar.
+  async getVendorAvailabilitySlotsInRange(serviceId: string, startDate: string, endDate: string): Promise<VendorAvailabilitySlot[]> {
+    return await db.select().from(vendorAvailabilitySlots)
+      .where(and(
+        eq(vendorAvailabilitySlots.serviceId, serviceId),
+        gte(vendorAvailabilitySlots.date, startDate),
+        lte(vendorAvailabilitySlots.date, endDate),
+      ))
+      .orderBy(vendorAvailabilitySlots.date);
   }
 
   async getProviderAvailabilitySlots(providerId: string): Promise<VendorAvailabilitySlot[]> {
