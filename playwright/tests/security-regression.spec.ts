@@ -134,11 +134,15 @@ test.describe("T4 — Direct URL privilege: protected APIs need auth", () => {
   const routes = [
     "/api/admin/users",
     "/api/admin/revenue",
+    "/api/admin/service-requests",
     "/api/expert/earnings",
-    "/api/bookings/user",
-    "/api/my-bookings",
+    "/api/expert/assigned-trips",
     "/api/expert/dashboard",
     "/api/provider/dashboard",
+    "/api/provider/earnings",
+    "/api/provider/earnings/summary",
+    "/api/bookings/user",
+    "/api/my-bookings",
     "/api/cart",
     "/api/conversations",
   ];

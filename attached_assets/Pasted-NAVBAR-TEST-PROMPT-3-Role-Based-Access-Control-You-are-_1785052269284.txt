@@ -1,0 +1,94 @@
+NAVBAR TEST PROMPT 3 — Role-Based Access Control
+
+You are a Senior Security Engineer at Stripe.
+Test ONLY role-based navbar access on Traveloure.
+
+CRITICAL SECURITY TEST:
+A regular user (role=user) must NEVER be 
+able to access expert, provider, or admin 
+dashboards via navbar or direct URL.
+
+SETUP:
+Login credentials for each role:
+Traveler:  traveler@traveloure-test.com
+Expert:    expert@traveloure-test.com
+Provider:  provider@traveloure-test.com
+Admin:     admin@traveloure-test.com
+All passwords: TestPass@1234
+
+TEST MATRIX — run for EACH role:
+
+As TRAVELER (role=user), try accessing:
+/expert/dashboard → Expected: DENIED
+/expert/assigned-trips → Expected: DENIED
+/expert/earnings → Expected: DENIED
+/provider/dashboard → Expected: DENIED
+/provider/services → Expected: DENIED
+/provider/earnings → Expected: DENIED
+/admin/dashboard → Expected: DENIED
+/admin/users → Expected: DENIED
+/admin/revenue → Expected: DENIED
+/ea/dashboard → Expected: DENIED
+
+NEW ROUTES — also test these (added since last audit):
+/admin/service-requests → Expected: DENIED
+/admin/neighborhood-backfill → Expected: DENIED
+/admin/gem-photo-backfill → Expected: DENIED
+
+Repeat the FULL matrix above (including the 3 new routes) 
+for EXPERT, PROVIDER, and EA roles too — each trying to 
+access every OTHER role's protected pages.
+
+For each attempt:
+1. Direct URL in browser bar
+2. Inspect network tab — what HTTP 
+   status is returned? (must be 401/403)
+3. Does page content load before redirect?
+   (content must NOT flash before redirect)
+4. Does back button take them to 
+   protected page? (must NOT)
+
+SEARCH FOR BYPASS:
+grep -r "|| true" ./client --include="*.tsx"
+grep -r "|| true" ./server --include="*.ts"
+grep -r "isAdmin" ./client --include="*.tsx"
+grep -r "isExpert" ./client --include="*.tsx"
+
+Report every || true found near auth checks.
+
+PRIVILEGE ESCALATION TEST:
+While logged in as traveler, try:
+1. Editing localStorage/sessionStorage 
+   to change role value
+2. Modifying JWT token role claim
+3. Sending API request with 
+   role=admin in headers
+
+Expected: Server rejects all of these.
+Server must verify role from DB session,
+not from client-supplied values.
+
+NAVBAR VISIBILITY TEST:
+As each role, check what navbar shows:
+Traveler: should NOT see expert/admin links
+Expert: should see expert dashboard link
+Provider: should see provider dashboard link
+Admin: should see admin panel link
+
+Report: Which links are visible to which 
+roles — any over-exposure is a bug.
+
+RE-VERIFY PREVIOUS SECURITY FIXES:
+Run these two scripts again to confirm they still pass 
+after all recent merges:
+npx tsx scripts/test-concierge-claim.ts
+npx tsx scripts/test-race-condition.ts
+
+Report as table: Attempting Role | Target Page | HTTP Status | 
+Blocked? (PASS/FAIL) | Data Leak Check (PASS/FAIL)
+
+Do NOT stop at the first failure. Test every combination.
+Fix every failure found. Re-test after each fix.
+
+RESULT: one line — "X/Y PASS — safe to proceed" or 
+"X FAIL found: [list them] — DO NOT mark ready until fixed."
