@@ -146,3 +146,17 @@ Decisions cost zero tokens and unblock the most work — batch them first, then 
 **Remaining spend ≈ 1.1M output tokens: ~230k Fable · ~700k Sonnet · ~185k Haiku** (M0 scratched −80k; Wave R added +225k; F2/F3 already landed).
 Fable share is ~22% — the map's tier philosophy holding. Every 🔴 item stops after gates for the
 decision-maker's diff read; nothing executes past a ⛔ until its decision is recorded here.
+
+
+## Wave FP — Frictionless Payments (ratified Jul 26, 2026: "map it out then execute it" + Cart fix)
+
+| ID | Item | Tier | Status |
+|----|------|------|--------|
+| FP-1 🔴 | Stripe Customer layer (migration 146 users.stripe_customer_id) + saved-card service (list/default/detach, §14 ownership-checked) + off-session one-click chargeSavedMethod (§15 idempotent, 3DS requires_action fallback) + /api/me/payment-methods router + one-click wired into optimize + coordination pay (useSavedCard consent flag; confirm contracts unchanged) + customer attached to cart checkout PI so the sheet offers saved cards | Fable | ✅ |
+| FP-2 | Checkout sheet upgrade: PaymentElement Link + Apple/Google Pay, save-card consent, one-click buttons on Optimize/Pay when a default card exists, Payment Methods section in traveler settings | Sonnet | dispatched |
+| FP-3 | Credits retirement: remove purchase surfaces + pricing cards, close the free /api/wallet/add-credits hole, wallet tables stay dormant (ratified: per-use fee funnel is the AI monetization model; one-click removes the friction argument) | Sonnet | dispatched |
+| FP-4 | Cart UI + process fix: audit-first — slot/schedule visibility (C3), stepper clarity, honest error states, saved-card sheet integration | Sonnet | dispatched |
+
+PCI posture: cards live ONLY in Stripe's vault; this DB stores the opaque customer id. One-click
+guardrails: saving is opt-in at the sheet, the price is always on the button, every charge gets a
+receipt, and nothing charges without a click.

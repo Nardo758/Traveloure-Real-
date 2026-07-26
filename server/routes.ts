@@ -113,6 +113,7 @@ import serviceRequestsRoutes from "./routes/service-requests.routes";
 import tripContextRoutes from "./routes/trip-context.routes";
 import guestInvitesRoutes from "./routes/guest-invites";
 import shareImagesRoutes from "./routes/share-images.routes";
+import paymentMethodsRoutes from "./routes/payment-methods.routes";
 import { CREDIT_PACKAGES } from "@shared/credit-packages";
 import { 
   insertTripParticipantSchema, 
@@ -630,6 +631,10 @@ export async function registerRoutes(
   // F2/REV-MOD-gated in the router; the render itself is pure in share-image.service.ts. Mounted
   // per §9.
   app.use(shareImagesRoutes);
+
+  // FP-1 frictionless payments: saved-card management (GET/POST/DELETE /api/me/payment-methods*).
+  // Session-scoped; cards live only in Stripe's vault. Mounted per §9.
+  app.use(paymentMethodsRoutes);
 
   // Trips + Itinerary-Comparison Routes — was imported at line 95 but never mounted
   // NOTE (§9 shadow fix): tripsRoutes is mounted LAST (just before `return httpServer`),
@@ -6300,6 +6305,57 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             .set({ feePaymentStatus: "paid", feeAmountCents: 0, feeCreditCents: claimedCreditCents, feePaidAt: new Date() })
             .where(eq(coordinationStates.id, coordinationId));
           return res.json({ paid: true, feeCents: 0, creditCents: claimedCreditCents, feePaymentStatus: "paid" });
+        }
+
+        // FP-1 one-click: charge the saved default card off-session when the client asks —
+        // same server-derived netFeeCents (§14 unchanged; useSavedCard is only a consent flag),
+        // same deterministic idempotency key (§15). On success the client calls the normal
+        // /pay/confirm with this PI id (confirm contract unchanged); requires_action falls back
+        // to the payment sheet; no saved method falls through to the sheet flow below.
+        if (req.body?.useSavedCard === true) {
+          const { stripePaymentService } = await import("./services/stripe-payment.service");
+          const oneClick = await stripePaymentService.chargeSavedMethod(userId, {
+            amountCents: netFeeCents,
+            currency: "usd",
+            metadata: {
+              type: "coordination_fee",
+              coordinationId,
+              userId,
+              eventType: eventType ?? "",
+              creditCents: String(claimedCreditCents),
+            },
+            description: `Traveloure event coordination fee (${eventType})`,
+            idempotencyKey: `coord-fee-${coordinationId}`,
+          });
+          if (oneClick.status !== "no_saved_method") {
+            await db
+              .update(coordinationStates)
+              .set({ feePaymentIntentId: oneClick.paymentIntentId, feeAmountCents: netFeeCents, feeCreditCents: claimedCreditCents })
+              .where(eq(coordinationStates.id, coordinationId));
+            if (oneClick.status === "succeeded") {
+              return res.json({
+                oneClick: true,
+                status: "succeeded",
+                paymentIntentId: oneClick.paymentIntentId,
+                feeCents: netFeeCents,
+                creditCents: claimedCreditCents,
+                currency: "USD",
+                rule,
+                breakdown,
+              });
+            }
+            return res.json({
+              oneClick: false,
+              requiresAction: true,
+              clientSecret: oneClick.clientSecret,
+              paymentIntentId: oneClick.paymentIntentId,
+              feeCents: netFeeCents,
+              creditCents: claimedCreditCents,
+              currency: "USD",
+              rule,
+              breakdown,
+            });
+          }
         }
 
         const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", { apiVersion: "2024-12-18.acacia" as any });
