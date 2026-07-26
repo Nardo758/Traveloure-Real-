@@ -1,4 +1,4 @@
-const EXPERT_ROLES = ["expert", "local_expert", "travel_expert", "event_planner", "executive_assistant"];
+const EXPERT_ROLES = ["expert", "local_expert", "travel_expert", "event_planner"];
 const PROVIDER_ROLES = ["service_provider"];
 
 export function getRoleHomePath(role: string): string {

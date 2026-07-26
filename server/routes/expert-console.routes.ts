@@ -18,7 +18,7 @@ import { db } from "../db";
 import { storage } from "../storage";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { desc, eq, or, isNull, sql } from "drizzle-orm";
-import { localExpertForms, expertServiceOfferings, coordinationStates, insertLocalKnowledgeNuggetSchema } from "@shared/schema";
+import { localExpertForms, expertServiceOfferings, coordinationStates, insertLocalKnowledgeNuggetSchema, users } from "@shared/schema";
 import {
   getLocalKnowledgeNuggets,
   createLocalKnowledgeNugget,
@@ -201,6 +201,24 @@ router.get("/api/expert/coordination-engagements", isAuthenticated, async (req, 
 
 // ─── Local-expert knowledge nuggets (Content Studio's library) ──────────────────────────────
 
+// Write access (POST/PATCH/DELETE) is local_expert-or-admin only; reads are expert-level
+// (gated by the EXPERT_SELF_SERVICE_PREFIXES isExpert backstop in routes.ts).
+async function requireLocalExpertOrAdmin(req: any, res: any, next: any) {
+  const userId = sessionUserId(req);
+  if (!userId) return res.status(401).json({ message: "Authentication required" });
+  try {
+    const [row] = await db.select({ role: users.role }).from(users).where(eq(users.id, userId));
+    if (!row) return res.status(401).json({ message: "Authentication required" });
+    if (row.role !== "local_expert" && row.role !== "admin") {
+      return res.status(403).json({ message: "Local Expert access required" });
+    }
+    next();
+  } catch (err) {
+    console.error("[Knowledge Nuggets] role check error:", err);
+    return res.status(500).json({ message: "Authorization check failed" });
+  }
+}
+
 router.get("/api/expert/knowledge-nuggets", isAuthenticated, async (req, res) => {
   try {
     const expertId = sessionUserId(req);
@@ -211,7 +229,7 @@ router.get("/api/expert/knowledge-nuggets", isAuthenticated, async (req, res) =>
   }
 });
 
-router.post("/api/expert/knowledge-nuggets", isAuthenticated, async (req, res) => {
+router.post("/api/expert/knowledge-nuggets", isAuthenticated, requireLocalExpertOrAdmin, async (req, res) => {
   try {
     const expertId = sessionUserId(req);
     const parsed = insertLocalKnowledgeNuggetSchema.safeParse({ ...req.body, expertUserId: expertId });
@@ -225,7 +243,7 @@ router.post("/api/expert/knowledge-nuggets", isAuthenticated, async (req, res) =
   }
 });
 
-router.patch("/api/expert/knowledge-nuggets/:id", isAuthenticated, async (req, res) => {
+router.patch("/api/expert/knowledge-nuggets/:id", isAuthenticated, requireLocalExpertOrAdmin, async (req, res) => {
   try {
     const expertId = sessionUserId(req);
     const { id } = req.params;
@@ -244,7 +262,7 @@ router.patch("/api/expert/knowledge-nuggets/:id", isAuthenticated, async (req, r
   }
 });
 
-router.delete("/api/expert/knowledge-nuggets/:id", isAuthenticated, async (req, res) => {
+router.delete("/api/expert/knowledge-nuggets/:id", isAuthenticated, requireLocalExpertOrAdmin, async (req, res) => {
   try {
     const expertId = sessionUserId(req);
     const { id } = req.params;
