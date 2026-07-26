@@ -27,6 +27,14 @@ interface OfferingRow {
   approval: string; // normalized: approved | submitted | draft | rejected | unknown
   editHref: string;
   publicHref: string | null; // only when approved (+published where applicable)
+  nextAvailability: string | null; // ISO date, service lane only; null = no slots / not applicable
+}
+
+function formatNextAvailability(dateStr: string | null): string {
+  if (!dateStr) return "No slots scheduled";
+  const d = new Date(`${dateStr}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return "No slots scheduled";
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -48,6 +56,9 @@ export function MyOfferingsTable() {
   const services = useQuery<any[]>({ queryKey: ["/api/expert/services"] });
   const templates = useQuery<any[]>({ queryKey: ["/api/expert/templates"] });
   const readyMade = useQuery<any[]>({ queryKey: ["/api/expert/ready-made/mine"] });
+  // Backoffice C1: soonest future, not-fully-booked vendor_availability_slots row per
+  // service id (service lane only — templates/Ready Made Trips have no slots).
+  const nextAvailability = useQuery<Record<string, string>>({ queryKey: ["/api/me/next-availability"] });
 
   const isLoading = services.isLoading || templates.isLoading || readyMade.isLoading;
 
@@ -63,6 +74,7 @@ export function MyOfferingsTable() {
         approval,
         editHref: "/expert/services",
         publicHref: approval === "approved" ? `/services/${s.id}` : null,
+        nextAvailability: nextAvailability.data?.[s.id] ?? null,
       };
     }),
     ...(Array.isArray(templates.data) ? templates.data : []).map((t: any): OfferingRow => {
@@ -76,6 +88,7 @@ export function MyOfferingsTable() {
         approval,
         editHref: "/expert/templates",
         publicHref: approval === "approved" && t.isPublished ? `/expert-templates/${t.id}` : null,
+        nextAvailability: null,
       };
     }),
     ...(Array.isArray(readyMade.data) ? readyMade.data : []).map((r: any): OfferingRow => {
@@ -86,6 +99,7 @@ export function MyOfferingsTable() {
         laneLabel: "Ready Made Trip",
         name: r.title ?? "Untitled trip",
         price: r.priceCents != null ? `$${(r.priceCents / 100).toFixed(0)}` : null,
+        nextAvailability: null,
         approval,
         editHref: "/expert/ready-made",
         publicHref: approval === "approved" ? `/ready-made/${r.id}` : null,
@@ -146,6 +160,7 @@ export function MyOfferingsTable() {
                   <th className="py-2 pr-3 font-semibold">Type</th>
                   <th className="py-2 pr-3 font-semibold">Status</th>
                   <th className="py-2 pr-3 font-semibold">Price</th>
+                  <th className="py-2 pr-3 font-semibold">Next availability</th>
                   <th className="py-2 font-semibold">Actions</th>
                 </tr>
               </thead>
@@ -160,6 +175,9 @@ export function MyOfferingsTable() {
                       </Badge>
                     </td>
                     <td className="py-2.5 pr-3">{row.price ?? "—"}</td>
+                    <td className="py-2.5 pr-3 text-muted-foreground" data-testid={`next-availability-${row.lane}-${row.id}`}>
+                      {row.lane === "service" ? formatNextAvailability(row.nextAvailability) : "—"}
+                    </td>
                     <td className="py-2.5">
                       <div className="flex items-center gap-1">
                         <Link href={row.editHref}>
