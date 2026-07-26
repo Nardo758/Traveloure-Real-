@@ -86,6 +86,8 @@ interface CartItem {
   quantity: number;
   scheduledDate: string | null;
   slotId?: string | null;
+  // Slot detail joined server-side (_enrichCartItems) — real times, never fabricated client-side.
+  slot?: { date: string; startTime: string | null; endTime: string | null } | null;
   notes: string | null;
   service: {
     id: string;
@@ -1430,7 +1432,16 @@ export default function CartPage() {
                                 data-testid={`text-slot-held-${item.id}`}
                               >
                                 <Lock className="w-3 h-3" />
-                                Time slot held at checkout: {format(new Date(item.scheduledDate), "PPP")}
+                                Time slot held at checkout:{" "}
+                                {item.slot?.date
+                                  ? format(new Date(`${item.slot.date}T00:00:00`), "PPP")
+                                  : format(new Date(item.scheduledDate), "PPP")}
+                                {item.slot?.startTime && (
+                                  <span>
+                                    {" · "}{item.slot.startTime}
+                                    {item.slot.endTime ? `–${item.slot.endTime}` : ""}
+                                  </span>
+                                )}
                               </div>
                             )}
                           </div>

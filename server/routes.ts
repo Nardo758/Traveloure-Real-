@@ -133,6 +133,8 @@ import {
   PLATFORM_FEE_RATE,
   PROCESSING_FEE_RATE,
   resolveCommissionRates,
+  calcInsuranceFee,
+  getConciergeBookingRate,
   type CommissionRates,
 } from "./services/commission";
 import { calculateCommission, BookingType } from "./utils/commissionCalculator";
@@ -4969,24 +4971,62 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
     const safeRate = (v: any, fb: number) => { const n = parseFloat(v); return Number.isFinite(n) && n >= 0 && n <= 1 ? n : fb; };
 
+    // FP-4 filed follow-up (parity): the quote previously omitted the provider-source rate
+    // branch, the insurance leg, and the booking_concierge facilitation fee that /api/checkout
+    // charges — so a cart with those items quoted LOWER than the eventual charge. Mirror all
+    // three legs so the quoted fee never diverges from the charged fee (R3 disclosure posture).
+    const cartOfferingTypeIds = Array.from(new Set(
+      items.filter(i => i.service?.expertOfferingTypeId).map(i => i.service!.expertOfferingTypeId as string)
+    ));
+    const cartOfferingKeyMap = new Map<string, string>();
+    if (cartOfferingTypeIds.length > 0) {
+      const typeRows = await storage.getExpertOfferingTypeKeysByIds(cartOfferingTypeIds);
+      for (const row of typeRows) cartOfferingKeyMap.set(row.id, row.key);
+    }
+    const cartHasConcierge = items.some(i =>
+      i.service?.expertOfferingTypeId
+        ? cartOfferingKeyMap.get(i.service.expertOfferingTypeId) === "booking_concierge"
+        : false,
+    );
+    const cartConciergeRate = cartHasConcierge ? await getConciergeBookingRate() : 0;
+
     let subtotal = 0;
     let platformFeeTotal = 0;
+    let conciergeFeeTotal = 0;
     for (const item of items) {
       const price = parseFloat(item.service?.price || "0") * (item.quantity || 1);
       const feeCategory = item.service?.categoryId
         ? (cartCatMap.get(item.service.categoryId) ?? "default")
         : "default";
-      const rates = await resolveCommissionRates(feeCategory);
+      let isProviderService = false;
+      if (item.service?.userId) {
+        const [providerRow] = await db
+          .select({ role: users.role })
+          .from(users)
+          .where(eq(users.id, item.service.userId))
+          .limit(1);
+        if (providerRow?.role === "provider") isProviderService = true;
+      }
+      const rates = await resolveCommissionRates(
+        isProviderService
+          ? { source: "provider", providerId: item.service?.userId ?? null }
+          : { category: feeCategory, expertId: item.service?.userId ?? null }
+      );
       const expertShare = safeRate(item.service?.revenueShareRate, rates.expertShareRate);
       subtotal += price;
-      platformFeeTotal += price * (1 - expertShare);
+      platformFeeTotal += price * (1 - expertShare) + calcInsuranceFee(price, rates, feeCategory);
+      const isConciergeItem = item.service?.expertOfferingTypeId
+        ? cartOfferingKeyMap.get(item.service.expertOfferingTypeId) === "booking_concierge"
+        : false;
+      if (isConciergeItem) conciergeFeeTotal += price * cartConciergeRate;
     }
 
     res.json({
       items,
       subtotal: subtotal.toFixed(2),
       platformFee: platformFeeTotal.toFixed(2),
-      total: (subtotal + platformFeeTotal).toFixed(2),
+      conciergeFee: conciergeFeeTotal.toFixed(2),
+      total: (subtotal + platformFeeTotal + conciergeFeeTotal).toFixed(2),
       itemCount: items.length,
     });
     } catch (err) {

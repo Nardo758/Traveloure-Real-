@@ -1881,7 +1881,23 @@ export class DatabaseStorage implements IStorage {
           const [cat] = await db.select({ slug: serviceCategories.slug }).from(serviceCategories).where(eq(serviceCategories.id, service.categoryId));
           categorySlug = cat?.slug ?? null;
         }
-        return { ...item, isCustomVenue: false, service: service ? { ...service, providerName, categorySlug } : null };
+        // C3/FP-4 filed follow-up: expose the held slot's real date + times so the cart can show
+        // "Time slot held at checkout: {date} {start}–{end}" instead of the date-only line (the
+        // time-of-day lives only on vendor_availability_slots; rendering one without this join
+        // would be fabrication). Null when the slot was deleted (FK SET NULL) — client falls back.
+        let slot: { date: string; startTime: string | null; endTime: string | null } | null = null;
+        if (item.slotId) {
+          const [slotRow] = await db
+            .select({
+              date: vendorAvailabilitySlots.date,
+              startTime: vendorAvailabilitySlots.startTime,
+              endTime: vendorAvailabilitySlots.endTime,
+            })
+            .from(vendorAvailabilitySlots)
+            .where(eq(vendorAvailabilitySlots.id, item.slotId));
+          if (slotRow) slot = { date: String(slotRow.date), startTime: slotRow.startTime, endTime: slotRow.endTime };
+        }
+        return { ...item, isCustomVenue: false, slot, service: service ? { ...service, providerName, categorySlug } : null };
       }
       return { ...item, service: null };
     }));
