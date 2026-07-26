@@ -74,7 +74,7 @@ checking this table.
 | SH1 ✅ `49090eb0`+`285102d5` | Image render pipeline (IG feed 1080×1350 / story 1080×1920 / review card) | Fable design ~40k → Sonnet ~60k | ~100k | SH0, S3 | Landed: satori + @resvg/resvg-js (deliberate add, lockfile clean) + bundled Inter woff (OFL); F2/REV-MOD-gated endpoints, §13-honest cards, cacheable + rate-limited |
 | SH2 ✅ | Share surface page: cards + captions + wa.me/X/copy (informational outbound OK per §16; links route back to /p/) | Haiku | ~30k | SH1 | Landed: shared /expert|provider/share-promote page (offering picker, live SH1 previews, editable real-data captions, short-link-first actions). Ground-truth catch: N1 never actually added the Share & Promote nav entry — added to both sidebars here |
 | SH3 ✅ `2eaf10a9` | Posting Opportunities feed (new 5★ review / open slots / seasonal) | Sonnet | ~50k | SH1, C1 | Landed (reviews + open slots). Seasonal source honestly SKIPPED — seasonal_opportunities has readers but zero writers and 0 rows (§13); add only with a real write path |
-| SH4 ⛔ decision gate | W0.6 Instagram publish fix (filed defect) | Sonnet | ~40k | — | Ground-truthed Jul 26: defect confirmed real (content-studio.tsx:310 apiRequest arg-order bug — the publish call never reaches the server; :849 dropdown decorative) BUT the W0.6 brief is VOID unless the Instagram Tier-2 activate/dormant PRODUCT decision is ratified "activate" — it is not among the five ratified decisions. Fix is pre-scoped in the brief (2 client lines; server already complete + honestly key-gated); executes on ratification |
+| SH4 ✅ (Tier-2 ACTIVATE ratified) | W0.6 Instagram publish fix (filed defect) | Sonnet | ~40k | — | Ground-truthed Jul 26: defect confirmed real (content-studio.tsx:310 apiRequest arg-order bug — the publish call never reaches the server; :849 dropdown decorative) BUT the W0.6 brief is VOID unless the Instagram Tier-2 activate/dormant PRODUCT decision is ratified "activate" — it is not among the five ratified decisions. Fix is pre-scoped in the brief (2 client lines; server already complete + honestly key-gated); executes on ratification |
 
 ## Wave M — Money-model decision
 
@@ -105,6 +105,12 @@ checking this table.
 ---
 
 ## ⛭ Decisions — RATIFIED Jul 26, 2026 (decision-maker)
+
+0. **Instagram Tier-2 = ACTIVATE** (ratified later on Jul 26, unblocking SH4/W0.6). The publish
+   wiring fix is landed; live publishing additionally needs `META_APP_ID`/`META_APP_SECRET` at
+   deploy and each expert connecting their IG account (the existing OAuth flow). Filed next:
+   point published images at the SH1 render-on-demand share-image URLs (needs the deployed public
+   origin) and the P4.4 token-refresh job.
 
 1. **S2 = redirect-when-claimed.** `/experts/:id` (and `/local-experts/:id`) 302 → `/p/:handle` once the
    earner has claimed a handle; unclaimed earners keep the id page. `/p/` later absorbs the browse extras.

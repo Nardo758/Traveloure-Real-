@@ -307,7 +307,10 @@ export default function ContentStudio() {
 
   const publishToInstagramMutation = useMutation({
     mutationFn: async (data: { imageUrl: string; caption: string }) => {
-      return apiRequest("/api/instagram/publish", { method: "POST", body: JSON.stringify(data), headers: { "Content-Type": "application/json" } });
+      // W0.6 fix (SH4, Tier-2 activation ratified): apiRequest's signature is
+      // (method, url, data) — the old call passed the URL into the method slot, so the
+      // request never reached the server.
+      return apiRequest("POST", "/api/instagram/publish", data);
     },
     onSuccess: () => {
       toast({ title: "Published!", description: "Your content is now live on Instagram." });
@@ -846,7 +849,34 @@ export default function ContentStudio() {
                           Duplicate
                         </DropdownMenuItem>
                         {!item.instagramPostId && (
-                          <DropdownMenuItem data-testid={`menu-instagram-${item.id}`}>
+                          <DropdownMenuItem
+                            data-testid={`menu-instagram-${item.id}`}
+                            // W0.6 fix (SH4): this item was decorative (no onClick). Publishes the
+                            // item's own image + a caption from its real fields; honest guards —
+                            // not connected or no image → an explanatory toast, never fake success.
+                            onClick={() => {
+                              if (!isInstagramConnected) {
+                                toast({
+                                  title: "Instagram not connected",
+                                  description: "Connect your Instagram account in the panel above first.",
+                                  variant: "destructive",
+                                });
+                                return;
+                              }
+                              if (!item.coverImageUrl) {
+                                toast({
+                                  title: "No image to publish",
+                                  description: "This content item has no cover image — Instagram requires one.",
+                                  variant: "destructive",
+                                });
+                                return;
+                              }
+                              publishToInstagramMutation.mutate({
+                                imageUrl: item.coverImageUrl,
+                                caption: `${item.title}\n\n${item.destination}`,
+                              });
+                            }}
+                          >
                             <Instagram className="w-4 h-4 mr-2" />
                             Post to Instagram
                           </DropdownMenuItem>
