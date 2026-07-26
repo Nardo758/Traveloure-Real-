@@ -20,6 +20,21 @@ convert executor mistakes into mechanical red/green). **Nothing executes until t
 
 ---
 
+## Phase 0.5 — Verification gating & payout readiness (⛔ Phase-1 DEPENDENCY — see EARN_PIPELINE_EVAL.md)
+
+The KYC + banking spine is BUILT (Stripe Identity + Persona KYB + Connect Express, all mounted/wired) but
+NOT enforced as a gate. This wiring must land BEFORE Phase 1 surfaces public `/p/{handle}` pages — an
+unverified earner must not be publishable. Mostly wiring existing populated fields; no from-scratch build,
+no money-math (the payout block already exists), so **no Fable item**.
+
+| ID | Item | Tier | Stop | Est. tokens | Notes |
+|----|------|------|------|-------------|-------|
+| V.1 | Gate publish/go-live on `identityVerificationStatus='verified'` (+ `businessVerificationStatus` for businesses) — F2-style read-gate on the already-populated column; preserve §5 build-while-pending (gate publish, not console entry) | Sonnet | — | ~55k | Behavioral gate: verified publishes, unverified 403s at publish |
+| V.2 | Sequence Identity/KYB into the application flow (not just a status-page button) so "pending" = pending review, not not-started | Sonnet | — | ~50k | UI sequencing over the existing `/api/identity/*` endpoints |
+| V.3 | Sequence Connect onboarding into go-live (offering not publishable/payout-eligible until active Connect account); the payout money-block already exists (admin.routes.ts:3714) | Sonnet | — | ~45k | Adds the surface prompt; money side unchanged |
+| V.4 | Normalize `provider` vs `service_provider` role vocabulary across gates | Haiku | — | ~25k | Latent inconsistency; grep-enumerated |
+| V.5 | Launch checklist: confirm STRIPE_* / PERSONA_* env keys set (no-key fallbacks are safe → manual review, but must be a conscious choice) | Haiku | — | ~10k | Doc + a startup readiness log line |
+
 ## Wave 0 — Hardening & bug fixes (independent of roadmap approval; each is a filed defect)
 
 | ID | Item | Tier | Stop | Est. tokens | Notes |
