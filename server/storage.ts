@@ -364,6 +364,8 @@ export interface IStorage {
   updateVendorAvailabilitySlot(id: string, updates: Partial<InsertVendorAvailabilitySlot>): Promise<VendorAvailabilitySlot | undefined>;
   deleteVendorAvailabilitySlot(id: string): Promise<void>;
   bookSlot(id: string): Promise<VendorAvailabilitySlot | undefined>;
+  // C3: compensation release for a claimed slot (failed multi-item claim / future refund path).
+  releaseSlot(id: string): Promise<void>;
 
   // Coordination States
   getCoordinationStates(userId: string): Promise<CoordinationState[]>;
@@ -1886,7 +1888,7 @@ export class DatabaseStorage implements IStorage {
     return enriched;
   }
 
-  async addToCart(userId: string | null, item: { serviceId?: string; customVenueId?: string; contentType?: string; contentId?: string; contentMeta?: Record<string, any>; quantity?: number; tripId?: string; scheduledDate?: Date; notes?: string; experienceSlug?: string; guestSessionId?: string }): Promise<any> {
+  async addToCart(userId: string | null, item: { serviceId?: string; customVenueId?: string; contentType?: string; contentId?: string; contentMeta?: Record<string, any>; quantity?: number; tripId?: string; scheduledDate?: Date; slotId?: string; notes?: string; experienceSlug?: string; guestSessionId?: string }): Promise<any> {
     if (!userId && !item.guestSessionId) {
       throw new Error("Either userId or guestSessionId is required");
     }
@@ -1920,7 +1922,11 @@ export class DatabaseStorage implements IStorage {
 
     if (existing) {
       const [updated] = await db.update(cartItems)
-        .set({ quantity: (existing.quantity || 1) + (item.quantity || 1) })
+        .set({
+          quantity: (existing.quantity || 1) + (item.quantity || 1),
+          // C3: re-adding with a picked slot attaches (or replaces) the slot + its derived date.
+          ...(item.slotId ? { slotId: item.slotId, scheduledDate: item.scheduledDate } : {}),
+        })
         .where(eq(cartItems.id, existing.id))
         .returning();
       return updated;
@@ -1938,6 +1944,7 @@ export class DatabaseStorage implements IStorage {
       quantity: item.quantity || 1,
       tripId: item.tripId,
       scheduledDate: item.scheduledDate,
+      slotId: item.slotId || null,
       notes: item.notes
     }).returning();
     return newItem;
@@ -2332,18 +2339,44 @@ export class DatabaseStorage implements IStorage {
     await db.delete(vendorAvailabilitySlots).where(eq(vendorAvailabilitySlots.id, id));
   }
 
+  // C3 (§15): ATOMIC capacity claim — the conditional UPDATE is the concurrency guard. The
+  // previous implementation was a check-then-update TOCTOU (two concurrent bookings could both
+  // read bookedCount=0 and both "claim" the last spot, overbooking past capacity); it also had
+  // zero callers, so this rewrite regresses nothing. Returns undefined when the slot is missing,
+  // blocked, in the past, or full — the caller's "this slot just booked" signal. Claim the slot
+  // FIRST, then create bookings / call Stripe; release via releaseSlot on a downstream failure.
   async bookSlot(id: string): Promise<VendorAvailabilitySlot | undefined> {
-    const [slot] = await db.select().from(vendorAvailabilitySlots).where(eq(vendorAvailabilitySlots.id, id));
-    if (!slot) return undefined;
-    
-    const newBookedCount = (slot.bookedCount || 0) + 1;
-    const newStatus = newBookedCount >= (slot.capacity || 1) ? "fully_booked" : "available";
-    
-    const [updated] = await db.update(vendorAvailabilitySlots)
-      .set({ bookedCount: newBookedCount, status: newStatus, updatedAt: new Date() })
-      .where(eq(vendorAvailabilitySlots.id, id))
-      .returning();
-    return updated;
+    const result = await db.execute(sqlOp`
+      UPDATE vendor_availability_slots
+      SET booked_count = COALESCE(booked_count, 0) + 1,
+          status = CASE
+            WHEN COALESCE(booked_count, 0) + 1 >= COALESCE(capacity, 1) THEN 'fully_booked'
+            ELSE status
+          END,
+          updated_at = NOW()
+      WHERE id = ${id}
+        AND status <> 'blocked'
+        AND date >= CURRENT_DATE
+        AND COALESCE(booked_count, 0) < COALESCE(capacity, 1)
+      RETURNING *
+    `);
+    return (result.rows?.[0] as VendorAvailabilitySlot | undefined) ?? undefined;
+  }
+
+  // C3: compensation for a failed multi-slot claim (and the future refund-release path). Never
+  // drops below zero; re-opens a fully_booked slot when capacity frees up (blocked stays blocked).
+  async releaseSlot(id: string): Promise<void> {
+    await db.execute(sqlOp`
+      UPDATE vendor_availability_slots
+      SET booked_count = GREATEST(COALESCE(booked_count, 0) - 1, 0),
+          status = CASE
+            WHEN status = 'fully_booked' AND GREATEST(COALESCE(booked_count, 0) - 1, 0) < COALESCE(capacity, 1)
+              THEN 'available'
+            ELSE status
+          END,
+          updated_at = NOW()
+      WHERE id = ${id}
+    `);
   }
 
   // Coordination States

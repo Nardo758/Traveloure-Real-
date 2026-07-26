@@ -21,6 +21,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import StripeCheckout from "@/components/booking/StripeCheckout";
 import { Crown, Calendar, MapPin, CheckCircle2, Loader2, Sparkles, RefreshCcw } from "lucide-react";
+import { useSavedPayment, formatCardLabel } from "@/hooks/use-saved-payment";
 
 interface Engagement {
   id: string;
@@ -68,10 +69,14 @@ function EngagementCard({ engagement }: { engagement: Engagement }) {
   const { toast } = useToast();
   const [payOpen, setPayOpen] = useState(false);
   const [starting, setStarting] = useState(false);
+  const [oneClickPaying, setOneClickPaying] = useState(false);
   const [pi, setPi] = useState<{ clientSecret: string; paymentIntentId: string; amount: number } | null>(null);
 
   const isPaid = engagement.feePaymentStatus === "paid";
   const isRefunded = engagement.feePaymentStatus === "refunded";
+
+  // FP-2: this page is behind ProtectedRoute, so a signed-in user is a given here.
+  const savedPayment = useSavedPayment(true);
 
   const { data: fee, isLoading: feeLoading } = useQuery<FeeQuote>({
     queryKey: [`/api/coordination-states/${engagement.id}/fee`],
@@ -99,6 +104,43 @@ function EngagementCard({ engagement }: { engagement: Engagement }) {
       toast({ title: "Couldn't start payment", description: err?.message || "Please try again.", variant: "destructive" });
     } finally {
       setStarting(false);
+    }
+  }
+
+  // FP-2: one-click — charge the saved default card off-session. Tri-state per FP-1's contract:
+  // succeeded (skip the sheet, run the normal /confirm), requiresAction (fall back to the sheet
+  // with the returned clientSecret), or no saved method (fall back to the normal sheet flow).
+  async function payWithSavedCard() {
+    setOneClickPaying(true);
+    try {
+      const res = await apiRequest("POST", `/api/coordination-states/${engagement.id}/pay`, { useSavedCard: true });
+      const data = await res.json();
+      if (data.alreadyPaid || data.paid) {
+        toast({ title: "Coordination fee settled", description: "This engagement is fully paid." });
+        queryClient.invalidateQueries({ queryKey: ["/api/coordination-states"] });
+        return;
+      }
+      if (data.alreadyRefunded) {
+        toast({ title: "Fee already refunded", description: "This coordination fee was refunded and cannot be charged again.", variant: "destructive" });
+        queryClient.invalidateQueries({ queryKey: ["/api/coordination-states"] });
+        return;
+      }
+      if (data.oneClick && data.status === "succeeded") {
+        toast({ title: "Payment successful", description: "Confirming your coordination fee..." });
+        await confirmPayment(data.paymentIntentId);
+        return;
+      }
+      if (data.requiresAction) {
+        setPi({ clientSecret: data.clientSecret, paymentIntentId: data.paymentIntentId, amount: data.feeCents });
+        setPayOpen(true);
+        return;
+      }
+      // No saved method after all — fall back to the normal sheet flow.
+      await startPayment();
+    } catch (err: any) {
+      toast({ title: "Payment failed", description: err?.message || "Please try again.", variant: "destructive" });
+    } finally {
+      setOneClickPaying(false);
     }
   }
 
@@ -182,6 +224,27 @@ function EngagementCard({ engagement }: { engagement: Engagement }) {
         ) : isRefunded ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground" data-testid={`text-refunded-${engagement.id}`}>
             <RefreshCcw className="w-4 h-4" /> This coordination fee was refunded and cannot be charged again.
+          </div>
+        ) : savedPayment.hasDefault ? (
+          <div className="space-y-2">
+            <Button
+              className="w-full"
+              disabled={oneClickPaying || starting || feeLoading}
+              onClick={payWithSavedCard}
+              data-testid={`button-pay-saved-card-${engagement.id}`}
+            >
+              {oneClickPaying ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+              Pay {dueCents > 0 ? money(dueCents, fee?.currency || "USD") : "fee"} with {formatCardLabel(savedPayment.defaultCard)}
+            </Button>
+            <button
+              type="button"
+              className="w-full text-center text-xs text-muted-foreground hover:text-foreground underline underline-offset-2"
+              onClick={startPayment}
+              disabled={oneClickPaying || starting || feeLoading}
+              data-testid={`button-use-different-card-${engagement.id}`}
+            >
+              Use a different card
+            </button>
           </div>
         ) : (
           <Button

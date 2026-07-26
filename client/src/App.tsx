@@ -111,7 +111,6 @@ const DealsPage = lazy(() => import("@/pages/deals"));
 const PaymentPage = lazy(() => import("@/pages/payment"));
 const TravelExpertsPage = lazy(() => import("@/pages/travel-experts"));
 const ServicesProviderPage = lazy(() => import("@/pages/services-provider"));
-const CreditsBillingPage = lazy(() => import("@/pages/credits-billing"));
 const ExpertStatusPage = lazy(() => import("@/pages/expert-status"));
 const ProviderStatusPage = lazy(() => import("@/pages/provider-status"));
 const AdminFeeBands = lazy(() => import("@/pages/admin/fee-bands"));
@@ -135,6 +134,7 @@ const ExpertServiceForm = lazy(() => import("@/pages/expert/service-form"));
 const ProviderServiceForm = lazy(() => import("@/pages/provider/service-form"));
 const ExpertWorkspace = lazy(() => import("@/pages/expert/workspace"));
 const DmoLibrary = lazy(() => import("@/pages/expert/dmo-library"));
+const SharePromote = lazy(() => import("@/pages/backoffice/share-promote"));
 const CartPage = lazy(() => import("@/pages/cart"));
 const MyBookingsPage = lazy(() => import("@/pages/my-bookings"));
 const MyEventsPage = lazy(() => import("@/pages/my-events"));
@@ -499,11 +499,12 @@ function Router() {
         {() => <DashboardLayout><ProtectedRoute component={Profile} /></DashboardLayout>}
       </Route>
       
-      {/* Consolidated Credits page */}
+      {/* FP-3: credits system retired (per-use fee funnel + one-click saved-card is the
+          monetization model; credits had zero real consumers). Old links redirect home. */}
       <Route path="/credits">
-        {() => <DashboardLayout><ProtectedRoute component={CreditsBillingPage} /></DashboardLayout>}
+        <Redirect to="/dashboard" />
       </Route>
-      
+
       <Route path="/notifications">
         {() => <DashboardLayout><ProtectedRoute component={Notifications} /></DashboardLayout>}
       </Route>
@@ -613,6 +614,12 @@ function Router() {
       <Route path="/expert/dmo-library">
         {() => <ProtectedRoute component={DmoLibrary} requiredRole="expert" />}
       </Route>
+      {/* Share & Promote (SH2) — one shared page component, mounted per-role so each console's
+          sidebar link and ProtectedRoute guard stay role-scoped (SharePromote itself picks
+          ExpertLayout vs ProviderLayout off the session user's role). */}
+      <Route path="/expert/share-promote">
+        {() => <ProtectedRoute component={SharePromote} requiredRole="expert" />}
+      </Route>
 
       {/* Executive Assistant Dashboard Routes (use EALayout - no global Layout) */}
       <Route path="/ea/dashboard">
@@ -705,6 +712,9 @@ function Router() {
       </Route>
       <Route path="/provider/resources">
         {() => <ProtectedRoute component={ProviderResources} requiredRole="provider" />}
+      </Route>
+      <Route path="/provider/share-promote">
+        {() => <ProtectedRoute component={SharePromote} requiredRole="provider" />}
       </Route>
 
       {/* Admin Dashboard Routes (use AdminLayout - no global Layout) */}
@@ -846,7 +856,7 @@ function Router() {
         <Redirect to="/become-provider" />
       </Route>
       <Route path="/credits-billing">
-        <Redirect to="/credits" />
+        <Redirect to="/dashboard" />
       </Route>
       <Route path="/checkout">
         <Redirect to="/cart" />

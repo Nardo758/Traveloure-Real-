@@ -24,6 +24,7 @@ import {
   Settings,
   LogOut,
   MessageSquare,
+  Share2,
 } from "lucide-react";
 
 const menuGroups = [
@@ -40,6 +41,9 @@ const menuGroups = [
     label: "Business",
     items: [
       { title: "My Offerings", href: "/provider/services", icon: Package },
+      // Share & Promote (SH2): the mockup-6 nav entry N1 converged the label vocabulary for
+      // but never actually added — real caption/link/share-image surface, not a redirect.
+      { title: "Share & Promote", href: "/provider/share-promote", icon: Share2 },
       { title: "Earnings", href: "/provider/earnings", icon: DollarSign },
       { title: "Analytics", href: "/provider/analytics", icon: BarChart3 },
     ],

@@ -19,8 +19,8 @@ import {
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import { useAuth } from "@/hooks/use-auth";
 
-// LB-P5a: canonical credit packages — retained for server consumers; no longer displayed on pricing page.
-// import { CREDIT_PACKAGES as creditPackages } from "@shared/credit-packages";
+// FP-3: credits system retired — shared/credit-packages.ts is kept only for its RETIRED
+// header/history; do not re-import it on the client.
 
 const plans = [
   {
@@ -105,8 +105,10 @@ export default function PricingPage() {
   const [, setLocation] = useLocation();
 
   const handlePricingAction = () => {
+    // FP-3: credits system retired — signed-in users land on the dashboard
+    // (the actual monetization model is per-use fees, charged at the point of use).
     if (user) {
-      setLocation("/credits");
+      setLocation("/dashboard");
     } else {
       openSignInModal();
     }

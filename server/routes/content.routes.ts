@@ -1703,10 +1703,6 @@ router.delete("/api/faqs/:id", isAuthenticated, async (req, res) => {
     res.status(204).send();
   });
 
-  // === Wallet & Credits Routes ===
-  
-  // Get current user's wallet
-
 router.get("/api/service-templates", async (_req, res) => {
     try {
       const rows = await getDefaultServiceTemplates();
@@ -1985,6 +1981,9 @@ router.get("/api/services/:id", async (req, res) => {
         const bookedCount = slot.bookedCount ?? 0;
         const remaining = Math.max(capacity - bookedCount, 0);
         return {
+          // C3: the slot id lets the traveler PICK this slot (add-to-cart carries it; the
+          // capacity claim itself stays server-side at checkout — the id is not sensitive).
+          id: slot.id,
           date: slot.date,
           startTime: slot.startTime,
           endTime: slot.endTime,
