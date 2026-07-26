@@ -18,6 +18,7 @@ import {
   PieChart,
 } from "lucide-react";
 import { StripeConnectCard } from "@/components/stripe-connect-card";
+import { EarningsBySourcePanel } from "@/components/backoffice/earnings-by-source-panel";
 
 
 interface EarningsData {
@@ -61,6 +62,8 @@ export default function ExpertEarnings() {
       if (msg.includes("payout_request_pending")) {
         setRequested(true);
         toast({ title: "Request already pending", description: "You already have a payout request under review." });
+      } else if (msg.includes("stripe_not_connected")) {
+        toast({ title: "Stripe account required", description: "Connect your Stripe account before requesting a payout. Finish setup in Settings.", variant: "destructive" });
       } else if (msg.includes("below_minimum")) {
         toast({ title: "Below minimum", description: "The minimum payout is $10.00.", variant: "destructive" });
       } else if (msg.includes("no_balance")) {
@@ -203,6 +206,8 @@ export default function ExpertEarnings() {
             </div>
           </CardContent>
         </Card>
+
+        <EarningsBySourcePanel />
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Recent Transactions */}

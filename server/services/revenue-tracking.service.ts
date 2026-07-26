@@ -70,9 +70,10 @@ class RevenueTrackingService {
     // Optimization AND coordination fees are 100% platform revenue — route through the 'ai' source
     // tier (AI_PLATFORM_FEE = 1.0). Coordination fee has no expert/provider split (the coordinator is
     // paid via the earnings ledger on the bookings they place, not from this fee).
-    // expert_review_fee (F3): 100% platform at capture — like the coordination fee, the reviewing
-    // expert is compensated via the earnings ledger when the work completes (split = filed decision),
-    // not out of this capture-time fee.
+    // expert_review_fee (F3): 100% platform at CAPTURE. R6 (ratified Jul 26, 2026): when the
+    // assigned expert COMPLETES the request, completeExpertRequest atomically re-splits this
+    // capture-time row (expert gets the admin-editable 'expert_review_expert_share' band rate,
+    // default 0.75; platform keeps the remainder) and credits a held expert earning.
     const isFullPlatformFee = event.sourceType === 'optimization_fee' || event.sourceType === 'coordination_fee' || event.sourceType === 'expert_review_fee';
     // Derive source flag for the resolver so affiliate events get the 70% tier.
     const affiliateSource = event.sourceType === 'affiliate_commission' ? 'affiliate' as const : undefined;

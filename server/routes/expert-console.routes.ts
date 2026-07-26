@@ -17,8 +17,8 @@ import { Router } from "express";
 import { db } from "../db";
 import { storage } from "../storage";
 import { isAuthenticated } from "../replit_integrations/auth";
-import { desc, eq, or, isNull, sql } from "drizzle-orm";
-import { localExpertForms, expertServiceOfferings, coordinationStates, insertLocalKnowledgeNuggetSchema, users } from "@shared/schema";
+import { desc, eq, or, isNull, sql, and, gte, ne, inArray } from "drizzle-orm";
+import { localExpertForms, expertServiceOfferings, coordinationStates, insertLocalKnowledgeNuggetSchema, users, vendorAvailabilitySlots } from "@shared/schema";
 import {
   getLocalKnowledgeNuggets,
   createLocalKnowledgeNugget,
@@ -163,6 +163,53 @@ router.get("/api/expert/service-templates", isAuthenticated, async (req, res) =>
   } catch (err) {
     console.error("Error fetching expert service templates:", err);
     res.status(500).json({ message: "Failed to fetch service templates" });
+  }
+});
+
+// ─── Next availability (Backoffice C1) ──────────────────────────────────────────────────────
+//
+// `vendor_availability_slots` is the CANONICAL table for concrete, dated bookable slots
+// (roadmap ⛭ decision 3 — `provider_availability` is deprecated/dead, never read here).
+// One grouped query — MIN(date) over future, not-fully-booked slots, GROUP BY serviceId —
+// scoped to the caller's OWN provider_services ids (never trusts ids from the client), so
+// this never N+1s regardless of how many offerings the My Offerings table renders.
+
+router.get("/api/me/next-availability", isAuthenticated, async (req, res) => {
+  try {
+    const userId = sessionUserId(req);
+    const ownServices = await storage.getProviderServicesByStatus(userId);
+    const serviceIds = ownServices.map((s) => s.id);
+
+    if (serviceIds.length === 0) {
+      return res.json({});
+    }
+
+    const todayStr = new Date().toISOString().slice(0, 10);
+
+    const rows = await db
+      .select({
+        serviceId: vendorAvailabilitySlots.serviceId,
+        nextDate: sql<string>`MIN(${vendorAvailabilitySlots.date})`.as("next_date"),
+      })
+      .from(vendorAvailabilitySlots)
+      .where(
+        and(
+          inArray(vendorAvailabilitySlots.serviceId, serviceIds),
+          gte(vendorAvailabilitySlots.date, todayStr),
+          ne(vendorAvailabilitySlots.status, "fully_booked"),
+          sql`(${vendorAvailabilitySlots.capacity} IS NULL OR ${vendorAvailabilitySlots.bookedCount} < ${vendorAvailabilitySlots.capacity})`,
+        ),
+      )
+      .groupBy(vendorAvailabilitySlots.serviceId);
+
+    const next: Record<string, string> = {};
+    for (const row of rows) {
+      next[row.serviceId] = row.nextDate;
+    }
+    res.json(next);
+  } catch (err) {
+    console.error("[Next Availability] error:", err);
+    res.status(500).json({ message: "Failed to fetch next availability" });
   }
 });
 

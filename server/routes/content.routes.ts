@@ -1954,6 +1954,52 @@ router.get("/api/services/:id", async (req, res) => {
     res.json(service);
   });
 
+  // C2: public read-only availability calendar for a service's detail page.
+  // Same F2 read-gate as GET /api/services/:id above (approved + active only) — an
+  // unapproved/submitted listing must not leak its schedule any more than its own
+  // detail page would. Reads the C0-canonical vendor_availability_slots table only
+  // (never provider_availability_schedule/provider_availability). No booking-slot
+  // selection here — that is C3's cart/checkout concern, untouched.
+  router.get("/api/services/:id/availability", async (req, res) => {
+    try {
+      const service = await storage.getProviderServiceById(req.params.id);
+      if (!service || service.status !== "active" || service.approvalStatus !== "approved") {
+        return res.status(404).json({ message: "Service not found" });
+      }
+
+      const monthParam = typeof req.query.month === "string" ? req.query.month : undefined;
+      const now = new Date();
+      const month = monthParam && /^\d{4}-\d{2}$/.test(monthParam)
+        ? monthParam
+        : `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+      const [yearStr, monthStr] = month.split("-");
+      const year = parseInt(yearStr, 10);
+      const monthIndex = parseInt(monthStr, 10) - 1;
+      const startDate = `${month}-01`;
+      const lastDay = new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate();
+      const endDate = `${month}-${String(lastDay).padStart(2, "0")}`;
+
+      const slots = await storage.getVendorAvailabilitySlotsInRange(req.params.id, startDate, endDate);
+      const days = slots.map((slot) => {
+        const capacity = slot.capacity ?? 1;
+        const bookedCount = slot.bookedCount ?? 0;
+        const remaining = Math.max(capacity - bookedCount, 0);
+        return {
+          date: slot.date,
+          startTime: slot.startTime,
+          endTime: slot.endTime,
+          remaining,
+          status: remaining <= 0 ? "fully_booked" : (slot.status || "available"),
+        };
+      });
+
+      res.json({ month, days });
+    } catch (err) {
+      console.error("Error fetching service availability:", err);
+      res.status(500).json({ message: "Failed to fetch availability" });
+    }
+  });
+
   // Public provider verification status (for service detail page badge)
 
 router.get("/api/services", async (req, res) => {
@@ -6650,12 +6696,26 @@ router.patch("/api/affiliate-booking-requests/:id", isAuthenticated, async (req,
         }
       }
 
-      const updated = await storage.updateAffiliateBookingRequest(id, data);
-      if (!updated) return res.status(404).json({ message: "Request not found" });
+      // R4/F7 (§15): the confirm transition is claimed atomically so a duplicate/concurrent PATCH
+      // can't double-fire the confirm side-effects (itinerary logging + affiliate earning). Every
+      // OTHER field update (notes, price edits after the fact, non-confirm status changes) keeps
+      // using the plain update — only the pending→confirmed transition needs the atomic guard.
+      const updated = isConfirming
+        ? await storage.confirmAffiliateBookingRequest(id, data)
+        : await storage.updateAffiliateBookingRequest(id, data);
+      if (!updated) {
+        if (isConfirming) {
+          // Lost the atomic claim race — another request already confirmed this booking.
+          // Idempotent no-op: return the current (already-confirmed) row, not a 404/error.
+          const current = await storage.getAffiliateBookingRequestById(id);
+          if (current) return res.json({ ...current, alreadyConfirmed: true });
+        }
+        return res.status(404).json({ message: "Request not found" });
+      }
 
       // Log onto the canonical Trip/PlanCard only when attachment was granted (first
       // confirm wins — guarded on the transition so a repeat PATCH never duplicates).
-      if (updated.status === "confirmed" && updated.tripId && prior.status !== "confirmed") {
+      if (updated.status === "confirmed" && updated.tripId && isConfirming) {
         await storage.createItineraryItem({
           tripId: updated.tripId,
           title: updated.itemName,
@@ -6671,6 +6731,61 @@ router.patch("/api/affiliate-booking-requests/:id", isAuthenticated, async (req,
           actualCost: updated.price ?? null,
           suggestedBy: "expert",
         } as any);
+      }
+
+      // R4/F7 — affiliate reconciliation ledger spine. Runs exactly once per booking (gated on the
+      // atomic isConfirming claim above, same as the itinerary-item write). §14: bookingAmount is
+      // read back from the persisted row (updated.price), never trusted off req.body directly for
+      // the money decision. §13: the partner's REAL commission is unknown until they report it
+      // (that's the whole F7 problem) — never invent a rate/amount here; commission fields are
+      // honestly recorded 0 pending reconciliation (the reconciliationStatus/reconciliationNotes
+      // fields exist precisely for an admin to fill these in once the partner report arrives).
+      if (isConfirming) {
+        try {
+          // §8: admin-editable band (migration 143), falls back to the AFFILIATE_PLATFORM_FEE /
+          // AFFILIATE_EXPERT_SHARE code constants — snapshotted for the eventual reconciliation
+          // pass, not applied to a fabricated commission figure today.
+          const splitRates = await resolveCommissionRates({ source: "affiliate" });
+          let partnerId: string | undefined;
+          try {
+            const [partnerRow] = await db
+              .select({ id: affiliatePartners.id })
+              .from(affiliatePartners)
+              .where(sql`LOWER(${affiliatePartners.name}) = LOWER(${updated.partnerName})`)
+              .limit(1);
+            partnerId = partnerRow?.id;
+          } catch {
+            // Best-effort name match only — never block confirmation on this.
+          }
+          await storage.createAffiliateEarning({
+            partnerId: partnerId ?? null,
+            expertId: updated.expertId ?? null,
+            bookingAmount: updated.price != null ? String(updated.price) : "0.00",
+            commissionRate: "0.00",
+            totalCommission: "0.00",
+            platformShare: "0.00",
+            expertShare: "0.00",
+            providerShare: "0.00",
+            currency: "USD",
+            partnerReferenceId: updated.confirmationRef ?? null,
+            externalReportData: {
+              affiliateBookingRequestId: updated.id,
+              partnerName: updated.partnerName,
+              note: "Confirmed via the agent-booking rail; the partner's real commission is not yet "
+                + "known (arrives via partner report) so commission/total/share fields are recorded 0, "
+                + "not fabricated — reconcile via reconciliationStatus/reconciliationNotes once the "
+                + "partner report lands.",
+              internalSplitRatesAtConfirm: {
+                platformFeeRate: splitRates.platformFeeRate,
+                expertShareRate: splitRates.expertShareRate,
+              },
+            },
+          } as any);
+        } catch (earnErr) {
+          // Non-critical: the booking is already confirmed; a ledger-write failure must not
+          // undo that or 500 the response.
+          console.error(`[AffiliateBooking] earning ledger write failed for ${id} (non-critical):`, earnErr);
+        }
       }
 
       if (attachmentBlocked) {
