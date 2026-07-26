@@ -526,4 +526,8 @@ export const MIGRATION_FILES = [
   // Fail-open default preserves today's behavior until an admin flips it once V.2/V.3
   // verification-flow sequencing lands.
   "140_storefront_require_verified_setting.sql",
+  // 141: service_bookings.acquisition_ref (additive nullable, no CHECK/DEFAULT — no publish-push
+  // trap) — S4 acquisition attribution. The existing `source` column gains its first writer at
+  // checkout (server-derived vocabulary direct|link|cross_sell); ref = short_links.code (soft).
+  "141_booking_acquisition_ref.sql",
 ] as const;

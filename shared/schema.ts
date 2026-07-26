@@ -750,9 +750,13 @@ export const serviceBookings = pgTable("service_bookings", {
   // Visa / specialty service metadata collected during booking intake
   bookingMetadata: jsonb("booking_metadata").default({}),
 
-  // Attribution
-  source: varchar("source", { length: 30 }).default("direct"), // direct | cross_sell
+  // Attribution (S4): source vocabulary is direct | link | cross_sell, DERIVED SERVER-SIDE at
+  // checkout (payments.routes.ts) — 'link' only when acquisitionRef resolves to a real
+  // short_links.code (migration 139). App-enforced, no DB CHECK. acquisitionRef is a soft
+  // reference (no FK) so deleting a link never breaks historical attribution.
+  source: varchar("source", { length: 30 }).default("direct"),
   crossSellSourceContentId: varchar("cross_sell_source_content_id", { length: 255 }),
+  acquisitionRef: varchar("acquisition_ref", { length: 12 }),
 
   // Idempotency: set by the client on checkout; checked server-side before insert.
   // Unique partial index (WHERE NOT NULL) prevents duplicate bookings on retries.

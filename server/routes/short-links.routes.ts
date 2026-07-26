@@ -138,15 +138,18 @@ router.get("/r/:code", async (req, res) => {
       .returning();
     if (!row) return res.redirect(302, "/discover");
 
+    // S4: carry the code through as ?ref= so the SPA can capture it (client acquisition module)
+    // and the checkout can attribute the booking (source='link' only when the code resolves).
+    const ref = `?ref=${encodeURIComponent(row.code)}`;
     const targetType = row.targetType as TargetType;
     if (targetType === "storefront") {
       const [owner] = await db.select({ handle: users.handle }).from(users).where(eq(users.id, row.ownerUserId)).limit(1);
       if (!owner?.handle) return res.redirect(302, "/discover");
-      return res.redirect(302, `/p/${owner.handle}`);
+      return res.redirect(302, `/p/${owner.handle}${ref}`);
     }
-    if (targetType === "service") return res.redirect(302, `/services/${row.targetId}`);
-    if (targetType === "template") return res.redirect(302, `/expert-templates/${row.targetId}`);
-    if (targetType === "ready_made") return res.redirect(302, `/ready-made/${row.targetId}`);
+    if (targetType === "service") return res.redirect(302, `/services/${row.targetId}${ref}`);
+    if (targetType === "template") return res.redirect(302, `/expert-templates/${row.targetId}${ref}`);
+    if (targetType === "ready_made") return res.redirect(302, `/ready-made/${row.targetId}${ref}`);
     return res.redirect(302, "/discover");
   } catch (error: any) {
     console.error("[short-links] redirect failed:", error);

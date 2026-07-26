@@ -18,6 +18,7 @@ import {
   itineraryComparisons, itineraryVariants, itineraryVariantItems, itineraryVariantMetrics,
   userExperienceItems, userExperiences, providerServices, cartItems, trips,
   serviceBookings, serviceReviews, notifications, wallets, creditTransactions, serviceProviderForms,
+  shortLinks,
   insertCustomVenueSchema, insertGeneratedItinerarySchema,
   insertTemporalAnchorSchema, insertDayBoundarySchema, insertEnergyTrackingSchema,
   temporalAnchors, itineraryItems, generatedItineraries,
@@ -323,6 +324,29 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         }
       }
 
+      // ── S4 acquisition attribution — vocabulary direct | link | cross_sell, DERIVED
+      // SERVER-SIDE. 'link' is granted only when the client-captured ?ref= resolves to a real
+      // short_links.code (migration 139) — a client cannot claim 'link' by assertion. Analytics
+      // dimension only: never read into any fee/amount/payout decision.
+      let acquisitionSource: "direct" | "link" | "cross_sell" = "direct";
+      let acquisitionRef: string | null = null;
+      const refCandidate =
+        typeof req.body.ref === "string" ? req.body.ref.trim().toLowerCase() : "";
+      if (refCandidate && refCandidate.length <= 12) {
+        const [link] = await db
+          .select({ code: shortLinks.code })
+          .from(shortLinks)
+          .where(eq(shortLinks.code, refCandidate))
+          .limit(1);
+        if (link) {
+          acquisitionSource = "link";
+          acquisitionRef = link.code;
+        }
+      }
+      if (acquisitionSource === "direct" && req.body.source === "cross_sell") {
+        acquisitionSource = "cross_sell";
+      }
+
       // Get cart items
       const cartData = await storage.getCartItems(userId);
       
@@ -495,6 +519,9 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
           insuranceFee: insuranceFeeAmt.toFixed(2),
           providerEarnings: netExpertEarningsAmt.toFixed(2),
           status: "payment_pending",
+          // S4: first real writer of the attribution columns (source existed unwritten).
+          source: acquisitionSource,
+          ...(acquisitionRef ? { acquisitionRef } : {}),
           ...(idempotencyKey ? { idempotencyKey } : {}),
         } as any);
         

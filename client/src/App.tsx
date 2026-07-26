@@ -166,6 +166,7 @@ import { Loader2 } from "lucide-react";
 import { getRoleHomePath, userHasRequiredRole } from "@/lib/role-utils";
 import { useClaimGuestTrips } from "@/hooks/use-claim-guest-trips";
 import { useClaimGuestConcierge } from "@/hooks/use-claim-guest-concierge";
+import { captureAcquisitionRef } from "@/lib/acquisition";
 
 // Fallback shown while a lazily-loaded route chunk is being fetched.
 // Routes are code-split (React.lazy) so the browser and the Vite dev server
@@ -919,6 +920,12 @@ function GuestCartMigrator() {
 }
 
 function App() {
+  // S4: capture a short-link ?ref= (set by GET /r/:code) once per session; checkout relays it
+  // and the server derives the attribution source.
+  useEffect(() => {
+    captureAcquisitionRef();
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <GuestTripProvider>
