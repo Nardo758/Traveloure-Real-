@@ -16,7 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
-import { Link2, MousePointerClick, ShoppingCart, DollarSign, Percent } from "lucide-react";
+import { Link2, MousePointerClick, ShoppingCart, DollarSign, Percent, Download } from "lucide-react";
 
 const RANGE_OPTIONS = [
   { value: 7, label: "7 days" },
@@ -53,6 +53,73 @@ const TARGET_LABEL: Record<string, string> = {
   ready_made: "Ready Made Trip",
 };
 
+/**
+ * Escape CSV field: wrap in quotes and double any embedded quotes.
+ */
+function escapeCSVField(value: string | number | null): string {
+  if (value === null) return '""';
+  const str = String(value);
+  const escaped = str.replace(/"/g, '""');
+  return `"${escaped}"`;
+}
+
+/**
+ * Generate CSV content from links and totals.
+ */
+function generateCSV(
+  links: LinkRow[],
+  totals: { totalClicks: number; totalBookings: number; totalRevenue: number } | undefined
+): string {
+  const rows: string[] = [];
+
+  // Header
+  rows.push("code,target_type,target_id,lifetime_clicks,bookings,revenue");
+
+  // Data rows
+  for (const link of links) {
+    const row = [
+      escapeCSVField(link.code),
+      escapeCSVField(link.targetType),
+      escapeCSVField(link.targetId),
+      link.clicks,
+      link.bookings,
+      link.revenue.toFixed(2),
+    ].join(",");
+    rows.push(row);
+  }
+
+  // Totals row
+  if (totals) {
+    const totalsRow = [
+      escapeCSVField("TOTAL"),
+      "",
+      "",
+      totals.totalClicks,
+      totals.totalBookings,
+      totals.totalRevenue.toFixed(2),
+    ].join(",");
+    rows.push(totalsRow);
+  }
+
+  return rows.join("\n");
+}
+
+/**
+ * Download CSV as a file.
+ */
+function downloadCSV(csvContent: string, filename: string): void {
+  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+  const link = document.createElement("a");
+  const url = URL.createObjectURL(blob);
+  link.setAttribute("href", url);
+  link.setAttribute("download", filename);
+  link.style.visibility = "hidden";
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
 export function LinkAnalyticsPanel() {
   const [days, setDays] = useState<number>(30);
 
@@ -64,31 +131,53 @@ export function LinkAnalyticsPanel() {
   const links = data?.links ?? [];
   const hasLinks = links.length > 0;
 
+  const handleExportCSV = () => {
+    const csvContent = generateCSV(links, totals);
+    const filename = `traveloure-link-analytics-${days}d.csv`;
+    downloadCSV(csvContent, filename);
+  };
+
   return (
     <Card className="border" data-testid="card-link-analytics">
-      <CardHeader className="flex flex-row items-start justify-between gap-4 flex-wrap">
-        <div>
-          <CardTitle className="flex items-center gap-2">
-            <Link2 className="w-5 h-5 text-primary" />
-            Share Link Analytics
-          </CardTitle>
-          <CardDescription>
-            Clicks, bookings, and revenue attributed to the share links you've created.
-          </CardDescription>
+      <CardHeader className="flex flex-col gap-4">
+        <div className="flex flex-row items-start justify-between gap-4">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <Link2 className="w-5 h-5 text-primary" />
+              Share Link Analytics
+            </CardTitle>
+            <CardDescription>
+              Clicks, bookings, and revenue attributed to the share links you've created.
+            </CardDescription>
+          </div>
+          <div className="flex gap-1" role="group" aria-label="Range">
+            {RANGE_OPTIONS.map((opt) => (
+              <Button
+                key={opt.value}
+                size="sm"
+                variant={days === opt.value ? "default" : "outline"}
+                onClick={() => setDays(opt.value)}
+                data-testid={`button-range-${opt.value}`}
+              >
+                {opt.label}
+              </Button>
+            ))}
+          </div>
         </div>
-        <div className="flex gap-1" role="group" aria-label="Range">
-          {RANGE_OPTIONS.map((opt) => (
+        {hasLinks && (
+          <div className="flex justify-end">
             <Button
-              key={opt.value}
               size="sm"
-              variant={days === opt.value ? "default" : "outline"}
-              onClick={() => setDays(opt.value)}
-              data-testid={`button-range-${opt.value}`}
+              variant="outline"
+              onClick={handleExportCSV}
+              className="gap-2"
+              data-testid="button-export-csv"
             >
-              {opt.label}
+              <Download className="w-4 h-4" />
+              Export CSV
             </Button>
-          ))}
-        </div>
+          </div>
+        )}
       </CardHeader>
       <CardContent>
         {isLoading ? (
