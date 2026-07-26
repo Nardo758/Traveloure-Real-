@@ -430,7 +430,7 @@ export default function CartPage() {
       return res.json();
     },
     onSuccess: (data: { tripId: string; convertedCount: number }) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/cart", experienceSlug] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
       toast({
         title: `${data.convertedCount} item${data.convertedCount !== 1 ? "s" : ""} added to your trip!`,
         description: "View and arrange them in your trip itinerary.",
@@ -513,7 +513,7 @@ export default function CartPage() {
       return res.json();
     },
     onSuccess: (data: any) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/cart", experienceSlug] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
       queryClient.invalidateQueries({ queryKey: ["/api/my-bookings"] });
       if (data.paymentIntent) {
         setCheckoutPaymentIntent(data.paymentIntent);
