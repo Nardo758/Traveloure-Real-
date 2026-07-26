@@ -1,214 +1,147 @@
-# Central Content System Audit
-**Date:** 2026-07-24  
-**Type:** Read-only findings — no code or data changed  
-**Auditor:** Main agent (automated DB queries + static analysis)  
-**v2:** Corrected — initial draft missed Fever Events, Viator direct API, Amadeus, SerpAPI, Partnerize, and 4 additional catalog endpoints.
+# Central Content System — Audit (combined findings)
+
+**Date:** 2026-07-24  ·  **Type:** Read-only — no code or data changed.
+**Sources combined:** (A) **live-DB pass** (automated queries + smoke tests against the workspace DB) and
+(B) **static-analysis pass** (code/schema trace on `origin/main`). Where the two agree it's marked ✅ both; where only
+one pass could see it, the source is noted. This supersedes both single-pass drafts.
+
+> **The one-sentence finding:** the "central content system" is real and its gates mostly work, but it is **starved and
+> parallel-bypassed** — `content_placement_rules` is empty, all 9 central products are untagged, the resolver returns
+> `0` on every surface, 3 of 5 surfaces don't even mount, and the real affiliate money flows through **7 separate
+> parallel stacks** that never touch the central store. Plus a **latent P0**: the fix everyone will reach for first
+> (populate placement rules) opens an approval-gate bypass unless a one-line gate is added first.
 
 ---
 
-## Scorecard
+## 1. Scorecard (reconciled)
 
 | # | Dimension | Status | Verdict |
 |---|-----------|--------|---------|
-| 1 | **Affiliates present** | 🔴 BROKEN | 7 live affiliate/partner integrations; only 3 manual partners / 9 products reach the central DB; every real-money network is parallel-only |
-| 2 | **Structured properly** | 🟡 GAPS | `content_placement_rules` table is **empty** (0 rows); 248 registry rows have no rule; 43% of registry content types can never route to a surface |
-| 3 | **Location + availability tagging** | 🔴 BROKEN | 100% of active affiliate products have null city/country/location; zero Kyoto-tagged items anywhere in the central system |
-| 4 | **Content flowing to site surfaces** | 🔴 BROKEN | `GET /api/content/discover` returns `{"items":[],"total":0}` for every surface, with or without a city filter |
+| 1 | **All affiliates present** | 🔴 BROKEN | 7 live affiliate/partner stacks; only 3 manual partners / 9 products reach the central DB. Every real-money network is parallel-only. |
+| 2 | **Structured properly** | 🟡 GAPS | `content_placement_rules` **empty (0 rows)**; 248 registry rows, none ruled; ~43% of registry types can't route to any surface; enum(17) ⟂ surface-map(10). |
+| 3 | **Location / availability tagging** | 🔴 BROKEN | 100% of active affiliate products have null city/country/location; **0** Kyoto-tagged items in the central store (§12 wedge). |
+| 4 | **Content flowing to surfaces** | 🔴 BROKEN | `GET /api/content/discover` returns `{"items":[],"total":0}` for **every** surface; and only **2 of 5** surfaces even have a live consumer mounted. |
 
 ---
 
-## §16 Question — Is the /api/catalog Travelpayouts feed folded in?
+## 2. The §16 question — is the catalog feed folded into the central system?
 
-**No — and the gap is larger than previously reported.** There are **7 distinct affiliate/partner systems** running in parallel. None of them write to `affiliate_partners` or `affiliate_products`. The central resolver sits unused while every product surface is served directly from partner APIs.
+**No — and it's bigger than "the 14 Travelpayouts networks."** There are **7 distinct affiliate/partner stacks** running
+in parallel; **none** write to `affiliate_partners`/`affiliate_products` or carry `content_placement_rules`, so the central
+resolver never sees them. *(Inventory from the live-DB pass; the static pass independently confirmed the Travelpayouts +
+catalog-cache subset.)*
+
+| # | Integration | Server endpoints | Commission tracking | In central DB? |
+|---|---|---|---|---|
+| 1 | **Travelpayouts catalog** (19–20 networks) | `/api/catalog/*` (flights, nomad, transfers, cars, esim, tiqets, wegotrip, viator-feed, ground-transport, hotels-look, agoda, booking, activities-gyg, klook, insurance, bus, airport-transfers, luggage-storage, rentalcars) | ✅ reconciliation svc | ❌ parallel (live passthrough) |
+| 2 | **Viator (direct API)** | `/api/viator/activities,/availability,/destinations` | ✅ | ❌ parallel |
+| 3 | **Fever Events (Impact.com)** | `/api/fever/status,/events` | ✅ | ❌ parallel |
+| 4 | **Amadeus** | `/api/amadeus/*` (10 endpoints) | ❌ data-API | ❌ parallel |
+| 5 | **SerpAPI** | `/api/serp/template-search,track-click,inquiry,partnerships` | ⚠️ click-only | ❌ parallel |
+| 6 | **12Go** | widget embed only (no server route) | ❌ widget | ❌ parallel |
+| 7 | **Partnerize** | `server/services/partnerize/` | ✅ commission-pull | ❌ parallel |
+| — | **Catalog cache** (static pass) | `/api/catalog/search` → `experienceCatalogService` reads `activityCache/feverEventCache/hotelCache/poiCache/restaurantCache` | — | ❌ separate store |
+
+**What's actually in the central DB** (live pass): 3 manual partners — **Musement, Klook, 12Go Asia** — 3 products each
+(**9 total, 0 null affiliate_url, all `approved`**). Note the "Klook" central partner and `/api/catalog/klook`
+(Travelpayouts) are **two unreconciled Klook systems**.
+
+**Verdict: GAP — the §16 filed follow-up is confirmed un-built**, and its true scope is *7 parallel stacks*, not one
+catalog move. Do **not** build a third content home in the interim (§16). This is architectural debt by design, but it is
+the direct answer to "does the central system have all the affiliates?" — **no, it has ~9 hand-entered products.**
 
 ---
 
-## Part 1 — Complete Affiliate/Partner Inventory
+## 3. Root-cause chain — why the resolver returns 0 everywhere
 
-### All live integrations
+Four independent failures compound; fixing any one alone still yields an empty feed:
 
-| # | Integration | Server endpoints | Client consumer | Commission tracking | Central DB? |
-|---|---|---|---|---|---|
-| 1 | **Travelpayouts catalog** (19 endpoints) | `/api/catalog/flights`, `nomad`, `transfers`, `cars`, `esim`, `tiqets`, `wegotrip`, `viator-feed`, `ground-transport`, `hotels-look`, `agoda`, `booking`, `activities-gyg`, `klook`, `insurance`, `bus`, `airport-transfers`, `luggage-storage`, `rentalcars` | `TravelpayoutsSection.tsx`, `experience-template.tsx`, `itinerary.tsx` | ✅ `affiliate-reconciliation.service.ts` | ❌ Parallel-only |
-| 2 | **Viator (direct API)** | `/api/viator/activities`, `/availability`, `/destinations` | `activity-search.tsx` | ✅ `affiliate-reconciliation.service.ts` | ❌ Parallel-only |
-| 3 | **Fever Events (Impact.com)** | `/api/fever/status`, `/api/fever/events` | `fever-events-section.tsx` | ✅ `affiliate-reconciliation.service.ts` | ❌ Parallel-only |
-| 4 | **Amadeus** | `/api/amadeus/locations`, `flights`, `hotels`, `pois`, `pois/:id`, `activities`, `activities/:id`, `transfers`, `safety`, `safety/:id` | `amadeus-pois.tsx`, `amadeus-safety.tsx`, `amadeus-transfers.tsx`, `flight-search.tsx`, `hotel-search.tsx` | ❌ No commission | ❌ Parallel-only |
-| 5 | **SerpAPI** | `/api/serp/template-search`, `track-click`, `inquiry`, `partnerships` | `experience-template.tsx` (venue search) | ⚠️ Click tracking only (`track-click`) | ❌ Parallel-only |
-| 6 | **12Go** | No server route — widget embed only | `TwelveGoWidget.tsx`, `TransportHub.tsx`, `MultiDayPassCard.tsx` | ❌ Widget-based (no server-side tracking) | ❌ Parallel-only |
-| 7 | **Partnerize** | `server/services/partnerize/` | None (commission-pull only) | ✅ `affiliate-reconciliation.service.ts` | ❌ Parallel-only |
+```
+content_placement_rules EMPTY (0 rows)        ─┐
+  → resolver placement phase yields nothing    │
+affiliate_products ALL untagged (9/9 null loc) ─┼─→ /api/content/discover = {"items":[],"total":0}
+  → ILIKE fallback yields nothing              │      on every surface, city or no city
+3 of 5 surfaces have no mounted consumer       ─┘   (even if items existed, nothing would render them)
++ LATENT: the placement-path read skips the approval gate (§5 G-SEC) — opens the moment rules are added
+```
 
-### What is actually in the central DB
+---
 
-| Partner | Source | Approval | Active | Products | Active Products | Null affiliate_url |
+## 4. Structure + flow detail
+
+**content_registry** (live pass): 248 rows, **0 with a placement rule**. `service` 139 (routable), `trip` 54, `booking` 30,
+`review` 13, `itinerary` 5, `chat_message` 5, `template` 2 → **~57% routable, ~43% unroutable**.
+
+**Enum ⟂ surface-map drift** (both passes): `contentTypeEnum` = 17 values (`schema.ts:4350`); `CONTENT_TYPES` = 10
+(`content-surface-map.ts:9`). Registered-but-unroutable: `trip, itinerary, review, chat_message, booking, custom_venue,
+contract, tip, provider_profile` (several are legitimately internal-only — chat/booking/contract — but it's silent, not
+documented).
+
+**Surface wiring** (static pass — the routing layer the smoke test can't see): only **`travelpulse-discover`**
+(`discover.tsx:1118`) and **`experience-template`** (`experience-template.tsx:2573`) have a live mounted consumer via the
+single real consumer `CuratedContentSection` (`curated-content-section.tsx:403`). The other three are dead:
+- **`experience-discovery`** — page orphaned; `/discover-experiences` → `/discover` redirect (`App.tsx:414-415`).
+- **`spontaneous`** — page redirect-orphaned (`App.tsx:425-426`) **and** its consumer omits `surface=` entirely (`spontaneous-discovery.tsx:480`), so its placement path could never fire even if mounted.
+- **`itinerary`** — no client sends `surface=itinerary`; `/itinerary/:id` → `/trip` (`App.tsx:474-475`); `TripDetails` doesn't use `CuratedContentSection`.
+
+So even after §3's data starvation is fixed, **3 of 5 surfaces still render nothing** until they're wired or retired.
+
+---
+
+## 5. Verified gap table (severity-ranked, deduplicated across both passes)
+
+| # | Sev | Dim | Finding | Evidence | Fix (one line) | Governance |
 |---|---|---|---|---|---|---|
-| Musement | manual | approved | ✅ | 3 | 3 | 0 |
-| Klook | manual | approved | ✅ | 3 | 3 | 0 |
-| 12Go Asia | manual | approved | ✅ | 3 | 3 | 0 |
-| **Total** | | | | **9** | **9** | **0** |
-
-No partners with `approval_status = 'submitted'`. The manual "Klook" central partner (3 products) and `/api/catalog/klook` (Travelpayouts) are two separate, unreconciled systems.
-
-### Why the original audit missed Fever, Viator direct, Amadeus, SerpAPI, Partnerize
-
-The audit brief listed 14 `/api/catalog/*` Travelpayouts networks as the affiliate inventory. The codebase has **7 distinct integration stacks** — the catalog feed is one of them. The others are registered under `/api/fever/*`, `/api/viator/*`, `/api/amadeus/*`, `/api/serp/*`, widget embeds, and a commission-pull service. None appear in `affiliate_partners`.
-
----
-
-## Part 2 — Structural Integrity
-
-### content_placement_rules
-
-```
-Total rows: 0  (table is empty)
-Orphan rules (source → affiliate_products): 0  (vacuously true)
-Orphan rules (source → content_registry): 0  (vacuously true)
-```
-
-The placement-rule table was never populated. The resolver's placement-rule phase always produces zero results, falling through to the ILIKE fallback — which also returns nothing (see Part 3).
-
-### content_registry — 248 rows, 0 with a placement rule
-
-| content_type | Count | Routable to a surface? | Notes |
-|---|---|---|---|
-| service | 139 | ✅ | In `SURFACE_DEFAULT_CONTENT_TYPES` for 4/5 surfaces |
-| trip | 54 | ❌ | No surface mapping |
-| booking | 30 | ❌ | No surface mapping |
-| review | 13 | ❌ | No surface mapping |
-| itinerary | 5 | ❌ | No surface mapping (even the `itinerary` surface expects `experience`/`service`) |
-| chat_message | 5 | ❌ | No surface mapping |
-| template | 2 | ✅ | In surface map |
-| **Total** | **248** | 141 routable (57%), 107 unroutable (43%) | |
-
-### contentTypeEnum dead zones (17 enum values, 8 unroutable)
-
-Values with **no** entry in `SURFACE_DEFAULT_CONTENT_TYPES` or `TAB_CONTENT_TYPE_MAP`:  
-`trip`, `itinerary`, `review`, `chat_message`, `expert_profile`, `provider_profile`, `booking`, `vendor`, `custom_venue`, `contract`, `tip`, `other`
+| **G-SEC** | 🔴 **P0 latent** | flow/integrity | **Approval-gate BYPASS on the placement path.** `getAffiliateProductsByIds` gates only `isActive`, not partner `approvalStatus='approved'` (sibling location-path gates correctly). Harmless *today* only because 0 placement rules exist — **becomes a live leak the instant G3 populates rules.** Same missing gate on `/api/content/affiliate-redirect`. *(static pass; live pass reported the gate "present" because it saw the location path.)* | `content-query.service.ts:390-397` vs `:414-417`; `content.routes.ts:7194,7443` | Add `EXISTS(… approvalStatus='approved')` to `getAffiliateProductsByIds` + gate the redirect — **before G3.** | D1a / migration-121 |
+| **G1** | 🔴 **P0** | affiliates | **§16: 7 parallel stacks, ~9 central products.** Every real-money network bypasses the central store. | §2 above | Design a catalog→`affiliate_products` ingestion (city/country at scrape time). **Not** a third home. | §16 filed — design job |
+| **G2** | 🔴 **P0** | flow | **`content_placement_rules` empty** → resolver returns 0 for all surfaces. | live: `SELECT count(*)…` = 0 | Auto-index the 9 products + 141 routable registry rows; seed on ingest. **Do G-SEC first.** | admin tooling |
+| **G3** | 🔴 **P0** | tagging | **100% of active affiliate products untagged** (null city/country/location) → ILIKE never matches. | live: total=9, untagged=9 | Real tagging pass on Musement/Klook/12Go; enforce non-null location at ingest. **No fabrication (§13).** | §13 |
+| **G4** | 🟠 **P1** | flow | **3 of 5 surfaces have no mounted consumer** (`experience-discovery`, `spontaneous`, `itinerary`). | `App.tsx:414-415,425-426,474-475`; `spontaneous-discovery.tsx:480` | Decide per surface: wire into `/discover` or retire from the map. | §9/§10 |
+| **G5** | 🟠 **P1** | affiliates | **Fever/Impact, Viator-direct, SerpAPI, 12Go, Partnerize** each tracked/embedded but absent from `affiliate_partners`. | §2 table | Classify each: central-register vs document-as-data-API vs widget-attribution. | decision per stack |
+| **G6** | 🟠 **P1** | structure | **248/248 registry rows unruled**; ~43% carry unroutable types. | live counts | Auto-index routable rows; formally mark internal-only types. | architecture |
+| **G7** | 🟡 **P2** | affiliates | **Origin-label divergence.** Central discover normalizer emits `source:"Affiliate Partner"`, not canonical `"Paid partner"`. (A correct `"Paid partner"` path exists elsewhere → two label paths, reconcile.) | `content.routes.ts:7243` vs `content-origin.ts:42` | Import `CONTENT_ORIGIN_TRAVELER_LABEL`; single source. | §16 disclosure |
+| **G8** | 🟡 **P2** | affiliates | **Untracked outbound fallback** — raw `window.open(item.affiliate_url)` on redirect failure (no `affiliate_clicks`). | `curated-content-section.tsx:213-214` | Route fallback through the tracked redirect, or drop it. | §16 |
+| **G9** | 🟡 **P2** | structure | **Enum(17) ⟂ surface-map(10)**; 8–9 types unroutable, silent. | `schema.ts:4350` / `content-surface-map.ts:9` | Document internal-only types; add surfaceable ones. | doc-first |
+| **G10** | 🟡 **P2** | structure | **Auto-index silently skips off-TravelPulse-city inventory** (`if(!cityData) continue`, no log). | `admin.routes.ts:5280-5288` | Log skipped counts / add a no-city bucket. | §13 no silent caps |
 
 ---
 
-## Part 3 — Location + Availability Tagging
+## 6. What PASSES (on the record)
 
-### Active affiliate products location coverage
-
-```
-total_active : 9
-untagged     : 9   (city=null, country=null, location=null)
-has_city     : 0
-has_country  : 0
-has_location : 0
-```
-
-All 9 active affiliate products in the central system have null location. The ILIKE fallback (`WHERE city ILIKE $city OR country ILIKE $city OR location ILIKE $city`) returns 0 for any geographic query.
-
-### Kyoto inventory — central system
-
-| Table | Kyoto-tagged rows |
-|---|---|
-| affiliate_products | 0 |
-| content_placement_rules | 0 (table empty) |
-
-Any Kyoto content displayed on the platform today comes exclusively from the parallel API feeds — not from the central content stack. The §12 Kyoto wedge has zero central affiliate inventory.
-
-> **§13 respected:** no fabrication recommended. Null is the honest state; the fix is a real tagging pass.
+- **Central pipeline is coherent**: `registerAffiliateProduct` dedups + versions cleanly (`storage.ts:4062-4135`); tracking numbers/statuses well-formed.
+- **Location/ILIKE read path IS gated** on migration-121 (`content-query.service.ts:414-417`); endpoint reads gate on `approvedOnly=!isAdmin`. (The bypass is *only* the placement-id path — G-SEC.)
+- **Agent-booking rail is §16-compliant**: all 12 Travelpayouts cards use `useAgentBooking` → `POST /api/affiliate-booking-requests`; server strips `affiliateUrl` (`content.routes.ts:6538-6539`); no raw `window.open` in the card set.
+- **`travelpulse-discover` + `experience-template` are fully live-wired**; cart's `/api/upsell/*` is a deliberately separate pipeline, not a gap.
 
 ---
 
-## Part 4 — Content Flow
+## 7. Recommended sequencing (for decision-maker ratification — nothing built yet)
 
-### Resolver smoke test (`GET /api/content/discover`)
-
-| Surface | With city=Kyoto | No city filter |
-|---|---|---|
-| travelpulse-discover | `{"items":[],"total":0}` 🔴 | `{"items":[],"total":0}` 🔴 |
-| experience-discovery | `{"items":[],"total":0}` 🔴 | `{"items":[],"total":0}` 🔴 |
-| spontaneous | `{"items":[],"total":0}` 🔴 | `{"items":[],"total":0}` 🔴 |
-| experience-template | `{"items":[],"total":0}` 🔴 | `{"items":[],"total":0}` 🔴 |
-| itinerary | `{"items":[],"total":0}` 🔴 | `{"items":[],"total":0}` 🔴 |
-
-Root cause chain: empty `content_placement_rules` → ILIKE fallback → zero location-tagged `affiliate_products` → 0 items.
-
-### Consumer map — what each surface actually renders
-
-| Surface / page | Central resolver used? | Parallel feeds used | Net result for traveler |
-|---|---|---|---|
-| `discover.tsx` | ⚠️ Wired (`CuratedContentSection` → `/api/content/discover`) | None confirmed | Sees 0 central items |
-| `experience-template.tsx` | ⚠️ Wired (`CuratedContentSection`) | `/api/catalog/booking`, `esim`, `tiqets`, `wegotrip`, `viator-feed`, `activities-gyg`, `klook` + Amadeus + SerpAPI | Parallel feeds work; central returns 0 |
-| `itinerary.tsx` | ❌ Not wired | `/api/catalog/booking`, `esim`, `tiqets`, `wegotrip`, `viator-feed`, `activities-gyg`, `klook` | Parallel feeds only |
-| `spontaneous-discovery.tsx` | ❌ Not confirmed | Grok live intel | No central consumer confirmed |
-| `fever-events-section.tsx` | ❌ Not wired | `/api/fever/events` | Fever parallel only |
-| `activity-search.tsx` | ❌ Not wired | `/api/viator/activities` | Viator direct only |
-| `amadeus-*.tsx` | ❌ Not wired | `/api/amadeus/*` | Amadeus parallel only |
-
-### Approval gate & origin labeling — confirmed present
-
-- `approval_status = 'approved'` gate: ✅ `content.routes.ts` ~line 1948  
-- `affiliateLabel: "Paid partner"`: ✅ `content.routes.ts` ~line 264  
-- These gates work correctly but are currently unreachable since 0 items are served.
+1. **G-SEC first** (P0, tiny, decision-independent) — add the approval gate to `getAffiliateProductsByIds` + the redirect. **This must land before G2**, or populating placement rules opens the leak.
+2. **G2 + G3 together** — tag the 9 products, then auto-index them + the 141 routable registry rows. This is what actually makes the resolver return items.
+3. **G4** — decide the 3 dark surfaces (wire vs retire) before authoring more content against them.
+4. **G7–G10** — a small content-hygiene batch (label, tracked-outbound, docs, logging).
+5. **G1 + G5 (§16)** — the big architectural decision: a ratified design for unifying the parallel stacks into central ingestion. Explicitly *not* mechanical, *not* a third home.
 
 ---
 
-## Gap Table
+## 8. Evidence appendix
 
-| # | Dimension | Severity | Finding | Affected area | Proposed fix (one line) | Governance |
-|---|---|---|---|---|---|---|
-| G1 | Affiliates | **P0** | §16 open: 19 Travelpayouts catalog networks are parallel-only | `affiliate_partners`, `affiliate_products`, all surfaces | Build ingestion pipeline: sync `/api/catalog/*` responses into `affiliate_products` with `city`/`country` at scrape time | §16 — new PR |
-| G2 | Affiliates | **P0** | Fever Events (Impact.com) not in central system — has commission tracking but no `affiliate_partners` row | `affiliate_partners`, `fever-events-section.tsx` | Create Fever `affiliate_partners` row + sync events into `affiliate_products`; wire `fever-events-section` to central resolver | New PR |
-| G3 | Flow | **P0** | `content_placement_rules` is empty — resolver always returns 0 items for all 5 surfaces | All surfaces | Populate placement rules via admin auto-index for the 9 existing manual products; add seed for any new ingested products | New PR |
-| G4 | Tagging | **P0** | 100% of active `affiliate_products` have null city/country/location — ILIKE fallback can never match | `affiliate_products` | Run tagging pass on Musement/Klook/12Go Asia; enforce non-null location at ingest time going forward | New PR (no fabrication) |
-| G5 | Affiliates | **P1** | Viator direct API (`/api/viator/*`) not in central system — separate from Travelpayouts `viator-feed` | `affiliate_partners`, `activity-search.tsx` | Create Viator `affiliate_partners` row; decide whether to merge with catalog `viator-feed` or keep separate | Architecture decision first |
-| G6 | Affiliates | **P1** | Amadeus has 10 endpoints and 5 client components but no central registration or affiliate tracking | `affiliate_partners` (or document as data-API) | Classify explicitly: if Amadeus earns commission, add to `affiliate_partners`; if data-only, document as non-affiliate | Decision required |
-| G7 | Affiliates | **P1** | SerpAPI click tracking (`/api/serp/track-click`) doesn't feed `affiliate_products` or `content_placement_rules` | `affiliate_partners`, SerpAPI route | Wire SerpAPI venue results into central if they carry affiliate links; else document as search-only | Decision required |
-| G8 | Affiliates | **P1** | 12Go widget is click-based with no server-side tracking — commission attribution gap | `TwelveGoWidget.tsx` | Add server-side click endpoint or confirm widget handles attribution; create `affiliate_partners` row for 12Go | New PR |
-| G9 | Structure | **P1** | 248 of 248 `content_registry` rows have no placement rule | All surfaces | Run admin auto-index for the 141 routable rows (service=139, template=2) | Admin tooling PR |
-| G10 | Affiliates | **P1** | Manual "Klook" central partner (3 products) and `/api/catalog/klook` are two unreconciled systems | `affiliate_partners` | After G1 ingestion pipeline, deduplicate or namespace clearly | Part of G1 PR |
-| G11 | Structure | **P1** | 107 `content_registry` rows carry unroutable types (trip, booking, review, chat_message, itinerary) | `content_registry`, surface maps | Extend `SURFACE_DEFAULT_CONTENT_TYPES` for trip/itinerary, or formally mark these as internal-only | Architecture decision |
-| G12 | Tagging | **P1** | Zero Kyoto affiliate inventory in central system (§12 wedge) | `affiliate_products` | After G4 tagging pass, verify Kyoto coverage; add Kyoto to any location seed | Part of G4 PR |
-| G13 | Flow | **P1** | `spontaneous` surface defined in `PLATFORM_SURFACES` but no confirmed consumer calling `?surface=spontaneous` | `spontaneous-discovery.tsx` | Verify / wire `spontaneous-discovery.tsx` to call `/api/content/discover?surface=spontaneous` | Verify first |
-| G14 | Affiliates | **P2** | Partnerize commission tracking runs but no Partnerize network is registered as an `affiliate_partners` row | `affiliate_partners` | Identify which Partnerize network(s) are active; create matching `affiliate_partners` rows | Investigation first |
-| G15 | Structure | **P2** | 9 of 17 `contentTypeEnum` values are dead (no surface mapping) | `contentTypeEnum` | Document which types are internal-only vs candidates for future surfacing | Documentation PR |
-
----
-
-## Evidence Queries
-
+**Live-DB queries** (run against the workspace DB):
 ```sql
--- affiliate_partners (live DB)
-SELECT name, source, approval_status, is_active,
-       COUNT(apd.id) active_products,
+SELECT name, source, approval_status, is_active, COUNT(apd.id) active_products,
        COUNT(apd.id) FILTER (WHERE apd.affiliate_url IS NULL) null_url
-FROM affiliate_partners ap
-LEFT JOIN affiliate_products apd ON apd.partner_id = ap.id
-GROUP BY ap.id;
--- Result: 3 rows (Musement/Klook/12Go Asia), 3 products each, 0 null_url
+FROM affiliate_partners ap LEFT JOIN affiliate_products apd ON apd.partner_id = ap.id GROUP BY ap.id;
+-- 3 rows (Musement/Klook/12Go Asia), 3 products each, 0 null_url
 
--- Placement rules
-SELECT content_source, COUNT(*) FROM content_placement_rules GROUP BY content_source;
--- Result: 0 rows (table empty)
-
--- Registry content types
-SELECT content_type, COUNT(*) FROM content_registry GROUP BY content_type ORDER BY 2 DESC;
--- Result: service(139), trip(54), booking(30), review(13), chat_message(5), itinerary(5), template(2)
-
--- Location coverage
-SELECT COUNT(*) total,
-       COUNT(*) FILTER (WHERE city IS NULL AND country IS NULL AND location IS NULL) untagged
-FROM affiliate_products WHERE is_active = true;
--- Result: total=9, untagged=9
-
--- Resolver smoke (all 5 surfaces, with and without city=Kyoto)
-GET /api/content/discover?surface=<any>&city=Kyoto → {"items":[],"total":0}
-GET /api/content/discover?surface=<any>           → {"items":[],"total":0}
+SELECT content_source, COUNT(*) FROM content_placement_rules GROUP BY 1;               -- 0 rows
+SELECT content_type, COUNT(*) FROM content_registry GROUP BY 1 ORDER BY 2 DESC;        -- 248 total
+SELECT COUNT(*) total, COUNT(*) FILTER (WHERE city IS NULL AND country IS NULL
+       AND location IS NULL) untagged FROM affiliate_products WHERE is_active;          -- 9 / 9
+-- GET /api/content/discover?surface=<any>[&city=Kyoto] → {"items":[],"total":0}  (all 5 surfaces)
 ```
 
----
-
-## Recommended PRs (priority order)
-
-| Priority | PRs | Unblocks |
-|---|---|---|
-| **P0** | G1 (catalog ingestion) + G4 (location tagging) | Resolver can match geographic queries |
-| **P0** | G2 (Fever in central) + G3 (populate placement rules) | Resolver serves first real items |
-| **P1** | G5 (Viator decision) + G6 (Amadeus classification) + G7 (SerpAPI decision) | Partner inventory complete |
-| **P1** | G8 (12Go server tracking) + G9 (auto-index registry) + G10 (Klook dedup) | Commission attribution closed |
-| **P1** | G11 (surface map extensions) + G12 (Kyoto) + G13 (spontaneous wiring) | All 5 surfaces serving content |
-| **P2** | G14 (Partnerize rows) + G15 (enum cleanup) | Housekeeping |
+**Static-analysis anchors** (code on `origin/main`): resolver `content.routes.ts:7122`; gated location read
+`content-query.service.ts:414-417`; **un**gated id read `:390-397`; single consumer `curated-content-section.tsx:403`;
+surface redirects `App.tsx:414-415,425-426,474-475`; origin label `content.routes.ts:7243`; card rail
+`content.routes.ts:6538-6539`.

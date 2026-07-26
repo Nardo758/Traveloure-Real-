@@ -98,6 +98,8 @@ import adminRoutes from "./routes/admin.routes";
 import expertsRoutes from "./routes/experts.routes";
 import eaRoutes from "./routes/ea.routes";
 import providerRoutes from "./routes/provider.routes";
+import readyMadeRoutes from "./routes/ready-made.routes";
+import expertConsoleRoutes from "./routes/expert-console.routes";
 import contentRoutes, { seedDatabase, registerDiscoveryRoutes } from "./routes/content.routes";
 import paymentsRoutes from "./routes/payments.routes";
 import crossSellRoutes from "./routes/cross-sell.routes";
@@ -130,6 +132,8 @@ import {
   type CommissionRates,
 } from "./services/commission";
 import { calculateCommission, BookingType } from "./utils/commissionCalculator";
+// Ready-made authoring mode (brief §2): explicit present-value author check. Never getTripRole.
+import { isTripAuthor } from "./utils/trip-authorship";
 
 // ─── Service-category → booking_fee_configs category mapping ─────────────────
 // serviceCategories.slug values are detailed provider-category slugs (e.g.
@@ -300,12 +304,15 @@ export async function registerRoutes(
     "/api/expert/revenue-optimization",
     "/api/expert/services",
     "/api/expert/dashboard",
+    "/api/expert/knowledge-nuggets",
+    "/api/expert/assigned-trips",
   ];
   const PROVIDER_SELF_SERVICE_PREFIXES = [
     "/api/provider/services",
     "/api/provider/verification-status",
     "/api/provider/request-verification-review",
     "/api/provider/dashboard",
+    "/api/provider/earnings",
   ];
   app.use((req: any, res: any, next: any) => {
     if (req.method === "OPTIONS") return next();
@@ -570,6 +577,13 @@ export async function registerRoutes(
 
   // Provider supply tools — /api/provider/settings (Kyoto-supply activation); provider-role gated
   app.use(providerRoutes);
+
+  // Ready-Made Trips authoring (Phase 1) — POST /api/expert/ready-made + workspace-context mode
+  // resolution. Author auth = explicit authorId check (never getTripRole). Mounted per §9.
+  app.use(readyMadeRoutes);
+  // Sidebar-audit repair: formerly-dark expert console endpoints (role, ESO service-template
+  // catalog, knowledge-nuggets) — ported verbatim out of the unmounted experts.routes.ts (§9).
+  app.use(expertConsoleRoutes);
 
   // Saved items / dashboard Wishlist — GET/POST/DELETE /api/saved-items (session-scoped, owner-gated).
   // Was imported-but-unmounted, so the dashboard Wishlist hit the Vite catch-all and never loaded;
@@ -3405,41 +3419,18 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // === Income Streams & Revenue Splits ===
   
   // Expert Tips - Create a tip for an expert
-  app.post("/api/expert/:expertId/tip", isAuthenticated, async (req, res) => {
-    try {
-      const travelerId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
-      const { expertId } = req.params;
-      
-      // Validate request body
-      const tipSchema = z.object({
-        amount: z.number().positive("Amount must be positive"),
-        message: z.string().max(500).optional(),
-        bookingId: z.string().optional(),
-        isAnonymous: z.boolean().optional().default(false),
-      });
-
-      const parsed = tipSchema.safeParse(req.body);
-      if (!parsed.success) {
-        return res.status(400).json({ message: "Invalid tip data", errors: parsed.error.errors });
-      }
-
-      const { amount, message, bookingId, isAnonymous } = parsed.data;
-
-      // Note: createExpertTip in storage applies revenue split and creates expert earnings ledger entry
-      const tip = await storage.createExpertTip({
-        expertId,
-        travelerId,
-        amount: String(amount),
-        message,
-        bookingId,
-        isAnonymous,
-      });
-
-      res.json(tip);
-    } catch (err) {
-      console.error("Error creating tip:", err);
-      res.status(500).json({ message: "Failed to create tip" });
-    }
+  // GATED 501 (W0.4): the tip PAYMENT leg does not exist. This handler used to call
+  // storage.createExpertTip directly, which writes a real expert_earnings ledger row
+  // (held → releasable → payable via the payout rail) plus platform_revenue — from a
+  // client-sent amount, with NO Stripe charge anywhere. Any authenticated session could
+  // mint payable earnings for free. Re-enable ONLY behind a real two-step payment flow
+  // (PaymentIntent create → server-verified confirm → THEN createExpertTip), mirroring
+  // the coordination-fee /pay + /pay/confirm pattern (§7/§14/§15). createExpertTip
+  // itself is kept in storage — it is the correct post-payment leg.
+  app.post("/api/expert/:expertId/tip", isAuthenticated, async (_req, res) => {
+    res.status(501).json({
+      message: "Tipping is not available yet — tip payment processing has not launched.",
+    });
   });
 
   // Get tips received by expert
@@ -7661,7 +7652,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const { tripId } = req.params;
       const owned = await verifyTripOwnership(tripId, userId);
       const assigned = owned ? true : await storage.isExpertAssignedToTrip(tripId, userId);
-      if (!owned && !assigned) return res.status(403).json({ message: "Access denied" });
+      // Authoring mode (ready-made brief §2): the trip's author may read its own build.
+      const authored = (owned || assigned) ? false : await isTripAuthor(tripId, userId);
+      if (!owned && !assigned && !authored) return res.status(403).json({ message: "Access denied" });
       const items = await storage.getItineraryItems(tripId);
       const grouped: Record<number, typeof items> = {};
       for (const item of items) {
@@ -7715,7 +7708,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const { tripId } = req.params;
       const owned = await verifyTripOwnership(tripId, userId);
       const assigned = owned ? true : await storage.isExpertAssignedToTrip(tripId, userId);
-      if (!owned && !assigned) return res.status(403).json({ message: "Access denied" });
+      // Authoring mode (ready-made brief §2): the trip's author may build it.
+      const authored = (owned || assigned) ? false : await isTripAuthor(tripId, userId);
+      if (!owned && !assigned && !authored) return res.status(403).json({ message: "Access denied" });
       const parsed = insertItineraryItemSchema.safeParse({ ...req.body, tripId });
       if (!parsed.success) return res.status(400).json({ message: "Invalid data", errors: parsed.error.errors });
       const item = await storage.createItineraryItem(parsed.data as any);

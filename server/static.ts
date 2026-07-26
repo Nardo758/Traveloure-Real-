@@ -10,7 +10,14 @@ export function serveStatic(app: Express) {
     );
   }
 
-  app.use(express.static(distPath));
+  // Hashed JS/CSS chunks (e.g. index-BRQeMJwg.js) are content-addressed —
+  // safe to cache for 1 year. index.html and other root files must stay
+  // uncached so deploys propagate immediately.
+  app.use("/assets", express.static(path.join(distPath, "assets"), {
+    maxAge: "1y",
+    immutable: true,
+  }));
+  app.use(express.static(distPath, { maxAge: 0 }));
 
   // fall through to index.html for SPA routes, but NEVER swallow /api requests —
   // in production serveStatic mounts before registerRoutes, so this catch-all would

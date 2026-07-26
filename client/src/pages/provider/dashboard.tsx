@@ -97,17 +97,11 @@ export default function ProviderDashboard() {
           <h2 className="text-2xl font-bold text-console-darkest" data-testid="text-welcome">
             Welcome back!
           </h2>
-          <p className="text-console-dark mt-1">3 bookings today • {analytics?.summary?.totalBookings || 0} this month</p>
+          <p className="text-console-dark mt-1">{analytics?.summary?.totalBookings || 0} this month</p>
         </div>
 
-        {/* Travel Pulse Ticker */}
-        <TravelPulseTicker items={[
-          { city: "Kyoto", text: "Peak season: transport demand +120%", type: "up" },
-          { city: "Airport", text: "KIX arrivals surge Apr 7-10", type: "up" },
-          { city: "Pricing", text: "Your rates: competitive ✓", type: "neutral" },
-          { city: "Roads", text: "Arashiyama area: expect delays", type: "down" },
-          { city: "Demand", text: "Night transfers trending +45%", type: "up" },
-        ]} />
+        {/* Travel Pulse Ticker — removed fabricated trending data per §13 */}
+        {/* <TravelPulseTicker items={[]} /> */}
 
         {/* Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -206,48 +200,8 @@ export default function ProviderDashboard() {
               </CardContent>
             </Card>
 
-            {/* My Services */}
-            <Card className="border border-console-light">
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Package className="w-5 h-5 text-blue-600" />
-                    <CardTitle className="text-lg">My Services</CardTitle>
-                  </div>
-                  <Link href="/provider/services">
-                    <Button variant="ghost" size="sm" className="text-primary" data-testid="button-view-all-services">
-                      View All <ChevronRight className="w-4 h-4 ml-1" />
-                    </Button>
-                  </Link>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="flex items-center justify-between py-2 border-b border-console-light">
-                  <span className="font-medium text-console-darkest">Premium Service</span>
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline" className="bg-green-50">Active</Badge>
-                    <span className="text-sm text-console-mid">8 bookings</span>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between py-2 border-b border-console-light">
-                  <span className="font-medium text-console-darkest">Standard Service</span>
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline" className="bg-green-50">Active</Badge>
-                    <span className="text-sm text-console-mid">5 bookings</span>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between py-2">
-                  <span className="font-medium text-console-darkest">Basic Package</span>
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline" className="bg-console-bg">Inactive</Badge>
-                    <span className="text-sm text-console-mid">0 bookings</span>
-                  </div>
-                </div>
-                <Button variant="outline" className="w-full mt-2" data-testid="button-add-service">
-                  <Zap className="w-4 h-4 mr-1" /> Add New Service
-                </Button>
-              </CardContent>
-            </Card>
+            {/* My Services — removed mock services with hardcoded booking counts per §13 */}
+            {/* Users access real services via /provider/services */}
           </div>
 
           {/* Right Panel - 40% width */}
@@ -265,45 +219,11 @@ export default function ProviderDashboard() {
                   <p className="text-sm text-console-mid">This Month</p>
                   <p className="text-3xl font-bold text-console-darkest">${(analytics?.summary?.totalRevenue ?? 0).toLocaleString()}</p>
                 </div>
-                <div className="h-1 bg-console-light rounded-full overflow-hidden">
-                  <div className="h-full bg-green-500" style={{ width: "72%" }}></div>
-                </div>
+                {/* Progress bar removed — fabricated 72% width per §13 */}
               </CardContent>
             </Card>
 
-            {/* Upcoming 5 Days */}
-            <Card className="border border-console-light">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg">Upcoming 5 Days</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-2">
-                <div className="flex items-center justify-between py-2 border-b border-console-light text-sm">
-                  <span className="text-console-dark">Apr 9</span>
-                  <span className="font-semibold text-console-darkest">4 rides</span>
-                  <span className="font-semibold text-green-600">$310</span>
-                </div>
-                <div className="flex items-center justify-between py-2 border-b border-console-light text-sm">
-                  <span className="text-console-dark">Apr 10</span>
-                  <span className="font-semibold text-console-darkest">2 rides</span>
-                  <span className="font-semibold text-green-600">$170</span>
-                </div>
-                <div className="flex items-center justify-between py-2 border-b border-console-light text-sm">
-                  <span className="text-console-dark">Apr 11</span>
-                  <span className="font-semibold text-console-darkest">5 rides</span>
-                  <span className="font-semibold text-green-600">$425</span>
-                </div>
-                <div className="flex items-center justify-between py-2 border-b border-console-light text-sm">
-                  <span className="text-console-dark">Apr 12</span>
-                  <span className="font-semibold text-console-darkest">3 rides</span>
-                  <span className="font-semibold text-green-600">$255</span>
-                </div>
-                <div className="flex items-center justify-between py-2 text-sm">
-                  <span className="text-console-dark">Apr 13</span>
-                  <span className="font-semibold text-console-darkest">1 ride</span>
-                  <span className="font-semibold text-green-600">$85</span>
-                </div>
-              </CardContent>
-            </Card>
+            {/* Upcoming 5 Days — removed fabricated schedule with hardcoded rides/amounts per §13 */}
 
             {/* Action Items */}
             <Card className="border border-console-light">
@@ -359,10 +279,7 @@ export default function ProviderDashboard() {
                     <span className="text-console-dark">Bookings</span>
                     <span className="font-semibold text-console-darkest">{analytics?.summary?.totalBookings ?? 0}</span>
                   </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-console-dark">Completion</span>
-                    <span className="font-semibold text-green-600">94%</span>
-                  </div>
+                  {/* Completion rate removed — fabricated 94% with no data source per §13 */}
                 </div>
                 <Button variant="outline" size="sm" className="w-full" data-testid="button-view-performance">
                   <TrendingUp className="w-4 h-4 mr-1" /> View Details
@@ -370,32 +287,7 @@ export default function ProviderDashboard() {
               </CardContent>
             </Card>
 
-            {/* Expert Partners */}
-            <Card className="border border-console-light bg-gradient-to-br from-blue-50 to-white">
-              <CardHeader className="pb-3">
-                <div className="flex items-center gap-2">
-                  <Users className="w-5 h-5 text-blue-600" />
-                  <CardTitle className="text-lg">Expert Partners</CardTitle>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-2 text-sm">
-                <div className="flex items-center justify-between">
-                  <span className="text-console-dark">Active Partners</span>
-                  <span className="font-semibold text-console-darkest">12</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-console-dark">Referral Revenue</span>
-                  <span className="font-semibold text-green-600">$2,450</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-console-dark">% of Business</span>
-                  <span className="font-semibold text-blue-600">28%</span>
-                </div>
-                <Button variant="outline" size="sm" className="w-full mt-2" data-testid="button-view-partners">
-                  View All Partners
-                </Button>
-              </CardContent>
-            </Card>
+            {/* Expert Partners — removed fabricated metrics (12 partners, $2,450 revenue, 28% of business) per §13 */}
           </div>
         </div>
         {/* Logistics & Availability Management */}

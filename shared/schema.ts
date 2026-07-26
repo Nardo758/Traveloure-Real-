@@ -98,6 +98,11 @@ export const trips = pgTable("trips", {
   // userId remains the traveler; managedByEaId is the EA running the show.
   managedByEaId: varchar("managed_by_ea_id").references(() => users.id, { onDelete: "set null" }),
   eaClientRelationshipId: varchar("ea_client_relationship_id"),
+  // Ready-made authoring mode (migration 133): the expert who AUTHORS this trip as a speculative
+  // ready-made listing. Authoring trips have userId = NULL (traveler-surface exclusion by
+  // construction) + authorId = the expert. NULL for every normal traveler trip. Auth path:
+  // assignment OR (authorId IS NOT NULL AND authorId === caller) — never via getTripRole.
+  authorId: varchar("author_id").references(() => users.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -3170,6 +3175,10 @@ export const itineraryItems = pgTable("itinerary_items", {
   // Suggestion tracking
   suggestedBy: varchar("suggested_by", { length: 20 }), // 'ai', 'expert', 'user'
 
+  // Gem link (migration 133, authoring brief §3a — design room only). Soft reference (no FK: two gem
+  // tables exist — ai_discovered_gems + travel_pulse_hidden_gems; source disambiguation is future work).
+  gemId: varchar("gem_id"),
+
   // Ordering
   sortOrder: integer("sort_order").default(0),
   
@@ -3806,7 +3815,15 @@ export const affiliateProducts = pgTable("affiliate_products", {
   highlights: jsonb("highlights").$type<string[]>().default([]),
   includes: jsonb("includes").$type<string[]>().default([]),
   tags: jsonb("tags").$type<string[]>().default([]),
-  availability: varchar("availability", { length: 200 }),
+  availability: varchar("availability", { length: 200 }), // legacy free-text
+  // Remediation P1 (migration 131) — normalized availability + CTA booking classifier.
+  // All NULLABLE, no DB CHECK (values validated at zod/ORM layer → no publish-time drizzle-push trap).
+  availabilityStatus: varchar("availability_status", { length: 20 }), // available|seasonal|limited|sold_out; null=unknown (§13)
+  availableFrom: date("available_from"),
+  availableTo: date("available_to"),
+  // CTA classifier (P4): in_platform_bookable → add-to-cart · affiliate_bookable → agent rail ·
+  // informational → tracked "View". NULL → resolver treats affiliate content as affiliate_bookable.
+  bookingType: varchar("booking_type", { length: 24 }),
   bookingInfo: text("booking_info"),
   metadata: jsonb("metadata"),
   isActive: boolean("is_active").default(true),
@@ -4364,6 +4381,7 @@ export const contentTypeEnum = pgEnum("content_type", [
   "media",
   "tip",
   "affiliate_product",
+  "dmo_content",
   "other"
 ]);
 
@@ -6772,3 +6790,86 @@ export const qaRunSnapshots = pgTable("qa_run_snapshots", {
 export const insertQaRunSnapshotSchema = createInsertSchema(qaRunSnapshots).omit({ id: true });
 export type InsertQaRunSnapshot = z.infer<typeof insertQaRunSnapshotSchema>;
 export type QaRunSnapshot = typeof qaRunSnapshots.$inferSelect;
+
+// === Ready-Made Trips (Trips by Locals) — migration 133, spec v3 ===
+// The cloneable-trip product: a listing pointing at a REAL author-owned trip (trips.authorId set,
+// trips.userId NULL) that clones into the buyer's editable PlanCard on purchase. Distinct from
+// expert_templates (the view-only "Guides" lane). Born 'draft'; admin approval only (D1a).
+
+export const readyMadeTrips = pgTable("ready_made_trips", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  authorId: varchar("author_id").notNull().references(() => users.id),
+  sourceTripId: varchar("source_trip_id").notNull().references(() => trips.id),
+  market: varchar("market", { length: 100 }).notNull(), // launch: Kyoto only (§12)
+  title: varchar("title", { length: 200 }).notNull(),
+  // Nullable by design: born-draft before any hero exists. Submit/approve enforce non-null
+  // (Unsplash picker per D2 — photoUrl + attribution stored in heroImageMeta).
+  heroImageUrl: text("hero_image_url"),
+  heroImageMeta: jsonb("hero_image_meta"), // { unsplashId, photographer, profileUrl, downloadLocation }
+  durationDays: integer("duration_days").notNull(),
+  // "Type of Plan" — the headline of the store's quality structure (migration 134). NULL only in
+  // draft; the submit gate requires it. Vocabulary: shared/ready-made-plan-types.ts (code-validated,
+  // no DB CHECK, so the editorial list can grow without a schema migration).
+  planType: varchar("plan_type", { length: 60 }),
+  bestSeason: varchar("best_season", { length: 60 }),
+  pricingMode: varchar("pricing_mode", { length: 20 }).notNull().default("fixed"), // CHECK fixed|per_traveler
+  priceCents: integer("price_cents"), // display/charge base; USD-only v1; resolved with fee band
+  feeBandKey: varchar("fee_band_key", { length: 100 }).notNull().default("ready_made_trip"),
+  status: varchar("status", { length: 20 }).notNull().default("draft"), // CHECK draft|submitted|approved|rejected
+  badge: varchar("badge", { length: 30 }),
+  insideCounts: jsonb("inside_counts"), // snapshot derived ONLY at the approved transition
+  buildReview: jsonb("build_review"),   // Phase 2.5 advisory verdict (score + findings), admin-queue visible
+  rejectionReason: text("rejection_reason"),
+  submittedAt: timestamp("submitted_at"),
+  reviewedAt: timestamp("reviewed_at"),
+  reviewedBy: varchar("reviewed_by").references(() => users.id, { onDelete: "set null" }),
+  lastVerifiedAt: timestamp("last_verified_at"),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const readyMadePurchases = pgTable("ready_made_purchases", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  buyerId: varchar("buyer_id").notNull().references(() => users.id),
+  readyMadeTripId: varchar("ready_made_trip_id").notNull().references(() => readyMadeTrips.id),
+  pricePaidCents: integer("price_paid_cents").notNull(),
+  currency: varchar("currency", { length: 10 }).notNull().default("USD"),
+  // Idempotency anchor (§15): unique — a webhook/confirm retry can never double-clone.
+  stripePaymentIntentId: varchar("stripe_payment_intent_id").notNull().unique(),
+  attributionRef: varchar("attribution_ref", { length: 64 }), // share-link first-touch (map §4)
+  cloneTripId: varchar("clone_trip_id").references(() => trips.id, { onDelete: "set null" }), // migration 135
+  // Row is inserted only AFTER capture, so born-'paid' is correct (unlike the template pre-payment row).
+  status: varchar("status", { length: 20 }).notNull().default("paid"), // CHECK paid|cloned|refunded|revoked
+  purchasedAt: timestamp("purchased_at").notNull().defaultNow(),
+});
+
+export const boards = pgTable("boards", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  ownerId: varchar("owner_id").references(() => users.id, { onDelete: "cascade" }), // null = editorial (platform)
+  boardType: varchar("board_type", { length: 20 }).notNull(), // CHECK wishlist|storefront|editorial (v1 writes storefront|editorial only; ♡ uses saved_items)
+  title: varchar("title", { length: 200 }).notNull(),
+  slug: varchar("slug", { length: 200 }).unique(), // editorial boards route /collections/:slug
+  market: varchar("market", { length: 100 }),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const boardItems = pgTable("board_items", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  boardId: varchar("board_id").notNull().references(() => boards.id, { onDelete: "cascade" }),
+  readyMadeTripId: varchar("ready_made_trip_id").notNull().references(() => readyMadeTrips.id, { onDelete: "cascade" }),
+  position: integer("position"),
+  addedAt: timestamp("added_at").notNull().defaultNow(),
+}, (table) => ({
+  boardTripUnique: unique("board_items_board_trip_unique").on(table.boardId, table.readyMadeTripId),
+}));
+
+export const insertReadyMadeTripSchema = createInsertSchema(readyMadeTrips).omit({ id: true, createdAt: true, updatedAt: true });
+export type ReadyMadeTrip = typeof readyMadeTrips.$inferSelect;
+export type InsertReadyMadeTrip = z.infer<typeof insertReadyMadeTripSchema>;
+export const insertReadyMadePurchaseSchema = createInsertSchema(readyMadePurchases).omit({ id: true, purchasedAt: true });
+export type ReadyMadePurchase = typeof readyMadePurchases.$inferSelect;
+export type InsertReadyMadePurchase = z.infer<typeof insertReadyMadePurchaseSchema>;
+export type Board = typeof boards.$inferSelect;
+export type BoardItem = typeof boardItems.$inferSelect;

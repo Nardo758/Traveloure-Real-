@@ -33,7 +33,6 @@ import {
   UserCheck,
   HelpCircle,
   FileText,
-  ShoppingCart,
   PartyPopper,
   Baby,
   Gift,
@@ -61,7 +60,7 @@ import { cn } from "@/lib/utils";
 import { UserMenu } from "@/components/user-menu";
 import { NotificationBell } from "@/components/notification-bell";
 import { navGroupsConfig, authNavConfig, footerSectionsConfig } from "@/lib/nav-config";
-import { useTripContextSync, useTripContext } from "@/lib/trip-context";
+import { useTripContextSync } from "@/lib/trip-context";
 import { TripStrip } from "@/components/trip/trip-strip";
 
 // ── Icon maps ─────────────────────────────────────────────────────────────────
@@ -305,16 +304,34 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const { openSignInModal } = useSignInModal();
   const [location] = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [tripCtx] = useTripContext();
+  const navRef = useRef<HTMLElement>(null);
   // Hydrate the signed-in user's trip context from the server (P2/E2) — once per load.
   useTripContextSync();
+
+  // Close mobile menu on Escape key or click outside the nav
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setIsMobileMenuOpen(false);
+    };
+    const onOutside = (e: MouseEvent) => {
+      if (navRef.current && !navRef.current.contains(e.target as Node)) {
+        setIsMobileMenuOpen(false);
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("mousedown", onOutside);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("mousedown", onOutside);
+    };
+  }, []);
 
   const isActive = (path: string) => location === path;
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Navigation */}
-      <nav className="bg-card/80 backdrop-blur-lg border-b border-border sticky top-0 z-50 shadow-sm">
+      <nav ref={navRef} className="bg-card/80 backdrop-blur-lg border-b border-border sticky top-0 z-50 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex h-16">
             <div className="flex items-center flex-1 min-w-0">
@@ -343,7 +360,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 <div className="hidden lg:flex items-center gap-2">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="sm" data-testid="button-become-expert-nav" className="gap-1">
+                      <Button variant="outline" size="sm" data-testid="button-become-expert-nav" className="gap-1 text-sm">
                         Join as Partner
                         <ChevronDown className="w-3.5 h-3.5" />
                       </Button>
@@ -373,7 +390,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     </DropdownMenuContent>
                   </DropdownMenu>
                   <Button 
-                    size="sm" 
+                    size="sm"
+                    className="text-sm"
                     onClick={() => openSignInModal()}
                     data-testid="button-sign-in"
                   >
@@ -394,7 +412,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <div className="flex items-center lg:hidden">
                 <button
                   onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                  className="inline-flex items-center justify-center p-2 rounded-md text-muted-foreground hover-elevate focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary"
+                  className="inline-flex items-center justify-center p-2 min-w-[44px] min-h-[44px] rounded-md text-muted-foreground hover-elevate focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary"
                   data-testid="button-mobile-menu"
                 >
                   {isMobileMenuOpen ? (
@@ -415,6 +433,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               initial={{ opacity: 0, height: 0 }}
               animate={{ opacity: 1, height: "auto" }}
               exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.2 }}
               className="lg:hidden border-t border-border bg-background max-h-[calc(100svh-64px)] overflow-y-auto"
             >
               {/* Mobile Nav - Same for all users */}

@@ -42,6 +42,7 @@ import {
   expertOfferingTypes, insertExpertOfferingTypeSchema,
   localExpertForms, expertRequests,
   coordinationStates,
+  readyMadeTrips,
 } from "@shared/schema";
 import {
   TAB_CONTENT_TYPE_MAP,
@@ -589,10 +590,36 @@ router.post("/api/admin/coordination-states/:id/assign-coordinator", isAuthentic
       .update(coordinationStates)
       .set({ assignedExpertId: expertId, updatedAt: new Date() })
       .where(eq(coordinationStates.id, req.params.id))
-      .returning({ id: coordinationStates.id, assignedExpertId: coordinationStates.assignedExpertId });
+      .returning({
+        id: coordinationStates.id,
+        assignedExpertId: coordinationStates.assignedExpertId,
+        tripId: coordinationStates.tripId,
+        experienceType: coordinationStates.experienceType,
+        destination: coordinationStates.destination,
+      });
     if (!updated) {
       return res.status(404).json({ message: "Coordination engagement not found" });
     }
+
+    // F5 (workstation-flows audit): the assignment previously happened in silence — the expert
+    // found out only if they visited Assigned Trips. Best-effort notification, never fails the assign.
+    try {
+      await db.insert(notifications).values({
+        userId: expertId,
+        type: "booking_request",
+        title: "New event coordination assignment",
+        message: `You've been assigned to coordinate a ${updated.experienceType} in ${updated.destination ?? "TBC"}. Find it under Event coordination on Assigned Trips.`,
+        relatedId: updated.id,
+        relatedType: "coordination_state",
+        data: {
+          ...(updated.tripId ? { tripId: updated.tripId } : {}),
+          workspacePath: updated.tripId ? `/expert/workspace/${updated.tripId}` : "/expert/assigned-trips",
+        },
+      } as any);
+    } catch (notifyErr) {
+      console.error("Admin assign-coordinator notify failed (non-fatal):", notifyErr);
+    }
+
     res.json({ success: true, coordinationId: updated.id, assignedExpertId: updated.assignedExpertId });
   } catch (err: any) {
     if (err instanceof z.ZodError) {
@@ -600,6 +627,128 @@ router.post("/api/admin/coordination-states/:id/assign-coordinator", isAuthentic
     }
     console.error("Admin assign-coordinator error:", err);
     res.status(500).json({ message: "Failed to assign coordinator" });
+  }
+});
+
+// ─── Ready-Made store-listing approvals (task #158; the §10 shared-queue pattern, NOT a fork) ───
+// Same lifecycle vocabulary as expert_templates/provider_services: submitted → approved|rejected,
+// reject-reason required, §15 atomic conditional transitions. Approval is the gate the author
+// cannot self-satisfy (D1a) — the submit endpoint can only ever reach 'submitted'.
+
+// GET /api/admin/ready-made/pending — submitted listings + author identity + build coverage.
+router.get("/api/admin/ready-made/pending", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const result = await db.execute(sql`
+      SELECT
+        rmt.id, rmt.title, rmt.plan_type, rmt.market, rmt.duration_days, rmt.best_season,
+        rmt.pricing_mode, rmt.price_cents, rmt.hero_image_url, rmt.submitted_at,
+        rmt.source_trip_id,
+        u.first_name AS author_first_name, u.last_name AS author_last_name, u.role AS author_role,
+        (SELECT COUNT(*) FROM itinerary_items ii WHERE ii.trip_id = rmt.source_trip_id)::int AS item_count,
+        (SELECT COUNT(DISTINCT ii.day_number) FROM itinerary_items ii WHERE ii.trip_id = rmt.source_trip_id)::int AS days_with_items
+      FROM ready_made_trips rmt
+      JOIN users u ON u.id = rmt.author_id
+      WHERE rmt.status = 'submitted' AND rmt.active = true
+      ORDER BY rmt.submitted_at ASC NULLS LAST
+    `);
+    res.json({ pending: result.rows ?? [] });
+  } catch (err: any) {
+    console.error("Admin ready-made pending error:", err);
+    res.status(500).json({ message: "Failed to fetch pending store listings" });
+  }
+});
+
+// POST /api/admin/ready-made/:id/approve — approve + SNAPSHOT insideCounts at this transition.
+// The snapshot is taken here (not at read time) so the public card never recomputes from a trip
+// the author keeps editing — what was approved is what the shelf describes.
+router.post("/api/admin/ready-made/:id/approve", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const [listing] = await db
+      .select({ id: readyMadeTrips.id, sourceTripId: readyMadeTrips.sourceTripId })
+      .from(readyMadeTrips)
+      .where(eq(readyMadeTrips.id, req.params.id))
+      .limit(1);
+    if (!listing) return res.status(404).json({ message: "Listing not found" });
+
+    // insideCounts from the REAL build (never fabricated, §13): distinct days, total items,
+    // and the per-type breakdown the store card renders as "what's inside".
+    const typeRows = await db
+      .select({ itemType: itineraryItems.itemType, count: sql<number>`count(*)::int` })
+      .from(itineraryItems)
+      .where(eq(itineraryItems.tripId, listing.sourceTripId))
+      .groupBy(itineraryItems.itemType);
+    const dayRows = await db
+      .select({ dayNumber: itineraryItems.dayNumber })
+      .from(itineraryItems)
+      .where(eq(itineraryItems.tripId, listing.sourceTripId))
+      .groupBy(itineraryItems.dayNumber);
+    const insideCounts = {
+      days: dayRows.length,
+      items: typeRows.reduce((sum, r) => sum + r.count, 0),
+      byType: Object.fromEntries(typeRows.map((r) => [r.itemType ?? "activity", r.count])),
+      snapshotAt: new Date().toISOString(),
+    };
+
+    // §15: the transition is the concurrency guard — a double-approve (or an approve racing a
+    // reject) matches 0 rows and returns 409 with no second snapshot.
+    const [updated] = await db
+      .update(readyMadeTrips)
+      .set({
+        status: "approved",
+        insideCounts,
+        reviewedAt: new Date(),
+        reviewedBy: user.id,
+        rejectionReason: null,
+        updatedAt: new Date(),
+      } as any)
+      .where(and(eq(readyMadeTrips.id, req.params.id), eq(readyMadeTrips.status, "submitted")))
+      .returning();
+    if (!updated) {
+      return res.status(409).json({ message: "Listing is not awaiting review" });
+    }
+    res.json({ success: true, listing: updated });
+  } catch (err: any) {
+    console.error("Admin ready-made approve error:", err);
+    res.status(500).json({ message: "Failed to approve listing" });
+  }
+});
+
+// POST /api/admin/ready-made/:id/reject — reason required (the author sees it verbatim).
+router.post("/api/admin/ready-made/:id/reject", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const reason = String(req.body?.reason ?? "").trim();
+    if (!reason) return res.status(400).json({ message: "A rejection reason is required" });
+
+    const [updated] = await db
+      .update(readyMadeTrips)
+      .set({
+        status: "rejected",
+        rejectionReason: reason.slice(0, 2000),
+        reviewedAt: new Date(),
+        reviewedBy: user.id,
+        updatedAt: new Date(),
+      } as any)
+      .where(and(eq(readyMadeTrips.id, req.params.id), eq(readyMadeTrips.status, "submitted")))
+      .returning();
+    if (!updated) {
+      return res.status(409).json({ message: "Listing is not awaiting review" });
+    }
+    res.json({ success: true, listing: updated });
+  } catch (err: any) {
+    console.error("Admin ready-made reject error:", err);
+    res.status(500).json({ message: "Failed to reject listing" });
   }
 });
 
@@ -898,10 +1047,61 @@ router.post("/api/admin/dmo/intake/:id/approve", isAuthenticated, async (req, re
       )
       .returning();
     if (!updated) return res.status(409).json({ message: "Not pending intake (already approved or rejected)" });
+    // Register the approved DMO row into the central content_registry as 'sourced' origin (approach A).
+    // Best-effort — never blocks the intake approval. sourced content is expert-only (resolver-gated).
+    try {
+      const { registerDmoContentById } = await import("../services/dmo-registry-sync.service");
+      await registerDmoContentById(updated.id);
+    } catch { /* non-blocking */ }
     res.json({ message: "Approved into the expert library", item: updated });
   } catch (err: any) {
     console.error("DMO intake approve error:", err);
     res.status(500).json({ message: "Approve failed", error: err.message });
+  }
+});
+
+// Backfill: register ALL existing dmo_raw_content into the central registry as 'sourced' (idempotent).
+router.post("/api/admin/dmo/sync-registry", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const { syncDmoContentToRegistry } = await import("../services/dmo-registry-sync.service");
+    const result = await syncDmoContentToRegistry();
+    res.json({ message: `Synced DMO content into the central registry`, ...result });
+  } catch (err: any) {
+    console.error("DMO registry sync error:", err);
+    res.status(500).json({ message: "Sync failed", error: err.message });
+  }
+});
+
+// §16 catalog unification (P7): ingest Travelpayouts network inventory into the central
+// affiliate_products + content_registry. Key-gated (§13 — no token ⇒ ready:false, zero writes).
+// Body: { city (required), network? } — one network or all. Kyoto-first (§12).
+router.post("/api/admin/catalog/ingest", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  const city = typeof req.body?.city === "string" ? req.body.city.trim() : "";
+  if (!city) return res.status(400).json({ message: "city is required" });
+  const network = typeof req.body?.network === "string" ? req.body.network.trim() : "";
+  try {
+    const svc = await import("../services/catalog-ingest.service");
+    const result = network
+      ? [await svc.ingestNetwork(network, city)]
+      : await svc.ingestAllNetworks(city);
+    const ready = result.some(r => r.ready);
+    res.json({
+      message: ready ? `Ingested catalog inventory for ${city}` : "No Travelpayouts token — nothing ingested (§13 key-gate)",
+      ready,
+      city,
+      results: result,
+    });
+  } catch (err: any) {
+    console.error("Catalog ingest error:", err);
+    res.status(500).json({ message: "Ingest failed", error: err.message });
   }
 });
 
@@ -4616,7 +4816,17 @@ router.get("/api/admin/reviews", isAuthenticated, async (req, res) => {
         const service = await storage.getProviderServiceById(r.serviceId);
         const logs = await getReviewModerationLogs(r.id);
         return {
-          ...r,
+          id: r.id,
+          serviceId: r.serviceId,
+          travelerId: r.travelerId,
+          rating: r.rating,
+          reviewText: r.reviewText ?? null,
+          responseText: r.responseText ?? null,
+          responseAt: r.responseAt ?? null,
+          status: r.status,
+          flagReason: r.flagReason ?? null,
+          moderatedAt: r.moderatedAt ?? null,
+          createdAt: r.createdAt,
           travelerName: traveler ? [traveler.firstName, traveler.lastName].filter(Boolean).join(" ") || traveler.email : "Unknown",
           serviceName: service?.serviceName ?? "Unknown Service",
           logs,
@@ -4651,6 +4861,27 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
     } catch (err) {
       console.error("Admin review status error:", err);
       res.status(500).json({ message: "Failed to update review status" });
+    }
+  });
+
+  // Response-scoped moderation (W0.7): clears an inappropriate provider/expert RESPONSE
+  // (responseText/responseAt) without touching the traveler's review, its status, or the
+  // service rating. Logged to review_moderation_logs as 'response_cleared'.
+  router.post("/api/admin/reviews/:id/clear-response", isAuthenticated, async (req, res) => {
+    try {
+      const actorId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const adminCheck = await getAdminRole(actorId);
+      if (!adminCheck || adminCheck.role !== "admin") return res.status(403).json({ message: "Admin access required" });
+      const review = await getReviewById(req.params.id);
+      if (!review) return res.status(404).json({ message: "Review not found" });
+      if (!review.responseText) return res.status(400).json({ message: "Review has no response to clear" });
+      const { reason } = req.body;
+      const updated = await updateServiceReviewStatus(req.params.id, { responseText: null, responseAt: null });
+      await insertReviewModerationLog({ reviewId: req.params.id, action: "response_cleared", actorId, reason: reason ?? null });
+      res.json(updated);
+    } catch (err) {
+      console.error("Admin clear-response error:", err);
+      res.status(500).json({ message: "Failed to clear review response" });
     }
   });
 
@@ -5054,7 +5285,7 @@ router.get("/api/admin/routing-queue", isAuthenticated, async (req, res) => {
         FROM expert_requests er
         LEFT JOIN users u ON u.id = er.user_id
         LEFT JOIN users eu ON eu.id = er.assigned_expert_id
-        LEFT JOIN lead_routing_logs lrl ON lrl.trip_id = er.trip_id
+        LEFT JOIN lead_routing_logs lrl ON lrl.trip_id::text = er.trip_id
           AND lrl.assigned_expert_id = er.assigned_expert_id
         WHERE er.assigned_expert_id IS NOT NULL
           AND er.status NOT IN ('confirmed', 'completed', 'cancelled')
@@ -5278,14 +5509,21 @@ router.post("/api/admin/content-placement-rules/auto-index", requireAdminLocal, 
       // 2. Scan affiliate_products
       const products = await getActiveAffiliateProducts();
 
+      // §13 no-silent-caps: count inventory dropped for want of a matching TravelPulse city so the
+      // response reports coverage honestly instead of silently under-indexing.
+      let affiliateSkippedNoCity = 0;
+      let registrySkippedNoCity = 0;
+
       for (const p of products) {
         const cityKey = (p.city ?? "").toLowerCase();
-        const cityData = cityLookup.get(cityKey) ||
-          Array.from(cityLookup.values()).find(c =>
-            cityKey.includes(c.cityName.toLowerCase()) ||
-            c.cityName.toLowerCase().includes(cityKey)
-          );
-        if (!cityData) continue;
+        const cityData = cityKey
+          ? (cityLookup.get(cityKey) ||
+            Array.from(cityLookup.values()).find(c =>
+              cityKey.includes(c.cityName.toLowerCase()) ||
+              c.cityName.toLowerCase().includes(cityKey)
+            ))
+          : undefined;
+        if (!cityData) { affiliateSkippedNoCity++; continue; }
 
         // Determine which surfaces this product's category matches
         const surfaces = (SURFACE_SLUGS as readonly string[]).filter(slug => {
@@ -5316,7 +5554,7 @@ router.post("/api/admin/content-placement-rules/auto-index", requireAdminLocal, 
       for (const r of registryItems) {
         const meta = (r.metadata ?? {}) as Record<string, any>;
         const rawCity: string = meta.city ?? meta.location ?? meta.destination ?? "";
-        if (!rawCity) continue;
+        if (!rawCity) { registrySkippedNoCity++; continue; }
 
         const cityKey = rawCity.toLowerCase().split(",")[0].trim();
         const cityData = cityLookup.get(cityKey) ||
@@ -5324,7 +5562,7 @@ router.post("/api/admin/content-placement-rules/auto-index", requireAdminLocal, 
             cityKey.includes(c.cityName.toLowerCase()) ||
             c.cityName.toLowerCase().includes(cityKey)
           );
-        if (!cityData) continue;
+        if (!cityData) { registrySkippedNoCity++; continue; }
 
         // Determine surfaces from content type
         const surfaces = (SURFACE_SLUGS as readonly string[]).filter(slug => {
@@ -5349,13 +5587,19 @@ router.post("/api/admin/content-placement-rules/auto-index", requireAdminLocal, 
       }
 
       const created = await storage.bulkUpsertContentPlacementRules(rulesToUpsert);
+      const totalSkippedNoCity = affiliateSkippedNoCity + registrySkippedNoCity;
       res.json({
         created,
         total: rulesToUpsert.length,
         cities: cities.length,
         affiliateScanned: products.length,
         registryScanned: registryItems.length,
-        message: `Auto-indexed ${created} new rules across ${cities.length} TravelPulse cities`,
+        // §13 no-silent-caps: surface inventory that couldn't be placed for want of a matching city.
+        skippedNoCity: totalSkippedNoCity,
+        affiliateSkippedNoCity,
+        registrySkippedNoCity,
+        message: `Auto-indexed ${created} new rules across ${cities.length} TravelPulse cities` +
+          (totalSkippedNoCity > 0 ? ` (${totalSkippedNoCity} items skipped — no matching city)` : ""),
       });
     } catch (err: any) {
       console.error("[ContentMap] auto-index error:", err);

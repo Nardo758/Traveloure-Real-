@@ -115,8 +115,28 @@ export default function Chat() {
     return expertList;
   }, [linkedExpert, expertList]);
 
+  // F3 (workstation-flows audit): for expert users, cross-reference the conversation partner
+  // against assigned trips so the thread header can offer "Open trip workspace". Client-side
+  // join — /api/expert/assigned-trips already returns traveler_user_id per trip.
+  const isExpertUser = ["expert", "local_expert", "travel_expert", "event_planner", "executive_assistant"]
+    .includes(user?.role ?? "");
+  const { data: expertAssignedTrips } = useQuery<Array<{ trip_id: string; traveler_user_id?: string; status: string }>>({
+    queryKey: ["/api/expert/assigned-trips"],
+    enabled: isExpertUser,
+    staleTime: 60_000,
+  });
+
   const [message, setMessage] = useState("");
   const [selectedExpert, setSelectedExpert] = useState<DisplayExpert | null>(null);
+  const partnerAssignedTrip = useMemo(
+    () =>
+      selectedExpert
+        ? (expertAssignedTrips ?? []).find(
+            (t) => t.traveler_user_id != null && String(t.traveler_user_id) === String(selectedExpert.id) && t.status === "accepted",
+          ) ?? null
+        : null,
+    [selectedExpert, expertAssignedTrips],
+  );
   const [searchQuery, setSearchQuery] = useState("");
 
   // Pre-fill message when arriving from "Ask expert" on a gem/activity card
@@ -347,8 +367,21 @@ export default function Chat() {
                       <AvatarFallback>{selectedExpert.name[0]}</AvatarFallback>
                     </Avatar>
                     <div className="flex-1">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <h3 className="font-semibold text-slate-900 dark:text-white">{selectedExpert.name}</h3>
+                        {/* F3 (workstation-flows audit): when this conversation partner is a client
+                            with an active assignment, jump straight into the trip's workstation. */}
+                        {partnerAssignedTrip && (
+                          <Link href={`/expert/workspace/${partnerAssignedTrip.trip_id}`}>
+                            <Badge
+                              variant="outline"
+                              className="text-xs cursor-pointer hover:bg-accent"
+                              data-testid="badge-open-trip-workspace"
+                            >
+                              Open trip workspace
+                            </Badge>
+                          </Link>
+                        )}
                         {isConnected ? (
                           <Badge variant="secondary" className="text-xs bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
                             <Wifi className="w-3 h-3 mr-1" /> Live

@@ -218,10 +218,10 @@ export default function ExpertAnalytics() {
   const recentReviews = analytics?.recentReviews || [];
 
   const achievements = [
-    { title: "Top Rated Expert", description: "Maintained 4.9+ rating for 6 months", icon: Star, earned: true },
-    { title: "Quick Responder", description: "Average response time under 30 min", icon: Clock, earned: true },
-    { title: "Client Favorite", description: "50+ repeat clients", icon: Users, earned: false, progress: 90 },
-    { title: "Perfect Score", description: "100 five-star reviews", icon: Award, earned: false, progress: 78 },
+    { title: "Top Rated Expert", description: "Maintained 4.9+ rating for 6 months", icon: Star, earned: (analytics?.summary?.avgRating ?? 0) >= 4.9 },
+    { title: "Quick Responder", description: "Average response time under 30 min", icon: Clock, earned: false },
+    { title: "Client Favorite", description: "50+ repeat clients", icon: Users, earned: false },
+    { title: "Perfect Score", description: "100 five-star reviews", icon: Award, earned: false },
   ];
 
   const revSummary = revenueData?.summary ?? { totalRevenue: 0, availableBalance: 0, pendingBalance: 0, paidOut: 0 };
@@ -233,15 +233,11 @@ export default function ExpertAnalytics() {
     current: revSummary.totalRevenue,
     projected: projections.projectedGrowth,
     potential: projections.potentialMax,
-    nextMonth: Math.round(revSummary.totalRevenue * 1.1),
+    nextMonth: 0,
   };
 
   const suggestedPricing = {
-    currentRate: projections.avgBookingValue > 0 ? Math.round(projections.avgBookingValue) : 75,
-    marketAverage: 95,
-    topExpertRate: 150,
-    suggestedRate: 110,
-    potentialIncrease: 47,
+    currentRate: projections.avgBookingValue > 0 ? Math.round(projections.avgBookingValue) : 0,
   };
 
   const passiveIncomeStreams = [
@@ -280,7 +276,6 @@ export default function ExpertAnalytics() {
     available: revSummary.availableBalance,
     pending: revSummary.pendingBalance,
     processing: 0,
-    dailyFee: 1.5,
   };
 
   const actionableRevenueInsights = revenueInsights.length > 0 ? revenueInsights : [
@@ -954,16 +949,11 @@ export default function ExpertAnalytics() {
                           <CardDescription>Based on your expertise and market conditions</CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                          <div className="grid grid-cols-2 gap-3">
+                          <div className="grid grid-cols-1 gap-3">
                             <div className="p-3 rounded-lg border text-center">
                               <p className="text-xs text-muted-foreground">Your Rate</p>
-                              <p className="text-2xl font-bold text-foreground">${suggestedPricing.currentRate}</p>
+                              <p className="text-2xl font-bold text-foreground">${suggestedPricing.currentRate || "—"}</p>
                               <p className="text-xs text-muted-foreground">/hour</p>
-                            </div>
-                            <div className="p-3 rounded-lg border text-center bg-green-50 border-green-200">
-                              <p className="text-xs text-green-700">Suggested</p>
-                              <p className="text-2xl font-bold text-green-600">${suggestedPricing.suggestedRate}</p>
-                              <p className="text-xs text-green-600">+{suggestedPricing.potentialIncrease}%</p>
                             </div>
                           </div>
                           <Button className="w-full bg-primary" size="sm" data-testid="button-update-rates">
@@ -1025,64 +1015,8 @@ export default function ExpertAnalytics() {
                           </CardTitle>
                           <CardDescription>Services your clients frequently request</CardDescription>
                         </CardHeader>
-                        <CardContent className="space-y-4">
-                          {[
-                            {
-                              id: 1,
-                              title: "Add Transportation Service",
-                              description: "Most clients also need transportation coordination",
-                              potential: "+$180/trip average",
-                              adoption: 92,
-                              icon: Zap,
-                            },
-                            {
-                              id: 2,
-                              title: "Offer Photography Package",
-                              description: "Many proposal clients want photo coordination",
-                              potential: "+$250/booking",
-                              adoption: 68,
-                              icon: Gift,
-                            },
-                            {
-                              id: 3,
-                              title: "Premium Concierge Add-on",
-                              description: "High-value clients often upgrade",
-                              potential: "+$400/trip",
-                              adoption: 45,
-                              icon: Star,
-                            },
-                          ].map((opp) => (
-                            <div
-                              key={opp.id}
-                              className="p-4 rounded-lg border"
-                              data-testid={`upsell-${opp.id}`}
-                            >
-                              <div className="flex items-start gap-3">
-                                <div className="w-10 h-10 rounded-lg bg-amber-100 flex items-center justify-center shrink-0">
-                                  <opp.icon className="w-5 h-5 text-amber-600" />
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <div className="flex items-center justify-between gap-2">
-                                    <p className="font-medium text-foreground">{opp.title}</p>
-                                    <Badge className="bg-green-100 text-green-700 border-green-200 shrink-0">
-                                      {opp.potential}
-                                    </Badge>
-                                  </div>
-                                  <p className="text-sm text-muted-foreground mt-1">{opp.description}</p>
-                                  <div className="mt-2">
-                                    <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
-                                      <span>Client adoption</span>
-                                      <span>{opp.adoption}%</span>
-                                    </div>
-                                    <Progress value={opp.adoption} className="h-2" />
-                                  </div>
-                                </div>
-                              </div>
-                              <Button className="w-full mt-3 bg-primary" size="sm" data-testid={`button-add-service-${opp.id}`}>
-                                <PlusCircle className="w-4 h-4 mr-2" /> Add This Service
-                              </Button>
-                            </div>
-                          ))}
+                        <CardContent>
+                          <p className="text-muted-foreground text-center py-4">Upsell opportunities will appear as you build your service catalog.</p>
                         </CardContent>
                       </Card>
                     </div>
@@ -1097,18 +1031,7 @@ export default function ExpertAnalytics() {
                       </CardHeader>
                       <CardContent>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                          {(marketIntel?.seasonalDemand?.length ? marketIntel.seasonalDemand : [
-                            {
-                              season: "Peak Travel Season",
-                              location: "Your Markets",
-                              timing: "Varies by destination",
-                              demandIncrease: 120,
-                              suggestedRateIncrease: 20,
-                              status: "upcoming",
-                              daysAway: 30,
-                              icon: Sun,
-                            },
-                          ]).map((season: any, index: number) => {
+                          {(marketIntel?.seasonalDemand || []).map((season: any, index: number) => {
                             const SeasonIcon = season.icon ?? Sun;
                             return (
                               <div

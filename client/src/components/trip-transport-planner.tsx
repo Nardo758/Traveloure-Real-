@@ -266,6 +266,20 @@ export function TripTransportPlanner({
   const [dbSyncDone, setDbSyncDone] = useState(false);
   const [baselineModes, setBaselineModes] = useState<Record<string, string>>({});
 
+  // §16 (item ④, decision B): route the 12Go "browse" hand-off through the agent rail with the
+  // destination as context — never a raw window.open. The agent finds + books + adds to the trip.
+  const browse12goViaAgent = useMutation({
+    mutationFn: (departCity?: string) =>
+      apiRequest("POST", "/api/affiliate-booking-requests", {
+        itemName: `Ground transport${departCity ? ` from ${departCity}` : ""}`,
+        itemDescription: "Trains, buses, ferries via 12Go Asia",
+        partnerName: "12Go Asia",
+        partnerCategory: "transport",
+        affiliateUrl: `https://12go.asia/en?z=13805109&curr=USD${departCity ? `&departcity=${encodeURIComponent(departCity)}` : ""}`,
+        travelers: travelers || 1,
+      }),
+  });
+
   const { data: fetchedLegs } = useQuery<ExistingTransportLeg[]>({
     queryKey: ["/api/itinerary-variants", variantId, "transport-legs"],
     queryFn: async () => {
@@ -614,10 +628,11 @@ export function TripTransportPlanner({
             <Button
               variant="outline"
               size="sm"
-              onClick={() => window.open(`https://12go.asia/en?z=13805109&curr=USD`, '_blank')}
+              disabled={browse12goViaAgent.isPending}
+              onClick={() => browse12goViaAgent.mutate(undefined)}
               data-testid="button-browse-12go-empty"
             >
-              Browse 12Go <ExternalLink className="h-3 w-3 ml-1" />
+              Find 12Go transport
             </Button>
           </div>
         </CardContent>
@@ -1030,10 +1045,11 @@ export function TripTransportPlanner({
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => window.open(`https://12go.asia/en?z=13805109&curr=USD&departcity=${encodeURIComponent(destination)}`, '_blank')}
+                disabled={browse12goViaAgent.isPending}
+                onClick={() => browse12goViaAgent.mutate(destination)}
                 data-testid="button-browse-12go"
               >
-                Browse 12Go Transportation <ExternalLink className="h-3 w-3 ml-1" />
+                Find 12Go Transportation
               </Button>
             </div>
           </>

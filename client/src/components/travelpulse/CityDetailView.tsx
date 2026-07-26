@@ -49,8 +49,10 @@ import {
   Play,
   Image,
   ExternalLink,
+  Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useContentAgentBooking } from "@/hooks/use-content-agent-booking";
 import { formatDistanceToNow } from "date-fns";
 import { DestinationCalendar } from "./DestinationCalendar";
 import { AIRecommendationBadges, SeasonalInsightBanner } from "./AIRecommendationBadges";
@@ -456,6 +458,35 @@ interface BookingOption {
   type: 'reservation' | 'tickets' | 'tour' | 'website';
 }
 
+/**
+ * §16 (item ④): TravelPulse per-platform booking buttons are partner links, so they route through
+ * the agent-booking rail instead of a raw window.open(booking.url). Extracted to a child so the hook
+ * isn't called inside the nested map.
+ */
+function CityBookingButton({
+  booking,
+  placeName,
+  testId,
+}: {
+  booking: BookingOption;
+  placeName: string;
+  testId: string;
+}) {
+  const { book, isPending, requested } = useContentAgentBooking({
+    itemName: placeName,
+    itemDescription: `${booking.type} via ${booking.platform}`,
+    partnerName: booking.platform,
+    partnerCategory: booking.type,
+    affiliateUrl: booking.url,
+  });
+  return (
+    <Button size="sm" variant="outline" onClick={book} disabled={isPending || requested} data-testid={testId}>
+      {isPending ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <ExternalLink className="h-3 w-3 mr-1" />}
+      {requested ? "Requested" : booking.platform}
+    </Button>
+  );
+}
+
 interface EnrichedRecommendation {
   name: string;
   address?: string;
@@ -550,16 +581,12 @@ function EnrichedRecommendationCard({ rec, idx }: { rec: EnrichedRecommendation;
 
         <div className="flex flex-wrap gap-2">
           {rec.bookingOptions?.slice(0, 3).map((booking, bidx) => (
-            <Button
+            <CityBookingButton
               key={bidx}
-              size="sm"
-              variant="outline"
-              onClick={() => window.open(booking.url, '_blank')}
-              data-testid={`booking-btn-${idx}-${bidx}`}
-            >
-              <ExternalLink className="h-3 w-3 mr-1" />
-              {booking.platform}
-            </Button>
+              booking={booking}
+              placeName={rec.name}
+              testId={`booking-btn-${idx}-${bidx}`}
+            />
           ))}
           {rec.googleMapsUrl && (
             <Button

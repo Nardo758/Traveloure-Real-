@@ -425,13 +425,11 @@ export function SpontaneousDiscovery({
                             
                             <Button
                               size="sm"
-                              onClick={() => {
-                                if (opportunity.affiliateUrl) {
-                                  window.open(opportunity.affiliateUrl, "_blank");
-                                } else {
-                                  bookMutation.mutate(opportunity.id);
-                                }
-                              }}
+                              // §16 (item ④): always route through the platform's own tracked rail
+                              // (/api/spontaneous/:id/book, which records the click and returns the
+                              // authoritative redirect server-side) — never a raw
+                              // window.open(opportunity.affiliateUrl) that bypasses tracking.
+                              onClick={() => bookMutation.mutate(opportunity.id)}
                               disabled={bookMutation.isPending}
                               data-testid={`button-book-${opportunity.id}`}
                             >

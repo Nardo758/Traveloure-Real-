@@ -27,7 +27,7 @@ import {
   type ContentSourceKey,
 } from "@shared/content-surface-map";
 import {
-  TrendingUp, Compass, Zap, LayoutTemplate, Map,
+  TrendingUp, Zap, LayoutTemplate,
   Plus, Trash2, RefreshCw, Info, ExternalLink,
   Search, Filter, CheckCircle2, XCircle, Pin,
   Bot, User, ChevronRight,
@@ -35,10 +35,8 @@ import {
 
 const SURFACE_ICONS: Record<SurfaceSlug, typeof TrendingUp> = {
   "travelpulse-discover": TrendingUp,
-  "experience-discovery": Compass,
   "spontaneous": Zap,
   "experience-template": LayoutTemplate,
-  "itinerary": Map,
 };
 
 const CONTENT_TYPE_COLORS: Record<ContentTypeKey, string> = {
