@@ -74,32 +74,24 @@ export default function ProviderAnalytics() {
       value: `$${(analytics?.summary?.totalRevenue || 0).toLocaleString()}`,
       icon: DollarSign,
       color: "text-green-600",
-      change: "+12%",
-      trend: "up" as const,
     },
     {
       label: "Total Bookings",
       value: analytics?.summary?.totalBookings || 0,
       icon: Users,
       color: "text-blue-600",
-      change: "+5%",
-      trend: "up" as const,
     },
     {
       label: "Avg Rating",
       value: (analytics?.summary?.avgRating || 0).toFixed(1),
       icon: BarChart3,
       color: "text-amber-600",
-      change: "-2%",
-      trend: "down" as const,
     },
     {
-      label: "Completion Rate",
-      value: "94%",
+      label: "Active Services",
+      value: analytics?.summary?.activeServices || 0,
       icon: TrendingUp,
       color: "text-purple-600",
-      change: "+3%",
-      trend: "up" as const,
     },
   ];
 
@@ -135,16 +127,6 @@ export default function ProviderAnalytics() {
                   <div className="flex-1">
                     <p className="text-sm text-console-dark">{metric.label}</p>
                     <p className="text-2xl font-bold text-console-darkest mt-2">{metric.value}</p>
-                    <div className="flex items-center gap-1 mt-2">
-                      {metric.trend === "up" ? (
-                        <ArrowUpRight className="w-4 h-4 text-green-600" />
-                      ) : (
-                        <ArrowDownRight className="w-4 h-4 text-red-600" />
-                      )}
-                      <span className={metric.trend === "up" ? "text-green-600 text-sm font-semibold" : "text-red-600 text-sm font-semibold"}>
-                        {metric.change}
-                      </span>
-                    </div>
                   </div>
                   <div className={`w-12 h-12 rounded-lg flex items-center justify-center bg-opacity-10 ${metric.color}`} style={{ backgroundColor: metric.color + "15" }}>
                     <metric.icon className={`w-6 h-6 ${metric.color}`} />
