@@ -106,7 +106,7 @@ export function TravelPulseTicker() {
         <span className="text-[10px] font-medium text-[#5DCAA5] uppercase tracking-[1.2px]">
           TravelPulse live
         </span>
-        <Link href="/credits">
+        <Link href="/pricing">
           <span
             className="text-[10px] text-[#E8B339] cursor-pointer px-2.5 py-0.5 rounded-full"
             style={{ background: "rgba(232,179,57,0.15)" }}

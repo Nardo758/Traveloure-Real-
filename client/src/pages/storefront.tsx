@@ -24,6 +24,8 @@ interface StorefrontData {
     profileImageUrl: string | null;
     role: string;
     handle: string;
+    averageRating: number | null;
+    reviewCount: number;
   };
   services: Array<{
     id: string;
@@ -130,7 +132,15 @@ export default function StorefrontPage() {
         )}
         <div className="flex-1 min-w-0">
           <h1 className="text-2xl font-bold" data-testid="storefront-name">{earner.name}</h1>
-          <p className="text-sm text-muted-foreground">@{earner.handle}</p>
+          <div className="flex items-center gap-2 mt-0.5">
+            <p className="text-sm text-muted-foreground">@{earner.handle}</p>
+            <span data-testid="storefront-earner-rating">
+              <RatingLine
+                rating={earner.averageRating != null ? String(earner.averageRating) : null}
+                count={earner.reviewCount}
+              />
+            </span>
+          </div>
           {earner.bio && <p className="mt-2 text-sm text-foreground max-w-xl">{earner.bio}</p>}
         </div>
         <Button variant="outline" size="sm" onClick={copyLink} data-testid="button-share-storefront">

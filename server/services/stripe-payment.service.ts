@@ -40,6 +40,166 @@ class StripePaymentService {
     return ['usd', 'eur', 'gbp', 'jpy', 'aud', 'sgd'];
   }
 
+  // ── FP-1: Stripe Customer + saved payment methods (frictionless payments) ──────────────
+  //
+  // The durable customer layer. Cards are vaulted by Stripe only — this codebase stores just
+  // users.stripe_customer_id (migration 146) and reads payment_method ids live from Stripe.
+  // Replaces the fragile per-request customers.list({email}) lookup optimization.routes.ts had.
+
+  isReady(): boolean {
+    return !!process.env.STRIPE_SECRET_KEY;
+  }
+
+  /**
+   * Get (or lazily create) the user's Stripe Customer, persisting the id. Resolution order:
+   * persisted id → email search (adopts a customer an older flow created) → create. Returns
+   * null when Stripe is unconfigured or the user has no email (never fabricates).
+   */
+  async getOrCreateCustomer(userId: string): Promise<string | null> {
+    if (!this.isReady()) return null;
+    const existing = await db.execute(sql`
+      SELECT stripe_customer_id, email, first_name, last_name FROM users WHERE id = ${userId} LIMIT 1
+    `);
+    const row = existing.rows?.[0] as any;
+    if (!row) return null;
+    if (row.stripe_customer_id) return String(row.stripe_customer_id);
+
+    let customerId: string | null = null;
+    if (row.email) {
+      const found = await stripe.customers.list({ email: row.email, limit: 1 });
+      if (found.data.length > 0) customerId = found.data[0].id;
+    }
+    if (!customerId) {
+      if (!row.email) return null;
+      const created = await stripe.customers.create({
+        email: row.email,
+        name: [row.first_name, row.last_name].filter(Boolean).join(' ') || undefined,
+        metadata: { userId },
+      });
+      customerId = created.id;
+    }
+    await db.execute(sql`
+      UPDATE users SET stripe_customer_id = ${customerId} WHERE id = ${userId} AND stripe_customer_id IS NULL
+    `);
+    return customerId;
+  }
+
+  /** Saved cards for the session user — read live from Stripe, safe display fields only. */
+  async listSavedPaymentMethods(userId: string): Promise<{
+    defaultPaymentMethodId: string | null;
+    methods: Array<{ id: string; brand: string; last4: string; expMonth: number; expYear: number }>;
+  }> {
+    const customerId = await this.getOrCreateCustomer(userId);
+    if (!customerId) return { defaultPaymentMethodId: null, methods: [] };
+    const [customer, methods] = await Promise.all([
+      stripe.customers.retrieve(customerId),
+      stripe.paymentMethods.list({ customer: customerId, type: 'card' }),
+    ]);
+    const defaultPm =
+      !('deleted' in customer) && customer.invoice_settings?.default_payment_method
+        ? String(customer.invoice_settings.default_payment_method)
+        : null;
+    return {
+      defaultPaymentMethodId: defaultPm,
+      methods: methods.data.map((pm) => ({
+        id: pm.id,
+        brand: pm.card?.brand ?? 'card',
+        last4: pm.card?.last4 ?? '',
+        expMonth: pm.card?.exp_month ?? 0,
+        expYear: pm.card?.exp_year ?? 0,
+      })),
+    };
+  }
+
+  /** Detach a saved card — ONLY if it belongs to the session user's own customer (§14). */
+  async detachSavedPaymentMethod(userId: string, paymentMethodId: string): Promise<boolean> {
+    const customerId = await this.getOrCreateCustomer(userId);
+    if (!customerId) return false;
+    const pm = await stripe.paymentMethods.retrieve(paymentMethodId);
+    if (pm.customer !== customerId) return false;
+    await stripe.paymentMethods.detach(paymentMethodId);
+    return true;
+  }
+
+  /** Set the default saved card — same ownership check as detach (§14). */
+  async setDefaultSavedPaymentMethod(userId: string, paymentMethodId: string): Promise<boolean> {
+    const customerId = await this.getOrCreateCustomer(userId);
+    if (!customerId) return false;
+    const pm = await stripe.paymentMethods.retrieve(paymentMethodId);
+    if (pm.customer !== customerId) return false;
+    await stripe.customers.update(customerId, {
+      invoice_settings: { default_payment_method: paymentMethodId },
+    });
+    return true;
+  }
+
+  /**
+   * FP-1 one-click: charge the user's saved default card OFF-SESSION (create+confirm in one
+   * server-side call). The AMOUNT always comes from the caller's server-side fee derivation
+   * (§14) and the caller supplies a deterministic idempotencyKey (§15).
+   *
+   * Outcomes (never throws for the expected cases):
+   *   'succeeded'        — charged; caller proceeds exactly as if the Elements flow confirmed.
+   *   'requires_action'  — the bank demands 3DS; clientSecret returned so the client falls back
+   *                        to the payment sheet for this one charge.
+   *   'no_saved_method'  — nothing vaulted (or Stripe unconfigured); caller uses the normal sheet.
+   */
+  async chargeSavedMethod(
+    userId: string,
+    params: {
+      amountCents: number;
+      currency?: string;
+      metadata: Record<string, string>;
+      description: string;
+      idempotencyKey: string;
+    },
+  ): Promise<
+    | { status: 'succeeded'; paymentIntentId: string }
+    | { status: 'requires_action'; paymentIntentId: string; clientSecret: string }
+    | { status: 'no_saved_method' }
+  > {
+    if (!this.isReady()) return { status: 'no_saved_method' };
+    const { defaultPaymentMethodId, methods } = await this.listSavedPaymentMethods(userId);
+    const paymentMethodId = defaultPaymentMethodId ?? methods[0]?.id;
+    if (!paymentMethodId) return { status: 'no_saved_method' };
+    const customerId = await this.getOrCreateCustomer(userId);
+    if (!customerId) return { status: 'no_saved_method' };
+
+    try {
+      const pi = await stripe.paymentIntents.create(
+        {
+          amount: params.amountCents,
+          currency: (params.currency ?? 'usd').toLowerCase(),
+          customer: customerId,
+          payment_method: paymentMethodId,
+          off_session: true,
+          confirm: true,
+          metadata: params.metadata,
+          description: params.description,
+        },
+        { idempotencyKey: params.idempotencyKey },
+      );
+      if (pi.status === 'succeeded') return { status: 'succeeded', paymentIntentId: pi.id };
+      if (pi.status === 'requires_action' && pi.client_secret) {
+        return { status: 'requires_action', paymentIntentId: pi.id, clientSecret: pi.client_secret };
+      }
+      // Any other terminal state — treat as needing the interactive sheet.
+      return pi.client_secret
+        ? { status: 'requires_action', paymentIntentId: pi.id, clientSecret: pi.client_secret }
+        : { status: 'no_saved_method' };
+    } catch (err: any) {
+      // Card declined off-session or bank demands authentication: Stripe attaches the PI to the
+      // error — hand its clientSecret back so the user completes it interactively (honest
+      // fallback, never a silent retry loop).
+      const errPi = err?.raw?.payment_intent ?? err?.payment_intent;
+      if (errPi?.client_secret) {
+        return { status: 'requires_action', paymentIntentId: errPi.id, clientSecret: errPi.client_secret };
+      }
+      logger.warn({ err: err?.message, userId }, '[FP-1] off-session charge failed without recoverable PI');
+      return { status: 'no_saved_method' };
+    }
+  }
+
   /**
    * Create payment intent for bookings
    * @param currency - Three-letter ISO currency code (defaults to 'usd'). Supported: usd, eur, gbp, jpy, aud, sgd.
@@ -82,9 +242,14 @@ class StripePaymentService {
         ? { idempotencyKey: `pi-${idempotencyKey}` }
         : undefined;
 
+      // FP-1: attach the durable Stripe Customer so the PaymentElement sheet offers the user's
+      // saved cards (near-one-click) and newly entered cards can be vaulted for next time.
+      const fpCustomerId = await this.getOrCreateCustomer(userId).catch(() => null);
+
       const paymentIntent = await stripe.paymentIntents.create({
         amount: stripeAmount,
         currency: effectiveCurrency,
+        ...(fpCustomerId ? { customer: fpCustomerId, setup_future_usage: 'off_session' as const } : {}),
         metadata: {
           userId,
           bookingIds: truncatedBookingIds,

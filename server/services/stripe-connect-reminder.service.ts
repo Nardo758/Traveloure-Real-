@@ -94,8 +94,6 @@ class StripeConnectReminderService {
   private async runReminders(): Promise<void> {
     try {
       // Find approved providers/experts without a complete Stripe Connect account
-      // stripe_account_id / stripe_account_status live on the users table in the DB
-      // but are not yet reflected in the Drizzle TypeScript model — use raw SQL fragments.
       const pendingUsers = await db
         .select({ id: users.id, role: users.role })
         .from(users)
@@ -103,9 +101,12 @@ class StripeConnectReminderService {
           and(
             or(
               eq(users.role, "service_provider"),
-              eq(users.role, "travel_expert")
+              eq(users.role, "local_expert")
             ),
-            sql`("users"."stripe_account_id" is null or "users"."stripe_account_status" is null or "users"."stripe_account_status" not in ('complete', 'active'))`
+            or(
+              isNull(users.stripeAccountId),
+              sql`(${users.stripeAccountStatus} is null or ${users.stripeAccountStatus} not in ('complete', 'active'))`
+            )
           )
         );
 

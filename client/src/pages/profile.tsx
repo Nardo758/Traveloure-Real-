@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { PaymentMethodsCard } from "@/components/payment/PaymentMethodsCard";
 
 import { Camera, Mail, Phone, MapPin, Calendar, Save, Loader2 } from "lucide-react";
 import { useState, useRef } from "react";
@@ -182,6 +183,9 @@ export default function Profile() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Payment Methods (FP-2) */}
+        <PaymentMethodsCard />
 
         {/* Travel Preferences */}
         <Card className="border border-border">

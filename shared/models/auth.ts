@@ -67,6 +67,9 @@ export const users = pgTable("users", {
   // Public storefront handle (/p/{handle}) — backoffice Phase 1a (migration 136). Nullable =
   // not claimed. Format + reserved words enforced app-side in storefront.routes.ts (no DB CHECK).
   handle: varchar("handle", { length: 30 }).unique(),
+  // FP-1 (migration 146): the user's Stripe Customer id — the durable anchor for saved payment
+  // methods + off-session one-click charges. Cards live only in Stripe's vault, never here.
+  stripeCustomerId: varchar("stripe_customer_id", { length: 255 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
   // Soft-delete: never hard-delete users (bookings/Stripe/tax records must persist).

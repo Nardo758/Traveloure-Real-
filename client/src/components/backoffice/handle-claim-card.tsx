@@ -82,8 +82,21 @@ export function HandleClaimCard({ currentHandle }: { currentHandle?: string | nu
             <Button
               size="sm"
               variant="ghost"
-              onClick={() => {
-                navigator.clipboard.writeText(url);
+              onClick={async () => {
+                try {
+                  const res = await fetch("/api/short-links", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify({ targetType: "storefront" }),
+                  });
+                  if (!res.ok) throw new Error(`Failed (${res.status})`);
+                  const data = await res.json() as { url: string };
+                  navigator.clipboard.writeText(`${window.location.origin}${data.url}`);
+                } catch {
+                  // Graceful fallback to the existing /p/ URL on any error.
+                  navigator.clipboard.writeText(url);
+                }
                 toast({ title: "Link copied" });
               }}
               data-testid="button-copy-handle-url"

@@ -21,7 +21,7 @@ import {
   insertServiceTemplateSchema, insertServiceBookingSchema, insertServiceReviewSchema,
   itineraryComparisons, itineraryVariants, itineraryVariantItems, itineraryVariantMetrics,
   userExperienceItems, userExperiences, providerServices, cartItems, trips,
-  serviceBookings, serviceReviews, notifications, wallets, creditTransactions, serviceProviderForms,
+  serviceBookings, serviceReviews, notifications, serviceProviderForms,
   insertCustomVenueSchema, insertGeneratedItinerarySchema,
   insertTemporalAnchorSchema, insertDayBoundarySchema, insertEnergyTrackingSchema,
   temporalAnchors, itineraryItems, generatedItineraries,
@@ -99,6 +99,7 @@ import expertsRoutes from "./routes/experts.routes";
 import eaRoutes from "./routes/ea.routes";
 import providerRoutes from "./routes/provider.routes";
 import storefrontRoutes from "./routes/storefront.routes";
+import shortLinksRoutes from "./routes/short-links.routes";
 import readyMadeRoutes from "./routes/ready-made.routes";
 import expertConsoleRoutes from "./routes/expert-console.routes";
 import contentRoutes, { seedDatabase, registerDiscoveryRoutes } from "./routes/content.routes";
@@ -111,8 +112,9 @@ import savedItemsRoutes from "./routes/saved-items.routes";
 import serviceRequestsRoutes from "./routes/service-requests.routes";
 import tripContextRoutes from "./routes/trip-context.routes";
 import guestInvitesRoutes from "./routes/guest-invites";
-import { CREDIT_PACKAGES } from "@shared/credit-packages";
-import { 
+import shareImagesRoutes from "./routes/share-images.routes";
+import paymentMethodsRoutes from "./routes/payment-methods.routes";
+import {
   insertTripParticipantSchema, 
   insertVendorContractSchema, 
   insertTripTransactionSchema,
@@ -129,6 +131,7 @@ import {
 import {
   EXPERT_SHARE_RATE,
   PLATFORM_FEE_RATE,
+  PROCESSING_FEE_RATE,
   resolveCommissionRates,
   type CommissionRates,
 } from "./services/commission";
@@ -305,7 +308,6 @@ export async function registerRoutes(
     "/api/expert/revenue-optimization",
     "/api/expert/services",
     "/api/expert/dashboard",
-    "/api/expert/analytics",
     "/api/expert/knowledge-nuggets",
     "/api/expert/assigned-trips",
   ];
@@ -314,7 +316,6 @@ export async function registerRoutes(
     "/api/provider/verification-status",
     "/api/provider/request-verification-review",
     "/api/provider/dashboard",
-    "/api/provider/analytics",
     "/api/provider/earnings",
   ];
   app.use((req: any, res: any, next: any) => {
@@ -569,6 +570,17 @@ export async function registerRoutes(
   app.use("/api/expert-workspace", expertWorkspaceRoutes);
 
   // Identity verification routes (Stripe Identity + Persona KYB)
+  // NOTE (V.2 ground-truth pass, Jul 26 2026): contentRoutes (mounted above, line 564) ALSO
+  // internally mounts identityRoutes/webhooksRoutes at these same paths — so at runtime the
+  // contentRoutes copy wins (registration order) and these two lines are the shadowed copy.
+  // Left in place deliberately: the unmounted-router guard (scripts/check-unmounted-routers.cjs,
+  // CLAUDE.md §9) only recognizes a router as "live" via a direct `import`+`app.use` pair inside
+  // server/routes.ts itself — an import from a sibling file under server/routes/ (content.routes.ts
+  // importing identity.routes.ts) does NOT satisfy it (by design — that's the guest-invites.ts
+  // lesson: a routes file importing a sibling doesn't prove it's actually reachable). Removing this
+  // pair trips the guard even though the handlers are genuinely live via contentRoutes. Since both
+  // sides mount the exact same router instance, there is no behavioral divergence — just a proof-of-
+  // liveness formality the guard requires. Do not remove without also updating the guard.
   app.use("/api/identity", identityRoutes);
   // Webhook handlers for Stripe Identity and Persona — mounted at /api/webhooks
   app.use("/api/webhooks", webhooksRoutes);
@@ -584,6 +596,9 @@ export async function registerRoutes(
   // Public earner storefront (backoffice Phase 1a/1b) — /p/:handle OG shell + /api/storefront/:handle
   // + PATCH /api/me/handle. Mounted per §9; /p/:handle must register before the Vite catch-all.
   app.use(storefrontRoutes);
+
+  // Short-link + click store (backoffice S3) — POST /api/short-links + GET /r/:code. Mounted per §9.
+  app.use(shortLinksRoutes);
 
   // Ready-Made Trips authoring (Phase 1) — POST /api/expert/ready-made + workspace-context mode
   // resolution. Author auth = explicit authorId check (never getTripRole). Mounted per §9.
@@ -609,6 +624,16 @@ export async function registerRoutes(
   // invite row; parent experience redacted to guest-safe fields). Was a never-imported
   // dark file (the class the never-imported-router guard now catches) — A0 activation.
   app.use(guestInvitesRoutes);
+
+  // SH1 share-image render pipeline: public GET /api/share-image/service/:id.png?format=feed|story
+  // + GET /api/share-image/review/:id.png (satori -> SVG -> @resvg/resvg-js PNG). Data is loaded +
+  // F2/REV-MOD-gated in the router; the render itself is pure in share-image.service.ts. Mounted
+  // per §9.
+  app.use(shareImagesRoutes);
+
+  // FP-1 frictionless payments: saved-card management (GET/POST/DELETE /api/me/payment-methods*).
+  // Session-scoped; cards live only in Stripe's vault. Mounted per §9.
+  app.use(paymentMethodsRoutes);
 
   // Trips + Itinerary-Comparison Routes — was imported at line 95 but never mounted
   // NOTE (§9 shadow fix): tripsRoutes is mounted LAST (just before `return httpServer`),
@@ -3260,6 +3285,38 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       });
 
       const template = await storage.getExpertTemplate(purchase.templateId);
+
+      // Record platform revenue for this sale — mirrors the booking_commission pattern
+      // (server/services/booking.service.ts:721-729). §15: guarded by hasPlatformRevenueForSource
+      // so a retry/duplicate confirm never double-records; non-fatal so a bookkeeping failure never
+      // blocks the buyer's unlocked purchase. storage.createTemplatePurchase's own status-gated write
+      // stays dead for this path — this route-level write is authoritative.
+      try {
+        if (!(await storage.hasPlatformRevenueForSource(completed.id))) {
+          const grossAmount = Number(completed.price);
+          const platformFeeAmt = Number(completed.platformFee);
+          const expertEarningsAmt = Number(completed.expertEarnings);
+          const processingFees = platformFeeAmt * PROCESSING_FEE_RATE;
+          const netAmount = platformFeeAmt - processingFees;
+          await storage.recordPlatformRevenue({
+            sourceType: 'template_commission',
+            sourceId: completed.id,
+            grossAmount: String(grossAmount),
+            platformFee: String(platformFeeAmt),
+            netAmount: String(netAmount),
+            processingFees: String(processingFees),
+            currency: completed.currency || 'USD',
+            expertId: completed.expertId,
+            expertEarnings: String(expertEarningsAmt),
+            description: `Template sale commission: ${template?.title ?? completed.templateId}`,
+            status: 'recorded',
+            transactionDate: new Date(),
+          } as any);
+        }
+      } catch (err) {
+        console.error(`Failed to record platform revenue for template purchase ${completed.id}:`, err);
+      }
+
       return res.json({ purchase: completed, template });
     } catch (err) {
       console.error("Error confirming template purchase:", err);
@@ -5109,7 +5166,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   app.post("/api/cart", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
-      const { serviceId, customVenueId, quantity, tripId, scheduledDate, notes, experienceSlug: rawSlug, contentType, contentId, contentMeta } = req.body;
+      const { serviceId, customVenueId, quantity, tripId, scheduledDate, notes, experienceSlug: rawSlug, contentType, contentId, contentMeta, slotId } = req.body;
 
       console.log("[Cart] Add to cart request:", { serviceId, customVenueId, contentType, contentId, experienceSlug: rawSlug });
 
@@ -5148,6 +5205,28 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
       
+      // C3: optional availability-slot pick. Soft validation only at add-time (the slot must
+      // exist, belong to THIS service, and currently look bookable) — the hard atomic capacity
+      // CLAIM happens at checkout (storage.bookSlot), so an abandoned cart never holds a slot.
+      // The item's scheduledDate is SERVER-DERIVED from the slot (slot wins over any client date).
+      let slotScheduledDate: Date | undefined;
+      let validatedSlotId: string | undefined;
+      if (slotId) {
+        if (typeof slotId !== "string" || !serviceId) {
+          return res.status(400).json({ message: "Invalid slot selection" });
+        }
+        const slot = await storage.getVendorAvailabilitySlot(slotId);
+        if (!slot || slot.serviceId !== serviceId) {
+          return res.status(400).json({ message: "That slot does not belong to this service" });
+        }
+        const remaining = (slot.capacity ?? 1) - (slot.bookedCount ?? 0);
+        if (slot.status === "blocked" || remaining <= 0 || String(slot.date) < new Date().toISOString().slice(0, 10)) {
+          return res.status(409).json({ error: "slot_unavailable", message: "That time slot is no longer available. Please pick another." });
+        }
+        validatedSlotId = slot.id;
+        slotScheduledDate = new Date(`${slot.date}T${(slot.startTime || "09:00").slice(0, 5)}:00`);
+      }
+
       // Resolve slug aliases
       const experienceSlug = rawSlug ? resolveSlug(rawSlug) : "general";
 
@@ -5167,11 +5246,12 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         ...(isContentAdd ? { contentType, contentId, contentMeta: safeContentMeta } : {}),
         quantity: quantity || 1,
         tripId,
-        scheduledDate: scheduledDate ? new Date(scheduledDate) : undefined,
+        scheduledDate: slotScheduledDate ?? (scheduledDate ? new Date(scheduledDate) : undefined),
+        ...(validatedSlotId ? { slotId: validatedSlotId } : {}),
         notes,
         experienceSlug,
       });
-      
+
       res.status(201).json(item);
     } catch (err) {
       console.error("Add to cart error:", err);
@@ -5774,18 +5854,31 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     }
   });
 
+  // C2 repair: the client (provider-availability-manager.tsx) previously POSTed a
+  // {dayOfWeek, startTime, endTime, isAvailable, pricingModifier} weekly-schedule shape
+  // that this handler's zod never accepted (it required serviceId + date) — every real
+  // submit 400d, so no slots ever existed. Aligned the zod to the actual
+  // vendor_availability_slots columns (C0-canonical: date + startTime/endTime + capacity,
+  // no dayOfWeek/isAvailable/notes — those columns don't exist on this table) and added
+  // the missing §14 ownership check: serviceId must belong to the session's own
+  // provider_services row, or a provider could create slots on another provider's service.
   app.post("/api/provider/availability", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const availabilityInput = z.object({
         serviceId: z.string().min(1),
-        dayOfWeek: z.number().min(0).max(6).optional(),
-        startTime: z.string().optional(),
-        endTime: z.string().optional(),
-        date: z.string().min(1),
-        isAvailable: z.boolean().optional(),
-        notes: z.string().max(500).optional(),
+        date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "date must be YYYY-MM-DD"),
+        startTime: z.string().min(1).max(10),
+        endTime: z.string().min(1).max(10),
+        capacity: z.number().int().min(1).max(1000).optional(),
       }).parse(req.body);
+
+      // §14 ownership check: a provider must not create slots on another provider's service.
+      const ownedService = await storage.getProviderServiceById(availabilityInput.serviceId);
+      if (!ownedService || ownedService.userId !== userId) {
+        return res.status(403).json({ message: "You do not own this service" });
+      }
+
       const slot = await storage.createVendorAvailabilitySlot({ ...availabilityInput, providerId: userId });
       res.status(201).json(slot);
     } catch (error) {
@@ -5801,12 +5894,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     try {
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const updateInput = z.object({
-        dayOfWeek: z.number().min(0).max(6).optional(),
-        startTime: z.string().optional(),
-        endTime: z.string().optional(),
-        date: z.string().optional(),
-        isAvailable: z.boolean().optional(),
-        notes: z.string().max(500).optional(),
+        date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "date must be YYYY-MM-DD").optional(),
+        startTime: z.string().min(1).max(10).optional(),
+        endTime: z.string().min(1).max(10).optional(),
+        capacity: z.number().int().min(1).max(1000).optional(),
+        status: z.enum(["available", "blocked"]).optional(),
       }).parse(req.body);
       const existingSlot = await storage.getVendorAvailabilitySlot(req.params.id);
       if (!existingSlot) return res.status(404).json({ message: "Slot not found" });
@@ -6214,11 +6306,68 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           return res.json({ paid: true, feeCents: 0, creditCents: claimedCreditCents, feePaymentStatus: "paid" });
         }
 
+        // FP-1 one-click: charge the saved default card off-session when the client asks —
+        // same server-derived netFeeCents (§14 unchanged; useSavedCard is only a consent flag),
+        // same deterministic idempotency key (§15). On success the client calls the normal
+        // /pay/confirm with this PI id (confirm contract unchanged); requires_action falls back
+        // to the payment sheet; no saved method falls through to the sheet flow below.
+        if (req.body?.useSavedCard === true) {
+          const { stripePaymentService } = await import("./services/stripe-payment.service");
+          const oneClick = await stripePaymentService.chargeSavedMethod(userId, {
+            amountCents: netFeeCents,
+            currency: "usd",
+            metadata: {
+              type: "coordination_fee",
+              coordinationId,
+              userId,
+              eventType: eventType ?? "",
+              creditCents: String(claimedCreditCents),
+            },
+            description: `Traveloure event coordination fee (${eventType})`,
+            idempotencyKey: `coord-fee-${coordinationId}`,
+          });
+          if (oneClick.status !== "no_saved_method") {
+            await db
+              .update(coordinationStates)
+              .set({ feePaymentIntentId: oneClick.paymentIntentId, feeAmountCents: netFeeCents, feeCreditCents: claimedCreditCents })
+              .where(eq(coordinationStates.id, coordinationId));
+            if (oneClick.status === "succeeded") {
+              return res.json({
+                oneClick: true,
+                status: "succeeded",
+                paymentIntentId: oneClick.paymentIntentId,
+                feeCents: netFeeCents,
+                creditCents: claimedCreditCents,
+                currency: "USD",
+                rule,
+                breakdown,
+              });
+            }
+            return res.json({
+              oneClick: false,
+              requiresAction: true,
+              clientSecret: oneClick.clientSecret,
+              paymentIntentId: oneClick.paymentIntentId,
+              feeCents: netFeeCents,
+              creditCents: claimedCreditCents,
+              currency: "USD",
+              rule,
+              breakdown,
+            });
+          }
+        }
+
         const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", { apiVersion: "2024-12-18.acacia" as any });
+        // FP-1/FP-2 parity: attach the durable customer so this sheet ALSO offers saved cards
+        // and can vault a new one (the optimize + cart sheets already do) — the asymmetry FP-2's
+        // ground-truth flagged.
+        const { stripePaymentService: fpService } = await import("./services/stripe-payment.service");
+        const coordCustomerId = await fpService.getOrCreateCustomer(userId).catch(() => null);
         const paymentIntent = await stripe.paymentIntents.create(
           {
             amount: netFeeCents,
             currency: "usd",
+            ...(coordCustomerId ? { customer: coordCustomerId, setup_future_usage: "off_session" as const } : {}),
             metadata: {
               type: "coordination_fee",
               coordinationId,

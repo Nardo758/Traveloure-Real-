@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -35,8 +35,6 @@ export function SignInModal({
   const [resetSent, setResetSent] = useState(false);
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [acceptPrivacy, setAcceptPrivacy] = useState(false);
-  // TEST 10 — aria-live error: screen readers need an in-DOM alert, not just a toast
-  const [authError, setAuthError] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     email: "",
     password: "",
@@ -45,9 +43,6 @@ export function SignInModal({
   });
   const { toast } = useToast();
   const queryClient = useQueryClient();
-
-  // Clear inline error whenever the user switches sign-in mode
-  useEffect(() => { setAuthError(null); }, [mode]);
 
   const migrateGuestCart = async () => {
     try {
@@ -140,10 +135,11 @@ export function SignInModal({
       const role = data.user?.role ?? "user";
       window.location.href = returnTo ?? sessionReturnTo ?? getRoleHomePath(role);
     } catch (error: any) {
-      const msg = error.message || "Something went wrong";
-      // TEST 10 — set in-DOM error for aria-live announcement; also toast for visual users
-      setAuthError(msg);
-      toast({ title: "Error", description: msg, variant: "destructive" });
+      toast({
+        title: "Error",
+        description: error.message || "Something went wrong",
+        variant: "destructive",
+      });
     } finally {
       setIsLoading(false);
     }
@@ -208,23 +204,7 @@ export function SignInModal({
             </button>
           </div>
         ) : (
-          <form
-            onSubmit={mode === "reset" ? handleForgotPassword : handleSubmit}
-            className="space-y-4 py-4"
-            onChange={() => setAuthError(null)}
-          >
-            {/* TEST 10 — aria-live="assertive" announces auth errors to screen readers immediately */}
-            {authError && (
-              <div
-                role="alert"
-                aria-live="assertive"
-                className="text-sm text-destructive bg-destructive/10 border border-destructive/20 rounded-md px-3 py-2"
-                data-testid="text-auth-error"
-              >
-                {authError}
-              </div>
-            )}
-
+          <form onSubmit={mode === "reset" ? handleForgotPassword : handleSubmit} className="space-y-4 py-4">
             {mode === "signup" && (
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">

@@ -3,7 +3,6 @@ import { Router } from "express";
 import { db } from "../db";
 import { storage } from "../storage";
 import { api } from "@shared/routes";
-import { CREDIT_PACKAGES } from "@shared/credit-packages";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { eq, and, or, like, ilike, sql, desc, count, ne, isNotNull, asc } from "drizzle-orm";
@@ -17,7 +16,8 @@ import {
   insertServiceTemplateSchema, insertServiceBookingSchema, insertServiceReviewSchema,
   itineraryComparisons, itineraryVariants, itineraryVariantItems, itineraryVariantMetrics,
   userExperienceItems, userExperiences, providerServices, cartItems, trips,
-  serviceBookings, serviceReviews, notifications, wallets, creditTransactions, serviceProviderForms,
+  serviceBookings, serviceReviews, notifications, serviceProviderForms,
+  shortLinks,
   insertCustomVenueSchema, insertGeneratedItinerarySchema,
   insertTemporalAnchorSchema, insertDayBoundarySchema, insertEnergyTrackingSchema,
   temporalAnchors, itineraryItems, generatedItineraries,
@@ -156,121 +156,31 @@ function serviceCategorySlugToFeeCategory(slug: string | null | undefined): stri
 }
 
 
-router.get("/api/wallet", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
-    const wallet = await storage.getOrCreateWallet(userId);
-    res.json(wallet);
+// FP-3 (credits retirement, decision-maker ratified): the credits/wallet system is RETIRED.
+// The per-use fee funnel (§ pricing) + saved-card one-click checkout is the AI monetization
+// model; credits had ZERO real consumers (deductCredits has no callers) and
+// POST /api/wallet/add-credits was a free-credits hole (any admin session could mint balance
+// with no payment behind it). All four endpoints below now return 410 Gone. The `wallets` /
+// `creditTransactions` tables and their storage methods (getWallet, getOrCreateWallet,
+// addCredits, deductCredits, getCreditTransactions) stay DORMANT per the roadmap — no drops,
+// no migration. Do not resurrect these routes without a real payment/fulfillment path.
+
+router.get("/api/wallet", isAuthenticated, (req, res) => {
+    res.status(410).json({ message: "Credits have been retired — AI features are billed per use." });
   });
 
-  // Get wallet transactions
-
-router.get("/api/wallet/transactions", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
-    const wallet = await storage.getWallet(userId);
-    if (!wallet) {
-      return res.json([]);
-    }
-    const transactions = await storage.getCreditTransactions(wallet.id);
-    res.json(transactions);
+router.get("/api/wallet/transactions", isAuthenticated, (req, res) => {
+    res.status(410).json({ message: "Credits have been retired — AI features are billed per use." });
   });
 
-  // Add credits (admin only - for production, integrate with payment provider)
-
-router.post("/api/wallet/add-credits", isAuthenticated, async (req, res) => {
-    try {
-      const adminUser = await storage.getUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
-      if (!adminUser || adminUser.role !== "admin") {
-        return res.status(403).json({ message: "Admin access required" });
-      }
-      const { userId, amount, description } = req.body; // money-derive-ok: admin-gated grant (above); userId is the target grantee, amount the admin-authorized credit — not a self-service charge
-      if (!userId || !amount || amount <= 0) {
-        return res.status(400).json({ message: "Invalid userId or amount" });
-      }
-      const transaction = await storage.addCredits(userId, amount, description || "Credit purchase");
-      res.status(201).json(transaction);
-    } catch (err) {
-      console.error("Error adding credits:", err);
-      res.status(500).json({ message: "Failed to add credits" });
-    }
+router.post("/api/wallet/add-credits", isAuthenticated, (req, res) => {
+    // Closes the free-credits hole: this endpoint used to grant balance from a client-sent
+    // amount with no payment behind it (admin-gated, but still a hole — see FP-3).
+    res.status(410).json({ message: "Credits have been retired — AI features are billed per use." });
   });
 
-  // Purchase credits via Stripe Checkout. LB-P5a: packages come from the
-  // single canonical source in shared/credit-packages.ts.
-
-
-router.post("/api/credits/purchase", isAuthenticated, async (req, res) => {
-    // F2 (revenue-model review, decision-maker ratified Jul 26 2026): GATED 501 until fulfillment
-    // exists. The Stripe Checkout below is real, but 'credit_purchase' has NO webhook handler, NO
-    // balance grant, and NO revenue row — money would be taken with nothing delivered (the client
-    // balance is a hardcoded mock). Same honesty posture as the W0.4 tip gate: never charge for a
-    // leg that doesn't exist. Re-enable only WITH the fulfillment webhook + real balance ledger.
-    return res.status(501).json({
-      message: "Credit purchases are not available yet — credit fulfillment has not launched.",
-    });
-    // eslint-disable-next-line no-unreachable
-    try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
-      const { packageId, currency: clientCurrency } = req.body;
-      const chargeCurrency = clientCurrency || 'usd';
-
-      const pkg = CREDIT_PACKAGES.find(p => p.id === packageId);
-      if (!pkg) {
-        return res.status(400).json({ message: "Invalid package" });
-      }
-
-      // Non-null assertion: this code is unreachable behind the F2 501 gate, which disables
-      // TS flow-narrowing from the !pkg guard above. Remove when the gate lifts.
-      const { credits, price } = pkg!;
-
-      const userRecord = await storage.getUser(userId);
-      const userEmail = userRecord?.email || undefined;
-
-      const { getBaseUrl } = await import("../services/stripe.service");
-      const Stripe = (await import("stripe")).default;
-      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
-        apiVersion: '2024-12-18.acacia' as any,
-      });
-
-      const baseUrl = getBaseUrl();
-      const isZeroDecimal = chargeCurrency.toLowerCase() === 'jpy';
-      const unitAmount = isZeroDecimal ? Math.round(price) : Math.round(price * 100);
-
-      const session = await stripe.checkout.sessions.create({
-        payment_method_types: ['card'],
-        mode: 'payment',
-        customer_email: userEmail,
-        line_items: [
-          {
-            price_data: {
-              currency: chargeCurrency.toLowerCase(),
-              product_data: {
-                name: `${credits} Credits`,
-                description: `Traveloure credit package - ${credits} credits`,
-              },
-              unit_amount: unitAmount,
-            },
-            quantity: 1,
-          },
-        ],
-        metadata: {
-          type: 'credit_purchase',
-          userId,
-          credits: credits.toString(),
-          packageId: packageId?.toString() || '',
-          currency: chargeCurrency.toLowerCase(),
-        },
-        success_url: `${baseUrl}/credits-billing?purchase=success&credits=${credits}`,
-        cancel_url: `${baseUrl}/credits-billing?purchase=cancelled`,
-      });
-
-      res.json({
-        sessionId: session.id,
-        url: session.url,
-      });
-    } catch (err: any) {
-      console.error("Credit purchase error:", err);
-      res.status(500).json({ message: "Failed to create checkout session" });
-    }
+router.post("/api/credits/purchase", isAuthenticated, (req, res) => {
+    res.status(410).json({ message: "Credits have been retired — AI features are billed per use." });
   });
 
   // === Service Templates Routes (Admin manages, Experts browse) ===
@@ -323,11 +233,64 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         }
       }
 
+      // ── S4 acquisition attribution — vocabulary direct | link | cross_sell, DERIVED
+      // SERVER-SIDE. 'link' is granted only when the client-captured ?ref= resolves to a real
+      // short_links.code (migration 139) — a client cannot claim 'link' by assertion. Analytics
+      // dimension only: never read into any fee/amount/payout decision.
+      let acquisitionSource: "direct" | "link" | "cross_sell" = "direct";
+      let acquisitionRef: string | null = null;
+      const refCandidate =
+        typeof req.body.ref === "string" ? req.body.ref.trim().toLowerCase() : "";
+      if (refCandidate && refCandidate.length <= 12) {
+        const [link] = await db
+          .select({ code: shortLinks.code })
+          .from(shortLinks)
+          .where(eq(shortLinks.code, refCandidate))
+          .limit(1);
+        if (link) {
+          acquisitionSource = "link";
+          acquisitionRef = link.code;
+        }
+      }
+      if (acquisitionSource === "direct" && req.body.source === "cross_sell") {
+        acquisitionSource = "cross_sell";
+      }
+
       // Get cart items
       const cartData = await storage.getCartItems(userId);
-      
+
       if (cartData.length === 0) {
         return res.status(400).json({ message: "Cart is empty" });
+      }
+
+      // ── C3 (§15): ATOMIC slot claims BEFORE any booking row or Stripe call ─────────────
+      // Each slot-bound item claims capacity via storage.bookSlot (conditional UPDATE ...
+      // WHERE booked_count < capacity RETURNING — the DB row transition IS the concurrency
+      // guard). If ANY item's slot just filled, release the slots already claimed in this
+      // request (compensation) and abort with 409 slot_unavailable — no bookings created,
+      // nothing charged. Claims that succeed stay claimed while the booking completes; if
+      // payment later fails the booking sits payment_pending and the slot stays held — the
+      // release on abandoned/refunded bookings is a filed follow-up alongside the existing
+      // payment_pending recovery design (webhook completes; admin refund path can release).
+      const claimedSlotIds: string[] = [];
+      for (const item of cartData) {
+        const itemSlotId = (item as any).slotId as string | null | undefined;
+        if (!itemSlotId || !item.service) continue;
+        const claimed = await storage.bookSlot(itemSlotId);
+        if (!claimed) {
+          for (const releaseId of claimedSlotIds) {
+            await storage.releaseSlot(releaseId).catch((e: any) =>
+              console.error(`[checkout] slot compensation release failed for ${releaseId}:`, e));
+          }
+          return res.status(409).json({
+            success: false,
+            error: "slot_unavailable",
+            serviceId: item.serviceId,
+            serviceName: item.service?.serviceName,
+            message: `The time slot for "${item.service?.serviceName ?? "an item"}" was just booked. Please pick another time.`,
+          });
+        }
+        claimedSlotIds.push(itemSlotId);
       }
       
       // safeParseRate: returns fallback when value is missing, non-numeric, or outside [0,1]
@@ -495,6 +458,12 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
           insuranceFee: insuranceFeeAmt.toFixed(2),
           providerEarnings: netExpertEarningsAmt.toFixed(2),
           status: "payment_pending",
+          // S4: first real writer of the attribution columns (source existed unwritten).
+          source: acquisitionSource,
+          ...(acquisitionRef ? { acquisitionRef } : {}),
+          // C3: stamped only because the atomic bookSlot claim above already succeeded for
+          // this item — the booking row records WHICH slot's capacity it holds.
+          ...((item as any).slotId ? { slotId: (item as any).slotId } : {}),
           ...(idempotencyKey ? { idempotencyKey } : {}),
         } as any);
         
@@ -571,8 +540,9 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         }
       }
       
-      // Canonical commission summary for the cart surface
-      const cartCommission = calculateCommission(subtotal, BookingType.EXPERIENCE_CART);
+      // R3/F6: commissionRate is now the REAL charged ratio (platformFee/subtotal), not the
+      // calculateCommission display literal (0.30) that matched no actual rate. Display-only field.
+      const effectiveCommissionRate = subtotal > 0 ? Number((platformFee / subtotal).toFixed(4)) : 0;
 
       res.status(201).json({
         success: true,
@@ -583,7 +553,7 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         total: total.toFixed(2),
         paymentIntent,
         bookingType: BookingType.EXPERIENCE_CART,
-        commissionRate: cartCommission.commissionRate,
+        commissionRate: effectiveCommissionRate,
         message: "Booking created successfully. Complete payment.",
       });
     } catch (err: any) {
@@ -691,6 +661,12 @@ router.get("/api/invoices/my", isAuthenticated, async (req, res) => {
 
 router.post("/api/stripe/connect/onboard", isAuthenticated, async (req, res) => {
     try {
+      // Honest degrade (§13): without a live Stripe key every call below throws a raw
+      // Stripe SDK auth error, which the catch below would otherwise surface as a
+      // generic 500. Never fake a connected/ready status — tell the earner plainly.
+      if (!process.env.STRIPE_SECRET_KEY) {
+        return res.status(503).json({ error: "stripe_unavailable", message: "Payouts onboarding is not yet available. Please check back soon." });
+      }
       const userId = (req.user as any).claims?.sub;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
@@ -737,6 +713,12 @@ router.get("/api/stripe/connect/status", isAuthenticated, async (req, res) => {
       if (!account.stripeAccountId) {
         return res.json({ connected: false, status: 'not_connected' });
       }
+      // Honest degrade (§13): an account was previously connected but the key is now
+      // absent (e.g. this environment) — report the last-known DB status rather than
+      // calling Stripe and surfacing a raw SDK error, or worse, faking "active".
+      if (!process.env.STRIPE_SECRET_KEY) {
+        return res.json({ connected: true, accountId: account.stripeAccountId, status: account.stripeAccountStatus ?? 'unknown', degraded: true });
+      }
 
       const { stripeConnectService } = await import('../services/stripe-connect.service');
       const status = await stripeConnectService.getAccountStatus(account.stripeAccountId);
@@ -759,6 +741,10 @@ router.get("/api/stripe/connect/status", isAuthenticated, async (req, res) => {
 
 router.get("/api/stripe/connect/dashboard", isAuthenticated, async (req, res) => {
     try {
+      // Honest degrade (§13): same reasoning as onboard/status above.
+      if (!process.env.STRIPE_SECRET_KEY) {
+        return res.status(503).json({ error: "stripe_unavailable", message: "Payouts onboarding is not yet available. Please check back soon." });
+      }
       const userId = (req.user as any).claims?.sub;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
@@ -855,6 +841,20 @@ router.get("/api/fee-bands/:bandKey", async (req, res) => {
       const isExpert = EXPERT_ROLES.has(user.role ?? "");
       if (!isProvider && !isExpert) {
         return res.status(403).json({ error: "Only providers and experts can request payouts" });
+      }
+
+      // §13: the admin processing step (PATCH /api/admin/payouts/:id) already refuses to
+      // transfer to a recipient without an active Stripe Connect account — but only AFTER
+      // the earner has already been told "Payout requested" and the request sits in the
+      // admin queue with no way back to explain why it stalled. Surface the same honest,
+      // actionable block up front so a not-ready earner learns why immediately instead of
+      // a request that can never be fulfilled. §14: read is session-scoped (own account).
+      const payoutAccount = await storage.getUserStripeAccount(userId);
+      if (!payoutAccount.stripeAccountId || !payoutAccount.canReceivePayments) {
+        return res.status(400).json({
+          error: "stripe_not_connected",
+          message: "Connect your Stripe account before requesting a payout. Finish setup in Settings to get started.",
+        });
       }
 
       // §15: one open request at a time — a pending/processing payout blocks a duplicate.

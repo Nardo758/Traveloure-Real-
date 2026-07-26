@@ -1,4 +1,4 @@
-import { useParams, Link, useLocation, useSearch } from "wouter";
+import { useParams, Link, useLocation, useSearch, Redirect } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
@@ -190,6 +190,16 @@ export default function ExpertDetailPage() {
         </div>
       </Layout>
     );
+  }
+
+  // S2 (redirect-when-claimed): an earner who has claimed a public storefront
+  // handle (users.handle, migration 136) is canonically represented at
+  // /p/:handle — this id-based browse-context page (/experts/:id,
+  // /local-experts/:id) redirects there client-side. Earners without a handle
+  // keep this page unchanged. Placed AFTER the loading/not-found returns above
+  // so `expert` is guaranteed loaded here (no flash-redirect on undefined).
+  if (typeof expert.handle === "string" && expert.handle.trim().length > 0) {
+    return <Redirect to={`/p/${expert.handle}`} />;
   }
 
   const fullName = `${expert.firstName || ""} ${expert.lastName || ""}`.trim();

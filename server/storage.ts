@@ -108,7 +108,7 @@ import {
   aiGeneratedItineraries,
   tripAnalyticsEnhanced,
 } from "@shared/schema";
-import { eq, ilike, and, desc, or, count, gt, gte, lte, avg, inArray, asc, isNotNull, isNull, sql as sqlOp } from "drizzle-orm";
+import { eq, ilike, and, desc, or, count, gt, gte, lte, avg, inArray, asc, isNotNull, isNull, ne, sql as sqlOp } from "drizzle-orm";
 import { authStorage } from "./replit_integrations/auth/storage";
 import type { User } from "@shared/models/auth";
 import {
@@ -357,12 +357,15 @@ export interface IStorage {
 
   // Vendor Availability Slots
   getVendorAvailabilitySlots(serviceId: string, date?: string): Promise<VendorAvailabilitySlot[]>;
+  getVendorAvailabilitySlotsInRange(serviceId: string, startDate: string, endDate: string): Promise<VendorAvailabilitySlot[]>;
   getProviderAvailabilitySlots(providerId: string): Promise<VendorAvailabilitySlot[]>;
   getVendorAvailabilitySlot(id: string): Promise<VendorAvailabilitySlot | undefined>;
   createVendorAvailabilitySlot(slot: InsertVendorAvailabilitySlot): Promise<VendorAvailabilitySlot>;
   updateVendorAvailabilitySlot(id: string, updates: Partial<InsertVendorAvailabilitySlot>): Promise<VendorAvailabilitySlot | undefined>;
   deleteVendorAvailabilitySlot(id: string): Promise<void>;
   bookSlot(id: string): Promise<VendorAvailabilitySlot | undefined>;
+  // C3: compensation release for a claimed slot (failed multi-item claim / future refund path).
+  releaseSlot(id: string): Promise<void>;
 
   // Coordination States
   getCoordinationStates(userId: string): Promise<CoordinationState[]>;
@@ -585,6 +588,10 @@ export interface IStorage {
   getAffiliateBookingRequestsByUser(userId: string): Promise<Omit<AffiliateBookingRequest, "affiliateUrl">[]>;
   getAffiliateBookingRequestsByExpert(expertId: string): Promise<AffiliateBookingRequest[]>;
   updateAffiliateBookingRequest(id: string, data: Partial<Pick<AffiliateBookingRequest, "status" | "expertNotes" | "confirmationRef" | "price" | "expertId" | "tripId">>): Promise<AffiliateBookingRequest | undefined>;
+  // R4/F7 (§15): atomic pending→confirmed claim used by the confirm site so a duplicate/concurrent
+  // confirm can't double-insert the affiliate earning it triggers. Returns undefined when the row
+  // was already confirmed (lost the race) — caller must treat that as an idempotent no-op.
+  confirmAffiliateBookingRequest(id: string, data: Partial<Pick<AffiliateBookingRequest, "expertNotes" | "confirmationRef" | "price" | "expertId" | "tripId">>): Promise<AffiliateBookingRequest | undefined>;
 
   // Affiliate Content Registry helpers
   registerAffiliateProduct(product: {
@@ -1881,7 +1888,7 @@ export class DatabaseStorage implements IStorage {
     return enriched;
   }
 
-  async addToCart(userId: string | null, item: { serviceId?: string; customVenueId?: string; contentType?: string; contentId?: string; contentMeta?: Record<string, any>; quantity?: number; tripId?: string; scheduledDate?: Date; notes?: string; experienceSlug?: string; guestSessionId?: string }): Promise<any> {
+  async addToCart(userId: string | null, item: { serviceId?: string; customVenueId?: string; contentType?: string; contentId?: string; contentMeta?: Record<string, any>; quantity?: number; tripId?: string; scheduledDate?: Date; slotId?: string; notes?: string; experienceSlug?: string; guestSessionId?: string }): Promise<any> {
     if (!userId && !item.guestSessionId) {
       throw new Error("Either userId or guestSessionId is required");
     }
@@ -1915,7 +1922,11 @@ export class DatabaseStorage implements IStorage {
 
     if (existing) {
       const [updated] = await db.update(cartItems)
-        .set({ quantity: (existing.quantity || 1) + (item.quantity || 1) })
+        .set({
+          quantity: (existing.quantity || 1) + (item.quantity || 1),
+          // C3: re-adding with a picked slot attaches (or replaces) the slot + its derived date.
+          ...(item.slotId ? { slotId: item.slotId, scheduledDate: item.scheduledDate } : {}),
+        })
         .where(eq(cartItems.id, existing.id))
         .returning();
       return updated;
@@ -1933,6 +1944,7 @@ export class DatabaseStorage implements IStorage {
       quantity: item.quantity || 1,
       tripId: item.tripId,
       scheduledDate: item.scheduledDate,
+      slotId: item.slotId || null,
       notes: item.notes
     }).returning();
     return newItem;
@@ -2288,6 +2300,17 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(vendorAvailabilitySlots).where(and(...conditions)).orderBy(vendorAvailabilitySlots.date);
   }
 
+  // C2: month-range read for the public per-service availability calendar.
+  async getVendorAvailabilitySlotsInRange(serviceId: string, startDate: string, endDate: string): Promise<VendorAvailabilitySlot[]> {
+    return await db.select().from(vendorAvailabilitySlots)
+      .where(and(
+        eq(vendorAvailabilitySlots.serviceId, serviceId),
+        gte(vendorAvailabilitySlots.date, startDate),
+        lte(vendorAvailabilitySlots.date, endDate),
+      ))
+      .orderBy(vendorAvailabilitySlots.date);
+  }
+
   async getProviderAvailabilitySlots(providerId: string): Promise<VendorAvailabilitySlot[]> {
     return await db.select().from(vendorAvailabilitySlots)
       .where(eq(vendorAvailabilitySlots.providerId, providerId))
@@ -2316,18 +2339,44 @@ export class DatabaseStorage implements IStorage {
     await db.delete(vendorAvailabilitySlots).where(eq(vendorAvailabilitySlots.id, id));
   }
 
+  // C3 (§15): ATOMIC capacity claim — the conditional UPDATE is the concurrency guard. The
+  // previous implementation was a check-then-update TOCTOU (two concurrent bookings could both
+  // read bookedCount=0 and both "claim" the last spot, overbooking past capacity); it also had
+  // zero callers, so this rewrite regresses nothing. Returns undefined when the slot is missing,
+  // blocked, in the past, or full — the caller's "this slot just booked" signal. Claim the slot
+  // FIRST, then create bookings / call Stripe; release via releaseSlot on a downstream failure.
   async bookSlot(id: string): Promise<VendorAvailabilitySlot | undefined> {
-    const [slot] = await db.select().from(vendorAvailabilitySlots).where(eq(vendorAvailabilitySlots.id, id));
-    if (!slot) return undefined;
-    
-    const newBookedCount = (slot.bookedCount || 0) + 1;
-    const newStatus = newBookedCount >= (slot.capacity || 1) ? "fully_booked" : "available";
-    
-    const [updated] = await db.update(vendorAvailabilitySlots)
-      .set({ bookedCount: newBookedCount, status: newStatus, updatedAt: new Date() })
-      .where(eq(vendorAvailabilitySlots.id, id))
-      .returning();
-    return updated;
+    const result = await db.execute(sqlOp`
+      UPDATE vendor_availability_slots
+      SET booked_count = COALESCE(booked_count, 0) + 1,
+          status = CASE
+            WHEN COALESCE(booked_count, 0) + 1 >= COALESCE(capacity, 1) THEN 'fully_booked'
+            ELSE status
+          END,
+          updated_at = NOW()
+      WHERE id = ${id}
+        AND status <> 'blocked'
+        AND date >= CURRENT_DATE
+        AND COALESCE(booked_count, 0) < COALESCE(capacity, 1)
+      RETURNING *
+    `);
+    return (result.rows?.[0] as VendorAvailabilitySlot | undefined) ?? undefined;
+  }
+
+  // C3: compensation for a failed multi-slot claim (and the future refund-release path). Never
+  // drops below zero; re-opens a fully_booked slot when capacity frees up (blocked stays blocked).
+  async releaseSlot(id: string): Promise<void> {
+    await db.execute(sqlOp`
+      UPDATE vendor_availability_slots
+      SET booked_count = GREATEST(COALESCE(booked_count, 0) - 1, 0),
+          status = CASE
+            WHEN status = 'fully_booked' AND GREATEST(COALESCE(booked_count, 0) - 1, 0) < COALESCE(capacity, 1)
+              THEN 'available'
+            ELSE status
+          END,
+          updated_at = NOW()
+      WHERE id = ${id}
+    `);
   }
 
   // Coordination States
@@ -3434,17 +3483,23 @@ export class DatabaseStorage implements IStorage {
   async createAffiliateEarning(earning: InsertAffiliateEarning): Promise<AffiliateEarning> {
     const [newEarning] = await db.insert(affiliateEarnings).values(earning).returning();
 
-    // Also create an expert earning record for the expert's share
-    await this.createExpertEarning({
-      expertId: earning.expertId!,
-      type: 'affiliate_commission',
-      amount: earning.expertShare,
-      referenceId: newEarning.id,
-      referenceType: 'affiliate_earning',
-      description: `Affiliate commission from booking`,
-      status: 'held', // escrow: born held (migration 112)
-      availableAt: availableAtFor('affiliate_commission'), // P2: clears after affiliate window
-    });
+    // Also create an expert earning record for the expert's share — only when there's a real
+    // expert counterparty to credit (expert_earnings.expert_id is NOT NULL). R4/F7: the confirm
+    // site can create an affiliate_earnings row with no expert assigned yet (an unclaimed
+    // booking confirmed by an admin); skip the expert-earning side record rather than violating
+    // the FK / crediting the wrong actor.
+    if (earning.expertId) {
+      await this.createExpertEarning({
+        expertId: earning.expertId,
+        type: 'affiliate_commission',
+        amount: earning.expertShare,
+        referenceId: newEarning.id,
+        referenceType: 'affiliate_earning',
+        description: `Affiliate commission from booking`,
+        status: 'held', // escrow: born held (migration 112)
+        availableAt: availableAtFor('affiliate_commission'), // P2: clears after affiliate window
+      });
+    }
 
     return newEarning;
   }
@@ -4805,6 +4860,23 @@ export class DatabaseStorage implements IStorage {
       .update(affiliateBookingRequests)
       .set({ ...data, updatedAt: new Date() })
       .where(eq(affiliateBookingRequests.id, id))
+      .returning();
+    return updated;
+  }
+
+  async confirmAffiliateBookingRequest(
+    id: string,
+    data: Partial<Pick<AffiliateBookingRequest, "expertNotes" | "confirmationRef" | "price" | "expertId" | "tripId">>,
+  ): Promise<AffiliateBookingRequest | undefined> {
+    // §15 atomic claim: transitions pending/failed/etc → 'confirmed' ONLY when the row is not
+    // already 'confirmed'. A concurrent/duplicate confirm request matches 0 rows and returns
+    // undefined — the caller (the R4/F7 earning-ledger write) must treat that as "already
+    // confirmed" and skip re-running the confirm side-effects (itinerary item + affiliate earning),
+    // not retry the insert.
+    const [updated] = await db
+      .update(affiliateBookingRequests)
+      .set({ ...data, status: "confirmed", updatedAt: new Date() })
+      .where(and(eq(affiliateBookingRequests.id, id), ne(affiliateBookingRequests.status, "confirmed")))
       .returning();
     return updated;
   }

@@ -57,6 +57,8 @@ import { format, parseISO } from "date-fns";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import StripeCheckout from "@/components/booking/StripeCheckout";
 import { UpsellSlot, UpsellErrorBoundary } from "@/components/UpsellSlot";
+import { getAcquisitionRef } from "@/lib/acquisition";
+import { useSavedPayment, formatCardLabel } from "@/hooks/use-saved-payment";
 
 const SUPPORTED_CURRENCIES = [
   { code: "USD", label: "USD – US Dollar" },
@@ -83,6 +85,7 @@ interface CartItem {
   } | null;
   quantity: number;
   scheduledDate: string | null;
+  slotId?: string | null;
   notes: string | null;
   service: {
     id: string;
@@ -200,6 +203,8 @@ interface OptimizationPaymentState {
 export default function CartPage() {
   const { user, isLoading: authLoading, updatePreferredCurrency } = useAuth();
   const { openSignInModal } = useSignInModal();
+  // FP-2: one-click "pay with saved card" for the optimization fee.
+  const savedPayment = useSavedPayment(!!user);
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const searchString = useSearch();
@@ -207,7 +212,6 @@ export default function CartPage() {
   // Generated once per page mount — stays stable across multiple "Pay Now" clicks
   // so duplicate submissions carry the same key and are de-duped server-side + by Stripe.
   const [checkoutIdempotencyKey] = useState<string>(() => crypto.randomUUID());
-  const [generating, setGenerating] = useState(false);
   const [optimizationResult, setOptimizationResult] = useState<OptimizationResult | null>(null);
   const [experienceSlug, setExperienceSlug] = useState<string | null>(null);
   const [experienceTitle, setExperienceTitle] = useState<string | null>(null);
@@ -218,6 +222,8 @@ export default function CartPage() {
   const [optimizationPreview, setOptimizationPreview] = useState<OptimizationPreview | null>(null);
   const [optimizationPayment, setOptimizationPayment] = useState<OptimizationPaymentState | null>(null);
   const [paymentLoading, setPaymentLoading] = useState(false);
+  // FP-2: one-click charge in flight (separate from paymentLoading, which covers the sheet setup path).
+  const [oneClickLoading, setOneClickLoading] = useState(false);
   // Funnel PR2: quiet preview fetched on the CART step so the optimization's real
   // value (savings %, plan score) is visible before the user reaches the optimize
   // step. Same free endpoint the optimize step uses; the nudge renders only when
@@ -292,26 +298,22 @@ export default function CartPage() {
     });
   }, [user, authLoading, guestPendingIds]);
 
-  // Load experience context on mount.
-  // Only apply an experienceSlug filter when the context has an explicit slug —
-  // i.e. the user arrived via an experience-template flow. In all other cases
-  // (direct /cart visit, general browsing) we leave experienceSlug null so the
-  // API returns every item for the user rather than a narrow slug-filtered subset.
-  // Previously this effect set a synthetic fallback like "general" or
-  // "travel_paris" which caused the server to exclude items stored under real
-  // experience slugs, making the cart appear empty even though the TripStrip
-  // (which fetches without a slug) correctly showed a non-zero count.
+  // Load experience context on mount
   useEffect(() => {
     const context = getTripContext();
-    if (context.experienceSlug) {
-      setExperienceSlug(context.experienceSlug);
-      setExperienceTitle(context.title || context.experienceType || null);
-    } else if (Object.keys(context).length > 0) {
-      // Context exists but has no slug — show title/type metadata without filtering the cart.
-      setExperienceTitle(context.title || context.experienceType || null);
-      // experienceSlug stays null → fetches all items unfiltered.
+    if (Object.keys(context).length > 0) {
+      if (context.experienceSlug) {
+        setExperienceSlug(context.experienceSlug);
+        setExperienceTitle(context.title || context.experienceType || null);
+      } else {
+        // Use experienceType + destination as fallback key to avoid cross-experience contamination
+        const fallbackKey = `${context.experienceType || 'general'}_${context.destination || 'default'}`.replace(/\s+/g, '-').toLowerCase();
+        setExperienceSlug(fallbackKey);
+        setExperienceTitle(context.title || context.experienceType || null);
+      }
+    } else {
+      setExperienceSlug("general");
     }
-    // No context at all → experienceSlug stays null → fetch all items.
   }, []);
 
   // Load external cart items from sessionStorage when experience slug changes
@@ -376,6 +378,24 @@ export default function CartPage() {
     amount: number;
   } | null>(null);
   const [checkoutBookingIds, setCheckoutBookingIds] = useState<string[]>([]);
+  // FP-4: once /api/checkout succeeds it clears the cart server-side (bookings are
+  // created payment_pending before the Stripe charge), so the live cart query goes
+  // empty right under the payment step. Snapshot the real checkout response here so
+  // the Order Review + fee breakdown the traveler sees while entering card details
+  // reflects what they're actually about to pay — not an empty cart or the pre-checkout
+  // (concierge-fee-less) estimate. Server-derived fields only, no invented numbers (§13/§14).
+  const [checkoutOrderSnapshot, setCheckoutOrderSnapshot] = useState<{
+    items: CartItem[];
+    externalItems: ExternalCartItem[];
+    subtotal: string;
+    platformFee: string;
+    conciergeFee: string;
+    total: string;
+  } | null>(null);
+  // FP-4: C3 slot-conflict — which cart item(s) (by serviceId) the last checkout
+  // attempt flagged as slot_unavailable, so the traveler sees WHICH item to fix
+  // instead of just a toast that vanishes.
+  const [flaggedSlotItemIds, setFlaggedSlotItemIds] = useState<Set<string>>(new Set());
 
   // ── Start Planning flow ──────────────────────────────────────────────────
   const [showPlanningDialog, setShowPlanningDialog] = useState(false);
@@ -502,6 +522,11 @@ export default function CartPage() {
   });
 
   const checkoutMutation = useMutation({
+    onMutate: () => {
+      // A fresh attempt supersedes any earlier slot flag — if the same item fails
+      // again the error handler below re-flags it.
+      setFlaggedSlotItemIds(new Set());
+    },
     mutationFn: async () => {
       if ((cart?.items?.length || 0) === 0) {
         throw new Error("No platform items to checkout");
@@ -509,13 +534,26 @@ export default function CartPage() {
       const res = await apiRequest("POST", "/api/checkout", {
         currency: displayCurrency,
         idempotencyKey: checkoutIdempotencyKey,
+        // S4: raw captured short-link code; the SERVER derives the attribution source
+        // (direct | link | cross_sell) — the client never asserts it.
+        ...(getAcquisitionRef() ? { ref: getAcquisitionRef() } : {}),
       });
       return res.json();
     },
     onSuccess: (data: any) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/cart", experienceSlug] });
-      queryClient.invalidateQueries({ queryKey: ["/api/my-bookings"] });
       if (data.paymentIntent) {
+        // FP-4: snapshot the real, server-derived breakdown (incl. conciergeFee, which
+        // the live GET /api/cart never computes) BEFORE invalidating — the cart is about
+        // to go empty (checkout already cleared it server-side), but the payment step
+        // still needs to show the traveler exactly what they're paying for.
+        setCheckoutOrderSnapshot({
+          items: cart?.items || [],
+          externalItems,
+          subtotal: data.subtotal,
+          platformFee: data.platformFee,
+          conciergeFee: data.conciergeFee ?? "0",
+          total: data.total,
+        });
         setCheckoutPaymentIntent(data.paymentIntent);
         setCheckoutBookingIds(data.bookings?.map((b: any) => b.booking?.id || b.id).filter(Boolean) || []);
         setFlowStep("payment");
@@ -523,10 +561,35 @@ export default function CartPage() {
         toast({ title: "Booking created!", description: "Your services have been booked." });
         setLocation("/bookings");
       }
+      queryClient.invalidateQueries({ queryKey: ["/api/cart", experienceSlug] });
+      queryClient.invalidateQueries({ queryKey: ["/api/my-bookings"] });
     },
     onError: (error: any) => {
-      if (error?.message === "No platform items to checkout") {
+      const msg = String(error?.message ?? "");
+      if (msg === "No platform items to checkout") {
         toast({ variant: "destructive", title: "No bookable items", description: "External bookings must be completed on provider websites." });
+      } else if (msg.includes("slot_unavailable") || msg.includes("was just booked")) {
+        // C3: a picked availability slot filled between add-to-cart and checkout — nothing was
+        // charged and no booking was created; the traveler picks another time.
+        // FP-4: pull the affected serviceId out of the 409 body so the item itself can be
+        // flagged in the list, not just a toast that disappears — and make sure the
+        // traveler actually lands where that item (with its Remove button) is visible.
+        let affectedServiceId: string | undefined;
+        try {
+          const jsonStart = msg.indexOf(": ");
+          const parsed = JSON.parse(jsonStart >= 0 ? msg.slice(jsonStart + 2) : msg);
+          if (typeof parsed?.serviceId === "string") affectedServiceId = parsed.serviceId;
+        } catch { /* best-effort parse; toast still fires below */ }
+        if (affectedServiceId) {
+          setFlaggedSlotItemIds((prev) => new Set(prev).add(affectedServiceId!));
+        }
+        setFlowStep("cart");
+        toast({
+          variant: "destructive",
+          title: "That time slot just booked",
+          description: "One of your items' time slots is no longer available. Please pick another time from the service page, or remove it.",
+        });
+        queryClient.invalidateQueries({ queryKey: ["/api/cart", experienceSlug] });
       } else {
         toast({ variant: "destructive", title: "Checkout failed" });
       }
@@ -857,6 +920,64 @@ export default function CartPage() {
     }
   };
 
+  // FP-2: one-click — charge the saved default card off-session, no payment sheet.
+  // Tri-state per FP-1's contract: succeeded (skip straight to /confirm), requiresAction
+  // (fall back to the sheet with the returned clientSecret), or the endpoint's normal
+  // freeRerun short-circuit (identical to the sheet path).
+  const payWithSavedCard = async () => {
+    if (!user) {
+      openSignInModal();
+      return;
+    }
+    if (!optimizationPreview) return;
+    setOneClickLoading(true);
+    try {
+      const ctxAtPayment = getTripContext();
+      const tripId: string | undefined = ctxAtPayment.tripId;
+      const userExperienceId: string | undefined = ctxAtPayment.userExperienceId || ctxAtPayment.id;
+
+      const res = await fetch("/api/optimization-payments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          tripId,
+          userExperienceId,
+          comparisonContext: { destination: experienceTitle },
+          useSavedCard: true,
+        }),
+      });
+      if (!res.ok) throw new Error("Could not start payment");
+      const data = await res.json();
+
+      if (data.freeRerun) {
+        await createComparison();
+        return;
+      }
+      if (data.oneClick && data.status === "succeeded") {
+        toast({ title: "Payment successful", description: "Building your optimized itinerary..." });
+        await handleOptimizationPaymentSuccess(data.paymentIntentId);
+        return;
+      }
+      if (data.requiresAction) {
+        // Bank demands 3DS — fall back to the interactive sheet for this one charge.
+        setOptimizationPayment({
+          clientSecret: data.clientSecret,
+          paymentIntentId: data.paymentIntentId,
+          feeCents: data.feeCents,
+          currency: data.currency || "USD",
+        });
+        return;
+      }
+      // No saved method after all (shouldn't happen if hasDefault was true) — fall back to the sheet.
+      await requestOptimizationPayment();
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Payment failed", description: err.message });
+    } finally {
+      setOneClickLoading(false);
+    }
+  };
+
   // Called after optimization payment succeeds
   const handleOptimizationPaymentSuccess = async (paymentIntentId: string) => {
     try {
@@ -971,118 +1092,6 @@ export default function CartPage() {
       });
     } finally {
       setCreatingComparison(false);
-    }
-  };
-
-  const generateItinerary = async () => {
-    // Prevent double-clicks
-    if (generating) return;
-    
-    const platformItems = cart?.items || [];
-    // Wait for data to be ready
-    if (isLoading) {
-      toast({ title: "Loading cart...", description: "Please wait a moment" });
-      return;
-    }
-    if (platformItems.length === 0 && externalItems.length === 0) {
-      toast({ variant: "destructive", title: "Cart is empty", description: "Add items to your cart first" });
-      return;
-    }
-    setGenerating(true);
-    
-    // Try to get experience context from session storage
-    const experienceContext: TripContext | undefined = getTripContext();
-    
-    // Build services from platform items
-    const platformServices = platformItems.map(item => ({
-      name: item.service?.serviceName,
-      provider: item.service?.providerName || "Provider",
-      price: parseFloat(item.service?.price || "0"),
-      category: item.service?.serviceType || "service"
-    }));
-    
-    // Build services from external items  
-    const externalServices = externalItems.map(item => ({
-      name: item.name,
-      provider: item.provider || "External Provider",
-      price: item.price,
-      category: item.type
-    }));
-    
-    // Derive destination from available data
-    const getDestination = () => {
-      if (experienceContext?.destination) return experienceContext.destination;
-      if (platformItems[0]?.service?.location) return platformItems[0].service.location;
-      
-      // Check external items for destination data
-      for (const extItem of externalItems) {
-        if (extItem?.metadata?.meetingPoint) return extItem.metadata.meetingPoint;
-        // Flight destination (from name like "NYC → LAX")
-        if (extItem?.name?.includes('→')) {
-          const destCode = extItem.name.split('→')[1]?.trim();
-          if (destCode) return destCode;
-        }
-        // Hotel location (from rawData if available)
-        if (extItem?.type === 'hotels' || extItem?.type === 'accommodations') {
-          const rawData = extItem?.metadata?.rawData;
-          // Check various Amadeus hotel location fields
-          if (rawData?.hotel?.address?.cityName) return rawData.hotel.address.cityName;
-          if (rawData?.hotel?.cityCode) return rawData.hotel.cityCode;
-          if (rawData?.destinationLocation) return rawData.destinationLocation;
-        }
-        // Flight destination from rawData
-        if (extItem?.type === 'flights') {
-          const rawData = extItem?.metadata?.rawData;
-          if (rawData?.itineraries?.[0]?.segments) {
-            const segments = rawData.itineraries[0].segments;
-            const lastSegment = segments[segments.length - 1];
-            if (lastSegment?.arrival?.iataCode) return lastSegment.arrival.iataCode;
-          }
-        }
-      }
-      return "Your destination";
-    };
-    
-    // CON-A.P1: free preview path. Full LLM optimization is delivered via the gated
-    // paid path (/api/optimization-payments → /confirm) surfaced from the Concierge UI.
-    const previewItems = [
-      ...platformServices.map(s => ({
-        serviceType: s.category || "sightseeing",
-        price: s.price,
-        duration: 90,
-        dayNumber: 1,
-      })),
-      ...externalServices.map((s, i) => ({
-        serviceType: s.category || "activity",
-        price: s.price,
-        duration: 120,
-        dayNumber: Math.floor(i / 3) + 1,
-      })),
-    ];
-
-    try {
-      const response = await fetch("/api/optimization-preview", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          items: previewItems,
-          eventType: experienceContext?.experienceType,
-        }),
-      });
-      if (response.ok) {
-        const preview: OptimizationPreview = await response.json();
-        setOptimizationPreview(preview);
-        setOptimizationPayment(null);
-        setFlowStep("optimize");
-      } else {
-        toast({ variant: "destructive", title: "Failed to generate itinerary" });
-      }
-    } catch (error) {
-      console.error("Failed to generate itinerary:", error);
-      toast({ variant: "destructive", title: "Failed to generate itinerary" });
-    } finally {
-      setGenerating(false);
     }
   };
 
@@ -1375,9 +1384,22 @@ export default function CartPage() {
                       );
                     }
 
+                    const slotFlagged = !!(item.serviceId && flaggedSlotItemIds.has(item.serviceId));
+
                     return (
-                    <Card key={item.id} data-testid={`cart-item-${item.id}`}>
+                    <Card key={item.id} data-testid={`cart-item-${item.id}`} className={slotFlagged ? "border-destructive/60" : undefined}>
                       <CardContent className="p-4">
+                        {slotFlagged && (
+                          <div
+                            className="mb-3 flex items-start gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive"
+                            data-testid={`banner-slot-unavailable-${item.id}`}
+                          >
+                            <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                            <span>
+                              This time slot was just booked by someone else. Pick a new time from the service page, or remove this item below.
+                            </span>
+                          </div>
+                        )}
                         <div className="flex gap-4">
                           <div className="flex-1">
                             <h3 className="font-semibold" data-testid={`text-service-name-${item.id}`}>
@@ -1402,6 +1424,15 @@ export default function CartPage() {
                                 </span>
                               )}
                             </div>
+                            {item.slotId && item.scheduledDate && (
+                              <div
+                                className="flex items-center gap-1 mt-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-400"
+                                data-testid={`text-slot-held-${item.id}`}
+                              >
+                                <Lock className="w-3 h-3" />
+                                Time slot held at checkout: {format(new Date(item.scheduledDate), "PPP")}
+                              </div>
+                            )}
                           </div>
                           <div className="text-right">
                             <p className="font-bold text-lg" data-testid={`text-price-${item.id}`}>
@@ -1882,7 +1913,39 @@ export default function CartPage() {
                         </div>
                       )}
 
-                      {!optimizationPayment && (
+                      {/* FP-2: one-click when a default saved card exists and this isn't the
+                          free re-run (nothing to charge there). */}
+                      {!optimizationPayment && !optimizationPreview.freeRerun && savedPayment.hasDefault ? (
+                        <div className="space-y-2">
+                          <Button
+                            className="w-full bg-primary hover:bg-primary/90"
+                            size="lg"
+                            onClick={payWithSavedCard}
+                            disabled={oneClickLoading || paymentLoading || creatingComparison}
+                            data-testid="button-pay-saved-card-optimization"
+                          >
+                            {oneClickLoading || creatingComparison ? (
+                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            ) : (
+                              <Lock className="w-4 h-4 mr-2" />
+                            )}
+                            {creatingComparison
+                              ? "Building..."
+                              : oneClickLoading
+                                ? "Charging..."
+                                : `Pay ${formatPrice(optimizationPreview.feeCents / 100)} with ${formatCardLabel(savedPayment.defaultCard)}`}
+                          </Button>
+                          <button
+                            type="button"
+                            className="w-full text-center text-xs text-muted-foreground hover:text-foreground underline underline-offset-2"
+                            onClick={requestOptimizationPayment}
+                            disabled={oneClickLoading || paymentLoading || creatingComparison}
+                            data-testid="button-use-different-card-optimization"
+                          >
+                            Use a different card
+                          </button>
+                        </div>
+                      ) : !optimizationPayment && (
                         <Button
                           className="w-full bg-primary hover:bg-primary/90"
                           size="lg"
@@ -2130,7 +2193,18 @@ export default function CartPage() {
                           onError={(error) => {
                             toast({ variant: "destructive", title: "Payment failed", description: error });
                           }}
-                          onCancel={() => setFlowStep("itinerary")}
+                          onCancel={() => {
+                            // FP-4: this used to jump to the "itinerary" step, which is only ever
+                            // populated by a full-optimization run this flow doesn't produce — landing
+                            // there showed an empty page with no way back to the pending payment.
+                            // The booking was already created payment_pending server-side before this
+                            // Stripe step; staying here (same clientSecret) lets the traveler retry
+                            // immediately instead of losing track of it.
+                            toast({
+                              title: "Payment not completed",
+                              description: "Your booking is saved and pending payment. Retry above, or finish it later from My Bookings.",
+                            });
+                          }}
                         />
                       </CardContent>
                     </Card>
@@ -2161,7 +2235,7 @@ export default function CartPage() {
                     </CardHeader>
                     <CardContent>
                       <div className="space-y-3">
-                        {(cart?.items || []).map((item) => (
+                        {(checkoutOrderSnapshot ? checkoutOrderSnapshot.items : (cart?.items || [])).map((item) => (
                           <div key={item.id} className="flex justify-between items-center py-2 border-b last:border-0">
                             <div>
                               <div className="font-medium">{item.service?.serviceName}</div>
@@ -2194,9 +2268,15 @@ export default function CartPage() {
                       <CardTitle>Complete Booking</CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-3">
+                      {/* FP-4: once checkout has run, these figures come straight from that
+                          response — the exact amount Stripe is charging above — instead of the
+                          live cart query (already emptied server-side) or the pre-checkout
+                          estimate (which never includes the Booking Concierge fee; see filed gap). */}
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Subtotal</span>
-                        <span>{formatPrice(combinedSubtotal)}</span>
+                        <span data-testid="text-subtotal-payment">
+                          {formatPrice(checkoutOrderSnapshot ? parseFloat(checkoutOrderSnapshot.subtotal) : combinedSubtotal)}
+                        </span>
                       </div>
                       {optimizationResult && optimizationResult.estimatedTotal.savings > 0 && (
                         <div className="flex justify-between text-green-600">
@@ -2206,18 +2286,27 @@ export default function CartPage() {
                       )}
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Platform fee</span>
-                        <span>{formatPrice(platformFee)}</span>
+                        <span data-testid="text-platform-fee-payment">
+                          {formatPrice(checkoutOrderSnapshot ? parseFloat(checkoutOrderSnapshot.platformFee) : platformFee)}
+                        </span>
                       </div>
-                      {conciergeFee > 0 && (
+                      {(checkoutOrderSnapshot ? parseFloat(checkoutOrderSnapshot.conciergeFee) : conciergeFee) > 0 && (
                         <div className="flex justify-between">
                           <span className="text-muted-foreground">Booking Concierge fee</span>
-                          <span data-testid="text-concierge-fee-payment">{formatPrice(conciergeFee)}</span>
+                          <span data-testid="text-concierge-fee-payment">
+                            {formatPrice(checkoutOrderSnapshot ? parseFloat(checkoutOrderSnapshot.conciergeFee) : conciergeFee)}
+                          </span>
                         </div>
                       )}
                       <Separator />
                       <div className="flex justify-between font-bold text-lg">
                         <span>Total</span>
-                        <span>{formatPrice(combinedTotal - (optimizationResult?.estimatedTotal?.savings || 0))}</span>
+                        <span data-testid="text-total-payment">
+                          {formatPrice(
+                            (checkoutOrderSnapshot ? parseFloat(checkoutOrderSnapshot.total) : combinedTotal) -
+                              (optimizationResult?.estimatedTotal?.savings || 0)
+                          )}
+                        </span>
                       </div>
                     </CardContent>
                     <CardFooter className="flex-col gap-3">
