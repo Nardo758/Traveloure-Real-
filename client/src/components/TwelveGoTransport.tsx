@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Train, Bus, Ship, Plane, ExternalLink, MapPin, Calendar } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { useContentAgentBooking } from "@/hooks/use-content-agent-booking";
 
 interface TwelveGoTransportProps {
   origin?: string;
@@ -68,24 +69,32 @@ export function TwelveGoTransport({
 }: TwelveGoTransportProps) {
   
   const hasRoute = origin && destination;
-  const bookingUrl = hasRoute 
+  const bookingUrl = hasRoute
     ? generateDeepLink(origin, destination, departureDate, passengers)
     : generateSearchLink(destination);
 
-  const handleBookClick = () => {
-    window.open(bookingUrl, '_blank', 'noopener,noreferrer');
-  };
+  // §16 (item ④, decision B): route the transport search through the in-platform agent rail with
+  // the route as context — never a raw window.open. An agent finds + books the option and adds it to
+  // the trip; the affiliate URL stays server-side.
+  const { book: handleBookClick, isPending, requested } = useContentAgentBooking({
+    itemName: hasRoute ? `Transport: ${origin} → ${destination}` : `Ground transport${destination ? ` in ${destination}` : ""}`,
+    itemDescription: [departureDate ? `Date ${departureDate}` : null, passengers > 1 ? `${passengers} passengers` : null].filter(Boolean).join(" · ") || null,
+    partnerName: "12Go Asia",
+    partnerCategory: "transport",
+    affiliateUrl: bookingUrl,
+    travelers: passengers,
+  });
 
   if (variant === "button") {
     return (
       <Button 
         onClick={handleBookClick}
+        disabled={isPending || requested}
         className={className}
         data-testid="button-12go-transport"
       >
         <Train className="w-4 h-4 mr-2" />
-        Find Transportation
-        <ExternalLink className="w-3 h-3 ml-2" />
+        {requested ? "Agent notified" : "Find Transportation"}
       </Button>
     );
   }
@@ -106,9 +115,8 @@ export function TwelveGoTransport({
                 <p className="text-xs text-gray-500">Trains, buses, ferries via 12Go</p>
               </div>
             </div>
-            <Button size="sm" onClick={handleBookClick} data-testid="button-12go-search">
-              Search
-              <ExternalLink className="w-3 h-3 ml-1" />
+            <Button size="sm" onClick={handleBookClick} disabled={isPending || requested} data-testid="button-12go-search">
+              {requested ? "Notified" : "Find"}
             </Button>
           </div>
         </CardContent>
@@ -170,13 +178,13 @@ export function TwelveGoTransport({
           </Badge>
         </div>
 
-        <Button 
-          onClick={handleBookClick} 
+        <Button
+          onClick={handleBookClick}
+          disabled={isPending || requested}
           className="w-full"
           data-testid="button-12go-book"
         >
-          {hasRoute ? "Search Routes" : "Browse Transportation"}
-          <ExternalLink className="w-4 h-4 ml-2" />
+          {requested ? "Agent notified — we'll add it to your trip" : hasRoute ? "Find & book this route" : "Find transportation"}
         </Button>
         
         <p className="text-xs text-gray-400 text-center">

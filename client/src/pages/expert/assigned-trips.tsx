@@ -52,6 +52,17 @@ interface TripSuggestion {
   created_at: string;
 }
 
+interface CoordinationEngagement {
+  id: string;
+  tripId: string | null;
+  experienceType: string;
+  status: string | null;
+  destination: string | null;
+  dates: Record<string, unknown> | null;
+  feePaymentStatus: string | null;
+  createdAt: string | null;
+}
+
 interface SuggestionPayload {
   type: string;
   dayNumber?: number;
@@ -75,6 +86,14 @@ export default function ExpertAssignedTrips() {
   const [suggestDialogOpen, setSuggestDialogOpen] = useState(false);
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
   const [selectedTripTitle, setSelectedTripTitle] = useState<string>("");
+  // Grouped-by-client view — absorbs the retired /expert/clients page (sidebar audit, ratified
+  // 2026-07-25): that page re-rendered this exact query grouped by traveler, so the grouping
+  // lives here now. ?view=clients (the old dashboard "My Clients" link) opens it directly.
+  const [view, setView] = useState<"trips" | "clients">(() =>
+    typeof window !== "undefined" && new URLSearchParams(window.location.search).get("view") === "clients"
+      ? "clients"
+      : "trips",
+  );
 
   const [form, setForm] = useState({
     type: "activity",
@@ -88,6 +107,14 @@ export default function ExpertAssignedTrips() {
     queryKey: ["/api/expert/assigned-trips"],
     staleTime: 30000,
   });
+
+  // Factory wire A: event-coordination engagements assigned to this expert (Phase-1c admin
+  // assignment previously dead-ended — no expert-side list existed).
+  const { data: engagementsData } = useQuery<{ engagements: CoordinationEngagement[] }>({
+    queryKey: ["/api/expert/coordination-engagements"],
+    staleTime: 30000,
+  });
+  const engagements = engagementsData?.engagements ?? [];
 
   const { data: selectedTripSuggestions, isLoading: suggestionsLoading } = useQuery<{ suggestions: TripSuggestion[] }>({
     queryKey: [`/api/trips/${selectedTripId}/suggestions`],
@@ -149,12 +176,118 @@ export default function ExpertAssignedTrips() {
   return (
     <ExpertLayout>
       <div className="p-6 max-w-4xl mx-auto">
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-foreground">Assigned Trips</h1>
-          <p className="text-muted-foreground mt-1">
-            Trips assigned to you for curation. Submit suggestions and the traveler can approve them.
-          </p>
+        <div className="mb-6 flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-foreground">Assigned Trips</h1>
+            <p className="text-muted-foreground mt-1">
+              Trips assigned to you for curation. Submit suggestions and the traveler can approve them.
+            </p>
+          </div>
+          <div className="flex rounded-lg border border-border overflow-hidden flex-shrink-0" role="tablist">
+            <button
+              onClick={() => setView("trips")}
+              data-testid="toggle-view-trips"
+              className={`px-3 py-1.5 text-xs font-semibold ${view === "trips" ? "bg-foreground text-background" : "bg-background text-muted-foreground"}`}
+            >
+              By trip
+            </button>
+            <button
+              onClick={() => setView("clients")}
+              data-testid="toggle-view-clients"
+              className={`px-3 py-1.5 text-xs font-semibold ${view === "clients" ? "bg-foreground text-background" : "bg-background text-muted-foreground"}`}
+            >
+              By client
+            </button>
+          </div>
         </div>
+
+        {/* Coordination engagements — events this expert coordinates (assigned by an admin). */}
+        {engagements.length > 0 && (
+          <div className="mb-6" data-testid="coordination-engagements">
+            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+              Event coordination
+            </h2>
+            <div className="space-y-2">
+              {engagements.map((e) => (
+                <Card key={e.id} data-testid={`engagement-${e.id}`}>
+                  <CardContent className="p-3 flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-medium text-foreground capitalize">
+                          {e.experienceType} coordination
+                        </span>
+                        <Badge variant="secondary" className="text-[10px] capitalize">{e.status ?? "intake"}</Badge>
+                        {e.feePaymentStatus === "paid" && (
+                          <Badge className="text-[10px] bg-green-100 text-green-700 hover:bg-green-100">Fee paid</Badge>
+                        )}
+                      </div>
+                      <span className="text-xs text-muted-foreground">
+                        {e.destination ?? "Destination TBC"}
+                      </span>
+                    </div>
+                    {e.tripId ? (
+                      <Button size="sm" variant="outline" className="gap-1.5 flex-shrink-0" asChild data-testid={`button-open-engagement-${e.id}`}>
+                        <Link href={`/expert/workspace/${e.tripId}`}>
+                          <ExternalLink className="w-3.5 h-3.5" /> Open workspace
+                        </Link>
+                      </Button>
+                    ) : (
+                      // Honest state: a concierge-born engagement may not have a trip yet — there is
+                      // nothing to open until intake produces one (§13: no dead button pretending).
+                      <Badge variant="outline" className="flex-shrink-0 text-[10px]">Awaiting trip setup</Badge>
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Grouped-by-client view: same data, grouped by traveler. */}
+        {view === "clients" && assignedTrips && assignedTrips.length > 0 && (
+          <div className="space-y-4 mb-6" data-testid="clients-grouped-list">
+            {Object.entries(
+              assignedTrips.reduce<Record<string, AssignedTrip[]>>((acc, t) => {
+                const key = t.traveler_name || "Client";
+                (acc[key] = acc[key] ?? []).push(t);
+                return acc;
+              }, {}),
+            ).map(([client, trips]) => (
+              <Card key={client} data-testid={`client-group-${client}`}>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <Users className="w-4 h-4 text-muted-foreground" />
+                    {client}
+                    <span className="text-xs font-normal text-muted-foreground">
+                      {trips.length} trip{trips.length > 1 ? "s" : ""}
+                    </span>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="pt-0 space-y-2">
+                  {trips.map((trip) => (
+                    <div key={trip.trip_id} className="flex items-center justify-between gap-3 text-sm border border-border rounded-lg px-3 py-2">
+                      <div className="min-w-0">
+                        <span className="font-medium text-foreground truncate block">{trip.trip_title || trip.destination}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {trip.destination} · {formatDate(trip.start_date)} – {formatDate(trip.end_date)}
+                        </span>
+                      </div>
+                      {trip.status === "accepted" ? (
+                        <Button size="sm" variant="outline" className="gap-1.5 flex-shrink-0" asChild>
+                          <Link href={`/expert/workspace/${trip.trip_id}`}>
+                            <ExternalLink className="w-3.5 h-3.5" /> Workspace
+                          </Link>
+                        </Button>
+                      ) : (
+                        <Badge variant="secondary" className="flex-shrink-0">Pending</Badge>
+                      )}
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
 
         {isLoading ? (
           <div className="space-y-4">
@@ -168,7 +301,7 @@ export default function ExpertAssignedTrips() {
               </Card>
             ))}
           </div>
-        ) : !assignedTrips || assignedTrips.length === 0 ? (
+        ) : view === "clients" && assignedTrips && assignedTrips.length > 0 ? null : !assignedTrips || assignedTrips.length === 0 ? (
           <Card>
             <CardContent className="p-12 text-center">
               <Users className="w-12 h-12 mx-auto mb-4 text-muted-foreground opacity-40" />

@@ -391,6 +391,32 @@ export async function assignExpertAdvisorToRequest(
   `);
 }
 
+/**
+ * F1 (workstation-flows audit, ratified 2026-07-26): materialize a routed lead in the expert's
+ * request inbox. The auto-routed path stamped only `expert_requests.assigned_expert_id` — but
+ * Assigned Trips reads `trip_expert_advisors`, and workspace auth requires the advisor row, so a
+ * PAID request never reached the workstation (the notification pointed at work the expert could
+ * not open). This creates the same `pending` advisor row the direct-pick path
+ * (`assignExpertAdvisor`) writes, idempotently: an existing pending/accepted advisor row for
+ * this (trip, expert) pair short-circuits, so re-routing or a direct pick + a routed lead never
+ * duplicates the assignment.
+ */
+export async function ensureTripAdvisorRow(
+  tripId: string,
+  expertUserId: string,
+  message?: string | null,
+): Promise<void> {
+  await db.execute(sql`
+    INSERT INTO trip_expert_advisors (id, trip_id, local_expert_id, status, message, assigned_at)
+    SELECT ${crypto.randomUUID()}, ${tripId}, ${expertUserId}, 'pending', ${message ?? null}, NOW()
+    WHERE NOT EXISTS (
+      SELECT 1 FROM trip_expert_advisors
+      WHERE trip_id = ${tripId} AND local_expert_id = ${expertUserId}
+        AND status IN ('pending', 'accepted')
+    )
+  `);
+}
+
 export async function assignExpertAdvisor(values: {
   userId: string;
   tripId: string;

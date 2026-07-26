@@ -71,6 +71,7 @@ import {
   SURFACE_DEFAULT_AFFILIATE_CATEGORIES,
   SURFACE_SLUGS,
 } from "@shared/content-surface-map";
+import { contentOriginFor, CONTENT_ORIGIN_TRAVELER_LABEL } from "@shared/content-origin";
 import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant } from "../itinerary-optimizer";
 import { amadeusService } from "../services/amadeus.service";
 import { viatorService } from "../services/viator.service";
@@ -93,7 +94,7 @@ import { experienceCatalogService } from "../services/experience-catalog.service
 import { opportunityEngineService } from "../services/opportunity-engine.service";
 import { aiUsageService } from "../services/ai-usage.service";
 import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, createPublicProfile, getDisplayName, redactContactInfo } from "../utils/data-sanitizer";
-import { transportLegs, sharedItineraries, mapsExportCache, expertUpdatedItineraries, affiliateProducts, contentRegistry } from "@shared/schema";
+import { transportLegs, sharedItineraries, mapsExportCache, expertUpdatedItineraries, affiliateProducts, affiliatePartners, contentRegistry } from "@shared/schema";
 import { calculateTransportLegs, regenerateMapsUrlsFromLegs } from "../services/transport-leg-calculator";
 import { buildGoogleNavUrl, buildAppleNavUrl } from "../services/maps-url-builder";
 import { generateKml } from "../services/kml-generator";
@@ -7241,6 +7242,12 @@ router.get("/api/content/discover", async (req, res) => {
         price_display: p.price ? `${p.currency || "USD"} ${parseFloat(p.price).toFixed(0)}` : null,
         affiliate_url: p.affiliateUrl || p.productUrl || null,
         source: "Affiliate Partner",
+        // Item ⑤: canonical origin + disclosure label (was a hardcoded "Affiliate Partner" — G7).
+        origin: "affiliate" as const,
+        originLabel: CONTENT_ORIGIN_TRAVELER_LABEL.affiliate, // "Paid partner"
+        // Item ④: CTA classifier so the shared resolveContentCTA can pick the right button.
+        bookingType: p.bookingType ?? null,
+        availabilityStatus: p.availabilityStatus ?? null,
         rating: p.rating ? parseFloat(String(p.rating)) : null,
         city: p.city || null,
         country: p.country || null,
@@ -7271,6 +7278,10 @@ router.get("/api/content/discover", async (req, res) => {
           price_display: meta.price ? `USD ${parseFloat(meta.price).toFixed(0)}` : null,
           affiliate_url: affiliateUrl,
           source: "Traveloure Curated",
+          // Item ⑤: registry content is platform-origin unless its type says otherwise; a registry row
+          // carrying an affiliate link is disclosed as a paid partner.
+          origin: affiliateUrl ? ("affiliate" as const) : contentOriginFor(r.contentType),
+          originLabel: affiliateUrl ? CONTENT_ORIGIN_TRAVELER_LABEL.affiliate : CONTENT_ORIGIN_TRAVELER_LABEL[contentOriginFor(r.contentType)],
           rating: meta.rating ? parseFloat(String(meta.rating)) : null,
           city: meta.city || meta.location || city,
           country: meta.country || country,
@@ -7444,7 +7455,13 @@ router.post("/api/content/affiliate-redirect", async (req, res) => {
         const [product] = await db
           .select()
           .from(affiliateProducts)
-          .where(eq(affiliateProducts.id, itemId))
+          .where(and(
+            eq(affiliateProducts.id, itemId),
+            eq(affiliateProducts.isActive, true),
+            // Partner-level read-gate (migration 121, audit G-SEC): never emit an affiliate URL for a
+            // product whose partner is not admin-approved. An unapproved product is treated as absent.
+            sql`EXISTS (SELECT 1 FROM ${affiliatePartners} WHERE ${affiliatePartners.id} = ${affiliateProducts.partnerId} AND ${affiliatePartners.approvalStatus} = 'approved')`,
+          ))
           .limit(1);
         if (!product) return res.status(404).json({ message: "Item not found" });
         affiliateUrl = product.affiliateUrl || product.productUrl || null;

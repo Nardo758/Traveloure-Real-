@@ -482,4 +482,27 @@ export const MIGRATION_FILES = [
   // trip_contexts (user_id PK -> users, context jsonb, updated_at). No CHECK ->
   // no publish-time push trap. See CLAUDE.md migration-130 note.
   "130_trip_contexts.sql",
+  // 131: Content availability tagging + CTA booking classifier (remediation P1) — four ADDITIVE
+  // NULLABLE columns on affiliate_products (availability_status, available_from, available_to,
+  // booking_type). No DB CHECK → no publish-time push trap; enum value sets validated at zod layer.
+  // No backfill (§13 — the 9 existing products stay NULL until a real admin tagging pass).
+  "131_affiliate_availability_and_cta.sql",
+  // 132: DMO content in the central content system (approach A) — adds 'dmo_content' to the
+  // content_type enum (idempotent ADD VALUE, migration-0009 pattern) so DMO/scraped research can be
+  // registered into content_registry as the 'sourced' origin. EXPERT-WORKSPACE-ONLY: sourced content
+  // is hard-excluded from the traveler resolver (content-query.service.ts) + not in any surface map.
+  // Additive, no CHECK → no publish-time push trap.
+  "132_content_type_dmo_content.sql",
+  // 133: Ready-Made Trips (Trips by Locals) Phase 1 — trips.author_id + itinerary_items.gem_id
+  // (additive nullable), four NEW tables (ready_made_trips/ready_made_purchases/boards/board_items —
+  // CHECKs created WITH the tables, no legacy rows → no publish-push trap), 'ready_made_trip' fee band
+  // (platform take 0.25, max 0.25 = the 75% expert floor). See spec v3 + authoring brief v1.1.
+  "133_ready_made_trips.sql",
+  // 134: ready_made_trips.plan_type (additive nullable, no CHECK/DEFAULT — no publish-push trap).
+  // The "Type of Plan" line of the store's quality structure; required by the submit gate, vocab
+  // validated in code (shared/ready-made-plan-types.ts).
+  "134_ready_made_plan_type.sql",
+  // 135: clone_trip_id FK → ON DELETE SET NULL (constraint swap, no data/CHECK — no publish trap).
+  // Without it, revoking a refunded clone OR a buyer deleting their own cloned trip 23503'd.
+  "135_ready_made_clone_fk_set_null.sql",
 ] as const;

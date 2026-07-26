@@ -278,8 +278,6 @@ router.get("/api/revenue-splits", async (req, res) => {
     }
   });
 
-  // Expert Tips - Create a tip for an expert
-
 router.post("/api/checkout", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;

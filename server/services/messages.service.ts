@@ -180,6 +180,9 @@ export async function sendMessage(
     message: `${senderName} sent you a message`,
     relatedId: newMessage.id,
     relatedType: "message",
+    // F4 (workstation-flows audit): carry the sender so the notification can deep-link straight
+    // into the right chat thread (/chat?clientId=…) instead of the chat lobby.
+    data: { clientId: senderId },
   });
 
   return {

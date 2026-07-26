@@ -69,6 +69,7 @@ interface ApiNotification {
     tripId?: string;
     workspacePath?: string;
     chatId?: string;
+    clientId?: string;
   };
 }
 
@@ -85,6 +86,7 @@ interface MappedNotification {
   bookingId?: string;
   tripId?: string;
   workspacePath?: string;
+  clientId?: string;
 }
 
 export default function Notifications() {
@@ -110,6 +112,7 @@ export default function Notifications() {
         bookingId: n.data?.bookingId ?? n.relatedId,
         tripId: n.data?.tripId,
         workspacePath: n.data?.workspacePath,
+        clientId: n.data?.clientId,
       }));
       setNotifications(mapped);
     }
@@ -269,7 +272,20 @@ export default function Notifications() {
                                   data-testid={`button-open-workspace-${notification.index}`}
                                 >
                                   <Briefcase className="w-3 h-3 mr-1" />
-                                  Open Workspace
+                                  {/* Traveler-facing itinerary notifications carry a /trip/… path;
+                                      "Open Workspace" is expert vocabulary. */}
+                                  {notification.workspacePath?.startsWith("/trip/") ? "View Itinerary" : "Open Workspace"}
+                                </Button>
+                              </Link>
+                            ) : notification.type === "message_received" ? (
+                              <Link href={notification.clientId ? `/chat?clientId=${notification.clientId}` : "/chat"}>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="mt-2 h-7 px-3 text-xs"
+                                  data-testid={`button-open-chat-${notification.index}`}
+                                >
+                                  Open Chat
                                 </Button>
                               </Link>
                             ) : null}

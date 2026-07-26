@@ -119,6 +119,11 @@ jobs:
           GIT_COMMIT: ${{ github.sha }}
           NODE_ENV: development
           PORT: 5000
+          # 25 tests each reload the API-heavy /discover page from one loopback
+          # IP; the general /api limiter (100 req/min/IP) 429s late tests and
+          # CityGrid never leaves its skeleton. Exempt loopback for this
+          # test-only server. NEVER set this in production.
+          RATE_LIMIT_LOOPBACK_SKIP: '1'
           PGUSER: postgres
           PGPASSWORD: postgres
           PGHOST: localhost
