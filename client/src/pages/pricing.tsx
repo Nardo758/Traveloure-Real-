@@ -59,7 +59,10 @@ const plans = [
       "Priority support",
       "Trip collaboration tools"
     ],
-    cta: "Upgrade to Power Pass",
+    // R3/F6: no subscription checkout or entitlement enforcement exists yet — labeled
+    // honestly instead of promising an upgrade that cannot be purchased.
+    cta: "Coming soon",
+    comingSoon: true,
     variant: "default" as const
   },
   {
@@ -178,7 +181,8 @@ export default function PricingPage() {
                     <Button 
                       variant={plan.variant} 
                       className="w-full mt-6"
-                      onClick={handlePricingAction}
+                      onClick={(plan as any).comingSoon ? undefined : handlePricingAction}
+                      disabled={(plan as any).comingSoon}
                       data-testid={`button-plan-${plan.name.toLowerCase()}`}
                     >
                       {plan.cta}
@@ -199,7 +203,13 @@ export default function PricingPage() {
               Pay-Per-Use
             </h2>
             <p className="text-muted-foreground max-w-2xl mx-auto">
-              No subscription required. Pay only for what you use. Power Pass subscribers get 25% off.
+              No subscription required. Pay only for what you use.
+            </p>
+            {/* R3/F1 disclosure (ratified model): the cart shows this fee as its own line item;
+                this page must say it exists too. No rate literal — rates are admin-configured. */}
+            <p className="text-sm text-muted-foreground max-w-2xl mx-auto mt-2" data-testid="text-service-fee-disclosure">
+              Service bookings include a platform service fee, shown as a separate line at checkout
+              before you pay.
             </p>
           </div>
 

@@ -513,4 +513,8 @@ export const MIGRATION_FILES = [
   // ON CONFLICT DO NOTHING, no CHECK — no publish-push trap. Code constants remain as the
   // documented safe-failure fallback.
   "137_expert_review_fee_bands.sql",
+  // 138: R1/F5 — seed the 4 fee-category bands the checkout slug mapper can emit but nothing
+  // seeded (transportation/flights/car_rental/insurance); the fail-loud resolver 500'd those
+  // carts. Seed-only, ON CONFLICT DO NOTHING, no CHECK — no publish-push trap.
+  "138_missing_category_fee_bands.sql",
 ] as const;
