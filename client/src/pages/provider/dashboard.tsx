@@ -67,12 +67,32 @@ export default function ProviderDashboard() {
   const pendingBookings = bookings?.filter(b => b.status === "pending") || [];
   const confirmedBookings = bookings?.filter(b => b.status === "confirmed") || [];
 
+  // Compute repeat customers: travelers with >1 booking
+  const repeatCustomers = (() => {
+    if (!bookings || bookings.length === 0) return 0;
+    const travelerBookingCounts = new Map<string, number>();
+    bookings.forEach(booking => {
+      const travelerId = (booking as any).travelerId || (booking as any).traveler?.id;
+      if (travelerId) {
+        travelerBookingCounts.set(travelerId, (travelerBookingCounts.get(travelerId) || 0) + 1);
+      }
+    });
+    return Array.from(travelerBookingCounts.values()).filter(count => count > 1).length;
+  })();
+
   const stats = [
     { label: "Pending Bookings", value: String(analytics?.summary?.pendingBookings ?? 0), icon: Clock, color: "text-amber-600" },
     { label: "This Month", value: String(analytics?.summary?.totalBookings ?? 0), icon: Calendar, color: "text-blue-600" },
     { label: "Revenue (MTD)", value: `$${(analytics?.summary?.totalRevenue ?? 0).toLocaleString()}`, icon: DollarSign, color: "text-green-600" },
     { label: "Rating Average", value: (analytics?.summary?.avgRating ?? 0).toFixed(1), icon: Star, color: "text-amber-500" },
   ];
+
+  // Add repeat customers line if there are any
+  if (repeatCustomers > 0) {
+    stats.push(
+      { label: "Repeat Customers", value: String(repeatCustomers), icon: Users, color: "text-blue-500" }
+    );
+  }
 
   if (analyticsLoading) {
     return (

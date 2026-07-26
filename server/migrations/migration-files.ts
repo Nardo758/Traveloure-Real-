@@ -530,4 +530,21 @@ export const MIGRATION_FILES = [
   // trap) — S4 acquisition attribution. The existing `source` column gains its first writer at
   // checkout (server-derived vocabulary direct|link|cross_sell); ref = short_links.code (soft).
   "141_booking_acquisition_ref.sql",
+  // 142: R6 — expert_review_expert_share fee band (default 0.75): the reviewing expert's share of
+  // a paid expert-review fee, credited at request completion; platform keeps the remainder.
+  // Seed-only, ON CONFLICT DO NOTHING, no CHECK — no publish-push trap.
+  "142_expert_review_split_band.sql",
+  // 143: R4 (F7) — affiliate_standard fee band (default 0.70 platform / 0.30 expert): the internal
+  // platform/expert split applied to an affiliate-facilitated booking's commission at confirm-time
+  // ledger write (createAffiliateEarning, server/routes/content.routes.ts). Seed-only, ON CONFLICT
+  // DO NOTHING, no CHECK — no publish-push trap.
+  "143_affiliate_split_fee_bands.sql",
+  // 144: X1 — provider_services.cancellation_policy_type (additive nullable VARCHAR(30), no CHECK,
+  // no DEFAULT, no backfill — app-enforced vocabulary). Closes the §13 hardcoded-copy arm: adds a
+  // structured policy TYPE (flexible|moderate|strict|non_refundable) alongside the pre-existing
+  // free-text `cancellation_policy` column (migration 011), so live surfaces can render a real
+  // per-offering badge instead of the fabricated "free cancellation / instant confirmation / 24-7
+  // support" trio (already removed from expert-detail.tsx by #200; service-detail.tsx never showed
+  // any policy at all — NULL is the honest default, not a fabricated claim).
+  "144_service_cancellation_policy.sql",
 ] as const;

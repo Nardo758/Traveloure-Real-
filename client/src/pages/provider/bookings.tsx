@@ -38,6 +38,7 @@ import {
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -207,6 +208,7 @@ function VisaStatusDialog({
 
 export default function ProviderBookings() {
   const { toast } = useToast();
+  const [, navigate] = useLocation();
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [visaDialogOpen, setVisaDialogOpen] = useState(false);
@@ -443,7 +445,18 @@ export default function ProviderBookings() {
                       <Button variant="outline" size="sm" data-testid={`button-view-${booking.id}`}>
                         View Details
                       </Button>
-                      <Button variant="ghost" size="icon" data-testid={`button-message-${booking.id}`}>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        data-testid={`button-message-${booking.id}`}
+                        onClick={() => {
+                          const travelerId = (booking as any).travelerId || (booking as any).traveler?.id;
+                          if (travelerId) {
+                            navigate(`/chat?clientId=${travelerId}`);
+                          }
+                        }}
+                        title="Message traveler"
+                      >
                         <MessageSquare className="w-4 h-4" />
                       </Button>
                     </div>

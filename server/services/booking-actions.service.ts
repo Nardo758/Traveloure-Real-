@@ -36,11 +36,15 @@ export async function completeExpertRequest(
   const optimizationContext = row.optimization_context || {};
   const partnerizeAssisted = optimizationContext?.partnerizeAssisted === true;
 
-  await db.execute(sql`
+  // §15: completion is now a money event (it credits the R6 expert split below), so the status
+  // flip is an atomic claim — a concurrent/duplicate complete matches 0 rows and credits nothing.
+  const claimed = await db.execute(sql`
     UPDATE expert_requests
     SET status = 'completed', completed_at = NOW()
-    WHERE id = ${requestId}
+    WHERE id = ${requestId} AND status <> 'completed'
+    RETURNING id
   `);
+  if (!claimed.rows?.length) return { id: row.id, partnerizeAssisted: false };
 
   if (partnerizeAssisted) {
     await db.execute(sql`
@@ -50,7 +54,69 @@ export async function completeExpertRequest(
     `);
   }
 
+  // R6 (ratified Jul 26, 2026): credit the reviewing expert their share of the PAID fee. Only
+  // requests that carry a verified PaymentIntent (stamped at create) qualify — the amount comes
+  // from the capture-time platform_revenue LEDGER row, never from the client-writable expert_fee.
+  // Best-effort: a credit failure must not un-complete the request (retryable via ledger state).
+  const paymentIntentId = optimizationContext?.paymentIntentId;
+  if (typeof paymentIntentId === "string" && paymentIntentId) {
+    try {
+      await creditExpertReviewSplit(requestId, expertUserId, paymentIntentId);
+    } catch (err) {
+      console.error("[expert-requests] R6 completion split credit failed (non-fatal):", err);
+    }
+  }
+
   return { id: row.id, partnerizeAssisted };
+}
+
+/**
+ * R6 — split a paid expert-review fee at completion. The capture-time platform_revenue row
+ * (recorded 100%-platform, sourceId = the verified PaymentIntent) is atomically re-split:
+ * expert gets the `expert_review_expert_share` band rate (default 0.75, admin-editable), the
+ * platform keeps the remainder. The conditional UPDATE (expert_id IS NULL) is BOTH the
+ * idempotency guard and the concurrency claim (§15): only the first completion re-splits and
+ * credits; a duplicate matches 0 rows and does nothing. The expert earning is born `held` on
+ * the escrow spine (migration 112) and clears via the release scheduler.
+ */
+async function creditExpertReviewSplit(
+  requestId: string,
+  expertUserId: string,
+  paymentIntentId: string,
+): Promise<void> {
+  const expertShareRate = await bandRateOr(0.75, "expert_review_expert_share", "percent"); // fee-literal-ok: fallback default
+  if (!(expertShareRate > 0)) return; // admin set the split to 0 → fee stays 100% platform
+
+  const claim = await db.execute(sql`
+    UPDATE platform_revenue
+    SET expert_id = ${expertUserId},
+        expert_earnings = ROUND(gross_amount * ${expertShareRate}, 2),
+        platform_fee = ROUND(gross_amount * (1 - ${expertShareRate}), 2),
+        net_amount = ROUND(gross_amount * (1 - ${expertShareRate}), 2) - COALESCE(processing_fees, 0)
+    WHERE source_id = ${paymentIntentId}
+      AND source_type = 'expert_review_fee'
+      AND expert_id IS NULL
+    RETURNING gross_amount
+  `);
+  const rev = claim.rows?.[0] as any;
+  if (!rev) return; // no paid ledger row (free-lead request) or already credited
+
+  const gross = Number(rev.gross_amount) || 0;
+  const share = Math.round(gross * expertShareRate * 100) / 100;
+  if (!(share > 0)) return;
+
+  const { storage } = await import("../storage");
+  const { availableAtFor } = await import("../config/earnings-hold.config");
+  await storage.createExpertEarning({
+    expertId: expertUserId,
+    type: "expert_review_fee",
+    amount: String(share),
+    referenceId: paymentIntentId,
+    referenceType: "expert_review_fee",
+    description: `Expert review completion split (request ${requestId})`,
+    status: "held", // escrow: born held (migration 112)
+    availableAt: availableAtFor("expert_review_fee"),
+  } as any);
 }
 
 export async function getExpertRequestsByUser(

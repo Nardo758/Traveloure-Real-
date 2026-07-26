@@ -8,15 +8,21 @@
  *                            point at someone else's offering.
  * GET  /r/:code           — public redirect + atomic click increment. Unknown code -> /discover
  *                            (never a dead 404/500 for a shared link).
+ * GET  /api/me/link-analytics — S5: per-link click/booking/revenue rollup for the session earner
+ *                            only (§14). See handler comment for the exact contract.
+ * GET  /api/me/earnings-by-source — S6: booking count/revenue split by acquisition source
+ *                            (direct | link | cross_sell) for the session earner only (§14).
+ *                            See handler comment for the honesty caveat on pre-attribution rows.
  *
- * No money path (clicks is a counter, not a charge/payout amount) — outside the §14/§15 clusters.
+ * No money path (clicks is a counter, not a charge/payout amount; earnings-by-source reads the
+ * existing booking ledger read-only, no charge/payout/earning write) — outside the §14/§15 clusters.
  */
 import { Router } from "express";
 import crypto from "crypto";
 import { z } from "zod";
-import { eq, and, isNull, sql } from "drizzle-orm";
+import { eq, and, isNull, sql, gte, inArray } from "drizzle-orm";
 import { db } from "../db";
-import { users, providerServices, expertTemplates, readyMadeTrips, shortLinks } from "@shared/schema";
+import { users, providerServices, expertTemplates, readyMadeTrips, shortLinks, serviceBookings } from "@shared/schema";
 
 const router = Router();
 
@@ -154,6 +160,185 @@ router.get("/r/:code", async (req, res) => {
   } catch (error: any) {
     console.error("[short-links] redirect failed:", error);
     return res.redirect(302, "/discover");
+  }
+});
+
+// S5: allow-set for the range param — no open-ended range parsing.
+const RANGE_DAYS = [7, 30, 90, 365] as const;
+
+/**
+ * GET /api/me/link-analytics?days=30 — S5 earner link analytics.
+ *
+ * §14: session user only, never from query/body. Per-link rows join the caller's OWN
+ * short_links to service_bookings by acquisition_ref, ADDITIONALLY filtered on
+ * provider_id = session user — so an earner sees only conversions of THEIR OWN bookings
+ * off a shared code, never another earner's sale through the same code (a code is scoped
+ * to one owner already via the create-time ownership check, but this belt-and-suspenders
+ * filter keeps the read honest even if that ever changes).
+ *
+ * Honesty note (§13): `clicks` on short_links is a lifetime counter — there is no per-day
+ * click log (S5 explicitly does not build one). So `clicks` in this payload is ALWAYS
+ * lifetime, while `bookings`/`revenue` respect the `days` range. The payload says so
+ * explicitly (`clicksAreLifetime: true`) so the client never mislabels it as range-scoped.
+ */
+router.get("/api/me/link-analytics", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub ?? req.user?.id;
+    const daysParsed = parseInt(String(req.query?.days ?? "30"), 10);
+    const days = (RANGE_DAYS as readonly number[]).includes(daysParsed) ? daysParsed : 30;
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+    const links = await db
+      .select({
+        code: shortLinks.code,
+        targetType: shortLinks.targetType,
+        targetId: shortLinks.targetId,
+        clicks: shortLinks.clicks,
+      })
+      .from(shortLinks)
+      .where(eq(shortLinks.ownerUserId, userId));
+
+    if (links.length === 0) {
+      return res.json({
+        range: { days, since: since.toISOString() },
+        clicksAreLifetime: true,
+        links: [],
+        totals: { totalClicks: 0, totalBookings: 0, totalRevenue: 0, conversionRate: null },
+      });
+    }
+
+    const codes = links.map((l) => l.code);
+    // Single aggregate query across all of the caller's codes — bookings/revenue grouped
+    // by acquisition_ref, scoped to (a) this earner's own bookings and (b) the date range.
+    const bookingRows = await db
+      .select({
+        code: serviceBookings.acquisitionRef,
+        bookings: sql<number>`count(*)::int`,
+        revenue: sql<number>`coalesce(sum(${serviceBookings.totalAmount}), 0)::numeric`,
+      })
+      .from(serviceBookings)
+      .where(
+        and(
+          eq(serviceBookings.providerId, userId),
+          inArray(serviceBookings.acquisitionRef, codes),
+          gte(serviceBookings.createdAt, since),
+        ),
+      )
+      .groupBy(serviceBookings.acquisitionRef);
+
+    const byCode = new Map<string, { bookings: number; revenue: number }>();
+    for (const row of bookingRows) {
+      if (!row.code) continue;
+      byCode.set(row.code, { bookings: Number(row.bookings) || 0, revenue: Number(row.revenue) || 0 });
+    }
+
+    let totalClicks = 0;
+    let totalBookings = 0;
+    let totalRevenue = 0;
+    const rows = links.map((l) => {
+      const agg = byCode.get(l.code) ?? { bookings: 0, revenue: 0 };
+      totalClicks += l.clicks ?? 0;
+      totalBookings += agg.bookings;
+      totalRevenue += agg.revenue;
+      return {
+        code: l.code,
+        targetType: l.targetType,
+        targetId: l.targetId,
+        clicks: l.clicks ?? 0,
+        bookings: agg.bookings,
+        revenue: agg.revenue,
+      };
+    });
+
+    return res.json({
+      range: { days, since: since.toISOString() },
+      clicksAreLifetime: true,
+      links: rows,
+      totals: {
+        totalClicks,
+        totalBookings,
+        totalRevenue,
+        conversionRate: totalClicks > 0 ? totalBookings / totalClicks : null,
+      },
+    });
+  } catch (error: any) {
+    console.error("[short-links] link-analytics failed:", error);
+    return res.status(500).json({ message: "Failed to load link analytics" });
+  }
+});
+
+// S6: the three acquisition buckets, in the fixed display order the client renders.
+const SOURCE_BUCKETS = ["direct", "link", "cross_sell"] as const;
+type SourceBucket = (typeof SOURCE_BUCKETS)[number];
+const SOURCE_LABEL: Record<SourceBucket, string> = {
+  direct: "Direct",
+  link: "Your links",
+  cross_sell: "Cross-sell",
+};
+
+/**
+ * GET /api/me/earnings-by-source — S6 dashboard "earnings by source" split.
+ *
+ * §14: session user only, never from query/body. Groups the session earner's OWN
+ * `service_bookings` (providerId = session user — this column holds the owning provider/expert's
+ * userId for both roles, see payments.routes.ts checkout insert) by `source`
+ * (direct | link | cross_sell, written server-side at checkout since S4/migration 141) and
+ * returns booking count + gross booking revenue (`total_amount`) per bucket, lifetime — no date
+ * range, no per-day breakdown; the smallest honest version of this split.
+ *
+ * §13 honesty note: `source` defaults to 'direct' at the column level, so every booking created
+ * BEFORE S4 shipped reads 'direct' whether or not it was genuinely a direct/organic acquisition —
+ * that default is a column default, not a measurement. The payload always carries
+ * `preAttributionCaveat: true` (not data-derived — it is true for every earner, since the column
+ * predates S4 for all of them) so the client can render the disclaimer next to "Direct" rather
+ * than presenting historical 'direct' as a measured fact.
+ */
+router.get("/api/me/earnings-by-source", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub ?? req.user?.id;
+
+    const rows = await db
+      .select({
+        source: sql<string>`coalesce(${serviceBookings.source}, 'direct')`,
+        count: sql<number>`count(*)::int`,
+        revenue: sql<number>`coalesce(sum(${serviceBookings.totalAmount}), 0)::numeric`,
+      })
+      .from(serviceBookings)
+      .where(eq(serviceBookings.providerId, userId))
+      .groupBy(sql`coalesce(${serviceBookings.source}, 'direct')`);
+
+    const bySource = new Map<string, { count: number; revenue: number }>();
+    for (const row of rows) {
+      bySource.set(row.source, { count: Number(row.count) || 0, revenue: Number(row.revenue) || 0 });
+    }
+
+    let totalCount = 0;
+    let totalRevenue = 0;
+    const buckets = SOURCE_BUCKETS.map((source) => {
+      const agg = bySource.get(source) ?? { count: 0, revenue: 0 };
+      totalCount += agg.count;
+      totalRevenue += agg.revenue;
+      return { source, label: SOURCE_LABEL[source], count: agg.count, revenue: agg.revenue };
+    });
+
+    // Any bucket outside the known vocabulary (should not happen — app-enforced, no DB CHECK)
+    // is folded into the totals so the totals never silently undercount, without inventing a
+    // fourth display bucket for it.
+    for (const row of rows) {
+      if (!(SOURCE_BUCKETS as readonly string[]).includes(row.source)) {
+        totalCount += Number(row.count) || 0;
+        totalRevenue += Number(row.revenue) || 0;
+      }
+    }
+
+    return res.json({
+      buckets,
+      totals: { count: totalCount, revenue: totalRevenue },
+      preAttributionCaveat: true,
+    });
+  } catch (error: any) {
+    console.error("[short-links] earnings-by-source failed:", error);
+    return res.status(500).json({ message: "Failed to load earnings by source" });
   }
 });
 

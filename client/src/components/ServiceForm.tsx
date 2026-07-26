@@ -102,6 +102,8 @@ interface ServiceFormData {
   transportProvided: "yes" | "no" | "not_applicable";
   // Booking terms
   cancellationPolicy: string;
+  // X1 (§13): structured policy TYPE — see CANCELLATION_POLICY_TYPE_OPTIONS. "" = not declared.
+  cancellationPolicyType: string;
   leadTime: string;
   // Media
   serviceImage: string;
@@ -126,6 +128,15 @@ const AFFINITY_TAG_OPTIONS: { value: string; label: string }[] = [
   { value: "hiking_outdoor", label: "Hiking/outdoor" },
   { value: "wedding_proposal", label: "Wedding/proposal" },
   { value: "general_logistics", label: "Any trip (general logistics)" },
+];
+
+// X1 (§13 hardcoded-copy arm): structured cancellation-policy TYPE vocabulary — mirrors
+// shared/schema.ts cancellationPolicyTypeEnum. App-enforced (no DB CHECK, migration 144).
+const CANCELLATION_POLICY_TYPE_OPTIONS: { value: string; label: string }[] = [
+  { value: "flexible", label: "Flexible — full refund if cancelled well in advance" },
+  { value: "moderate", label: "Moderate — partial refund on shorter notice" },
+  { value: "strict", label: "Strict — limited refund window" },
+  { value: "non_refundable", label: "Non-refundable" },
 ];
 
 function buildEmptyForm(role: "expert" | "provider"): ServiceFormData {
@@ -159,6 +170,7 @@ function buildEmptyForm(role: "expert" | "provider"): ServiceFormData {
     serviceRadius: 0,
     transportProvided: "not_applicable",
     cancellationPolicy: "",
+    cancellationPolicyType: "",
     leadTime: "",
     serviceImage: "",
     galleryImages: [],
@@ -237,6 +249,7 @@ function mapServiceToForm(s: any, role: "expert" | "provider"): ServiceFormData 
     serviceRadius: Number(s.serviceRadius || 0),
     transportProvided: (s.transportProvided === "yes" || s.transportProvided === "no" ? s.transportProvided : "not_applicable"),
     cancellationPolicy: s.cancellationPolicy || "",
+    cancellationPolicyType: s.cancellationPolicyType || "",
     leadTime: s.leadTime || "",
     serviceImage: s.serviceImage || "",
     galleryImages: Array.isArray(s.galleryImages) ? s.galleryImages : [],
@@ -566,6 +579,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         // Transport disclosure only carries meaning for an in-person/hybrid meeting; remote → not_applicable.
         transportProvided: isInPerson ? formData.transportProvided : "not_applicable",
         cancellationPolicy: formData.cancellationPolicy || null,
+        cancellationPolicyType: formData.cancellationPolicyType || null,
         leadTime: formData.leadTime || null,
         serviceImage: formData.serviceImage || null,
         galleryImages: formData.galleryImages,
@@ -1464,7 +1478,26 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             <p className="text-xs text-muted-foreground mt-1">How far in advance must clients book?</p>
           </div>
           <div>
-            <Label htmlFor="cancellationPolicy">Cancellation Policy</Label>
+            <Label htmlFor="cancellationPolicyType">Cancellation Policy</Label>
+            <Select
+              value={formData.cancellationPolicyType || undefined}
+              onValueChange={(v) => set("cancellationPolicyType", v)}
+            >
+              <SelectTrigger id="cancellationPolicyType" className="mt-2" data-testid="select-cancellation-policy-type">
+                <SelectValue placeholder="Not declared — no policy shown to travelers" />
+              </SelectTrigger>
+              <SelectContent>
+                {CANCELLATION_POLICY_TYPE_OPTIONS.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground mt-1">
+              Shown to travelers as a real per-offering policy. Leave unset if you haven't decided — we never show a fabricated default.
+            </p>
+          </div>
+          <div>
+            <Label htmlFor="cancellationPolicy">Cancellation Policy Details (optional)</Label>
             <Textarea
               id="cancellationPolicy"
               value={formData.cancellationPolicy}

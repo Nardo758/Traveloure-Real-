@@ -569,6 +569,17 @@ export async function registerRoutes(
   app.use("/api/expert-workspace", expertWorkspaceRoutes);
 
   // Identity verification routes (Stripe Identity + Persona KYB)
+  // NOTE (V.2 ground-truth pass, Jul 26 2026): contentRoutes (mounted above, line 564) ALSO
+  // internally mounts identityRoutes/webhooksRoutes at these same paths — so at runtime the
+  // contentRoutes copy wins (registration order) and these two lines are the shadowed copy.
+  // Left in place deliberately: the unmounted-router guard (scripts/check-unmounted-routers.cjs,
+  // CLAUDE.md §9) only recognizes a router as "live" via a direct `import`+`app.use` pair inside
+  // server/routes.ts itself — an import from a sibling file under server/routes/ (content.routes.ts
+  // importing identity.routes.ts) does NOT satisfy it (by design — that's the guest-invites.ts
+  // lesson: a routes file importing a sibling doesn't prove it's actually reachable). Removing this
+  // pair trips the guard even though the handlers are genuinely live via contentRoutes. Since both
+  // sides mount the exact same router instance, there is no behavioral divergence — just a proof-of-
+  // liveness formality the guard requires. Do not remove without also updating the guard.
   app.use("/api/identity", identityRoutes);
   // Webhook handlers for Stripe Identity and Persona — mounted at /api/webhooks
   app.use("/api/webhooks", webhooksRoutes);
@@ -5809,18 +5820,31 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     }
   });
 
+  // C2 repair: the client (provider-availability-manager.tsx) previously POSTed a
+  // {dayOfWeek, startTime, endTime, isAvailable, pricingModifier} weekly-schedule shape
+  // that this handler's zod never accepted (it required serviceId + date) — every real
+  // submit 400d, so no slots ever existed. Aligned the zod to the actual
+  // vendor_availability_slots columns (C0-canonical: date + startTime/endTime + capacity,
+  // no dayOfWeek/isAvailable/notes — those columns don't exist on this table) and added
+  // the missing §14 ownership check: serviceId must belong to the session's own
+  // provider_services row, or a provider could create slots on another provider's service.
   app.post("/api/provider/availability", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const availabilityInput = z.object({
         serviceId: z.string().min(1),
-        dayOfWeek: z.number().min(0).max(6).optional(),
-        startTime: z.string().optional(),
-        endTime: z.string().optional(),
-        date: z.string().min(1),
-        isAvailable: z.boolean().optional(),
-        notes: z.string().max(500).optional(),
+        date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "date must be YYYY-MM-DD"),
+        startTime: z.string().min(1).max(10),
+        endTime: z.string().min(1).max(10),
+        capacity: z.number().int().min(1).max(1000).optional(),
       }).parse(req.body);
+
+      // §14 ownership check: a provider must not create slots on another provider's service.
+      const ownedService = await storage.getProviderServiceById(availabilityInput.serviceId);
+      if (!ownedService || ownedService.userId !== userId) {
+        return res.status(403).json({ message: "You do not own this service" });
+      }
+
       const slot = await storage.createVendorAvailabilitySlot({ ...availabilityInput, providerId: userId });
       res.status(201).json(slot);
     } catch (error) {
@@ -5836,12 +5860,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     try {
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const updateInput = z.object({
-        dayOfWeek: z.number().min(0).max(6).optional(),
-        startTime: z.string().optional(),
-        endTime: z.string().optional(),
-        date: z.string().optional(),
-        isAvailable: z.boolean().optional(),
-        notes: z.string().max(500).optional(),
+        date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "date must be YYYY-MM-DD").optional(),
+        startTime: z.string().min(1).max(10).optional(),
+        endTime: z.string().min(1).max(10).optional(),
+        capacity: z.number().int().min(1).max(1000).optional(),
+        status: z.enum(["available", "blocked"]).optional(),
       }).parse(req.body);
       const existingSlot = await storage.getVendorAvailabilitySlot(req.params.id);
       if (!existingSlot) return res.status(404).json({ message: "Slot not found" });

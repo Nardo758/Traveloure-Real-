@@ -25,6 +25,9 @@ import {
   Flag,
   Calendar,
   BookOpen,
+  ChevronLeft,
+  ChevronRight,
+  CalendarCheck,
 } from "lucide-react";
 import {
   Dialog,
@@ -34,7 +37,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { format } from "date-fns";
+import { format, addMonths, subMonths } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
@@ -69,7 +72,22 @@ interface Service {
   transportProvided: string | null;
   whatIncluded: string[];
   requirements: string[];
+  // X1 (§13 hardcoded-copy arm): real per-offering cancellation policy. Both nullable —
+  // NULL means the owner hasn't declared one; render nothing/an honest fallback, never
+  // the old fabricated "free cancellation" claim.
+  cancellationPolicyType: string | null;
+  cancellationPolicy: string | null;
 }
+
+// X1: display labels for cancellationPolicyType — mirrors shared/schema.ts
+// CANCELLATION_POLICY_TYPE_LABELS (kept local to avoid a client bundle importing the
+// server schema module; the vocabulary itself is app-enforced, not a DB CHECK).
+const CANCELLATION_POLICY_TYPE_LABELS: Record<string, string> = {
+  flexible: "Flexible — full refund if cancelled well in advance",
+  moderate: "Moderate — partial refund on shorter notice",
+  strict: "Strict — limited refund window",
+  non_refundable: "Non-refundable",
+};
 
 // In-person delivery methods that have a physical meeting point.
 const IN_PERSON_METHODS = new Set(["in_person", "hybrid"]);
@@ -92,6 +110,23 @@ interface Review {
 interface ProviderVerification {
   identityVerified: boolean;
   businessVerified: boolean;
+}
+
+// C2: public read-only availability calendar. Server (GET /api/services/:id/availability)
+// reads the C0-canonical vendor_availability_slots table and F2-gates on approved+active —
+// same posture as the service detail read itself. No booking-slot selection is wired here
+// (that is C3's cart/checkout concern); this is purely informational.
+interface AvailabilityDay {
+  date: string;
+  startTime: string | null;
+  endTime: string | null;
+  remaining: number;
+  status: string;
+}
+
+interface AvailabilityResponse {
+  month: string;
+  days: AvailabilityDay[];
 }
 
 export default function ServiceDetailPage() {
@@ -139,6 +174,24 @@ export default function ServiceDetailPage() {
     },
     enabled: !!service?.userId,
   });
+
+  // C2: read-only availability calendar, month-scoped.
+  const [availabilityMonth, setAvailabilityMonth] = useState(() => format(new Date(), "yyyy-MM"));
+  const { data: availability, isLoading: availabilityLoading } = useQuery<AvailabilityResponse>({
+    queryKey: ["/api/services", id, "availability", availabilityMonth],
+    queryFn: async () => {
+      const res = await fetch(`/api/services/${id}/availability?month=${availabilityMonth}`, {
+        credentials: "include",
+      });
+      if (!res.ok) return { month: availabilityMonth, days: [] };
+      return res.json() as Promise<AvailabilityResponse>;
+    },
+    enabled: !!id,
+  });
+  const todayIso = format(new Date(), "yyyy-MM-dd");
+  const upcomingAvailability = (availability?.days || [])
+    .filter((d) => d.date >= todayIso)
+    .sort((a, b) => a.date.localeCompare(b.date));
 
   const [, navigate] = useLocation();
   // Native "Book on Traveloure": capture a preferred date/time and carry it into the
@@ -366,6 +419,82 @@ export default function ServiceDetailPage() {
               </Card>
             )}
 
+            {/* C2: public read-only availability calendar */}
+            <Card data-testid="card-availability">
+              <CardHeader>
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <CardTitle className="flex items-center gap-2">
+                    <CalendarCheck className="w-5 h-5 text-primary" />
+                    Availability
+                  </CardTitle>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      onClick={() =>
+                        setAvailabilityMonth((m) => format(subMonths(new Date(`${m}-01T00:00:00`), 1), "yyyy-MM"))
+                      }
+                      data-testid="button-availability-prev-month"
+                      aria-label="Previous month"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </Button>
+                    <span className="text-sm font-medium w-28 text-center" data-testid="text-availability-month">
+                      {format(new Date(`${availabilityMonth}-01T00:00:00`), "MMMM yyyy")}
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      onClick={() =>
+                        setAvailabilityMonth((m) => format(addMonths(new Date(`${m}-01T00:00:00`), 1), "yyyy-MM"))
+                      }
+                      data-testid="button-availability-next-month"
+                      aria-label="Next month"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {availabilityLoading ? (
+                  <Skeleton className="h-16 w-full" />
+                ) : upcomingAvailability.length > 0 ? (
+                  <div className="space-y-2">
+                    {upcomingAvailability.map((day) => {
+                      const fullyBooked = day.status === "fully_booked" || day.remaining <= 0;
+                      return (
+                        <div
+                          key={`${day.date}-${day.startTime}`}
+                          className="flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm"
+                          data-testid={`availability-day-${day.date}`}
+                        >
+                          <span className="font-medium">
+                            {format(new Date(`${day.date}T00:00:00`), "EEE, MMM d")}
+                            {day.startTime && (
+                              <span className="text-muted-foreground font-normal ml-2">
+                                {day.startTime}
+                                {day.endTime ? `–${day.endTime}` : ""}
+                              </span>
+                            )}
+                          </span>
+                          <Badge variant={fullyBooked ? "outline" : "secondary"}>
+                            {fullyBooked ? "Fully booked" : `${day.remaining} spot${day.remaining === 1 ? "" : "s"} open`}
+                          </Badge>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-muted-foreground text-sm" data-testid="text-no-availability">
+                    No availability published yet for this month. Contact the provider to check dates.
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+
             {/* Same-owner cross-sell — packages by this expert (Phase B4) */}
             {ownerPackages.length > 0 && (
               <Card data-testid="card-owner-packages">
@@ -534,6 +663,31 @@ export default function ServiceDetailPage() {
                       Contact Provider
                     </Link>
                   </Button>
+                </div>
+
+                {/* X1 (§13 hardcoded-copy arm): real per-offering cancellation policy.
+                    Shows the owner's declared policy when present; otherwise an honest
+                    "contact provider" fallback — never a fabricated "free cancellation"
+                    claim (the old expert-detail.tsx trio removed by #200). */}
+                <div className="mt-4 pt-4 border-t space-y-1.5" data-testid="section-cancellation-policy">
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <ShieldCheck className="w-4 h-4 text-muted-foreground" />
+                    Cancellation policy
+                  </div>
+                  {service.cancellationPolicyType ? (
+                    <p className="text-sm text-muted-foreground" data-testid="text-cancellation-policy-type">
+                      {CANCELLATION_POLICY_TYPE_LABELS[service.cancellationPolicyType] ?? service.cancellationPolicyType}
+                    </p>
+                  ) : (
+                    <p className="text-sm text-muted-foreground" data-testid="text-cancellation-policy-unset">
+                      Not specified — contact the provider about cancellation before booking.
+                    </p>
+                  )}
+                  {service.cancellationPolicy && (
+                    <p className="text-xs text-muted-foreground" data-testid="text-cancellation-policy-detail">
+                      {service.cancellationPolicy}
+                    </p>
+                  )}
                 </div>
 
                 {/* Provider commission transparency. §8: no hardcoded rate literal —
