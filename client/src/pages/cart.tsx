@@ -460,7 +460,7 @@ export default function CartPage() {
       return apiRequest("PATCH", `/api/cart/${id}`, { quantity });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/cart", experienceSlug] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
     },
     onError: () => {
       toast({ variant: "destructive", title: "Failed to update item" });
@@ -472,7 +472,7 @@ export default function CartPage() {
       return apiRequest("DELETE", `/api/cart/${id}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/cart", experienceSlug] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
       toast({ title: "Item removed from cart" });
     },
     onError: () => {
@@ -492,7 +492,7 @@ export default function CartPage() {
       return apiRequest("POST", "/api/cart", { serviceId: c.bookable.serviceId });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/cart", experienceSlug] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
       toast({ title: "Added to your cart" });
     },
     onError: () => {
