@@ -525,8 +525,18 @@ export default function CartPage() {
       }
     },
     onError: (error: any) => {
-      if (error?.message === "No platform items to checkout") {
+      const msg = String(error?.message ?? "");
+      if (msg === "No platform items to checkout") {
         toast({ variant: "destructive", title: "No bookable items", description: "External bookings must be completed on provider websites." });
+      } else if (msg.includes("slot_unavailable") || msg.includes("was just booked")) {
+        // C3: a picked availability slot filled between add-to-cart and checkout — nothing was
+        // charged and no booking was created; the traveler picks another time.
+        toast({
+          variant: "destructive",
+          title: "That time slot just booked",
+          description: "One of your items' time slots is no longer available. Please pick another time from the service page.",
+        });
+        queryClient.invalidateQueries({ queryKey: ["/api/cart", experienceSlug] });
       } else {
         toast({ variant: "destructive", title: "Checkout failed" });
       }

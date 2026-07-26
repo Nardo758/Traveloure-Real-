@@ -5155,7 +5155,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   app.post("/api/cart", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
-      const { serviceId, customVenueId, quantity, tripId, scheduledDate, notes, experienceSlug: rawSlug, contentType, contentId, contentMeta } = req.body;
+      const { serviceId, customVenueId, quantity, tripId, scheduledDate, notes, experienceSlug: rawSlug, contentType, contentId, contentMeta, slotId } = req.body;
 
       console.log("[Cart] Add to cart request:", { serviceId, customVenueId, contentType, contentId, experienceSlug: rawSlug });
 
@@ -5194,6 +5194,28 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
       
+      // C3: optional availability-slot pick. Soft validation only at add-time (the slot must
+      // exist, belong to THIS service, and currently look bookable) — the hard atomic capacity
+      // CLAIM happens at checkout (storage.bookSlot), so an abandoned cart never holds a slot.
+      // The item's scheduledDate is SERVER-DERIVED from the slot (slot wins over any client date).
+      let slotScheduledDate: Date | undefined;
+      let validatedSlotId: string | undefined;
+      if (slotId) {
+        if (typeof slotId !== "string" || !serviceId) {
+          return res.status(400).json({ message: "Invalid slot selection" });
+        }
+        const slot = await storage.getVendorAvailabilitySlot(slotId);
+        if (!slot || slot.serviceId !== serviceId) {
+          return res.status(400).json({ message: "That slot does not belong to this service" });
+        }
+        const remaining = (slot.capacity ?? 1) - (slot.bookedCount ?? 0);
+        if (slot.status === "blocked" || remaining <= 0 || String(slot.date) < new Date().toISOString().slice(0, 10)) {
+          return res.status(409).json({ error: "slot_unavailable", message: "That time slot is no longer available. Please pick another." });
+        }
+        validatedSlotId = slot.id;
+        slotScheduledDate = new Date(`${slot.date}T${(slot.startTime || "09:00").slice(0, 5)}:00`);
+      }
+
       // Resolve slug aliases
       const experienceSlug = rawSlug ? resolveSlug(rawSlug) : "general";
 
@@ -5213,11 +5235,12 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         ...(isContentAdd ? { contentType, contentId, contentMeta: safeContentMeta } : {}),
         quantity: quantity || 1,
         tripId,
-        scheduledDate: scheduledDate ? new Date(scheduledDate) : undefined,
+        scheduledDate: slotScheduledDate ?? (scheduledDate ? new Date(scheduledDate) : undefined),
+        ...(validatedSlotId ? { slotId: validatedSlotId } : {}),
         notes,
         experienceSlug,
       });
-      
+
       res.status(201).json(item);
     } catch (err) {
       console.error("Add to cart error:", err);
