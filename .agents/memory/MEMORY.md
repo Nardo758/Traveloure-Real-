@@ -10,3 +10,4 @@
 - [Lead routing silent SQL failure](lead-routing-silent-sql-failure.md) — scoreExperts() swallows SQL errors and returns [], which looks identical to "no eligible experts"; verify column names against schema before trusting a no-match result
 - [Affiliate integration checklist](affiliate-integration-checklist.md) — new affiliate networks need a recurring commission-poll timer (not just catalog sync), admin UI partner-filter parity, and client-side gating for context-dependent CTA fields
 - [Stripe key misconfiguration](stripe-key-misconfiguration.md) — wrong key type (pk_ vs sk_) pasted into STRIPE_SECRET_KEY looks exactly like a platform secrets-sync bug across restarts; verify value/account first, add sk_ startup guard
+- [Playwright + Radix Dropdown](playwright-radix-dropdown.md) — auth mock via addInitScript only (not catch-all); re-focus before Enter/Escape cycles; href check not click+waitForURL; unauth testid is button-sign-in
