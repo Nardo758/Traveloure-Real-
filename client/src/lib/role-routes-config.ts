@@ -37,7 +37,8 @@ export const expertRoutesConfig: RoleRouteConfig[] = [
   { href: '/expert/profile',            description: 'Public expert profile' },
   { href: '/expert/settings',           description: 'Account settings' },
   { href: '/expert/verification',       description: 'Expert verification status' },
-  { href: '/expert/contract-categories', description: 'Contract category management' },
+  // '/expert/contract-categories' removed: page deleted by the expert-console
+  // consolidation (9959ca80) with no redirect — it now hits the 404 catch-all.
   { href: '/expert/booking-partners',   description: 'Booking partner configuration' },
   { href: '/expert/workspace',          description: 'Trip planning workspace' },
   { href: '/expert/dmo-library',        description: 'DMO destination library' },

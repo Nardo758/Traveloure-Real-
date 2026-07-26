@@ -187,6 +187,11 @@ jobs:
           # can't be reused → authenticated=false). Opt out of secure cookies for
           # this test-only server. NEVER set this in production.
           SESSION_COOKIE_INSECURE: '1'
+          # The smoke visits ~75 role-gated pages in a few minutes from one
+          # loopback IP; the general /api limiter (100 req/min/IP) 429s late
+          # pages, blanking data-driven ones. Exempt loopback for this
+          # test-only server. NEVER set this in production.
+          RATE_LIMIT_LOOPBACK_SKIP: '1'
           PGUSER: postgres
           PGPASSWORD: postgres
           PGHOST: localhost

@@ -100,6 +100,18 @@ export const generalRateLimiter = createRateLimiter({
   windowMs: 60 * 1000,
   maxRequests: 100,
   keyGenerator: (req) => `general:${req.ip || "unknown"}`,
+  skip: (req) => {
+    // CI Playwright gates drive hundreds of same-IP localhost requests per
+    // minute (every page load fans out many /api calls from 127.0.0.1), which
+    // trips this per-IP cap and 429s late tests. The harness sets
+    // RATE_LIMIT_LOOPBACK_SKIP=1 to exempt loopback only. NEVER set this in
+    // production.
+    if (process.env.RATE_LIMIT_LOOPBACK_SKIP === "1") {
+      const ip = req.ip ?? "";
+      if (ip === "127.0.0.1" || ip === "::1" || ip.endsWith(":127.0.0.1")) return true;
+    }
+    return false;
+  },
 });
 
 export const aiRateLimiter = createRateLimiter({
