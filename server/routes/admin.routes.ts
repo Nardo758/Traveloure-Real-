@@ -4816,7 +4816,17 @@ router.get("/api/admin/reviews", isAuthenticated, async (req, res) => {
         const service = await storage.getProviderServiceById(r.serviceId);
         const logs = await getReviewModerationLogs(r.id);
         return {
-          ...r,
+          id: r.id,
+          serviceId: r.serviceId,
+          travelerId: r.travelerId,
+          rating: r.rating,
+          reviewText: r.reviewText ?? null,
+          responseText: r.responseText ?? null,
+          responseAt: r.responseAt ?? null,
+          status: r.status,
+          flagReason: r.flagReason ?? null,
+          moderatedAt: r.moderatedAt ?? null,
+          createdAt: r.createdAt,
           travelerName: traveler ? [traveler.firstName, traveler.lastName].filter(Boolean).join(" ") || traveler.email : "Unknown",
           serviceName: service?.serviceName ?? "Unknown Service",
           logs,
