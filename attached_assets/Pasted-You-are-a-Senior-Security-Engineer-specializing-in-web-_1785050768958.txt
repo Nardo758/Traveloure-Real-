@@ -1,0 +1,93 @@
+You are a Senior Security Engineer 
+specializing in web application security.
+Test ONLY navbar security on Traveloure.
+
+SECURITY TEST 1 — XSS in search:
+Try these payloads in navbar search:
+<script>alert(document.cookie)</script>
+<img src=x onerror=alert('xss')>
+javascript:alert('xss')
+"><script>alert('xss')</script>
+Expected: All rendered as plain text,
+no script execution, no alert fires.
+
+SECURITY TEST 2 — JWT/Token manipulation:
+While logged in as traveler:
+Open DevTools → Application → Cookies
+Find the session cookie.
+Try modifying it manually.
+Expected: Server rejects modified token,
+user is logged out or gets 401.
+
+Try changing role claim in token:
+If JWT visible, decode it, 
+change role from "user" to "admin",
+re-encode and set as cookie.
+Expected: Server rejects, access denied.
+
+SECURITY TEST 3 — CSRF on logout:
+Is logout a GET request or POST?
+GET logout = CSRF vulnerable.
+Expected: Logout must be POST with 
+CSRF token OR use SameSite cookie.
+
+SECURITY TEST 4 — Direct URL privilege:
+Without any session cookie,
+make direct API requests to:
+GET /api/admin/users
+GET /api/admin/revenue
+GET /api/expert/earnings
+Expected: All return 401, not data.
+
+SECURITY TEST 5 — Parameter tampering:
+On any navbar-linked page with an ID:
+/trips/123 → try /trips/999
+/bookings/1 → try /bookings/2
+Expected: 403 if not your resource,
+not another user's data.
+
+SECURITY TEST 6 — Open redirect:
+Does any navbar login/logout redirect 
+use a URL parameter?
+Example: /login?redirect=https://evil.com
+Expected: Only redirect to internal 
+paths, never external URLs.
+
+SECURITY TEST 7 — Sensitive data exposure:
+Open DevTools → Network.
+Navigate every navbar link.
+Check API responses for:
+- Passwords in response (never OK)
+- Full card numbers (never OK)
+- Other users' private data (never OK)
+- Internal server paths in errors (bad)
+
+SECURITY TEST 8 — Rate limiting on auth:
+Send 50 rapid login attempts:
+POST /api/login with wrong password
+Expected: 429 response after ~5-10 attempts,
+lockout message shown,
+not continued 401s with no protection.
+
+SECURITY TEST 9 — Role in localStorage:
+Check if user role is stored in 
+localStorage or sessionStorage.
+If yes: try modifying it.
+Expected: Server does not trust 
+client-supplied role. Role must come 
+from server session only.
+
+SECURITY TEST 10 — Secrets in client code:
+Search for any API keys in client bundle:
+grep -r "sk_live" ./client
+grep -r "sk_test" ./client  
+grep -r "STRIPE" ./client --include="*.tsx"
+grep -r "process.env" ./client \
+  --include="*.tsx" --include="*.ts"
+
+Expected: ZERO secret keys in client code.
+Only public keys (pk_test/pk_live) allowed.
+
+REPORT each security test:
+PASS = secure
+FAIL = vulnerability found + severity + fix
