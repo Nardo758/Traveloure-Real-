@@ -16,7 +16,7 @@ const launchCities = [
 export function CityTickerTape() {
   return (
     <div 
-      className="w-full bg-gradient-to-r from-[#FF6B6B] via-[#FF8E53] to-[#FF6B6B] text-white py-2.5 px-4"
+      className="w-full bg-gradient-to-r from-[#FF6B6B] via-[#FF8E53] to-[#FF6B6B] text-white py-2.5 px-4 overflow-x-hidden"
       data-testid="top-ribbon-banner"
     >
       <div className="container mx-auto max-w-6xl">

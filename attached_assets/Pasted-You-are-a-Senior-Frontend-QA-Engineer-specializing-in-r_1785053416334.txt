@@ -1,0 +1,103 @@
+You are a Senior Frontend QA Engineer 
+specializing in responsive design.
+Test ONLY navbar responsiveness on Traveloure.
+
+TEST AT THESE EXACT BREAKPOINTS:
+
+For each breakpoint, test:
+A) Navbar renders correctly
+B) All links are accessible
+C) No overflow or horizontal scroll
+D) Touch targets are minimum 44x44px
+E) Text is readable (min 14px)
+F) Hamburger menu works (mobile)
+
+BREAKPOINT 1 — 320px (smallest phone):
+Set browser width to exactly 320px.
+Check:
+- Does hamburger menu appear?
+- Does logo fit without overflow?
+- Is any content cut off?
+- Can all menu items be reached?
+Report: PASS/FAIL + screenshot description
+
+BREAKPOINT 2 — 375px (iPhone SE):
+Same checks as 320px.
+Additional: Test swipe to open/close menu.
+Report: PASS/FAIL
+
+BREAKPOINT 3 — 425px (large phone):
+Same checks.
+Report: PASS/FAIL
+
+BREAKPOINT 4 — 768px (tablet portrait):
+Check:
+- Does desktop nav appear or mobile?
+- Are dropdown menus accessible?
+- Does navbar height change?
+Report: PASS/FAIL
+
+BREAKPOINT 5 — 1024px (tablet landscape):
+Same as 768px checks.
+Report: PASS/FAIL
+
+BREAKPOINT 6 — 1280px (laptop):
+Check:
+- Full desktop navbar visible?
+- All links visible without overflow?
+- Dropdowns working on hover?
+Report: PASS/FAIL
+
+BREAKPOINT 7 — 1440px (desktop):
+Same as 1280px.
+Report: PASS/FAIL
+
+BREAKPOINT 8 — 1920px (large monitor):
+Check:
+- Navbar stretches correctly?
+- Max-width container working?
+- No content too far apart?
+Report: PASS/FAIL
+
+MOBILE HAMBURGER MENU TESTS:
+
+Test 1: Open hamburger menu
+Tap the ☰ button at 375px.
+Expected: Menu slides/fades in smoothly,
+no layout jump, correct z-index 
+(menu appears above content).
+
+Test 2: Close by clicking X:
+Tap the X/close button.
+Expected: Menu closes, no ghost overlay.
+
+Test 3: Close by clicking outside:
+Open menu, tap outside menu area.
+Expected: Menu closes automatically.
+
+Test 4: Close by pressing Escape:
+Open menu, press Escape key.
+Expected: Menu closes.
+
+Test 5: Navigate from mobile menu:
+Open menu, click a link.
+Expected: Menu closes AND page navigates.
+Not: Menu stays open with page behind it.
+
+Test 6: Scroll with menu open:
+Open mobile menu, try scrolling.
+Expected: Either body scroll locked OR
+menu scrolls independently.
+
+STICKY NAVBAR TEST:
+Scroll down 500px on any page.
+Expected: Navbar stays fixed at top,
+correct shadow/border appears,
+no content hidden behind navbar.
+
+Check: Is content top padding accounting 
+for navbar height? No content cut off?
+
+REPORT: For each breakpoint and test,
+PASS or FAIL with specific issue description.
+Fix any FAIL found before reporting.
