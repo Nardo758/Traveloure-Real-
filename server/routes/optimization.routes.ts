@@ -25,6 +25,7 @@ import {
 } from "../services/smart-sequencing.service";
 import { getFee, isEventOptimizer } from "../services/optimization-fee.service";
 import { revenueTrackingService } from "../services/revenue-tracking.service";
+import { stripePaymentService } from "../services/stripe-payment.service";
 import Stripe from "stripe";
 
 const router = Router();
@@ -234,26 +235,58 @@ router.post("/api/optimization-payments", isAuthenticated, async (req, res) => {
       return res.json({ freeRerun: true, feeCents: 0, comparisonId: recent.id });
     }
 
-    // Look up or create a Stripe customer so cards can be saved for one-tap reuse
-    const [userRow] = await db
-      .select({ email: users.email, firstName: users.firstName, lastName: users.lastName })
-      .from(users)
-      .where(eq(users.id, userId))
-      .limit(1);
+    // FP-1: durable Stripe Customer (users.stripe_customer_id, migration 146) — replaces the
+    // per-request customers.list({email}) lookup this endpoint previously carried.
+    const stripeCustomerId = (await stripePaymentService.getOrCreateCustomer(userId)) ?? undefined;
 
-    let stripeCustomerId: string | undefined;
-    if (userRow?.email) {
-      const existing = await stripe.customers.list({ email: userRow.email, limit: 1 });
-      if (existing.data.length > 0) {
-        stripeCustomerId = existing.data[0].id;
-      } else {
-        const created = await stripe.customers.create({
-          email: userRow.email,
-          name: [userRow.firstName, userRow.lastName].filter(Boolean).join(" ") || undefined,
-          metadata: { userId },
+    // FP-1 one-click: when the client asks to use the saved card, charge it OFF-SESSION —
+    // create+confirm in one server call, no payment sheet. The amount is the same server-derived
+    // priceCents (§14 unchanged; useSavedCard is a consent flag, never an amount). On success the
+    // client calls the normal /confirm with this PI id — the confirm contract is unchanged. If
+    // the bank demands 3DS we return the clientSecret and the client falls back to the sheet.
+    if (req.body?.useSavedCard === true) {
+      const oneClick = await stripePaymentService.chargeSavedMethod(userId, {
+        amountCents: priceCents,
+        currency,
+        metadata: {
+          type: "optimization_fee",
+          userId,
+          complexityTier: tier,
+          eventType: dbEventType ?? "",
+          targetTripId: tripId ?? "",
+          targetExperienceId: userExperienceId ?? "",
+          context: JSON.stringify(comparisonContext || {}),
+        },
+        description: `Traveloure AI Optimization (${tier})`,
+        // §15: deterministic per-target-per-day key — a double-click can't double-charge.
+        idempotencyKey: `opt-fee-${userId}-${tripId ?? userExperienceId}-${new Date().toISOString().slice(0, 10)}`,
+      });
+      if (oneClick.status === "succeeded") {
+        return res.json({
+          freeRerun: false,
+          oneClick: true,
+          status: "succeeded",
+          paymentIntentId: oneClick.paymentIntentId,
+          feeCents: priceCents,
+          currency,
+          complexityTier: tier,
+          creditTowardCoordination,
         });
-        stripeCustomerId = created.id;
       }
+      if (oneClick.status === "requires_action") {
+        return res.json({
+          freeRerun: false,
+          oneClick: false,
+          requiresAction: true,
+          clientSecret: oneClick.clientSecret,
+          paymentIntentId: oneClick.paymentIntentId,
+          feeCents: priceCents,
+          currency,
+          complexityTier: tier,
+          creditTowardCoordination,
+        });
+      }
+      // no_saved_method → fall through to the normal sheet flow below.
     }
 
     // Create Stripe PaymentIntent with saved-card support

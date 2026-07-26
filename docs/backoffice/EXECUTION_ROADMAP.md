@@ -64,17 +64,17 @@ checking this table.
 | C0 | ⛔ **Consolidation decision:** 3 availability tables (`provider_availability`, `provider_availability_schedule`, `vendor_availability_slots`) → 1 canonical | Fable analysis ~30k → decision | ~30k | — | §4-class decision; blocks all of Wave C |
 | C1 ✅ `e0323cbb` (found the availability-manager writer dead — filed for C2) | Next-availability compute + My Offerings "Next Availability" column | Sonnet | ~45k | C0 | — |
 | C2 ✅ | Public availability calendar on offering page (booked/available days) | Sonnet | ~60k | C1 | Landed: repaired the dead slot writer (client sent a weekly shape the server never accepted — every save 400d) + ADDED the missing §14 ownership check on POST /api/provider/availability (any provider could create slots on another's service); public month read is F2-gated (approved-only, proven both directions). Filed: blackout-dates GET wiring; recurring-pattern generator (schedule layer) |
-| C3 | 🔴 Slot-aware checkout + conflict detection ("this slot just booked") | Fable | ~100k | C2 | §15 atomic slot claim; the money-path centerpiece |
+| C3 ✅ 🔴 | Slot-aware checkout + conflict detection ("this slot just booked") | Fable | ~100k | C2 | Landed (migration 145): slot pick rides add-to-cart (soft-validated, server-derived date), checkout claims capacity via the rewritten ATOMIC bookSlot (§15 — the old check-then-update TOCTOU had zero callers) BEFORE any booking/Stripe call, with compensation release + 409 slot_unavailable on a lost race; slot_id stamped on the booking. Filed: release the slot on refund/abandoned payment_pending (rides the existing recovery design) |
 
 ## Wave SH — Share & social engine (mockup 4)
 
 | ID | Item | Tier | Est. | Depends | Notes |
 |----|------|------|------|---------|-------|
 | SH0 | ⛔ Share-asset persistence decision (render-on-demand vs stored) | decision | — | — | Blocks SH1; flagged in IMPLEMENTATION_MAP before any IG activation |
-| SH1 | Image render pipeline (IG feed 1080×1350 / story 1080×1920 / review card) | Fable design ~40k → Sonnet ~60k | ~100k | SH0, S3 | New dependency (satori or canvas) — deliberate add |
-| SH2 | Share surface page: cards + captions + wa.me/X/copy (informational outbound OK per §16; links route back to /p/) | Haiku | ~30k | SH1 | Mostly mockup 4 verbatim |
-| SH3 | Posting Opportunities feed (new 5★ review / open slots / seasonal) | Sonnet | ~50k | SH1, C1 | Data all exists; generator + surface |
-| SH4 | W0.6 Instagram publish fix (filed defect) | Sonnet | ~40k | — | Independent |
+| SH1 ✅ `49090eb0`+`285102d5` | Image render pipeline (IG feed 1080×1350 / story 1080×1920 / review card) | Fable design ~40k → Sonnet ~60k | ~100k | SH0, S3 | Landed: satori + @resvg/resvg-js (deliberate add, lockfile clean) + bundled Inter woff (OFL); F2/REV-MOD-gated endpoints, §13-honest cards, cacheable + rate-limited |
+| SH2 ✅ | Share surface page: cards + captions + wa.me/X/copy (informational outbound OK per §16; links route back to /p/) | Haiku | ~30k | SH1 | Landed: shared /expert|provider/share-promote page (offering picker, live SH1 previews, editable real-data captions, short-link-first actions). Ground-truth catch: N1 never actually added the Share & Promote nav entry — added to both sidebars here |
+| SH3 ✅ `2eaf10a9` | Posting Opportunities feed (new 5★ review / open slots / seasonal) | Sonnet | ~50k | SH1, C1 | Landed (reviews + open slots). Seasonal source honestly SKIPPED — seasonal_opportunities has readers but zero writers and 0 rows (§13); add only with a real write path |
+| SH4 ✅ (Tier-2 ACTIVATE ratified) | W0.6 Instagram publish fix (filed defect) | Sonnet | ~40k | — | Ground-truthed Jul 26: defect confirmed real (content-studio.tsx:310 apiRequest arg-order bug — the publish call never reaches the server; :849 dropdown decorative) BUT the W0.6 brief is VOID unless the Instagram Tier-2 activate/dormant PRODUCT decision is ratified "activate" — it is not among the five ratified decisions. Fix is pre-scoped in the brief (2 client lines; server already complete + honestly key-gated); executes on ratification |
 
 ## Wave M — Money-model decision
 
@@ -105,6 +105,12 @@ checking this table.
 ---
 
 ## ⛭ Decisions — RATIFIED Jul 26, 2026 (decision-maker)
+
+0. **Instagram Tier-2 = ACTIVATE** (ratified later on Jul 26, unblocking SH4/W0.6). The publish
+   wiring fix is landed; live publishing additionally needs `META_APP_ID`/`META_APP_SECRET` at
+   deploy and each expert connecting their IG account (the existing OAuth flow). Filed next:
+   point published images at the SH1 render-on-demand share-image URLs (needs the deployed public
+   origin) and the P4.4 token-refresh job.
 
 1. **S2 = redirect-when-claimed.** `/experts/:id` (and `/local-experts/:id`) 302 → `/p/:handle` once the
    earner has claimed a handle; unclaimed earners keep the id page. `/p/` later absorbs the browse extras.
@@ -140,3 +146,17 @@ Decisions cost zero tokens and unblock the most work — batch them first, then 
 **Remaining spend ≈ 1.1M output tokens: ~230k Fable · ~700k Sonnet · ~185k Haiku** (M0 scratched −80k; Wave R added +225k; F2/F3 already landed).
 Fable share is ~22% — the map's tier philosophy holding. Every 🔴 item stops after gates for the
 decision-maker's diff read; nothing executes past a ⛔ until its decision is recorded here.
+
+
+## Wave FP — Frictionless Payments (ratified Jul 26, 2026: "map it out then execute it" + Cart fix)
+
+| ID | Item | Tier | Status |
+|----|------|------|--------|
+| FP-1 🔴 | Stripe Customer layer (migration 146 users.stripe_customer_id) + saved-card service (list/default/detach, §14 ownership-checked) + off-session one-click chargeSavedMethod (§15 idempotent, 3DS requires_action fallback) + /api/me/payment-methods router + one-click wired into optimize + coordination pay (useSavedCard consent flag; confirm contracts unchanged) + customer attached to cart checkout PI so the sheet offers saved cards | Fable | ✅ |
+| FP-2 ✅ `4b8f0ce7` | Checkout sheet upgrade + one-click buttons + Payment Methods card (sheet was already PaymentElement; Stripe-native save/Link UI; coordination-sheet customer parity fixed) | Sonnet | landed |
+| FP-3 ✅ `ad6d07db` | Credits retirement (−846 lines: every credits surface was fabricated demo content; 410 gates on purchase/add-credits/wallet; tables dormant). Filed: terms/privacy legal copy still describes credits — dedicated legal pass | Sonnet | landed |
+| FP-4 ✅ | Cart UI + process fix (audit-first): slot-held lines on items, per-item 409 conflict flagging, checkout-snapshot order review (was going BLANK at card entry — checkout clears the cart pre-Stripe), Stripe-cancel dead-end fixed, ~112 lines dead generateItinerary removed. Filed: GET /api/cart conciergeFee parity; slot time-of-day join in _enrichCartItems; the unreachable itinerary flowStep (wire-or-delete decision) | Sonnet | landed |
+
+PCI posture: cards live ONLY in Stripe's vault; this DB stores the opaque customer id. One-click
+guardrails: saving is opt-in at the sheet, the price is always on the button, every charge gets a
+receipt, and nothing charges without a click.

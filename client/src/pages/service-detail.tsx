@@ -117,6 +117,7 @@ interface ProviderVerification {
 // same posture as the service detail read itself. No booking-slot selection is wired here
 // (that is C3's cart/checkout concern); this is purely informational.
 interface AvailabilityDay {
+  id: string; // C3: slot id — carried into add-to-cart so checkout can claim the slot atomically
   date: string;
   startTime: string | null;
   endTime: string | null;
@@ -202,13 +203,21 @@ export default function ServiceDetailPage() {
   const [bookingDate, setBookingDate] = useState("");
   const [bookingTime, setBookingTime] = useState("");
   const todayStr = format(new Date(), "yyyy-MM-dd");
+  // C3: picked availability slot (from the Availability card). When set, it rides add-to-cart
+  // as slotId — the server derives the schedule from the slot and checkout claims it atomically.
+  const [selectedSlot, setSelectedSlot] = useState<AvailabilityDay | null>(null);
 
   const addToCartMutation = useMutation({
     mutationFn: async (_vars: { proceed: boolean }) => {
       const scheduledDate = bookingDate
         ? new Date(`${bookingDate}T${bookingTime || "09:00"}:00`).toISOString()
         : undefined;
-      return apiRequest("POST", "/api/cart", { serviceId: id, quantity: 1, scheduledDate });
+      return apiRequest("POST", "/api/cart", {
+        serviceId: id,
+        quantity: 1,
+        scheduledDate,
+        ...(selectedSlot ? { slotId: selectedSlot.id } : {}),
+      });
     },
     onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
@@ -217,9 +226,11 @@ export default function ServiceDetailPage() {
       } else {
         toast({
           title: "Added to cart",
-          description: bookingDate
-            ? `Scheduled for ${format(new Date(`${bookingDate}T00:00:00`), "MMM d, yyyy")}${bookingTime ? ` at ${bookingTime}` : ""}`
-            : "Service has been added to your cart",
+          description: selectedSlot
+            ? `Slot held at checkout: ${format(new Date(`${selectedSlot.date}T00:00:00`), "MMM d, yyyy")}${selectedSlot.startTime ? ` at ${selectedSlot.startTime}` : ""}`
+            : bookingDate
+              ? `Scheduled for ${format(new Date(`${bookingDate}T00:00:00`), "MMM d, yyyy")}${bookingTime ? ` at ${bookingTime}` : ""}`
+              : "Service has been added to your cart",
         });
       }
     },
@@ -465,10 +476,22 @@ export default function ServiceDetailPage() {
                   <div className="space-y-2">
                     {upcomingAvailability.map((day) => {
                       const fullyBooked = day.status === "fully_booked" || day.remaining <= 0;
+                      const isSelected = selectedSlot?.id === day.id;
                       return (
-                        <div
+                        <button
+                          type="button"
                           key={`${day.date}-${day.startTime}`}
-                          className="flex items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm"
+                          // C3: an open slot is selectable — the pick rides add-to-cart as slotId
+                          // and checkout claims it atomically ("this slot just booked" on a race).
+                          disabled={fullyBooked}
+                          onClick={() => setSelectedSlot(isSelected ? null : day)}
+                          className={`flex w-full items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm text-left transition-colors ${
+                            fullyBooked
+                              ? "opacity-60 cursor-not-allowed"
+                              : isSelected
+                                ? "border-primary bg-primary/5"
+                                : "hover:bg-muted/50"
+                          }`}
                           data-testid={`availability-day-${day.date}`}
                         >
                           <span className="font-medium">
@@ -480,10 +503,13 @@ export default function ServiceDetailPage() {
                               </span>
                             )}
                           </span>
-                          <Badge variant={fullyBooked ? "outline" : "secondary"}>
-                            {fullyBooked ? "Fully booked" : `${day.remaining} spot${day.remaining === 1 ? "" : "s"} open`}
-                          </Badge>
-                        </div>
+                          <span className="flex items-center gap-2">
+                            {isSelected && <Badge data-testid={`badge-slot-selected-${day.date}`}>Selected</Badge>}
+                            <Badge variant={fullyBooked ? "outline" : "secondary"}>
+                              {fullyBooked ? "Fully booked" : `${day.remaining} spot${day.remaining === 1 ? "" : "s"} open`}
+                            </Badge>
+                          </span>
+                        </button>
                       );
                     })}
                   </div>
