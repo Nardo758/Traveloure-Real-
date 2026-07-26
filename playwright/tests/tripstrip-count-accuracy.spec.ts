@@ -1,32 +1,28 @@
 import { test, expect } from "@playwright/test";
+import * as fs from "fs";
+import * as path from "path";
+import { fileURLToPath } from "url";
 import crypto from "crypto";
 
 /**
  * TripStrip count accuracy — Suite: cart mutations
  *
  * Regression guard for Task 942 which fixed two slug-scoped React-Query
- * invalidations in cart.tsx.  Before that fix the `convertToItineraryMutation`
- * and the checkout `checkoutMutation` called:
+ * invalidations in cart.tsx.  Before that fix:
  *
- *   queryClient.invalidateQueries({ queryKey: ["/api/cart", experienceSlug] })
+ *   convertToItineraryMutation.onSuccess → invalidateQueries({ queryKey: ["/api/cart", experienceSlug] })
+ *   checkoutMutation.onSuccess           → invalidateQueries({ queryKey: ["/api/cart", experienceSlug] })
  *
- * …instead of the bare key `["/api/cart"]` that TripStrip uses.  As a result
- * the TripStrip chip count remained stale (non-zero) after both actions.
+ * The TripStrip uses the BARE key ["/api/cart"] (no slug), so the slug-qualified
+ * invalidations left the chip count stale after both actions.
  *
- * Tests:
- *   A. Source — cart.tsx invalidates the bare /api/cart key (no slug suffix) in
- *      convertToItineraryMutation.onSuccess
- *   B. Source — cart.tsx invalidates the bare /api/cart key in the checkout
- *      mutation's onSuccess
- *   C. Browser — after convert-to-itinerary, the TripStrip chip count drops to
- *      zero within 1 second
- *   D. Browser — after checkout, the TripStrip chip count drops to zero within
- *      1 second
+ * Tests
+ * ──────
+ * A  Static  — convertToItineraryMutation.onSuccess uses the bare /api/cart key
+ * B  Static  — checkoutMutation.onSuccess uses the bare /api/cart key
+ * C  Browser — TripStrip chip disappears (no page reload) after convert-to-itinerary
+ * D  Browser — TripStrip chip disappears (no page reload) after checkout
  */
-
-import * as fs from "fs";
-import * as path from "path";
-import { fileURLToPath } from "url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const BASE_URL = process.env.BASE_URL || "http://localhost:5000";
@@ -35,21 +31,16 @@ function uid(prefix = "") {
   return prefix + crypto.randomUUID().replace(/-/g, "").slice(0, 10);
 }
 
-const CART_FILE = path.resolve(
-  __dirname,
-  "../../client/src/pages/cart.tsx"
-);
+const CART_FILE = path.resolve(__dirname, "../../client/src/pages/cart.tsx");
 
-// ── helpers ────────────────────────────────────────────────────────────────
+// ── Shared API helpers ─────────────────────────────────────────────────────
 
-/** Register a fresh throwaway user; returns the page already authenticated. */
 async function registerFreshUser(page: import("@playwright/test").Page) {
   const email = `e2e-tripstrip-${uid()}@example.com`;
-  const password = "TripStrip123!";
   const res = await page.request.post(`${BASE_URL}/api/auth/register`, {
     data: {
       email,
-      password,
+      password: "TripStrip123!",
       firstName: "Strip",
       lastName: "Tester",
       userType: "user",
@@ -59,10 +50,10 @@ async function registerFreshUser(page: import("@playwright/test").Page) {
     res.status(),
     `Registration failed (${res.status()}): ${await res.text()}`
   ).toBe(201);
-  return { email, password };
+  return email;
 }
 
-/** Add a content-type item to the authenticated user's cart via API. */
+/** Add a content-type cart item (activity) via the authenticated API. */
 async function addContentItemToCart(page: import("@playwright/test").Page) {
   const res = await page.request.post(`${BASE_URL}/api/cart`, {
     data: {
@@ -86,9 +77,8 @@ async function addContentItemToCart(page: import("@playwright/test").Page) {
 }
 
 /**
- * Inject a minimal TripContext into localStorage so the TripStrip bar
- * is visible (it requires at least one context field OR items in cart).
- * The destination alone is enough.
+ * Seed a minimal trip context in localStorage so TripStrip renders even
+ * when no trip id is set (destination alone satisfies hasContext).
  */
 async function seedTripContext(page: import("@playwright/test").Page) {
   await page.evaluate(() => {
@@ -99,7 +89,7 @@ async function seedTripContext(page: import("@playwright/test").Page) {
   });
 }
 
-// ── A. Static: convertToItineraryMutation invalidates bare /api/cart ────────
+// ── A. Static: convertToItineraryMutation invalidates bare /api/cart ───────
 
 test.describe("TripStrip chip count accuracy (Suite: cart mutations)", () => {
   test(
@@ -107,9 +97,8 @@ test.describe("TripStrip chip count accuracy (Suite: cart mutations)", () => {
     () => {
       const src = fs.readFileSync(CART_FILE, "utf-8");
 
-      // Locate the convertToItineraryMutation block.
-      // The onSuccess must call invalidateQueries with just ["/api/cart"],
-      // NOT ["/api/cart", experienceSlug] or any other slug-qualified variant.
+      // Capture the convertToItineraryMutation block up to (and including)
+      // the setLocation call that signals the mutation completed.
       const convertBlock = src.match(
         /convertToItineraryMutation\s*=\s*useMutation\(\{[\s\S]*?onSuccess[\s\S]*?setLocation\(`\/trip\/\$\{/
       );
@@ -120,18 +109,20 @@ test.describe("TripStrip chip count accuracy (Suite: cart mutations)", () => {
 
       const block = convertBlock![0];
 
-      // Must contain the bare key invalidation
+      // Must contain the bare-key invalidation
       expect(
         /invalidateQueries\(\s*\{\s*queryKey\s*:\s*\[\s*["']\/api\/cart["']\s*\]/.test(block),
         "convertToItineraryMutation.onSuccess must call invalidateQueries({ queryKey: [\"/api/cart\"] }) " +
           "(bare key, no slug) so TripStrip refreshes immediately after convert."
       ).toBe(true);
 
-      // Must NOT contain a slug-qualified invalidation in onSuccess
+      // Must NOT contain a slug-qualified invalidation
       expect(
-        /invalidateQueries\(\s*\{\s*queryKey\s*:\s*\[\s*["']\/api\/cart["']\s*,\s*experience/.test(block),
-        "convertToItineraryMutation.onSuccess must NOT pass a slug to invalidateQueries " +
-          "— slug-qualified invalidation leaves TripStrip (which uses the bare key) stale."
+        /invalidateQueries\(\s*\{\s*queryKey\s*:\s*\[\s*["']\/api\/cart["']\s*,\s*experience/.test(
+          block
+        ),
+        "convertToItineraryMutation.onSuccess must NOT pass a slug to invalidateQueries — " +
+          "slug-qualified invalidation leaves TripStrip (bare key) stale."
       ).toBe(false);
 
       console.log(
@@ -140,15 +131,13 @@ test.describe("TripStrip chip count accuracy (Suite: cart mutations)", () => {
     }
   );
 
-  // ── B. Static: checkout mutation invalidates bare /api/cart ──────────────
+  // ── B. Static: checkoutMutation invalidates bare /api/cart ───────────────
 
   test(
-    "B — cart.tsx checkout mutation.onSuccess invalidates the bare ['/api/cart'] key (no slug suffix)",
+    "B — cart.tsx checkoutMutation.onSuccess invalidates the bare ['/api/cart'] key (no slug suffix)",
     () => {
       const src = fs.readFileSync(CART_FILE, "utf-8");
 
-      // checkoutMutation's onSuccess sets flowStep to "payment" or navigates.
-      // It must invalidate the bare cart key first.
       const checkoutBlock = src.match(
         /checkoutMutation\s*=\s*useMutation\(\{[\s\S]*?onSuccess[\s\S]*?(?:setFlowStep|setLocation)/
       );
@@ -166,7 +155,9 @@ test.describe("TripStrip chip count accuracy (Suite: cart mutations)", () => {
       ).toBe(true);
 
       expect(
-        /invalidateQueries\(\s*\{\s*queryKey\s*:\s*\[\s*["']\/api\/cart["']\s*,\s*experience/.test(block),
+        /invalidateQueries\(\s*\{\s*queryKey\s*:\s*\[\s*["']\/api\/cart["']\s*,\s*experience/.test(
+          block
+        ),
         "checkoutMutation.onSuccess must NOT pass a slug to invalidateQueries — that leaves TripStrip stale."
       ).toBe(false);
 
@@ -176,42 +167,41 @@ test.describe("TripStrip chip count accuracy (Suite: cart mutations)", () => {
     }
   );
 
-  // ── C. Browser: convert-to-itinerary → chip count drops within 1 s ──────
+  // ── C. Browser: convert-to-itinerary → chip disappears without reload ────
 
   test(
-    "C — browser: TripStrip chip count drops to zero within 1 s after convert-to-itinerary",
+    "C — browser: TripStrip chip disappears (no page reload) within 1 s after convert-to-itinerary UI action",
     async ({ page }) => {
       // 1. Register + authenticate
       await registerFreshUser(page);
 
-      // 2. Add one item via API so the chip shows "1"
-      const cartItem = await addContentItemToCart(page);
+      // 2. Add a content item (activity) — this makes the "Start Planning"
+      //    button visible and populates the planning dialog checkbox list.
+      await addContentItemToCart(page);
 
-      // 3. Navigate to /cart; seed trip context in localStorage so TripStrip
-      //    renders even when navigation guard blocks the chip on some pages.
+      // 3. Navigate to /cart and seed trip context so TripStrip renders.
       await page.goto(`${BASE_URL}/cart`);
       await seedTripContext(page);
 
-      // 4. Reload to pick up the seeded context.  At this point NO route
-      //    interceptors are in place, so the real /api/cart returns 1 item.
+      // 4. Reload once to pick up the seeded context.  No interceptors yet
+      //    so the real /api/cart returns 1 item.
       await page.reload();
       await page.waitForLoadState("networkidle");
 
-      // 5. Confirm the TripStrip chip is showing ≥ 1 item before the action.
-      //    The chip has data-testid="trip-strip-cart" and is rendered only
-      //    when cartCount > 0.
+      // 5. Confirm TripStrip chip shows ≥ 1 item before the action.
       await expect(
         page.locator('[data-testid="trip-strip-cart"]'),
         "TripStrip cart chip should show ≥ 1 item before convert-to-itinerary"
       ).toBeVisible({ timeout: 8_000 });
 
-      const chipTextBefore = await page
+      const chipBefore = await page
         .locator('[data-testid="trip-strip-cart"]')
         .textContent();
-      console.log(`[tripstrip-count] chip before convert: "${chipTextBefore?.trim()}"`);
+      console.log(`[tripstrip-count] chip before convert: "${chipBefore?.trim()}"`);
 
-      // 6. NOW set up the interceptors — after confirming the chip is visible.
-      //    Intercept convert-to-itinerary: return a synthetic tripId immediately.
+      // 6. Set up network interception AFTER confirming the chip is visible.
+      //
+      //    a) Mock POST /api/cart/convert-to-itinerary so it succeeds instantly.
       const fakeTripId = `fake-trip-${uid()}`;
       await page.route("**/api/cart/convert-to-itinerary", (route) => {
         route.fulfill({
@@ -221,13 +211,11 @@ test.describe("TripStrip chip count accuracy (Suite: cart mutations)", () => {
         });
       });
 
-      // 7. Intercept subsequent GET /api/cart (post-action) to return an empty
-      //    cart — simulating the server state after the items are converted.
-      //    The first GET request on the reload below is our target.
-      let interceptCount = 0;
+      //    b) From this point on, every GET /api/cart returns an empty cart.
+      //       This simulates the server state after items are moved to the trip.
+      //       React-Query will call this immediately after invalidateQueries.
       await page.route("**/api/cart", (route) => {
-        if (route.request().method() === "GET" && interceptCount === 0) {
-          interceptCount++;
+        if (route.request().method() === "GET") {
           route.fulfill({
             status: 200,
             contentType: "application/json",
@@ -245,60 +233,79 @@ test.describe("TripStrip chip count accuracy (Suite: cart mutations)", () => {
         }
       });
 
-      // 8. Reload to enter the "post-convert" state: the interceptor returns 0
-      //    items, so React-Query populates itemCount = 0 and TripStrip must hide
-      //    the chip.  This confirms that TripStrip uses the bare ["/api/cart"]
-      //    key (which the interceptor targets) — not a slug-qualified variant.
-      await page.reload();
-      await page.waitForLoadState("networkidle");
+      // 7. Click "Start Planning" to open the dialog.
+      await page.locator('[data-testid="button-start-planning"]').click();
+      await expect(
+        page.locator('[data-testid="dialog-start-planning"]'),
+        "Planning dialog should open"
+      ).toBeVisible({ timeout: 5_000 });
 
-      // 9. The cart chip must now be gone within 1 s.
+      // 8. Switch to "New trip" mode.
+      await page.locator('[data-testid="button-mode-new"]').click();
+
+      // 9. Fill in a trip name (required for the mutation to fire).
+      await page
+        .locator('[data-testid="input-new-trip-name"]')
+        .fill("E2E TripStrip Test Trip");
+
+      // 10. Click "Add items to trip" — this fires convertToItineraryMutation.
+      //     onSuccess calls invalidateQueries({ queryKey: ["/api/cart"] }),
+      //     which triggers a refetch → our interceptor returns itemCount: 0.
+      await page.locator('[data-testid="button-confirm-planning"]').click();
+
+      // 11. Without any page reload, the TripStrip chip must disappear within 1 s
+      //     because React-Query refetched the bare /api/cart key and got 0 items.
       await expect(
         page.locator('[data-testid="trip-strip-cart"]'),
         "TripStrip cart chip must disappear within 1 s after convert-to-itinerary " +
-          "(itemCount → 0 via invalidated /api/cart bare key)"
+          "(React-Query invalidated bare /api/cart → refetch → itemCount = 0)"
       ).not.toBeVisible({ timeout: 1_000 });
 
       console.log(
-        "[tripstrip-count] PASS C — chip hidden after convert-to-itinerary"
+        "[tripstrip-count] PASS C — chip hidden after convert-to-itinerary (no page reload)"
       );
     }
   );
 
-  // ── D. Browser: checkout → chip count drops within 1 s ──────────────────
+  // ── D. Browser: checkout → chip disappears without reload ────────────────
 
   test(
-    "D — browser: TripStrip chip count drops to zero within 1 s after checkout",
+    "D — browser: TripStrip chip disappears (no page reload) within 1 s after checkout UI action",
     async ({ page }) => {
       // 1. Register + authenticate
       await registerFreshUser(page);
 
-      // 2. Add one item via API
+      // 2. Add a content item to the cart.
       await addContentItemToCart(page);
 
-      // 3. Navigate and seed trip context
+      // 3. Navigate to /cart and seed trip context.
       await page.goto(`${BASE_URL}/cart`);
       await seedTripContext(page);
 
-      // 4. Reload without interceptors so the real /api/cart returns 1 item.
+      // 4. Reload to pick up the seeded context. No interceptors — real /api/cart.
       await page.reload();
       await page.waitForLoadState("networkidle");
 
-      // 5. Confirm chip shows ≥ 1 item before the checkout action.
+      // 5. Confirm TripStrip chip shows ≥ 1 item before checkout.
       await expect(
         page.locator('[data-testid="trip-strip-cart"]'),
         "TripStrip cart chip should be visible before checkout"
       ).toBeVisible({ timeout: 8_000 });
 
-      const chipTextBefore = await page
+      const chipBefore = await page
         .locator('[data-testid="trip-strip-cart"]')
         .textContent();
-      console.log(`[tripstrip-count] chip before checkout: "${chipTextBefore?.trim()}"`);
+      console.log(`[tripstrip-count] chip before checkout: "${chipBefore?.trim()}"`);
 
-      // 6. Set up interceptors after confirming the chip is visible.
-      //    Intercept POST /api/checkout — return a booking-only response
-      //    (no paymentIntent) so cart.tsx follows the no-Stripe branch and
-      //    calls setLocation("/bookings") after invalidating the cart.
+      // 6. Click "Proceed to Payment" to advance to the payment step.
+      //    This button is visible when cart.items.length > 0 (our item qualifies).
+      //    It calls setFlowStep("payment") — a client-side state change, no network.
+      await page.locator('[data-testid="button-skip-to-payment"]').click();
+
+      // 7. Set up network interception AFTER reaching the payment step.
+      //
+      //    a) Mock POST /api/checkout — return a booking-only response with no
+      //       paymentIntent so cart.tsx takes the no-Stripe branch (toast + navigate).
       await page.route("**/api/checkout", (route) => {
         if (route.request().method() === "POST") {
           route.fulfill({
@@ -306,7 +313,8 @@ test.describe("TripStrip chip count accuracy (Suite: cart mutations)", () => {
             contentType: "application/json",
             body: JSON.stringify({
               bookings: [{ id: `booking-${uid()}` }],
-              // No paymentIntent → cart.tsx navigates to /bookings directly
+              // No paymentIntent → cart.tsx calls setLocation("/bookings")
+              // after invalidating the cart.
             }),
           });
         } else {
@@ -314,11 +322,10 @@ test.describe("TripStrip chip count accuracy (Suite: cart mutations)", () => {
         }
       });
 
-      // 7. Intercept the first GET /api/cart after reload to return empty cart.
-      let interceptCount = 0;
+      //    b) Every subsequent GET /api/cart returns an empty cart so the
+      //       TripStrip chip disappears after React-Query's invalidation refetch.
       await page.route("**/api/cart", (route) => {
-        if (route.request().method() === "GET" && interceptCount === 0) {
-          interceptCount++;
+        if (route.request().method() === "GET") {
           route.fulfill({
             status: 200,
             contentType: "application/json",
@@ -336,21 +343,24 @@ test.describe("TripStrip chip count accuracy (Suite: cart mutations)", () => {
         }
       });
 
-      // 8. Reload into the "post-checkout" state where /api/cart returns 0 items.
-      //    TripStrip reads the bare ["/api/cart"] key; the interceptor targets
-      //    the same bare path, so the chip must disappear.
-      await page.reload();
-      await page.waitForLoadState("networkidle");
+      // 8. Click "Complete Booking" — this fires checkoutMutation.mutate().
+      //    onSuccess calls invalidateQueries({ queryKey: ["/api/cart"] }),
+      //    which triggers a refetch → our interceptor returns itemCount: 0.
+      await expect(
+        page.locator('[data-testid="button-complete-booking"]'),
+        "Complete Booking button must be visible on the payment step"
+      ).toBeVisible({ timeout: 5_000 });
+      await page.locator('[data-testid="button-complete-booking"]').click();
 
-      // 9. The chip must disappear within 1 s.
+      // 9. Without any page reload, the TripStrip chip must disappear within 1 s.
       await expect(
         page.locator('[data-testid="trip-strip-cart"]'),
         "TripStrip cart chip must disappear within 1 s after checkout " +
-          "(itemCount → 0 via invalidated /api/cart bare key)"
+          "(React-Query invalidated bare /api/cart → refetch → itemCount = 0)"
       ).not.toBeVisible({ timeout: 1_000 });
 
       console.log(
-        "[tripstrip-count] PASS D — chip hidden after checkout"
+        "[tripstrip-count] PASS D — chip hidden after checkout (no page reload)"
       );
     }
   );
