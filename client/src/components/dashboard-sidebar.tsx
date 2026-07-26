@@ -19,7 +19,6 @@ import {
   Bot,
   MessageSquare,
   Users,
-  CreditCard,
   User,
   Bell,
   LogOut,
@@ -55,7 +54,6 @@ const menuGroups = [
     items: [
       { title: "Messages", href: "/chat", icon: MessageSquare, badge: true },
       { title: "Notifications", href: "/notifications", icon: Bell, badge: true },
-      { title: "Credits", href: "/credits", icon: CreditCard },
       { title: "Profile", href: "/profile", icon: User },
     ],
   },

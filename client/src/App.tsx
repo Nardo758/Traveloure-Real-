@@ -111,7 +111,6 @@ const DealsPage = lazy(() => import("@/pages/deals"));
 const PaymentPage = lazy(() => import("@/pages/payment"));
 const TravelExpertsPage = lazy(() => import("@/pages/travel-experts"));
 const ServicesProviderPage = lazy(() => import("@/pages/services-provider"));
-const CreditsBillingPage = lazy(() => import("@/pages/credits-billing"));
 const ExpertStatusPage = lazy(() => import("@/pages/expert-status"));
 const ProviderStatusPage = lazy(() => import("@/pages/provider-status"));
 const AdminFeeBands = lazy(() => import("@/pages/admin/fee-bands"));
@@ -500,11 +499,12 @@ function Router() {
         {() => <DashboardLayout><ProtectedRoute component={Profile} /></DashboardLayout>}
       </Route>
       
-      {/* Consolidated Credits page */}
+      {/* FP-3: credits system retired (per-use fee funnel + one-click saved-card is the
+          monetization model; credits had zero real consumers). Old links redirect home. */}
       <Route path="/credits">
-        {() => <DashboardLayout><ProtectedRoute component={CreditsBillingPage} /></DashboardLayout>}
+        <Redirect to="/dashboard" />
       </Route>
-      
+
       <Route path="/notifications">
         {() => <DashboardLayout><ProtectedRoute component={Notifications} /></DashboardLayout>}
       </Route>
@@ -856,7 +856,7 @@ function Router() {
         <Redirect to="/become-provider" />
       </Route>
       <Route path="/credits-billing">
-        <Redirect to="/credits" />
+        <Redirect to="/dashboard" />
       </Route>
       <Route path="/checkout">
         <Redirect to="/cart" />

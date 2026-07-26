@@ -1703,10 +1703,6 @@ router.delete("/api/faqs/:id", isAuthenticated, async (req, res) => {
     res.status(204).send();
   });
 
-  // === Wallet & Credits Routes ===
-  
-  // Get current user's wallet
-
 router.get("/api/service-templates", async (_req, res) => {
     try {
       const rows = await getDefaultServiceTemplates();

@@ -3,7 +3,6 @@ import { Router } from "express";
 import { db } from "../db";
 import { storage } from "../storage";
 import { api } from "@shared/routes";
-import { CREDIT_PACKAGES } from "@shared/credit-packages";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { eq, and, or, like, ilike, sql, desc, count, ne, isNotNull, asc } from "drizzle-orm";
@@ -17,7 +16,7 @@ import {
   insertServiceTemplateSchema, insertServiceBookingSchema, insertServiceReviewSchema,
   itineraryComparisons, itineraryVariants, itineraryVariantItems, itineraryVariantMetrics,
   userExperienceItems, userExperiences, providerServices, cartItems, trips,
-  serviceBookings, serviceReviews, notifications, wallets, creditTransactions, serviceProviderForms,
+  serviceBookings, serviceReviews, notifications, serviceProviderForms,
   shortLinks,
   insertCustomVenueSchema, insertGeneratedItinerarySchema,
   insertTemporalAnchorSchema, insertDayBoundarySchema, insertEnergyTrackingSchema,
@@ -157,121 +156,31 @@ function serviceCategorySlugToFeeCategory(slug: string | null | undefined): stri
 }
 
 
-router.get("/api/wallet", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
-    const wallet = await storage.getOrCreateWallet(userId);
-    res.json(wallet);
+// FP-3 (credits retirement, decision-maker ratified): the credits/wallet system is RETIRED.
+// The per-use fee funnel (§ pricing) + saved-card one-click checkout is the AI monetization
+// model; credits had ZERO real consumers (deductCredits has no callers) and
+// POST /api/wallet/add-credits was a free-credits hole (any admin session could mint balance
+// with no payment behind it). All four endpoints below now return 410 Gone. The `wallets` /
+// `creditTransactions` tables and their storage methods (getWallet, getOrCreateWallet,
+// addCredits, deductCredits, getCreditTransactions) stay DORMANT per the roadmap — no drops,
+// no migration. Do not resurrect these routes without a real payment/fulfillment path.
+
+router.get("/api/wallet", isAuthenticated, (req, res) => {
+    res.status(410).json({ message: "Credits have been retired — AI features are billed per use." });
   });
 
-  // Get wallet transactions
-
-router.get("/api/wallet/transactions", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
-    const wallet = await storage.getWallet(userId);
-    if (!wallet) {
-      return res.json([]);
-    }
-    const transactions = await storage.getCreditTransactions(wallet.id);
-    res.json(transactions);
+router.get("/api/wallet/transactions", isAuthenticated, (req, res) => {
+    res.status(410).json({ message: "Credits have been retired — AI features are billed per use." });
   });
 
-  // Add credits (admin only - for production, integrate with payment provider)
-
-router.post("/api/wallet/add-credits", isAuthenticated, async (req, res) => {
-    try {
-      const adminUser = await storage.getUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
-      if (!adminUser || adminUser.role !== "admin") {
-        return res.status(403).json({ message: "Admin access required" });
-      }
-      const { userId, amount, description } = req.body; // money-derive-ok: admin-gated grant (above); userId is the target grantee, amount the admin-authorized credit — not a self-service charge
-      if (!userId || !amount || amount <= 0) {
-        return res.status(400).json({ message: "Invalid userId or amount" });
-      }
-      const transaction = await storage.addCredits(userId, amount, description || "Credit purchase");
-      res.status(201).json(transaction);
-    } catch (err) {
-      console.error("Error adding credits:", err);
-      res.status(500).json({ message: "Failed to add credits" });
-    }
+router.post("/api/wallet/add-credits", isAuthenticated, (req, res) => {
+    // Closes the free-credits hole: this endpoint used to grant balance from a client-sent
+    // amount with no payment behind it (admin-gated, but still a hole — see FP-3).
+    res.status(410).json({ message: "Credits have been retired — AI features are billed per use." });
   });
 
-  // Purchase credits via Stripe Checkout. LB-P5a: packages come from the
-  // single canonical source in shared/credit-packages.ts.
-
-
-router.post("/api/credits/purchase", isAuthenticated, async (req, res) => {
-    // F2 (revenue-model review, decision-maker ratified Jul 26 2026): GATED 501 until fulfillment
-    // exists. The Stripe Checkout below is real, but 'credit_purchase' has NO webhook handler, NO
-    // balance grant, and NO revenue row — money would be taken with nothing delivered (the client
-    // balance is a hardcoded mock). Same honesty posture as the W0.4 tip gate: never charge for a
-    // leg that doesn't exist. Re-enable only WITH the fulfillment webhook + real balance ledger.
-    return res.status(501).json({
-      message: "Credit purchases are not available yet — credit fulfillment has not launched.",
-    });
-    // eslint-disable-next-line no-unreachable
-    try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
-      const { packageId, currency: clientCurrency } = req.body;
-      const chargeCurrency = clientCurrency || 'usd';
-
-      const pkg = CREDIT_PACKAGES.find(p => p.id === packageId);
-      if (!pkg) {
-        return res.status(400).json({ message: "Invalid package" });
-      }
-
-      // Non-null assertion: this code is unreachable behind the F2 501 gate, which disables
-      // TS flow-narrowing from the !pkg guard above. Remove when the gate lifts.
-      const { credits, price } = pkg!;
-
-      const userRecord = await storage.getUser(userId);
-      const userEmail = userRecord?.email || undefined;
-
-      const { getBaseUrl } = await import("../services/stripe.service");
-      const Stripe = (await import("stripe")).default;
-      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
-        apiVersion: '2024-12-18.acacia' as any,
-      });
-
-      const baseUrl = getBaseUrl();
-      const isZeroDecimal = chargeCurrency.toLowerCase() === 'jpy';
-      const unitAmount = isZeroDecimal ? Math.round(price) : Math.round(price * 100);
-
-      const session = await stripe.checkout.sessions.create({
-        payment_method_types: ['card'],
-        mode: 'payment',
-        customer_email: userEmail,
-        line_items: [
-          {
-            price_data: {
-              currency: chargeCurrency.toLowerCase(),
-              product_data: {
-                name: `${credits} Credits`,
-                description: `Traveloure credit package - ${credits} credits`,
-              },
-              unit_amount: unitAmount,
-            },
-            quantity: 1,
-          },
-        ],
-        metadata: {
-          type: 'credit_purchase',
-          userId,
-          credits: credits.toString(),
-          packageId: packageId?.toString() || '',
-          currency: chargeCurrency.toLowerCase(),
-        },
-        success_url: `${baseUrl}/credits-billing?purchase=success&credits=${credits}`,
-        cancel_url: `${baseUrl}/credits-billing?purchase=cancelled`,
-      });
-
-      res.json({
-        sessionId: session.id,
-        url: session.url,
-      });
-    } catch (err: any) {
-      console.error("Credit purchase error:", err);
-      res.status(500).json({ message: "Failed to create checkout session" });
-    }
+router.post("/api/credits/purchase", isAuthenticated, (req, res) => {
+    res.status(410).json({ message: "Credits have been retired — AI features are billed per use." });
   });
 
   // === Service Templates Routes (Admin manages, Experts browse) ===
