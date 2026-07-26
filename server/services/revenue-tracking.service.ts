@@ -11,7 +11,7 @@ import { availableAtFor } from "../config/earnings-hold.config";
 import { eq, desc, sql, and, gte, lte, count, sum } from "drizzle-orm";
 
 export interface RevenueEvent {
-  sourceType: 'booking_commission' | 'template_commission' | 'affiliate_commission' | 'tip_commission' | 'subscription' | 'optimization_fee' | 'coordination_fee' | 'other';
+  sourceType: 'booking_commission' | 'template_commission' | 'affiliate_commission' | 'tip_commission' | 'subscription' | 'optimization_fee' | 'coordination_fee' | 'expert_review_fee' | 'other';
   sourceId: string;
   trackingNumber?: string;
   grossAmount: number;
@@ -70,7 +70,10 @@ class RevenueTrackingService {
     // Optimization AND coordination fees are 100% platform revenue — route through the 'ai' source
     // tier (AI_PLATFORM_FEE = 1.0). Coordination fee has no expert/provider split (the coordinator is
     // paid via the earnings ledger on the bookings they place, not from this fee).
-    const isFullPlatformFee = event.sourceType === 'optimization_fee' || event.sourceType === 'coordination_fee';
+    // expert_review_fee (F3): 100% platform at capture — like the coordination fee, the reviewing
+    // expert is compensated via the earnings ledger when the work completes (split = filed decision),
+    // not out of this capture-time fee.
+    const isFullPlatformFee = event.sourceType === 'optimization_fee' || event.sourceType === 'coordination_fee' || event.sourceType === 'expert_review_fee';
     // Derive source flag for the resolver so affiliate events get the 70% tier.
     const affiliateSource = event.sourceType === 'affiliate_commission' ? 'affiliate' as const : undefined;
     const rates = await resolveCommissionRates({
@@ -125,6 +128,15 @@ class RevenueTrackingService {
         availableAt: availableAtFor(event.sourceType), // P2: real captured revenue — clears after its surface window
       });
     }
+  }
+
+  /** Idempotent variant: no-op (returns false) when a platform_revenue row already carries this
+   *  sourceId — the §15 guard for retryable payment-completion paths (webhook redelivery, client
+   *  retry). Use whenever the same external payment id can reach the recorder twice. */
+  async recordRevenueEventOnce(event: RevenueEvent): Promise<boolean> {
+    if (event.sourceId && (await storage.hasPlatformRevenueForSource(event.sourceId))) return false;
+    await this.recordRevenueEvent(event);
+    return true;
   }
 
   async getUnifiedDashboard(): Promise<UnifiedRevenueDashboard> {

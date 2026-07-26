@@ -91,3 +91,24 @@ difference) or aligns.
 | M0 build | after F1 ruling | Bands + ceiling + checkout branch on `source='link'` | Fable 🔴 ~70k (rides S4) |
 | F6 honesty | P2 | Power Pass card gated/labeled; kill 0.30 literal; processing estimate labeled | Haiku ~20k |
 | F7 affiliate | P2 | Wire `createAffiliateEarning` at the confirm sites; reconciliation then has a spine | Sonnet ~45k |
+
+---
+
+## ⛭ RULINGS — Jul 26, 2026 (decision-maker)
+
+- **F1 = INTENDED BEHAVIOR, ratified.** Fee-on-top + commission-deducted is the model of record for
+  cart checkout. Follow-up filed (Haiku): disclose the service fee on /pricing and at checkout so the
+  traveler-facing story matches the charge.
+- **F2 = gate ratified.** `POST /api/credits/purchase` returns 501 until fulfillment exists (landed).
+- **F3 = fix ratified.** Landed: tier amounts are now admin-editable `fee_bands` rows (migration 137,
+  code constants remain the documented safe-failure fallback); `expert_review_fee` platform_revenue is
+  recorded idempotently at BOTH completion paths (checkout-session webhook + verified-PI request
+  creation, which also stops trusting client-sent expertFee on paid requests). Expert-compensation
+  split for completed review work = FILED DECISION (fee is 100% platform at capture, coordination
+  precedent, until ratified).
+- **All fees admin-adjustable** — standing directive; anything currently a constant migrates to
+  `fee_bands`/`platform_settings` when touched.
+- **M0 = SCRATCHED.** Link-channel pricing is IDENTICAL to platform pricing — no flat fee, no
+  differential commission, no ceiling. §3 above is retained for the record but is DEAD. S4
+  (acquisition attribution) survives as pure analytics; the mockups' "8% via your link" copy must
+  never ship.

@@ -117,19 +117,33 @@ export async function getVariantOwnerAndCost(
 // previously computed these and sent `amount` in the body (a live amount-tampering hole: a caller
 // could POST amount:0.01). The price is a flat base + a percentage of the variant's stored
 // totalCost, resolved here and never from the request body.
-// fee-literal-ok: relocated verbatim from client VariantActionButtons; pending migration to
-// fee_bands/config (filed follow-up), same posture as the coordination-fee constants (§8).
-const EXPERT_REVIEW_TIERS: Record<string, { base: number; pct: number }> = {
-  review:          { base: 50,  pct: 0 },    // fee-literal-ok
-  review_and_book: { base: 50,  pct: 0.05 }, // fee-literal-ok
-  full_concierge:  { base: 100, pct: 0.08 }, // fee-literal-ok
+// Migration 137: the live rates are admin-editable fee_bands rows; these constants survive ONLY
+// as the safe-failure fallback when a band is absent/invalid (the coordination-floor posture, §8).
+const EXPERT_REVIEW_TIERS: Record<
+  string,
+  { base: number; pct: number; flatBand: string; pctBand: string | null }
+> = {
+  review:          { base: 50,  pct: 0,    flatBand: "expert_review_flat",      pctBand: null },                        // fee-literal-ok: fallback default
+  review_and_book: { base: 50,  pct: 0.05, flatBand: "expert_review_book_flat", pctBand: "expert_review_book_percent" }, // fee-literal-ok: fallback default
+  full_concierge:  { base: 100, pct: 0.08, flatBand: "full_concierge_flat",     pctBand: "full_concierge_percent" },     // fee-literal-ok: fallback default
 };
 
-export function resolveExpertReviewAmount(serviceType: string, variantTotalCost: number): number | null {
+async function bandRateOr(fallback: number, bandKey: string, expectType: "flat" | "percent"): Promise<number> {
+  const { getBand } = await import("./commission");
+  const band = await getBand(bandKey);
+  // Wrong rate_type or non-positive → the band is misconfigured; charge the documented default
+  // rather than a wrong amount (a fee's safe failure mode — same as the coordination floor).
+  if (!band || band.rateType !== expectType || !(band.rate > 0)) return fallback;
+  return band.rate;
+}
+
+export async function resolveExpertReviewAmount(serviceType: string, variantTotalCost: number): Promise<number | null> {
   const tier = EXPERT_REVIEW_TIERS[serviceType];
   if (!tier) return null;
   const cost = Number.isFinite(variantTotalCost) && variantTotalCost > 0 ? variantTotalCost : 0;
-  return Math.round((tier.base + cost * tier.pct) * 100) / 100;
+  const base = await bandRateOr(tier.base, tier.flatBand, "flat");
+  const pct = tier.pctBand ? await bandRateOr(tier.pct, tier.pctBand, "percent") : 0;
+  return Math.round((base + cost * pct) * 100) / 100;
 }
 
 export async function insertSavedTrip(values: {

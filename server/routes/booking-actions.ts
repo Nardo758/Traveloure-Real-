@@ -86,7 +86,7 @@ router.post('/expert-requests/payment-intent', isAuthenticated, async (req, res)
     if (ctx.ownerUserId !== sessionUserId) {
       return res.status(403).json({ error: 'You do not own this itinerary' });
     }
-    const amount = resolveExpertReviewAmount(serviceType, ctx.totalCost);
+    const amount = await resolveExpertReviewAmount(serviceType, ctx.totalCost);
     if (amount == null) return res.status(400).json({ error: 'Invalid service tier' });
 
     const paymentIntent = await stripePaymentService.createExpertServicePaymentIntent(
@@ -142,11 +142,43 @@ router.post('/expert-requests', isAuthenticated, async (req, res) => {
       expertFee,
       notes,
       optimizationContext,
+      paymentIntentId,
     } = req.body;
 
     const resolvedUserId = authUserId || userId;
     if (!resolvedUserId) {
       return res.status(401).json({ error: 'Not authenticated' });
+    }
+
+    // F3 (revenue-model review): when the request follows the paid PI path, verify the intent
+    // server-side and derive the fee from Stripe — never trust the client-sent expertFee for a
+    // paid request (§14) — then ledger the fee idempotently (§15, PI id as sourceId). Requests
+    // without a paymentIntentId (free lead paths: template-sourced planSnapshot leads, trip-based
+    // consults) keep their existing behavior.
+    let verifiedFee: number | undefined;
+    if (paymentIntentId) {
+      const pi = await stripePaymentService.retrievePaymentIntent(paymentIntentId);
+      if (
+        !pi ||
+        pi.status !== 'succeeded' ||
+        pi.metadata?.type !== 'expert_service' ||
+        pi.metadata?.userId !== resolvedUserId
+      ) {
+        return res.status(402).json({ error: 'Payment not verified for this request' });
+      }
+      verifiedFee = pi.amount / 100;
+      try {
+        const { revenueTrackingService } = await import('../services/revenue-tracking.service');
+        await revenueTrackingService.recordRevenueEventOnce({
+          sourceType: 'expert_review_fee',
+          sourceId: pi.id,
+          grossAmount: verifiedFee,
+          description: `Expert ${pi.metadata?.serviceType ?? requestType} fee — ${destination ?? pi.metadata?.destination ?? ''}`,
+          metadata: { userId: resolvedUserId, serviceType: pi.metadata?.serviceType, paymentIntentId: pi.id },
+        });
+      } catch (revErr) {
+        console.error('[expert-requests] revenue record failed (non-fatal):', revErr);
+      }
     }
 
     const isTripBased = !!tripId && !variantId;
@@ -172,7 +204,8 @@ router.post('/expert-requests', isAuthenticated, async (req, res) => {
 
     const { requestId, queuePosition } = await bookingService.submitExpertRequest({
       userId: resolvedUserId, tripId, variantId, comparisonId,
-      destination: resolvedDestination, requestType, expertFee, notes, optimizationContext,
+      destination: resolvedDestination, requestType,
+      expertFee: verifiedFee ?? expertFee, notes, optimizationContext,
     });
 
     // "book with an expert" requests originating from a Partnerize-backed
