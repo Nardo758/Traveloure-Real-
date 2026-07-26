@@ -18,6 +18,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import type { ServiceBooking, ProviderService } from "@shared/schema";
 import { StripeConnectCard } from "@/components/stripe-connect-card";
+import { EarningsBySourcePanel } from "@/components/backoffice/earnings-by-source-panel";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 
@@ -351,6 +352,8 @@ export default function ProviderEarnings() {
             </div>
           </CardContent>
         </Card>
+
+        <EarningsBySourcePanel />
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2">

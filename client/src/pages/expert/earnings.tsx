@@ -18,6 +18,7 @@ import {
   PieChart,
 } from "lucide-react";
 import { StripeConnectCard } from "@/components/stripe-connect-card";
+import { EarningsBySourcePanel } from "@/components/backoffice/earnings-by-source-panel";
 
 
 interface EarningsData {
@@ -205,6 +206,8 @@ export default function ExpertEarnings() {
             </div>
           </CardContent>
         </Card>
+
+        <EarningsBySourcePanel />
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Recent Transactions */}
