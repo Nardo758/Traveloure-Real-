@@ -292,22 +292,26 @@ export default function CartPage() {
     });
   }, [user, authLoading, guestPendingIds]);
 
-  // Load experience context on mount
+  // Load experience context on mount.
+  // Only apply an experienceSlug filter when the context has an explicit slug —
+  // i.e. the user arrived via an experience-template flow. In all other cases
+  // (direct /cart visit, general browsing) we leave experienceSlug null so the
+  // API returns every item for the user rather than a narrow slug-filtered subset.
+  // Previously this effect set a synthetic fallback like "general" or
+  // "travel_paris" which caused the server to exclude items stored under real
+  // experience slugs, making the cart appear empty even though the TripStrip
+  // (which fetches without a slug) correctly showed a non-zero count.
   useEffect(() => {
     const context = getTripContext();
-    if (Object.keys(context).length > 0) {
-      if (context.experienceSlug) {
-        setExperienceSlug(context.experienceSlug);
-        setExperienceTitle(context.title || context.experienceType || null);
-      } else {
-        // Use experienceType + destination as fallback key to avoid cross-experience contamination
-        const fallbackKey = `${context.experienceType || 'general'}_${context.destination || 'default'}`.replace(/\s+/g, '-').toLowerCase();
-        setExperienceSlug(fallbackKey);
-        setExperienceTitle(context.title || context.experienceType || null);
-      }
-    } else {
-      setExperienceSlug("general");
+    if (context.experienceSlug) {
+      setExperienceSlug(context.experienceSlug);
+      setExperienceTitle(context.title || context.experienceType || null);
+    } else if (Object.keys(context).length > 0) {
+      // Context exists but has no slug — show title/type metadata without filtering the cart.
+      setExperienceTitle(context.title || context.experienceType || null);
+      // experienceSlug stays null → fetches all items unfiltered.
     }
+    // No context at all → experienceSlug stays null → fetch all items.
   }, []);
 
   // Load external cart items from sessionStorage when experience slug changes
