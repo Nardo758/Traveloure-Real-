@@ -58,6 +58,7 @@ import { useSignInModal } from "@/contexts/SignInModalContext";
 import StripeCheckout from "@/components/booking/StripeCheckout";
 import { UpsellSlot, UpsellErrorBoundary } from "@/components/UpsellSlot";
 import { getAcquisitionRef } from "@/lib/acquisition";
+import { useSavedPayment, formatCardLabel } from "@/hooks/use-saved-payment";
 
 const SUPPORTED_CURRENCIES = [
   { code: "USD", label: "USD – US Dollar" },
@@ -201,6 +202,8 @@ interface OptimizationPaymentState {
 export default function CartPage() {
   const { user, isLoading: authLoading, updatePreferredCurrency } = useAuth();
   const { openSignInModal } = useSignInModal();
+  // FP-2: one-click "pay with saved card" for the optimization fee.
+  const savedPayment = useSavedPayment(!!user);
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const searchString = useSearch();
@@ -219,6 +222,8 @@ export default function CartPage() {
   const [optimizationPreview, setOptimizationPreview] = useState<OptimizationPreview | null>(null);
   const [optimizationPayment, setOptimizationPayment] = useState<OptimizationPaymentState | null>(null);
   const [paymentLoading, setPaymentLoading] = useState(false);
+  // FP-2: one-click charge in flight (separate from paymentLoading, which covers the sheet setup path).
+  const [oneClickLoading, setOneClickLoading] = useState(false);
   // Funnel PR2: quiet preview fetched on the CART step so the optimization's real
   // value (savings %, plan score) is visible before the user reaches the optimize
   // step. Same free endpoint the optimize step uses; the nudge renders only when
@@ -864,6 +869,64 @@ export default function CartPage() {
       toast({ variant: "destructive", title: "Payment setup failed", description: err.message });
     } finally {
       setPaymentLoading(false);
+    }
+  };
+
+  // FP-2: one-click — charge the saved default card off-session, no payment sheet.
+  // Tri-state per FP-1's contract: succeeded (skip straight to /confirm), requiresAction
+  // (fall back to the sheet with the returned clientSecret), or the endpoint's normal
+  // freeRerun short-circuit (identical to the sheet path).
+  const payWithSavedCard = async () => {
+    if (!user) {
+      openSignInModal();
+      return;
+    }
+    if (!optimizationPreview) return;
+    setOneClickLoading(true);
+    try {
+      const ctxAtPayment = getTripContext();
+      const tripId: string | undefined = ctxAtPayment.tripId;
+      const userExperienceId: string | undefined = ctxAtPayment.userExperienceId || ctxAtPayment.id;
+
+      const res = await fetch("/api/optimization-payments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          tripId,
+          userExperienceId,
+          comparisonContext: { destination: experienceTitle },
+          useSavedCard: true,
+        }),
+      });
+      if (!res.ok) throw new Error("Could not start payment");
+      const data = await res.json();
+
+      if (data.freeRerun) {
+        await createComparison();
+        return;
+      }
+      if (data.oneClick && data.status === "succeeded") {
+        toast({ title: "Payment successful", description: "Building your optimized itinerary..." });
+        await handleOptimizationPaymentSuccess(data.paymentIntentId);
+        return;
+      }
+      if (data.requiresAction) {
+        // Bank demands 3DS — fall back to the interactive sheet for this one charge.
+        setOptimizationPayment({
+          clientSecret: data.clientSecret,
+          paymentIntentId: data.paymentIntentId,
+          feeCents: data.feeCents,
+          currency: data.currency || "USD",
+        });
+        return;
+      }
+      // No saved method after all (shouldn't happen if hasDefault was true) — fall back to the sheet.
+      await requestOptimizationPayment();
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Payment failed", description: err.message });
+    } finally {
+      setOneClickLoading(false);
     }
   };
 
@@ -1892,7 +1955,39 @@ export default function CartPage() {
                         </div>
                       )}
 
-                      {!optimizationPayment && (
+                      {/* FP-2: one-click when a default saved card exists and this isn't the
+                          free re-run (nothing to charge there). */}
+                      {!optimizationPayment && !optimizationPreview.freeRerun && savedPayment.hasDefault ? (
+                        <div className="space-y-2">
+                          <Button
+                            className="w-full bg-primary hover:bg-primary/90"
+                            size="lg"
+                            onClick={payWithSavedCard}
+                            disabled={oneClickLoading || paymentLoading || creatingComparison}
+                            data-testid="button-pay-saved-card-optimization"
+                          >
+                            {oneClickLoading || creatingComparison ? (
+                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            ) : (
+                              <Lock className="w-4 h-4 mr-2" />
+                            )}
+                            {creatingComparison
+                              ? "Building..."
+                              : oneClickLoading
+                                ? "Charging..."
+                                : `Pay ${formatPrice(optimizationPreview.feeCents / 100)} with ${formatCardLabel(savedPayment.defaultCard)}`}
+                          </Button>
+                          <button
+                            type="button"
+                            className="w-full text-center text-xs text-muted-foreground hover:text-foreground underline underline-offset-2"
+                            onClick={requestOptimizationPayment}
+                            disabled={oneClickLoading || paymentLoading || creatingComparison}
+                            data-testid="button-use-different-card-optimization"
+                          >
+                            Use a different card
+                          </button>
+                        </div>
+                      ) : !optimizationPayment && (
                         <Button
                           className="w-full bg-primary hover:bg-primary/90"
                           size="lg"
