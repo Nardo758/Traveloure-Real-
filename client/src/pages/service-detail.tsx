@@ -69,7 +69,22 @@ interface Service {
   transportProvided: string | null;
   whatIncluded: string[];
   requirements: string[];
+  // X1 (§13 hardcoded-copy arm): real per-offering cancellation policy. Both nullable —
+  // NULL means the owner hasn't declared one; render nothing/an honest fallback, never
+  // the old fabricated "free cancellation" claim.
+  cancellationPolicyType: string | null;
+  cancellationPolicy: string | null;
 }
+
+// X1: display labels for cancellationPolicyType — mirrors shared/schema.ts
+// CANCELLATION_POLICY_TYPE_LABELS (kept local to avoid a client bundle importing the
+// server schema module; the vocabulary itself is app-enforced, not a DB CHECK).
+const CANCELLATION_POLICY_TYPE_LABELS: Record<string, string> = {
+  flexible: "Flexible — full refund if cancelled well in advance",
+  moderate: "Moderate — partial refund on shorter notice",
+  strict: "Strict — limited refund window",
+  non_refundable: "Non-refundable",
+};
 
 // In-person delivery methods that have a physical meeting point.
 const IN_PERSON_METHODS = new Set(["in_person", "hybrid"]);
@@ -534,6 +549,31 @@ export default function ServiceDetailPage() {
                       Contact Provider
                     </Link>
                   </Button>
+                </div>
+
+                {/* X1 (§13 hardcoded-copy arm): real per-offering cancellation policy.
+                    Shows the owner's declared policy when present; otherwise an honest
+                    "contact provider" fallback — never a fabricated "free cancellation"
+                    claim (the old expert-detail.tsx trio removed by #200). */}
+                <div className="mt-4 pt-4 border-t space-y-1.5" data-testid="section-cancellation-policy">
+                  <div className="flex items-center gap-2 text-sm font-medium">
+                    <ShieldCheck className="w-4 h-4 text-muted-foreground" />
+                    Cancellation policy
+                  </div>
+                  {service.cancellationPolicyType ? (
+                    <p className="text-sm text-muted-foreground" data-testid="text-cancellation-policy-type">
+                      {CANCELLATION_POLICY_TYPE_LABELS[service.cancellationPolicyType] ?? service.cancellationPolicyType}
+                    </p>
+                  ) : (
+                    <p className="text-sm text-muted-foreground" data-testid="text-cancellation-policy-unset">
+                      Not specified — contact the provider about cancellation before booking.
+                    </p>
+                  )}
+                  {service.cancellationPolicy && (
+                    <p className="text-xs text-muted-foreground" data-testid="text-cancellation-policy-detail">
+                      {service.cancellationPolicy}
+                    </p>
+                  )}
                 </div>
 
                 {/* Provider commission transparency. §8: no hardcoded rate literal —
