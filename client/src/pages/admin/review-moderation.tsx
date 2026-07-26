@@ -19,6 +19,8 @@ import {
   ShieldCheck,
   AlertTriangle,
   RotateCcw,
+  MessageSquare,
+  Eraser,
 } from "lucide-react";
 
 type ReviewStatus = "pending" | "approved" | "flagged" | "removed";
@@ -29,6 +31,8 @@ interface ModerationReview {
   travelerId: string;
   rating: number;
   reviewText: string | null;
+  responseText: string | null;
+  responseAt: string | null;
   status: ReviewStatus;
   flagReason: string | null;
   moderatedAt: string | null;
@@ -62,7 +66,7 @@ function ReviewRow({ review, onAction }: {
   const Icon = STATUS_ICONS[review.status] ?? Clock;
 
   function handleAction(action: string) {
-    if ((action === "flagged" || action === "removed") && !showReason) {
+    if ((action === "flagged" || action === "removed" || action === "clear_response") && !showReason) {
       setPendingAction(action);
       setShowReason(true);
       return;
@@ -72,6 +76,8 @@ function ReviewRow({ review, onAction }: {
     setReason("");
     setPendingAction(null);
   }
+
+  const pendingActionLabel = pendingAction === "clear_response" ? "clear response" : pendingAction;
 
   return (
     <div className="border rounded-lg p-4 space-y-3" data-testid={`card-moderation-review-${review.id}`}>
@@ -101,6 +107,18 @@ function ReviewRow({ review, onAction }: {
               <span data-testid={`text-flag-reason-${review.id}`}>{review.flagReason}</span>
             </div>
           )}
+          {review.responseText && (
+            <div className="mt-2 rounded border bg-muted/40 px-2.5 py-2" data-testid={`block-response-${review.id}`}>
+              <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground mb-1">
+                <MessageSquare className="w-3 h-3" />
+                Provider response
+                {review.responseAt && (
+                  <span className="font-normal opacity-70">{format(new Date(review.responseAt), "MMM d, yyyy")}</span>
+                )}
+              </div>
+              <p className="text-sm text-foreground" data-testid={`text-response-body-${review.id}`}>{review.responseText}</p>
+            </div>
+          )}
         </div>
         <Badge className={`text-xs border ${STATUS_COLORS[review.status]} shrink-0`} data-testid={`badge-status-${review.id}`}>
           <Icon className="w-3 h-3 mr-1" />
@@ -111,7 +129,7 @@ function ReviewRow({ review, onAction }: {
       {showReason && (
         <div className="space-y-2">
           <Textarea
-            placeholder={`Reason for ${pendingAction} (optional)`}
+            placeholder={`Reason for ${pendingActionLabel} (optional)`}
             value={reason}
             onChange={e => setReason(e.target.value)}
             className="text-sm h-20"
@@ -119,7 +137,7 @@ function ReviewRow({ review, onAction }: {
           />
           <div className="flex gap-2">
             <Button size="sm" onClick={() => handleAction(pendingAction!)} data-testid={`button-confirm-${pendingAction}-${review.id}`}>
-              Confirm {pendingAction}
+              Confirm {pendingActionLabel}
             </Button>
             <Button size="sm" variant="outline" onClick={() => { setShowReason(false); setPendingAction(null); setReason(""); }}>
               Cancel
@@ -157,6 +175,13 @@ function ReviewRow({ review, onAction }: {
               Restore
             </Button>
           )}
+          {review.responseText && (
+            <Button size="sm" variant="outline" className="text-orange-700 border-orange-200 hover:bg-orange-50"
+              onClick={() => handleAction("clear_response")} data-testid={`button-clear-response-${review.id}`}>
+              <Eraser className="w-3.5 h-3.5 mr-1.5" />
+              Clear response
+            </Button>
+          )}
         </div>
       )}
 
@@ -166,7 +191,7 @@ function ReviewRow({ review, onAction }: {
           <ul className="mt-1.5 space-y-1 pl-3 border-l border-muted">
             {review.logs.map((log, i) => (
               <li key={i} data-testid={`log-entry-${review.id}-${i}`}>
-                <span className="font-medium capitalize">{log.action}</span>
+                <span className="font-medium capitalize">{log.action.replace(/_/g, " ")}</span>
                 {log.reason && <span> — {log.reason}</span>}
                 <span className="ml-1 opacity-60">{format(new Date(log.createdAt), "MMM d HH:mm")}</span>
               </li>
@@ -196,7 +221,9 @@ export default function AdminReviewModeration() {
 
   const moderateMutation = useMutation({
     mutationFn: ({ id, status, reason }: { id: string; status: string; reason?: string }) =>
-      apiRequest("PATCH", `/api/admin/reviews/${id}/status`, { status, reason }),
+      status === "clear_response"
+        ? apiRequest("POST", `/api/admin/reviews/${id}/clear-response`, { reason })
+        : apiRequest("PATCH", `/api/admin/reviews/${id}/status`, { status, reason }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/reviews"] });
       toast({ title: "Review updated" });
