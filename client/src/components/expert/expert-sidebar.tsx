@@ -55,7 +55,7 @@ function buildMenuGroups(expertType?: string | null) {
     {
       label: "Business",
       items: [
-        { title: isEventPlanner ? "Packages" : isLocalExpert ? "Local Packages" : "Services", href: "/expert/services", icon: Briefcase },
+        { title: "My Offerings", href: "/expert/services", icon: Briefcase },
         // Seller-side vocabulary (§10 label standard): "Ready Made Trips" is the CONSUMER store
         // page; the seller console keeps "Itinerary Templates" (the Airbnb listings/homes split).
         // "Store Listings" is the workstation→store pipeline console (decision-maker model,

@@ -508,6 +508,10 @@ if (process.env.NODE_ENV === "production") {
       "See: server/migrations/" +
       "scheduled_drop_deprecated_city_queues.sql"
     );
+    const personaKey = process.env.PERSONA_API_KEY ? "set" : "missing";
+    const personaTemplate = process.env.PERSONA_TEMPLATE_ID ? "set" : "missing";
+    const stripeIdentity = process.env.STRIPE_IDENTITY_WEBHOOK_SECRET ? "set" : "missing";
+    console.log(`[readiness] identity/KYB keys: PERSONA_API_KEY=${personaKey} PERSONA_TEMPLATE_ID=${personaTemplate} STRIPE_IDENTITY_WEBHOOK_SECRET=${stripeIdentity}`);
     logger.info({ port }, "Server started");
 
     cacheSchedulerService.start();

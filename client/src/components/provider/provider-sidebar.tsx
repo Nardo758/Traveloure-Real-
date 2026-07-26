@@ -39,7 +39,7 @@ const menuGroups = [
   {
     label: "Business",
     items: [
-      { title: "Services", href: "/provider/services", icon: Package },
+      { title: "My Offerings", href: "/provider/services", icon: Package },
       { title: "Earnings", href: "/provider/earnings", icon: DollarSign },
       { title: "Analytics", href: "/provider/analytics", icon: BarChart3 },
     ],
