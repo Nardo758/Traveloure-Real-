@@ -514,6 +514,10 @@ export function setupEmailAuth(app: Express): void {
     }
   });
 
+  app.get("/api/auth/logout", (_req, res) => {
+    res.status(405).json({ error: "Method Not Allowed", message: "Use POST /api/auth/logout" });
+  });
+
   app.post("/api/auth/logout", (req, res) => {
     req.logout(() => {
       req.session?.destroy(() => {

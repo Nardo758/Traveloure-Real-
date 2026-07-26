@@ -35,6 +35,7 @@ export function getSession() {
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
+      sameSite: "lax" as const,
       // `secure` cookies are only sent back over HTTPS. Production runs behind
       // TLS so this is correct there. But the auth-route smoke gate runs the
       // production build over plain-http localhost (NODE_ENV=production), where

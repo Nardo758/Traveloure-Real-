@@ -2636,14 +2636,29 @@ export class DatabaseStorage implements IStorage {
       return true;
     });
 
+    // Strip sensitive user fields before returning to any API consumer.
+    // These columns live on the users row but must never leave the server.
+    const SENSITIVE_EXPERT_FIELDS = [
+      "password",
+      "instagramAccessToken",
+      "instagramUserId",
+    ] as const;
+    const scrub = (expert: any) => {
+      const safe = { ...expert };
+      for (const field of SENSITIVE_EXPERT_FIELDS) delete safe[field];
+      return safe;
+    };
+
     // Filter by experience type if provided
     if (experienceTypeId) {
-      return approvedExperts.filter(expert =>
-        expert.experienceTypes.some((et: any) => et.experienceTypeId === experienceTypeId)
-      );
+      return approvedExperts
+        .filter(expert =>
+          expert.experienceTypes.some((et: any) => et.experienceTypeId === experienceTypeId)
+        )
+        .map(scrub);
     }
 
-    return approvedExperts;
+    return approvedExperts.map(scrub);
   }
 
   // Expert Custom Services
