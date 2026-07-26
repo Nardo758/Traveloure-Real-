@@ -43,6 +43,11 @@ export default function ExpertReadyMade() {
   });
   const listings = data?.listings ?? [];
 
+  const { data: expertRoleData } = useQuery<{ role: string; roleLabel: string | null; applicationStatus: string | null }>({
+    queryKey: ["/api/expert/role"],
+  });
+  const isEventPlanner = expertRoleData?.role === "event_planner";
+
   const create = useMutation({
     mutationFn: async () => {
       const res = await fetch("/api/expert/ready-made", {
@@ -77,19 +82,21 @@ export default function ExpertReadyMade() {
             like. A buyer gets their own editable copy — you keep authoring the original.
           </div>
         </div>
-        <button
-          onClick={() => create.mutate()}
-          disabled={create.isPending}
-          data-testid="button-new-ready-made"
-          style={{
-            flexShrink: 0, padding: "9px 15px", borderRadius: 9, border: "none", background: G[900],
-            color: "white", fontSize: 13, fontWeight: 700, cursor: create.isPending ? "wait" : "pointer",
-            display: "flex", alignItems: "center", gap: 6,
-          }}
-        >
-          {create.isPending ? <Loader2 style={{ width: 14, height: 14 }} className="animate-spin" /> : <Plus style={{ width: 14, height: 14 }} />}
-          New store listing
-        </button>
+        {!isEventPlanner && (
+          <button
+            onClick={() => create.mutate()}
+            disabled={create.isPending}
+            data-testid="button-new-ready-made"
+            style={{
+              flexShrink: 0, padding: "9px 15px", borderRadius: 9, border: "none", background: G[900],
+              color: "white", fontSize: 13, fontWeight: 700, cursor: create.isPending ? "wait" : "pointer",
+              display: "flex", alignItems: "center", gap: 6,
+            }}
+          >
+            {create.isPending ? <Loader2 style={{ width: 14, height: 14 }} className="animate-spin" /> : <Plus style={{ width: 14, height: 14 }} />}
+            New store listing
+          </button>
+        )}
       </div>
 
       <div style={{ marginTop: 26 }}>

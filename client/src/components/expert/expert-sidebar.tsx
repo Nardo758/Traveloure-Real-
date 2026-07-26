@@ -62,7 +62,7 @@ function buildMenuGroups(expertType?: string | null) {
         // 2026-07-25: one store, stocked from the Workstation; "Trips by Locals" is a consumer
         // shelf section by author type, never a seller-console name).
         { title: "Itinerary Templates", href: "/expert/templates", icon: Map },
-        { title: "Store Listings", href: "/expert/ready-made", icon: Store },
+        ...(isEventPlanner ? [] : [{ title: "Store Listings", href: "/expert/ready-made", icon: Store }]),
         { title: isEventPlanner ? "Promo Content" : isLocalExpert ? "Local Guides" : "Content Studio", href: "/expert/content-studio", icon: Palette },
         { title: "DMO Library", href: "/expert/dmo-library", icon: Library },
         { title: "Analytics", href: "/expert/analytics", icon: BarChart3 },
