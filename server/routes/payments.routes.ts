@@ -199,6 +199,15 @@ router.post("/api/wallet/add-credits", isAuthenticated, async (req, res) => {
 
 
 router.post("/api/credits/purchase", isAuthenticated, async (req, res) => {
+    // F2 (revenue-model review, decision-maker ratified Jul 26 2026): GATED 501 until fulfillment
+    // exists. The Stripe Checkout below is real, but 'credit_purchase' has NO webhook handler, NO
+    // balance grant, and NO revenue row — money would be taken with nothing delivered (the client
+    // balance is a hardcoded mock). Same honesty posture as the W0.4 tip gate: never charge for a
+    // leg that doesn't exist. Re-enable only WITH the fulfillment webhook + real balance ledger.
+    return res.status(501).json({
+      message: "Credit purchases are not available yet — credit fulfillment has not launched.",
+    });
+    // eslint-disable-next-line no-unreachable
     try {
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { packageId, currency: clientCurrency } = req.body;
@@ -209,7 +218,9 @@ router.post("/api/credits/purchase", isAuthenticated, async (req, res) => {
         return res.status(400).json({ message: "Invalid package" });
       }
 
-      const { credits, price } = pkg;
+      // Non-null assertion: this code is unreachable behind the F2 501 gate, which disables
+      // TS flow-narrowing from the !pkg guard above. Remove when the gate lifts.
+      const { credits, price } = pkg!;
 
       const userRecord = await storage.getUser(userId);
       const userEmail = userRecord?.email || undefined;

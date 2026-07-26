@@ -80,7 +80,7 @@ checking this table.
 
 | ID | Item | Tier | Est. | Depends | Notes |
 |----|------|------|------|---------|-------|
-| M0 | ⛔ Differential commission by channel (mockup 2's "8% vs 25%" — illustrative, NOT ratified) | decision → Fable 🔴 | ~80k | S4 | If ratified: `fee_bands` rows + channel dim in `resolveCommissionRates` (§8, no literals) |
+| M0 | ~~Channel pricing~~ **SCRATCHED (Jul 26 ruling): link-channel pricing = identical to platform pricing.** No build. S4 stays analytics-only. See REVENUE_MODEL.md rulings | — | 0 | — | Revenue-review fixes F2/F3 landed instead |
 
 ## Singles (independent, cheap — fill idle capacity)
 

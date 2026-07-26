@@ -509,4 +509,8 @@ export const MIGRATION_FILES = [
   // storefront identity (/p/{handle}, backoffice Phase 1a). Format + reserved words enforced in
   // storefront.routes.ts, deliberately NOT a DB CHECK.
   "136_users_handle.sql",
+  // 137: expert-review tier fees → fee_bands (F3; closes §14 A1 filed follow-up). Seed-only,
+  // ON CONFLICT DO NOTHING, no CHECK — no publish-push trap. Code constants remain as the
+  // documented safe-failure fallback.
+  "137_expert_review_fee_bands.sql",
 ] as const;

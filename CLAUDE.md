@@ -592,8 +592,10 @@ world-writable fee-config, then the four below); the rule closes the class so th
   Full Concierge) with `userId` from body. Now: acting user from session; amount **server-derived** via
   `resolveExpertReviewAmount(serviceType, variant.totalCost)` (`booking-actions.service.ts`) from the variant's stored
   cost; ownership (IDOR) enforced against `getVariantOwnerAndCost`. The tier constants ($50/$50+5%/$100+8%) were
-  relocated **server-side** from the client (`fee-literal-ok`, pending migration to `fee_bands` — filed, same posture as
-  the §8 coordination constants).
+  relocated **server-side** from the client, and **migrated to `fee_bands` by migration 137 (Jul 26, 2026)** — admin-editable
+  rows (`expert_review_flat`/`expert_review_book_flat`+`_percent`/`full_concierge_flat`+`_percent`); the code constants
+  survive only as the documented safe-failure fallback (§8 coordination-floor posture). Same change ledgered the fee:
+  `expert_review_fee` platform_revenue recorded idempotently at both completion paths (was collected, never recorded).
 - **A2 🔴 `POST /api/bookings/refund`** — was auth-only (any user could refund any booking for any amount). Now:
   **owner-or-admin gate**; amount **server-derived** from the booking's `total_amount` (client `amount` ignored).
   **Earnings-reversal fast-follow — CLOSED by escrow Phase 4 (PR #170):** the refund now also calls

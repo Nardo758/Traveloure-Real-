@@ -490,6 +490,7 @@ export interface IStorage {
   getUserStripeAccount(userId: string): Promise<{ stripeAccountId: string | null; stripeAccountStatus: string | null; canReceivePayments: boolean | null }>;
 
   // Platform Revenue
+  hasPlatformRevenueForSource(sourceId: string): Promise<boolean>;
   recordPlatformRevenue(revenue: InsertPlatformRevenue): Promise<PlatformRevenue>;
   getPlatformRevenue(filters?: { startDate?: Date; endDate?: Date; sourceType?: string; status?: string }): Promise<PlatformRevenue[]>;
   getPlatformRevenueSummary(startDate?: Date, endDate?: Date): Promise<{
@@ -3753,7 +3754,16 @@ export class DatabaseStorage implements IStorage {
   }
 
   // === Platform Revenue ===
-  
+
+  async hasPlatformRevenueForSource(sourceId: string): Promise<boolean> {
+    const [row] = await db
+      .select({ id: platformRevenue.id })
+      .from(platformRevenue)
+      .where(eq(platformRevenue.sourceId, sourceId))
+      .limit(1);
+    return !!row;
+  }
+
   async recordPlatformRevenue(revenue: InsertPlatformRevenue): Promise<PlatformRevenue> {
     const [newRevenue] = await db.insert(platformRevenue).values(revenue).returning();
     
