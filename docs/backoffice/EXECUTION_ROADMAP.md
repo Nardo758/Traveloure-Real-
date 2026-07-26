@@ -45,7 +45,7 @@ checking this table.
 | ID | Item | Tier | Est. | Depends | Notes |
 |----|------|------|------|---------|-------|
 | N1 ✅ `feafc515` | Converge entries: both sidebars adopt the mockup's 9-entry vocabulary (Dashboard / My Offerings / Calendar / Earnings / Share & Promote / Analytics / Reviews / Messages / Settings), role-computed visibility f(user.role) | Haiku (enumerated file list) | ~30k | — | No layout unification yet — labels/links only |
-| N2 | Unify the two console shells into one backoffice layout | Sonnet | ~60k | N1 | The big visual step; auth-routes gate covers regressions |
+| N2 ✅ | Unify the two console shells into one backoffice layout | Sonnet | ~60k | N1 | Landed as shared BackofficeShell + thin role adapters (24 consumer pages untouched, testids preserved; role status badges stay divergent by design). Follow-on filed: merge the two sidebars into one role-parameterized nav config |
 
 ## Wave V — Verification gating (Phase 0.5; REQUIRED before marketing pushes of /p/ links)
 
