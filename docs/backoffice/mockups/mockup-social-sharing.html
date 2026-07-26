@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Share Your Offerings — Traveloure</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #fafaf8; color: #2d2d2d; }
+        .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+        h1 { font-size: 28px; margin-bottom: 2rem; }
+        .share-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(350px, 1fr)); gap: 2rem; }
+        .share-card { background: #fff; border: 1px solid #e8e8e2; border-radius: 12px; overflow: hidden; }
+        .share-card-header { padding: 1.5rem; }
+        .share-card-title { font-size: 16px; font-weight: 600; margin-bottom: 0.5rem; }
+        .share-card-subtitle { font-size: 13px; color: #7a7a72; }
+        .card-image-preview { width: 100%; aspect-ratio: 4/5; background: linear-gradient(135deg, #d4a5a5 0%, #c9a0a0 100%); display: flex; align-items: center; justify-content: center; color: #fff; font-size: 14px; position: relative; }
+        .image-overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; justify-content: space-between; padding: 1.5rem; background: linear-gradient(180deg, transparent 0%, rgba(0,0,0,0.3) 100%); }
+        .image-top { }
+        .image-bottom { text-align: center; }
+        .brand-badge { display: inline-block; background: rgba(255,255,255,0.2); padding: 0.5rem 1rem; border-radius: 4px; font-size: 11px; font-weight: 600; }
+        .service-info { color: #fff; }
+        .service-name { font-size: 24px; font-weight: 700; margin-bottom: 0.5rem; }
+        .service-details { font-size: 14px; margin-bottom: 1rem; }
+        .price-tag { font-size: 28px; font-weight: 700; }
+        .card-content { padding: 1.5rem; }
+        .caption-box { background: #fafaf8; border: 1px solid #e8e8e2; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; min-height: 100px; font-size: 13px; line-height: 1.6; color: #4a4a4a; font-family: 'Monaco', monospace; }
+        .hashtags { color: #c9a0a0; font-weight: 600; }
+        .link { color: #2d7dd4; font-weight: 600; }
+        .button-group { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+        .button { padding: 0.75rem 1.5rem; border: none; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+        .button-primary { background: #c9a0a0; color: #fff; flex: 1; min-width: 120px; }
+        .button-primary:hover { background: #b8888e; }
+        .button-secondary { background: #e8e8e2; color: #2d2d2d; flex: 1; min-width: 120px; }
+        .button-secondary:hover { background: #dcdcd6; }
+        .button-small { padding: 0.5rem 1rem; font-size: 12px; }
+        .size-label { font-size: 11px; color: #7a7a72; text-align: center; margin-top: 0.5rem; }
+        .divider { margin: 1.5rem 0; border-top: 1px solid #e8e8e2; }
+        .review-share { }
+        .review-quote { font-style: italic; color: #4a4a4a; margin-bottom: 1rem; font-size: 14px; line-height: 1.6; }
+        .review-meta { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; font-size: 12px; }
+        .review-name { font-weight: 600; }
+        .review-rating { color: #ffa500; }
+        .review-date { color: #7a7a72; }
+        .social-links { display: flex; gap: 0.75rem; margin-top: 1rem; }
+        .social-btn { display: flex; align-items: center; gap: 0.5rem; padding: 0.75rem 1rem; border: 1px solid #e8e8e2; border-radius: 6px; text-decoration: none; color: #2d2d2d; font-size: 12px; font-weight: 600; transition: all 0.2s; cursor: pointer; background: #fff; }
+        .social-btn:hover { border-color: #c9a0a0; color: #c9a0a0; }
+        .whatsapp-btn { border-color: #25d366; color: #25d366; }
+        .whatsapp-btn:hover { background: #f0fdf4; }
+        .twitter-btn { border-color: #1da1f2; color: #1da1f2; }
+        .twitter-btn:hover { background: #f0f9ff; }
+        .instagram-btn { border-color: #e1306c; color: #e1306c; }
+        .instagram-btn:hover { background: #fdf2f8; }
+        .copy-toast { position: fixed; bottom: 2rem; right: 2rem; background: #1a1a18; color: #fafaf8; padding: 1rem 1.5rem; border-radius: 8px; font-size: 13px; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
+        .copy-toast.show { opacity: 1; pointer-events: auto; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📱 Share Your Offerings</h1>
+
+        <div class="share-grid">
+            <!-- Instagram Feed Card -->
+            <div class="share-card">
+                <div class="share-card-header">
+                    <div class="share-card-title">📷 Instagram Feed Post (1080×1350)</div>
+                    <div class="share-card-subtitle">Share to your Instagram story</div>
+                </div>
+                <div class="card-image-preview">
+                    <div class="image-overlay">
+                        <div class="image-top">
+                            <div class="brand-badge">TRAVELOURE</div>
+                        </div>
+                        <div class="image-bottom">
+                            <div class="service-name">Kyoto Flower Arrangement</div>
+                            <div class="service-details">Learn Ikebana with a local expert</div>
+                            <div class="price-tag">$45</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-content">
+                    <div class="caption-box">Book a Kyoto flower arrangement. Learn traditional ikebana from a local expert. Limited spots each week. <span class="hashtags">#kyoto #experience #flowers #japan #local</span> <span class="link">traveloure.com/p/yuki</span></div>
+                    <div class="button-group">
+                        <button class="button button-primary" onclick="copyCaption(this)">Copy Caption</button>
+                        <button class="button button-secondary" onclick="shareWhatsapp()">Share</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Instagram Story Card -->
+            <div class="share-card">
+                <div class="share-card-header">
+                    <div class="share-card-title">📲 Instagram Story (1080×1920)</div>
+                    <div class="share-card-subtitle">Vertical format for stories</div>
+                </div>
+                <div class="card-image-preview" style="aspect-ratio: 9/16;">
+                    <div class="image-overlay">
+                        <div class="image-top">
+                            <div class="brand-badge">TRAVELOURE</div>
+                        </div>
+                        <div class="image-bottom">
+                            <div class="service-name" style="font-size: 32px;">Kyoto Ikebana</div>
+                            <div class="service-details">Last minute spots available</div>
+                            <div class="price-tag">$45</div>
+                            <div style="margin-top: 1rem; font-size: 12px;">📅 Jun 1–5 Available</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-content">
+                    <div class="caption-box">Learn traditional flower arrangement in Kyoto. Book now via link in bio. <span class="hashtags">#kyoto #experience</span></div>
+                    <div class="button-group">
+                        <button class="button button-primary" onclick="copyCaption(this)">Copy Caption</button>
+                        <button class="button button-secondary" onclick="shareWhatsapp()">Share</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Review Share Card -->
+            <div class="share-card">
+                <div class="share-card-header">
+                    <div class="share-card-title">⭐ Share a Review Card</div>
+                    <div class="share-card-subtitle">Proof that travelers love your offering</div>
+                </div>
+                <div class="card-image-preview">
+                    <div class="image-overlay">
+                        <div style="text-align: center; width: 100%;">
+                            <div style="font-size: 32px; margin-bottom: 0.5rem;">⭐⭐⭐⭐⭐</div>
+                            <div style="font-size: 16px; font-weight: 600; margin-bottom: 1rem;">"Best cultural experience in Kyoto!"</div>
+                            <div style="font-size: 13px; margin-bottom: 1rem;">— Marco, Italy</div>
+                            <div style="font-size: 12px; color: rgba(255,255,255,0.8);">Verified purchase • Jun 8, 2026</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-content">
+                    <div class="review-share">
+                        <div class="review-quote">"Yuki was an amazing teacher. The workshop was so peaceful and I loved bringing home my arrangement. Highly recommend!"</div>
+                        <div class="review-meta">
+                            <span class="review-name">Sarah (USA)</span>
+                            <span class="review-rating">★★★★★</span>
+                        </div>
+                        <div class="review-date">Jun 15, 2026</div>
+                    </div>
+                    <div class="button-group">
+                        <button class="button button-primary" onclick="copyCaption(this)">Copy Quote</button>
+                        <button class="button button-secondary" onclick="shareWhatsapp()">Share</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Actions -->
+            <div class="share-card">
+                <div class="share-card-header">
+                    <div class="share-card-title">⚡ Quick Share Options</div>
+                    <div class="share-card-subtitle">Send directly to your audience</div>
+                </div>
+                <div class="card-content">
+                    <div style="margin-bottom: 1rem;">
+                        <p style="font-size: 13px; color: #4a4a4a; margin-bottom: 1rem;">Your unique booking link:</p>
+                        <div style="background: #fafaf8; padding: 0.75rem; border-radius: 6px; font-family: monospace; font-size: 12px; word-break: break-all; color: #2d7dd4;">traveloure.com/p/yuki-flowers/kyoto-ikebana</div>
+                    </div>
+
+                    <div style="display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 1.5rem;">
+                        <button class="social-btn whatsapp-btn" onclick="openWhatsapp()">
+                            <span>📱</span> WhatsApp
+                        </button>
+                        <button class="social-btn instagram-btn" onclick="copyLink()">
+                            <span>📷</span> Instagram DM
+                        </button>
+                        <button class="social-btn twitter-btn" onclick="copyLink()">
+                            <span>𝕏</span> X/Twitter
+                        </button>
+                    </div>
+
+                    <button class="button button-primary" style="width: 100%;" onclick="copyLink()">Copy Link to Clipboard</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Posting Tips -->
+        <div style="margin-top: 3rem; background: #fffaed; border-left: 4px solid #ffa500; border-radius: 6px; padding: 1.5rem;">
+            <h3 style="font-size: 16px; font-weight: 600; margin-bottom: 1rem;">💡 Sharing Tips</h3>
+            <ul style="list-style: none; font-size: 14px; line-height: 1.8; color: #663d00;">
+                <li>✓ <strong>Share consistently.</strong> Post 2–3 times per week on Instagram for best reach.</li>
+                <li>✓ <strong>Use captions & hashtags.</strong> They help travelers find your offerings.</li>
+                <li>✓ <strong>Pin your reviews.</strong> Social proof (5★ reviews) is your #1 conversion driver.</li>
+                <li>✓ <strong>Tag locations.</strong> Kyoto travelers search hashtags like #kyotoexperience.</li>
+                <li>✓ <strong>Last-minute spots?</strong> Post stories when you have availability—urgency works.</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="copy-toast" id="toast"></div>
+
+    <script>
+        function copyCaption(btn) {
+            const caption = btn.closest('.card-content').querySelector('.caption-box, .review-quote').textContent;
+            navigator.clipboard.writeText(caption).then(() => {
+                showToast('Caption copied to clipboard! 📋');
+            });
+        }
+
+        function copyLink() {
+            const link = 'https://traveloure.com/p/yuki-flowers/kyoto-ikebana';
+            navigator.clipboard.writeText(link).then(() => {
+                showToast('Link copied! Ready to share. 🔗');
+            });
+        }
+
+        function shareWhatsapp() {
+            const text = 'Check out this amazing experience on Traveloure!';
+            const link = 'https://traveloure.com/p/yuki-flowers/kyoto-ikebana';
+            const url = `https://wa.me/?text=${encodeURIComponent(text + ' ' + link)}`;
+            window.open(url, '_blank');
+        }
+
+        function openWhatsapp() {
+            shareWhatsapp();
+        }
+
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            toast.textContent = message;
+            toast.classList.add('show');
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 2500);
+        }
+    </script>
+</body>
+</html>
