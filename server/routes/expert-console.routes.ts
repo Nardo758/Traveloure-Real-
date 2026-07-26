@@ -17,8 +17,8 @@ import { Router } from "express";
 import { db } from "../db";
 import { storage } from "../storage";
 import { isAuthenticated } from "../replit_integrations/auth";
-import { desc, eq, or, isNull, sql, and, gte, ne, inArray } from "drizzle-orm";
-import { localExpertForms, expertServiceOfferings, coordinationStates, insertLocalKnowledgeNuggetSchema, users, vendorAvailabilitySlots } from "@shared/schema";
+import { desc, asc, eq, or, isNull, sql, and, gte, ne, inArray } from "drizzle-orm";
+import { localExpertForms, expertServiceOfferings, coordinationStates, insertLocalKnowledgeNuggetSchema, users, vendorAvailabilitySlots, serviceReviews } from "@shared/schema";
 import {
   getLocalKnowledgeNuggets,
   createLocalKnowledgeNugget,
@@ -210,6 +210,104 @@ router.get("/api/me/next-availability", isAuthenticated, async (req, res) => {
   } catch (err) {
     console.error("[Next Availability] error:", err);
     res.status(500).json({ message: "Failed to fetch next availability" });
+  }
+});
+
+// ─── Posting opportunities (Wave SH, task SH3) ──────────────────────────────────────────────
+//
+// Feeds the Share & Promote page's "reasons to post today" strip. §13: every card must be
+// backed by a REAL row — no fabricated prompts. Three candidate sources were ground-truthed:
+//   • new_review  — service_reviews rows (rating>=4, REV-MOD status='approved') on the caller's
+//     OWN approved+active provider_services (the same F2/share-image gate share-images.routes.ts
+//     enforces — a submitted/draft/paused listing's share-image 404s, so surfacing it here would
+//     be a dead preview, per the SH2 header comment).
+//   • open_slots  — vendor_availability_slots grouped rows on the same approved+active services,
+//     the C1 next-availability aggregate above extended with a real remaining-capacity sum.
+//   • seasonal    — seasonal_opportunities (migration 068) has readers (recommendation.service.ts,
+//     content-matching.service.ts) but NO writer/seeder anywhere in the codebase and 0 rows in the
+//     dev DB — there is no real data to back a seasonal card. Deliberately OMITTED rather than
+//     fabricated; the `kind` union below only carries 'new_review' | 'open_slots' until a real
+//     seasonal writer exists.
+router.get("/api/me/posting-opportunities", isAuthenticated, async (req, res) => {
+  try {
+    const userId = sessionUserId(req);
+    const ownServices = await storage.getProviderServicesByStatus(userId);
+    // Only offerings that are actually shareable right now (mirrors share-promote.tsx's own
+    // picker filter + the share-image F2 gate) — no dead-preview opportunity cards.
+    const shareable = ownServices.filter((s) => s.approvalStatus === "approved" && s.status === "active");
+    const serviceIds = shareable.map((s) => s.id);
+    const nameById = new Map(shareable.map((s) => [s.id, s.serviceName]));
+
+    if (serviceIds.length === 0) {
+      return res.json({ opportunities: [] });
+    }
+
+    const reviewRows = await db
+      .select({
+        id: serviceReviews.id,
+        rating: serviceReviews.rating,
+        reviewText: serviceReviews.reviewText,
+        serviceId: serviceReviews.serviceId,
+        createdAt: serviceReviews.createdAt,
+      })
+      .from(serviceReviews)
+      .where(
+        and(
+          inArray(serviceReviews.serviceId, serviceIds),
+          gte(serviceReviews.rating, 4),
+          eq(serviceReviews.status, "approved"),
+        ),
+      )
+      .orderBy(desc(serviceReviews.createdAt))
+      .limit(3);
+
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const slotRows = await db
+      .select({
+        serviceId: vendorAvailabilitySlots.serviceId,
+        nextDate: sql<string>`MIN(${vendorAvailabilitySlots.date})`.as("next_date"),
+        openSpots: sql<number>`SUM(GREATEST(${vendorAvailabilitySlots.capacity} - ${vendorAvailabilitySlots.bookedCount}, 0))`.as("open_spots"),
+      })
+      .from(vendorAvailabilitySlots)
+      .where(
+        and(
+          inArray(vendorAvailabilitySlots.serviceId, serviceIds),
+          gte(vendorAvailabilitySlots.date, todayStr),
+          ne(vendorAvailabilitySlots.status, "fully_booked"),
+          sql`(${vendorAvailabilitySlots.capacity} IS NULL OR ${vendorAvailabilitySlots.bookedCount} < ${vendorAvailabilitySlots.capacity})`,
+        ),
+      )
+      .groupBy(vendorAvailabilitySlots.serviceId)
+      .orderBy(asc(sql`MIN(${vendorAvailabilitySlots.date})`))
+      .limit(3);
+
+    const opportunities = [
+      ...reviewRows.map((r) => {
+        const text = (r.reviewText ?? "").trim();
+        const clamped = text.length > 140 ? `${text.slice(0, 140)}…` : text;
+        return {
+          kind: "new_review" as const,
+          reviewId: r.id,
+          rating: r.rating,
+          text: clamped,
+          serviceId: r.serviceId,
+          serviceName: nameById.get(r.serviceId) ?? "your service",
+          createdAt: r.createdAt,
+        };
+      }),
+      ...slotRows.map((s) => ({
+        kind: "open_slots" as const,
+        serviceId: s.serviceId,
+        serviceName: nameById.get(s.serviceId) ?? "your service",
+        nextDate: s.nextDate,
+        openSpots: Number(s.openSpots) || 0,
+      })),
+    ];
+
+    res.json({ opportunities });
+  } catch (err) {
+    console.error("[Posting Opportunities] error:", err);
+    res.status(500).json({ message: "Failed to fetch posting opportunities" });
   }
 });
 

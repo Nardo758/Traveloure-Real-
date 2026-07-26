@@ -33,9 +33,48 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
-import { Copy, Download, MessageCircle, Share2, Store } from "lucide-react";
+import { Copy, Download, MessageCircle, Share2, Sparkles, Store } from "lucide-react";
 
 type Lane = "service" | "template" | "ready_made";
+
+// SH3 — Posting Opportunities. Every entry is backed by a real row surfaced by
+// GET /api/me/posting-opportunities (server: expert-console.routes.ts); §13: no fabricated
+// prompts. The union deliberately has no 'seasonal' member — seasonal_opportunities has no
+// writer/seeder anywhere in the codebase (0 rows), so that source is honestly omitted rather
+// than faked, not just hidden client-side.
+type PostingOpportunity =
+  | {
+      kind: "new_review";
+      reviewId: string;
+      rating: number;
+      text: string;
+      serviceId: string;
+      serviceName: string;
+      createdAt: string;
+    }
+  | {
+      kind: "open_slots";
+      serviceId: string;
+      serviceName: string;
+      nextDate: string;
+      openSpots: number;
+    };
+
+function buildReviewCaption(o: Extract<PostingOpportunity, { kind: "new_review" }>): string {
+  const quote = o.text ? ` — "${o.text}"` : "";
+  return `New ${o.rating}★ review on ${o.serviceName}${quote} 🙌`;
+}
+
+function formatOpportunityDate(dateStr: string): string {
+  const d = new Date(`${dateStr}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return dateStr;
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+function buildSlotCaption(o: Extract<PostingOpportunity, { kind: "open_slots" }>): string {
+  const spots = o.openSpots === 1 ? "1 spot" : `${o.openSpots} spots`;
+  return `${spots} still open for ${o.serviceName} on ${formatOpportunityDate(o.nextDate)} — book yours on Traveloure.`;
+}
 
 interface OfferingOption {
   id: string;
@@ -168,6 +207,10 @@ export default function SharePromote() {
     queryKey: ["/api/expert/ready-made/mine"],
     enabled: !isProvider,
   });
+  const opportunitiesQuery = useQuery<{ opportunities: PostingOpportunity[] }>({
+    queryKey: ["/api/me/posting-opportunities"],
+  });
+  const opportunities = opportunitiesQuery.data?.opportunities ?? [];
 
   const isLoading =
     servicesQuery.isLoading || (!isProvider && (templatesQuery.isLoading || readyMadeQuery.isLoading));
@@ -247,6 +290,91 @@ export default function SharePromote() {
             Turn a live offering into a ready-to-post card — every link routes back to Traveloure.
           </p>
         </div>
+
+        <Card data-testid="card-posting-opportunities">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-primary" />
+              Posting opportunities
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {opportunitiesQuery.isLoading ? (
+              <p className="text-sm text-muted-foreground">Checking for reasons to post…</p>
+            ) : opportunities.length === 0 ? (
+              <p className="text-sm text-muted-foreground" data-testid="text-opportunities-empty">
+                No posting opportunities right now — check back after a new review or an open slot.
+              </p>
+            ) : (
+              <div className="grid sm:grid-cols-2 gap-4">
+                {opportunities.map((o) =>
+                  o.kind === "new_review" ? (
+                    <div
+                      key={`review-${o.reviewId}`}
+                      className="rounded-lg border p-3 space-y-2"
+                      style={{ borderColor: "#E8E8E2" }}
+                      data-testid={`card-opportunity-review-${o.reviewId}`}
+                    >
+                      <img
+                        src={`/api/share-image/review/${o.reviewId}.png`}
+                        alt={`${o.rating}★ review on ${o.serviceName}`}
+                        className="w-full rounded-md border"
+                        style={{ borderColor: "#E8E8E2" }}
+                        data-testid={`img-opportunity-review-${o.reviewId}`}
+                      />
+                      <p className="text-sm font-medium">
+                        New {o.rating}★ review on {o.serviceName} — share it
+                      </p>
+                      <ShareActions
+                        caption={buildReviewCaption(o)}
+                        idPrefix={`opportunity-review-${o.reviewId}`}
+                        onGetLink={() =>
+                          ensureShortLink(
+                            { targetType: "service", targetId: o.serviceId },
+                            `/services/${o.serviceId}`,
+                          )
+                        }
+                      />
+                    </div>
+                  ) : (
+                    <div
+                      key={`slots-${o.serviceId}`}
+                      className="rounded-lg border p-3 space-y-2"
+                      style={{ borderColor: "#E8E8E2" }}
+                      data-testid={`card-opportunity-slots-${o.serviceId}`}
+                    >
+                      <p className="text-sm font-medium">
+                        {o.serviceName} has {o.openSpots === 1 ? "1 open spot" : `${o.openSpots} open spots`} on{" "}
+                        {formatOpportunityDate(o.nextDate)} — promote it
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setSelectedKey(`service-${o.serviceId}`)}
+                          data-testid={`button-opportunity-slots-select-${o.serviceId}`}
+                        >
+                          <Share2 className="w-3.5 h-3.5 mr-1.5" />
+                          Select in picker
+                        </Button>
+                      </div>
+                      <ShareActions
+                        caption={buildSlotCaption(o)}
+                        idPrefix={`opportunity-slots-${o.serviceId}`}
+                        onGetLink={() =>
+                          ensureShortLink(
+                            { targetType: "service", targetId: o.serviceId },
+                            `/services/${o.serviceId}`,
+                          )
+                        }
+                      />
+                    </div>
+                  ),
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         {isLoading ? (
           <Card>
