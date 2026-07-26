@@ -105,14 +105,20 @@ export function UserMenu() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" className="flex items-center gap-2 px-2" data-testid="button-user-menu">
+        {/* TEST 3 — avatar button: aria-label announces user identity to screen readers */}
+        <Button
+          variant="ghost"
+          className="flex items-center gap-2 px-2"
+          aria-label={`User menu for ${displayName}${roleLabel ? `, ${roleLabel}` : ""}`}
+          data-testid="button-user-menu"
+        >
           <Avatar className="h-8 w-8">
-            <AvatarImage src={user.profileImageUrl || undefined} alt={displayName} data-testid="user-avatar-image" />
-            <AvatarFallback className="bg-primary/10 text-primary font-bold text-sm" data-testid="user-avatar-fallback">
+            <AvatarImage src={user.profileImageUrl || undefined} alt="" aria-hidden="true" data-testid="user-avatar-image" />
+            <AvatarFallback className="bg-primary/10 text-primary font-bold text-sm" aria-hidden="true" data-testid="user-avatar-fallback">
               {avatarFallback}
             </AvatarFallback>
           </Avatar>
-          <div className="flex flex-col items-start leading-none">
+          <div className="flex flex-col items-start leading-none" aria-hidden="true">
             <span className="text-sm font-medium text-muted-foreground dark:text-gray-300">
               {displayName}
             </span>
@@ -122,7 +128,7 @@ export function UserMenu() {
               </span>
             )}
           </div>
-          <ChevronDown className="w-4 h-4 text-muted-foreground" />
+          <ChevronDown className="w-4 h-4 text-muted-foreground" aria-hidden="true" />
         </Button>
       </DropdownMenuTrigger>
 

@@ -310,6 +310,7 @@ export async function registerRoutes(
     "/api/expert/revenue-optimization",
     "/api/expert/services",
     "/api/expert/dashboard",
+    "/api/expert/analytics",
     "/api/expert/knowledge-nuggets",
     "/api/expert/assigned-trips",
   ];
@@ -318,6 +319,7 @@ export async function registerRoutes(
     "/api/provider/verification-status",
     "/api/provider/request-verification-review",
     "/api/provider/dashboard",
+    "/api/provider/analytics",
     "/api/provider/earnings",
   ];
   app.use((req: any, res: any, next: any) => {
