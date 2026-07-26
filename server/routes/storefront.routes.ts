@@ -224,6 +224,24 @@ async function loadStorefront(handle: string) {
   // No approved inventory → no public page (an unvetted earner is not publishable).
   if (total === 0) return null;
 
+  // S7 — earner-level rating aggregate (§13-honest), same formula as
+  // storage.getExpertsWithProfiles: a review-count-WEIGHTED mean over the earner's
+  // own approved services (Lane 1, already fetched above — no extra query, no second
+  // parallel aggregate). Null when there are no reviews so the client renders "New",
+  // never a fabricated number.
+  let weightedSum = 0;
+  let totalReviews = 0;
+  for (const s of services) {
+    const rc = Number(s.reviewCount ?? 0);
+    const ar = s.averageRating != null ? Number(s.averageRating) : null;
+    if (rc > 0 && ar != null && !Number.isNaN(ar)) {
+      weightedSum += ar * rc;
+      totalReviews += rc;
+    }
+  }
+  const earnerAverageRating =
+    totalReviews > 0 ? Math.round((weightedSum / totalReviews) * 100) / 100 : null;
+
   return {
     earner: {
       name: [owner.firstName, owner.lastName].filter(Boolean).join(" ") || "Traveloure earner",
@@ -231,6 +249,8 @@ async function loadStorefront(handle: string) {
       profileImageUrl: owner.profileImageUrl ?? null,
       role: owner.role,
       handle: owner.handle,
+      averageRating: earnerAverageRating,
+      reviewCount: totalReviews,
     },
     services,
     templates,
