@@ -71,8 +71,8 @@ checking this table.
 | ID | Item | Tier | Est. | Depends | Notes |
 |----|------|------|------|---------|-------|
 | SH0 | ⛔ Share-asset persistence decision (render-on-demand vs stored) | decision | — | — | Blocks SH1; flagged in IMPLEMENTATION_MAP before any IG activation |
-| SH1 | Image render pipeline (IG feed 1080×1350 / story 1080×1920 / review card) | Fable design ~40k → Sonnet ~60k | ~100k | SH0, S3 | New dependency (satori or canvas) — deliberate add |
-| SH2 | Share surface page: cards + captions + wa.me/X/copy (informational outbound OK per §16; links route back to /p/) | Haiku | ~30k | SH1 | Mostly mockup 4 verbatim |
+| SH1 ✅ `49090eb0`+`285102d5` | Image render pipeline (IG feed 1080×1350 / story 1080×1920 / review card) | Fable design ~40k → Sonnet ~60k | ~100k | SH0, S3 | Landed: satori + @resvg/resvg-js (deliberate add, lockfile clean) + bundled Inter woff (OFL); F2/REV-MOD-gated endpoints, §13-honest cards, cacheable + rate-limited |
+| SH2 ✅ | Share surface page: cards + captions + wa.me/X/copy (informational outbound OK per §16; links route back to /p/) | Haiku | ~30k | SH1 | Landed: shared /expert|provider/share-promote page (offering picker, live SH1 previews, editable real-data captions, short-link-first actions). Ground-truth catch: N1 never actually added the Share & Promote nav entry — added to both sidebars here |
 | SH3 | Posting Opportunities feed (new 5★ review / open slots / seasonal) | Sonnet | ~50k | SH1, C1 | Data all exists; generator + surface |
 | SH4 | W0.6 Instagram publish fix (filed defect) | Sonnet | ~40k | — | Independent |
 

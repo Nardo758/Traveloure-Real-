@@ -30,6 +30,7 @@ import {
   Library,
   Map,
   Store,
+  Share2,
 } from "lucide-react";
 
 function buildMenuGroups(expertType?: string | null) {
@@ -65,6 +66,9 @@ function buildMenuGroups(expertType?: string | null) {
         ...(isEventPlanner ? [] : [{ title: "Store Listings", href: "/expert/ready-made", icon: Store }]),
         { title: isEventPlanner ? "Promo Content" : isLocalExpert ? "Local Guides" : "Content Studio", href: "/expert/content-studio", icon: Palette },
         { title: "DMO Library", href: "/expert/dmo-library", icon: Library },
+        // Share & Promote (SH2): the mockup-6 nav entry N1 converged the label vocabulary for
+        // but never actually added — real caption/link/share-image surface, not a redirect.
+        { title: "Share & Promote", href: "/expert/share-promote", icon: Share2 },
         { title: "Analytics", href: "/expert/analytics", icon: BarChart3 },
         { title: "Earnings", href: "/expert/earnings", icon: DollarSign },
       ],
