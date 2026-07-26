@@ -129,6 +129,7 @@ import {
 import {
   EXPERT_SHARE_RATE,
   PLATFORM_FEE_RATE,
+  PROCESSING_FEE_RATE,
   resolveCommissionRates,
   type CommissionRates,
 } from "./services/commission";
@@ -3258,6 +3259,38 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       });
 
       const template = await storage.getExpertTemplate(purchase.templateId);
+
+      // Record platform revenue for this sale — mirrors the booking_commission pattern
+      // (server/services/booking.service.ts:721-729). §15: guarded by hasPlatformRevenueForSource
+      // so a retry/duplicate confirm never double-records; non-fatal so a bookkeeping failure never
+      // blocks the buyer's unlocked purchase. storage.createTemplatePurchase's own status-gated write
+      // stays dead for this path — this route-level write is authoritative.
+      try {
+        if (!(await storage.hasPlatformRevenueForSource(completed.id))) {
+          const grossAmount = Number(completed.price);
+          const platformFeeAmt = Number(completed.platformFee);
+          const expertEarningsAmt = Number(completed.expertEarnings);
+          const processingFees = platformFeeAmt * PROCESSING_FEE_RATE;
+          const netAmount = platformFeeAmt - processingFees;
+          await storage.recordPlatformRevenue({
+            sourceType: 'template_commission',
+            sourceId: completed.id,
+            grossAmount: String(grossAmount),
+            platformFee: String(platformFeeAmt),
+            netAmount: String(netAmount),
+            processingFees: String(processingFees),
+            currency: completed.currency || 'USD',
+            expertId: completed.expertId,
+            expertEarnings: String(expertEarningsAmt),
+            description: `Template sale commission: ${template?.title ?? completed.templateId}`,
+            status: 'recorded',
+            transactionDate: new Date(),
+          } as any);
+        }
+      } catch (err) {
+        console.error(`Failed to record platform revenue for template purchase ${completed.id}:`, err);
+      }
+
       return res.json({ purchase: completed, template });
     } catch (err) {
       console.error("Error confirming template purchase:", err);
