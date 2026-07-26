@@ -569,6 +569,17 @@ export async function registerRoutes(
   app.use("/api/expert-workspace", expertWorkspaceRoutes);
 
   // Identity verification routes (Stripe Identity + Persona KYB)
+  // NOTE (V.2 ground-truth pass, Jul 26 2026): contentRoutes (mounted above, line 564) ALSO
+  // internally mounts identityRoutes/webhooksRoutes at these same paths — so at runtime the
+  // contentRoutes copy wins (registration order) and these two lines are the shadowed copy.
+  // Left in place deliberately: the unmounted-router guard (scripts/check-unmounted-routers.cjs,
+  // CLAUDE.md §9) only recognizes a router as "live" via a direct `import`+`app.use` pair inside
+  // server/routes.ts itself — an import from a sibling file under server/routes/ (content.routes.ts
+  // importing identity.routes.ts) does NOT satisfy it (by design — that's the guest-invites.ts
+  // lesson: a routes file importing a sibling doesn't prove it's actually reachable). Removing this
+  // pair trips the guard even though the handlers are genuinely live via contentRoutes. Since both
+  // sides mount the exact same router instance, there is no behavioral divergence — just a proof-of-
+  // liveness formality the guard requires. Do not remove without also updating the guard.
   app.use("/api/identity", identityRoutes);
   // Webhook handlers for Stripe Identity and Persona — mounted at /api/webhooks
   app.use("/api/webhooks", webhooksRoutes);
