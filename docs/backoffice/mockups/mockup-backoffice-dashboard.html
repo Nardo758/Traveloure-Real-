@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Backoffice — Yuki's Kyoto Experiences</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #fafaf8; color: #2d2d2d; }
+        .container { display: flex; min-height: 100vh; }
+        .sidebar { width: 240px; background: #1a1a18; color: #fafaf8; padding: 1.5rem 0; position: fixed; left: 0; top: 0; height: 100vh; overflow-y: auto; }
+        .sidebar-header { padding: 0 1.5rem 1.5rem; border-bottom: 1px solid #3a3a38; margin-bottom: 1.5rem; }
+        .sidebar-header h2 { font-size: 14px; font-weight: 600; margin-bottom: 0.25rem; }
+        .sidebar-header p { font-size: 12px; color: #c9a0a0; }
+        .sidebar-nav { list-style: none; }
+        .sidebar-nav li { border-bottom: 1px solid #2a2a28; }
+        .sidebar-nav a { display: block; padding: 1rem 1.5rem; color: #fafaf8; text-decoration: none; font-size: 14px; transition: all 0.2s; }
+        .sidebar-nav a:hover { background: #2a2a28; color: #c9a0a0; }
+        .sidebar-nav a.active { background: #3a3a38; color: #c9a0a0; border-left: 3px solid #c9a0a0; padding-left: 1.25rem; }
+        .main { flex: 1; margin-left: 240px; }
+        .header { background: #fff; border-bottom: 1px solid #e8e8e2; padding: 1.5rem 2rem; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 10; }
+        .header h1 { font-size: 24px; }
+        .user-menu { display: flex; gap: 1rem; align-items: center; }
+        .avatar { width: 40px; height: 40px; border-radius: 50%; background: #c9a0a0; }
+        .content { padding: 2rem; }
+        .section-title { font-size: 20px; font-weight: 700; margin-bottom: 1.5rem; margin-top: 2rem; }
+        .section-title:first-child { margin-top: 0; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem; margin-bottom: 2rem; }
+        .card { background: #fff; border: 1px solid #e8e8e2; border-radius: 8px; padding: 1.5rem; }
+        .card h3 { font-size: 14px; color: #7a7a72; font-weight: 600; text-transform: uppercase; margin-bottom: 0.5rem; }
+        .card .value { font-size: 32px; font-weight: 700; }
+        .card .subtext { font-size: 12px; color: #7a7a72; margin-top: 0.5rem; }
+        .card-action { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #e8e8e2; }
+        .card-action a { color: #c9a0a0; text-decoration: none; font-size: 13px; font-weight: 600; }
+        .table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid #e8e8e2; border-radius: 8px; overflow: hidden; margin-bottom: 2rem; }
+        .table th { background: #fafaf8; padding: 1rem; text-align: left; font-weight: 600; font-size: 12px; text-transform: uppercase; color: #7a7a72; border-bottom: 1px solid #e8e8e2; }
+        .table td { padding: 1rem; border-bottom: 1px solid #e8e8e2; font-size: 14px; }
+        .table tr:last-child td { border-bottom: none; }
+        .table tr:hover { background: #fafaf8; }
+        .badge { display: inline-block; padding: 0.35rem 0.75rem; border-radius: 4px; font-size: 11px; font-weight: 600; }
+        .badge-approved { background: #dcfce7; color: #166534; }
+        .badge-submitted { background: #fef3c7; color: #92400e; }
+        .badge-draft { background: #e5e7eb; color: #374151; }
+        .badge-new { background: #fca5a5; color: #991b1b; }
+        .button { padding: 0.75rem 1.5rem; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+        .button-primary { background: #c9a0a0; color: #fff; }
+        .button-primary:hover { background: #b8888e; }
+        .button-secondary { background: #e8e8e2; color: #2d2d2d; }
+        .button-secondary:hover { background: #dcdcd6; }
+        .opportunity { background: #fff; border-left: 4px solid #ffa500; border-radius: 4px; padding: 1rem; margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center; }
+        .opportunity-text strong { display: block; margin-bottom: 0.25rem; }
+        .opportunity-text small { color: #7a7a72; font-size: 12px; }
+        .chart-placeholder { width: 100%; height: 300px; background: #fafaf8; border: 1px solid #e8e8e2; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #7a7a72; font-size: 14px; margin-bottom: 2rem; }
+        .row { display: grid; grid-template-columns: 2fr 1fr; gap: 1.5rem; margin-bottom: 2rem; }
+        @media (max-width: 1024px) {
+            .sidebar { width: 180px; }
+            .main { margin-left: 180px; }
+            .sidebar-nav a { padding: 0.75rem 1rem; font-size: 12px; }
+            .row { grid-template-columns: 1fr; }
+        }
+        @media (max-width: 768px) {
+            .container { flex-direction: column; }
+            .sidebar { width: 100%; height: auto; position: static; padding: 1rem; }
+            .main { margin-left: 0; }
+            .header { flex-direction: column; gap: 1rem; }
+            .grid { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Sidebar -->
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <h2>Yuki Tanaka</h2>
+                <p>@yuki-flowers</p>
+            </div>
+            <ul class="sidebar-nav">
+                <li><a href="#" class="active">📊 Dashboard</a></li>
+                <li><a href="#">📋 My Offerings</a></li>
+                <li><a href="#">📅 Calendar</a></li>
+                <li><a href="#">💰 Earnings</a></li>
+                <li><a href="#">🔗 Share & Promote</a></li>
+                <li><a href="#">📈 Analytics</a></li>
+                <li><a href="#">⭐ Reviews</a></li>
+                <li><a href="#">💬 Messages</a></li>
+                <li><a href="#">⚙️ Settings</a></li>
+            </ul>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main">
+            <div class="header">
+                <h1>Dashboard</h1>
+                <div class="user-menu">
+                    <span style="font-size: 14px; color: #7a7a72;">Help</span>
+                    <div class="avatar"></div>
+                </div>
+            </div>
+
+            <div class="content">
+                <!-- Quick Stats -->
+                <div class="section-title">Quick Stats (Last 30 days)</div>
+                <div class="grid">
+                    <div class="card">
+                        <h3>Link Clicks</h3>
+                        <div class="value">142</div>
+                        <div class="subtext">↑ 23% from last month</div>
+                        <div class="card-action">
+                            <a href="#">View analytics →</a>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <h3>Bookings</h3>
+                        <div class="value">8</div>
+                        <div class="subtext">6 from your link</div>
+                        <div class="card-action">
+                            <a href="#">View calendar →</a>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <h3>Earnings</h3>
+                        <div class="value">$312</div>
+                        <div class="subtext">Waiting to be released</div>
+                        <div class="card-action">
+                            <a href="#">Request payout →</a>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <h3>Rating</h3>
+                        <div class="value">4.9★</div>
+                        <div class="subtext">23 verified reviews</div>
+                        <div class="card-action">
+                            <a href="#">Share reviews →</a>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Posting Opportunities -->
+                <div class="section-title">📲 Posting Opportunities</div>
+                <div style="max-width: 600px;">
+                    <div class="opportunity">
+                        <div class="opportunity-text">
+                            <strong>New 5★ Review!</strong>
+                            <small>Sarah loved your ikebana workshop. Share the review card?</small>
+                        </div>
+                        <button class="button button-primary">Share</button>
+                    </div>
+                    <div class="opportunity">
+                        <div class="opportunity-text">
+                            <strong>3 Open Slots Next Week</strong>
+                            <small>Kyoto is blooming—promote your workshop this weekend</small>
+                        </div>
+                        <button class="button button-primary">Promote</button>
+                    </div>
+                    <div class="opportunity">
+                        <div class="opportunity-text">
+                            <strong>Cherry Blossoms in Season</strong>
+                            <small>Seasonal campaigns get 2x more engagement</small>
+                        </div>
+                        <button class="button button-primary">Post</button>
+                    </div>
+                </div>
+
+                <!-- My Offerings -->
+                <div class="section-title">📋 My Offerings</div>
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Service</th>
+                            <th>Status</th>
+                            <th>Next Availability</th>
+                            <th>Price</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><strong>Kyoto Flower Arrangement</strong></td>
+                            <td><span class="badge badge-approved">Approved</span></td>
+                            <td>Jun 1, 2026</td>
+                            <td>$45</td>
+                            <td><a href="#" style="color: #c9a0a0;">Edit</a> • <a href="#" style="color: #c9a0a0;">Share</a></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Tea Ceremony Introduction</strong></td>
+                            <td><span class="badge badge-approved">Approved</span></td>
+                            <td>Jun 3, 2026</td>
+                            <td>$35</td>
+                            <td><a href="#" style="color: #c9a0a0;">Edit</a> • <a href="#" style="color: #c9a0a0;">Share</a></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Private Kimono Styling Session</strong></td>
+                            <td><span class="badge badge-submitted">Pending Review</span></td>
+                            <td>—</td>
+                            <td>$60</td>
+                            <td><a href="#" style="color: #c9a0a0;">Edit</a> • <a href="#" style="color: #c9a0a0;">Resubmit</a></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Neighborhood Walking Tour</strong></td>
+                            <td><span class="badge badge-draft">Draft</span></td>
+                            <td>—</td>
+                            <td>$30</td>
+                            <td><a href="#" style="color: #c9a0a0;">Continue</a> • <a href="#" style="color: #c9a0a0;">Delete</a></td>
+                        </tr>
+                    </tbody>
+                </table>
+
+                <!-- Earnings Breakdown -->
+                <div class="section-title">💰 Earnings Overview</div>
+                <div class="row">
+                    <div class="chart-placeholder">📊 Earnings chart (by source: platform vs. your link)</div>
+                    <div style="background: #fff; border: 1px solid #e8e8e2; border-radius: 8px; padding: 1.5rem;">
+                        <h3 style="font-size: 14px; color: #7a7a72; font-weight: 600; margin-bottom: 1rem; text-transform: uppercase;">Breakdown (last 30d)</h3>
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 1px solid #e8e8e2;">
+                            <span style="color: #4a4a4a;">Via your link</span>
+                            <strong>$180</strong>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 1px solid #e8e8e2;">
+                            <span style="color: #4a4a4a;">Via Discover</span>
+                            <strong>$132</strong>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; padding-bottom: 1rem; color: #7a7a72; font-size: 12px;">
+                            <span>Total (held)</span>
+                            <strong>$312</strong>
+                        </div>
+                        <button class="button button-primary" style="width: 100%; margin-top: 1rem;">Request Payout</button>
+                    </div>
+                </div>
+
+                <!-- Upcoming Bookings -->
+                <div class="section-title">📅 Upcoming Bookings</div>
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Service</th>
+                            <th>Traveler</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>Jun 1, 2:00 PM</td>
+                            <td>Kyoto Flower Arrangement</td>
+                            <td>Sarah M. (USA)</td>
+                            <td><span class="badge badge-approved">Confirmed</span></td>
+                            <td><a href="#" style="color: #c9a0a0;">Message</a></td>
+                        </tr>
+                        <tr>
+                            <td>Jun 3, 10:00 AM</td>
+                            <td>Tea Ceremony Introduction</td>
+                            <td>Marco R. (Italy)</td>
+                            <td><span class="badge badge-approved">Confirmed</span></td>
+                            <td><a href="#" style="color: #c9a0a0;">Message</a></td>
+                        </tr>
+                        <tr>
+                            <td>Jun 5, 3:00 PM</td>
+                            <td>Kyoto Flower Arrangement</td>
+                            <td>Lisa K. (Germany)</td>
+                            <td><span class="badge badge-new">New</span></td>
+                            <td><a href="#" style="color: #c9a0a0;">Confirm</a> • <a href="#" style="color: #c9a0a0;">Decline</a></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

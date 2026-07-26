@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ExpertLayout } from "@/components/expert/expert-layout";
+import { HandleClaimCard } from "@/components/backoffice/handle-claim-card";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -260,6 +261,8 @@ export default function ExpertSettings() {
           <h1 className="text-3xl font-bold text-console-darkest">Settings</h1>
           <p className="text-console-mid mt-1">Manage your preferences and account settings</p>
         </div>
+
+        <HandleClaimCard />
 
         <Tabs defaultValue="verification" className="w-full">
           <TabsList className="grid w-full grid-cols-7">

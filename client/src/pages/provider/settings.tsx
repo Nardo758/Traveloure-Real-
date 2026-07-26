@@ -1,4 +1,5 @@
 import { ProviderLayout } from "@/components/provider/provider-layout";
+import { HandleClaimCard } from "@/components/backoffice/handle-claim-card";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -353,6 +354,8 @@ export default function ProviderSettings() {
   return (
     <ProviderLayout title="Settings">
       <div className="p-6 space-y-6 max-w-4xl">
+        <HandleClaimCard />
+
         {/* Verification & Payouts */}
         <div>
           <h2 className="text-lg font-semibold text-console-darkest mb-4 flex items-center gap-2">
