@@ -93,6 +93,27 @@ checking this table.
 
 ---
 
+## ⛭ Decisions — RATIFIED Jul 26, 2026 (decision-maker)
+
+1. **S2 = redirect-when-claimed.** `/experts/:id` (and `/local-experts/:id`) 302 → `/p/:handle` once the
+   earner has claimed a handle; unclaimed earners keep the id page. `/p/` later absorbs the browse extras.
+2. **S4 vocabulary = `direct | link | cross_sell`** written at checkout; `?ref=` capture joins link→booking.
+3. **C0 = two-layer availability model.** `vendor_availability_slots` is CANONICAL for concrete bookable
+   slots (service-scoped, dated, full CRUD already in storage.ts:2285-2312); `provider_availability_schedule`
+   is retained as the recurring-pattern layer that *generates* slots (writer at storage.ts:4394);
+   `provider_availability` (schema.ts:5755) is DEPRECATED — no live readers; do not write to it, fold/drop
+   in a later migration. Ground-truthed Jul 26: slots has the only calendar-shaped CRUD.
+4. **SH0 = render-on-demand.** Share images render from a public GET endpoint (cacheable, no storage
+   infra); a public URL satisfies IG publish-time needs. Stored assets can layer later if ever required.
+5. **M0 = flat booking fee + payment-processing passthrough — NOT differential % commission.** For
+   storefront-link-acquired bookings the platform take is a FLAT booking fee plus the payment-processing
+   cost, both admin-configurable in `fee_bands` (flat band + processing percent/flat config rows — §8, no
+   literals anywhere; seed defaults marked PLACEHOLDER pending amounts). The mockup's "8% vs 25%" copy is
+   dead. 🔴 money item; fee amounts still needed from the decision-maker before the band seeds.
+   **Scope note (flagged, not assumed silently):** recorded as applying to LINK-CHANNEL bookings (the M0
+   question's frame). If the intent is platform-wide replacement of the % commission model, that is a much
+   larger change to resolveCommissionRates + the earnings ledger — reconfirm before widening.
+
 ## Token-optimal execution order
 
 Decisions cost zero tokens and unblock the most work — batch them first, then run cheap lanes in parallel:
