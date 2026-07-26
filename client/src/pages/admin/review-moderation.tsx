@@ -211,11 +211,14 @@ export default function AdminReviewModeration() {
 
   const { data: reviews, isLoading } = useQuery<ModerationReview[]>({
     queryKey,
-    queryFn: () => {
+    queryFn: async () => {
       const url = statusFilter === "queue"
         ? "/api/admin/reviews"
         : `/api/admin/reviews?status=${statusFilter}`;
-      return fetch(url, { credentials: "include" }).then(r => r.json());
+      const r = await fetch(url, { credentials: "include" });
+      if (!r.ok) throw new Error(`GET ${url} failed: ${r.status}`);
+      const body = await r.json();
+      return Array.isArray(body) ? body : [];
     },
   });
 
