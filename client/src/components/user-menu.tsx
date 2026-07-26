@@ -107,8 +107,8 @@ export function UserMenu() {
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" className="flex items-center gap-2 px-2" data-testid="button-user-menu">
           <Avatar className="h-8 w-8">
-            <AvatarImage src={user.profileImageUrl || undefined} alt={displayName} />
-            <AvatarFallback className="bg-primary/10 text-primary font-bold text-sm">
+            <AvatarImage src={user.profileImageUrl || undefined} alt={displayName} data-testid="user-avatar-image" />
+            <AvatarFallback className="bg-primary/10 text-primary font-bold text-sm" data-testid="user-avatar-fallback">
               {avatarFallback}
             </AvatarFallback>
           </Avatar>
@@ -126,15 +126,15 @@ export function UserMenu() {
         </Button>
       </DropdownMenuTrigger>
 
-      <DropdownMenuContent align="end" className="w-56">
+      <DropdownMenuContent align="end" className="w-56" data-testid="user-menu-content">
         {/* Identity header */}
         <DropdownMenuLabel className="font-normal pb-1">
-          <p className="text-sm font-semibold text-foreground truncate">{displayName}</p>
+          <p className="text-sm font-semibold text-foreground truncate" data-testid="user-menu-display-name">{displayName}</p>
           {user.email && (
-            <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+            <p className="text-xs text-muted-foreground truncate" data-testid="user-menu-email">{user.email}</p>
           )}
           {roleLabel && (
-            <span className="inline-flex items-center mt-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-primary/10 text-primary">
+            <span className="inline-flex items-center mt-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-primary/10 text-primary" data-testid="user-menu-role-badge">
               {roleLabel}
             </span>
           )}
