@@ -1,15 +1,27 @@
 /**
- * Canonical credit packages (LB-P5a).
+ * RETIRED (FP-3, decision-maker ratified): the credits system has been retired.
+ * The per-use fee funnel (see /pricing's Pay-Per-Use section) plus saved-card
+ * one-click checkout is the AI monetization model — credits had zero real
+ * consumers (deductCredits had no callers). All BUY surfaces (client pages
+ * `credits.tsx` / `credits-billing.tsx`, the "Credits" nav/CTA links, the
+ * dashboard wallet-balance display) have been removed, and the server
+ * purchase/grant endpoints (`POST /api/credits/purchase`,
+ * `POST /api/wallet/add-credits`, `GET /api/wallet`, `GET /api/wallet/transactions`)
+ * now return 410 Gone.
  *
- * Single source of truth — previously defined in 5 places (server/routes.ts,
- * server/routes/payments.routes.ts, client/src/pages/{pricing,credits,
- * credits-billing}.tsx) with three different shapes and one different price
- * ladder. Server consumers use { id, credits, price }; client consumers use
- * the richer shape with display metadata (popular, savings, features).
+ * This file is kept (not deleted) only because server code may still import
+ * it; the `wallets` / `credit_transactions` tables and their storage methods
+ * stay dormant per the roadmap (no migration, no drops). Do not add new
+ * client imports of this file, and do not wire these packages back up
+ * without a real decision-maker-approved monetization change.
  *
- * Long-term home: until a credit_packages DB table exists (Phase 2 FEE
- * workstream), this constants file is the contract. Admin UI + DB-backed
- * config will replace it.
+ * --- Original doc (historical, LB-P5a) ---
+ * Canonical credit packages. Single source of truth — previously defined in
+ * 5 places (server/routes.ts, server/routes/payments.routes.ts,
+ * client/src/pages/{pricing,credits,credits-billing}.tsx) with three
+ * different shapes and one different price ladder. Server consumers use
+ * { id, credits, price }; client consumers used the richer shape with
+ * display metadata (popular, savings, features).
  */
 
 export interface CreditPackage {

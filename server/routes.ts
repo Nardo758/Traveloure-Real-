@@ -21,7 +21,7 @@ import {
   insertServiceTemplateSchema, insertServiceBookingSchema, insertServiceReviewSchema,
   itineraryComparisons, itineraryVariants, itineraryVariantItems, itineraryVariantMetrics,
   userExperienceItems, userExperiences, providerServices, cartItems, trips,
-  serviceBookings, serviceReviews, notifications, wallets, creditTransactions, serviceProviderForms,
+  serviceBookings, serviceReviews, notifications, serviceProviderForms,
   insertCustomVenueSchema, insertGeneratedItinerarySchema,
   insertTemporalAnchorSchema, insertDayBoundarySchema, insertEnergyTrackingSchema,
   temporalAnchors, itineraryItems, generatedItineraries,
@@ -114,8 +114,7 @@ import tripContextRoutes from "./routes/trip-context.routes";
 import guestInvitesRoutes from "./routes/guest-invites";
 import shareImagesRoutes from "./routes/share-images.routes";
 import paymentMethodsRoutes from "./routes/payment-methods.routes";
-import { CREDIT_PACKAGES } from "@shared/credit-packages";
-import { 
+import {
   insertTripParticipantSchema, 
   insertVendorContractSchema, 
   insertTripTransactionSchema,

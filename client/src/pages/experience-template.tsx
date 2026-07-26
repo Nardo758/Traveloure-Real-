@@ -37,7 +37,6 @@ import {
   Users,
   MessageCircle,
   ArrowLeft,
-  Coins,
   Loader2,
   ShoppingCart,
   GitCompare,
@@ -1266,14 +1265,6 @@ export default function ExperienceTemplatePage() {
     }
   };
 
-  const { data: walletData } = useQuery<{ balance: number }>({
-    queryKey: ["/api/wallet"],
-    retry: false,
-    staleTime: 30000,
-  });
-
-  const userCredits = walletData?.balance ?? 0;
-
   const { data: userComparisons = [] } = useQuery<any[]>({
     queryKey: ["/api/itinerary-comparisons"],
     retry: false,
@@ -1885,7 +1876,7 @@ export default function ExperienceTemplatePage() {
         <PanelGroup direction="horizontal" className="h-screen hidden lg:flex">
           <Panel defaultSize={60} minSize={40} maxSize={80} className="h-full flex flex-col overflow-hidden">
           <div className="flex-1 overflow-y-auto min-h-0">
-          {/* Ribbon bar with Credits, Expert Help, Generate Itinerary */}
+          {/* Ribbon bar with Expert Help, Generate Itinerary */}
           <div className="flex-shrink-0 border-b bg-white/90 backdrop-blur-sm">
             <div className="px-4 py-2 flex items-center justify-end gap-3">
               {linkedTripId && (
@@ -1900,18 +1891,6 @@ export default function ExperienceTemplatePage() {
                   </Button>
                 </Link>
               )}
-              <Link href="/credits">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-2"
-                  data-testid="button-credits"
-                >
-                  <Coins className="w-4 h-4 text-amber-500" />
-                  {userCredits} Credits
-                  <Plus className="w-3 h-3" />
-                </Button>
-              </Link>
               <Button
                 variant="outline"
                 size="sm"
@@ -2919,13 +2898,6 @@ export default function ExperienceTemplatePage() {
               </Button>
               )}
               <div className="flex items-center gap-2">
-              <Link href="/credits">
-                <Button variant="outline" size="sm" className="gap-1 text-xs">
-                  <Coins className="w-3 h-3 text-amber-500" />
-                  {userCredits}
-                  <Plus className="w-2 h-2" />
-                </Button>
-              </Link>
               <Button
                 variant="outline"
                 size="sm"

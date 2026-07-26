@@ -14,7 +14,6 @@ import { TravelPulsePanel } from "@/components/dashboard/TravelPulsePanel";
 import { ActionItemsPanel } from "@/components/dashboard/ActionItemsPanel";
 import { ActiveExpertsPanel } from "@/components/dashboard/ActiveExpertsPanel";
 import { TopExpertsPanel } from "@/components/dashboard/TopExpertsPanel";
-import { CreditsPanel } from "@/components/dashboard/CreditsPanel";
 import { RecommendedServices } from "@/components/dashboard/RecommendedServices";
 
 interface Notification {
@@ -43,13 +42,6 @@ const CTA_CARDS = [
     testId: "cta-new-experience",
   },
   {
-    icon: "◆",
-    label: "Credits",
-    sub: "", // Will be dynamically set
-    href: "/credits",
-    testId: "cta-credits",
-  },
-  {
     icon: "🔍",
     label: "Find experts",
     sub: "In your destinations",
@@ -66,10 +58,6 @@ export default function Dashboard() {
   });
   const { data: conversations, isLoading: convsLoading } = useQuery<Conversation[]>({
     queryKey: ["/api/conversations"],
-  });
-  const { data: creditsData } = useQuery<{ balance: number }>({
-    queryKey: ["/api/credits/balance"],
-    retry: false,
   });
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
 
@@ -152,10 +140,7 @@ export default function Dashboard() {
             {/* CTA Row */}
             <div className="flex gap-2.5 mb-[18px]">
               {CTA_CARDS.map((card) => {
-                const sub =
-                  card.testId === "cta-credits"
-                    ? `${creditsData?.balance ?? 0} credits remaining`
-                    : card.sub;
+                const sub = card.sub;
                 return (
                   <Link
                     key={card.testId}
@@ -346,7 +331,6 @@ export default function Dashboard() {
                 trips={activePlans}
               />
               <TopExpertsPanel destinations={destinations} />
-              <CreditsPanel />
             </div>
           </div>
         </div>
