@@ -5285,7 +5285,7 @@ router.get("/api/admin/routing-queue", isAuthenticated, async (req, res) => {
         FROM expert_requests er
         LEFT JOIN users u ON u.id = er.user_id
         LEFT JOIN users eu ON eu.id = er.assigned_expert_id
-        LEFT JOIN lead_routing_logs lrl ON lrl.trip_id = er.trip_id
+        LEFT JOIN lead_routing_logs lrl ON lrl.trip_id::text = er.trip_id
           AND lrl.assigned_expert_id = er.assigned_expert_id
         WHERE er.assigned_expert_id IS NOT NULL
           AND er.status NOT IN ('confirmed', 'completed', 'cancelled')
