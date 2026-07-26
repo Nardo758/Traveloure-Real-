@@ -49,12 +49,14 @@ export function NotificationBell() {
   const { data: unreadCount } = useQuery<{ count: number }>({
     queryKey: ["/api/notifications/unread-count"],
     enabled: !!user,
+    staleTime: 30_000,
     refetchInterval: 30000, // Poll every 30 seconds
   });
 
   const { data: notifications } = useQuery<Notification[]>({
     queryKey: ["/api/notifications"],
     enabled: !!user,
+    staleTime: 30_000,
   });
 
   const markAsReadMutation = useMutation({
