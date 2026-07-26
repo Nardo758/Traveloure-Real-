@@ -251,4 +251,65 @@ router.get("/p/:handle", async (req, res, next) => {
   }
 });
 
+// Server-side OG injection for /services/:id — same pattern as /p/:handle.
+router.get("/services/:id", async (req, res, next) => {
+  try {
+    const [service] = await db
+      .select({
+        id: providerServices.id,
+        serviceName: providerServices.serviceName,
+        description: providerServices.description,
+        price: providerServices.price,
+        serviceImage: providerServices.serviceImage,
+      })
+      .from(providerServices)
+      .where(
+        and(
+          eq(providerServices.id, req.params.id),
+          eq(providerServices.approvalStatus, "approved"),
+          eq(providerServices.status, "active"),
+        ),
+      )
+      .limit(1);
+
+    if (!service) return next(); // SPA renders its own not-found
+
+    const title = `${service.serviceName} | Traveloure`;
+    const description =
+      service.description?.substring(0, 160) ??
+      `Book ${service.serviceName} on Traveloure — secure checkout, verified reviews.`;
+    const shareUrl = `${req.protocol}://${req.get("host")}/services/${service.id}`;
+    const ogImage =
+      service.serviceImage ??
+      `${req.protocol}://${req.get("host")}/og-cover.png`;
+
+    const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+    const ogTags = [
+      `<title>${esc(title)}</title>`,
+      `<meta name="description" content="${esc(description)}" />`,
+      `<meta property="og:type" content="website" />`,
+      `<meta property="og:url" content="${esc(shareUrl)}" />`,
+      `<meta property="og:title" content="${esc(title)}" />`,
+      `<meta property="og:description" content="${esc(description)}" />`,
+      `<meta property="og:image" content="${esc(ogImage)}" />`,
+      `<meta property="og:site_name" content="Traveloure" />`,
+      `<meta name="twitter:card" content="summary_large_image" />`,
+      `<meta name="twitter:title" content="${esc(title)}" />`,
+      `<meta name="twitter:description" content="${esc(description)}" />`,
+    ].join("\n    ");
+
+    const clientTemplateDev = path.resolve(process.cwd(), "client", "index.html");
+    const clientTemplateProd = path.resolve(__dirname, "public", "index.html");
+    const templatePath = fs.existsSync(clientTemplateDev) ? clientTemplateDev : clientTemplateProd;
+    if (!fs.existsSync(templatePath)) return next();
+
+    let template = fs.readFileSync(templatePath, "utf-8");
+    template = template.replace("<head>", `<head>\n    ${ogTags}`);
+    return res.status(200).set({ "Content-Type": "text/html" }).end(template);
+  } catch (err) {
+    console.error("[storefront] OG injection error (service):", err);
+    return next(); // fall through to SPA on any error
+  }
+});
+
 export default router;
