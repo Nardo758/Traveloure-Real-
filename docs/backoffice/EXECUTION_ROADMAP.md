@@ -82,6 +82,17 @@ checking this table.
 |----|------|------|------|---------|-------|
 | M0 | ~~Channel pricing~~ **SCRATCHED (Jul 26 ruling): link-channel pricing = identical to platform pricing.** No build. S4 stays analytics-only. See REVENUE_MODEL.md rulings | — | 0 | — | Revenue-review fixes F2/F3 landed instead |
 
+## Wave R — Revenue-model fixes (from REVENUE_MODEL.md; F2/F3 landed `9ae879d7`)
+
+| ID | Item | Tier | Est. | Depends | Notes |
+|----|------|------|------|---------|-------|
+| R1 | F5: seed the 4 missing category fee bands (`transportation`/`flights`/`car_rental`/`insurance`) — today those slugs 500 checkout | Haiku | ~10k | — | Or remap slugs; seed at 0.25 like siblings |
+| R2 | F4: platform_revenue writes for Ready-Made + template sales (brief 03) | Sonnet | ~35k | — | Idempotent on purchase id; `recordRevenueEventOnce` now exists |
+| R3 | F6 + F1 disclosure: /pricing + checkout disclose the service fee (F1 ratified model); gate/label Power Pass card; kill the 0.30 display literal | Haiku | ~25k | — | Honesty sweep, §13 class |
+| R4 | F7: wire `createAffiliateEarning` at agent-booking confirm sites so reconciliation has a spine | Sonnet | ~45k | — | 70/30 split constants → fee_bands while touching (standing directive) |
+| R5 | Credits fulfillment (lifts the F2 501 gate): `credit_purchase` webhook + real balance ledger + revenue row | Fable 🔴 | ~80k | — | Only when credits become a priority |
+| R6 | ⛔ Expert-compensation split on completed review work (fee is 100% platform at capture today) | decision → Sonnet | ~30k | — | Credit expert share at `expert_requests` completion |
+
 ## Singles (independent, cheap — fill idle capacity)
 
 | ID | Item | Tier | Est. |
@@ -126,6 +137,6 @@ Decisions cost zero tokens and unblock the most work — batch them first, then 
 5. **Haiku batch:** N1, V.4, V.5, S5b, X2, X3, X4 (~140k) — anytime
 6. **Then:** N2 (~60k) → C1–C3 (~205k, C3 🔴) → SH1–SH4 (~220k)
 
-**Remaining spend ≈ 1.15M output tokens: ~250k Fable (briefs + 3 money items) · ~750k Sonnet · ~150k Haiku.**
+**Remaining spend ≈ 1.1M output tokens: ~230k Fable · ~700k Sonnet · ~185k Haiku** (M0 scratched −80k; Wave R added +225k; F2/F3 already landed).
 Fable share is ~22% — the map's tier philosophy holding. Every 🔴 item stops after gates for the
 decision-maker's diff read; nothing executes past a ⛔ until its decision is recorded here.
