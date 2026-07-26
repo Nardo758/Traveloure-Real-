@@ -552,4 +552,8 @@ export const MIGRATION_FILES = [
   // CHECK/DEFAULT/backfill — no publish-push trap. Capacity enforcement is the atomic
   // storage.bookSlot claim (§15), not a constraint.
   "145_slot_aware_checkout.sql",
+  // 146: users.stripe_customer_id (additive nullable, no CHECK — no publish-push trap) —
+  // FP-1 frictionless payments: the durable Stripe Customer anchor for saved cards +
+  // off-session one-click charges. Cards stay in Stripe's vault; we store only this token.
+  "146_users_stripe_customer_id.sql",
 ] as const;
