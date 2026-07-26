@@ -4854,6 +4854,27 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
     }
   });
 
+  // Response-scoped moderation (W0.7): clears an inappropriate provider/expert RESPONSE
+  // (responseText/responseAt) without touching the traveler's review, its status, or the
+  // service rating. Logged to review_moderation_logs as 'response_cleared'.
+  router.post("/api/admin/reviews/:id/clear-response", isAuthenticated, async (req, res) => {
+    try {
+      const actorId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const adminCheck = await getAdminRole(actorId);
+      if (!adminCheck || adminCheck.role !== "admin") return res.status(403).json({ message: "Admin access required" });
+      const review = await getReviewById(req.params.id);
+      if (!review) return res.status(404).json({ message: "Review not found" });
+      if (!review.responseText) return res.status(400).json({ message: "Review has no response to clear" });
+      const { reason } = req.body;
+      const updated = await updateServiceReviewStatus(req.params.id, { responseText: null, responseAt: null });
+      await insertReviewModerationLog({ reviewId: req.params.id, action: "response_cleared", actorId, reason: reason ?? null });
+      res.json(updated);
+    } catch (err) {
+      console.error("Admin clear-response error:", err);
+      res.status(500).json({ message: "Failed to clear review response" });
+    }
+  });
+
   // Hook into itinerary generation to auto-capture analytics
 
   // ─── Phase 8.1: fee_bands + platform_settings admin CRUD ─────────────────────
