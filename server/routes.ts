@@ -112,6 +112,7 @@ import savedItemsRoutes from "./routes/saved-items.routes";
 import serviceRequestsRoutes from "./routes/service-requests.routes";
 import tripContextRoutes from "./routes/trip-context.routes";
 import guestInvitesRoutes from "./routes/guest-invites";
+import shareImagesRoutes from "./routes/share-images.routes";
 import { CREDIT_PACKAGES } from "@shared/credit-packages";
 import { 
   insertTripParticipantSchema, 
@@ -623,6 +624,12 @@ export async function registerRoutes(
   // invite row; parent experience redacted to guest-safe fields). Was a never-imported
   // dark file (the class the never-imported-router guard now catches) — A0 activation.
   app.use(guestInvitesRoutes);
+
+  // SH1 share-image render pipeline: public GET /api/share-image/service/:id.png?format=feed|story
+  // + GET /api/share-image/review/:id.png (satori -> SVG -> @resvg/resvg-js PNG). Data is loaded +
+  // F2/REV-MOD-gated in the router; the render itself is pure in share-image.service.ts. Mounted
+  // per §9.
+  app.use(shareImagesRoutes);
 
   // Trips + Itinerary-Comparison Routes — was imported at line 95 but never mounted
   // NOTE (§9 shadow fix): tripsRoutes is mounted LAST (just before `return httpServer`),
