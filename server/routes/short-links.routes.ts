@@ -10,8 +10,12 @@
  *                            (never a dead 404/500 for a shared link).
  * GET  /api/me/link-analytics — S5: per-link click/booking/revenue rollup for the session earner
  *                            only (§14). See handler comment for the exact contract.
+ * GET  /api/me/earnings-by-source — S6: booking count/revenue split by acquisition source
+ *                            (direct | link | cross_sell) for the session earner only (§14).
+ *                            See handler comment for the honesty caveat on pre-attribution rows.
  *
- * No money path (clicks is a counter, not a charge/payout amount) — outside the §14/§15 clusters.
+ * No money path (clicks is a counter, not a charge/payout amount; earnings-by-source reads the
+ * existing booking ledger read-only, no charge/payout/earning write) — outside the §14/§15 clusters.
  */
 import { Router } from "express";
 import crypto from "crypto";
@@ -260,6 +264,81 @@ router.get("/api/me/link-analytics", isAuthenticated, async (req: any, res) => {
   } catch (error: any) {
     console.error("[short-links] link-analytics failed:", error);
     return res.status(500).json({ message: "Failed to load link analytics" });
+  }
+});
+
+// S6: the three acquisition buckets, in the fixed display order the client renders.
+const SOURCE_BUCKETS = ["direct", "link", "cross_sell"] as const;
+type SourceBucket = (typeof SOURCE_BUCKETS)[number];
+const SOURCE_LABEL: Record<SourceBucket, string> = {
+  direct: "Direct",
+  link: "Your links",
+  cross_sell: "Cross-sell",
+};
+
+/**
+ * GET /api/me/earnings-by-source — S6 dashboard "earnings by source" split.
+ *
+ * §14: session user only, never from query/body. Groups the session earner's OWN
+ * `service_bookings` (providerId = session user — this column holds the owning provider/expert's
+ * userId for both roles, see payments.routes.ts checkout insert) by `source`
+ * (direct | link | cross_sell, written server-side at checkout since S4/migration 141) and
+ * returns booking count + gross booking revenue (`total_amount`) per bucket, lifetime — no date
+ * range, no per-day breakdown; the smallest honest version of this split.
+ *
+ * §13 honesty note: `source` defaults to 'direct' at the column level, so every booking created
+ * BEFORE S4 shipped reads 'direct' whether or not it was genuinely a direct/organic acquisition —
+ * that default is a column default, not a measurement. The payload always carries
+ * `preAttributionCaveat: true` (not data-derived — it is true for every earner, since the column
+ * predates S4 for all of them) so the client can render the disclaimer next to "Direct" rather
+ * than presenting historical 'direct' as a measured fact.
+ */
+router.get("/api/me/earnings-by-source", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub ?? req.user?.id;
+
+    const rows = await db
+      .select({
+        source: sql<string>`coalesce(${serviceBookings.source}, 'direct')`,
+        count: sql<number>`count(*)::int`,
+        revenue: sql<number>`coalesce(sum(${serviceBookings.totalAmount}), 0)::numeric`,
+      })
+      .from(serviceBookings)
+      .where(eq(serviceBookings.providerId, userId))
+      .groupBy(sql`coalesce(${serviceBookings.source}, 'direct')`);
+
+    const bySource = new Map<string, { count: number; revenue: number }>();
+    for (const row of rows) {
+      bySource.set(row.source, { count: Number(row.count) || 0, revenue: Number(row.revenue) || 0 });
+    }
+
+    let totalCount = 0;
+    let totalRevenue = 0;
+    const buckets = SOURCE_BUCKETS.map((source) => {
+      const agg = bySource.get(source) ?? { count: 0, revenue: 0 };
+      totalCount += agg.count;
+      totalRevenue += agg.revenue;
+      return { source, label: SOURCE_LABEL[source], count: agg.count, revenue: agg.revenue };
+    });
+
+    // Any bucket outside the known vocabulary (should not happen — app-enforced, no DB CHECK)
+    // is folded into the totals so the totals never silently undercount, without inventing a
+    // fourth display bucket for it.
+    for (const row of rows) {
+      if (!(SOURCE_BUCKETS as readonly string[]).includes(row.source)) {
+        totalCount += Number(row.count) || 0;
+        totalRevenue += Number(row.revenue) || 0;
+      }
+    }
+
+    return res.json({
+      buckets,
+      totals: { count: totalCount, revenue: totalRevenue },
+      preAttributionCaveat: true,
+    });
+  } catch (error: any) {
+    console.error("[short-links] earnings-by-source failed:", error);
+    return res.status(500).json({ message: "Failed to load earnings by source" });
   }
 });
 
