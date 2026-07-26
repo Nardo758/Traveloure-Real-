@@ -99,6 +99,7 @@ import expertsRoutes from "./routes/experts.routes";
 import eaRoutes from "./routes/ea.routes";
 import providerRoutes from "./routes/provider.routes";
 import storefrontRoutes from "./routes/storefront.routes";
+import shortLinksRoutes from "./routes/short-links.routes";
 import readyMadeRoutes from "./routes/ready-made.routes";
 import expertConsoleRoutes from "./routes/expert-console.routes";
 import contentRoutes, { seedDatabase, registerDiscoveryRoutes } from "./routes/content.routes";
@@ -583,6 +584,9 @@ export async function registerRoutes(
   // Public earner storefront (backoffice Phase 1a/1b) — /p/:handle OG shell + /api/storefront/:handle
   // + PATCH /api/me/handle. Mounted per §9; /p/:handle must register before the Vite catch-all.
   app.use(storefrontRoutes);
+
+  // Short-link + click store (backoffice S3) — POST /api/short-links + GET /r/:code. Mounted per §9.
+  app.use(shortLinksRoutes);
 
   // Ready-Made Trips authoring (Phase 1) — POST /api/expert/ready-made + workspace-context mode
   // resolution. Author auth = explicit authorId check (never getTripRole). Mounted per §9.

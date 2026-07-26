@@ -93,11 +93,26 @@ export function MyOfferingsTable() {
     }),
   ];
 
-  function share(row: OfferingRow) {
+  async function share(row: OfferingRow) {
     if (!row.publicHref) return;
-    const url = `${window.location.origin}${row.publicHref}`;
-    navigator.clipboard.writeText(url);
-    toast({ title: "Link copied", description: url });
+    const fallbackUrl = `${window.location.origin}${row.publicHref}`;
+    try {
+      const res = await fetch("/api/short-links", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ targetType: row.lane, targetId: row.id }),
+      });
+      if (!res.ok) throw new Error(`Failed (${res.status})`);
+      const data = await res.json() as { url: string };
+      const shortUrl = `${window.location.origin}${data.url}`;
+      navigator.clipboard.writeText(shortUrl);
+      toast({ title: "Link copied", description: shortUrl });
+    } catch {
+      // Graceful fallback to the existing full public URL on any error.
+      navigator.clipboard.writeText(fallbackUrl);
+      toast({ title: "Link copied", description: fallbackUrl });
+    }
   }
 
   return (

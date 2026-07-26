@@ -6873,3 +6873,24 @@ export type ReadyMadePurchase = typeof readyMadePurchases.$inferSelect;
 export type InsertReadyMadePurchase = z.infer<typeof insertReadyMadePurchaseSchema>;
 export type Board = typeof boards.$inferSelect;
 export type BoardItem = typeof boardItems.$inferSelect;
+
+// short_links — backoffice S3 short-link + click store (migration 139). NO CHECK on target_type —
+// vocabulary ('storefront'|'service'|'template'|'ready_made') is app-enforced (short-links.routes.ts),
+// same posture as users.handle (migration 136): a CHECK over an app-layer vocabulary is the
+// publish-time push trap. target_id is nullable (storefront links carry no target_id — the owner's
+// handle is resolved at redirect time, never baked into the row).
+export const shortLinks = pgTable("short_links", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  code: varchar("code", { length: 12 }).notNull().unique(),
+  ownerUserId: varchar("owner_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  targetType: varchar("target_type", { length: 30 }).notNull(),
+  targetId: varchar("target_id"),
+  clicks: integer("clicks").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("idx_short_links_owner_user_id").on(table.ownerUserId),
+]);
+
+export const insertShortLinkSchema = createInsertSchema(shortLinks).omit({ id: true, clicks: true, createdAt: true });
+export type ShortLink = typeof shortLinks.$inferSelect;
+export type InsertShortLink = z.infer<typeof insertShortLinkSchema>;

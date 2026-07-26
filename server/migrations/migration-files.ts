@@ -517,4 +517,13 @@ export const MIGRATION_FILES = [
   // seeded (transportation/flights/car_rental/insurance); the fail-loud resolver 500'd those
   // carts. Seed-only, ON CONFLICT DO NOTHING, no CHECK — no publish-push trap.
   "138_missing_category_fee_bands.sql",
+  // 139: short_links — backoffice S3 short-link + click store. New table, additive, no CHECK
+  // (target_type vocabulary is app-enforced) — no publish-time push trap.
+  "139_short_links.sql",
+  // 140: seed platform_settings.storefront_require_verified ('false') — the V.1 admin-switchable
+  // gate on public /p/{handle} storefront visibility, checked in storefront.routes.ts
+  // loadStorefront(). Seed-only, ON CONFLICT DO NOTHING, no CHECK — no publish-push trap.
+  // Fail-open default preserves today's behavior until an admin flips it once V.2/V.3
+  // verification-flow sequencing lands.
+  "140_storefront_require_verified_setting.sql",
 ] as const;
