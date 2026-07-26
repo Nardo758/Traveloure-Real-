@@ -532,6 +532,16 @@ export const serviceTypeEnum = ["consultation", "planning", "action", "concierge
 // (video-call, document, in-person) until the Phase-1d approved remap runs.
 export const deliveryMethodEnum = ["pdf", "video", "call", "in_person", "voice_notes", "async_messaging", "hybrid"] as const;
 export const serviceStatusEnum = ["active", "paused", "draft"] as const;
+// X1 (§13 hardcoded-copy arm) — structured cancellation-policy TYPE vocabulary. Column is varchar
+// with no DB CHECK (migration 144: app-enforced, like deliveryMethodEnum pre-109); NULL = the owner
+// hasn't declared a policy type (the honest state — never a fabricated blanket claim).
+export const cancellationPolicyTypeEnum = ["flexible", "moderate", "strict", "non_refundable"] as const;
+export const CANCELLATION_POLICY_TYPE_LABELS: Record<typeof cancellationPolicyTypeEnum[number], string> = {
+  flexible: "Flexible — full refund if cancelled well in advance",
+  moderate: "Moderate — partial refund on shorter notice",
+  strict: "Strict — limited refund window",
+  non_refundable: "Non-refundable",
+};
 
 export const providerServices = pgTable("provider_services", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -600,7 +610,10 @@ export const providerServices = pgTable("provider_services", {
 
   // Approval workflow (consolidated from expert_custom_services in 0007)
   approvalStatus: varchar("approval_status", { length: 20 }).default("submitted"), // draft, submitted, approved, rejected — F2: born submitted, never born-approved (migration 111)
-  cancellationPolicy: text("cancellation_policy"),
+  cancellationPolicy: text("cancellation_policy"), // free-text detail, e.g. "Full refund if cancelled 48h before"
+  // X1 (migration 144): structured policy TYPE — cancellationPolicyTypeEnum. Additive nullable,
+  // no DB CHECK (app-enforced vocabulary). NULL = not yet declared by the owner (honest default).
+  cancellationPolicyType: varchar("cancellation_policy_type", { length: 30 }),
   leadTime: varchar("lead_time", { length: 50 }),
   deliverables: jsonb("deliverables").default([]),
   experienceTypes: jsonb("experience_types").default([]),
@@ -1346,7 +1359,10 @@ export const insertLocalExpertFormSchema = createInsertSchema(localExpertForms).
 export const insertServiceProviderFormSchema = createInsertSchema(serviceProviderForms).omit({ id: true, userId: true, status: true, rejectionMessage: true, createdAt: true });
 export const insertServiceCategorySchema = createInsertSchema(serviceCategories).omit({ id: true, createdAt: true });
 export const insertServiceSubcategorySchema = createInsertSchema(serviceSubcategories).omit({ id: true, createdAt: true });
-export const insertProviderServiceSchema = createInsertSchema(providerServices).omit({ id: true, userId: true, formStatus: true, bookingsCount: true, totalRevenue: true, averageRating: true, reviewCount: true, createdAt: true, updatedAt: true });
+export const insertProviderServiceSchema = createInsertSchema(providerServices).omit({ id: true, userId: true, formStatus: true, bookingsCount: true, totalRevenue: true, averageRating: true, reviewCount: true, createdAt: true, updatedAt: true }).extend({
+  // X1: app-enforced vocabulary (migration 144 has no DB CHECK) — reject anything outside the set here.
+  cancellationPolicyType: z.enum(cancellationPolicyTypeEnum).nullable().optional(),
+});
 export const insertFaqSchema = createInsertSchema(faqs).omit({ id: true, createdAt: true });
 export const insertWalletSchema = createInsertSchema(wallets).omit({ id: true, userId: true, createdAt: true, updatedAt: true });
 export const insertCreditTransactionSchema = createInsertSchema(creditTransactions).omit({ id: true, createdAt: true });

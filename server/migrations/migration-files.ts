@@ -539,4 +539,12 @@ export const MIGRATION_FILES = [
   // ledger write (createAffiliateEarning, server/routes/content.routes.ts). Seed-only, ON CONFLICT
   // DO NOTHING, no CHECK — no publish-push trap.
   "143_affiliate_split_fee_bands.sql",
+  // 144: X1 — provider_services.cancellation_policy_type (additive nullable VARCHAR(30), no CHECK,
+  // no DEFAULT, no backfill — app-enforced vocabulary). Closes the §13 hardcoded-copy arm: adds a
+  // structured policy TYPE (flexible|moderate|strict|non_refundable) alongside the pre-existing
+  // free-text `cancellation_policy` column (migration 011), so live surfaces can render a real
+  // per-offering badge instead of the fabricated "free cancellation / instant confirmation / 24-7
+  // support" trio (already removed from expert-detail.tsx by #200; service-detail.tsx never showed
+  // any policy at all — NULL is the honest default, not a fabricated claim).
+  "144_service_cancellation_policy.sql",
 ] as const;
