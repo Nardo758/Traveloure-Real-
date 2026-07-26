@@ -35,10 +35,10 @@ checking this table.
 | S2 ✅ `7fd17178` | **Reconcile `/p/:handle` ⇄ `/experts/:id`** (the anti-duplication item): expert-detail header gains the earner's `/p/` link when claimed; decide-and-wire the long-term shape — recommended: `/experts/:id` 302s to `/p/:handle` once claimed, `/p/` absorbs the browse extras (match-context, request-expert) later | ⛔ then Sonnet | ~40k | S1 | Decision is one question: redirect-when-claimed (recommended) vs keep-two-pages |
 | S3 ✅ `29899773` | Short-link + click store: one table (`short_links`: code, targetType/id, ownerId, views, clicks, createdAt), `GET /r/:code` 302 + counter, Share buttons emit short links | Fable brief ~15k → Sonnet ~70k | ~85k | S1 | Modeled on `sharedTrips` counters; feeds mockups 1, 2, 4 at once. No money path |
 | S4 ✅ `b6346ff8` 🔴 | Acquisition attribution: `?ref=` capture → `service_bookings` write at checkout (vocabulary: `direct \| link \| cross_sell`) + ref→booking join | ⛔ vocab sign-off, then Fable 🔴 | ~60k | S3 | Touches checkout insert (payments.routes.ts) → money-adjacent, HUMAN READ |
-| S5 | Analytics v1: per-offering link views/clicks + conversion funnel + range picker (mockup 2), real data only | Sonnet | ~55k | S3, S4 | §13: empty states until data exists; no fabricated benchmarks |
-| S5b | CSV export of analytics | Haiku | ~15k | S5 | Mechanical |
-| S6 | Dashboard "earnings by source" split (your link vs Discover) | Sonnet | ~35k | S4 | Reads existing ledger + new source dim |
-| S7 | Earner-level rating aggregate (closes §13 filed gap; unblocks mockup 1's rating card) | Sonnet | ~40k | — | Real aggregate or "New" — never a number without reviews |
+| S5 ✅ `fb953bf7` | Analytics v1: per-offering link views/clicks + conversion funnel + range picker (mockup 2), real data only | Sonnet | ~55k | S3, S4 | §13: empty states until data exists; no fabricated benchmarks |
+| S5b ✅ `97179bf4` | CSV export of analytics | Haiku | ~15k | S5 | Mechanical |
+| S6 ✅ `a2128872` | Dashboard "earnings by source" split (your link vs Discover) | Sonnet | ~35k | S4 | Landed with the §13 pre-attribution caveat (pre-S4 bookings read the column-default direct) |
+| S7 ✅ `55920401` (delta-only — browse/detail aggregate already existed via #202/#239) | Earner-level rating aggregate (closes §13 filed gap; unblocks mockup 1's rating card) | Sonnet | ~40k | — | Real aggregate or "New" — never a number without reviews |
 
 ## Wave N — Unified backoffice nav (mockup 6)
 
