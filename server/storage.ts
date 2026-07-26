@@ -108,7 +108,7 @@ import {
   aiGeneratedItineraries,
   tripAnalyticsEnhanced,
 } from "@shared/schema";
-import { eq, ilike, and, desc, or, count, gt, gte, lte, avg, inArray, asc, isNotNull, isNull, sql as sqlOp } from "drizzle-orm";
+import { eq, ilike, and, desc, or, count, gt, gte, lte, avg, inArray, asc, isNotNull, isNull, ne, sql as sqlOp } from "drizzle-orm";
 import { authStorage } from "./replit_integrations/auth/storage";
 import type { User } from "@shared/models/auth";
 import {
@@ -585,6 +585,10 @@ export interface IStorage {
   getAffiliateBookingRequestsByUser(userId: string): Promise<Omit<AffiliateBookingRequest, "affiliateUrl">[]>;
   getAffiliateBookingRequestsByExpert(expertId: string): Promise<AffiliateBookingRequest[]>;
   updateAffiliateBookingRequest(id: string, data: Partial<Pick<AffiliateBookingRequest, "status" | "expertNotes" | "confirmationRef" | "price" | "expertId" | "tripId">>): Promise<AffiliateBookingRequest | undefined>;
+  // R4/F7 (§15): atomic pending→confirmed claim used by the confirm site so a duplicate/concurrent
+  // confirm can't double-insert the affiliate earning it triggers. Returns undefined when the row
+  // was already confirmed (lost the race) — caller must treat that as an idempotent no-op.
+  confirmAffiliateBookingRequest(id: string, data: Partial<Pick<AffiliateBookingRequest, "expertNotes" | "confirmationRef" | "price" | "expertId" | "tripId">>): Promise<AffiliateBookingRequest | undefined>;
 
   // Affiliate Content Registry helpers
   registerAffiliateProduct(product: {
@@ -3434,17 +3438,23 @@ export class DatabaseStorage implements IStorage {
   async createAffiliateEarning(earning: InsertAffiliateEarning): Promise<AffiliateEarning> {
     const [newEarning] = await db.insert(affiliateEarnings).values(earning).returning();
 
-    // Also create an expert earning record for the expert's share
-    await this.createExpertEarning({
-      expertId: earning.expertId!,
-      type: 'affiliate_commission',
-      amount: earning.expertShare,
-      referenceId: newEarning.id,
-      referenceType: 'affiliate_earning',
-      description: `Affiliate commission from booking`,
-      status: 'held', // escrow: born held (migration 112)
-      availableAt: availableAtFor('affiliate_commission'), // P2: clears after affiliate window
-    });
+    // Also create an expert earning record for the expert's share — only when there's a real
+    // expert counterparty to credit (expert_earnings.expert_id is NOT NULL). R4/F7: the confirm
+    // site can create an affiliate_earnings row with no expert assigned yet (an unclaimed
+    // booking confirmed by an admin); skip the expert-earning side record rather than violating
+    // the FK / crediting the wrong actor.
+    if (earning.expertId) {
+      await this.createExpertEarning({
+        expertId: earning.expertId,
+        type: 'affiliate_commission',
+        amount: earning.expertShare,
+        referenceId: newEarning.id,
+        referenceType: 'affiliate_earning',
+        description: `Affiliate commission from booking`,
+        status: 'held', // escrow: born held (migration 112)
+        availableAt: availableAtFor('affiliate_commission'), // P2: clears after affiliate window
+      });
+    }
 
     return newEarning;
   }
@@ -4805,6 +4815,23 @@ export class DatabaseStorage implements IStorage {
       .update(affiliateBookingRequests)
       .set({ ...data, updatedAt: new Date() })
       .where(eq(affiliateBookingRequests.id, id))
+      .returning();
+    return updated;
+  }
+
+  async confirmAffiliateBookingRequest(
+    id: string,
+    data: Partial<Pick<AffiliateBookingRequest, "expertNotes" | "confirmationRef" | "price" | "expertId" | "tripId">>,
+  ): Promise<AffiliateBookingRequest | undefined> {
+    // §15 atomic claim: transitions pending/failed/etc → 'confirmed' ONLY when the row is not
+    // already 'confirmed'. A concurrent/duplicate confirm request matches 0 rows and returns
+    // undefined — the caller (the R4/F7 earning-ledger write) must treat that as "already
+    // confirmed" and skip re-running the confirm side-effects (itinerary item + affiliate earning),
+    // not retry the insert.
+    const [updated] = await db
+      .update(affiliateBookingRequests)
+      .set({ ...data, status: "confirmed", updatedAt: new Date() })
+      .where(and(eq(affiliateBookingRequests.id, id), ne(affiliateBookingRequests.status, "confirmed")))
       .returning();
     return updated;
   }

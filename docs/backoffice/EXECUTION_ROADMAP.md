@@ -53,7 +53,7 @@ checking this table.
 |----|------|------|------|---------|-------|
 | V.1 ✅ `29899773` (default OFF — flip platform_settings.storefront_require_verified to "true" after V.2/V.3) | Gate /p/ visibility + publish on `identityVerificationStatus='verified'` (F2-style read-gate; build-while-pending preserved) | Sonnet | ~55k | S1 | Interim gate today = zero-approved-items 404 |
 | V.2 ✅ (already existed — ground-truthed Jul 26) | Sequence Identity/KYB into application flow | Sonnet | ~50k | — | The full path predates this task (commit `5fbe0552`): pre-approval verify flows on expert/provider-status pages + Verification cards in both Settings consoles, wired to the live `/api/identity/*` + webhook status writers; honest degrade when Persona keys absent. V.1 flip now waits only on V.3 |
-| V.3 | Connect onboarding sequenced into go-live | Sonnet | ~45k | — | Payout money-block already exists |
+| V.3 ✅ `39f53d99` | Connect onboarding sequenced into go-live | Sonnet | ~45k | — | Stack already existed; delta = Connect-readiness gate on POST /api/payouts/request + honest no-key degrades |
 | V.4 | `provider` vs `service_provider` vocab normalization | Haiku | ~25k | — | Grep-enumerated |
 | V.5 ✅ `ee069bfe` | Env-keys launch checklist + readiness log line | Haiku | ~10k | — | — |
 
@@ -89,7 +89,7 @@ checking this table.
 | R1 ✅ `0505e13a` | F5: seed the 4 missing category fee bands (`transportation`/`flights`/`car_rental`/`insurance`) — today those slugs 500 checkout | Haiku | ~10k | — | Or remap slugs; seed at 0.25 like siblings |
 | R2 ✅ `3fa5b6cb` 🔴 | F4: platform_revenue writes for Ready-Made + template sales (brief 03) | Sonnet | ~35k | — | Idempotent on purchase id; `recordRevenueEventOnce` now exists |
 | R3 ✅ `0505e13a` | F6 + F1 disclosure: /pricing + checkout disclose the service fee (F1 ratified model); gate/label Power Pass card; kill the 0.30 display literal | Haiku | ~25k | — | Honesty sweep, §13 class |
-| R4 | F7: wire `createAffiliateEarning` at agent-booking confirm sites so reconciliation has a spine | Sonnet | ~45k | — | 70/30 split constants → fee_bands while touching (standing directive) |
+| R4 ✅ 🔴 | F7: wire `createAffiliateEarning` at agent-booking confirm sites so reconciliation has a spine | Sonnet | ~45k | — | Landed: atomic confirm claim (§15) fires the ledger write once; commission fields honestly 0 pending partner report (§13); 70/30 → `fee_bands.affiliate_standard` (migration 143); money-guard regex extended to cover affiliate-earning writes |
 | R5 | Credits fulfillment (lifts the F2 501 gate): `credit_purchase` webhook + real balance ledger + revenue row | Fable 🔴 | ~80k | — | Only when credits become a priority |
 | R6 ✅ (ratified + landed) | Expert-compensation split on completed review work: expert **75% / platform 25%**, admin-editable via `fee_bands.expert_review_expert_share` (migration 142). Credited at `completeExpertRequest` from the capture-time `platform_revenue` ledger row (atomic re-split, §15 idempotent; earning born `held` on the escrow spine). Legacy paid requests without a stamped PI are grandfathered (manual handling). | Fable 🔴 | ~30k | — | Ratified Jul 26: "platform gets 25% but more importantly is the ability to change the splits in the admin panel" |
 
