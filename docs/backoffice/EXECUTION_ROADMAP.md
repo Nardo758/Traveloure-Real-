@@ -62,7 +62,7 @@ checking this table.
 | ID | Item | Tier | Est. | Depends | Notes |
 |----|------|------|------|---------|-------|
 | C0 | ⛔ **Consolidation decision:** 3 availability tables (`provider_availability`, `provider_availability_schedule`, `vendor_availability_slots`) → 1 canonical | Fable analysis ~30k → decision | ~30k | — | §4-class decision; blocks all of Wave C |
-| C1 | Next-availability compute + My Offerings "Next Availability" column | Sonnet | ~45k | C0 | — |
+| C1 ✅ `e0323cbb` (found the availability-manager writer dead — filed for C2) | Next-availability compute + My Offerings "Next Availability" column | Sonnet | ~45k | C0 | — |
 | C2 | Public availability calendar on offering page (booked/available days) | Sonnet | ~60k | C1 | Read-only first |
 | C3 | 🔴 Slot-aware checkout + conflict detection ("this slot just booked") | Fable | ~100k | C2 | §15 atomic slot claim; the money-path centerpiece |
 
@@ -97,7 +97,7 @@ checking this table.
 
 | ID | Item | Tier | Est. |
 |----|------|------|------|
-| X1 | Cancellation-policy field (per-offering data; closes the §13 hardcoded-copy arm) | Sonnet | ~45k |
+| X1 ✅ `2ffa1774` (structured cancellation_policy_type alongside the pre-existing free-text column) | Cancellation-policy field (per-offering data; closes the §13 hardcoded-copy arm) | Sonnet | ~45k |
 | X2 | Booking row → Message deep-link | Haiku | ~15k |
 | X3 | Repeat-bookings rollup line | Haiku | ~25k |
 | X4 ✅ `ee069bfe` | OG injection for `/services/:id` (replicate the /p/ handler) | Haiku | ~20k |
