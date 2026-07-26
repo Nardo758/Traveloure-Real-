@@ -3417,41 +3417,18 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // === Income Streams & Revenue Splits ===
   
   // Expert Tips - Create a tip for an expert
-  app.post("/api/expert/:expertId/tip", isAuthenticated, async (req, res) => {
-    try {
-      const travelerId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
-      const { expertId } = req.params;
-      
-      // Validate request body
-      const tipSchema = z.object({
-        amount: z.number().positive("Amount must be positive"),
-        message: z.string().max(500).optional(),
-        bookingId: z.string().optional(),
-        isAnonymous: z.boolean().optional().default(false),
-      });
-
-      const parsed = tipSchema.safeParse(req.body);
-      if (!parsed.success) {
-        return res.status(400).json({ message: "Invalid tip data", errors: parsed.error.errors });
-      }
-
-      const { amount, message, bookingId, isAnonymous } = parsed.data;
-
-      // Note: createExpertTip in storage applies revenue split and creates expert earnings ledger entry
-      const tip = await storage.createExpertTip({
-        expertId,
-        travelerId,
-        amount: String(amount),
-        message,
-        bookingId,
-        isAnonymous,
-      });
-
-      res.json(tip);
-    } catch (err) {
-      console.error("Error creating tip:", err);
-      res.status(500).json({ message: "Failed to create tip" });
-    }
+  // GATED 501 (W0.4): the tip PAYMENT leg does not exist. This handler used to call
+  // storage.createExpertTip directly, which writes a real expert_earnings ledger row
+  // (held → releasable → payable via the payout rail) plus platform_revenue — from a
+  // client-sent amount, with NO Stripe charge anywhere. Any authenticated session could
+  // mint payable earnings for free. Re-enable ONLY behind a real two-step payment flow
+  // (PaymentIntent create → server-verified confirm → THEN createExpertTip), mirroring
+  // the coordination-fee /pay + /pay/confirm pattern (§7/§14/§15). createExpertTip
+  // itself is kept in storage — it is the correct post-payment leg.
+  app.post("/api/expert/:expertId/tip", isAuthenticated, async (_req, res) => {
+    res.status(501).json({
+      message: "Tipping is not available yet — tip payment processing has not launched.",
+    });
   });
 
   // Get tips received by expert
