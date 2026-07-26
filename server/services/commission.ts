@@ -400,11 +400,18 @@ export async function resolveCommissionRates(
     return { expertShareRate: 0, platformFeeRate: AI_PLATFORM_FEE, ...noInsurance };
   }
 
-  // Tier 2 — Affiliate (constant; per-partner bands seeded dormant for Phase-2 migration)
+  // Tier 2 — Affiliate: admin-editable band (migration 143), falls back to the code constants
+  // when the band is absent/inactive/non-percent (the coordination-floor safe-failure posture, §8).
+  // (Per-partner affiliate:<partner> bands remain a separate, still-dormant Phase-2 concern — that's
+  // the partner's own commission %, not this internal platform/expert split.)
   if (source === "affiliate" || revenueType === "affiliate_commission") {
+    const band = await getBand("affiliate_standard");
+    if (band && band.rateType === "percent") {
+      return buildRatesFromBand(band.rate, noInsurance);
+    }
     return {
-      expertShareRate: AFFILIATE_EXPERT_SHARE,
-      platformFeeRate: AFFILIATE_PLATFORM_FEE,
+      expertShareRate: AFFILIATE_EXPERT_SHARE, // fee-literal-ok: documented fallback when the band is absent/inactive
+      platformFeeRate: AFFILIATE_PLATFORM_FEE, // fee-literal-ok: documented fallback when the band is absent/inactive
       ...noInsurance,
     };
   }

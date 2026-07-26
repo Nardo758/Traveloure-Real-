@@ -534,4 +534,9 @@ export const MIGRATION_FILES = [
   // a paid expert-review fee, credited at request completion; platform keeps the remainder.
   // Seed-only, ON CONFLICT DO NOTHING, no CHECK — no publish-push trap.
   "142_expert_review_split_band.sql",
+  // 143: R4 (F7) — affiliate_standard fee band (default 0.70 platform / 0.30 expert): the internal
+  // platform/expert split applied to an affiliate-facilitated booking's commission at confirm-time
+  // ledger write (createAffiliateEarning, server/routes/content.routes.ts). Seed-only, ON CONFLICT
+  // DO NOTHING, no CHECK — no publish-push trap.
+  "143_affiliate_split_fee_bands.sql",
 ] as const;

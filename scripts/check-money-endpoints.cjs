@@ -39,7 +39,7 @@ const EXTRA_FILES = ['server/routes.ts']; // the monolith — not under server/r
 // (a) filename heuristic — money-named files are scanned wholesale (original behavior, no regression).
 const NAME_RE = /(payment|booking|checkout|refund|payout|cart|fee|promo|expert-request|stripe)/i;
 // (b) operation heuristic — a handler that does any of these MOVES MONEY or records an earning.
-const MONEY_OP_RE = /(stripe|payment[_]?intent|\btransfers?\.create|createTransfer|\brefunds?\.create|createRefund|\bcharges?\.create|createCharge|\bpayouts?\b|createExpertEarning|createProviderEarning|platform_revenue|providerEarnings|expertEarnings|\.capture\(|capturePayment|confirmPayment|checkout\.sessions?|processPayment|recordPromoUsage)/i;
+const MONEY_OP_RE = /(stripe|payment[_]?intent|\btransfers?\.create|createTransfer|\brefunds?\.create|createRefund|\bcharges?\.create|createCharge|\bpayouts?\b|createExpertEarning|createProviderEarning|createAffiliateEarning|platform_revenue|providerEarnings|expertEarnings|affiliateEarnings|\.capture\(|capturePayment|confirmPayment|checkout\.sessions?|processPayment|recordPromoUsage)/i;
 // the client-trusted read we forbid in a money context.
 const BODY_RE = /req\.body/;
 const FIELD_RE = /\b(amount|price|userId)\b/;

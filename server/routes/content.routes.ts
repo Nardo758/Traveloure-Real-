@@ -6650,12 +6650,26 @@ router.patch("/api/affiliate-booking-requests/:id", isAuthenticated, async (req,
         }
       }
 
-      const updated = await storage.updateAffiliateBookingRequest(id, data);
-      if (!updated) return res.status(404).json({ message: "Request not found" });
+      // R4/F7 (§15): the confirm transition is claimed atomically so a duplicate/concurrent PATCH
+      // can't double-fire the confirm side-effects (itinerary logging + affiliate earning). Every
+      // OTHER field update (notes, price edits after the fact, non-confirm status changes) keeps
+      // using the plain update — only the pending→confirmed transition needs the atomic guard.
+      const updated = isConfirming
+        ? await storage.confirmAffiliateBookingRequest(id, data)
+        : await storage.updateAffiliateBookingRequest(id, data);
+      if (!updated) {
+        if (isConfirming) {
+          // Lost the atomic claim race — another request already confirmed this booking.
+          // Idempotent no-op: return the current (already-confirmed) row, not a 404/error.
+          const current = await storage.getAffiliateBookingRequestById(id);
+          if (current) return res.json({ ...current, alreadyConfirmed: true });
+        }
+        return res.status(404).json({ message: "Request not found" });
+      }
 
       // Log onto the canonical Trip/PlanCard only when attachment was granted (first
       // confirm wins — guarded on the transition so a repeat PATCH never duplicates).
-      if (updated.status === "confirmed" && updated.tripId && prior.status !== "confirmed") {
+      if (updated.status === "confirmed" && updated.tripId && isConfirming) {
         await storage.createItineraryItem({
           tripId: updated.tripId,
           title: updated.itemName,
@@ -6671,6 +6685,61 @@ router.patch("/api/affiliate-booking-requests/:id", isAuthenticated, async (req,
           actualCost: updated.price ?? null,
           suggestedBy: "expert",
         } as any);
+      }
+
+      // R4/F7 — affiliate reconciliation ledger spine. Runs exactly once per booking (gated on the
+      // atomic isConfirming claim above, same as the itinerary-item write). §14: bookingAmount is
+      // read back from the persisted row (updated.price), never trusted off req.body directly for
+      // the money decision. §13: the partner's REAL commission is unknown until they report it
+      // (that's the whole F7 problem) — never invent a rate/amount here; commission fields are
+      // honestly recorded 0 pending reconciliation (the reconciliationStatus/reconciliationNotes
+      // fields exist precisely for an admin to fill these in once the partner report arrives).
+      if (isConfirming) {
+        try {
+          // §8: admin-editable band (migration 143), falls back to the AFFILIATE_PLATFORM_FEE /
+          // AFFILIATE_EXPERT_SHARE code constants — snapshotted for the eventual reconciliation
+          // pass, not applied to a fabricated commission figure today.
+          const splitRates = await resolveCommissionRates({ source: "affiliate" });
+          let partnerId: string | undefined;
+          try {
+            const [partnerRow] = await db
+              .select({ id: affiliatePartners.id })
+              .from(affiliatePartners)
+              .where(sql`LOWER(${affiliatePartners.name}) = LOWER(${updated.partnerName})`)
+              .limit(1);
+            partnerId = partnerRow?.id;
+          } catch {
+            // Best-effort name match only — never block confirmation on this.
+          }
+          await storage.createAffiliateEarning({
+            partnerId: partnerId ?? null,
+            expertId: updated.expertId ?? null,
+            bookingAmount: updated.price != null ? String(updated.price) : "0.00",
+            commissionRate: "0.00",
+            totalCommission: "0.00",
+            platformShare: "0.00",
+            expertShare: "0.00",
+            providerShare: "0.00",
+            currency: "USD",
+            partnerReferenceId: updated.confirmationRef ?? null,
+            externalReportData: {
+              affiliateBookingRequestId: updated.id,
+              partnerName: updated.partnerName,
+              note: "Confirmed via the agent-booking rail; the partner's real commission is not yet "
+                + "known (arrives via partner report) so commission/total/share fields are recorded 0, "
+                + "not fabricated — reconcile via reconciliationStatus/reconciliationNotes once the "
+                + "partner report lands.",
+              internalSplitRatesAtConfirm: {
+                platformFeeRate: splitRates.platformFeeRate,
+                expertShareRate: splitRates.expertShareRate,
+              },
+            },
+          } as any);
+        } catch (earnErr) {
+          // Non-critical: the booking is already confirmed; a ledger-write failure must not
+          // undo that or 500 the response.
+          console.error(`[AffiliateBooking] earning ledger write failed for ${id} (non-critical):`, earnErr);
+        }
       }
 
       if (attachmentBlocked) {
