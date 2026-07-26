@@ -530,4 +530,8 @@ export const MIGRATION_FILES = [
   // trap) — S4 acquisition attribution. The existing `source` column gains its first writer at
   // checkout (server-derived vocabulary direct|link|cross_sell); ref = short_links.code (soft).
   "141_booking_acquisition_ref.sql",
+  // 142: R6 — expert_review_expert_share fee band (default 0.75): the reviewing expert's share of
+  // a paid expert-review fee, credited at request completion; platform keeps the remainder.
+  // Seed-only, ON CONFLICT DO NOTHING, no CHECK — no publish-push trap.
+  "142_expert_review_split_band.sql",
 ] as const;
