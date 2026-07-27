@@ -22,6 +22,7 @@ import path from "path";
 import { eq, and, sql } from "drizzle-orm";
 import { db } from "../db";
 import { users, providerServices, expertTemplates, readyMadeTrips, localExpertForms, serviceProviderForms } from "@shared/schema";
+import { EARNER_ROLES as CANONICAL_EARNER_ROLES } from "@shared/roles";
 
 const router = Router();
 
@@ -30,15 +31,10 @@ const isAuthenticated = (req: any, res: any, next: any) => {
   return res.status(401).json({ message: "Authentication required" });
 };
 
-// Roles allowed to claim a storefront handle (earner roles; V.4 provider-vocab both spellings).
-const EARNER_ROLES = new Set([
-  "local_expert",
-  "travel_expert",
-  "event_planner",
-  "expert",
-  "provider",
-  "service_provider",
-]);
+// Roles allowed to claim a storefront handle — the canonical earner set (shared/roles.ts)
+// plus legacy bare "provider" tolerated as a permissive allow (V.4 both-spellings posture;
+// no canonical write path produces it, but a grandfathered row shouldn't lose its handle).
+const EARNER_ROLES = new Set<string>([...CANONICAL_EARNER_ROLES, "provider"]);
 
 // Reserved first segments: platform vocabulary + abuse-prone names. A handle lives under /p/ so
 // route collisions are impossible; this list protects brand/impersonation surface.

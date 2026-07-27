@@ -13,6 +13,7 @@ import {
 } from "@shared/schema";
 import { eq, and, or, ilike, desc, asc, sql, count, gte, lte, isNull, not, inArray } from "drizzle-orm";
 import { asyncHandler, ForbiddenError, ValidationError, NotFoundError } from "../infrastructure";
+import { isExpertRole } from "@shared/roles";
 import { createDMOCrawler } from "../content/scrapers/DMOCrawler";
 import {
   ALL_DMO_SOURCES,
@@ -32,7 +33,10 @@ function requireExpert(req: any, res: any, next: any) {
   }
   const user = req.user;
   const role = user?.role || user?.claims?.role;
-  if (!["local_expert", "travel_expert", "event_planner", "executive_assistant", "admin"].includes(role)) {
+  // Canonical expert family (shared/roles.ts, role-vocabulary audit): the previous local
+  // list omitted bare "expert" (locking those users out of the DMO workspace) and included
+  // executive_assistant (EA has its own /ea console and no client path to /expert/*).
+  if (!isExpertRole(role) && role !== "admin") {
     return res.status(403).json({ message: "Expert access required" });
   }
   next();
