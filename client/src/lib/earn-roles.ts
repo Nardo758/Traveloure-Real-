@@ -91,7 +91,11 @@ export const EARN_ROLES: EarnRole[] = [
     label: "Event Planner",
     track: "in-person",
     blurb: "Specialise in weddings, proposals, and group celebrations — bringing unforgettable moments to life",
-    signupPath: "/become-provider",
+    // Build 2 fork: "Event Planner" is two businesses (event VENDOR → provider track vs
+    // event PLANNER → expert track). Entry points used to disagree — this card sent people
+    // into the provider form while the nav sent them into the expert application. All
+    // Event Planner entries now land on the chooser.
+    signupPath: "/start/events",
   },
   {
     key: "trip_planner",

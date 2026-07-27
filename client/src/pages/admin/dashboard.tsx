@@ -110,6 +110,22 @@ export default function AdminDashboard() {
     queryKey: ["/api/admin/bookings/stale-pending"],
   });
 
+  // Build 1: activation funnel — pure read aggregation over existing tables (§13).
+  const { data: funnel } = useQuery<{
+    expert_applications: number;
+    expert_approved: number;
+    provider_applications: number;
+    provider_approved: number;
+    earners: number;
+    with_handle: number;
+    payouts_connected: number;
+    with_offering: number;
+    with_approved_offering: number;
+    with_booking: number;
+  }>({
+    queryKey: ["/api/admin/business-funnel"],
+  });
+
   const systemHealth = healthData?.services?.slice(0, 4).map(s => ({
     metric: s.service,
     value: s.status === "operational" ? s.uptime || "Operational" : s.status,
@@ -165,6 +181,48 @@ export default function AdminDashboard() {
             </Card>
           ))}
         </div>
+
+        {/* Build 1: business activation funnel — where earners fall out between applying and first booking */}
+        {funnel && (
+          <Card data-testid="card-business-funnel">
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-base">
+                <Building2 className="w-5 h-5 text-gray-500" />
+                Business activation funnel
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                {[
+                  {
+                    label: "Applications",
+                    value: (funnel.expert_applications ?? 0) + (funnel.provider_applications ?? 0),
+                    sub: `${funnel.expert_applications ?? 0} expert · ${funnel.provider_applications ?? 0} provider`,
+                  },
+                  {
+                    label: "Approved earners",
+                    value: funnel.earners ?? 0,
+                    sub: `${funnel.expert_approved ?? 0} + ${funnel.provider_approved ?? 0} approvals`,
+                  },
+                  { label: "Handle claimed", value: funnel.with_handle ?? 0, sub: "storefront live-able" },
+                  { label: "Has offering", value: funnel.with_offering ?? 0, sub: "any lane" },
+                  { label: "Approved to sell", value: funnel.with_approved_offering ?? 0, sub: "≥1 approved offering" },
+                  { label: "First booking", value: funnel.with_booking ?? 0, sub: "earned on-platform" },
+                ].map((stage) => (
+                  <div key={stage.label} className="rounded-lg border border-gray-200 dark:border-gray-700 p-3" data-testid={`funnel-${stage.label.toLowerCase().replace(/\s+/g, "-")}`}>
+                    <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">{stage.value}</p>
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300">{stage.label}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">{stage.sub}</p>
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-3">
+                Payouts connected: {funnel.payouts_connected ?? 0}. All counts derive live from existing
+                tables — nothing is tracked separately.
+              </p>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Stale Pending Bookings alert */}
         {staleBookings.length > 0 && (
