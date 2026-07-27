@@ -381,6 +381,10 @@ router.get("/api/me/posting-opportunities", isAuthenticated, async (req, res) =>
         reviewText: serviceReviews.reviewText,
         serviceId: serviceReviews.serviceId,
         createdAt: serviceReviews.createdAt,
+        // Audit B-3: consumers need to know whether the earner already replied — the Inbox
+        // "awaiting a reply" queue filters on this (share-prompt consumers ignore it, so the
+        // share semantics are unchanged). Without it, a replied review re-appeared forever.
+        responseText: serviceReviews.responseText,
       })
       .from(serviceReviews)
       .where(
@@ -425,6 +429,8 @@ router.get("/api/me/posting-opportunities", isAuthenticated, async (req, res) =>
           serviceId: r.serviceId,
           serviceName: nameById.get(r.serviceId) ?? "your service",
           createdAt: r.createdAt,
+          // Audit B-3: lets the Inbox awaiting-reply queue clear once a reply exists.
+          responded: !!(r.responseText && r.responseText.trim()),
         };
       }),
       ...slotRows.map((s) => ({

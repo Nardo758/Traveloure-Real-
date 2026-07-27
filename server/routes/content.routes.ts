@@ -6566,7 +6566,10 @@ router.get("/api/spontaneous/quick-search/:window", async (req, res) => {
 
 router.post("/api/affiliate-booking-requests", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).id;
+      // Session shape is {claims:{sub,...}} for BOTH email and OIDC auth — a bare `.id` read
+      // is undefined and violated the users FK (audit P0). Same pattern as every live handler.
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
       const { itemName, itemDescription, partnerName, partnerCategory, affiliateUrl, travelDate, travelers, userNotes } = req.body;
       if (!itemName || !partnerName || !affiliateUrl) {
         return res.status(400).json({ message: "itemName, partnerName, and affiliateUrl are required" });
@@ -6596,7 +6599,8 @@ router.post("/api/affiliate-booking-requests", isAuthenticated, async (req, res)
 
 router.get("/api/affiliate-booking-requests/user", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).id;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
       const records = await storage.getAffiliateBookingRequestsByUser(userId);
       return res.json(records);
     } catch (err: any) {
@@ -6608,13 +6612,16 @@ router.get("/api/affiliate-booking-requests/user", isAuthenticated, async (req, 
 
 router.get("/api/affiliate-booking-requests/expert", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      // Full expert family (shared/roles.ts): the booking-agent rail (§16) auto-assigns
-      // any expert-family role — bare `role !== "expert"` locked assigned agents out.
-      if (!isExpertRole(user.role) && user.role !== "admin") {
+      // Audit P0: session objects carry {claims:{sub}} — top-level .id/.role are undefined on
+      // every auth shape, so this handler 403'd all real experts. Id from the session pattern,
+      // role from the DB (§2 posture — never the session's possibly-stale/absent role string).
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      const dbUser = await storage.getUser(userId);
+      if (!dbUser || (!isExpertRole(dbUser.role ?? "") && dbUser.role !== "admin")) {
         return res.status(403).json({ message: "Expert role required" });
       }
-      const records = await storage.getAffiliateBookingRequestsByExpert(user.id);
+      const records = await storage.getAffiliateBookingRequestsByExpert(userId);
       return res.json(records);
     } catch (err: any) {
       console.error("[AffiliateBooking] expert list error:", err);
@@ -6649,9 +6656,11 @@ function deriveItineraryDayNumber(
 
 router.patch("/api/affiliate-booking-requests/:id", isAuthenticated, async (req, res) => {
     try {
-      const user = req.user as any;
-      // Full expert family (shared/roles.ts) — same rail as the list endpoint above.
-      if (!isExpertRole(user.role) && user.role !== "admin") {
+      // Audit P0: same session-shape fix as the expert list above — id from claims, role from DB.
+      const sessionUserId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      if (!sessionUserId) return res.status(401).json({ message: "Unauthorized" });
+      const dbUser = await storage.getUser(sessionUserId);
+      if (!dbUser || (!isExpertRole(dbUser.role ?? "") && dbUser.role !== "admin")) {
         return res.status(403).json({ message: "Expert role required" });
       }
       const { id } = req.params;
@@ -6663,7 +6672,7 @@ router.patch("/api/affiliate-booking-requests/:id", isAuthenticated, async (req,
         if (req.body[key] !== undefined) data[key] = req.body[key];
       }
       // Self-assign: if setting expertId, use current user
-      if (data.expertId === "self") data.expertId = user.id;
+      if (data.expertId === "self") data.expertId = sessionUserId;
       const prior = await storage.getAffiliateBookingRequestById(id);
       if (!prior) return res.status(404).json({ message: "Request not found" });
 
@@ -6684,7 +6693,7 @@ router.patch("/api/affiliate-booking-requests/:id", isAuthenticated, async (req,
       if (requestedTripId && isConfirming) {
         trip = await storage.getTrip(requestedTripId);
         const ownerOk = !!trip && !!prior.userId && prior.userId === trip.userId;
-        const assignedOk = await storage.isExpertAssignedToTrip(requestedTripId, user.id);
+        const assignedOk = await storage.isExpertAssignedToTrip(requestedTripId, sessionUserId);
         if (ownerOk && assignedOk) {
           data.tripId = requestedTripId; // attachment granted
         } else {
@@ -6794,7 +6803,7 @@ router.patch("/api/affiliate-booking-requests/:id", isAuthenticated, async (req,
       }
 
       if (attachmentBlocked) {
-        console.warn(`[AffiliateBooking] attachment blocked for ${id} (expert ${user.id}): ${attachmentReason}`);
+        console.warn(`[AffiliateBooking] attachment blocked for ${id} (expert ${sessionUserId}): ${attachmentReason}`);
         return res.json({ ...updated, attachmentBlocked: true, attachmentReason });
       }
       // Include affiliateUrl for expert responses
