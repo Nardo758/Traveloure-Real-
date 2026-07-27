@@ -24,15 +24,18 @@ import {
 
 const MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
 
-const P = "#FF385C";
+// Console palette (two-palettes decision, Jul 27 2026): the back office runs the warm
+// console theme — #E85D55 brand + warm greys — NOT the traveler surface's #FF385C/cool
+// ramp this page previously hardcoded (the design audit's "two reds on one screen").
+const P = "#E85D55";
 const G: Record<number, string> = {
-  50: "#F9FAFB", 100: "#F3F4F6", 200: "#E5E7EB", 300: "#D1D5DB",
-  400: "#9CA3AF", 500: "#6B7280", 600: "#4B5563", 700: "#374151", 900: "#111827", // fee-literal-ok: color palette shade, not fee config
+  50: "#FAFAF8", 100: "#F3F3EE", 200: "#E8E8E2", 300: "#D4D4CC",
+  400: "#A8A8A0", 500: "#7A7A72", 600: "#5C5C55", 700: "#45453F", 900: "#1A1A18", // fee-literal-ok: color palette shade, not fee config
 };
 
 function Av({ i, s = 32 }: { i: string; s?: number }) {
   return (
-    <div style={{ width: s, height: s, borderRadius: "50%", background: "linear-gradient(135deg,#FF385C,#FF6B8A)", display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontSize: s * 0.35, fontWeight: 600, flexShrink: 0 }}>{i}</div>
+    <div style={{ width: s, height: s, borderRadius: "50%", background: "linear-gradient(135deg,#E85D55,#F0837C)", display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontSize: s * 0.35, fontWeight: 600, flexShrink: 0 }}>{i}</div>
   );
 }
 
