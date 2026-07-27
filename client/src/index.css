@@ -91,6 +91,34 @@
   --earn-chip: #F6F5F1;
 }
 
+/* ── Earner back-office console scope (decision-maker ratified Jul 27, 2026) ──
+   TWO PALETTES BY DESIGN: the Traveler surface keeps the global brand above
+   (--primary #FF385C, cool greys); the earner back office (expert + provider
+   consoles) is a different product with the warm console palette (#E85D55 +
+   #1A1A18/#7A7A72/#E8E8E2/#FAFAF8). Scoped via this class on BackofficeShell's
+   root — every bg-primary / text-foreground / border inside the console resolves
+   to the console palette with ZERO traveler blast radius. Design-audit fixes
+   1+2: collapses the two-reds-on-one-screen split and makes the ~50 cards using
+   shadcn semantics (`border`, `text-muted-foreground`) console-conformant
+   without touching page files. Do not restyle console pages with raw hex —
+   use tokens; this scope makes them correct. */
+.console-scope {
+  --primary: 3 76% 62%; /* #E85D55 */
+  --primary-hover: 3 66% 52%; /* darkened coral */
+  --ring: 3 76% 62%;
+  --sidebar-primary: 3 76% 62%;
+  --sidebar-ring: 3 76% 62%;
+  --background: 60 17% 98%; /* #FAFAF8 */
+  --foreground: 60 4% 10%; /* #1A1A18 */
+  --card-foreground: 60 4% 10%;
+  --muted: 60 10% 95%; /* #F3F3EE */
+  --muted-foreground: 60 3% 46%; /* #7A7A72 */
+  --border: 60 12% 90%; /* #E8E8E2 */
+  --input: 60 12% 90%;
+  --text-dark: 60 4% 10%;
+  --text-mid: 60 3% 46%;
+}
+
 .dark {
   --background: 222 47% 11%;
   --foreground: 210 40% 98%;
