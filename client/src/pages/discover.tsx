@@ -1397,9 +1397,9 @@ export default function DiscoverPage() {
                         Verified experts can publish ready-made trips here for travelers to purchase.
                       </p>
                       {["expert", "travel_expert", "local_expert"].includes(user?.role ?? "") ? (
-                        <Link href="/expert/templates">
+                        <Link href="/expert/workspace">
                           <Button size="sm" data-testid="button-create-first-template">
-                            Create your first template
+                            Build a store trip in the Workstation
                             <ArrowRight className="w-4 h-4 ml-2" />
                           </Button>
                         </Link>
@@ -1723,9 +1723,9 @@ export default function DiscoverPage() {
             </p>
             <div className="flex flex-wrap justify-center gap-4">
               {["expert", "travel_expert", "local_expert"].includes(user?.role ?? "") ? (
-                <Link href="/expert/templates">
+                <Link href="/expert/workspace">
                   <Button size="lg" className="px-8" data-testid="button-create-first-template">
-                    Create your first template
+                    Build a store trip in the Workstation
                     <ArrowRight className="w-4 h-4 ml-2" />
                   </Button>
                 </Link>

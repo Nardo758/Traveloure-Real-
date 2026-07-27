@@ -266,6 +266,15 @@ router.post(
   asyncHandler(async (req: any, res: Response) => {
     const expertId = req.user?.claims?.sub || req.user?.id;
 
+    // Same gate as POST /api/expert/ready-made (D3, ready-made.routes.ts AUTHOR_ROLES):
+    // this endpoint creates the identical authoring pair, so it must not be a looser side
+    // door — requireExpert alone admits bare "expert"/event_planner off the session role,
+    // while store authoring is DB-role-gated to local/travel experts during the Kyoto launch.
+    const dbUser = await storage.getUser(expertId);
+    if (!dbUser || !["local_expert", "travel_expert", "admin"].includes(dbUser.role ?? "")) {
+      throw new ForbiddenError("Ready-made authoring requires a local expert or trip advisor role");
+    }
+
     const schema = z.object({
       contentIds: z.array(z.string().min(1)).min(1).max(60),
       title: z.string().min(1).max(255).optional(),
