@@ -2970,22 +2970,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     }
   });
 
-  // Create new template (authenticated)
-  app.post("/api/expert/templates", isAuthenticated, async (req, res) => {
-    try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
-      // Field whitelist (Gap 2): only expert-editable content fields; ownership is server-set;
-      // never born-published — publishing is approval-gated via the shared queue.
-      const template = await storage.createExpertTemplate({
-        ...pickExpertTemplateFields(req.body),
-        expertId: userId,
-        isPublished: false,
-      });
-      res.json(template);
-    } catch (err) {
-      console.error("Error creating template:", err);
-      res.status(500).json({ message: "Failed to create template" });
-    }
+  // Create new template — RETIRED (seller-surface sunset, §10/§17). Gone tombstone, not a
+  // deletion: the route shape stays stable; GET/PATCH/submit/purchase/confirm remain intact.
+  app.post("/api/expert/templates", isAuthenticated, async (_req, res) => {
+    res.status(410).json({ message: "New itinerary-template listings are retired — build store trips in the Workstation instead." });
   });
 
   // Update template (authenticated - owner only)

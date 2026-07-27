@@ -10,6 +10,8 @@ import {
   expertDmoEdits,
   contentGapAlerts,
   dmoScrapeJobs,
+  trips,
+  readyMadeTrips,
 } from "@shared/schema";
 import { eq, and, or, ilike, desc, asc, sql, count, gte, lte, isNull, not, inArray } from "drizzle-orm";
 import { asyncHandler, ForbiddenError, ValidationError, NotFoundError } from "../infrastructure";
@@ -245,16 +247,19 @@ router.post(
 );
 
 // ============================================================
-// DMO → ITINERARY BRIDGE — turn curated DMO content into a sellable Ready Made Trip draft
+// DMO → ITINERARY BRIDGE — turn curated DMO content into a sellable store-trip draft
 // ============================================================
 //
 // The point of the DMO library is to let experts build unique, sellable itineraries from real
-// local content. This seeds a NEW expert_templates DRAFT from selected DMO rows: each place becomes
-// an activity, distributed across days. The expert then edits/prices it in the builder and submits
-// it — where it rides the EXISTING marketplace admin-approval queue (draft → submitted → approved)
-// before it can ever sell. So scraped content that becomes a product is admin-approved at the
-// product level; this endpoint never publishes or approves anything (§10 Gap 1/2): the draft is
-// born unpublished + unapproved, ownership is the session expert.
+// local content. This seeds the REAL ready_made_trips store lane (the expert_templates seller
+// surface is sunset — §10/§17): it creates the same authoring pair `POST /api/expert/ready-made`
+// creates (a trip with userId=NULL + authorId=caller, and a ready_made_trips listing row born
+// 'draft' — D1a), then drops each selected DMO place onto that trip as an itinerary item
+// (storage.createItineraryItem — the same storage call the live POST /api/trips/:tripId/
+// itinerary-items path uses), grouped ~3 places per day in the caller's selection order. The
+// expert then edits/prices it in the Workstation and submits it through the EXISTING store
+// admin-approval queue before it can ever sell — this endpoint never publishes or approves
+// anything; the draft is born unapproved, ownership is the session expert.
 router.post(
   "/build-itinerary",
   requireExpert,
@@ -276,39 +281,76 @@ router.post(
       throw new ValidationError("None of the selected content could be found.");
     }
 
-    // Preserve the caller's selection order, then group ~3 places per day into itinerary activities.
+    // Preserve the caller's selection order, then group ~3 places per day.
     const order = new Map(contentIds.map((id, i) => [id, i]));
     const ordered = [...rows].sort((a, b) => (order.get(a.id)! - order.get(b.id)!));
     const PER_DAY = 3;
-    const days: Array<{ day: number; title: string; activities: Array<{ title: string; description: string }> }> = [];
-    ordered.forEach((row, idx) => {
-      const dayIdx = Math.floor(idx / PER_DAY);
-      if (!days[dayIdx]) days[dayIdx] = { day: dayIdx + 1, title: `Day ${dayIdx + 1}`, activities: [] };
-      days[dayIdx].activities.push({
-        title: row.name,
-        description: row.shortDescription || row.description || "",
-      });
-    });
+    const durationDays = Math.max(1, Math.ceil(ordered.length / PER_DAY));
 
     const city = ordered[0]?.city || "Kyoto";
-    const draft = await storage.createExpertTemplate({
-      expertId,
-      title: title || `${city} itinerary (draft)`,
-      description: `A ${days.length}-day ${city} itinerary curated from ${ordered.length} local places. Edit, price, and submit for review.`,
-      destination: city,
-      duration: days.length,
-      itineraryData: { days },
-      price: "0", // draft placeholder (price is NOT NULL) — the expert sets the real price in the builder before submitting
-      currency: "USD",
-      category: "cultural",
-      isPublished: false, // never born-published — publishing is admin-approval-gated (§10)
-    } as any);
+    const draftTitle = title || `${city} itinerary (draft)`;
+
+    // Same creation mechanism as POST /api/expert/ready-made: authoring trip (userId=NULL,
+    // authorId=caller — traveler-surface exclusion by construction) + born-'draft' listing.
+    // Placeholder dates: authoring trips are templates-in-the-making, not scheduled travel;
+    // trips.start/end are NOT NULL so we anchor a synthetic window.
+    const start = new Date();
+    const end = new Date(start.getTime() + (durationDays - 1) * 24 * 60 * 60 * 1000);
+    const fmt = (d: Date) => d.toISOString().slice(0, 10);
+
+    const result = await db.transaction(async (tx) => {
+      const [trip] = await tx
+        .insert(trips)
+        .values({
+          userId: null,          // NULL owner = excluded from every traveler surface
+          authorId: expertId,    // authoring-mode scope key
+          title: draftTitle,
+          destination: city,
+          startDate: fmt(start),
+          endDate: fmt(end),
+          status: "draft",
+          numberOfTravelers: 2,
+          adults: 2,
+          kids: 0,
+        } as any)
+        .returning();
+
+      const [listing] = await tx
+        .insert(readyMadeTrips)
+        .values({
+          authorId: expertId,
+          sourceTripId: trip.id,
+          market: city,
+          title: draftTitle,
+          durationDays,
+          status: "draft",       // born-draft (D1a) — approval only via the admin action
+        } as any)
+        .returning();
+
+      return { trip, listing };
+    });
+
+    // Add the selected DMO places onto the trip as itinerary items (same storage call as the
+    // live POST /api/trips/:tripId/itinerary-items path).
+    for (let idx = 0; idx < ordered.length; idx++) {
+      const row = ordered[idx];
+      await storage.createItineraryItem({
+        tripId: result.trip.id,
+        title: row.name,
+        description: row.shortDescription || row.description || "",
+        itemType: "activity",
+        dayNumber: Math.floor(idx / PER_DAY) + 1,
+        locationName: row.city || null,
+        suggestedBy: "expert",
+        status: "planned",
+        isFlexible: true,
+      } as any);
+    }
 
     res.status(201).json({
-      templateId: draft.id,
-      days: days.length,
-      places: ordered.length,
-      message: "Draft Ready Made Trip created. Edit and submit it for review to publish.",
+      tripId: result.trip.id,
+      redirect: "/expert/workspace/" + result.trip.id,
+      message: "Draft store trip created",
     });
   }),
 );
