@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { StripeConnectCard } from "@/components/stripe-connect-card";
 import { EarningsBySourcePanel } from "@/components/backoffice/earnings-by-source-panel";
+import { PageHeader } from "@/components/backoffice/primitives";
 
 
 interface EarningsData {
@@ -118,25 +119,25 @@ export default function ExpertEarnings() {
   return (
     <ExpertLayout title="Earnings">
       <div className="p-6 space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-console-darkest">Earnings Dashboard</h1>
-            <p className="text-console-mid">Track your revenue and manage payouts</p>
-          </div>
-          <Button
-            disabled={payoutMutation.isPending || requested}
-            onClick={() => payoutMutation.mutate()}
-            data-testid="button-request-payout"
-          >
-            {payoutMutation.isPending ? (
-              <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Requesting…</>
-            ) : requested ? (
-              "Payout requested"
-            ) : (
-              <><ArrowUpRight className="w-4 h-4 mr-2" /> Request Payout</>
-            )}
-          </Button>
-        </div>
+        <PageHeader
+          title="Earnings Dashboard"
+          subtitle="Track your revenue and manage payouts"
+          actions={
+            <Button
+              disabled={payoutMutation.isPending || requested}
+              onClick={() => payoutMutation.mutate()}
+              data-testid="button-request-payout"
+            >
+              {payoutMutation.isPending ? (
+                <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Requesting…</>
+              ) : requested ? (
+                "Payout requested"
+              ) : (
+                <><ArrowUpRight className="w-4 h-4 mr-2" /> Request Payout</>
+              )}
+            </Button>
+          }
+        />
 
         <StripeConnectCard />
 

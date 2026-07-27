@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ExpertLayout } from "@/components/expert/expert-layout";
+import { StatCard } from "@/components/backoffice/primitives";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -209,22 +210,15 @@ export default function ExpertDashboard() {
         {/* Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {stats.map((stat, index) => (
-            <Card key={index} className="border border-console-light" data-testid={`card-stat-${index}`}>
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-console-mid">{stat.label}</p>
-                    <p className="text-2xl font-bold text-console-darkest">
-                      {stat.value}
-                      {stat.suffix && <span className="text-lg text-console-mid">{stat.suffix}</span>}
-                    </p>
-                  </div>
-                  <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${stat.color}`}>
-                    <stat.icon className="w-6 h-6" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            <StatCard
+              key={index}
+              testId={`card-stat-${index}`}
+              label={stat.label}
+              value={stat.value}
+              valueSuffix={stat.suffix}
+              icon={stat.icon}
+              iconClassName={stat.color}
+            />
           ))}
         </div>
 
