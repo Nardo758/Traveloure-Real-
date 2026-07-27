@@ -31,20 +31,17 @@ const TYPE_TO_ITEM: Record<string, string> = {
 };
 
 /**
- * "Add from DMO Library" — inside the expert trip workspace, browse the expert's
- * admin-approved DMO research content and drop a selected place onto the current
- * trip's itinerary. Writes via the live POST /api/trips/:tripId/itinerary-items
- * (the same endpoint AddItemModal uses) — no new server surface. Kyoto-scoped (§12).
+ * DmoPickerCore — the modal's search + list + add body, extracted (Phase A2) so the
+ * workspace's Add panel can embed the same browse/add flow inline without the Dialog
+ * chrome. Same fetch, same POST /api/trips/:tripId/itinerary-items write — one logic home.
  */
-export function DmoPickerModal({
+export function DmoPickerCore({
   tripId,
   dayNumber,
-  onClose,
   onAdded,
 }: {
   tripId: string;
   dayNumber: number;
-  onClose: () => void;
   onAdded: () => void;
 }) {
   const { toast } = useToast();
@@ -87,18 +84,7 @@ export function DmoPickerModal({
   );
 
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Library className="w-4 h-4 text-primary" />
-            Add from DMO Library — Day {dayNumber}
-          </DialogTitle>
-          <DialogDescription>
-            Your admin-approved Kyoto research content. Add a place to this trip's itinerary.
-          </DialogDescription>
-        </DialogHeader>
-
+    <div className="space-y-3">
         <div className="relative">
           <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-muted-foreground" />
           <Input
@@ -159,6 +145,40 @@ export function DmoPickerModal({
             ))}
           </div>
         )}
+    </div>
+  );
+}
+
+/**
+ * "Add from DMO Library" — inside the expert trip workspace, browse the expert's
+ * admin-approved DMO research content and drop a selected place onto the current
+ * trip's itinerary. Writes via the live POST /api/trips/:tripId/itinerary-items
+ * (the same endpoint AddItemModal uses) — no new server surface. Kyoto-scoped (§12).
+ */
+export function DmoPickerModal({
+  tripId,
+  dayNumber,
+  onClose,
+  onAdded,
+}: {
+  tripId: string;
+  dayNumber: number;
+  onClose: () => void;
+  onAdded: () => void;
+}) {
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Library className="w-4 h-4 text-primary" />
+            Add from DMO Library — Day {dayNumber}
+          </DialogTitle>
+          <DialogDescription>
+            Your admin-approved Kyoto research content. Add a place to this trip's itinerary.
+          </DialogDescription>
+        </DialogHeader>
+        <DmoPickerCore tripId={tripId} dayNumber={dayNumber} onAdded={onAdded} />
       </DialogContent>
     </Dialog>
   );

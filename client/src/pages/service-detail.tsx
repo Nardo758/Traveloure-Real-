@@ -9,6 +9,14 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
+  Breadcrumb,
+  BreadcrumbList,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb";
+import {
   ArrowLeft,
   MapPin,
   Clock,
@@ -28,6 +36,8 @@ import {
   ChevronLeft,
   ChevronRight,
   CalendarCheck,
+  Car,
+  Handshake,
 } from "lucide-react";
 import {
   Dialog,
@@ -72,6 +82,9 @@ interface Service {
   transportProvided: string | null;
   whatIncluded: string[];
   requirements: string[];
+  // Real cover-image field (provider_services.serviceImage). Nullable — the hero section
+  // only renders when set; no placeholder/stock image is fabricated.
+  serviceImage: string | null;
   // X1 (§13 hardcoded-copy arm): real per-offering cancellation policy. Both nullable —
   // NULL means the owner hasn't declared one; render nothing/an honest fallback, never
   // the old fabricated "free cancellation" claim.
@@ -110,6 +123,9 @@ interface Review {
 interface ProviderVerification {
   identityVerified: boolean;
   businessVerified: boolean;
+  // A6: storefront handle (migration 136, users.handle) — null when the owner hasn't
+  // claimed one yet. Backs the breadcrumb's "/p/:handle" link only when non-null.
+  handle: string | null;
 }
 
 // C2: public read-only availability calendar. Server (GET /api/services/:id/availability)
@@ -242,7 +258,7 @@ export default function ServiceDetailPage() {
   if (serviceLoading) {
     return (
       <Layout>
-        <div className="container py-8 max-w-4xl mx-auto">
+        <div className="container py-8 max-w-6xl mx-auto">
           <Skeleton className="h-8 w-48 mb-6" />
           <Skeleton className="h-64 w-full mb-6" />
           <Skeleton className="h-32 w-full" />
@@ -254,7 +270,7 @@ export default function ServiceDetailPage() {
   if (serviceError || !service) {
     return (
       <Layout>
-        <div className="container py-8 max-w-4xl mx-auto text-center">
+        <div className="container py-8 max-w-6xl mx-auto text-center">
           <h1 className="text-2xl font-bold mb-2">Service Not Found</h1>
           <p className="text-muted-foreground mb-6">The service you're looking for doesn't exist</p>
           <Button asChild data-testid="button-back-discover">
@@ -284,7 +300,7 @@ export default function ServiceDetailPage() {
     ? `From ${fmtPrice(priceNum)}`
     : priceNum > 0
     ? fmtPrice(priceNum)
-    : "Contact for price";
+    : "Custom quote";
   const priceSubLabel = service.priceType === "hourly"
     ? "billed by the hour"
     : service.priceType === "package_tiers"
@@ -293,11 +309,55 @@ export default function ServiceDetailPage() {
     ? "flat rate per event"
     : service.priceType === "variable"
     ? "starting price"
-    : "per service";
+    : priceNum > 0
+    ? "per service"
+    : "contact the provider for pricing";
+
+  // Direct-Booking trust panel (mockup "custody-label"): every line is gated on a real
+  // field — identity/business verification (public-verification), meeting point, and
+  // transportProvided. A line whose backing field is absent is simply not rendered.
+  const hasMeetingPoint = IN_PERSON_METHODS.has(service.deliveryMethod) && !!service.meetingPoint;
+  const hasPickupAddress = IN_PERSON_METHODS.has(service.deliveryMethod) && !!service.pickupAddress;
+  const hasTransportSignal = service.transportProvided === "yes" || service.transportProvided === "no";
+  const hasAnyTrustLine =
+    !!providerVerification?.identityVerified ||
+    !!providerVerification?.businessVerified ||
+    hasMeetingPoint ||
+    hasPickupAddress ||
+    hasTransportSignal;
 
   return (
     <Layout>
-      <div className="container py-8 max-w-4xl mx-auto">
+      <div className="container py-8 max-w-6xl mx-auto">
+        {/* Breadcrumb into the provider storefront (mockup: Home > /p/:handle > service name).
+            The handle link only renders when the owner has actually claimed one (migration 136) —
+            no fake/guessed storefront link is shown for an unclaimed handle. */}
+        <Breadcrumb className="mb-4">
+          <BreadcrumbList>
+            <BreadcrumbItem>
+              <BreadcrumbLink asChild>
+                <Link href="/discover" data-testid="breadcrumb-home">Home</Link>
+              </BreadcrumbLink>
+            </BreadcrumbItem>
+            {providerVerification?.handle && (
+              <>
+                <BreadcrumbSeparator />
+                <BreadcrumbItem>
+                  <BreadcrumbLink asChild>
+                    <Link href={`/p/${providerVerification.handle}`} data-testid="breadcrumb-storefront">
+                      @{providerVerification.handle}
+                    </Link>
+                  </BreadcrumbLink>
+                </BreadcrumbItem>
+              </>
+            )}
+            <BreadcrumbSeparator />
+            <BreadcrumbItem>
+              <BreadcrumbPage data-testid="breadcrumb-service-name">{service.serviceName}</BreadcrumbPage>
+            </BreadcrumbItem>
+          </BreadcrumbList>
+        </Breadcrumb>
+
         <div className="flex items-center gap-4 mb-6">
           <Button variant="outline" size="icon" asChild data-testid="button-back">
             <Link href="/discover">
@@ -329,11 +389,27 @@ export default function ServiceDetailPage() {
               </div>
               <div className="flex items-center gap-1">
                 <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
-                <span data-testid="text-rating">{rating.toFixed(1)} ({service.reviewCount} reviews)</span>
+                {service.reviewCount > 0 ? (
+                  <span data-testid="text-rating">{rating.toFixed(1)} ({service.reviewCount} reviews)</span>
+                ) : (
+                  <span data-testid="text-rating">New</span>
+                )}
               </div>
             </div>
           </div>
         </div>
+
+        {/* Hero image — only rendered when the listing has a real cover image (serviceImage);
+            no stock/placeholder image is substituted when it's absent (§13). */}
+        {service.serviceImage && (
+          <div className="mb-6 rounded-lg overflow-hidden border" data-testid="img-hero">
+            <img
+              src={service.serviceImage}
+              alt={service.serviceName}
+              className="w-full max-h-[420px] object-cover"
+            />
+          </div>
+        )}
 
         <div className="grid lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
@@ -356,34 +432,6 @@ export default function ServiceDetailPage() {
                 {service.deliveryMethod && (
                   <div className="flex items-center gap-2 mt-2 text-sm">
                     <Badge variant="outline">{service.deliveryMethod.replace(/_/g, " ")}</Badge>
-                  </div>
-                )}
-
-                {/* Where you'll meet — in-person / hybrid services only */}
-                {IN_PERSON_METHODS.has(service.deliveryMethod) &&
-                  (service.meetingPoint || service.pickupAddress ||
-                    service.transportProvided === "yes" || service.transportProvided === "no") && (
-                  <div className="mt-4 rounded-lg border bg-muted/40 p-3" data-testid="section-meeting-point">
-                    <div className="flex items-center gap-2 text-sm font-medium mb-1">
-                      <MapPin className="w-4 h-4 text-primary" />
-                      Where you'll meet
-                    </div>
-                    {service.meetingPoint && (
-                      <p className="text-sm text-muted-foreground" data-testid="text-meeting-point">{service.meetingPoint}</p>
-                    )}
-                    {service.pickupAddress && (
-                      <p className="text-sm text-muted-foreground mt-1">
-                        <span className="font-medium text-foreground">Pickup:</span> {service.pickupAddress}
-                      </p>
-                    )}
-                    {(service.transportProvided === "yes" || service.transportProvided === "no") && (
-                      <p className="text-sm text-muted-foreground mt-1" data-testid="text-transport-provided">
-                        <span className="font-medium text-foreground">Transport:</span>{" "}
-                        {service.transportProvided === "yes"
-                          ? "Provided by the host during the service"
-                          : "Not provided — please arrange your own transport"}
-                      </p>
-                    )}
                   </div>
                 )}
               </CardContent>
@@ -429,97 +477,6 @@ export default function ServiceDetailPage() {
                 </CardContent>
               </Card>
             )}
-
-            {/* C2: public read-only availability calendar */}
-            <Card data-testid="card-availability">
-              <CardHeader>
-                <div className="flex items-center justify-between gap-2 flex-wrap">
-                  <CardTitle className="flex items-center gap-2">
-                    <CalendarCheck className="w-5 h-5 text-primary" />
-                    Availability
-                  </CardTitle>
-                  <div className="flex items-center gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      onClick={() =>
-                        setAvailabilityMonth((m) => format(subMonths(new Date(`${m}-01T00:00:00`), 1), "yyyy-MM"))
-                      }
-                      data-testid="button-availability-prev-month"
-                      aria-label="Previous month"
-                    >
-                      <ChevronLeft className="w-4 h-4" />
-                    </Button>
-                    <span className="text-sm font-medium w-28 text-center" data-testid="text-availability-month">
-                      {format(new Date(`${availabilityMonth}-01T00:00:00`), "MMMM yyyy")}
-                    </span>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      onClick={() =>
-                        setAvailabilityMonth((m) => format(addMonths(new Date(`${m}-01T00:00:00`), 1), "yyyy-MM"))
-                      }
-                      data-testid="button-availability-next-month"
-                      aria-label="Next month"
-                    >
-                      <ChevronRight className="w-4 h-4" />
-                    </Button>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent>
-                {availabilityLoading ? (
-                  <Skeleton className="h-16 w-full" />
-                ) : upcomingAvailability.length > 0 ? (
-                  <div className="space-y-2">
-                    {upcomingAvailability.map((day) => {
-                      const fullyBooked = day.status === "fully_booked" || day.remaining <= 0;
-                      const isSelected = selectedSlot?.id === day.id;
-                      return (
-                        <button
-                          type="button"
-                          key={`${day.date}-${day.startTime}`}
-                          // C3: an open slot is selectable — the pick rides add-to-cart as slotId
-                          // and checkout claims it atomically ("this slot just booked" on a race).
-                          disabled={fullyBooked}
-                          onClick={() => setSelectedSlot(isSelected ? null : day)}
-                          className={`flex w-full items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm text-left transition-colors ${
-                            fullyBooked
-                              ? "opacity-60 cursor-not-allowed"
-                              : isSelected
-                                ? "border-primary bg-primary/5"
-                                : "hover:bg-muted/50"
-                          }`}
-                          data-testid={`availability-day-${day.date}`}
-                        >
-                          <span className="font-medium">
-                            {format(new Date(`${day.date}T00:00:00`), "EEE, MMM d")}
-                            {day.startTime && (
-                              <span className="text-muted-foreground font-normal ml-2">
-                                {day.startTime}
-                                {day.endTime ? `–${day.endTime}` : ""}
-                              </span>
-                            )}
-                          </span>
-                          <span className="flex items-center gap-2">
-                            {isSelected && <Badge data-testid={`badge-slot-selected-${day.date}`}>Selected</Badge>}
-                            <Badge variant={fullyBooked ? "outline" : "secondary"}>
-                              {fullyBooked ? "Fully booked" : `${day.remaining} spot${day.remaining === 1 ? "" : "s"} open`}
-                            </Badge>
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <p className="text-muted-foreground text-sm" data-testid="text-no-availability">
-                    No availability published yet for this month. Contact the provider to check dates.
-                  </p>
-                )}
-              </CardContent>
-            </Card>
 
             {/* Same-owner cross-sell — packages by this expert (Phase B4) */}
             {ownerPackages.length > 0 && (
@@ -589,6 +546,9 @@ export default function ServiceDetailPage() {
             </Card>
           </div>
 
+          {/* Book Now panel (mockup sidebar): price, Direct-Booking trust panel, the
+              availability/slot picker, cancellation policy, and the existing add-to-cart CTA —
+              all in one sticky column, mirroring the mockup's consolidated booking widget. */}
           <div className="lg:col-span-1">
             <Card className="sticky top-4">
               <CardContent className="p-6">
@@ -607,35 +567,173 @@ export default function ServiceDetailPage() {
                   )}
                 </div>
 
+                {/* Direct-Booking trust panel. The base statement is true of every listing on
+                    the platform (payment always rides the audited Traveloure checkout rail);
+                    each line below it is gated on a real field and omitted when absent (§13). */}
+                <div className="mb-4 p-3 rounded-md border bg-muted/40 text-left" data-testid="section-direct-booking">
+                  <div className="flex items-center gap-2 text-sm font-semibold mb-1">
+                    <Handshake className="w-4 h-4 text-primary" />
+                    Direct Booking
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    You're booking directly with the provider. Payment is processed securely through Traveloure.
+                  </p>
+                  {hasAnyTrustLine && (
+                    <ul className="mt-2 space-y-1.5">
+                      {providerVerification?.identityVerified && (
+                        <li className="flex items-center gap-1.5 text-xs" data-testid="trust-line-identity">
+                          <ShieldCheck className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                          Identity verified
+                        </li>
+                      )}
+                      {providerVerification?.businessVerified && (
+                        <li className="flex items-center gap-1.5 text-xs" data-testid="trust-line-business">
+                          <Building2 className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+                          Business verified
+                        </li>
+                      )}
+                      {hasMeetingPoint && (
+                        <li className="flex items-start gap-1.5 text-xs" data-testid="trust-line-meeting-point">
+                          <MapPin className="w-3.5 h-3.5 text-primary shrink-0 mt-0.5" />
+                          <span>Meets at: {service.meetingPoint}</span>
+                        </li>
+                      )}
+                      {hasPickupAddress && (
+                        <li className="flex items-start gap-1.5 text-xs" data-testid="trust-line-pickup">
+                          <MapPin className="w-3.5 h-3.5 text-primary shrink-0 mt-0.5" />
+                          <span>Pickup: {service.pickupAddress}</span>
+                        </li>
+                      )}
+                      {hasTransportSignal && (
+                        <li className="flex items-center gap-1.5 text-xs" data-testid="trust-line-transport">
+                          <Car className="w-3.5 h-3.5 text-primary shrink-0" />
+                          {service.transportProvided === "yes"
+                            ? "Transport provided by the host"
+                            : "Transport not provided — arrange your own"}
+                        </li>
+                      )}
+                    </ul>
+                  )}
+                </div>
+
                 <Separator className="my-4" />
 
-                <div className="space-y-3">
-                  {/* Preferred date/time — optional. Carried into the cart + booking. */}
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="col-span-2 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                      <Calendar className="w-3.5 h-3.5" />
-                      Preferred date & time <span className="font-normal">(optional)</span>
+                {/* C2/C3: read-only availability calendar with slot selection. */}
+                <div className="mb-4" data-testid="card-availability">
+                  <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
+                    <div className="flex items-center gap-2 text-sm font-semibold">
+                      <CalendarCheck className="w-4 h-4 text-primary" />
+                      Availability
                     </div>
-                    <input
-                      type="date"
-                      min={todayStr}
-                      value={bookingDate}
-                      onChange={(e) => setBookingDate(e.target.value)}
-                      className="rounded-md border bg-background px-3 py-2 text-sm"
-                      data-testid="input-booking-date"
-                      aria-label="Preferred date"
-                    />
-                    <input
-                      type="time"
-                      value={bookingTime}
-                      onChange={(e) => setBookingTime(e.target.value)}
-                      disabled={!bookingDate}
-                      className="rounded-md border bg-background px-3 py-2 text-sm disabled:opacity-50"
-                      data-testid="input-booking-time"
-                      aria-label="Preferred time"
-                    />
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6"
+                        onClick={() =>
+                          setAvailabilityMonth((m) => format(subMonths(new Date(`${m}-01T00:00:00`), 1), "yyyy-MM"))
+                        }
+                        data-testid="button-availability-prev-month"
+                        aria-label="Previous month"
+                      >
+                        <ChevronLeft className="w-3.5 h-3.5" />
+                      </Button>
+                      <span className="text-xs font-medium w-24 text-center" data-testid="text-availability-month">
+                        {format(new Date(`${availabilityMonth}-01T00:00:00`), "MMMM yyyy")}
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6"
+                        onClick={() =>
+                          setAvailabilityMonth((m) => format(addMonths(new Date(`${m}-01T00:00:00`), 1), "yyyy-MM"))
+                        }
+                        data-testid="button-availability-next-month"
+                        aria-label="Next month"
+                      >
+                        <ChevronRight className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
                   </div>
 
+                  {availabilityLoading ? (
+                    <Skeleton className="h-16 w-full" />
+                  ) : upcomingAvailability.length > 0 ? (
+                    <div className="space-y-1.5 max-h-56 overflow-y-auto">
+                      {upcomingAvailability.map((day) => {
+                        const fullyBooked = day.status === "fully_booked" || day.remaining <= 0;
+                        const isSelected = selectedSlot?.id === day.id;
+                        return (
+                          <button
+                            type="button"
+                            key={`${day.date}-${day.startTime}`}
+                            // C3: an open slot is selectable — the pick rides add-to-cart as slotId
+                            // and checkout claims it atomically ("this slot just booked" on a race).
+                            disabled={fullyBooked}
+                            onClick={() => setSelectedSlot(isSelected ? null : day)}
+                            className={`flex w-full items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-xs text-left transition-colors ${
+                              fullyBooked
+                                ? "opacity-60 cursor-not-allowed"
+                                : isSelected
+                                  ? "border-primary bg-primary/5"
+                                  : "hover:bg-muted/50"
+                            }`}
+                            data-testid={`availability-day-${day.date}`}
+                          >
+                            <span className="font-medium">
+                              {format(new Date(`${day.date}T00:00:00`), "EEE, MMM d")}
+                              {day.startTime && (
+                                <span className="text-muted-foreground font-normal ml-1.5">
+                                  {day.startTime}
+                                  {day.endTime ? `–${day.endTime}` : ""}
+                                </span>
+                              )}
+                            </span>
+                            <span className="flex items-center gap-1.5">
+                              {isSelected && <Badge className="text-[10px] px-1.5 py-0" data-testid={`badge-slot-selected-${day.date}`}>Selected</Badge>}
+                              <Badge variant={fullyBooked ? "outline" : "secondary"} className="text-[10px] px-1.5 py-0">
+                                {fullyBooked ? "Fully booked" : `${day.remaining} spot${day.remaining === 1 ? "" : "s"} open`}
+                              </Badge>
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-muted-foreground text-xs" data-testid="text-no-availability">
+                      No availability published yet for this month. Contact the provider to check dates.
+                    </p>
+                  )}
+                </div>
+
+                {/* Preferred date/time — optional fallback for services without a published
+                    slot the traveler wants. Carried into the cart + booking. */}
+                <div className="grid grid-cols-2 gap-2 mb-3">
+                  <div className="col-span-2 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                    <Calendar className="w-3.5 h-3.5" />
+                    Or request a date & time <span className="font-normal">(optional)</span>
+                  </div>
+                  <input
+                    type="date"
+                    min={todayStr}
+                    value={bookingDate}
+                    onChange={(e) => setBookingDate(e.target.value)}
+                    className="rounded-md border bg-background px-3 py-2 text-sm"
+                    data-testid="input-booking-date"
+                    aria-label="Preferred date"
+                  />
+                  <input
+                    type="time"
+                    value={bookingTime}
+                    onChange={(e) => setBookingTime(e.target.value)}
+                    disabled={!bookingDate}
+                    className="rounded-md border bg-background px-3 py-2 text-sm disabled:opacity-50"
+                    data-testid="input-booking-time"
+                    aria-label="Preferred time"
+                  />
+                </div>
+
+                <div className="space-y-3">
                   <Button
                     className="w-full"
                     onClick={() => {
@@ -706,7 +804,7 @@ export default function ServiceDetailPage() {
                     </p>
                   ) : (
                     <p className="text-sm text-muted-foreground" data-testid="text-cancellation-policy-unset">
-                      Not specified — contact the provider about cancellation before booking.
+                      Contact the provider about cancellations before booking.
                     </p>
                   )}
                   {service.cancellationPolicy && (

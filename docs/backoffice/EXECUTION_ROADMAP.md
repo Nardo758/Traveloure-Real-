@@ -160,3 +160,29 @@ decision-maker's diff read; nothing executes past a ⛔ until its decision is re
 PCI posture: cards live ONLY in Stripe's vault; this DB stores the opaque customer id. One-click
 guardrails: saving is opt-in at the sheet, the price is always on the button, every charge gets a
 receipt, and nothing charges without a click.
+
+## Loop-Closing Program (ratified Jul 27, 2026: "merge 311 update the optimization path then start the work")
+
+Governing spec: docs/backoffice/mockups/mockup-unified-workspace.html (v9 — one door → six sources →
+builder → 4 channels (Client/Store/Social/Direct incl. WhatsApp + booking links) → Today back office →
+8-module console → closed loop). Amended EXPERT_CONSOLE_FIX_DISPATCH applies with the four session
+amendments (seller-side-first sunset; prod-count gate; rebase on new launchpad; shared/roles lists).
+
+**Token rules (binding for this program):** agent briefs quote the two console audits' file:line facts
+verbatim — agents EDIT, never explore. Big files opened once (workspace.tsx→A2, ServiceForm.tsx→A4).
+Deletions first (A1, B1). Sonnet/low-effort for mechanical phases; Fable keeps migrations, money hunks,
+diff review, gates, commits. One behavioral-verify server boot per PR. Two PR cycles total. Spec frozen.
+
+### PR-A — Workstation lane
+- **A0** CLAUDE.md decisions (templates sunset, build-first, provider linkage GO, two palettes, Yuki landing) — Fable
+- **A1** Templates SELLER-side sunset + DMO misroute → store lane (owner reads + consumer surface + purchases INTACT) — agent
+- **A2** workspace.tsx single pass: ExpertLayout wrap · Add panel (6 sources) · Distribute panel (4 channels) · smart landing — agent + review
+- **A3** promo-text service extraction + share-card build layout + Content Studio redirect — agent
+- **A4** Provider offering linkage: migration (additive FK, 057 pattern) — Fable; ServiceForm single pass (offering-first provider create, category derived, expert tier required, tier picker partitioned, aff_*/legacy filtered) — agent
+- **A5** F8 Kyoto constant + CHECK migration + preflight manifest + event-planner explicit gate — Fable
+- **A6** /services/:id rebuilt to mockup-offering-page.html (the Yuki landing; one page for marketplace + all shared/booking links) — agent (mockup file IS the spec)
+
+### PR-B — Back-office lane
+- **B0** shared primitives (PageHeader/StatusBadge/EmptyState/StatCard) from the design-audit variant inventory
+- **B1** Money (one ledger endpoint; delete 4-tab duplication) ∥ **B2** Inbox (aggregate of 5 action endpoints) — parallel agents, disjoint files
+- **B3** Catalog (My Offerings promoted + availability) → **B4** Performance (acquisition_ref + short-link attribution read — the loop-closer) → **B5** Today + retire Dashboard → **B6** Settings/Profile merge with persisting saves
