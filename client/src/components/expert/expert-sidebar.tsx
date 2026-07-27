@@ -47,7 +47,7 @@ function buildMenuGroups(expertType?: string | null) {
         // /api/expert/assigned-trips with no data of its own; the grouped-by-client view now lives
         // ON Assigned Trips. "Messages" points straight at /chat (the /expert/messages routes were
         // already bare redirects). "Verification & Payouts" and "Booking Partners" removed below.
-        { title: "Dashboard", href: "/expert/dashboard", icon: Home },
+        { title: "Today", href: "/expert/today", icon: Home },
         { title: "Inbox", href: "/expert/inbox", icon: Inbox },
         { title: isEventPlanner ? "Events" : "Bookings", href: "/expert/bookings", icon: Calendar },
         { title: "Assigned Trips", href: "/expert/assigned-trips", icon: MapPin },
@@ -144,7 +144,7 @@ export function ExpertSidebar() {
                 {group.items.map((item) => {
                   const isActive =
                     location === item.href ||
-                    (item.href !== "/expert/dashboard" && location.startsWith(item.href));
+                    (item.href !== "/expert/today" && location.startsWith(item.href));
 
                   return (
                     <SidebarMenuItem key={item.title}>
