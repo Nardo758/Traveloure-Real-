@@ -18,6 +18,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ExpertLayout } from "@/components/expert/expert-layout";
 import { Loader2, Map as MapIcon, Plus } from "lucide-react";
 import type { ReadyMadeListing } from "@/components/expert/ready-made-listing-panel";
+import { STORE_GATE_MESSAGE } from "@shared/launch-markets";
 import { planTypeLabel } from "@shared/ready-made-plan-types";
 
 // Console palette (two-palettes decision — warm back-office greys, see index.css .console-scope).
@@ -103,6 +104,20 @@ export default function ExpertReadyMade() {
           </button>
         )}
       </div>
+
+      {/* A5/F8: explicit gate, not a silently missing button — the server 403s with the same
+          message (shared/launch-markets.ts STORE_GATE_MESSAGE). */}
+      {isEventPlanner && (
+        <div
+          data-testid="notice-store-gate"
+          style={{
+            marginTop: 14, padding: "10px 14px", borderRadius: 10, background: G[100],
+            border: `1px solid ${G[200]}`, fontSize: 13, color: G[600], lineHeight: 1.5,
+          }}
+        >
+          {STORE_GATE_MESSAGE}
+        </div>
+      )}
 
       <div style={{ marginTop: 26 }}>
         {isLoading ? (

@@ -20,6 +20,7 @@ import { storage } from "../storage";
 import { trips, readyMadeTrips, readyMadePurchases, tripExpertAdvisors, itineraryItems, users } from "@shared/schema";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { READY_MADE_PLAN_TYPE_KEYS, type ReadyMadePlanTypeKey } from "@shared/ready-made-plan-types";
+import { LAUNCH_MARKETS, isLaunchMarket, STORE_GATE_MESSAGE } from "@shared/launch-markets";
 import { getAuthoredTrip } from "../utils/trip-authorship";
 import { holdWindowDays } from "../config/earnings-hold.config";
 import { getBand } from "../services/commission";
@@ -42,7 +43,10 @@ function isAuthenticated(req: any, res: any, next: any) {
 
 const createReadyMadeSchema = z.object({
   title: z.string().trim().min(1).max(200).default("Untitled ready-made trip"),
-  market: z.string().trim().min(1).max(100).default("Kyoto"), // §12: Kyoto-only launch (server default, not client-trusted scope)
+  // §12/F8: the launch scope is VALIDATED, not just a default — a non-launch market is refused
+  // here and by the migration-149 DB CHECK. Set lives in shared/launch-markets.ts.
+  market: z.string().trim().min(1).max(100).default(LAUNCH_MARKETS[0])
+    .refine(isLaunchMarket, { message: STORE_GATE_MESSAGE }),
   durationDays: z.number().int().min(1).max(30).default(3),
 });
 
@@ -54,7 +58,7 @@ router.post("/api/expert/ready-made", isAuthenticated, async (req, res) => {
     // D3 role gate — DB lookup, not the session role string.
     const user = await storage.getUser(userId);
     if (!user || !AUTHOR_ROLES.has(user.role ?? "")) {
-      return res.status(403).json({ message: "Ready-made authoring requires a local expert or trip advisor role" });
+      return res.status(403).json({ message: STORE_GATE_MESSAGE });
     }
 
     const parsed = createReadyMadeSchema.safeParse(req.body ?? {});
@@ -197,7 +201,8 @@ const heroMetaSchema = z.object({
 const patchListingSchema = z
   .object({
     title: z.string().trim().min(1).max(200),
-    market: z.string().trim().min(1).max(100),
+    market: z.string().trim().min(1).max(100)
+      .refine(isLaunchMarket, { message: STORE_GATE_MESSAGE }), // §12/F8 launch scope
     durationDays: z.number().int().min(1).max(30),
     // Closed vocabulary — the "Type of Plan" line of the store's quality structure.
     planType: z.enum(READY_MADE_PLAN_TYPE_KEYS as [ReadyMadePlanTypeKey, ...ReadyMadePlanTypeKey[]]).nullable(),
@@ -326,6 +331,10 @@ router.post("/api/expert/ready-made/:id/submit", isAuthenticated, async (req, re
     }
     if (listing.priceCents === null || listing.priceCents === undefined) {
       missing.push({ requirement: "price", message: "Set a price" });
+    }
+    // §12/F8: a grandfathered non-launch-market listing can't enter the store queue.
+    if (!isLaunchMarket(listing.market)) {
+      missing.push({ requirement: "market", message: STORE_GATE_MESSAGE });
     }
 
     // No empty days: the buyer is purchasing a complete plan, not a scaffold.
@@ -525,7 +534,7 @@ router.get("/api/expert/ready-made/hero-search", isAuthenticated, async (req, re
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
     const user = await storage.getUser(userId);
     if (!user || !AUTHOR_ROLES.has(user.role ?? "")) {
-      return res.status(403).json({ message: "Ready-made authoring requires a local expert or trip advisor role" });
+      return res.status(403).json({ message: STORE_GATE_MESSAGE });
     }
 
     if (!unsplashService.isReady()) {

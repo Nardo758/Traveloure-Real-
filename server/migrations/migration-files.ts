@@ -566,4 +566,9 @@ export const MIGRATION_FILES = [
   // migration-057 mirror. Additive nullable, ON DELETE SET NULL, no CHECK/backfill → no push trap.
   // Closes the earn-trace "creatable but unlinked" gap for the ~96 in-person /earn offerings.
   "148_provider_service_offering_type_fk.sql",
+  // 149: F8 launch-market CHECK on ready_made_trips.market (§12 one-wedge-Kyoto) — the write
+  // paths validate against shared/launch-markets.ts; this enforces it at the DB. Guarded
+  // (refuses on non-Kyoto rows rather than half-applying), idempotent. CHECK migration →
+  // column added to the preflight-prod-constraints.cjs manifest (the publish-trap rule).
+  "149_ready_made_market_check.sql",
 ] as const;
