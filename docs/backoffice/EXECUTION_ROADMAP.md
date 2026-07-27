@@ -186,3 +186,53 @@ diff review, gates, commits. One behavioral-verify server boot per PR. Two PR cy
 - **B0** shared primitives (PageHeader/StatusBadge/EmptyState/StatCard) from the design-audit variant inventory
 - **B1** Money (one ledger endpoint; delete 4-tab duplication) ∥ **B2** Inbox (aggregate of 5 action endpoints) — parallel agents, disjoint files
 - **B3** Catalog (My Offerings promoted + availability) → **B4** Performance (acquisition_ref + short-link attribution read — the loop-closer) → **B5** Today + retire Dashboard → **B6** Settings/Profile merge with persisting saves
+
+## Workstation Conformance + Distribution Formats (mapped Jul 27, 2026; token-optimized)
+
+Inputs (already paid for — agents re-explore NOTHING): the 23-row spec-vs-impl divergence table
+(6×P1/12×P2/5×P3, file:line cited, incl. the exhaustive raw-hex list in workspace.tsx) and
+docs/backoffice/DISTRIBUTION_FORMATS.md (channel × type × market, expert-notes contract).
+Governing specs frozen: mockup-unified-workspace.html (v9) + mockup-destination-formats.html (v2).
+
+**The token-shaping decision: F1 is ABSORBED into the W rewrite.** W3/W4 and F1 both rewrite the
+builder render path; done sequentially the same file gets two full write+review cycles. Instead the
+single workspace.tsx rewrite is born format-aware — the canvas renders through
+`resolveFormat("client", type, market)` with only `client:default` in the registry. After PR-W,
+**no format phase ever edits workspace.tsx again**: F2–F4 add registry entries + section components
++ store/social/direct consumers only.
+
+**Token rules (binding):** briefs quote the divergence table's file:line facts verbatim; workspace.tsx
+opened by exactly ONE agent (W-2); PlanCard extraction rides the same pass; Sonnet/low-effort for the
+mechanical hex→token sweep portions; Fable keeps the ship-to-store server hunks (money-adjacent:
+listing creation), diff review, gates, commits. One behavioral boot per PR. CLAUDE.md updated once
+per PR, not per phase.
+
+### PR-W — Workstation conformance + format registry (workspace.tsx written ONCE)
+- **W-1** Entry model server half — Fable (small): `POST /api/expert/ready-made/from-trip/:tripId`
+  (ship-to-store: creates the `ready_made_trips` row FROM an existing trip, owner-gated, idempotent
+  per trip — §15 posture); retire the born-for-sale transaction (create becomes trip-only); keep old
+  route tombstoned 410. No migration (columns exist; `sourceTripId` already on the table).
+- **W-2** THE single workspace.tsx rewrite — agent (L, the big spend) + Fable review: two-column
+  layout, one header (build title + distribution chips), 3-tab panel (Add · AI Gaps · Distribute),
+  persistent dist-strip, de-dupe Schedule Check/Earnings (one home each), Build Notes into the panel,
+  day-aware add rows, all hex → `.console-scope` tokens + shared primitives (kills both #FF385C
+  gradients), single "New build" entry + unified builds list with distribution badges, Distribute
+  Store card gains Ship to store (consumes W-1), channels independent, **canvas renders via
+  `resolveFormat("client", …)`** (F1 registry file created here with `client:default` = extracted
+  current PlanCard structure; expert-notes slots per the contract).
+- **W-3** Add panel data — agent (S): persist the platform-service reference on add (stop dropping
+  bookable inventory), provider-services-first search ordering. Server + one mutation.
+- Gates + one boot + CLAUDE.md §17 update — Fable.
+
+### PR-F — the formats become additive (workspace.tsx untouched from here)
+- **F2** `client:kyoto-cultural` + `client:kyoto-wedding`/`client:event` — agent (M): registry
+  entries + section components (neighborhood grouping off `city_neighborhoods`; venue-timeline).
+- **F3** Social kit — agent (M): story-view renderer + Distribute Social card consumes it; captions/
+  share-image via the EXISTING promo-text service (no parallel engine).
+- **F4** `store:*` layouts on the Ready Made detail + preview-as-buyer; `direct:*` OG polish — agent
+  (M): different files entirely (ready-made detail page, storefront OG).
+- Gates + one boot — Fable.
+
+Sequence: merge #315 → PR-W → PR-F. Relative spend: W-2 is the one large item (unavoidable — the
+page must be rewritten to spec once); everything else is S/M because discovery is already done and
+no file is written twice.

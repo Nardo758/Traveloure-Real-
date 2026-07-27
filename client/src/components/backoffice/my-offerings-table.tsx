@@ -55,7 +55,9 @@ export function MyOfferingsTable() {
 
   const services = useQuery<any[]>({ queryKey: ["/api/expert/services"] });
   const templates = useQuery<any[]>({ queryKey: ["/api/expert/templates"] });
-  const readyMade = useQuery<any[]>({ queryKey: ["/api/expert/ready-made/mine"] });
+  // /mine returns { listings: [...] } (ready-made.routes.ts), NOT a bare array — audit
+  // finding: the old Array.isArray guard silently emptied this lane forever.
+  const readyMade = useQuery<{ listings: any[] }>({ queryKey: ["/api/expert/ready-made/mine"] });
   // Backoffice C1: soonest future, not-fully-booked vendor_availability_slots row per
   // service id (service lane only — templates/Ready Made Trips have no slots).
   const nextAvailability = useQuery<Record<string, string>>({ queryKey: ["/api/me/next-availability"] });
@@ -93,7 +95,7 @@ export function MyOfferingsTable() {
         nextAvailability: null,
       };
     }),
-    ...(Array.isArray(readyMade.data) ? readyMade.data : []).map((r: any): OfferingRow => {
+    ...(readyMade.data?.listings ?? []).map((r: any): OfferingRow => {
       const approval = r.status ?? "unknown";
       return {
         id: r.id,

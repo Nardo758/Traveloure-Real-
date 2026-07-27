@@ -206,7 +206,9 @@ export default function SharePromote() {
     queryKey: ["/api/expert/templates"],
     enabled: !isProvider,
   });
-  const readyMadeQuery = useQuery<any[]>({
+  // /mine returns { listings: [...] } (ready-made.routes.ts) — audit finding: the old
+  // Array.isArray guard silently emptied the Ready Made lane here forever.
+  const readyMadeQuery = useQuery<{ listings: any[] }>({
     queryKey: ["/api/expert/ready-made/mine"],
     enabled: !isProvider,
   });
@@ -249,7 +251,7 @@ export default function SharePromote() {
           });
         }
       }
-      for (const r of Array.isArray(readyMadeQuery.data) ? readyMadeQuery.data : []) {
+      for (const r of readyMadeQuery.data?.listings ?? []) {
         if (r.status === "approved") {
           rows.push({
             id: r.id,

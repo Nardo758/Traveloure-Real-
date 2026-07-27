@@ -13,7 +13,7 @@ import {
   trips,
   readyMadeTrips,
 } from "@shared/schema";
-import { eq, and, or, ilike, desc, asc, sql, count, gte, lte, isNull, not, inArray } from "drizzle-orm";
+import { eq, ne, and, or, ilike, desc, asc, sql, count, gte, lte, isNull, not, inArray } from "drizzle-orm";
 import { asyncHandler, ForbiddenError, ValidationError, NotFoundError } from "../infrastructure";
 import { isExpertRole } from "@shared/roles";
 import { LAUNCH_MARKETS, isLaunchMarket, STORE_GATE_MESSAGE } from "@shared/launch-markets";
@@ -186,7 +186,10 @@ router.get(
     const id = req.params.id;
     const item = await storage.getDmoRawContentById(id);
 
-    if (!item) {
+    // Audit A-3 sibling: the detail read carries the same §12 intake gate as the library
+    // list — content the admin hasn't approved into the library (or has rejected) is not
+    // retrievable by raw id.
+    if (!item || item.expertWorkspaceVisible !== true || item.status === "rejected") {
       throw new NotFoundError("Content not found");
     }
 
@@ -282,11 +285,17 @@ router.post(
     });
     const { contentIds, title } = schema.parse(req.body);
 
-    // Load the selected DMO rows (any expert may build from the shared library).
+    // Load the selected DMO rows. Audit A-3: gate on the §12 admin INTAKE decision — only
+    // content approved into the expert library (expert_workspace_visible) and not rejected can
+    // seed a store draft; a raw UUID must not bypass the gate the library list enforces.
     const rows = await db
       .select()
       .from(dmoRawContent)
-      .where(inArray(dmoRawContent.id, contentIds));
+      .where(and(
+        inArray(dmoRawContent.id, contentIds),
+        eq(dmoRawContent.expertWorkspaceVisible, true),
+        ne(dmoRawContent.status, "rejected"),
+      ));
     if (rows.length === 0) {
       throw new ValidationError("None of the selected content could be found.");
     }

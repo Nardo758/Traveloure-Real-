@@ -536,11 +536,6 @@ export default function ExpertWorkspace() {
     enabled: !!tripId && !isAuthoring,
   });
 
-  const { data: providers } = useQuery<any[]>({
-    queryKey: ["/api/provider/services", { status: "active" }],
-    queryFn: () => fetch("/api/provider/services?status=active").then(r => r.json()),
-  });
-
   const { data: expertNotesData } = useQuery<{ expertNotes: string }>({
     queryKey: [`/api/trips/${tripId}/expert-notes`],
     enabled: !!tripId,
@@ -715,7 +710,8 @@ export default function ExpertWorkspace() {
         itemType: catToType[result.category] || "activity",
         dayNumber: addToDay,
         locationName: result.address || result.name,
-        estimatedCost: result.priceLevel ? String(result.priceLevel * 30) : undefined,
+        // Audit A-4 (§13): Google's priceLevel is a 0-4 band, not a dollar amount — never
+        // convert it into an invented cost figure on the itinerary.
         notes: result.mapsUrl ? `Google Maps: ${result.mapsUrl}` : undefined,
       };
       const res = await apiRequest("POST", `/api/trips/${tripId}/itinerary-items`, body);
@@ -1391,6 +1387,7 @@ export default function ExpertWorkspace() {
                     }}
                     role="expert"
                     stage="full"
+                    embedded
                   />
                 )}
 
@@ -2107,41 +2104,11 @@ export default function ExpertWorkspace() {
                   </>
                 )}
 
-                {/* Platform Service Providers (moved from the deleted Providers tab) */}
-                <div style={{ marginTop: 14, borderTop: `1px solid ${G[100]}`, paddingTop: 10 }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <div style={{ width: 20, height: 20, borderRadius: 6, background: P, display: "flex", alignItems: "center", justifyContent: "center" }}><User style={{ width: 11, height: 11, color: "white" }} /></div>
-                      <span style={{ fontSize: 13, fontWeight: 700, color: G[900] }}>Platform Service Providers</span>
-                    </div>
-                    {trip?.destination && <Bdg c="primary">{trip.destination}</Bdg>}
-                  </div>
-                  <p style={{ fontSize: 11, color: G[500], marginBottom: 10 }}>Traveloure-verified providers you can book directly for this client.</p>
-                  {providers && providers.length > 0 ? providers.slice(0, 6).map((p: any, i: number) => (
-                    <div key={p.id || i} data-testid={`card-sp-${p.id}`} style={{ display: "flex", alignItems: "flex-start", gap: 9, padding: "10px 11px", border: `1px solid ${G[100]}`, borderRadius: 10, marginBottom: 7, background: "white", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
-                      <div style={{ width: 38, height: 38, borderRadius: "50%", background: `linear-gradient(135deg,${P}30,${P}60)`, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>🏢</div>
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 1 }}>
-                          <span style={{ fontSize: 13, fontWeight: 700, color: G[900] }}>{p.serviceName}</span>
-                          {p.status === "active" && <div title="Active" style={{ width: 14, height: 14, borderRadius: "50%", background: "#2563EB", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><CheckCircle style={{ width: 9, height: 9, color: "white" }} /></div>}
-                        </div>
-                        <div style={{ fontSize: 12, fontWeight: 600, color: G[700], marginBottom: 1 }}>{p.serviceType || p.category || "Service"}</div>
-                        {p.location && <div style={{ fontSize: 11, color: G[400], marginBottom: 4 }}>{p.location}</div>}
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          {p.price && <span style={{ fontSize: 11, color: G[600], fontWeight: 600 }}>${p.price}</span>}
-                          <button onClick={() => setBookingBrief({ provider: p.serviceName, bookingUrl: p.websiteUrl || p.bookingUrl })} data-testid={`button-book-provider-${p.id}`} style={{ padding: "4px 9px", borderRadius: 7, fontSize: 11, fontWeight: 600, background: P, color: "white", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
-                            <CheckCircle style={{ width: 10, height: 10 }} /> Book
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  )) : (
-                    <div style={{ textAlign: "center", padding: "20px 0", color: G[400], fontSize: 13 }}>
-                      <Users style={{ width: 32, height: 32, color: G[300], margin: "0 auto 8px" }} />
-                      No platform providers found yet.
-                    </div>
-                  )}
-                </div>
+                {/* Audit A-2: the "Platform Service Providers" strip (carried over from the deleted
+                    Providers tab) queried /api/provider/services — an endpoint that 403s every
+                    expert AND is self-scoped to the caller's own listings — so it could never show
+                    anything but its empty state. Deleted rather than left as dead chrome; the
+                    search results above are this pill's real platform-services browse. */}
               </div>
 
               {/* Footer */}

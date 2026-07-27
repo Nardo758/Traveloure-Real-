@@ -161,6 +161,9 @@ const settingsPatchSchema = z.object({
   }).strict().optional(),
   language: z.string().trim().max(20).optional(),
   timezone: z.string().trim().max(30).optional(),
+  // Audit B-5: the Settings leaderboard toggle had a Save with no handler and no store —
+  // now a real persisted preference (display opt-in only, no money/ranking semantics here).
+  showOnLeaderboard: z.boolean().optional(),
 }).strict();
 
 router.get("/api/me/preferences", isAuthenticated, async (req: any, res) => {
@@ -205,6 +208,7 @@ router.patch("/api/me/preferences", isAuthenticated, async (req: any, res) => {
       ...currentSettings,
       ...(patch.language !== undefined ? { language: patch.language } : {}),
       ...(patch.timezone !== undefined ? { timezone: patch.timezone } : {}),
+      ...(patch.showOnLeaderboard !== undefined ? { showOnLeaderboard: patch.showOnLeaderboard } : {}),
       ...(patch.notifications
         ? { notifications: { ...(currentSettings.notifications ?? {}), ...patch.notifications } }
         : {}),

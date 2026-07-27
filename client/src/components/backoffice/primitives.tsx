@@ -82,6 +82,13 @@ export const DEFAULT_STATUS_MAP: Record<string, StatusBadgeEntry> = {
   reversed: { label: "Reversed", className: "bg-red-100 text-red-700 border-red-200" },
   published: { label: "Published", className: "bg-green-100 text-green-700 border-green-200" },
   scheduled: { label: "Scheduled", className: "bg-blue-100 text-blue-700 border-blue-200" },
+  // Statuses the Inbox/Today consumers demonstrably render (audit B-7): service_bookings
+  // 'disputed' (bookings.ts dispute write), affiliate-booking 'assigned'/'failed', and the
+  // coordination_states intake state.
+  disputed: { label: "Disputed", className: "bg-red-100 text-red-700 border-red-200" },
+  assigned: { label: "Assigned", className: "bg-blue-100 text-blue-700 border-blue-200" },
+  failed: { label: "Failed", className: "bg-red-100 text-red-700 border-red-200" },
+  intake: { label: "Intake", className: "bg-yellow-100 text-yellow-700 border-yellow-200" },
 };
 
 export interface StatusBadgeProps {
