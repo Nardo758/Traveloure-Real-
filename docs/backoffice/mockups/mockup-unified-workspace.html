@@ -126,6 +126,17 @@
   .add-btn { font-size: 11.5px; font-weight: 650; color: var(--mid); border: 1px dashed var(--line); border-radius: 8px; padding: 5px 10px; background: transparent; }
   .add-btn.hot { color: var(--brand); border-color: var(--brand); border-style: solid; background: var(--brand-soft); }
 
+  /* add-panel source pills + browsable rows */
+  .pills { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+  .pill { font-size: 11.5px; font-weight: 700; border-radius: 999px; padding: 5px 12px; border: 1px solid var(--line); color: var(--mid); background: var(--card); }
+  .pill.on { color: #fff; background: var(--brand); border-color: var(--brand); }
+  .srch { font-size: 12px; color: var(--mid); background: var(--ground); border: 1px solid var(--line); border-radius: 8px; padding: 7px 12px; margin-bottom: 10px; }
+  .src-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; margin-bottom: 7px; }
+  .src-row .t { font-size: 12.5px; font-weight: 650; }
+  .src-row .s { font-size: 11px; color: var(--mid); }
+  .src-add { font-size: 11px; font-weight: 800; color: var(--brand); border: 1px solid var(--brand); background: var(--brand-soft); border-radius: 8px; padding: 4px 10px; white-space: nowrap; }
+  .dist-strip { display: flex; gap: 6px; align-items: center; border-top: 1px solid var(--line); margin-top: 12px; padding-top: 12px; font-size: 11.5px; color: var(--mid); flex-wrap: wrap; }
+
   .panel { padding: 14px 16px; }
   .tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); margin: -14px -16px 14px; padding: 0 10px; }
   .tab { font-size: 12px; font-weight: 650; color: var(--mid); padding: 10px 10px 8px; border-bottom: 2px solid transparent; }
@@ -227,8 +238,8 @@
 
   <!-- ── Screen 2 ────────────────────────────────────────────── -->
   <section>
-    <div class="sec-head"><span class="sec-num">Screen 2</span><h2>The builder with the Distribute panel</h2></div>
-    <p class="sec-sub">Build on the left; ship on the right. Three channels on one build, each with its own state — none of them chosen at creation time.</p>
+    <div class="sec-head"><span class="sec-num">Screen 2</span><h2>The builder — Add panel open</h2></div>
+    <p class="sec-sub">Build on the left; sources on the right, content visible below them. No "click Add, then navigate somewhere" — the expert browses DMO places, their own services, and custom items in place, and every row is one click into the itinerary. Distribute (v2) is the adjacent tab, unchanged.</p>
     <div class="frame-grid">
       <div class="frame">
         <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="urlbar">traveloure.com/expert/workspace/bld-8f2c…</span></div>
@@ -246,46 +257,50 @@
             <div class="item"><time>18:00</time><span class="n">Gion evening walk — geiko district etiquette</span><span class="c">—</span></div>
             <div class="day">Day 2 — Arashiyama</div>
             <div class="item"><time>07:45</time><span class="n">Bamboo grove, north gate entry</span><span class="c">—</span></div>
-            <div class="add-row">
-              <span class="add-btn hot">+ Add item</span>
-              <span class="add-btn">Add from DMO Library</span>
-              <span class="add-btn">Add service</span>
-            </div>
           </div>
           <div class="panel">
             <div class="tabs">
-              <span class="tab">AI Gaps</span><span class="tab">Browse</span><span class="tab on">Distribute</span>
+              <span class="tab on">Add</span><span class="tab">AI Gaps</span><span class="tab">Distribute</span>
             </div>
 
-            <div class="chan">
-              <div class="chan-head"><h4>→ Client</h4><span class="chip mut">not attached</span></div>
-              <p>Deliver this build into an assigned traveler's trip.</p>
-              <div class="mini-actions"><span class="mini-btn">Attach to assignment…</span></div>
+            <div class="pills">
+              <span class="pill on">DMO Library</span>
+              <span class="pill">My services</span>
+              <span class="pill">Custom item</span>
+            </div>
+            <div class="srch">Search Kyoto places…</div>
+
+            <div class="src-row">
+              <span><span class="t">Fushimi Inari — dawn route</span><br><span class="s">Shrine · south Kyoto · admin-approved</span></span>
+              <span class="src-add">+ Day 2</span>
+            </div>
+            <div class="src-row">
+              <span><span class="t">Nishiki Market — six stalls worth the queue</span><br><span class="s">Food · central · admin-approved</span></span>
+              <span class="src-add">+ Day 1</span>
+            </div>
+            <div class="src-row">
+              <span><span class="t">Camellia tea ceremony, Ninenzaka</span><br><span class="s">Experience · Higashiyama · admin-approved</span></span>
+              <span class="src-add">+ Day 1</span>
+            </div>
+            <div class="src-row">
+              <span><span class="t">Okochi Sanso Villa gardens</span><br><span class="s">Garden · Arashiyama · admin-approved</span></span>
+              <span class="src-add">+ Day 2</span>
             </div>
 
-            <div class="chan">
-              <div class="chan-head"><h4>→ Store</h4><span class="chip ok">Approved · ¥48,000</span></div>
-              <p>Listed in Ready Made Trips. Price or description changes re-enter review.</p>
-              <div class="mini-actions"><span class="mini-btn">Edit listing</span><span class="mini-btn">View in store</span></div>
-            </div>
-
-            <div class="chan">
-              <div class="chan-head"><h4>→ Social</h4><span class="chip mut">2 posts</span></div>
-              <div class="sharecard">
-                <div class="sc-top"><b>Kyoto Insider Week</b><span>5 days · by Kenji · Traveloure</span></div>
-                <div class="sc-bot"><span>traveloure.com/p/kenji</span><span>Ready Made Trips</span></div>
-              </div>
-              <div class="caption">Five days in Kyoto the guidebooks skip — dawn temples, a tea master in Ninenzaka, and the etiquette that opens Gion's doors. Full trip on my Traveloure page.</div>
-              <div class="mini-actions"><span class="mini-btn hot">Generate share card</span><span class="mini-btn">Caption + hashtags</span><span class="mini-btn">Post to Instagram</span></div>
+            <div class="dist-strip">
+              <span>Distribute:</span>
+              <span class="chip ok">Store — approved</span>
+              <span class="chip mut">Social — 2 posts</span>
+              <span class="chip mut">Client — not attached</span>
             </div>
           </div>
         </div>
       </div>
       <div class="notes">
-        <div class="note"><b>Channels, not modes</b><p>v1's "store listing vs client trip" mode split becomes three channel cards with independent state on one build. The listing wraps the build when you ship to Store — not before.</p></div>
-        <div class="note"><b>Share card = the one PNG service</b><p>Social channel calls the existing share-image service with this build's real data — a build layout parameter, never a second renderer.</p></div>
-        <div class="note"><b>Caption AI moves server-side</b><p>One shared promo-text service (the provider engine imports it later). The current Content Studio saves nothing — this replaces it, attached to real content.</p></div>
-        <div class="note"><b>Client channel, honest v1</b><p>A build opened FROM an assignment is already attached. Attaching a free-standing draft to an assignment (copy items in) is the one new mechanism — scoped as its own step.</p></div>
+        <div class="note"><b>Sources visible, content below</b><p>The add actions live on the right as source pills — DMO Library, your own services, custom items — with the browsable content directly under them. Adding never leaves the builder.</p></div>
+        <div class="note"><b>One click, day-aware</b><p>Each row's add button targets the day in focus on the canvas. The DMO picker modal and the old Browse tab merge into this one panel — an evolution of what exists, not a new build.</p></div>
+        <div class="note"><b>Distribute is the adjacent tab</b><p>The v2 channel cards (Client / Store / Social with independent state) are unchanged — the strip below the sources shows their live states at a glance.</p></div>
+        <div class="note"><b>Share card + caption still per v2</b><p>One PNG service with a build layout parameter; caption AI server-side in the shared promo-text service. Nothing about the Distribute design changes in v3.</p></div>
       </div>
     </div>
   </section>
