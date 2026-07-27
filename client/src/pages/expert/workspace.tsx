@@ -373,6 +373,23 @@ export default function ExpertWorkspace() {
   });
   const isEventPlanner = expertRoleData?.role === "event_planner";
 
+  // Workspace-home "New store trip": same create the Store Listings page uses (server owns the
+  // placeholder defaults + Kyoto scope) — the redirect lands directly in the authoring workstation.
+  const startStoreBuild = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/expert/ready-made", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({}),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.message ?? "Could not start a new ready-made trip");
+      return body as { tripId: string; redirect: string };
+    },
+    onSuccess: (body) => setLocation(body.redirect),
+  });
+
   const assignedTrip = assignedTrips?.find(t => t.trip_id === tripId);
   // Authoring trips carry userId=NULL and no traveler, so they cannot come from assigned-trips.
   // Shape the context's trip row into the same view model the whole page already reads.
@@ -739,15 +756,13 @@ export default function ExpertWorkspace() {
 
   const isLoading = ctxLoading || (!isAuthoring && (tripsLoading || assignmentLoading));
 
-  // No trip open → a real launchpad (not a dead-end): open a client trip to plan, or start creating.
+  // No trip open → land IN the workstation, action-first (decision-maker directive, Jul 27):
+  // pick a client trip inline and open it in one click, or start a store build that drops
+  // straight into the authoring workstation — never a page of links to other pages.
   if (!tripId) {
-    const homeCards: Array<{ title: string; desc: string; href: string; icon: any; primary?: boolean }> = [
-      { title: "Assigned Trips", desc: "Open a client trip to build its itinerary", href: "/expert/assigned-trips", icon: MapPin, primary: true },
-      ...(isEventPlanner ? [] : [{ title: "Store Listings", desc: "Build trips & plans to sell in the Ready Made Trips store", href: "/expert/ready-made", icon: Store }]),
-      { title: "Itinerary Templates", desc: "Manage your existing store itineraries", href: "/expert/templates", icon: FileText },
-      { title: "DMO Library", desc: "Research Kyoto content to build from", href: "/expert/dmo-library", icon: Search },
-      { title: "Content Studio", desc: "Create promo & social content", href: "/expert/content-studio", icon: Sparkles },
-    ];
+    const recentAssigned = [...(assignedTrips ?? [])]
+      .sort((a, b) => (b.assigned_at ?? "").localeCompare(a.assigned_at ?? ""))
+      .slice(0, 6);
     return (
       <main style={{ padding: "40px 24px", maxWidth: 760, margin: "0 auto" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
@@ -755,26 +770,102 @@ export default function ExpertWorkspace() {
           <h1 style={{ fontSize: 22, fontWeight: 700, color: G[900], margin: 0 }}>Expert workspace</h1>
         </div>
         <div style={{ fontSize: 14, color: G[500], marginBottom: 24 }}>
-          Open an assigned client trip to build its itinerary — or jump straight into creating.
+          Pick a client trip or start a new build — you'll land straight in the workstation.
         </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 14 }}>
-          {homeCards.map((c) => (
+
+        {/* Build for a client — one click opens the trip in the builder */}
+        <section style={{ marginBottom: 26 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: G[700], textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 10 }}>
+            Build for a client
+          </div>
+          {tripsLoading ? (
+            <Skeleton className="h-24 rounded-xl" />
+          ) : recentAssigned.length === 0 ? (
+            <div style={{ padding: 16, borderRadius: 12, border: `1px dashed ${G[200]}`, fontSize: 13.5, color: G[500] }}>
+              No client trips assigned yet — accepted assignments appear here, ready to open.{" "}
+              <button onClick={() => setLocation("/expert/assigned-trips")} data-testid="link-assigned-trips-empty" style={{ color: P, background: "none", border: "none", cursor: "pointer", padding: 0, fontSize: 13.5, fontWeight: 600 }}>
+                View Assigned Trips
+              </button>
+            </div>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {recentAssigned.map((t) => (
+                <button
+                  key={t.trip_id}
+                  onClick={() => setLocation(`/expert/workspace?tripId=${t.trip_id}`)}
+                  data-testid={`workspace-open-trip-${t.trip_id}`}
+                  style={{
+                    textAlign: "left", cursor: "pointer", padding: "12px 16px", borderRadius: 12,
+                    border: `1px solid ${G[200]}`, background: "white",
+                    display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
+                  }}
+                >
+                  <span style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+                    <span style={{ fontSize: 14.5, fontWeight: 600, color: G[900], overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {t.trip_title || t.destination}
+                    </span>
+                    <span style={{ fontSize: 12.5, color: G[500] }}>
+                      {t.destination} · {t.traveler_name}{t.start_date ? ` · ${t.start_date}` : ""}
+                    </span>
+                  </span>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: P, whiteSpace: "nowrap" }}>Open builder →</span>
+                </button>
+              ))}
+              {(assignedTrips?.length ?? 0) > recentAssigned.length && (
+                <button onClick={() => setLocation("/expert/assigned-trips")} data-testid="link-assigned-trips-all" style={{ alignSelf: "flex-start", color: P, background: "none", border: "none", cursor: "pointer", padding: "4px 0", fontSize: 13, fontWeight: 600 }}>
+                  View all assigned trips →
+                </button>
+              )}
+            </div>
+          )}
+        </section>
+
+        {/* Create for the store — creates the draft and lands in the authoring workstation */}
+        {!isEventPlanner && (
+          <section style={{ marginBottom: 26 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: G[700], textTransform: "uppercase", letterSpacing: 0.4, marginBottom: 10 }}>
+              Create for your store
+            </div>
             <button
-              key={c.href}
-              onClick={() => setLocation(c.href)}
-              data-testid={`workspace-home-${c.title.toLowerCase().replace(/\s+/g, "-")}`}
+              onClick={() => startStoreBuild.mutate()}
+              disabled={startStoreBuild.isPending}
+              data-testid="button-new-store-build"
               style={{
-                textAlign: "left", cursor: "pointer", padding: 18, borderRadius: 14,
-                border: `1px solid ${c.primary ? P : G[200]}`,
-                background: c.primary ? `${P}0A` : "white",
-                display: "flex", flexDirection: "column", gap: 8,
+                cursor: startStoreBuild.isPending ? "wait" : "pointer", padding: "14px 18px", borderRadius: 12,
+                border: `1px solid ${P}`, background: `${P}0A`, width: "100%",
+                display: "flex", alignItems: "center", gap: 12, textAlign: "left",
               }}
             >
-              <div style={{ width: 36, height: 36, borderRadius: 10, background: `${P}14`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <c.icon style={{ width: 18, height: 18, color: P }} />
+              <span style={{ width: 36, height: 36, borderRadius: 10, background: `${P}14`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                <Store style={{ width: 18, height: 18, color: P }} />
+              </span>
+              <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                <span style={{ fontSize: 15, fontWeight: 700, color: G[900] }}>
+                  {startStoreBuild.isPending ? "Starting your build…" : "New store trip"}
+                </span>
+                <span style={{ fontSize: 12.5, color: G[500] }}>
+                  Start a trip to sell in the Ready Made Trips store — opens the builder immediately.
+                </span>
+              </span>
+            </button>
+            {startStoreBuild.isError && (
+              <div style={{ fontSize: 12.5, color: "#b45309", marginTop: 8 }} data-testid="text-store-build-error">
+                {(startStoreBuild.error as Error)?.message ?? "Could not start the build."}
               </div>
-              <span style={{ fontSize: 15, fontWeight: 700, color: G[900] }}>{c.title}</span>
-              <span style={{ fontSize: 12.5, color: G[500], lineHeight: 1.45 }}>{c.desc}</span>
+            )}
+          </section>
+        )}
+
+        {/* Everything else is a quiet link row, not competing cards */}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 16, fontSize: 13, color: G[500], borderTop: `1px solid ${G[200]}`, paddingTop: 16 }}>
+          {[
+            ...(isEventPlanner ? [] : [{ label: "Store Listings", href: "/expert/ready-made", icon: Store }]),
+            { label: "Itinerary Templates", href: "/expert/templates", icon: FileText },
+            { label: "DMO Library", href: "/expert/dmo-library", icon: Search },
+            { label: "Content Studio", href: "/expert/content-studio", icon: Sparkles },
+          ].map((l) => (
+            <button key={l.href} onClick={() => setLocation(l.href)} data-testid={`workspace-link-${l.label.toLowerCase().replace(/\s+/g, "-")}`} style={{ display: "flex", alignItems: "center", gap: 6, color: G[500], background: "none", border: "none", cursor: "pointer", padding: 0, fontSize: 13 }}>
+              <l.icon style={{ width: 14, height: 14 }} /> {l.label}
             </button>
           ))}
         </div>
