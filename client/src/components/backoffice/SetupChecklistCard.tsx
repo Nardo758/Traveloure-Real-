@@ -107,7 +107,24 @@ export function SetupChecklistCard() {
           },
         ]
       : []),
+    // Build 3: the step only appears once the admin flips the public-storefront verification
+    // gate on (storefront_require_verified) — so nobody discovers the requirement by their
+    // /p/ page silently vanishing.
+    ...(steps.verification.requiredForStorefront
+      ? [
+          {
+            key: "verification",
+            label: "Get verified",
+            doneLabel: "Identity verified",
+            done: steps.verification.done,
+            href: `${base}/settings`,
+          },
+        ]
+      : []),
   ];
+
+  const storefrontHiddenByVerification =
+    steps.verification.requiredForStorefront && !steps.verification.done && steps.handle.done;
 
   const doneCount = items.filter((i) => i.done).length;
   const allDone = doneCount === items.length;
@@ -168,6 +185,11 @@ export function SetupChecklistCard() {
             </li>
           ))}
         </ul>
+        {storefrontHiddenByVerification && (
+          <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 mt-2" data-testid="text-storefront-hidden">
+            Your public page stays hidden from visitors until you're verified.
+          </p>
+        )}
         <div className="flex items-center gap-2 pt-3">
           <Button asChild size="sm" variant="outline">
             <Link href={`${base}/share-promote`}>Share your storefront</Link>

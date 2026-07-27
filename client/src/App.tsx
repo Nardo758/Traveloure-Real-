@@ -110,6 +110,7 @@ const ExperiencesPage = lazy(() => import("@/pages/experiences"));
 const DealsPage = lazy(() => import("@/pages/deals"));
 const PaymentPage = lazy(() => import("@/pages/payment"));
 const TravelExpertsPage = lazy(() => import("@/pages/travel-experts"));
+const StartEventsPage = lazy(() => import("@/pages/start-events"));
 const ServicesProviderPage = lazy(() => import("@/pages/services-provider"));
 const ExpertStatusPage = lazy(() => import("@/pages/expert-status"));
 const ProviderStatusPage = lazy(() => import("@/pages/provider-status"));
@@ -452,6 +453,12 @@ function Router() {
       </Route>
       
       {/* Application pages for becoming an expert or provider */}
+      {/* Event Planner fork (Build 2): every "Event Planner" entry point lands here and the
+          person picks vendor (provider track) vs planner (expert track) — the two entry
+          points previously disagreed about which business the card started. */}
+      <Route path="/start/events">
+        <StartEventsPage />
+      </Route>
       <Route path="/become-expert">
         <TravelExpertsPage />
       </Route>

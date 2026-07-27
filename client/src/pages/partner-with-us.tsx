@@ -90,7 +90,7 @@ const partnerTypes = [
       "Portfolio of past events",
     ],
     cta: "Apply as Event Planner",
-    href: "/become-expert?type=event_planner",
+    href: "/start/events",
     popular: false,
   },
   {
