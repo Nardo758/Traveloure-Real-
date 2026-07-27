@@ -32,6 +32,7 @@ import {
   Share2,
   Inbox,
   LayoutGrid,
+  TrendingUp,
 } from "lucide-react";
 
 function buildMenuGroups(expertType?: string | null) {
@@ -71,6 +72,10 @@ function buildMenuGroups(expertType?: string | null) {
         // Share & Promote (SH2): the mockup-6 nav entry N1 converged the label vocabulary for
         // but never actually added — real caption/link/share-image surface, not a redirect.
         { title: "Share & Promote", href: "/expert/share-promote", icon: Share2 },
+        // Performance (Backoffice B4): "which channel earns" — absorbs Share & Promote's
+        // measurement half (EarningsBySourcePanel + LinkAnalyticsPanel) + per-offering
+        // performance, one place before the broader Analytics page.
+        { title: "Performance", href: "/expert/performance", icon: TrendingUp },
         { title: "Analytics", href: "/expert/analytics", icon: BarChart3 },
         { title: "Earnings", href: "/expert/earnings", icon: DollarSign },
       ],
