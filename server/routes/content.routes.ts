@@ -127,6 +127,7 @@ import plancardRoutes from "./plancard.routes";
 import identityRoutes from "./identity.routes";
 import webhooksRoutes from "./webhooks.routes";
 import { affiliateClicks } from "@shared/schema";
+import { isExpertRole } from "@shared/roles";
 import { travelPulseService } from "../services/travelpulse.service";
 import { travelPulseScheduler } from "../services/travelpulse-scheduler.service";
 import { trackAnthropicResponse } from "../services/ai-cost-tracker";
@@ -608,7 +609,9 @@ Be friendly, helpful, and provide specific actionable advice. If recommending sp
 router.post("/api/ai/optimize-experience", isAuthenticated, async (req, res) => {
     try {
       const user = await storage.getUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
-      if (!user || (user.role !== "admin" && user.role !== "expert")) {
+      // Full expert family (shared/roles.ts): bare `role !== "expert"` locked out
+      // local_expert / travel_expert / event_planner.
+      if (!user || (user.role !== "admin" && !isExpertRole(user.role))) {
         return res.status(403).json({ message: "Admin or expert access required" });
       }
       const { experienceType, destination, date, selectedServices, preferences } = req.body;
@@ -6606,7 +6609,9 @@ router.get("/api/affiliate-booking-requests/user", isAuthenticated, async (req, 
 router.get("/api/affiliate-booking-requests/expert", isAuthenticated, async (req, res) => {
     try {
       const user = req.user as any;
-      if (user.role !== "expert" && user.role !== "admin") {
+      // Full expert family (shared/roles.ts): the booking-agent rail (§16) auto-assigns
+      // any expert-family role — bare `role !== "expert"` locked assigned agents out.
+      if (!isExpertRole(user.role) && user.role !== "admin") {
         return res.status(403).json({ message: "Expert role required" });
       }
       const records = await storage.getAffiliateBookingRequestsByExpert(user.id);
@@ -6645,7 +6650,8 @@ function deriveItineraryDayNumber(
 router.patch("/api/affiliate-booking-requests/:id", isAuthenticated, async (req, res) => {
     try {
       const user = req.user as any;
-      if (user.role !== "expert" && user.role !== "admin") {
+      // Full expert family (shared/roles.ts) — same rail as the list endpoint above.
+      if (!isExpertRole(user.role) && user.role !== "admin") {
         return res.status(403).json({ message: "Expert role required" });
       }
       const { id } = req.params;

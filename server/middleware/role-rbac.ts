@@ -1,9 +1,12 @@
 import { db } from "../db";
 import { users } from "@shared/schema";
 import { eq } from "drizzle-orm";
-
-const EXPERT_ROLES = ["expert", "local_expert", "travel_expert", "event_planner", "executive_assistant"];
-const PROVIDER_ROLES = ["service_provider"];
+// Canonical role families (role-vocabulary audit, Jul 27 2026). This file previously carried
+// its own EXPERT_ROLES list that INCLUDED executive_assistant — diverging from the client
+// (role-utils.ts) and the ratified EA-console model (§9: EA is its own /ea namespace, gated
+// by isEA, not an expert-family member). EA pages consume /api/ea/* only, so dropping EA
+// from the expert family removes unused server surface, not a working path.
+import { isExpertRole, isProviderRole } from "@shared/roles";
 
 /**
  * isExpert — middleware that allows only expert-role users and admins.
@@ -21,7 +24,7 @@ export const isExpert = async (req: any, res: any, next: any) => {
   }
   try {
     const [row] = await db.select({ role: users.role }).from(users).where(eq(users.id, userId));
-    if (!row || (!EXPERT_ROLES.includes(row.role ?? "") && row.role !== "admin")) {
+    if (!row || (!isExpertRole(row.role) && row.role !== "admin")) {
       return res.status(403).json({ message: "Expert access required" });
     }
     next();
@@ -47,7 +50,7 @@ export const isProvider = async (req: any, res: any, next: any) => {
   }
   try {
     const [row] = await db.select({ role: users.role }).from(users).where(eq(users.id, userId));
-    if (!row || (!PROVIDER_ROLES.includes(row.role ?? "") && row.role !== "admin")) {
+    if (!row || (!isProviderRole(row.role) && row.role !== "admin")) {
       return res.status(403).json({ message: "Provider access required" });
     }
     next();
