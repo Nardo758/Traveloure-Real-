@@ -556,4 +556,10 @@ export const MIGRATION_FILES = [
   // FP-1 frictionless payments: the durable Stripe Customer anchor for saved cards +
   // off-session one-click charges. Cards stay in Stripe's vault; we store only this token.
   "146_users_stripe_customer_id.sql",
+  // 147: repair the phantom-column Stripe Connect chain — users.stripe_account_id/
+  // stripe_account_status/can_receive_payments were read+written by storage.getUserStripeAccount/
+  // updateUserStripeAccount (status, onboard, payout-readiness, admin transfer lookup, webhook)
+  // but never added by any migration; every Connect path threw on a schema-true DB. Additive
+  // nullable + IF NOT EXISTS (no-op where grandfathered), no CHECK → no publish-push trap.
+  "147_users_stripe_connect_columns.sql",
 ] as const;
