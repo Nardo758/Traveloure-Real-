@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "wouter";
 import { ExpertLayout } from "@/components/expert/expert-layout";
 import { HandleClaimCard } from "@/components/backoffice/handle-claim-card";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -17,8 +18,6 @@ import {
   Lock,
   Globe,
   Zap,
-  Trash2,
-  Plus,
   Edit,
   Eye,
   EyeOff,
@@ -32,6 +31,8 @@ import {
   CheckCircle,
   LinkIcon,
   Loader2,
+  ArrowRight,
+  Info,
 } from "lucide-react";
 
 interface NotificationSetting {
@@ -40,10 +41,59 @@ interface NotificationSetting {
   push: boolean;
 }
 
-interface ResponseTemplate {
-  id: string;
+// NOTE (B6 deviation, recorded here rather than silently worked around): the phase brief for
+// this tab claimed `users.preferences` jsonb exists (shared/schema.ts:78) as the persistence
+// store for Notifications + Preferences. That line is `trips.preferences`, not `users` — the
+// real `users` table (shared/models/auth.ts:38) carries no `preferences`/`settings` column, and
+// no migration ever added one (checked server/migrations for `ALTER TABLE users`). Adding one
+// requires a schema.ts change + a migration, both outside this phase's file scope
+// (server/routes/storefront.routes.ts, settings.tsx, profile.tsx only — no schema, no
+// migrations). Rather than wire a Save button to an endpoint that would 500 against a
+// nonexistent column (a worse trap than the original useState theater — silent-failure, not
+// honest-failure per §13), these two tabs get the same honest-gate treatment Part 2 mandates
+// for Security-with-no-endpoint: controls stay visible, Save is disabled, and the reason is
+// stated. Filed follow-up: add `users.preferences` (or a dedicated `user_settings` table) via a
+// real migration, then wire GET/PATCH /api/me/preferences for real.
+function UnavailableNote({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex items-start gap-2 p-3 bg-amber-50 rounded-lg border border-amber-200 text-sm text-amber-800">
+      <Info className="w-4 h-4 mt-0.5 flex-shrink-0" />
+      <p>{children}</p>
+    </div>
+  );
+}
+
+function PointerCard({
+  title,
+  description,
+  body,
+  links,
+}: {
   title: string;
+  description: string;
   body: string;
+  links: { label: string; href: string }[];
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+        <CardDescription>{description}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <p className="text-sm text-console-mid">{body}</p>
+        <div className="flex flex-wrap gap-3">
+          {links.map((l) => (
+            <Link key={l.href} href={l.href}>
+              <Button variant="outline" className="gap-2" data-testid={`link-${l.href.replace(/\//g, "-")}`}>
+                {l.label} <ArrowRight className="w-4 h-4" />
+              </Button>
+            </Link>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 function VerificationPayoutsTab() {
@@ -202,7 +252,9 @@ function VerificationPayoutsTab() {
 }
 
 export default function ExpertSettings() {
-  // Notification settings
+  // Notification settings — UI-only (no persistence store; see the UnavailableNote comment
+  // above for why). Controls stay visible/interactive locally so the tab isn't blank, but the
+  // Save button is disabled — never a Save that silently no-ops.
   const [notifications, setNotifications] = useState<NotificationSetting[]>([
     { name: "New Message", email: true, push: true },
     { name: "Booking Request", email: true, push: true },
@@ -211,21 +263,7 @@ export default function ExpertSettings() {
     { name: "Platform Announcements", email: true, push: false },
   ]);
 
-  // Availability status
-  const [availabilityStatus, setAvailabilityStatus] = useState<"available" | "busy" | "vacation">(
-    "available"
-  );
-
-  // Response templates
-  const [templates, setTemplates] = useState<ResponseTemplate[]>([
-    { id: "1", title: "Standard Greeting", body: "Thank you for reaching out! I'm excited to help plan your trip." },
-    { id: "2", title: "Availability Check", body: "I'd love to help! Let me check my availability and get back to you." },
-    { id: "3", title: "Follow-up", body: "How are you progressing with the itinerary? Happy to discuss further!" },
-  ]);
-  const [newTemplate, setNewTemplate] = useState({ title: "", body: "" });
-  const [editingTemplate, setEditingTemplate] = useState<string | null>(null);
-
-  // Preferences
+  // Preferences — same UI-only posture as notifications above.
   const [language, setLanguage] = useState("en");
   const [timezone, setTimezone] = useState("UTC+9");
   const [enableLeaderboard, setEnableLeaderboard] = useState(true);
@@ -241,17 +279,6 @@ export default function ExpertSettings() {
       [type]: !updated[index][type],
     };
     setNotifications(updated);
-  };
-
-  const addTemplate = () => {
-    if (newTemplate.title && newTemplate.body) {
-      setTemplates([...templates, { id: String(Date.now()), ...newTemplate }]);
-      setNewTemplate({ title: "", body: "" });
-    }
-  };
-
-  const deleteTemplate = (id: string) => {
-    setTemplates(templates.filter((t) => t.id !== id));
   };
 
   return (
@@ -328,156 +355,44 @@ export default function ExpertSettings() {
                     </div>
                   </div>
                 ))}
-                <Button className="w-full mt-4 bg-primary hover:bg-primary/90" data-testid="button-save-notifications">
+                <UnavailableNote>
+                  Saving isn't available yet — notification preferences have no backend to persist
+                  to. Toggles here are visual only until this is wired up.
+                </UnavailableNote>
+                <Button
+                  className="w-full mt-4 bg-primary hover:bg-primary/90"
+                  data-testid="button-save-notifications"
+                  disabled
+                  title="Not available yet — no persistence store is wired for notification preferences."
+                >
                   <Save className="w-4 h-4 mr-2" /> Save Preferences
                 </Button>
               </CardContent>
             </Card>
           </TabsContent>
 
-          {/* Availability Status Tab */}
+          {/* Availability Status Tab — theater removed; real slot CRUD lives in Catalog (B3). */}
           <TabsContent value="availability" className="mt-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Availability Status</CardTitle>
-                <CardDescription>Let clients know your current availability</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div className="space-y-4">
-                  <div className="flex items-center gap-4">
-                    <input
-                      type="radio"
-                      id="available"
-                      value="available"
-                      checked={availabilityStatus === "available"}
-                      onChange={(e) => setAvailabilityStatus(e.target.value as any)}
-                      className="w-4 h-4"
-                      data-testid="radio-available"
-                    />
-                    <label htmlFor="available" className="flex-1 cursor-pointer">
-                      <p className="font-semibold text-console-darkest">Available</p>
-                      <p className="text-sm text-console-mid">You're ready to accept new bookings</p>
-                    </label>
-                  </div>
-
-                  <div className="flex items-center gap-4">
-                    <input
-                      type="radio"
-                      id="busy"
-                      value="busy"
-                      checked={availabilityStatus === "busy"}
-                      onChange={(e) => setAvailabilityStatus(e.target.value as any)}
-                      className="w-4 h-4"
-                      data-testid="radio-busy"
-                    />
-                    <label htmlFor="busy" className="flex-1 cursor-pointer">
-                      <p className="font-semibold text-console-darkest">Busy</p>
-                      <p className="text-sm text-console-mid">You're working on existing projects, new bookings limited</p>
-                    </label>
-                  </div>
-
-                  <div className="flex items-center gap-4">
-                    <input
-                      type="radio"
-                      id="vacation"
-                      value="vacation"
-                      checked={availabilityStatus === "vacation"}
-                      onChange={(e) => setAvailabilityStatus(e.target.value as any)}
-                      className="w-4 h-4"
-                      data-testid="radio-vacation"
-                    />
-                    <label htmlFor="vacation" className="flex-1 cursor-pointer">
-                      <p className="font-semibold text-console-darkest">On Vacation</p>
-                      <p className="text-sm text-console-mid">You're unavailable for new bookings</p>
-                    </label>
-                  </div>
-                </div>
-
-                <Button className="w-full bg-primary hover:bg-primary/90" data-testid="button-save-availability">
-                  <Save className="w-4 h-4 mr-2" /> Save Status
-                </Button>
-              </CardContent>
-            </Card>
+            <PointerCard
+              title="Availability"
+              description="Availability now lives in Catalog"
+              body="Bookable availability is managed per service in Catalog — add and edit slots there instead of a global status here."
+              links={[{ label: "Go to Catalog", href: "/expert/catalog" }]}
+            />
           </TabsContent>
 
-          {/* Response Templates Tab */}
+          {/* Response Templates Tab — the itinerary-template seller surface is retired (§10/§17
+              sunset); trips are now built in the Workstation and shipped to Store Listings. */}
           <TabsContent value="templates" className="mt-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Quick Response Templates</CardTitle>
-                <CardDescription>Create canned messages for frequently asked questions</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                {/* Existing Templates */}
-                <div className="space-y-3">
-                  <h3 className="font-semibold text-console-darkest">Your Templates</h3>
-                  {templates.map((template) => (
-                    <div key={template.id} className="p-4 border border-console-light rounded-lg">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex-1">
-                          <p className="font-semibold text-console-darkest">{template.title}</p>
-                          <p className="text-sm text-console-mid mt-1">{template.body.substring(0, 100)}...</p>
-                        </div>
-                        <div className="flex gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => setEditingTemplate(template.id)}
-                            data-testid={`button-edit-${template.id}`}
-                          >
-                            <Edit className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => deleteTemplate(template.id)}
-                            className="text-red-600 hover:text-red-700"
-                            data-testid={`button-delete-${template.id}`}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Add New Template */}
-                <div className="border-t pt-6">
-                  <h3 className="font-semibold text-console-darkest mb-4">Add New Template</h3>
-                  <div className="space-y-4">
-                    <div>
-                      <Label className="text-sm font-semibold">Title</Label>
-                      <Input
-                        placeholder="e.g., Availability Confirmation"
-                        value={newTemplate.title}
-                        onChange={(e) => setNewTemplate({ ...newTemplate, title: e.target.value })}
-                        className="mt-2"
-                        data-testid="input-template-title"
-                      />
-                    </div>
-                    <div>
-                      <Label className="text-sm font-semibold">Message</Label>
-                      <textarea
-                        placeholder="Enter the template message"
-                        value={newTemplate.body}
-                        onChange={(e) => setNewTemplate({ ...newTemplate, body: e.target.value })}
-                        className="w-full mt-2 px-3 py-2 border border-console-light rounded-lg text-sm"
-                        rows={4}
-                        data-testid="textarea-template-body"
-                      />
-                    </div>
-                    <Button
-                      onClick={addTemplate}
-                      className="bg-primary hover:bg-primary/90"
-                      data-testid="button-add-template"
-                    >
-                      <Plus className="w-4 h-4 mr-2" /> Add Template
-                    </Button>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            <PointerCard
+              title="Templates"
+              description="Store trips now live in the Workstation"
+              body="Store trips are built in the Workstation and managed in Store Listings — the old itinerary-template seller surface is retired."
+              links={[
+                { label: "Go to Workstation", href: "/expert/workspace" },
+                { label: "Go to Store Listings", href: "/expert/ready-made" },
+              ]}
+            />
           </TabsContent>
 
           {/* Preferences Tab */}
@@ -520,14 +435,29 @@ export default function ExpertSettings() {
                   </Select>
                 </div>
 
-                <Button className="w-full bg-primary hover:bg-primary/90" data-testid="button-save-preferences">
+                <UnavailableNote>
+                  Saving isn't available yet — language/timezone preferences have no backend to
+                  persist to. Selections here are visual only until this is wired up.
+                </UnavailableNote>
+                <Button
+                  className="w-full bg-primary hover:bg-primary/90"
+                  data-testid="button-save-preferences"
+                  disabled
+                  title="Not available yet — no persistence store is wired for these preferences."
+                >
                   <Save className="w-4 h-4 mr-2" /> Save Preferences
                 </Button>
               </CardContent>
             </Card>
           </TabsContent>
 
-          {/* Security Tab */}
+          {/* Security Tab — honest-gated: no self-service change-password endpoint exists on the
+              server (checked server/routes* + server/replit_integrations/auth/emailAuth.ts; only
+              a token-based POST /api/auth/forgot-password + /api/auth/reset-password flow exists,
+              which requires an email round-trip, not a logged-in current-password form). Rather
+              than wire this form to a nonexistent endpoint, the inputs are disabled with a visible
+              note — never a Save that silently does nothing (§13). 2FA has no backend either
+              (no totp/2fa table or column anywhere in the schema), so it gets the same treatment. */}
           <TabsContent value="security" className="mt-6">
             <div className="space-y-4">
               <Card>
@@ -536,6 +466,11 @@ export default function ExpertSettings() {
                   <CardDescription>Update your password to keep your account secure</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
+                  <UnavailableNote>
+                    Password change isn't available here yet — the server has no self-service
+                    change-password endpoint. Use "Forgot password" from the sign-in page to reset
+                    your password by email in the meantime.
+                  </UnavailableNote>
                   <div>
                     <Label className="text-sm font-semibold">Current Password</Label>
                     <Input
@@ -544,6 +479,7 @@ export default function ExpertSettings() {
                       value={currentPassword}
                       onChange={(e) => setCurrentPassword(e.target.value)}
                       className="mt-2"
+                      disabled
                       data-testid="input-current-password"
                     />
                   </div>
@@ -556,6 +492,7 @@ export default function ExpertSettings() {
                         placeholder="••••••••"
                         value={newPassword}
                         onChange={(e) => setNewPassword(e.target.value)}
+                        disabled
                         data-testid="input-new-password"
                       />
                       <Button
@@ -570,7 +507,12 @@ export default function ExpertSettings() {
                     </div>
                   </div>
 
-                  <Button className="w-full bg-primary hover:bg-primary/90" data-testid="button-change-password">
+                  <Button
+                    className="w-full bg-primary hover:bg-primary/90"
+                    data-testid="button-change-password"
+                    disabled
+                    title="Not available yet — no self-service change-password endpoint exists."
+                  >
                     <Save className="w-4 h-4 mr-2" /> Change Password
                   </Button>
                 </CardContent>
@@ -582,6 +524,10 @@ export default function ExpertSettings() {
                   <CardDescription>Add an extra layer of security to your account</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
+                  <UnavailableNote>
+                    2FA isn't available yet — there's no two-factor mechanism on the server to
+                    enable.
+                  </UnavailableNote>
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="font-semibold text-console-darkest">
@@ -596,6 +542,8 @@ export default function ExpertSettings() {
                     <Switch
                       checked={twoFaEnabled}
                       onCheckedChange={setTwoFaEnabled}
+                      disabled
+                      title="Not available yet — no 2FA mechanism exists on the server."
                       data-testid="toggle-2fa"
                     />
                   </div>
