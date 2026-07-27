@@ -3747,6 +3747,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // === Destination Calendar (Public travel guide) ===
   
   // Public provider verification status (for service detail page badge)
+  // A6: also surfaces the owner's storefront handle (migration 136, users.handle) so the
+  // service-detail page can breadcrumb into /p/:handle — additive select, null when unclaimed.
   app.get("/api/providers/:userId/public-verification", async (req, res) => {
     try {
       const [form] = await db.select({
@@ -3755,13 +3757,19 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       }).from(serviceProviderForms)
         .where(eq(serviceProviderForms.userId, req.params.userId))
         .limit(1);
-      if (!form) return res.json({ identityVerified: false, businessVerified: false });
+      const [userRow] = await db.select({ handle: users.handle })
+        .from(users)
+        .where(eq(users.id, req.params.userId))
+        .limit(1);
+      const handle = userRow?.handle ?? null;
+      if (!form) return res.json({ identityVerified: false, businessVerified: false, handle });
       res.json({
         identityVerified: form.identityVerificationStatus === "verified",
         businessVerified: form.businessVerificationStatus === "verified",
+        handle,
       });
     } catch {
-      res.json({ identityVerified: false, businessVerified: false });
+      res.json({ identityVerified: false, businessVerified: false, handle: null });
     }
   });
 
