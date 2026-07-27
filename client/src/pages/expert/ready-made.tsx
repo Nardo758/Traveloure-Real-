@@ -20,10 +20,11 @@ import { Loader2, Map as MapIcon, Plus } from "lucide-react";
 import type { ReadyMadeListing } from "@/components/expert/ready-made-listing-panel";
 import { STORE_GATE_MESSAGE } from "@shared/launch-markets";
 import { planTypeLabel } from "@shared/ready-made-plan-types";
+import { EmptyState } from "@/components/backoffice/primitives";
 
 // Console palette (two-palettes decision — warm back-office greys, see index.css .console-scope).
 const G: Record<number, string> = {
-  50: "#FAFAF8", 200: "#E8E8E2", 400: "#A8A8A0",
+  50: "#FAFAF8", 100: "#F3F3EE", 200: "#E8E8E2", 400: "#A8A8A0",
   500: "#7A7A72", 600: "#5C5C55", 700: "#45453F", 900: "#1A1A18",
 };
 
@@ -126,16 +127,12 @@ export default function ExpertReadyMade() {
             <Skeleton className="h-20 rounded-xl" />
           </div>
         ) : listings.length === 0 ? (
-          <div
-            data-testid="empty-ready-made"
-            style={{ border: `1.5px dashed ${G[200]}`, borderRadius: 14, padding: "34px 22px", textAlign: "center", background: G[50] }}
-          >
-            <div style={{ fontSize: 15, fontWeight: 700, color: G[900], marginBottom: 6 }}>No store listings yet</div>
-            <div style={{ fontSize: 13, color: G[500], lineHeight: 1.55, maxWidth: 400, margin: "0 auto" }}>
-              Start one and the builder opens with an empty itinerary. Add days and places, choose a plan
-              type, set a price, pick a cover photo, then submit it for review.
-            </div>
-          </div>
+          <EmptyState
+            testId="empty-ready-made"
+            icon={MapIcon}
+            title="No store listings yet"
+            body="Start one and the builder opens with an empty itinerary. Add days and places, choose a plan type, set a price, pick a cover photo, then submit it for review."
+          />
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {listings.map((l) => {
