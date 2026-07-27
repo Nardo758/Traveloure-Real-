@@ -863,7 +863,6 @@ export default function ExpertWorkspace() {
         <div style={{ display: "flex", flexWrap: "wrap", gap: 16, fontSize: 13, color: G[500], borderTop: `1px solid ${G[200]}`, paddingTop: 16 }}>
           {[
             ...(isEventPlanner ? [] : [{ label: "Store Listings", href: "/expert/ready-made", icon: Store }]),
-            { label: "Itinerary Templates", href: "/expert/templates", icon: FileText },
             { label: "DMO Library", href: "/expert/dmo-library", icon: Search },
             { label: "Content Studio", href: "/expert/content-studio", icon: Sparkles },
           ].map((l) => (

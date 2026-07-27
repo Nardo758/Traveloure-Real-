@@ -133,11 +133,11 @@ export default function DmoLibrary() {
     },
     onSuccess: (data: any) => {
       toast({
-        title: "Draft trip created",
-        description: `${data.places} places across ${data.days} day(s). Price it and submit for review to sell it.`,
+        title: "Draft store trip created",
+        description: "Draft store trip created — opening the builder",
       });
       setSelected(new Set());
-      navigate("/expert/templates");
+      navigate(data.redirect ?? `/expert/workspace/${data.tripId}`);
     },
     onError: (err: Error) => {
       toast({ title: "Couldn't build trip", description: err.message, variant: "destructive" });
