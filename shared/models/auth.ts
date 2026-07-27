@@ -70,6 +70,13 @@ export const users = pgTable("users", {
   // FP-1 (migration 146): the user's Stripe Customer id — the durable anchor for saved payment
   // methods + off-session one-click charges. Cards live only in Stripe's vault, never here.
   stripeCustomerId: varchar("stripe_customer_id", { length: 255 }),
+  // Migration 147: Stripe CONNECT payout account (distinct from the Customer above — this is
+  // the earner's receiving account). These were read/written by storage.getUserStripeAccount/
+  // updateUserStripeAccount all along but never existed in schema or DB — the whole Connect
+  // chain (status/onboard/payout-readiness/webhook) threw on a schema-true database.
+  stripeAccountId: varchar("stripe_account_id", { length: 255 }),
+  stripeAccountStatus: varchar("stripe_account_status", { length: 50 }),
+  canReceivePayments: boolean("can_receive_payments").default(false),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
   // Soft-delete: never hard-delete users (bookings/Stripe/tax records must persist).
