@@ -6,48 +6,71 @@ import { ArrowUpRight } from "lucide-react";
 import { ExpertLayout } from "@/components/expert/expert-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import {
   DollarSign,
-  TrendingUp,
-  Calendar,
-  CreditCard,
   Clock,
   CheckCircle,
+  Wallet,
   Loader2,
-  PieChart,
+  TrendingUp,
 } from "lucide-react";
 import { StripeConnectCard } from "@/components/stripe-connect-card";
 import { EarningsBySourcePanel } from "@/components/backoffice/earnings-by-source-panel";
-import { PageHeader } from "@/components/backoffice/primitives";
+import { PageHeader, StatCard, StatusBadge, EmptyState } from "@/components/backoffice/primitives";
 
+// The one Money ledger endpoint (GET /api/expert/earnings/details, server/routes/experts.routes.ts:220)
+// backed by revenue-tracking.service.ts:252-276. Vocabulary: `availableEarnings` = RELEASABLE (cleared,
+// payable now); `pendingEarnings` = HELD in escrow. This page is its first consumer.
+interface ExpertEarningRow {
+  id: string;
+  amount: string;
+  type: string;
+  status: string; // held | releasable | paid_out | reversed
+  disputeState?: string | null; // none | open
+  description?: string | null;
+  createdAt: string;
+}
 
-interface EarningsData {
-  earnings: Array<{
-    id: string;
-    amount: string;
-    type: string;
-    status: string;
-    createdAt: string;
-    description?: string;
-  }>;
+interface ExpertPayoutRow {
+  id: string;
+  amount: string;
+  status: string; // pending | processing | completed | failed
+  requestedAt: string;
+}
+
+interface ExpertTipRow {
+  id: string;
+  amount: string;
+  message?: string | null;
+  createdAt: string;
+}
+
+interface AffiliateEarningRow {
+  id: string;
+  expertShare: string;
+  createdAt: string;
+}
+
+interface EarningsDetails {
   summary: {
     totalEarnings: number;
-    monthlyEarnings: number;
-    pendingPayout: number;
-    lastPayout: number;
-    lastPayoutDate?: string;
-    platformFeeTotal: number;
-    grossBookingTotal: number;
-    revenueShareRate: number;
+    pendingEarnings: number;
+    availableEarnings: number;
+    paidOut: number;
+    totalTips: number;
+    totalAffiliateCommissions: number;
   };
+  earnings: ExpertEarningRow[];
+  payouts: ExpertPayoutRow[];
+  recentTips: ExpertTipRow[];
+  recentAffiliateEarnings: AffiliateEarningRow[];
 }
 
 export default function ExpertEarnings() {
   const { toast } = useToast();
   const [requested, setRequested] = useState(false);
-  const { data, isLoading } = useQuery<EarningsData>({
-    queryKey: ["/api/expert/earnings"],
+  const { data, isLoading } = useQuery<EarningsDetails>({
+    queryKey: ["/api/expert/earnings/details"],
   });
 
   // Self-service payout REQUEST. The amount is server-derived from the cleared
@@ -75,33 +98,11 @@ export default function ExpertEarnings() {
     },
   });
 
-
   const summary = data?.summary;
-  const earnings = data?.earnings || [];
-
-  const stats = [
-    { label: "Total Earnings", value: `$${(summary?.totalEarnings ?? 0).toLocaleString()}`, icon: DollarSign },
-    { label: "This Month", value: `$${(summary?.monthlyEarnings ?? 0).toLocaleString()}`, icon: Calendar },
-    { label: "Pending Payout", value: `$${(summary?.pendingPayout ?? 0).toLocaleString()}`, icon: Clock },
-    { label: "Last Payout", value: `$${(summary?.lastPayout ?? 0).toLocaleString()}`, date: summary?.lastPayoutDate, icon: CreditCard },
-  ];
-
-  const recentTransactions = earnings.slice(0, 5);
-
-  // Group by month for breakdown
-  const monthlyBreakdown: Record<string, { earnings: number; clients: number }> = {};
-  earnings.forEach((e) => {
-    const date = new Date(e.createdAt);
-    const month = date.toLocaleString("en-US", { month: "long" });
-    if (!monthlyBreakdown[month]) monthlyBreakdown[month] = { earnings: 0, clients: 0 };
-    monthlyBreakdown[month].earnings += parseFloat(e.amount || "0");
-    monthlyBreakdown[month].clients++;
-  });
-  const monthlyData = Object.entries(monthlyBreakdown).slice(0, 4).map(([month, data]) => ({
-    month,
-    earnings: data.earnings,
-    clients: data.clients,
-  }));
+  const earnings = data?.earnings ?? [];
+  const payouts = data?.payouts ?? [];
+  const recentTips = data?.recentTips ?? [];
+  const recentAffiliateEarnings = data?.recentAffiliateEarnings ?? [];
 
   if (isLoading) {
     return (
@@ -113,15 +114,12 @@ export default function ExpertEarnings() {
     );
   }
 
-  const shareRate = summary?.revenueShareRate ?? 0.75;
-  const platformRate = 1 - shareRate;
-
   return (
     <ExpertLayout title="Earnings">
       <div className="p-6 space-y-6">
         <PageHeader
-          title="Earnings Dashboard"
-          subtitle="Track your revenue and manage payouts"
+          title="Money"
+          subtitle="Your ledger: held, cleared, and paid — plus payout requests"
           actions={
             <Button
               disabled={payoutMutation.isPending || requested}
@@ -141,176 +139,169 @@ export default function ExpertEarnings() {
 
         <StripeConnectCard />
 
-        {/* Stats Grid */}
+        {/* Honest four-card ledger split — held/releasable are never conflated (§13). */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {stats.map((stat, index) => (
-            <Card key={index} className="border border-console-light" data-testid={`card-earnings-stat-${index}`}>
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-console-mid">{stat.label}</p>
-                    <p className="text-2xl font-bold text-console-darkest">{stat.value}</p>
-                    {stat.date && <p className="text-sm text-console-mid">{stat.date}</p>}
-                  </div>
-                  <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
-                    <stat.icon className="w-6 h-6 text-primary" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+          <StatCard
+            label="Available to pay out"
+            value={`$${(summary?.availableEarnings ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+            icon={Wallet}
+            iconClassName="bg-green-100 text-green-600"
+            testId="card-earnings-available"
+          />
+          <StatCard
+            label="Held in escrow"
+            value={`$${(summary?.pendingEarnings ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+            icon={Clock}
+            iconClassName="bg-amber-100 text-amber-600"
+            testId="card-earnings-held"
+          />
+          <StatCard
+            label="Paid out"
+            value={`$${(summary?.paidOut ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+            icon={CheckCircle}
+            iconClassName="bg-blue-100 text-blue-600"
+            testId="card-earnings-paid-out"
+          />
+          <StatCard
+            label="Total earned"
+            value={`$${(summary?.totalEarnings ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+            icon={DollarSign}
+            iconClassName="bg-console-bg text-console-darkest"
+            testId="card-earnings-total"
+          />
         </div>
-
-        {/* Revenue Share Breakdown */}
-        <Card className="border border-console-light" data-testid="card-revenue-share">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <PieChart className="w-5 h-5 text-primary" />
-              Revenue Share Breakdown
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="p-4 bg-console-bg rounded-lg border border-console-light text-center" data-testid="stat-gross-total">
-                <p className="text-sm text-console-mid mb-1">Gross Booking Value</p>
-                <p className="text-xl font-bold text-console-darkest">
-                  ${(summary?.grossBookingTotal ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </p>
-                <p className="text-xs text-console-mid mt-1">Total from all bookings</p>
-              </div>
-              <div className="p-4 bg-red-50 rounded-lg border border-red-100 text-center" data-testid="stat-platform-fee">
-                <p className="text-sm text-red-600 mb-1">Platform Fee ({Math.round(platformRate * 100)}%)</p>
-                <p className="text-xl font-bold text-red-700">
-                  -${(summary?.platformFeeTotal ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </p>
-                <p className="text-xs text-red-400 mt-1">Traveloure service charge</p>
-              </div>
-              <div className="p-4 bg-green-50 rounded-lg border border-green-200 text-center" data-testid="stat-your-share">
-                <p className="text-sm text-green-600 mb-1">Your Share ({Math.round(shareRate * 100)}%)</p>
-                <p className="text-xl font-bold text-green-700">
-                  ${(summary?.totalEarnings ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </p>
-                <p className="text-xs text-green-500 mt-1">Your lifetime earnings</p>
-              </div>
-            </div>
-            {/* Visual bar */}
-            <div className="mt-4 h-3 bg-console-light rounded-full overflow-hidden flex" data-testid="bar-revenue-split">
-              <div
-                className="h-full bg-primary transition-all"
-                style={{ width: `${Math.round(platformRate * 100)}%` }}
-              />
-              <div className="h-full bg-green-500 flex-1" />
-            </div>
-            <div className="flex justify-between text-xs text-console-mid mt-1">
-              <span>Platform {Math.round(platformRate * 100)}%</span>
-              <span>You {Math.round(shareRate * 100)}%</span>
-            </div>
-          </CardContent>
-        </Card>
 
         <EarningsBySourcePanel />
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Recent Transactions */}
-          <div className="lg:col-span-2">
-            <Card className="border border-console-light">
-              <CardHeader>
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-lg">Recent Transactions</CardTitle>
-                  <Button variant="ghost" size="sm" className="text-primary" data-testid="button-view-all-transactions">
-                    View All
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {recentTransactions.length > 0 ? recentTransactions.map((transaction) => (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Transactions — real expert_earnings ledger rows, not bookings-derived pseudo-transactions */}
+          <Card className="border border-console-light">
+            <CardHeader>
+              <CardTitle className="text-lg">Transactions</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {earnings.length > 0 ? (
+                <div className="space-y-3">
+                  {earnings.map((txn) => (
                     <div
-                      key={transaction.id}
+                      key={txn.id}
                       className="flex items-center justify-between p-3 rounded-lg border border-console-light bg-console-bg"
-                      data-testid={`transaction-${transaction.id}`}
+                      data-testid={`transaction-${txn.id}`}
                     >
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
+                        <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center flex-shrink-0">
                           <TrendingUp className="w-5 h-5 text-green-600" />
                         </div>
                         <div>
-                          <p className="font-medium text-console-darkest">{transaction.type || "Earning"}</p>
-                          <p className="text-sm text-console-mid">{transaction.description || ""}</p>
+                          <p className="font-medium text-console-darkest capitalize">{txn.type?.replace(/_/g, " ") || "Earning"}</p>
+                          <p className="text-sm text-console-mid">{new Date(txn.createdAt).toLocaleDateString()}</p>
+                          {txn.disputeState === "open" && (
+                            <p className="text-xs text-red-600 mt-0.5">held — traveler dispute under review</p>
+                          )}
                         </div>
                       </div>
                       <div className="text-right">
-                        <p className="font-semibold text-console-darkest">+${parseFloat(transaction.amount || "0").toLocaleString()}</p>
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm text-console-mid">{new Date(transaction.createdAt).toLocaleDateString()}</span>
-                          <Badge
-                            variant="outline"
-                            className={transaction.status === "completed"
-                              ? "bg-green-50 text-green-700 border-green-200"
-                              : "bg-yellow-50 text-yellow-700 border-yellow-200"}
-                          >
-                            {transaction.status === "completed"
-                              ? <CheckCircle className="w-3 h-3 mr-1" />
-                              : <Clock className="w-3 h-3 mr-1" />}
-                            {transaction.status}
-                          </Badge>
+                        <p className="font-semibold text-console-darkest">
+                          ${parseFloat(txn.amount || "0").toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </p>
+                        <div className="mt-1">
+                          <StatusBadge status={txn.status} />
                         </div>
                       </div>
                     </div>
-                  )) : (
-                    <p className="text-console-mid text-center py-4">No transactions yet</p>
-                  )}
+                  ))}
                 </div>
-              </CardContent>
-            </Card>
-          </div>
+              ) : (
+                <EmptyState title="No transactions yet" body="Ledger entries appear here as you earn." testId="empty-transactions" />
+              )}
+            </CardContent>
+          </Card>
 
-          {/* Right Column */}
-          <div className="space-y-6">
-            {/* Monthly Breakdown */}
-            <Card className="border border-console-light">
-              <CardHeader>
-                <CardTitle className="text-lg">Monthly Breakdown</CardTitle>
-              </CardHeader>
-              <CardContent>
+          {/* Payout history — closes a real gap, no earner-facing payout list existed before */}
+          <Card className="border border-console-light">
+            <CardHeader>
+              <CardTitle className="text-lg">Payout History</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {payouts.length > 0 ? (
                 <div className="space-y-3">
-                  {monthlyData.length > 0 ? monthlyData.map((month, index) => (
-                    <div key={index} className="flex items-center justify-between p-2 rounded-lg hover-elevate" data-testid={`monthly-breakdown-${index}`}>
+                  {payouts.map((payout) => (
+                    <div
+                      key={payout.id}
+                      className="flex items-center justify-between p-3 rounded-lg border border-console-light bg-console-bg"
+                      data-testid={`payout-${payout.id}`}
+                    >
                       <div>
-                        <p className="font-medium text-console-darkest">{month.month}</p>
-                        <p className="text-sm text-console-mid">{month.clients} transactions</p>
+                        <p className="font-medium text-console-darkest">
+                          ${parseFloat(payout.amount || "0").toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </p>
+                        <p className="text-sm text-console-mid">{new Date(payout.requestedAt).toLocaleDateString()}</p>
                       </div>
-                      <p className="font-semibold text-console-darkest">${month.earnings.toLocaleString()}</p>
+                      <StatusBadge status={payout.status} />
                     </div>
-                  )) : (
-                    <p className="text-console-mid text-center py-2">No data yet</p>
-                  )}
+                  ))}
                 </div>
-              </CardContent>
-            </Card>
-
-            {/* Payment Method */}
-            <Card className="border border-console-light">
-              <CardHeader>
-                <CardTitle className="text-lg">Payment Method</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="flex items-center gap-3 p-3 rounded-lg border border-console-light bg-console-bg">
-                  <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
-                    <CreditCard className="w-5 h-5 text-blue-600" />
-                  </div>
-                  <div className="flex-1">
-                    <p className="font-medium text-console-darkest">Bank Account</p>
-                    <p className="text-sm text-console-mid">Set up your payment method</p>
-                  </div>
-                </div>
-                <Button variant="outline" className="w-full mt-3" data-testid="button-update-payment">
-                  Update Payment Method
-                </Button>
-              </CardContent>
-            </Card>
-          </div>
+              ) : (
+                <EmptyState title="No payout requests yet" body="Request a payout from your available balance above." testId="empty-payouts" />
+              )}
+            </CardContent>
+          </Card>
         </div>
+
+        {(recentTips.length > 0 || recentAffiliateEarnings.length > 0) && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {recentTips.length > 0 && (
+              <Card className="border border-console-light">
+                <CardHeader>
+                  <CardTitle className="text-lg">Recent Tips</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {recentTips.map((tip) => (
+                      <div
+                        key={tip.id}
+                        className="flex items-center justify-between p-3 rounded-lg border border-console-light bg-console-bg"
+                        data-testid={`tip-${tip.id}`}
+                      >
+                        <div>
+                          <p className="font-medium text-console-darkest">
+                            ${parseFloat(tip.amount || "0").toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </p>
+                          {tip.message && <p className="text-sm text-console-mid">{tip.message}</p>}
+                        </div>
+                        <span className="text-sm text-console-mid">{new Date(tip.createdAt).toLocaleDateString()}</span>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {recentAffiliateEarnings.length > 0 && (
+              <Card className="border border-console-light">
+                <CardHeader>
+                  <CardTitle className="text-lg">Recent Affiliate Earnings</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-3">
+                    {recentAffiliateEarnings.map((aff) => (
+                      <div
+                        key={aff.id}
+                        className="flex items-center justify-between p-3 rounded-lg border border-console-light bg-console-bg"
+                        data-testid={`affiliate-earning-${aff.id}`}
+                      >
+                        <p className="font-medium text-console-darkest">
+                          ${parseFloat(aff.expertShare || "0").toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </p>
+                        <span className="text-sm text-console-mid">{new Date(aff.createdAt).toLocaleDateString()}</span>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        )}
       </div>
     </ExpertLayout>
   );
