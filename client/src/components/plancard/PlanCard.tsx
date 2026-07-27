@@ -703,7 +703,7 @@ function PlanCardSummary({
 
 // ── Main PlanCard component ────────────────────────────────────────────────
 
-export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full", days: daysProp }: PlanCardProps) {
+export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full", days: daysProp, embedded = false }: PlanCardProps) {
   const [selectedDay, setSelectedDay] = useState(0);
   const [section, setSection] = useState<"activities" | "transport">("activities");
   const [showChanges, setShowChanges] = useState(true);
@@ -894,11 +894,17 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
           </div>
         )}
 
-        {/* Concierge — front and center (redesign Phase 2); always visible across card/map views */}
-        <div className="px-3 sm:px-5 pt-2.5">
-          <ConciergeModule destination={trip.destination} testId={`concierge-module-full-${trip.id}`} />
-        </div>
+        {/* Concierge — front and center for TRAVELERS; suppressed in the Workstation embed
+            (a hire-an-expert module shown to the expert is duplicate/contradictory chrome). */}
+        {!embedded && (
+          <div className="px-3 sm:px-5 pt-2.5">
+            <ConciergeModule destination={trip.destination} testId={`concierge-module-full-${trip.id}`} />
+          </div>
+        )}
 
+        {/* View toggle suppressed in the Workstation embed — the builder has its own Map tab
+            (same MapControlCenter), so the card stays in card view there. */}
+        {!embedded && (
         <div className="px-3 sm:px-5 pt-2 flex gap-1.5" data-testid={`view-mode-toggle-${trip.id}`}>
           <Button
             onClick={() => setViewMode("card")}
@@ -921,22 +927,25 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
             <span className="hidden sm:inline">Map View</span>
           </Button>
         </div>
+        )}
 
-        {viewMode === "card" ? (
+        {(embedded || viewMode === "card") ? (
           <>
             {/* metric strip moved onto the photo hero (redesign Phase 2, option C) */}
 
-            <OptimizerMetrics
-              tripId={trip.id}
-              traveloureScore={traveloureScore}
-              savings={savingsDisplay}
-              savingsPercent={savingsPercentDisplay}
-              wellnessTime={wellnessTime}
-              travelDistance={travelDistance}
-              starDelta={starDelta}
-              totalCost={totalCostDisplay}
-              perPerson={perPersonDisplay}
-            />
+            {!embedded && (
+              <OptimizerMetrics
+                tripId={trip.id}
+                traveloureScore={traveloureScore}
+                savings={savingsDisplay}
+                savingsPercent={savingsPercentDisplay}
+                wellnessTime={wellnessTime}
+                travelDistance={travelDistance}
+                starDelta={starDelta}
+                totalCost={totalCostDisplay}
+                perPerson={perPersonDisplay}
+              />
+            )}
 
             <DaySelector
               tripId={trip.id}
@@ -989,8 +998,9 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
               )}
             </div>
 
-            {/* Upsell ontrip slot — live "near you" nudge, after content per mockup v3. Self-guards to in-trip window. */}
-            {!isViewer && stage === "full" && (
+            {/* Upsell ontrip slot — live "near you" nudge, after content per mockup v3. Self-guards to in-trip window.
+                Suppressed in the Workstation embed — traveler upsells don't belong in the builder. */}
+            {!isViewer && !embedded && stage === "full" && (
               <PlanCardUpsellSlot
                 tripId={trip.id}
                 eventType={(trip as any).eventType}
@@ -1002,7 +1012,7 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
 
             {/* Upsell pretrip slot — "what's missing" gap-fill, after content per mockup v3.
                 Self-guards to the pre-trip window; renders nothing otherwise/when empty. */}
-            {!isViewer && stage === "full" && (
+            {!isViewer && !embedded && stage === "full" && (
               <PlanCardUpsellSlot
                 tripId={trip.id}
                 eventType={(trip as any).eventType}
@@ -1012,8 +1022,9 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
               />
             )}
 
-            {/* CON-A.P7 / N3: expert-escalation CTA — after content, before bottom bar (mockup v3). */}
-            {!isViewer && stage === "full" && (
+            {/* CON-A.P7 / N3: expert-escalation CTA — after content, before bottom bar (mockup v3).
+                Suppressed in the Workstation embed — the expert IS the expert. */}
+            {!isViewer && !embedded && stage === "full" && (
               <div className="px-3 sm:px-5 pt-2">
                 <EscalationCTA
                   tripId={trip.id}

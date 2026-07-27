@@ -710,6 +710,28 @@ Governing spec: `docs/backoffice/mockups/mockup-unified-workspace.html` (v9). Lo
   `/services/:id` is rebuilt to it — one page for marketplace browsing AND all shared/booking links
   (breadcrumb into /p/, Direct-Booking trust panel, migration-144 cancellation policy, honest reviews,
   Book Now → existing checkout rail). Short links keep redirecting there.
+- **Distribution formats (CORRECTED + re-ratified Jul 27, 2026): one Trip Card is NOT the universal
+  renderer — and "destination" means the DISTRIBUTION destination (the channel), not geography.** The
+  first ratification same day mis-read the axis as geographic; the decision-maker corrected it: a build's
+  rendering FORMAT is driven by **where the plan is going** — the §17 distribution channels — flavored by
+  experience type and styled by market. Resolution axes (all three, ratified "option 1 & 3"):
+  **channel × experience type × market**, fallback chain
+  `(channel, type, market) → (channel, type) → (channel, market) → channel default`. The CHANNEL picks
+  the structure: **Client** = the full Workstation itinerary (Trip Card `embedded`; the Kyoto
+  neighborhood-grouped / venue-timeline structures live HERE as market×type entries) · **Store** = the
+  Ready Made Trip product page (teaser-gated; consumes the format's `storeLayout`) · **Social** = a
+  social-media-driven format producing BOTH (ratified) a story/carousel-style visual rendering of the
+  plan AND the caption + share-image pack (extends the existing `promo-text.service.ts` + share-image
+  ready-made layout — do not build a parallel caption engine) · **Direct** = link-preview/OG format for
+  WhatsApp + trackable booking short-links (extends the existing storefront OG-injection pattern).
+  Mechanism unchanged from the first record where still true: pure client/registry resolution derived
+  from fields the build+surface already know (channel is intrinsic to the rendering surface;
+  `trips.destination`/`eventType` supply market/type) — no schema change, no migration; the shallow
+  `getTemplateConfig(eventType)` (client/src/components/plancard/plancard-types.tsx) is absorbed as the
+  vocabulary layer. A format defines STRUCTURE + vocabulary + per-channel layout, not just labels.
+  §12: Kyoto market entries first; §13: social/story slots render only real content. Design doc:
+  `docs/backoffice/DISTRIBUTION_FORMATS.md` (renamed from DESTINATION_FORMATS.md with the correction).
+  PlanCard's `embedded` mode is orthogonal and stays.
 
 The earning ledger is an escrow state machine: **`held → releasable → paid_out`**, plus **`reversed`**, with a
 `dispute_state`. All phases are **landed on `main`** (Jul 14, 2026):
