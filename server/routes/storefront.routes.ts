@@ -22,7 +22,7 @@ import path from "path";
 import { eq, and, sql } from "drizzle-orm";
 import { db } from "../db";
 import { users, providerServices, expertTemplates, readyMadeTrips, localExpertForms, serviceProviderForms } from "@shared/schema";
-import { EARNER_ROLES as CANONICAL_EARNER_ROLES } from "@shared/roles";
+import { EARNER_ROLES as CANONICAL_EARNER_ROLES, isEarnerRole, isProviderRole } from "@shared/roles";
 
 const router = Router();
 
@@ -138,6 +138,104 @@ async function isOwnerIdentityVerified(userId: string): Promise<boolean> {
     .limit(1);
   return providerForm?.status === "verified";
 }
+
+// ─── Activation checklist (Build 1, "Open your business") ───────────────────────────────────
+//
+// GET /api/me/business-setup — the setup-progress aggregate for the console checklist card.
+// §14: everything is scoped to the SESSION user. §13: every step's completion is DERIVED from
+// real rows (handle column, Stripe account status, own offerings across the three lanes,
+// future availability slots, identity-verification status) — nothing is self-reported and
+// nothing is stored; there is no migration and no state to drift.
+router.get("/api/me/business-setup", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub ?? req.user?.id;
+    if (!userId) return res.status(401).json({ message: "Authentication required" });
+
+    const [me] = await db
+      .select({
+        id: users.id,
+        role: users.role,
+        handle: users.handle,
+        stripeAccountStatus: users.stripeAccountStatus,
+      })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    if (!me) return res.status(401).json({ message: "Authentication required" });
+
+    // Non-earners (travelers, EA, admin-without-earner-role) get an explicit not-eligible
+    // payload rather than a 403 — the card simply doesn't render for them.
+    if (!isEarnerRole(me.role) && !EARNER_ROLES.has(me.role ?? "")) {
+      return res.json({ eligible: false });
+    }
+    const consoleFamily = isProviderRole(me.role) || me.role === "provider" ? "provider" : "expert";
+
+    // Offerings across the three lanes (same owner columns + approved criteria as the
+    // public storefront gates above: F2 for services, §10 for templates, migration-133
+    // status for Ready Made Trips).
+    const [svcAgg] = await db
+      .select({
+        total: sql<number>`count(*)::int`,
+        approved: sql<number>`count(*) filter (where ${providerServices.approvalStatus} = 'approved')::int`,
+      })
+      .from(providerServices)
+      .where(eq(providerServices.userId, me.id));
+    const [tplAgg] = await db
+      .select({
+        total: sql<number>`count(*)::int`,
+        approved: sql<number>`count(*) filter (where ${expertTemplates.approvalStatus} = 'approved')::int`,
+      })
+      .from(expertTemplates)
+      .where(eq(expertTemplates.expertId, me.id));
+    const [rmtAgg] = await db
+      .select({
+        total: sql<number>`count(*)::int`,
+        approved: sql<number>`count(*) filter (where ${readyMadeTrips.status} = 'approved')::int`,
+      })
+      .from(readyMadeTrips)
+      .where(eq(readyMadeTrips.authorId, me.id));
+
+    const offeringsTotal = (svcAgg?.total ?? 0) + (tplAgg?.total ?? 0) + (rmtAgg?.total ?? 0);
+    const offeringsApproved = (svcAgg?.approved ?? 0) + (tplAgg?.approved ?? 0) + (rmtAgg?.approved ?? 0);
+
+    // Availability applies to the in-person (provider) track only — future, non-blocked slots
+    // on the caller's OWN services (the vendor_availability_slots canonical table).
+    let availabilityCount = 0;
+    const availabilityApplicable = consoleFamily === "provider";
+    if (availabilityApplicable) {
+      const slotResult = await db.execute(sql`
+        SELECT count(*)::int AS n
+        FROM vendor_availability_slots
+        WHERE service_id IN (SELECT id FROM provider_services WHERE user_id = ${me.id})
+          AND date >= CURRENT_DATE
+          AND status <> 'blocked'
+      `);
+      availabilityCount = Number((slotResult.rows as any[])?.[0]?.n ?? 0);
+    }
+
+    // Verification is informational here (Build 3 flips the public-storefront gate); reuses
+    // the same either-form check the storefront gate uses so the two never disagree.
+    const identityVerified = await isOwnerIdentityVerified(me.id);
+    const verificationRequired = await isStorefrontVerificationRequired();
+
+    return res.json({
+      eligible: true,
+      consoleFamily,
+      steps: {
+        handle: { done: !!me.handle, value: me.handle ?? null },
+        payouts: { done: me.stripeAccountStatus === "active", status: me.stripeAccountStatus ?? null },
+        firstOffering: { done: offeringsTotal > 0, count: offeringsTotal },
+        approvedOffering: { done: offeringsApproved > 0, count: offeringsApproved },
+        availability: { applicable: availabilityApplicable, done: availabilityCount > 0, count: availabilityCount },
+        verification: { done: identityVerified, requiredForStorefront: verificationRequired },
+      },
+      storefrontPath: me.handle ? `/p/${me.handle}` : null,
+    });
+  } catch (error: any) {
+    console.error("[business-setup] aggregate failed:", error);
+    return res.status(500).json({ message: "Failed to load business setup" });
+  }
+});
 
 async function loadStorefront(handle: string) {
   const normalized = handle.trim().toLowerCase();

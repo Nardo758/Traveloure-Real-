@@ -544,6 +544,51 @@ router.get("/api/admin/concierge-requests", isAuthenticated, async (req, res) =>
   }
 });
 
+// GET /api/admin/business-funnel — Build 1 (activation) funnel report. Every count is a pure
+// read aggregation over EXISTING tables (§13: nothing tracked separately, nothing to drift):
+// applications → approved → earner accounts → handle claimed → first offering → approved
+// offering → payouts connected → first booking. Role lists mirror shared/roles.ts.
+router.get("/api/admin/business-funnel", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const result = await db.execute(sql`
+      SELECT
+        (SELECT count(*)::int FROM local_expert_forms)                                   AS expert_applications,
+        (SELECT count(*)::int FROM local_expert_forms WHERE status = 'approved')         AS expert_approved,
+        (SELECT count(*)::int FROM service_provider_forms)                               AS provider_applications,
+        (SELECT count(*)::int FROM service_provider_forms WHERE status = 'approved')     AS provider_approved,
+        (SELECT count(*)::int FROM users
+           WHERE role IN ('expert','local_expert','travel_expert','event_planner','service_provider')
+             AND (is_deleted IS NULL OR is_deleted = false))                             AS earners,
+        (SELECT count(*)::int FROM users
+           WHERE role IN ('expert','local_expert','travel_expert','event_planner','service_provider')
+             AND (is_deleted IS NULL OR is_deleted = false)
+             AND handle IS NOT NULL)                                                     AS with_handle,
+        (SELECT count(*)::int FROM users
+           WHERE role IN ('expert','local_expert','travel_expert','event_planner','service_provider')
+             AND (is_deleted IS NULL OR is_deleted = false)
+             AND stripe_account_status = 'active')                                       AS payouts_connected,
+        (SELECT count(DISTINCT owner)::int FROM (
+             SELECT user_id AS owner FROM provider_services
+             UNION SELECT expert_id FROM expert_templates
+             UNION SELECT author_id FROM ready_made_trips) o)                            AS with_offering,
+        (SELECT count(DISTINCT owner)::int FROM (
+             SELECT user_id AS owner FROM provider_services WHERE approval_status = 'approved'
+             UNION SELECT expert_id FROM expert_templates WHERE approval_status = 'approved'
+             UNION SELECT author_id FROM ready_made_trips WHERE status = 'approved') o)  AS with_approved_offering,
+        (SELECT count(DISTINCT provider_id)::int FROM service_bookings
+           WHERE provider_id IS NOT NULL)                                                AS with_booking
+    `);
+    res.json(result.rows[0] ?? {});
+  } catch (err: any) {
+    console.error("Admin business-funnel error:", err);
+    res.status(500).json({ message: "Failed to compute business funnel" });
+  }
+});
+
 // GET /api/admin/coordinators — eligible expert coordinators for the assign-coordinator picker.
 // Any expert-family role (shared/roles.ts), excluding deleted/suspended. The original list
 // omitted event_planner — the single most relevant coordinator role for event coordination.

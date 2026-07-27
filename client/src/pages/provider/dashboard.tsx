@@ -25,6 +25,7 @@ import {
 import { Link } from "wouter";
 import { ProviderAvailabilityManager, ProviderBookingContextPanel } from "@/components/logistics";
 import { PayoutBanner } from "@/components/expert/PayoutBanner";
+import { SetupChecklistCard } from "@/components/backoffice/SetupChecklistCard";
 
 interface ProviderAnalytics {
   summary: {
@@ -122,6 +123,9 @@ export default function ProviderDashboard() {
 
         {/* Travel Pulse Ticker — removed fabricated trending data per §13 */}
         {/* <TravelPulseTicker items={[]} /> */}
+
+        {/* Build 1: "Open your business" activation checklist — renders until setup is complete */}
+        <SetupChecklistCard />
 
         {/* Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

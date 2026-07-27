@@ -31,7 +31,7 @@ const router = Router();
 
 const ROLE_LABELS: Record<string, string> = {
   local_expert: "Local Expert",
-  travel_expert: "Travel Advisor",
+  travel_expert: "Trip Planner",
   event_planner: "Event Planner",
   executive_assistant: "Executive Assistant",
 };
