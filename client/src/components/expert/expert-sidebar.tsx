@@ -31,6 +31,7 @@ import {
   Store,
   Share2,
   Inbox,
+  LayoutGrid,
 } from "lucide-react";
 
 function buildMenuGroups(expertType?: string | null) {
@@ -56,6 +57,9 @@ function buildMenuGroups(expertType?: string | null) {
     {
       label: "Business",
       items: [
+        // Catalog (Backoffice B3): "what I sell" front door — absorbs My Offerings + Store
+        // Listings management (both stay as their own pages; Catalog surfaces/links them).
+        { title: "Catalog", href: "/expert/catalog", icon: LayoutGrid },
         { title: "My Offerings", href: "/expert/services", icon: Briefcase },
         // "Store Listings" is the workstation→store pipeline console (decision-maker model,
         // 2026-07-25: one store, stocked from the Workstation; "Trips by Locals" is a consumer
