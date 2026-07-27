@@ -7,7 +7,8 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
-import { DmoPickerModal } from "@/components/expert/dmo-picker-modal";
+import { ExpertLayout } from "@/components/expert/expert-layout";
+import { DmoPickerModal, DmoPickerCore } from "@/components/expert/dmo-picker-modal";
 import { ServicePickerModal } from "@/components/expert/service-picker-modal";
 import ReadyMadeListingPanel, { type ReadyMadeListing } from "@/components/expert/ready-made-listing-panel";
 import { APIProvider, Map, AdvancedMarker, InfoWindow } from "@vis.gl/react-google-maps";
@@ -19,7 +20,7 @@ import {
   TrendingUp, StickyNote, X, ShieldCheck, ExternalLink, User, Mail,
   Phone, CreditCard, CalendarDays, Loader2, ArrowLeft, Users,
   Search, Star, MapPinned, Activity, Battery, Shield, BatteryLow,
-  ShoppingBag, Store,
+  ShoppingBag, Store, Copy, Megaphone,
 } from "lucide-react";
 
 const MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
@@ -246,6 +247,75 @@ function AddItemModal({ dayNumber, tripId, onClose, onItemAdded }: { dayNumber: 
   );
 }
 
+/** A2 — the AddItemModal's form, inline for the Add panel's "Custom" pill (same fields, same
+ *  POST /api/trips/:tripId/itinerary-items write, plus a day selector since there's no per-day
+ *  launch button here). */
+function InlineAddItemForm({ tripId, days, onAdded }: { tripId: string; days: { dayNumber: number }[]; onAdded: () => void }) {
+  const { toast } = useToast();
+  const [dayNumber, setDayNumber] = useState(1);
+  const [form, setForm] = useState({ title: "", itemType: "activity", startTime: "", estimatedCost: "", locationName: "" });
+  const createMutation = useMutation({
+    mutationFn: async (data: any) => { const res = await apiRequest("POST", `/api/trips/${tripId}/itinerary-items`, data); return res.json(); },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/itinerary-items`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+      onAdded();
+      toast({ title: "Item added", description: `Added to Day ${dayNumber}` });
+      setForm({ title: "", itemType: "activity", startTime: "", estimatedCost: "", locationName: "" });
+    },
+    onError: () => toast({ title: "Failed to add item", variant: "destructive" }),
+  });
+  const handleSubmit = () => {
+    if (!form.title.trim()) return;
+    createMutation.mutate({ ...form, dayNumber, estimatedCost: form.estimatedCost ? parseFloat(form.estimatedCost) : undefined });
+  };
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <div>
+          <label style={{ fontSize: 12, fontWeight: 600, color: G[600], display: "block", marginBottom: 4 }}>Day</label>
+          <select value={dayNumber} onChange={e => setDayNumber(Number(e.target.value))} data-testid="select-inline-add-day" style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: `1.5px solid ${G[200]}`, fontSize: 13, background: "white" }}>
+            {days.length > 0 ? days.map(d => (
+              <option key={d.dayNumber} value={d.dayNumber}>Day {d.dayNumber}</option>
+            )) : [1, 2, 3, 4, 5, 6, 7].map(n => <option key={n} value={n}>Day {n}</option>)}
+          </select>
+        </div>
+        <div>
+          <label style={{ fontSize: 12, fontWeight: 600, color: G[600], display: "block", marginBottom: 4 }}>Type</label>
+          <select value={form.itemType} onChange={e => setForm(f => ({ ...f, itemType: e.target.value }))} data-testid="select-inline-add-type" style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: `1.5px solid ${G[200]}`, fontSize: 13, background: "white" }}>
+            <option value="activity">Activity</option>
+            <option value="dining">Dining</option>
+            <option value="hotel">Hotel</option>
+            <option value="transport">Transport</option>
+            <option value="culture">Culture</option>
+          </select>
+        </div>
+      </div>
+      <div>
+        <label style={{ fontSize: 12, fontWeight: 600, color: G[600], display: "block", marginBottom: 4 }}>Title *</label>
+        <input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="e.g. Senso-ji Temple visit" data-testid="input-inline-add-title" style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: `1.5px solid ${G[200]}`, fontSize: 13, outline: "none", boxSizing: "border-box" as any }} />
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        <div>
+          <label style={{ fontSize: 12, fontWeight: 600, color: G[600], display: "block", marginBottom: 4 }}>Start Time</label>
+          <input type="time" value={form.startTime} onChange={e => setForm(f => ({ ...f, startTime: e.target.value }))} data-testid="input-inline-add-time" style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: `1.5px solid ${G[200]}`, fontSize: 13, boxSizing: "border-box" as any }} />
+        </div>
+        <div>
+          <label style={{ fontSize: 12, fontWeight: 600, color: G[600], display: "block", marginBottom: 4 }}>Est. Cost (USD)</label>
+          <input type="number" value={form.estimatedCost} onChange={e => setForm(f => ({ ...f, estimatedCost: e.target.value }))} placeholder="0" data-testid="input-inline-add-cost" style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: `1.5px solid ${G[200]}`, fontSize: 13, boxSizing: "border-box" as any }} />
+        </div>
+      </div>
+      <div>
+        <label style={{ fontSize: 12, fontWeight: 600, color: G[600], display: "block", marginBottom: 4 }}>Location</label>
+        <input value={form.locationName} onChange={e => setForm(f => ({ ...f, locationName: e.target.value }))} placeholder="Venue name" data-testid="input-inline-add-location" style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: `1.5px solid ${G[200]}`, fontSize: 13, boxSizing: "border-box" as any }} />
+      </div>
+      <button onClick={handleSubmit} disabled={!form.title.trim() || createMutation.isPending} data-testid="button-inline-add-confirm" style={{ padding: "9px", borderRadius: 8, background: P, color: "white", border: "none", fontSize: 13, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, opacity: !form.title.trim() || createMutation.isPending ? 0.6 : 1 }}>
+        {createMutation.isPending ? <Loader2 style={{ width: 13, height: 13 }} className="animate-spin" /> : <Plus style={{ width: 13, height: 13 }} />} Add Item
+      </button>
+    </div>
+  );
+}
+
 interface AssignedTrip {
   trip_id: string; trip_title: string; destination: string;
   start_date: string; end_date: string; traveler_name: string;
@@ -292,7 +362,11 @@ export default function ExpertWorkspace() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
 
-  const [rightTab, setRightTab] = useState("gaps");
+  // Phase A2 (§17 build-first/distribute-later): "add" is the assignment-mode default;
+  // authoring mode defaults to "distribute" (set once the server resolves the mode below).
+  const [rightTab, setRightTab] = useState("add");
+  // Add-panel source pill (§17 "Add panel = the Central Content network").
+  const [addSource, setAddSource] = useState("dmo");
   const [cat, setCat] = useState("all");
   const [cTab, setCTab] = useState("itinerary");
   const [mapSelectedDay, setMapSelectedDay] = useState(1); // LB-P5b: MapControlCenter day picker
@@ -356,13 +430,14 @@ export default function ExpertWorkspace() {
   const isAuthoring = workspaceCtx?.mode === "authoring";
   const listing = (workspaceCtx?.listing ?? null) as ReadyMadeListing | null;
 
-  // The listing is the first thing an author needs; open on it once the mode resolves. Guarded by a
-  // ref so it lands once and never yanks the panel back while the author is working elsewhere.
+  // The listing/distribution surface is the first thing an author needs; open on it once the mode
+  // resolves. Guarded by a ref so it lands once and never yanks the panel back while the author is
+  // working elsewhere. (A2: "listing" tab is absorbed into the Distribute panel's Store card.)
   const authoringTabDefaulted = useRef(false);
   useEffect(() => {
     if (isAuthoring && !authoringTabDefaulted.current) {
       authoringTabDefaulted.current = true;
-      setRightTab("listing");
+      setRightTab("distribute");
     }
   }, [isAuthoring]);
 
@@ -391,6 +466,42 @@ export default function ExpertWorkspace() {
       return body as { tripId: string; redirect: string };
     },
     onSuccess: (body) => setLocation(body.redirect),
+  });
+
+  // A2 smart landing: from the no-trip launchpad, an expert with EXACTLY one assigned trip and
+  // zero store listings has exactly one place to be — open that trip directly. Lightweight query,
+  // launchpad-state only (disabled once a trip is open); fires at most once per mount.
+  const { data: myListingsData } = useQuery<{ listings: Array<{ id: string }> }>({
+    queryKey: ["/api/expert/ready-made/mine"],
+    enabled: !tripId,
+  });
+  const smartLandingFired = useRef(false);
+  useEffect(() => {
+    if (tripId || smartLandingFired.current) return;
+    if (!assignedTrips || assignedTrips.length !== 1) return;
+    if (!myListingsData) return; // wait for the listings answer — never guess
+    if ((myListingsData.listings ?? []).length !== 0) return;
+    smartLandingFired.current = true;
+    setLocation(`/expert/workspace/${assignedTrips[0].trip_id}`);
+  }, [tripId, assignedTrips, myListingsData, setLocation]);
+
+  // A2 Distribute → Direct channel: trackable booking link for the store listing
+  // (mirrors share-promote.tsx's ensureShortLink pattern; owner-verified server-side).
+  const [directLink, setDirectLink] = useState<string | null>(null);
+  const getBookingLinkMutation = useMutation({
+    mutationFn: async (listingId: string) => {
+      const res = await fetch("/api/short-links", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ targetType: "ready_made", targetId: listingId }),
+      });
+      if (!res.ok) throw new Error(`Failed (${res.status})`);
+      const data = (await res.json()) as { url: string };
+      return `${window.location.origin}${data.url}`;
+    },
+    onSuccess: (url) => setDirectLink(url),
+    onError: () => toast({ title: "Couldn't create the booking link", variant: "destructive" }),
   });
 
   const assignedTrip = assignedTrips?.find(t => t.trip_id === tripId);
@@ -574,12 +685,12 @@ export default function ExpertWorkspace() {
   const { data: geocodeData } = useQuery<{ lat: number; lng: number }>({
     queryKey: ["/api/geocode", destination],
     queryFn: () => fetch(`/api/geocode?address=${encodeURIComponent(destination)}`).then(r => r.json()),
-    enabled: !!destination && rightTab === "browse",
+    enabled: !!destination && rightTab === "add" && addSource === "platform",
     staleTime: Infinity,
   });
 
-  // ── Browse: live experience search ──
-  const searchEnabled = rightTab === "browse" && !!(debouncedQuery || destination);
+  // ── Browse: live experience search (A2: lives under the Add panel's "Platform services" pill) ──
+  const searchEnabled = rightTab === "add" && addSource === "platform" && !!(debouncedQuery || destination);
   const { data: searchData, isFetching: searchFetching } = useQuery<{ results: any[]; count: number }>({
     queryKey: ["/api/search/experiences", debouncedQuery, destination, cat],
     queryFn: () => {
@@ -767,7 +878,8 @@ export default function ExpertWorkspace() {
       .sort((a, b) => (b.assigned_at ?? "").localeCompare(a.assigned_at ?? ""))
       .slice(0, 6);
     return (
-      <main style={{ padding: "40px 24px", maxWidth: 760, margin: "0 auto" }}>
+      <ExpertLayout title="Workspace">
+      <div style={{ padding: "40px 24px", maxWidth: 760, margin: "0 auto", fontFamily: "'Inter',-apple-system,sans-serif" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
           <PenSquare style={{ width: 24, height: 24, color: P }} />
           <h1 style={{ fontSize: 22, fontWeight: 700, color: G[900], margin: 0 }}>Expert workspace</h1>
@@ -871,25 +983,30 @@ export default function ExpertWorkspace() {
             </button>
           ))}
         </div>
-      </main>
+      </div>
+      </ExpertLayout>
     );
   }
 
   if (isLoading) return (
-    <div style={{ padding: 40, display: "flex", flexDirection: "column", gap: 16, maxWidth: 600, margin: "0 auto" }}>
-      <Skeleton className="h-8 w-48" />
-      <Skeleton className="h-32 rounded-xl" />
-      <Skeleton className="h-48 rounded-xl" />
-    </div>
+    <ExpertLayout title="Workspace">
+      <div style={{ padding: 40, display: "flex", flexDirection: "column", gap: 16, maxWidth: 600, margin: "0 auto" }}>
+        <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-32 rounded-xl" />
+        <Skeleton className="h-48 rounded-xl" />
+      </div>
+    </ExpertLayout>
   );
 
   if (!trip && !tripsLoading && !ctxLoading) return (
-    <main style={{ padding: 40, textAlign: "center" }}>
-      <Users style={{ width: 48, height: 48, color: G[300], margin: "0 auto 16px" }} />
-      <h1 style={{ fontSize: 18, fontWeight: 600, color: G[900], margin: "0 0 8px" }}>Trip not found</h1>
-      <div style={{ fontSize: 14, color: G[500], marginBottom: 20 }}>This trip isn't assigned to you, you didn't author it, or it no longer exists.</div>
-      <button onClick={() => safeNavigate("/expert/assigned-trips")} data-testid="button-back-assigned" style={{ padding: "8px 20px", borderRadius: 8, background: P, color: "white", border: "none", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>View Assigned Trips</button>
-    </main>
+    <ExpertLayout title="Workspace">
+      <div style={{ padding: 40, textAlign: "center" }}>
+        <Users style={{ width: 48, height: 48, color: G[300], margin: "0 auto 16px" }} />
+        <h1 style={{ fontSize: 18, fontWeight: 600, color: G[900], margin: "0 0 8px" }}>Trip not found</h1>
+        <div style={{ fontSize: 14, color: G[500], marginBottom: 20 }}>This trip isn't assigned to you, you didn't author it, or it no longer exists.</div>
+        <button onClick={() => safeNavigate("/expert/assigned-trips")} data-testid="button-back-assigned" style={{ padding: "8px 20px", borderRadius: 8, background: P, color: "white", border: "none", fontSize: 14, fontWeight: 600, cursor: "pointer" }}>View Assigned Trips</button>
+      </div>
+    </ExpertLayout>
   );
 
   const tripTitle = trip?.trip_title || trip?.destination || `Trip ${tripId}`;
@@ -897,7 +1014,10 @@ export default function ExpertWorkspace() {
   const travelerName = trip?.traveler_name || "Client";
 
   return (
-    <div style={{ fontFamily: "'Inter',-apple-system,sans-serif", height: "100vh", display: "flex", flexDirection: "column", background: G[50], overflow: "hidden" }}>
+    <ExpertLayout title="Workspace">
+    {/* A2: sized against the shell's 52px sticky header so the builder owns its own scrolling
+        (internal panes scroll; the shell's <main> never double-scrolls). */}
+    <div style={{ fontFamily: "'Inter',-apple-system,sans-serif", height: "calc(100vh - 52px)", display: "flex", flexDirection: "column", background: G[50], overflow: "hidden" }}>
       {bookingBrief && tripId && (
         <BookingBriefModal provider={bookingBrief.provider} bookingUrl={bookingBrief.bookingUrl} tripId={tripId} onClose={() => setBookingBrief(null)} />
       )}
@@ -942,10 +1062,7 @@ export default function ExpertWorkspace() {
           )}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 12px", background: "#F0FDF4", borderRadius: 99, border: "1px solid #BBF7D0" }}>
-            <div style={{ width: 7, height: 7, borderRadius: "50%", background: "#16A34A" }} />
-            <span style={{ fontSize: 12, fontWeight: 600, color: "#15803D" }}>AI: Active</span>
-          </div>
+          {/* A2: the "AI: Active" pill moved to the shell's statusBadge (ExpertLayout) — not duplicated here. */}
           {!isAuthoring && (
             <Av i={travelerName.charAt(0).toUpperCase() + (travelerName.split(" ")[1]?.[0] || "").toUpperCase()} s={32} />
           )}
@@ -1305,31 +1422,217 @@ export default function ExpertWorkspace() {
         <aside style={{ width: 380, background: "white", borderLeft: `1px solid ${G[200]}`, display: "flex", flexDirection: "column", overflow: "hidden", flexShrink: 0 }}>
           <div style={{ borderBottom: `1px solid ${G[200]}`, padding: "0 10px", display: "flex", gap: 0, flexShrink: 0, overflowX: "auto" }}>
             {[
-              // Authoring: the listing IS the primary panel, and "Earnings" (per-client commission)
-              // is replaced by the listing panel's fee-band share preview.
-              ...(isAuthoring ? [{ k: "listing", l: "🏷️ Listing" }] : []),
+              // A2 (§17 build-first/distribute-later): Add is FIRST — the one intake for putting
+              // content on this trip (source pills inside). Distribute absorbs the old "listing"
+              // tab (Store card) plus the Client / Direct / Social channels.
+              { k: "add", l: "➕ Add" },
+              { k: "distribute", l: "📣 Distribute" },
               { k: "gaps", l: totalConstraintIssues > 0 ? `⚠️ Schedule Check (${totalConstraintIssues})` : "⚠️ Schedule Check" },
               ...(isEvent ? [{ k: "event-coord", l: "📅 Event Coord" }] : []),
-              { k: "browse", l: "🔍 Browse" },
               ...(isAuthoring ? [] : [{ k: "commission", l: "💰 Earnings" }]),
-              { k: "providers", l: "👥 Providers" },
-              { k: "affiliates", l: "🔗 Affiliates" },
               ...(isAuthoring ? [] : [{ k: "partner-bookings", l: "🛍️ Partner Bookings" }]),
             ].map(t => (
               <button key={t.k} onClick={() => setRightTab(t.k)} data-testid={`tab-right-${t.k}`} style={{ padding: "10px 7px", fontSize: 11, fontWeight: 600, cursor: "pointer", background: "none", border: "none", borderBottom: rightTab === t.k ? `2px solid ${P}` : "2px solid transparent", color: rightTab === t.k ? P : G[500], marginBottom: -1, whiteSpace: "nowrap" }}>{t.l}</button>
             ))}
           </div>
 
-          {/* Listing Tab (authoring only) */}
-          {rightTab === "listing" && isAuthoring && (
-            listing ? (
-              <ReadyMadeListingPanel listing={listing} tripId={tripId!} />
-            ) : (
-              <div style={{ flex: 1, padding: "18px 14px", fontSize: 12.5, color: G[500], lineHeight: 1.55 }}>
-                This trip has no ready-made listing attached, so there's nothing to price or publish.
-                Start a new one from the Ready Made Trips console.
+          {/* ── Add Panel (A2) — the one intake for putting content on this trip.
+               Source pills map §17's Central-Content-network origins; disabled pills are honest
+               (§13) — their backends don't exist yet, so we say so instead of faking them. */}
+          {rightTab === "add" && (
+            <div style={{ padding: "8px 10px", borderBottom: `1px solid ${G[100]}`, display: "flex", gap: 5, overflowX: "auto", flexShrink: 0 }}>
+              {[
+                { k: "dmo", l: "DMO Library" },
+                { k: "content", l: "Platform content", disabled: true, why: "Coming with the content registry read" },
+                { k: "platform", l: "Platform services" },
+                { k: "partner", l: "Partner inventory" },
+                { k: "mine", l: "My services", disabled: true, why: "Coming with the catalog module" },
+                { k: "custom", l: "Custom" },
+              ].map(s => (
+                <button
+                  key={s.k}
+                  disabled={!!s.disabled}
+                  title={s.disabled ? s.why : undefined}
+                  onClick={() => !s.disabled && setAddSource(s.k)}
+                  data-testid={`pill-add-${s.k}`}
+                  style={{
+                    padding: "4px 10px", borderRadius: 99, fontSize: 11.5, fontWeight: 600, whiteSpace: "nowrap",
+                    cursor: s.disabled ? "not-allowed" : "pointer", opacity: s.disabled ? 0.45 : 1,
+                    border: addSource === s.k ? `1.5px solid ${P}` : `1.5px solid ${G[200]}`,
+                    background: addSource === s.k ? `${P}0F` : "white",
+                    color: addSource === s.k ? P : G[600],
+                  }}
+                >
+                  {s.l}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Add · DMO Library — the picker modal's core, embedded (same fetch + same
+               POST /api/trips/:tripId/itinerary-items write). */}
+          {rightTab === "add" && addSource === "dmo" && (
+            <div style={{ flex: 1, overflowY: "auto", padding: "12px 12px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
+                <span style={{ fontSize: 11.5, fontWeight: 600, color: G[600] }}>Add to day:</span>
+                <select
+                  value={addToDay}
+                  onChange={e => setAddToDay(Number(e.target.value))}
+                  data-testid="select-add-dmo-day"
+                  style={{ padding: "3px 8px", borderRadius: 6, border: `1px solid ${G[200]}`, fontSize: 12, background: "white" }}
+                >
+                  {days.length > 0 ? days.map(d => (
+                    <option key={d.dayNumber} value={d.dayNumber}>Day {d.dayNumber}</option>
+                  )) : [1,2,3,4,5,6,7].map(n => <option key={n} value={n}>Day {n}</option>)}
+                </select>
               </div>
-            )
+              <DmoPickerCore tripId={tripId!} dayNumber={addToDay} onAdded={triggerEnergyRecalc} />
+            </div>
+          )}
+
+          {/* Add · Custom — the add-item form, inline (same fields + same write as AddItemModal). */}
+          {rightTab === "add" && addSource === "custom" && (
+            <div style={{ flex: 1, overflowY: "auto", padding: "12px 12px" }}>
+              <InlineAddItemForm tripId={tripId!} days={days} onAdded={triggerEnergyRecalc} />
+            </div>
+          )}
+
+          {/* ── Distribute Panel (A2, replaces the "listing" tab) — §17: client / store / social /
+               direct are DISTRIBUTION CHANNELS with independent state on one build. */}
+          {rightTab === "distribute" && (
+            <div style={{ flex: 1, overflowY: "auto", padding: "14px 12px", display: "flex", flexDirection: "column", gap: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                <Megaphone style={{ width: 14, height: 14, color: P }} />
+                <span style={{ fontSize: 14, fontWeight: 700, color: G[900] }}>Distribute</span>
+              </div>
+
+              {/* Store channel */}
+              <div style={{ border: `1px solid ${G[200]}`, borderRadius: 10, overflow: "hidden" }}>
+                <div style={{ padding: "8px 12px", borderBottom: `1px solid ${G[100]}`, display: "flex", alignItems: "center", gap: 6, background: G[50] }}>
+                  <Store style={{ width: 12, height: 12, color: G[600] }} />
+                  <span style={{ fontSize: 12, fontWeight: 700, color: G[900] }}>Store</span>
+                </div>
+                {isAuthoring ? (
+                  listing ? (
+                    <ReadyMadeListingPanel listing={listing} tripId={tripId!} />
+                  ) : (
+                    <div style={{ padding: "14px 12px", fontSize: 12.5, color: G[500], lineHeight: 1.55 }}>
+                      This trip has no ready-made listing attached, so there's nothing to price or publish.
+                      Start a new one from the Ready Made Trips console.
+                    </div>
+                  )
+                ) : (
+                  <div style={{ padding: "14px 12px", fontSize: 12.5, color: G[500], lineHeight: 1.55 }} data-testid="text-distribute-store-muted">
+                    Client trips aren't store listings — start a store build from the Workspace home.
+                  </div>
+                )}
+              </div>
+
+              {/* Client channel */}
+              <div style={{ border: `1px solid ${G[200]}`, borderRadius: 10, overflow: "hidden" }}>
+                <div style={{ padding: "8px 12px", borderBottom: `1px solid ${G[100]}`, display: "flex", alignItems: "center", gap: 6, background: G[50] }}>
+                  <User style={{ width: 12, height: 12, color: G[600] }} />
+                  <span style={{ fontSize: 12, fontWeight: 700, color: G[900] }}>Client</span>
+                </div>
+                {isAuthoring ? (
+                  <div style={{ padding: "14px 12px", fontSize: 12.5, color: G[500] }} data-testid="text-distribute-client-muted">
+                    Not attached to a client.
+                  </div>
+                ) : (
+                  <div style={{ padding: "12px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                      <Av i={travelerName.charAt(0).toUpperCase() + (travelerName.split(" ")[1]?.[0] || "").toUpperCase()} s={26} />
+                      <span style={{ fontSize: 13, fontWeight: 600, color: G[900], overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} data-testid="text-distribute-client-name">
+                        {travelerName}
+                      </span>
+                    </div>
+                    <button
+                      onClick={() => safeNavigate(trip?.traveler_user_id ? `/chat?clientId=${trip.traveler_user_id}` : "/chat")}
+                      data-testid="button-distribute-client-chat"
+                      style={{ flexShrink: 0, padding: "5px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, background: "white", color: G[700], border: `1.5px solid ${G[200]}`, cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}
+                    >
+                      <MessageSquare style={{ width: 12, height: 12 }} /> Open chat
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Direct channel — authoring only (trackable /r/<code> booking link, §16 rail) */}
+              {isAuthoring && (
+                <div style={{ border: `1px solid ${G[200]}`, borderRadius: 10, overflow: "hidden" }}>
+                  <div style={{ padding: "8px 12px", borderBottom: `1px solid ${G[100]}`, display: "flex", alignItems: "center", gap: 6, background: G[50] }}>
+                    <Link2 style={{ width: 12, height: 12, color: G[600] }} />
+                    <span style={{ fontSize: 12, fontWeight: 700, color: G[900] }}>Direct</span>
+                  </div>
+                  {listing?.id ? (
+                    <div style={{ padding: "12px" }}>
+                      {directLink ? (
+                        <>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: G[900], background: G[50], border: `1px solid ${G[200]}`, borderRadius: 8, padding: "7px 10px", marginBottom: 8, wordBreak: "break-all" }} data-testid="text-direct-booking-link">
+                            {directLink}
+                          </div>
+                          <div style={{ display: "flex", gap: 6 }}>
+                            <button
+                              onClick={async () => {
+                                try {
+                                  await navigator.clipboard.writeText(directLink);
+                                  toast({ title: "Copied", description: "Booking link copied to your clipboard." });
+                                } catch {
+                                  toast({ title: "Couldn't copy", variant: "destructive" });
+                                }
+                              }}
+                              data-testid="button-direct-copy"
+                              style={{ flex: 1, padding: "6px 10px", borderRadius: 8, fontSize: 12, fontWeight: 600, background: P, color: "white", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}
+                            >
+                              <Copy style={{ width: 12, height: 12 }} /> Copy
+                            </button>
+                            <button
+                              onClick={() => window.open(`https://wa.me/?text=${encodeURIComponent(directLink)}`, "_blank", "noopener,noreferrer")}
+                              data-testid="button-direct-whatsapp"
+                              style={{ flex: 1, padding: "6px 10px", borderRadius: 8, fontSize: 12, fontWeight: 600, background: "white", color: G[700], border: `1.5px solid ${G[200]}`, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}
+                            >
+                              <Send style={{ width: 12, height: 12 }} /> WhatsApp
+                            </button>
+                          </div>
+                        </>
+                      ) : (
+                        <button
+                          onClick={() => getBookingLinkMutation.mutate(listing.id)}
+                          disabled={getBookingLinkMutation.isPending}
+                          data-testid="button-direct-get-link"
+                          style={{ padding: "7px 14px", borderRadius: 8, fontSize: 12, fontWeight: 600, background: P, color: "white", border: "none", cursor: getBookingLinkMutation.isPending ? "wait" : "pointer", display: "flex", alignItems: "center", gap: 5, opacity: getBookingLinkMutation.isPending ? 0.7 : 1 }}
+                        >
+                          {getBookingLinkMutation.isPending ? <Loader2 style={{ width: 12, height: 12 }} className="animate-spin" /> : <Link2 style={{ width: 12, height: 12 }} />}
+                          Get booking link
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <div style={{ padding: "14px 12px", fontSize: 12.5, color: G[500] }} data-testid="text-direct-no-listing">
+                      Create the store listing first.
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Social channel — honest: link to the studio, no fake generate buttons (§13) */}
+              <div style={{ border: `1px solid ${G[200]}`, borderRadius: 10, overflow: "hidden" }}>
+                <div style={{ padding: "8px 12px", borderBottom: `1px solid ${G[100]}`, display: "flex", alignItems: "center", gap: 6, background: G[50] }}>
+                  <Sparkles style={{ width: 12, height: 12, color: G[600] }} />
+                  <span style={{ fontSize: 12, fontWeight: 700, color: G[900] }}>Social</span>
+                </div>
+                <div style={{ padding: "12px" }}>
+                  <button
+                    onClick={() => safeNavigate(`/expert/content-studio?prefill=1&title=${encodeURIComponent(tripTitle)}&destination=${encodeURIComponent(trip?.destination ?? "")}`)}
+                    data-testid="button-distribute-social-studio"
+                    style={{ padding: "7px 14px", borderRadius: 8, fontSize: 12, fontWeight: 600, background: "white", color: P, border: `1.5px solid ${P}`, cursor: "pointer", marginBottom: 8 }}
+                  >
+                    Create promo in Content Studio →
+                  </button>
+                  <div style={{ fontSize: 11, color: G[500] }}>Share cards for builds arrive with the publish panel.</div>
+                </div>
+              </div>
+            </div>
           )}
 
           {/* Schedule Check Tab */}
@@ -1626,8 +1929,10 @@ export default function ExpertWorkspace() {
             </div>
           )}
 
-          {/* Browse Tab — Map-based live search */}
-          {rightTab === "browse" && (
+          {/* Add · Platform services — the former Browse tab (map-based live search), moved here
+               unchanged, with the former Providers tab's platform-provider list appended below the
+               results so its content also lives in Add. */}
+          {rightTab === "add" && addSource === "platform" && (
             <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
 
               {/* Search bar + category chips */}
@@ -1801,6 +2106,42 @@ export default function ExpertWorkspace() {
                     })}
                   </>
                 )}
+
+                {/* Platform Service Providers (moved from the deleted Providers tab) */}
+                <div style={{ marginTop: 14, borderTop: `1px solid ${G[100]}`, paddingTop: 10 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <div style={{ width: 20, height: 20, borderRadius: 6, background: P, display: "flex", alignItems: "center", justifyContent: "center" }}><User style={{ width: 11, height: 11, color: "white" }} /></div>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: G[900] }}>Platform Service Providers</span>
+                    </div>
+                    {trip?.destination && <Bdg c="primary">{trip.destination}</Bdg>}
+                  </div>
+                  <p style={{ fontSize: 11, color: G[500], marginBottom: 10 }}>Traveloure-verified providers you can book directly for this client.</p>
+                  {providers && providers.length > 0 ? providers.slice(0, 6).map((p: any, i: number) => (
+                    <div key={p.id || i} data-testid={`card-sp-${p.id}`} style={{ display: "flex", alignItems: "flex-start", gap: 9, padding: "10px 11px", border: `1px solid ${G[100]}`, borderRadius: 10, marginBottom: 7, background: "white", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
+                      <div style={{ width: 38, height: 38, borderRadius: "50%", background: `linear-gradient(135deg,${P}30,${P}60)`, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>🏢</div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 1 }}>
+                          <span style={{ fontSize: 13, fontWeight: 700, color: G[900] }}>{p.serviceName}</span>
+                          {p.status === "active" && <div title="Active" style={{ width: 14, height: 14, borderRadius: "50%", background: "#2563EB", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><CheckCircle style={{ width: 9, height: 9, color: "white" }} /></div>}
+                        </div>
+                        <div style={{ fontSize: 12, fontWeight: 600, color: G[700], marginBottom: 1 }}>{p.serviceType || p.category || "Service"}</div>
+                        {p.location && <div style={{ fontSize: 11, color: G[400], marginBottom: 4 }}>{p.location}</div>}
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          {p.price && <span style={{ fontSize: 11, color: G[600], fontWeight: 600 }}>${p.price}</span>}
+                          <button onClick={() => setBookingBrief({ provider: p.serviceName, bookingUrl: p.websiteUrl || p.bookingUrl })} data-testid={`button-book-provider-${p.id}`} style={{ padding: "4px 9px", borderRadius: 7, fontSize: 11, fontWeight: 600, background: P, color: "white", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
+                            <CheckCircle style={{ width: 10, height: 10 }} /> Book
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )) : (
+                    <div style={{ textAlign: "center", padding: "20px 0", color: G[400], fontSize: 13 }}>
+                      <Users style={{ width: 32, height: 32, color: G[300], margin: "0 auto 8px" }} />
+                      No platform providers found yet.
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Footer */}
@@ -1855,47 +2196,7 @@ export default function ExpertWorkspace() {
             </div>
           )}
 
-          {/* Providers Tab */}
-          {rightTab === "providers" && (
-            <div style={{ flex: 1, overflowY: "auto", padding: "14px 12px" }}>
-              <div style={{ marginBottom: 16 }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <div style={{ width: 20, height: 20, borderRadius: 6, background: P, display: "flex", alignItems: "center", justifyContent: "center" }}><User style={{ width: 11, height: 11, color: "white" }} /></div>
-                    <span style={{ fontSize: 13, fontWeight: 700, color: G[900] }}>Platform Service Providers</span>
-                  </div>
-                  {trip?.destination && <Bdg c="primary">{trip.destination}</Bdg>}
-                </div>
-                <p style={{ fontSize: 11, color: G[500], marginBottom: 10 }}>Traveloure-verified providers you can book directly for this client.</p>
-                {providers && providers.length > 0 ? providers.slice(0, 6).map((p: any, i: number) => (
-                  <div key={p.id || i} data-testid={`card-sp-${p.id}`} style={{ display: "flex", alignItems: "flex-start", gap: 9, padding: "10px 11px", border: `1px solid ${G[100]}`, borderRadius: 10, marginBottom: 7, background: "white", boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
-                    <div style={{ width: 38, height: 38, borderRadius: "50%", background: `linear-gradient(135deg,${P}30,${P}60)`, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>🏢</div>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 1 }}>
-                        <span style={{ fontSize: 13, fontWeight: 700, color: G[900] }}>{p.serviceName}</span>
-                        {p.status === "active" && <div title="Active" style={{ width: 14, height: 14, borderRadius: "50%", background: "#2563EB", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}><CheckCircle style={{ width: 9, height: 9, color: "white" }} /></div>}
-                      </div>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: G[700], marginBottom: 1 }}>{p.serviceType || p.category || "Service"}</div>
-                      {p.location && <div style={{ fontSize: 11, color: G[400], marginBottom: 4 }}>{p.location}</div>}
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        {p.price && <span style={{ fontSize: 11, color: G[600], fontWeight: 600 }}>${p.price}</span>}
-                        <button onClick={() => setBookingBrief({ provider: p.serviceName, bookingUrl: p.websiteUrl || p.bookingUrl })} data-testid={`button-book-provider-${p.id}`} style={{ padding: "4px 9px", borderRadius: 7, fontSize: 11, fontWeight: 600, background: P, color: "white", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
-                          <CheckCircle style={{ width: 10, height: 10 }} /> Book
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )) : (
-                  <div style={{ textAlign: "center", padding: "30px 0", color: G[400], fontSize: 13 }}>
-                    <Users style={{ width: 32, height: 32, color: G[300], margin: "0 auto 8px" }} />
-                    No platform providers found yet.
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Affiliates Tab */}
+          {/* Partner Bookings Tab */}
           {rightTab === "partner-bookings" && (
             <div style={{ flex: 1, overflowY: "auto", padding: "14px 12px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 4 }}>
@@ -1943,7 +2244,8 @@ export default function ExpertWorkspace() {
             </div>
           )}
 
-          {rightTab === "affiliates" && (
+          {/* Add · Partner inventory — the former Affiliates tab content, moved here unchanged. */}
+          {rightTab === "add" && addSource === "partner" && (
             <div style={{ flex: 1, overflowY: "auto", padding: "14px 12px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 4 }}>
                 <div style={{ width: 22, height: 22, borderRadius: 7, background: `${P}22`, display: "flex", alignItems: "center", justifyContent: "center" }}><Link2 style={{ width: 11, height: 11, color: P }} /></div>
@@ -1997,5 +2299,6 @@ export default function ExpertWorkspace() {
         </aside>
       </div>
     </div>
+    </ExpertLayout>
   );
 }
