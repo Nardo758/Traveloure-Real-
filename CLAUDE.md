@@ -710,6 +710,18 @@ Governing spec: `docs/backoffice/mockups/mockup-unified-workspace.html` (v9). Lo
   `/services/:id` is rebuilt to it — one page for marketplace browsing AND all shared/booking links
   (breadcrumb into /p/, Direct-Booking trust panel, migration-144 cancellation policy, honest reviews,
   Book Now → existing checkout rail). Short links keep redirecting there.
+- **Destination formats (ratified Jul 27, 2026): one Trip Card is NOT the universal renderer.**
+  Builds resolve a FORMAT from **destination × experience type** (decision-maker: both axes), applied
+  to BOTH the Workstation builder view AND the Ready Made Trip store page (the format is part of the
+  product). Mechanism: extend the existing shallow `getTemplateConfig(eventType)`
+  (client/src/components/plancard/plancard-types.tsx — today labels-only, 3 event templates, structure
+  identical everywhere) into a **format registry** with the fallback chain
+  `(destination, experienceType) → destination default → experienceType default → generic travel`.
+  A format defines STRUCTURE (sections/grouping — e.g. Kyoto neighborhood-grouped cultural sections vs
+  an event's venue-and-timeline), vocabulary, and the store-page layout — not just labels. §12: Kyoto
+  formats first (Kyoto-cultural, Kyoto-wedding); other markets get formats when they open. Design doc:
+  `docs/backoffice/DESTINATION_FORMATS.md`. PlanCard's `embedded` mode (Workstation chrome suppression)
+  is orthogonal and stays.
 
 The earning ledger is an escrow state machine: **`held → releasable → paid_out`**, plus **`reversed`**, with a
 `dispute_state`. All phases are **landed on `main`** (Jul 14, 2026):
