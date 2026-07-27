@@ -1,4 +1,4 @@
-<title>Destination Formats — one store, many shapes</title>
+<title>Distribution Formats — one build, four destinations</title>
 <style>
   :root {
     --ink: #1A1A18;
@@ -44,12 +44,22 @@
   h2 { font-size: 24px; margin: 64px 0 6px; }
   .sub { color: var(--ash); max-width: 62ch; margin: 0 0 8px; }
   .eyebrow { text-transform: uppercase; letter-spacing: 0.14em; font-size: 11px; font-weight: 700; color: var(--console); }
+  .corrected { display: inline-block; background: color-mix(in srgb, var(--good) 12%, transparent); color: var(--good);
+    font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; padding: 3px 9px; border-radius: 5px; }
 
   .frame { border: 1px solid var(--mist); border-radius: 14px; overflow: hidden; background: var(--frame-bg); margin: 22px 0; }
   .chrome { display: flex; align-items: center; gap: 6px; padding: 9px 14px; border-bottom: 1px solid var(--mist); background: var(--haze); }
   .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--mist); }
   .urlbar { margin-left: 10px; font-size: 11px; color: var(--ash); font-family: ui-monospace, Menlo, Consolas, monospace; }
   .screen { padding: 18px 20px 22px; overflow-x: auto; }
+
+  /* channel strip */
+  .channels { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 20px 0 6px; }
+  @media (max-width: 760px) { .channels { grid-template-columns: 1fr 1fr; } }
+  .chan { border: 1px solid var(--mist); border-radius: 11px; padding: 12px 14px; background: var(--frame-bg); }
+  .chan b { display: block; font-size: 14px; margin-bottom: 3px; }
+  .chan span { font-size: 12px; color: var(--ash); display: block; }
+  .chan .k { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 10.5px; color: var(--console); font-weight: 600; margin-top: 7px; display: block; }
 
   /* resolver diagram */
   .chain { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 18px 0 6px; }
@@ -61,10 +71,11 @@
   .resolve-table td { padding: 8px 10px; border-bottom: 1px solid var(--haze); font-variant-numeric: tabular-nums; }
   .fmt { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11.5px; color: var(--console); font-weight: 600; }
 
-  /* builder (console palette) vs store (traveler palette) framing */
   .lane-tag { display: inline-block; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.12em; padding: 3px 9px; border-radius: 5px; margin-bottom: 12px; }
   .lane-tag.builder { background: color-mix(in srgb, var(--console) 12%, transparent); color: var(--console); }
   .lane-tag.store { background: color-mix(in srgb, var(--traveler) 12%, transparent); color: var(--traveler); }
+  .lane-tag.social { background: color-mix(in srgb, #7C4DBE 14%, transparent); color: #7C4DBE; }
+  .lane-tag.direct { background: color-mix(in srgb, var(--good) 12%, transparent); color: var(--good); }
 
   .hood { border: 1px solid var(--mist); border-radius: 11px; margin-bottom: 12px; overflow: hidden; }
   .hood-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 9px 13px; background: var(--haze); border-bottom: 1px solid var(--mist); }
@@ -100,6 +111,39 @@
   .spec-note { border-left: 3px solid var(--console); background: var(--haze); border-radius: 0 10px 10px 0; padding: 10px 16px; font-size: 13.5px; margin: 14px 0; max-width: 70ch; }
   .spec-note p { margin: 4px 0; color: var(--ash); }
 
+  /* social story frames */
+  .story-rail { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 6px; }
+  .story { flex: 0 0 148px; aspect-ratio: 9 / 16; border-radius: 12px; border: 1px solid var(--mist);
+    display: flex; flex-direction: column; justify-content: flex-end; padding: 12px; box-sizing: border-box;
+    font-size: 11.5px; color: #fff; position: relative; overflow: hidden; }
+  .story small { display: block; opacity: 0.85; font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 3px; }
+  .story b { font-size: 13px; line-height: 1.25; display: block; text-wrap: balance; }
+  .s-hero { background: linear-gradient(180deg, #3E2A33 20%, #B4434F); }
+  .s-1 { background: linear-gradient(180deg, #26333A 20%, #3E7183); }
+  .s-2 { background: linear-gradient(180deg, #2E3326 20%, #5F7A3E); }
+  .s-3 { background: linear-gradient(180deg, #382A3E 20%, #7C4DBE); }
+  .s-cta { background: var(--ink); color: var(--paper); align-items: flex-start; justify-content: center; }
+  :root[data-theme="dark"] .s-cta, .s-cta { border: 1px solid var(--mist); }
+  .s-cta .pill { background: var(--console); color: #fff; border-radius: 999px; padding: 5px 11px; font-size: 10.5px; font-weight: 700; margin-top: 8px; display: inline-block; }
+  .story-num { position: absolute; top: 9px; right: 11px; font-size: 9.5px; opacity: 0.75; font-family: ui-monospace, Menlo, monospace; }
+
+  .caption-box { border: 1px solid var(--mist); border-radius: 11px; padding: 12px 14px; font-size: 12.5px; }
+  .caption-box .plat { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: #7C4DBE; margin-bottom: 5px; }
+  .caption-box p { margin: 0 0 6px; }
+  .caption-box .tags { color: var(--ash); font-size: 11.5px; }
+  .share-img { height: 92px; border-radius: 9px; margin-top: 10px; color: #fff; display: flex; align-items: flex-end; padding: 10px 12px; box-sizing: border-box;
+    background: linear-gradient(120deg, #7A2E3B, #B4434F); font-size: 12px; font-weight: 700; }
+
+  /* direct / whatsapp preview */
+  .wa { max-width: 340px; background: var(--haze); border: 1px solid var(--mist); border-radius: 12px; padding: 10px; }
+  .wa-card { background: var(--frame-bg); border-radius: 9px; overflow: hidden; border: 1px solid var(--mist); }
+  .wa-og { height: 88px; background: linear-gradient(120deg, #26333A, #3E7183); color: #fff; display: flex; align-items: flex-end; padding: 9px 12px; box-sizing: border-box; font-size: 12.5px; font-weight: 700; }
+  .wa-body { padding: 9px 12px; }
+  .wa-title { font-size: 12.5px; font-weight: 700; margin-bottom: 2px; }
+  .wa-desc { font-size: 11.5px; color: var(--ash); }
+  .wa-url { font-size: 10.5px; color: var(--good); font-family: ui-monospace, Menlo, monospace; margin-top: 4px; }
+  .wa-msg { font-size: 12px; margin-top: 8px; padding: 0 2px; }
+
   .decisions { margin-top: 70px; border-top: 2px solid var(--ink); padding-top: 18px; }
   .dec { padding: 12px 0; border-bottom: 1px solid var(--mist); }
   .dec b { font-family: Georgia, serif; }
@@ -112,52 +156,60 @@
 </style>
 
 <div class="wrap">
-  <p class="eyebrow">Workstation · ratified Jul 27 2026 · design mockup v1</p>
-  <h1>Destination formats: the build stops being one Trip Card</h1>
-  <p class="sub">Every build currently renders as the same day-list card — a Kyoto temple route, a Kyoto wedding,
-  and a generic city break are structurally identical. This spec gives each <b>destination × experience type</b>
-  its own format, in the builder <i>and</i> on the store page the buyer sees.</p>
+  <p class="eyebrow">Workstation · re-ratified Jul 27 2026 · design mockup v2 <span class="corrected">corrected: destination = distribution channel</span></p>
+  <h1>Distribution formats: where the plan is going picks its shape</h1>
+  <p class="sub">v1 of this mockup read "destination" as geography — corrected. A build ships to four
+  <b>distribution destinations</b> (§17: Client · Store · Social · Direct), and the <b>channel</b> picks the
+  structure. Experience type flavors it; market (Kyoto) styles it. A plan going to Social media gets a
+  social-media-driven format, not the Trip Card.</p>
+
+  <div class="channels">
+    <div class="chan"><b>Client</b><span>The full working itinerary — detail-dense, navigable</span><span class="k">client:*</span></div>
+    <div class="chan"><b>Store</b><span>A product page a buyer evaluates — teaser-gated, price-led</span><span class="k">store:*</span></div>
+    <div class="chan"><b>Social</b><span>Scroll-native story/carousel + caption pack</span><span class="k">social:*</span></div>
+    <div class="chan"><b>Direct</b><span>Link preview + landing for WhatsApp &amp; booking links</span><span class="k">direct:*</span></div>
+  </div>
 
   <!-- ── 1 · The resolver ─────────────────────────────────────── -->
-  <h2>1 · How a build picks its format</h2>
-  <p class="sub">No new data is stored. The format is derived from two fields every build already has —
-  destination and experience type — through a fallback chain, so every existing build keeps rendering
-  exactly as today until a more specific format matches.</p>
+  <h2>1 · How a render picks its format</h2>
+  <p class="sub">No new data is stored. The channel is intrinsic to the surface doing the rendering; type and
+  market come from fields every build already has. Fallback chain per channel — every existing surface keeps
+  rendering exactly as today until a more specific format matches.</p>
 
   <div class="frame"><div class="screen">
     <div class="chain">
-      <span class="chip hit">(destination, type)</span><span class="arrow">→</span>
-      <span class="chip">destination default</span><span class="arrow">→</span>
-      <span class="chip">type default</span><span class="arrow">→</span>
-      <span class="chip">travel-generic (today's card)</span>
+      <span class="chip hit">(channel, type, market)</span><span class="arrow">→</span>
+      <span class="chip">(channel, type)</span><span class="arrow">→</span>
+      <span class="chip">(channel, market)</span><span class="arrow">→</span>
+      <span class="chip">channel default (today's render)</span>
     </div>
     <table class="resolve-table">
-      <thead><tr><th>Build</th><th>Destination</th><th>Type</th><th>Resolved format</th></tr></thead>
+      <thead><tr><th>Build</th><th>Going to</th><th>Type · Market</th><th>Resolved format</th></tr></thead>
       <tbody>
-        <tr><td>“Kyoto in Five Temples”</td><td>Kyoto</td><td>travel</td><td class="fmt">kyoto-cultural</td></tr>
-        <tr><td>“Machiya Garden Wedding”</td><td>Kyoto</td><td>wedding</td><td class="fmt">kyoto-wedding</td></tr>
-        <tr><td>“Osaka Proposal Weekend”</td><td>Osaka</td><td>proposal</td><td class="fmt">event-generic</td></tr>
-        <tr><td>“Lisbon Long Weekend”</td><td>Lisbon</td><td>travel</td><td class="fmt">travel-generic</td></tr>
+        <tr><td>“Kyoto in Five Temples”</td><td>Client</td><td>travel · Kyoto</td><td class="fmt">client:kyoto-cultural</td></tr>
+        <tr><td>“Kyoto in Five Temples”</td><td>Social</td><td>travel · Kyoto</td><td class="fmt">social:story</td></tr>
+        <tr><td>“Machiya Garden Wedding”</td><td>Store</td><td>wedding · Kyoto</td><td class="fmt">store:kyoto-wedding</td></tr>
+        <tr><td>“Machiya Garden Wedding”</td><td>Direct</td><td>wedding · Kyoto</td><td class="fmt">direct:default</td></tr>
+        <tr><td>“Lisbon Long Weekend”</td><td>Client</td><td>travel · Lisbon</td><td class="fmt">client:default (today's Trip Card)</td></tr>
       </tbody>
     </table>
   </div></div>
 
   <div class="spec-note"><b>Zero regression by construction.</b>
-    <p>travel-generic <i>is</i> the current PlanCard. Formats are pure client resolution — no schema change,
-    no migration, improvable without touching data. New markets get a format when they open (§12).</p>
+    <p>client:default <i>is</i> the current PlanCard; store:default is the current Ready Made page. Pure client
+    registry — no schema change, no migration. Kyoto market entries first (§12); new markets get entries when they open.</p>
   </div>
 
-  <!-- ── 2 · kyoto-cultural ───────────────────────────────────── -->
-  <h2>2 · <span class="fmt" style="font-size:18px">kyoto-cultural</span> — walked by neighborhood, not listed by day</h2>
-  <p class="sub">Kyoto is explored by area. The format groups the itinerary under the real
-  <code>city_neighborhoods</code> spine, with the day plan as a ribbon inside each area and honest
-  cultural sections instead of a generic activity list.</p>
+  <!-- ── 2 · Client channel ───────────────────────────────────── -->
+  <h2>2 · <span class="fmt" style="font-size:18px">client:*</span> — the working itinerary (Trip Card family)</h2>
+  <p class="sub">The geographic work from v1 survives here as market × type entries: in Kyoto a cultural
+  itinerary is walked by neighborhood, a wedding is venues + a timeline.</p>
 
   <div class="frame">
     <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span>
-      <span class="urlbar">traveloure.com/expert/workspace/:tripId</span></div>
+      <span class="urlbar">traveloure.com/expert/workspace/:tripId · Distribute → Client</span></div>
     <div class="screen">
-      <span class="lane-tag builder">Builder · console palette</span>
+      <span class="lane-tag builder">client:kyoto-cultural · console palette</span>
 
       <div class="hood">
         <div class="hood-head">
@@ -178,15 +230,6 @@
         <div class="item"><span class="badge b-temple">Temple &amp; Shrine</span> Tenryū-ji garden circuit <span class="day-ribbon">Day 2 · 09:00</span></div>
       </div>
 
-      <div class="hood">
-        <div class="hood-head">
-          <span class="hood-name">Gion</span>
-          <span class="hood-meta">2 places · Day 2 evening</span>
-        </div>
-        <div class="item"><span class="badge b-food">Food &amp; Tea</span> Kaiseki dinner, counter seating <span class="day-ribbon">Day 2 · 18:30</span></div>
-        <div class="item"><span class="badge b-exp">Experience</span> Hanamikoji street after dark <span class="day-ribbon">Day 2 · 20:30</span></div>
-      </div>
-
       <div class="season">🍂 <span><b>Best season: November</b> — renders only because this listing carries real
         <code>bestSeason</code> data; the slot is omitted otherwise, never invented.</span></div>
     </div>
@@ -194,26 +237,9 @@
 
   <div class="frame">
     <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span>
-      <span class="urlbar">traveloure.com/ready-made/:id</span></div>
+      <span class="urlbar">traveloure.com/expert/workspace/:tripId · Distribute → Client</span></div>
     <div class="screen">
-      <span class="lane-tag store">Store page · traveler palette</span>
-      <div class="map-strip">Neighborhood map strip — Higashiyama · Arashiyama · Gion (existing MapControlCenter data)</div>
-      <p style="font-size:13px; color:var(--ash); margin:0;">Same neighborhood-grouped sections as the builder —
-      the buyer previews the trip in the exact shape the expert authored it. Hero photo stays the listing's real
-      Unsplash pick; price, plan type, and reviews keep the existing store rails.</p>
-    </div>
-  </div>
-
-  <!-- ── 3 · kyoto-wedding ────────────────────────────────────── -->
-  <h2>3 · <span class="fmt" style="font-size:18px">kyoto-wedding</span> — venues and a timeline, not sightseeing days</h2>
-  <p class="sub">An event build is a different object: venues, a day-of schedule, vendors, and guest logistics.
-  The day-list disappears entirely.</p>
-
-  <div class="frame">
-    <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span>
-      <span class="urlbar">traveloure.com/expert/workspace/:tripId</span></div>
-    <div class="screen">
-      <span class="lane-tag builder">Builder · console palette</span>
+      <span class="lane-tag builder">client:kyoto-wedding · console palette</span>
       <div class="grid2">
         <div class="panel">
           <h4>Ceremony &amp; Venues</h4>
@@ -225,7 +251,6 @@
           <ul>
             <li>Ikebana &amp; flower styling (platform service)</li>
             <li>Photographer, half-day (platform service)</li>
-            <li>Kaiseki catering, 24 covers</li>
           </ul>
         </div>
         <div class="panel">
@@ -233,7 +258,6 @@
           <div class="timeline">
             <div class="t-row"><span class="t-time">14:00</span>Venue dressing &amp; florals set</div>
             <div class="t-row"><span class="t-time">16:00</span>Ceremony, garden</div>
-            <div class="t-row"><span class="t-time">17:00</span>Portraits, Kamo river bank</div>
             <div class="t-row"><span class="t-time">18:30</span>Reception dinner</div>
           </div>
           <h4 style="margin-top:10px">Guest Logistics</h4>
@@ -246,32 +270,101 @@
     </div>
   </div>
 
+  <!-- ── 3 · Store channel ────────────────────────────────────── -->
+  <h2>3 · <span class="fmt" style="font-size:18px">store:*</span> — the product page a buyer evaluates</h2>
+  <p class="sub">The Ready Made detail consumes the format's store layout: kyoto-cultural leads with the
+  neighborhood map; a wedding leads with venue, date window, and party size. Teaser gating (§10) unchanged.</p>
+
   <div class="frame">
     <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span>
       <span class="urlbar">traveloure.com/ready-made/:id</span></div>
     <div class="screen">
-      <span class="lane-tag store">Store page · traveler palette</span>
+      <span class="lane-tag store">store:kyoto-cultural · traveler palette</span>
+      <div class="map-strip">Neighborhood map strip — Higashiyama · Arashiyama · Gion (existing MapControlCenter data)</div>
+      <span class="lane-tag store" style="margin-top:6px">store:kyoto-wedding · traveler palette</span>
       <div class="store-hero">
         <h3>Machiya Garden Wedding — Kyoto</h3>
         <div class="facts"><span>Venue-led</span><span>Date window: Oct–Nov</span><span>Up to 24 guests</span></div>
       </div>
-      <p style="font-size:13px; color:var(--ash); margin:0;">Leads with venue, date window, and party size;
-      the timeline and vendor sections follow. Day-by-day exists only as a secondary view.</p>
+      <p style="font-size:13px; color:var(--ash); margin:0;">Same structure the expert authored in the client
+      channel, re-laid-out as a product page. Price, plan type, and reviews keep the existing store rails.</p>
+    </div>
+  </div>
+
+  <!-- ── 4 · Social channel ───────────────────────────────────── -->
+  <h2>4 · <span class="fmt" style="font-size:18px">social:*</span> — the social kit (both outputs, ratified)</h2>
+  <p class="sub">A plan going to social is not a day list. The format produces <b>both</b>: a story/carousel-style
+  visual rendering previewable before posting, and the caption + share-image pack riding the existing
+  promo-text service. Every frame is real build content — highlights are picked, never invented (§13).</p>
+
+  <div class="frame">
+    <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      <span class="urlbar">traveloure.com/expert/workspace/:tripId · Distribute → Social</span></div>
+    <div class="screen">
+      <span class="lane-tag social">social:story · story view preview</span>
+      <div class="story-rail">
+        <div class="story s-hero"><span class="story-num">1/5</span><small>Kyoto · 3 days</small><b>Kyoto in Five Temples</b></div>
+        <div class="story s-1"><span class="story-num">2/5</span><small>Higashiyama</small><b>Kiyomizu-dera at the opening bell</b></div>
+        <div class="story s-2"><span class="story-num">3/5</span><small>Arashiyama</small><b>The bamboo grove before the crowds</b></div>
+        <div class="story s-3"><span class="story-num">4/5</span><small>Gion</small><b>Kaiseki, counter seating, after dark</b></div>
+        <div class="story s-cta"><span class="story-num">5/5</span><small>Get the full plan</small><b>Every stop, timed &amp; mapped</b><span class="pill">traveloure.com/p/kenji → </span></div>
+      </div>
+
+      <span class="lane-tag social" style="margin-top:16px">social:story · caption + share-image pack (existing promo-text service)</span>
+      <div class="grid2">
+        <div class="caption-box">
+          <div class="plat">Instagram</div>
+          <p>Three days in Kyoto, walked the way locals do — by neighborhood, not by checklist. The full timed
+          plan is on my page. 🏮</p>
+          <div class="tags">#kyoto #kyototravel #japantravel</div>
+        </div>
+        <div class="caption-box">
+          <div class="plat">Share image</div>
+          <div class="share-img">Kyoto in Five Temples — 3 days · expert-built</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 5 · Direct channel ───────────────────────────────────── -->
+  <h2>5 · <span class="fmt" style="font-size:18px">direct:*</span> — the link that lands in a chat</h2>
+  <p class="sub">WhatsApp shares and trackable booking short-links render as an OG preview card — extends the
+  existing storefront OG-injection pattern. Attribution (<code>booking_acquisition_ref</code>) already captured.</p>
+
+  <div class="frame">
+    <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      <span class="urlbar">WhatsApp → traveloure.com/s/:shortlink</span></div>
+    <div class="screen">
+      <span class="lane-tag direct">direct:default · link preview</span>
+      <div class="wa">
+        <div class="wa-card">
+          <div class="wa-og">Kyoto in Five Temples</div>
+          <div class="wa-body">
+            <div class="wa-title">Kyoto in Five Temples — 3-day expert plan</div>
+            <div class="wa-desc">Walked by neighborhood: Higashiyama, Arashiyama, Gion. Book direct with Kenji.</div>
+            <div class="wa-url">traveloure.com/s/kyt5</div>
+          </div>
+        </div>
+        <div class="wa-msg">Here's the plan I mentioned — everything's timed and mapped 👇</div>
+      </div>
     </div>
   </div>
 
   <!-- ── Decisions ────────────────────────────────────────────── -->
   <div class="decisions">
     <h2 style="margin-top:0">Decisions this mockup encodes</h2>
-    <div class="dec"><b>Both axes, ratified.</b><p>Format = destination × experience type. Kyoto formats first
-      (kyoto-cultural, kyoto-wedding); event-generic covers events elsewhere; travel-generic is the unchanged fallback.</p></div>
-    <div class="dec"><b>Builder and store share one format.</b><p>The format is part of the product — the expert
-      authors in it, the buyer previews in it. One registry, two consumers, no fork.</p></div>
-    <div class="dec"><b>Derived, not stored.</b><p>Resolved from trips.destination + eventType at render time.
-      No migration, no publish-push trap. Pinning a format per build becomes an additive column only if ever needed.</p></div>
-    <div class="dec"><b>Honest slots (§13).</b><p>Seasonal notes, maps, and counts render only from real data;
-      unmapped items land in a visible generic section, never dropped or invented.</p></div>
-    <div class="dec"><b>Build order.</b><p>F1 registry + extract travel-generic (behavior-identical refactor) →
-      F2 kyoto-cultural → F3 kyoto-wedding + event-generic → F4 store pages consume format layouts.</p></div>
+    <div class="dec"><b>Corrected axis, re-ratified.</b><p>"Destination" = the distribution destination. Format =
+      channel × experience type × market ("option 1 &amp; 3"). The channel picks the structure; type flavors; market styles.</p></div>
+    <div class="dec"><b>Social produces both.</b><p>The story-style visual rendering AND the caption + share-image
+      pack — the latter extends the existing promo-text service and share-image layout, never a parallel engine.</p></div>
+    <div class="dec"><b>The v1 Kyoto work survives inside Client/Store.</b><p>kyoto-cultural neighborhood grouping and
+      the wedding venue-timeline become client:*/store:* market×type entries — nothing thrown away.</p></div>
+    <div class="dec"><b>Derived, not stored.</b><p>Channel is intrinsic to the rendering surface; type + market come from
+      trips.eventType/destination. No migration, no publish-push trap.</p></div>
+    <div class="dec"><b>Honest slots (§13).</b><p>Story frames, seasonal notes, maps, and counts render only from real
+      build data; nothing is invented to fill a frame.</p></div>
+    <div class="dec"><b>Build order.</b><p>F1 registry + extract client:default (behavior-identical refactor) →
+      F2 client Kyoto/event structures → F3 social kit (story view + caption pack in the Distribute panel) →
+      F4 store layouts + direct link-preview polish.</p></div>
   </div>
 </div>
