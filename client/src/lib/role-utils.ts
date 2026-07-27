@@ -1,9 +1,10 @@
-const EXPERT_ROLES = ["expert", "local_expert", "travel_expert", "event_planner"];
-const PROVIDER_ROLES = ["service_provider"];
+// Role vocabulary comes from the ONE canonical module (shared/roles.ts) — do not
+// re-declare role lists here (the role-vocabulary audit found five divergent copies).
+import { isExpertRole, isProviderRole } from "@shared/roles";
 
 export function getRoleHomePath(role: string): string {
-  if (EXPERT_ROLES.includes(role)) return "/expert/dashboard";
-  if (PROVIDER_ROLES.includes(role)) return "/provider/dashboard";
+  if (isExpertRole(role)) return "/expert/dashboard";
+  if (isProviderRole(role)) return "/provider/dashboard";
   if (role === "executive_assistant") return "/ea/dashboard";
   if (role === "admin") return "/admin/dashboard";
   return "/dashboard";
@@ -11,8 +12,10 @@ export function getRoleHomePath(role: string): string {
 
 export function userHasRequiredRole(userRole: string, requiredRole: string): boolean {
   if (userRole === "admin") return true;
-  if (requiredRole === "expert") return EXPERT_ROLES.includes(userRole);
-  if (requiredRole === "provider") return PROVIDER_ROLES.includes(userRole);
+  // "expert" / "provider" here are CLIENT ROUTING TOKENS (ProtectedRoute requiredRole),
+  // not stored roles — they expand to the canonical role families.
+  if (requiredRole === "expert") return isExpertRole(userRole);
+  if (requiredRole === "provider") return isProviderRole(userRole);
   if (requiredRole === "executive_assistant") return userRole === "executive_assistant";
   return userRole === requiredRole;
 }

@@ -6,6 +6,7 @@ import {
   ReactNode,
 } from "react";
 import { useAuth } from "@/hooks/use-auth";
+import { isExpertRole, isProviderRole } from "@shared/roles";
 
 export type ConsoleRole = "expert" | "provider" | "ea" | "user";
 
@@ -16,14 +17,11 @@ interface ActiveConsoleContextType {
 const STORAGE_KEY = "traveloure_active_console";
 
 function deriveConsoleRole(role: string | undefined | null): ConsoleRole {
-  if (
-    role &&
-    ["local_expert", "travel_expert", "event_planner", "expert"].includes(role)
-  ) {
-    return "expert";
-  }
+  // Role families come from the canonical shared/roles.ts (role-vocabulary audit) —
+  // executive_assistant is deliberately NOT expert-family (own /ea console).
+  if (isExpertRole(role)) return "expert";
   if (role === "executive_assistant") return "ea";
-  if (role === "service_provider") return "provider";
+  if (isProviderRole(role)) return "provider";
   return "user";
 }
 

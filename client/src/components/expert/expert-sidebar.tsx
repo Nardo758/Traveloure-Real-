@@ -35,7 +35,6 @@ import {
 
 function buildMenuGroups(expertType?: string | null) {
   const isEventPlanner = expertType === "event_planner";
-  const isEA = expertType === "executive_assistant";
   const isLocalExpert = expertType === "local_expert";
 
   return [
