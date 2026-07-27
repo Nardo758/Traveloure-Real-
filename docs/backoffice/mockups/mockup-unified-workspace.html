@@ -1,0 +1,301 @@
+<title>Unified Expert Workspace — Mockup</title>
+<style>
+  :root {
+    --ink: #1A1A18;
+    --mid: #7A7A72;
+    --line: #E8E8E2;
+    --ground: #FAFAF8;
+    --card: #FFFFFF;
+    --brand: #E85D55;
+    --brand-soft: #FDEFEE;
+    --ok: #2E7D5B;
+    --ok-soft: #EAF4EF;
+    --warn: #B45309;
+    --warn-soft: #FCF3E7;
+    --frame-shadow: 0 1px 2px rgba(26,26,24,.05), 0 8px 28px rgba(26,26,24,.07);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ink: #F0EFEA;
+      --mid: #9C9B92;
+      --line: #33332F;
+      --ground: #191917;
+      --card: #211F1D;
+      --brand: #F07068;
+      --brand-soft: #3A2523;
+      --ok: #5CBF94;
+      --ok-soft: #1F3229;
+      --warn: #E0A050;
+      --warn-soft: #362A18;
+      --frame-shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 28px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="light"] {
+    --ink: #1A1A18; --mid: #7A7A72; --line: #E8E8E2; --ground: #FAFAF8; --card: #FFFFFF;
+    --brand: #E85D55; --brand-soft: #FDEFEE; --ok: #2E7D5B; --ok-soft: #EAF4EF;
+    --warn: #B45309; --warn-soft: #FCF3E7;
+    --frame-shadow: 0 1px 2px rgba(26,26,24,.05), 0 8px 28px rgba(26,26,24,.07);
+  }
+  :root[data-theme="dark"] {
+    --ink: #F0EFEA; --mid: #9C9B92; --line: #33332F; --ground: #191917; --card: #211F1D;
+    --brand: #F07068; --brand-soft: #3A2523; --ok: #5CBF94; --ok-soft: #1F3229;
+    --warn: #E0A050; --warn-soft: #362A18;
+    --frame-shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 28px rgba(0,0,0,.35);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--ground); color: var(--ink);
+    font-family: 'Inter', -apple-system, "Segoe UI", system-ui, sans-serif;
+    font-size: 15px; line-height: 1.55;
+  }
+  .wrap { max-width: 1060px; margin: 0 auto; padding: 48px 24px 96px; }
+
+  .eyebrow { font-size: 11.5px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; color: var(--brand); }
+  h1 { font-size: 30px; font-weight: 800; letter-spacing: -.02em; margin: 6px 0 10px; text-wrap: balance; }
+  .lede { color: var(--mid); max-width: 640px; margin: 0 0 8px; }
+  .meta { font-size: 12.5px; color: var(--mid); }
+
+  /* ── one-builder flow diagram ─────────────────────────────── */
+  .flow { display: flex; align-items: stretch; gap: 0; margin: 36px 0 8px; flex-wrap: wrap; }
+  .flow-builder {
+    background: var(--ink); color: var(--ground); border-radius: 14px; padding: 18px 22px;
+    display: flex; flex-direction: column; justify-content: center; min-width: 190px;
+  }
+  .flow-builder b { font-size: 16px; }
+  .flow-builder span { font-size: 12px; opacity: .75; }
+  .flow-arrow { display: flex; align-items: center; padding: 0 14px; color: var(--mid); font-size: 20px; }
+  .flow-outs { display: flex; flex-direction: column; gap: 8px; flex: 1; min-width: 260px; }
+  .flow-out { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 9px 14px; display: flex; align-items: baseline; gap: 10px; }
+  .flow-out b { font-size: 13.5px; }
+  .flow-out span { font-size: 12px; color: var(--mid); }
+  .flow-note { font-size: 12.5px; color: var(--mid); margin: 10px 0 0; }
+
+  section { margin-top: 64px; }
+  .sec-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 6px; }
+  .sec-num {
+    font-size: 12px; font-weight: 800; color: var(--brand); background: var(--brand-soft);
+    border-radius: 999px; padding: 3px 10px; letter-spacing: .04em;
+  }
+  h2 { font-size: 20px; font-weight: 750; letter-spacing: -.01em; margin: 0; }
+  .sec-sub { color: var(--mid); font-size: 13.5px; margin: 4px 0 20px; max-width: 620px; }
+
+  .frame-grid { display: grid; grid-template-columns: minmax(0,1fr) 250px; gap: 24px; align-items: start; }
+  @media (max-width: 860px) { .frame-grid { grid-template-columns: 1fr; } }
+
+  /* ── mock browser frame ───────────────────────────────────── */
+  .frame { background: var(--card); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; box-shadow: var(--frame-shadow); }
+  .chrome { display: flex; align-items: center; gap: 8px; padding: 9px 14px; border-bottom: 1px solid var(--line); }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--line); }
+  .urlbar { flex: 1; font-size: 11.5px; color: var(--mid); background: var(--ground); border-radius: 6px; padding: 3px 10px; }
+  .screen { padding: 20px 22px 24px; }
+
+  /* console primitives inside frames */
+  .k-label { font-size: 10.5px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--mid); margin-bottom: 8px; }
+  .row {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px; background: var(--card);
+  }
+  .row + .row { margin-top: 7px; }
+  .row .t { font-size: 13.5px; font-weight: 650; }
+  .row .s { font-size: 11.5px; color: var(--mid); }
+  .go { font-size: 11.5px; font-weight: 700; color: var(--brand); white-space: nowrap; }
+  .chip { display: inline-block; font-size: 10.5px; font-weight: 700; border-radius: 999px; padding: 2px 9px; }
+  .chip.ok { color: var(--ok); background: var(--ok-soft); }
+  .chip.warn { color: var(--warn); background: var(--warn-soft); }
+  .chip.brand { color: var(--brand); background: var(--brand-soft); }
+  .chip.mut { color: var(--mid); background: var(--ground); border: 1px solid var(--line); }
+  .btn-primary {
+    display: flex; align-items: center; gap: 10px; border: 1px solid var(--brand); background: var(--brand-soft);
+    border-radius: 10px; padding: 12px 14px; font-size: 14px; font-weight: 700; color: var(--ink);
+  }
+  .btn-primary small { display: block; font-weight: 400; font-size: 11.5px; color: var(--mid); }
+  .quiet-links { display: flex; gap: 18px; border-top: 1px solid var(--line); margin-top: 18px; padding-top: 12px; font-size: 12px; color: var(--mid); flex-wrap: wrap; }
+  .quiet-links s { opacity: .55; }
+
+  /* builder frame */
+  .bld { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 0; }
+  @media (max-width: 720px) { .bld { grid-template-columns: 1fr; } }
+  .bld-top { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; padding: 12px 18px; border-bottom: 1px solid var(--line); }
+  .bld-top .title { font-size: 15px; font-weight: 750; }
+  .bld-left { padding: 16px 18px; border-right: 1px solid var(--line); }
+  @media (max-width: 720px) { .bld-left { border-right: none; border-bottom: 1px solid var(--line); } }
+  .day { font-size: 12px; font-weight: 800; color: var(--mid); margin: 12px 0 6px; }
+  .item { display: flex; gap: 10px; align-items: baseline; border-left: 3px solid var(--brand); background: var(--ground); border-radius: 0 8px 8px 0; padding: 8px 12px; margin-bottom: 6px; }
+  .item time { font-size: 11px; color: var(--mid); font-variant-numeric: tabular-nums; min-width: 40px; }
+  .item .n { font-size: 13px; font-weight: 600; }
+  .item .c { font-size: 11px; color: var(--mid); font-variant-numeric: tabular-nums; margin-left: auto; white-space: nowrap; }
+  .add-row { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  .add-btn { font-size: 11.5px; font-weight: 650; color: var(--mid); border: 1px dashed var(--line); border-radius: 8px; padding: 5px 10px; background: transparent; }
+  .add-btn.hot { color: var(--brand); border-color: var(--brand); border-style: solid; background: var(--brand-soft); }
+
+  .panel { padding: 14px 16px; }
+  .tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); margin: -14px -16px 14px; padding: 0 10px; }
+  .tab { font-size: 12px; font-weight: 650; color: var(--mid); padding: 10px 10px 8px; border-bottom: 2px solid transparent; }
+  .tab.on { color: var(--ink); border-bottom-color: var(--brand); }
+  .pub-block { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; }
+  .pub-block h4 { margin: 0 0 8px; font-size: 12.5px; font-weight: 750; }
+  .sharecard {
+    border-radius: 10px; overflow: hidden; border: 1px solid var(--line); margin-bottom: 10px;
+  }
+  .sharecard .sc-top { background: var(--brand); color: #fff; padding: 14px 16px; }
+  .sharecard .sc-top b { font-size: 15px; display: block; }
+  .sharecard .sc-top span { font-size: 11px; opacity: .85; }
+  .sharecard .sc-bot { display: flex; justify-content: space-between; padding: 8px 16px; font-size: 10.5px; color: var(--mid); background: var(--card); }
+  .caption { font-size: 12.5px; background: var(--ground); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; }
+  .tags { display: flex; flex-wrap: wrap; gap: 5px; }
+  .tag { font-size: 10.5px; color: var(--mid); background: var(--ground); border: 1px solid var(--line); border-radius: 999px; padding: 2px 8px; }
+  .mini-actions { display: flex; gap: 8px; margin-top: 10px; }
+  .mini-btn { font-size: 11.5px; font-weight: 700; border-radius: 8px; padding: 6px 12px; border: 1px solid var(--line); color: var(--ink); background: var(--card); }
+  .mini-btn.hot { background: var(--brand); border-color: var(--brand); color: #fff; }
+
+  /* annotation rail */
+  .notes { display: flex; flex-direction: column; gap: 12px; position: sticky; top: 24px; }
+  .note { border-left: 3px solid var(--brand); background: var(--card); border-radius: 0 10px 10px 0; padding: 10px 14px; box-shadow: var(--frame-shadow); }
+  .note b { display: block; font-size: 12.5px; margin-bottom: 2px; }
+  .note p { margin: 0; font-size: 12px; color: var(--mid); }
+  .note.done { border-left-color: var(--ok); }
+  .note.done b::after { content: " · shipped"; color: var(--ok); font-size: 10.5px; }
+
+  .decisions { margin-top: 72px; border-top: 1px solid var(--line); padding-top: 28px; }
+  .decisions h2 { margin-bottom: 14px; }
+  .dec-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+  .dec { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+  .dec b { font-size: 13.5px; display: block; margin-bottom: 4px; }
+  .dec p { margin: 0; font-size: 12.5px; color: var(--mid); }
+  .dec .chip { margin-top: 8px; }
+</style>
+
+<div class="wrap">
+  <div class="eyebrow">Traveloure · Expert Console consolidation</div>
+  <h1>One workstation, every output</h1>
+  <p class="lede">The target design for the consolidated Expert Workspace — the amended dispatch made visible. An expert opens one builder and everything they make leaves through it: client itineraries, store trips, and promo content.</p>
+  <p class="meta">Mockup for decision-maker ratification · Jul 27, 2026 · pairs with EXPERT_CONSOLE_FIX_DISPATCH (amended) · source of truth: docs/backoffice/mockups/</p>
+
+  <div class="flow">
+    <div class="flow-builder">
+      <b>The Workstation</b>
+      <span>PlanCard builder + right panel</span>
+    </div>
+    <div class="flow-arrow">→</div>
+    <div class="flow-outs">
+      <div class="flow-out"><b>Client itinerary</b><span>delivered to an assigned traveler</span></div>
+      <div class="flow-out"><b>Store trip</b><span>priced &amp; sold in the Ready Made Trips store</span></div>
+      <div class="flow-out"><b>Promo content</b><span>share card + caption, from the Publish panel</span></div>
+    </div>
+  </div>
+  <p class="flow-note">Platform-page curation (Job 4) rides the store lane via admin boards — no separate expert flow. The Itinerary Templates lane sunsets into the store lane (Phase 2, gated on prod counts).</p>
+
+  <!-- ── Screen 1 ────────────────────────────────────────────── -->
+  <section>
+    <div class="sec-head"><span class="sec-num">Screen 1</span><h2>Workspace home — pick or start, land building</h2></div>
+    <p class="sec-sub">No launchpad of links. Assigned trips open in one click; a store build creates its draft and drops straight into the builder.</p>
+    <div class="frame-grid">
+      <div class="frame">
+        <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="urlbar">traveloure.com/expert/workspace</span></div>
+        <div class="screen">
+          <div class="k-label">Build for a client</div>
+          <div class="row">
+            <span><span class="t">Kyoto Autumn Week — Tanaka family</span><br><span class="s">Kyoto · Yuki Tanaka · 12 Nov 2026</span></span>
+            <span class="go">Open builder →</span>
+          </div>
+          <div class="row">
+            <span><span class="t">Proposal weekend in Gion</span><br><span class="s">Kyoto · M. Okafor · 3 Oct 2026 · <span class="chip warn">pending accept</span></span></span>
+            <span class="go">Open builder →</span>
+          </div>
+
+          <div class="k-label" style="margin-top:18px;">Create for your store</div>
+          <div class="btn-primary">🏪 New store trip
+            <small>Starts a draft and opens the builder immediately.</small>
+          </div>
+
+          <div class="quiet-links">
+            <span>Store Listings</span><span>DMO Library</span><span><s>Itinerary Templates</s></span><span><s>Content Studio</s></span>
+          </div>
+        </div>
+      </div>
+      <div class="notes">
+        <div class="note done"><b>Action-first entry</b><p>Inline trip list + one-click open landed Jul 27 (with the route-param fix).</p></div>
+        <div class="note"><b>Smart landing</b><p>Exactly one active assignment and no open draft → skip this screen, open that trip directly.</p></div>
+        <div class="note"><b>Struck links = consolidation</b><p>Itinerary Templates sunsets into the store lane; Content Studio folds into the Publish panel (Screen 2). Link row shrinks to Store Listings + DMO Library.</p></div>
+        <div class="note"><b>Event-planner gate, visible</b><p>Event planners see the store section disabled with the message: “Store listings are open to Local and Travel Experts during the Kyoto launch.” One named business-rule constant.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Screen 2 ────────────────────────────────────────────── -->
+  <section>
+    <div class="sec-head"><span class="sec-num">Screen 2</span><h2>The builder with the Publish panel</h2></div>
+    <p class="sec-sub">Store-authoring mode shown. The right panel gains a Publish tab — Content Studio's working parts, moved to where the content already lives.</p>
+    <div class="frame-grid">
+      <div class="frame">
+        <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="urlbar">traveloure.com/expert/workspace/rm-8f2c…</span></div>
+        <div class="bld">
+          <div class="bld-top">
+            <span style="color:var(--mid);">←</span>
+            <span class="title">Kyoto Insider Week</span>
+            <span class="chip brand">Store trip</span>
+            <span class="chip mut">Draft</span>
+            <span style="margin-left:auto;" class="chip ok">¥ priced · ready to submit</span>
+          </div>
+          <div class="bld-left">
+            <div class="day">Day 1 — Higashiyama</div>
+            <div class="item"><time>08:30</time><span class="n">Kiyomizu-dera before the crowds</span><span class="c">¥400</span></div>
+            <div class="item"><time>11:00</time><span class="n">Ninenzaka tea &amp; wagashi pairing</span><span class="c">¥2,800</span></div>
+            <div class="item"><time>18:00</time><span class="n">Gion evening walk — geiko district etiquette</span><span class="c">—</span></div>
+            <div class="day">Day 2 — Arashiyama</div>
+            <div class="item"><time>07:45</time><span class="n">Bamboo grove, north gate entry</span><span class="c">—</span></div>
+            <div class="add-row">
+              <span class="add-btn hot">+ Add item</span>
+              <span class="add-btn">Add from DMO Library</span>
+              <span class="add-btn">Add service</span>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="tabs">
+              <span class="tab">Listing</span><span class="tab">AI Gaps</span><span class="tab">Browse</span><span class="tab on">Publish</span>
+            </div>
+            <div class="pub-block">
+              <h4>Share card</h4>
+              <div class="sharecard">
+                <div class="sc-top"><b>Kyoto Insider Week</b><span>5 days · by Kenji · Traveloure</span></div>
+                <div class="sc-bot"><span>traveloure.com/p/kenji</span><span>Ready Made Trips</span></div>
+              </div>
+              <div class="mini-actions"><span class="mini-btn hot">Generate share card</span><span class="mini-btn">Download</span></div>
+            </div>
+            <div class="pub-block">
+              <h4>Caption &amp; hashtags</h4>
+              <div class="caption">Five days in Kyoto the guidebooks skip — dawn temples, a tea master in Ninenzaka, and the etiquette that opens Gion's doors. Full trip on my Traveloure page.</div>
+              <div class="tags"><span class="tag">#kyoto</span><span class="tag">#kyototravel</span><span class="tag">#japantrip</span><span class="tag">#hiddenkyoto</span></div>
+              <div class="mini-actions"><span class="mini-btn">Regenerate</span><span class="mini-btn">Copy</span><span class="mini-btn">Post to Instagram</span></div>
+            </div>
+            <div class="pub-block">
+              <h4>Knowledge nuggets</h4>
+              <div class="caption" style="margin-bottom:6px;">“Kiyomizu's main hall queue clears by 8:50 — enter from Chawan-zaka, not the main slope.”</div>
+              <div class="mini-actions"><span class="mini-btn">+ New nugget</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="notes">
+        <div class="note"><b>Share card = the one PNG service</b><p>Calls the existing share-image service with this trip's real data — a trip/listing layout parameter, never a second renderer.</p></div>
+        <div class="note"><b>Caption AI moves server-side</b><p>Prompt chain lives in a shared promo-text service the provider engine will import later. The current Content Studio saves nothing — this replaces it, attached to real content.</p></div>
+        <div class="note"><b>Nuggets open to the whole expert family</b><p>Write-gate widens via the canonical shared/roles helper — including bare “expert” (13 real accounts the dispatch's hand-written list missed).</p></div>
+        <div class="note"><b>Same panel, client mode</b><p>On an assigned trip the tabs read Chat · AI Gaps · Browse · Earnings · Publish — promote a client trip's highlights without leaving it.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Decisions strip ─────────────────────────────────────── -->
+  <div class="decisions">
+    <h2>What this ratifies</h2>
+    <div class="dec-grid">
+      <div class="dec"><b>Templates lane sunsets — seller side first</b><p>Retire the seller surface and block new listings now; the consumer wind-down (purchases, Discover tab, search) is its own decision-maker-read phase. Buyers keep access to purchased itineraries.</p><span class="chip warn">gated on prod counts</span></div>
+      <div class="dec"><b>Content Studio → Publish panel</b><p>The studio page becomes a redirect; its working parts (share, caption, nuggets, Instagram) live in the builder where content is made.</p><span class="chip brand">Phase 3</span></div>
+      <div class="dec"><b>Smart landing</b><p>One assignment, no drafts → straight into the builder. Everything else keeps the Screen-1 home.</p><span class="chip brand">Phase 4</span></div>
+      <div class="dec"><b>Sidebar returns to the builder</b><p>Workspace and Store Listings wrap in ExpertLayout like every other console page — no more chromeless dead-ends (audit #7).</p><span class="chip mut">audit fix</span></div>
+      <div class="dec"><b>Kyoto market rule enforced</b><p>Store submits validate the market against one named constant + a DB constraint, with the prod preflight run before publish.</p><span class="chip mut">F8</span></div>
+      <div class="dec"><b>DMO builds land here, correctly</b><p>“Build Ready Made Trip” creates a store draft and opens this builder — not an unpriceable row in the sunsetting lane (audit #4/#5).</p><span class="chip warn">misroute fix</span></div>
+    </div>
+  </div>
+</div>
