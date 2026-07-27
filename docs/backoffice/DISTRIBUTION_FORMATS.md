@@ -54,6 +54,28 @@ function resolveFormat(channel: Channel, experienceType: string | null, market: 
 - The channel defaults are the current behavior: `client` default = today's PlanCard day-list,
   `store` default = the current Ready Made detail layout — **zero regression by construction**.
 
+## Expert notes — when and where they enter the render (decision-maker Q, Jul 27)
+
+There is NO separate insertion step. Notes are authored in the Workstation and already live on the
+build (trip-level + item-level); the format resolves at render time and decides where they surface.
+The Trip Plan Card starts consuming format info at **F1** (the `client:default` extraction adds the
+resolved-format input to PlanCard); the notes data pipeline is untouched. Per-channel contract:
+
+- **Client — first-class, always.** Notes are part of the paid deliverable. Item-level notes travel
+  WITH their item into whatever group the format assigns (a Kiyomizu-dera note renders inside the
+  Higashiyama group; a florist note inside Vendors & Services). **Every `client:*` format carries a
+  dedicated trip-level Expert Notes section slot** so a regrouping (neighborhoods / venue-timeline)
+  can never orphan trip-level notes.
+- **Store — behind the teaser gate.** Notes ARE the paid expert value → same §10 content-gate
+  posture as `itineraryData`: never on the public product page; full notes only for
+  purchaser/owner/admin. The store layout may show an honest COUNT ("includes N expert notes") —
+  real data, not content.
+- **Social — omitted by default.** Story frames render item names/areas, never notes. A pulled
+  quote from a note as a frame is an expert-chosen action in the Distribute panel, never automatic
+  (§13: nothing publishes that the expert didn't pick).
+- **Direct — never.** The link preview is title/OG/short-link only; notes appear post-click on the
+  gated surface the link lands on.
+
 ## Channel formats (proposal for the decision-maker's read)
 
 ### `client:*` — the Workstation / client itinerary (Trip Card family)
