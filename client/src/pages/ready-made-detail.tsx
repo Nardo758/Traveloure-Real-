@@ -158,7 +158,7 @@ export default function ReadyMadeDetailPage() {
         <span className="flex items-center gap-1"><CalendarDays className="w-4 h-4" />{listing.durationDays} days</span>
         {listing.bestSeason && <span className="flex items-center gap-1"><Sun className="w-4 h-4" />Best in {listing.bestSeason}</span>}
         <Badge variant="secondary" data-testid="badge-rm-section">
-          {listing.section === "trips_by_locals" ? `Trip by a Local — ${listing.authorName}` : `By Travel Advisor ${listing.authorName}`}
+          {listing.section === "trips_by_locals" ? `Trip by a Local — ${listing.authorName}` : `By Trip Planner ${listing.authorName}`}
         </Badge>
         {listing.badge && <Badge>{listing.badge}</Badge>}
       </div>

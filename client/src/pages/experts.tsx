@@ -254,7 +254,7 @@ export default function ExpertsPage() {
   const seo =
     selectedRole === "travel_expert"
       ? {
-          title: "Travel Advisors & Trip Planners",
+          title: "Trip Planners",
           description:
             "Work with experienced trip planners who handle every detail — itineraries, bookings, and logistics — so you can just enjoy the journey.",
           keywords: ["trip planner", "travel advisor", "custom itinerary", "trip planning service"],
@@ -323,7 +323,7 @@ export default function ExpertsPage() {
             >
               {[
                 { role: "local_expert", label: "Local Experts" },
-                { role: "travel_expert", label: "Travel Advisors" },
+                { role: "travel_expert", label: "Trip Planners" },
                 { role: "event_planner", label: "Event Planners" },
               ].map(({ role, label }) => {
                 const count = roleCounts?.[role];

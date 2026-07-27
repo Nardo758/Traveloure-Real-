@@ -68,7 +68,7 @@ const NAV_LEAF_ICONS: Record<string, React.ComponentType<{ className?: string }>
   "By Location":       MapPin,
   "By Date":           Calendar,
   "Local Experts":     MapPin,
-  "Travel Advisors":   User,
+  "Trip Planners":     User,
   "Service Providers": Building2,
   "Travel Planning":   Plane,
   "Romantic Getaways": Sparkles,
