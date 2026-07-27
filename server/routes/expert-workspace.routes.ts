@@ -16,6 +16,7 @@ import {
 import { eq, and, or, ilike, desc, asc, sql, count, gte, lte, isNull, not, inArray } from "drizzle-orm";
 import { asyncHandler, ForbiddenError, ValidationError, NotFoundError } from "../infrastructure";
 import { isExpertRole } from "@shared/roles";
+import { LAUNCH_MARKETS, isLaunchMarket, STORE_GATE_MESSAGE } from "@shared/launch-markets";
 import { createDMOCrawler } from "../content/scrapers/DMOCrawler";
 import {
   ALL_DMO_SOURCES,
@@ -296,7 +297,12 @@ router.post(
     const PER_DAY = 3;
     const durationDays = Math.max(1, Math.ceil(ordered.length / PER_DAY));
 
-    const city = ordered[0]?.city || "Kyoto";
+    const city = ordered[0]?.city || LAUNCH_MARKETS[0];
+    // §12/F8: the store lane is launch-market-scoped (migration-149 DB CHECK on
+    // ready_made_trips.market) — refuse honestly rather than mislabel a non-launch build.
+    if (!isLaunchMarket(city)) {
+      throw new ValidationError(STORE_GATE_MESSAGE);
+    }
     const draftTitle = title || `${city} itinerary (draft)`;
 
     // Same creation mechanism as POST /api/expert/ready-made: authoring trip (userId=NULL,
