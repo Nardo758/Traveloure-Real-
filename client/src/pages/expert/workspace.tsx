@@ -792,7 +792,7 @@ export default function ExpertWorkspace() {
               {recentAssigned.map((t) => (
                 <button
                   key={t.trip_id}
-                  onClick={() => setLocation(`/expert/workspace?tripId=${t.trip_id}`)}
+                  onClick={() => setLocation(`/expert/workspace/${t.trip_id}`)}
                   data-testid={`workspace-open-trip-${t.trip_id}`}
                   style={{
                     textAlign: "left", cursor: "pointer", padding: "12px 16px", borderRadius: 12,
