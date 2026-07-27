@@ -36,11 +36,14 @@ const EarnPage = lazy(() => import("@/pages/earn"));
 const NotFound = lazy(() => import("@/pages/not-found"));
 const SignupPage = lazy(() => import("@/pages/Signup").then((m) => ({ default: m.SignupPage })));
 const BookingConfirmationPage = lazy(() => import("@/pages/BookingConfirmationPage"));
-const ExpertDashboard = lazy(() => import("@/pages/expert/dashboard"));
+const ExpertToday = lazy(() => import("@/pages/expert/today"));
 const ExpertEarnings = lazy(() => import("@/pages/expert/earnings"));
 const ExpertProfile = lazy(() => import("@/pages/expert/profile"));
 const ExpertAIAssistant = lazy(() => import("@/pages/expert/ai-assistant"));
 const ExpertBookings = lazy(() => import("@/pages/expert/bookings"));
+const ExpertInbox = lazy(() => import("@/pages/expert/inbox"));
+const ExpertCatalog = lazy(() => import("@/pages/expert/catalog"));
+const ExpertPerformance = lazy(() => import("@/pages/expert/performance"));
 const ExpertServices = lazy(() => import("@/pages/expert/services"));
 const ExpertAssignedTrips = lazy(() => import("@/pages/expert/assigned-trips"));
 const EADashboard = lazy(() => import("@/pages/ea/dashboard"));
@@ -521,8 +524,13 @@ function Router() {
         {() => <ProtectedRoute component={ProviderStatusPage} />}
       </Route>
       {/* Expert Dashboard Routes (use ExpertLayout - no global Layout) */}
+      {/* Backoffice B5: Dashboard retired in favor of Today (module 1, ops home). The redirect
+          keeps every existing /expert/dashboard navigation working. */}
       <Route path="/expert/dashboard">
-        {() => <ProtectedRoute component={ExpertDashboard} requiredRole="expert" />}
+        <Redirect to="/expert/today" />
+      </Route>
+      <Route path="/expert/today">
+        {() => <ProtectedRoute component={ExpertToday} requiredRole="expert" />}
       </Route>
       {/* /expert/ai-assistant is role-specific AI task delegation (auto-draft, vendor research,
           quality scoring) — distinct from /chat (human messaging). Keep separate. */}
@@ -547,6 +555,12 @@ function Router() {
       <Route path="/expert/bookings">
         {() => <ProtectedRoute component={ExpertBookings} requiredRole="expert" />}
       </Route>
+      <Route path="/expert/inbox">
+        {() => <ProtectedRoute component={ExpertInbox} requiredRole="expert" />}
+      </Route>
+      <Route path="/expert/catalog">
+        {() => <ProtectedRoute component={ExpertCatalog} requiredRole="expert" />}
+      </Route>
       <Route path="/expert/services">
         {() => <ProtectedRoute component={ExpertServices} requiredRole="expert" />}
       </Route>
@@ -568,7 +582,7 @@ function Router() {
         {() => <ProtectedRoute component={ExpertEarnings} requiredRole="expert" />}
       </Route>
       <Route path="/expert/performance">
-        <Redirect to="/expert/analytics?tab=performance" />
+        {() => <ProtectedRoute component={ExpertPerformance} requiredRole="expert" />}
       </Route>
       <Route path="/expert/revenue-optimization">
         <Redirect to="/expert/analytics?tab=revenue-optimization" />

@@ -14,11 +14,12 @@
  * owner-gated where they mutate.
  */
 import { Router } from "express";
+import { z } from "zod";
 import { db } from "../db";
 import { storage } from "../storage";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { desc, asc, eq, or, isNull, sql, and, gte, ne, inArray } from "drizzle-orm";
-import { localExpertForms, expertServiceOfferings, coordinationStates, insertLocalKnowledgeNuggetSchema, users, vendorAvailabilitySlots, serviceReviews, expertTypeEnum } from "@shared/schema";
+import { localExpertForms, expertServiceOfferings, coordinationStates, insertLocalKnowledgeNuggetSchema, users, vendorAvailabilitySlots, providerServices, serviceReviews, expertTypeEnum } from "@shared/schema";
 import {
   getLocalKnowledgeNuggets,
   createLocalKnowledgeNugget,
@@ -165,6 +166,135 @@ router.get("/api/expert/service-templates", isAuthenticated, async (req, res) =>
   } catch (err) {
     console.error("Error fetching expert service templates:", err);
     res.status(500).json({ message: "Failed to fetch service templates" });
+  }
+});
+
+// ─── Catalog: earner slot CRUD (Backoffice B3) ──────────────────────────────────────────────
+//
+// vendor_availability_slots is the canonical dated-slot table (columns confirmed against
+// shared/schema.ts:1650 — id, serviceId, providerId, date, startTime, endTime, capacity,
+// bookedCount, status, pricing, discounts, minimumNotice, cancellationPolicy,
+// specialRequirements, confirmationMethod, createdAt, updatedAt). The C1 read above and SH3's
+// posting-opportunities read already consumed this table, and the public
+// GET /api/services/:id/availability (content.routes.ts) reads it too — but until now there
+// was NO write path anywhere, so an earner could never actually publish a slot. These three
+// endpoints close that gap. §14: acting user always from the session, never the body; the
+// owning service is always re-resolved server-side and ownership-checked — a serviceId/slotId
+// from the URL is never trusted to belong to the caller. §14 mass-assign posture: the create
+// body is a zod allow-list of exactly {date, startTime, capacity} — never raw req.body.
+
+const slotDateRegex = /^\d{4}-\d{2}-\d{2}$/;
+
+const createSlotSchema = z.object({
+  date: z
+    .string()
+    .regex(slotDateRegex, "date must be YYYY-MM-DD")
+    .refine((d) => d >= new Date().toISOString().slice(0, 10), "date must be today or in the future"),
+  startTime: z.string().max(10).optional(),
+  capacity: z.number().int().min(1).max(100).optional(),
+});
+
+// Resolves a provider_services row and confirms the session user owns it — the shared
+// ownership gate for all three slot endpoints below.
+async function requireOwnedService(userId: string, serviceId: string) {
+  const service = await storage.getProviderServiceById(serviceId);
+  if (!service || service.userId !== userId) return null;
+  return service;
+}
+
+// GET /api/me/services/:serviceId/slots — list upcoming slots for one of MY services.
+router.get("/api/me/services/:serviceId/slots", isAuthenticated, async (req, res) => {
+  try {
+    const userId = sessionUserId(req);
+    const service = await requireOwnedService(userId, req.params.serviceId);
+    if (!service) return res.status(404).json({ message: "Service not found" });
+
+    const todayStr = new Date().toISOString().slice(0, 10);
+    const slots = await db
+      .select()
+      .from(vendorAvailabilitySlots)
+      .where(and(eq(vendorAvailabilitySlots.serviceId, service.id), gte(vendorAvailabilitySlots.date, todayStr)))
+      .orderBy(asc(vendorAvailabilitySlots.date));
+    res.json(slots);
+  } catch (err) {
+    console.error("[Catalog Slots] list error:", err);
+    res.status(500).json({ message: "Failed to fetch slots" });
+  }
+});
+
+// POST /api/me/services/:serviceId/slots — create a slot on one of MY services.
+router.post("/api/me/services/:serviceId/slots", isAuthenticated, async (req, res) => {
+  try {
+    const userId = sessionUserId(req);
+    const service = await requireOwnedService(userId, req.params.serviceId);
+    if (!service) return res.status(404).json({ message: "Service not found" });
+
+    const parsed = createSlotSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: "Invalid slot data", errors: parsed.error.flatten() });
+    }
+    const { date, startTime, capacity } = parsed.data;
+
+    // bookedCount/status are never client-settable — they start at the table defaults
+    // (bookedCount 0, status "available"); a slot is never born already booked.
+    const [slot] = await db
+      .insert(vendorAvailabilitySlots)
+      .values({
+        serviceId: service.id,
+        providerId: userId,
+        date,
+        ...(startTime ? { startTime } : {}),
+        ...(capacity != null ? { capacity } : {}),
+      })
+      .returning();
+    res.status(201).json(slot);
+  } catch (err) {
+    console.error("[Catalog Slots] create error:", err);
+    res.status(500).json({ message: "Failed to create slot" });
+  }
+});
+
+// DELETE /api/me/slots/:slotId — remove a slot of mine, unless it already has real bookings.
+router.delete("/api/me/slots/:slotId", isAuthenticated, async (req, res) => {
+  try {
+    const userId = sessionUserId(req);
+
+    // Join slot → service so ownership is proven in one query (no id is trusted from the URL).
+    const [row] = await db
+      .select({
+        bookedCount: vendorAvailabilitySlots.bookedCount,
+        serviceOwnerId: providerServices.userId,
+      })
+      .from(vendorAvailabilitySlots)
+      .innerJoin(providerServices, eq(vendorAvailabilitySlots.serviceId, providerServices.id))
+      .where(eq(vendorAvailabilitySlots.id, req.params.slotId));
+
+    if (!row || row.serviceOwnerId !== userId) {
+      return res.status(404).json({ message: "Slot not found" });
+    }
+    // A booked slot represents real traveler bookings — never silently destroy it.
+    if ((row.bookedCount ?? 0) > 0) {
+      return res.status(409).json({ message: "This slot has bookings — cancel the bookings first." });
+    }
+
+    // §15 posture: the delete itself is the guard — a checkout claiming this slot between the
+    // check above and this statement bumps bookedCount, so the conditional delete matches 0
+    // rows instead of destroying a just-booked slot (check-then-delete alone is the TOCTOU bug).
+    const deleted = await db
+      .delete(vendorAvailabilitySlots)
+      .where(and(
+        eq(vendorAvailabilitySlots.id, req.params.slotId),
+        // bookedCount is nullable (schema default 0, no NOT NULL) — NULL means never booked.
+        or(eq(vendorAvailabilitySlots.bookedCount, 0), isNull(vendorAvailabilitySlots.bookedCount)),
+      ))
+      .returning({ id: vendorAvailabilitySlots.id });
+    if (deleted.length === 0) {
+      return res.status(409).json({ message: "This slot has bookings — cancel the bookings first." });
+    }
+    res.json({ success: true });
+  } catch (err) {
+    console.error("[Catalog Slots] delete error:", err);
+    res.status(500).json({ message: "Failed to delete slot" });
   }
 });
 
