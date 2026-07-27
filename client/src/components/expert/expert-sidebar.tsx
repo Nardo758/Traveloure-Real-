@@ -30,6 +30,7 @@ import {
   Library,
   Store,
   Share2,
+  Inbox,
 } from "lucide-react";
 
 function buildMenuGroups(expertType?: string | null) {
@@ -45,6 +46,7 @@ function buildMenuGroups(expertType?: string | null) {
         // ON Assigned Trips. "Messages" points straight at /chat (the /expert/messages routes were
         // already bare redirects). "Verification & Payouts" and "Booking Partners" removed below.
         { title: "Dashboard", href: "/expert/dashboard", icon: Home },
+        { title: "Inbox", href: "/expert/inbox", icon: Inbox },
         { title: isEventPlanner ? "Events" : "Bookings", href: "/expert/bookings", icon: Calendar },
         { title: "Assigned Trips", href: "/expert/assigned-trips", icon: MapPin },
         { title: "Workspace", href: "/expert/workspace", icon: PenSquare },
