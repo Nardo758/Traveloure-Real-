@@ -43,6 +43,7 @@ import {
   localExpertForms, expertRequests,
   coordinationStates,
   readyMadeTrips,
+  expertTypeEnum,
 } from "@shared/schema";
 import {
   TAB_CONTENT_TYPE_MAP,
@@ -66,6 +67,7 @@ import { partnerEventsCacheService } from "../services/partner-events-cache.serv
 import { ingestKyotoHeritage, ingestKyotoContentGaps, isDmoIngestReady } from "../services/dmo-ingestion.service";
 import { analyzeKyotoContentGaps, listOpenKyotoGaps } from "../services/content-gap.service";
 import { cityNeighborhoods, expertNeighborhoods, dmoRawContent } from "@shared/schema";
+import { isExpertRole, isProviderRole } from "@shared/roles";
 import { coordinationService } from "../services/coordination.service";
 import { vendorManagementService } from "../services/vendor-management.service";
 import { budgetService } from "../services/budget.service";
@@ -542,8 +544,54 @@ router.get("/api/admin/concierge-requests", isAuthenticated, async (req, res) =>
   }
 });
 
+// GET /api/admin/business-funnel — Build 1 (activation) funnel report. Every count is a pure
+// read aggregation over EXISTING tables (§13: nothing tracked separately, nothing to drift):
+// applications → approved → earner accounts → handle claimed → first offering → approved
+// offering → payouts connected → first booking. Role lists mirror shared/roles.ts.
+router.get("/api/admin/business-funnel", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const result = await db.execute(sql`
+      SELECT
+        (SELECT count(*)::int FROM local_expert_forms)                                   AS expert_applications,
+        (SELECT count(*)::int FROM local_expert_forms WHERE status = 'approved')         AS expert_approved,
+        (SELECT count(*)::int FROM service_provider_forms)                               AS provider_applications,
+        (SELECT count(*)::int FROM service_provider_forms WHERE status = 'approved')     AS provider_approved,
+        (SELECT count(*)::int FROM users
+           WHERE role IN ('expert','local_expert','travel_expert','event_planner','service_provider')
+             AND (is_deleted IS NULL OR is_deleted = false))                             AS earners,
+        (SELECT count(*)::int FROM users
+           WHERE role IN ('expert','local_expert','travel_expert','event_planner','service_provider')
+             AND (is_deleted IS NULL OR is_deleted = false)
+             AND handle IS NOT NULL)                                                     AS with_handle,
+        (SELECT count(*)::int FROM users
+           WHERE role IN ('expert','local_expert','travel_expert','event_planner','service_provider')
+             AND (is_deleted IS NULL OR is_deleted = false)
+             AND stripe_account_status = 'active')                                       AS payouts_connected,
+        (SELECT count(DISTINCT owner)::int FROM (
+             SELECT user_id AS owner FROM provider_services
+             UNION SELECT expert_id FROM expert_templates
+             UNION SELECT author_id FROM ready_made_trips) o)                            AS with_offering,
+        (SELECT count(DISTINCT owner)::int FROM (
+             SELECT user_id AS owner FROM provider_services WHERE approval_status = 'approved'
+             UNION SELECT expert_id FROM expert_templates WHERE approval_status = 'approved'
+             UNION SELECT author_id FROM ready_made_trips WHERE status = 'approved') o)  AS with_approved_offering,
+        (SELECT count(DISTINCT provider_id)::int FROM service_bookings
+           WHERE provider_id IS NOT NULL)                                                AS with_booking
+    `);
+    res.json(result.rows[0] ?? {});
+  } catch (err: any) {
+    console.error("Admin business-funnel error:", err);
+    res.status(500).json({ message: "Failed to compute business funnel" });
+  }
+});
+
 // GET /api/admin/coordinators — eligible expert coordinators for the assign-coordinator picker.
-// Any expert-type role (expert / local_expert / travel_expert), excluding deleted/suspended.
+// Any expert-family role (shared/roles.ts), excluding deleted/suspended. The original list
+// omitted event_planner — the single most relevant coordinator role for event coordination.
 router.get("/api/admin/coordinators", isAuthenticated, async (req, res) => {
   const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
   if (!user || user.role !== "admin") {
@@ -553,7 +601,7 @@ router.get("/api/admin/coordinators", isAuthenticated, async (req, res) => {
     const result = await db.execute(sql`
       SELECT id, first_name, last_name, email, role
       FROM users
-      WHERE role IN ('expert', 'local_expert', 'travel_expert')
+      WHERE role IN ('expert', 'local_expert', 'travel_expert', 'event_planner')
         AND (is_suspended IS NULL OR is_suspended = false)
         AND (is_deleted IS NULL OR is_deleted = false)
       ORDER BY first_name NULLS LAST, last_name NULLS LAST
@@ -1283,8 +1331,15 @@ router.patch("/api/admin/expert-applications/:id/status", isAuthenticated, async
     
     // If approved, update user role based on expert type
     if (status === "approved") {
-      // Use the expertType from the form, default to "expert" for backwards compatibility
-      const role = (updated as any).expertType || "expert";
+      // Use the expertType from the form, default to "expert" for backwards compatibility.
+      // CLAMP to the known expert-type vocabulary (role-vocabulary audit): users.role must
+      // never receive an arbitrary form string — legacy rows carry unvalidated values
+      // (e.g. "service_provider"), and copying a crafted value like "admin" verbatim
+      // would be privilege escalation. Unknown values fall back to "expert".
+      const formExpertType = (updated as any).expertType;
+      const role = (expertTypeEnum as readonly string[]).includes(formExpertType)
+        ? formExpertType
+        : "expert";
       await updateUserRole(updated.userId, role);
 
       // Notify the user to complete Stripe Connect setup
@@ -4361,7 +4416,9 @@ router.get("/api/admin/search", isAuthenticated, async (req, res) => {
       const results = [
         ...matchedUsers.map(u => ({
           id: u.id,
-          type: u.role === "expert" ? "expert" as const : u.role === "provider" ? "provider" as const : "user" as const,
+          // Role families from shared/roles.ts — the old bare-string checks typed every
+          // local_expert/travel_expert/event_planner AND every service_provider as "user".
+          type: isExpertRole(u.role) ? "expert" as const : isProviderRole(u.role) ? "provider" as const : "user" as const,
           name: [u.firstName, u.lastName].filter(Boolean).join(" ") || u.email || "Unknown",
           description: u.email || "",
           meta: `Role: ${u.role || "user"}`,

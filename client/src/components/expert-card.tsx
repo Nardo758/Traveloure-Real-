@@ -9,7 +9,7 @@ import { useState } from "react";
 
 const ROLE_BADGE: Record<string, { label: string; className: string; Icon: React.ElementType }> = {
   local_expert:  { label: "Local Expert",   className: "bg-emerald-500 text-white", Icon: MapPin },
-  travel_expert: { label: "Travel Advisor", className: "bg-blue-500 text-white",    Icon: Plane },
+  travel_expert: { label: "Trip Planner", className: "bg-blue-500 text-white",    Icon: Plane },
   event_planner: { label: "Event Planner",  className: "bg-purple-500 text-white",  Icon: PartyPopper },
 };
 

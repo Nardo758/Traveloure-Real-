@@ -1333,7 +1333,7 @@ export default function DiscoverPage() {
                       return (
                         <div key={section} className="mb-8">
                           <h2 className="text-xl font-semibold mb-1">
-                            {section === "trips_by_locals" ? "Trips by Locals" : "Trips by Travel Advisors"}
+                            {section === "trips_by_locals" ? "Trips by Locals" : "Trips by Trip Planners"}
                           </h2>
                           <p className="text-sm text-muted-foreground mb-4">
                             {section === "trips_by_locals"

@@ -590,7 +590,7 @@ class StripePaymentService {
    */
   async refundServiceBooking(bookingId: string, reason?: string) {
     const rows = await db.execute(sql`
-      SELECT id, total_amount, stripe_payment_intent_id, status
+      SELECT id, total_amount, stripe_payment_intent_id, status, slot_id
       FROM service_bookings WHERE id = ${bookingId} LIMIT 1
     `);
     const row = rows.rows?.[0] as any;
@@ -638,6 +638,20 @@ class StripePaymentService {
         amount, currency, status, reason, created_at
       ) VALUES (${bookingId}, ${refund.id}, ${paymentIntentId}, ${amount}, 'usd', ${refund.status}, ${reason || 'requested_by_customer'}, NOW())
     `);
+
+    // C3 filed follow-up: a refunded slot-bound booking gives its capacity back so another
+    // traveler can book the time. Runs only under this refund's atomic status claim (the flip
+    // above matched exactly one caller — §15), so a repeat refund cannot double-release; the
+    // release itself floors at 0 and never un-blocks a provider-blocked slot. Best-effort:
+    // the refund already succeeded, a release failure must not undo it.
+    if (row.slot_id) {
+      try {
+        const { storage } = await import('../storage');
+        await storage.releaseSlot(String(row.slot_id));
+      } catch (releaseErr) {
+        console.error(`[refund] slot release failed for booking ${bookingId} (non-critical):`, releaseErr);
+      }
+    }
 
     return { refundId: refund.id, amount, status: refund.status };
   }

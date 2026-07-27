@@ -33,6 +33,7 @@ import { ExpertConstraintDashboard, ExpertCoordinationHub } from "@/components/l
 import { TravelPulseTicker } from "@/components/shared/travel-pulse-ticker";
 import { PayoutBanner } from "@/components/expert/PayoutBanner";
 import { MyOfferingsTable } from "@/components/backoffice/my-offerings-table";
+import { SetupChecklistCard } from "@/components/backoffice/SetupChecklistCard";
 
 interface AnalyticsDashboard {
   summary: {
@@ -156,6 +157,9 @@ export default function ExpertDashboard() {
           </h1>
           <p className="text-console-mid mt-1">{analytics?.summary?.pendingBookings || 0} active clients</p>
         </div>
+
+        {/* Build 1: "Open your business" activation checklist — renders until setup is complete */}
+        <SetupChecklistCard />
 
         {/* Backoffice Phase 1c: unified cross-lane offerings table (mockup "My Offerings") */}
         <MyOfferingsTable />

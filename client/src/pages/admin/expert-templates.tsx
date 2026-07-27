@@ -44,7 +44,7 @@ const ROLE_OPTIONS = [
   },
   {
     value: "travel_expert",
-    label: "Travel Advisor",
+    label: "Trip Planner",
     icon: <Plane className="w-4 h-4" />,
     color: "bg-blue-100 text-blue-800 border-blue-200",
   },
@@ -65,7 +65,7 @@ const ROLE_OPTIONS = [
 const TAB_FILTERS = [
   { key: "all", label: "All Templates", icon: <Globe className="w-4 h-4" /> },
   { key: "local_expert", label: "Local Expert", icon: <MapPin className="w-4 h-4" /> },
-  { key: "travel_expert", label: "Travel Advisor", icon: <Plane className="w-4 h-4" /> },
+  { key: "travel_expert", label: "Trip Planner", icon: <Plane className="w-4 h-4" /> },
   { key: "event_planner", label: "Event Planner", icon: <PartyPopper className="w-4 h-4" /> },
 ] as const;
 
@@ -168,7 +168,7 @@ export default function AdminExpertTemplates() {
               <div className="text-3xl font-bold text-blue-700" data-testid="text-travel-advisor-count">
                 {templates.filter((t) => t.targetRoles.includes("travel_expert")).length}
               </div>
-              <p className="text-sm text-blue-600">Travel Advisor</p>
+              <p className="text-sm text-blue-600">Trip Planner</p>
             </CardContent>
           </Card>
           <Card className="bg-purple-50 border-purple-200">

@@ -1353,16 +1353,23 @@ export const insertVendorAssignmentSchema = createInsertSchema(vendorAssignments
 export const insertAiBlueprintSchema = createInsertSchema(aiBlueprints).omit({ id: true, createdAt: true });
 
 // New schemas for Expert/Provider applications
-export const insertLocalExpertFormSchema = createInsertSchema(localExpertForms).omit({ 
-  id: true, 
-  userId: true, 
-  status: true, 
-  rejectionMessage: true, 
+export const insertLocalExpertFormSchema = createInsertSchema(localExpertForms).omit({
+  id: true,
+  userId: true,
+  status: true,
+  rejectionMessage: true,
   createdAt: true,
   // Admin-managed influencer fields (set by backend after verification)
   verifiedInfluencer: true,
   influencerTier: true,
   referralCode: true,
+}).extend({
+  // Role-vocabulary audit (Jul 27, 2026): expertType MUST be validated against the enum.
+  // The admin approval path copies expertType into users.role verbatim, so an unvalidated
+  // free string here was a privilege-escalation vector (submit expertType "admin", get
+  // approved as an expert, become an admin) and how stray "service_provider" values
+  // polluted local_expert_forms. The varchar column has no DB CHECK — this is the gate.
+  expertType: z.enum(expertTypeEnum).optional(),
 });
 export const insertServiceProviderFormSchema = createInsertSchema(serviceProviderForms).omit({ id: true, userId: true, status: true, rejectionMessage: true, createdAt: true });
 export const insertServiceCategorySchema = createInsertSchema(serviceCategories).omit({ id: true, createdAt: true });
