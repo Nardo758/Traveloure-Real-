@@ -356,6 +356,38 @@
     </div>
   </section>
 
+  <!-- ── Screen 4 ────────────────────────────────────────────── -->
+  <section>
+    <div class="sec-head"><span class="sec-num">Screen 4</span><h2>The whole console, programmed as a back office</h2></div>
+    <p class="sec-sub">Sixteen tabs become eight modules. The rule that makes it a back office rather than a pile of pages: <b>every number has exactly one owning endpoint, every list has exactly one home</b> — other modules reference, they never re-render.</p>
+    <div class="frame-grid">
+      <div class="frame">
+        <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="urlbar">traveloure.com/expert — console map</span></div>
+        <div class="screen">
+          <div class="k-label">The eight modules · what each absorbs</div>
+          <div class="row"><span><span class="t">1 · Today</span><br><span class="s">Ops home: inbox preview, money strip, channel snapshot, posting opportunities. Absorbs: Dashboard (its 3 duplicate booking lists, action items, AI stats become references).</span></span></div>
+          <div class="row"><span><span class="t">2 · Workstation</span><br><span class="s">Production: builds + Add panel (6 sources) + Distribute. Absorbs: Workspace, Content Studio (create → Social channel), DMO Library page (→ Add source, full-library view kept), Templates create (sunset).</span></span></div>
+          <div class="row"><span><span class="t">3 · Inbox</span><br><span class="s">Everything needing a response: bookings accept/decline, assignment accepts, coordination engagements, agent-booking requests, disputes, review replies. Absorbs: Bookings + Assigned Trips actions. Chat stays /chat — conversations aren't tasks.</span></span></div>
+          <div class="row"><span><span class="t">4 · Catalog</span><br><span class="s">What I sell: services + builds + their distribution states, per-service availability (closes the "no slot UI for experts" hole). Absorbs: My Offerings, Store Listings management, the offerings tables rendered on 4 other tabs.</span></span></div>
+          <div class="row"><span><span class="t">5 · Money</span><br><span class="s">ONE ledger endpoint: held → cleared → paid, transactions, payout requests, THE Stripe Connect block (today on 4 surfaces). Absorbs: Earnings, Analytics' revenue tabs, the fake bank card, the always-$0 templates earnings card.</span></span></div>
+          <div class="row"><span><span class="t">6 · Customers</span><br><span class="s">Thin CRM keyed by traveler: their trips, bookings, chats, reviews, repeat business. Absorbs: Dashboard "My Clients", Assigned Trips' by-client grouping. New surface — the data all exists.</span></span></div>
+          <div class="row"><span><span class="t">7 · Performance</span><br><span class="s">Which channel earns: short-link clicks → acquisition_ref → bookings, per-offering performance, share-link analytics. Absorbs: Analytics (9 tabs → focused), Share &amp; Promote's measurement half (its creation half is the Social channel).</span></span></div>
+          <div class="row"><span><span class="t">8 · Settings</span><br><span class="s">Identity, handle, verification, notifications, security — with saves that actually persist (today 5 of 7 tabs are useState theater and Profile's Save has no handler). Absorbs: Profile + Settings, merged.</span></span></div>
+          <div class="dist-strip">
+            <span>Kept as-is:</span><span class="chip mut">Messages → /chat</span><span class="chip mut">AI Assistant (working surface)</span>
+            <span style="margin-left:8px;">Retired:</span><span class="chip warn">Dashboard</span><span class="chip warn">Content Studio</span><span class="chip warn">Itinerary Templates</span><span class="chip warn">Share &amp; Promote (split)</span>
+          </div>
+        </div>
+      </div>
+      <div class="notes">
+        <div class="note"><b>The programming rule</b><p>One owning endpoint per number, one home per list. The audit found revenue on 4 tabs from 3 endpoints and bookings rendered 3× on one page — that class becomes impossible when Today/others may only reference module homes.</p></div>
+        <div class="note"><b>Honest surfaces only</b><p>Every module ships with the §13 posture: no fake bank cards, no hardcoded "Quick Responses", no dead Save buttons. A control that can't work yet isn't rendered.</p></div>
+        <div class="note"><b>Migration order</b><p>Workstation lane first (kills the duplicate-producing lanes), then module by module: Money (worst duplication), Inbox, Catalog, Today last (it's the view over the others), Customers/Performance as data-ready.</p></div>
+        <div class="note"><b>Provider console: same 8 modules</b><p>Today · Workstation (ServiceForm + slots) · Inbox · Catalog · Money · Customers · Performance · Settings — the back-office pattern stamps across both earner consoles, which IS the "business in a box" product.</p></div>
+      </div>
+    </div>
+  </section>
+
   <!-- ── Decisions strip ─────────────────────────────────────── -->
   <div class="decisions">
     <h2>What this ratifies</h2>
