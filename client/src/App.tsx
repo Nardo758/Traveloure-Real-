@@ -36,7 +36,7 @@ const EarnPage = lazy(() => import("@/pages/earn"));
 const NotFound = lazy(() => import("@/pages/not-found"));
 const SignupPage = lazy(() => import("@/pages/Signup").then((m) => ({ default: m.SignupPage })));
 const BookingConfirmationPage = lazy(() => import("@/pages/BookingConfirmationPage"));
-const ExpertDashboard = lazy(() => import("@/pages/expert/dashboard"));
+const ExpertToday = lazy(() => import("@/pages/expert/today"));
 const ExpertEarnings = lazy(() => import("@/pages/expert/earnings"));
 const ExpertProfile = lazy(() => import("@/pages/expert/profile"));
 const ExpertAIAssistant = lazy(() => import("@/pages/expert/ai-assistant"));
@@ -524,8 +524,13 @@ function Router() {
         {() => <ProtectedRoute component={ProviderStatusPage} />}
       </Route>
       {/* Expert Dashboard Routes (use ExpertLayout - no global Layout) */}
+      {/* Backoffice B5: Dashboard retired in favor of Today (module 1, ops home). The redirect
+          keeps every existing /expert/dashboard navigation working. */}
       <Route path="/expert/dashboard">
-        {() => <ProtectedRoute component={ExpertDashboard} requiredRole="expert" />}
+        <Redirect to="/expert/today" />
+      </Route>
+      <Route path="/expert/today">
+        {() => <ProtectedRoute component={ExpertToday} requiredRole="expert" />}
       </Route>
       {/* /expert/ai-assistant is role-specific AI task delegation (auto-draft, vendor research,
           quality scoring) — distinct from /chat (human messaging). Keep separate. */}
