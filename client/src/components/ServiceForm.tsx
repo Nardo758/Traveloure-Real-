@@ -21,6 +21,8 @@ import {
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
+import { LOCAL_EXPERT_TIERS, TRIP_PLANNER_TIERS, isAffiliateCategory } from "@/lib/earn-roles";
 
 interface ServiceCategory {
   id: string;
@@ -67,6 +69,22 @@ interface ExpertOfferingType {
   sortOrder: number;
 }
 
+// Provider-side /earn catalog row — GET /api/offering-types/services
+// (content.routes.ts, service_offering_types). Raw-SQL-backed endpoint, so
+// fields come back snake_case (mirrors client/src/pages/earn.tsx's own
+// ServiceOfferingType interface) plus `id`, needed here to persist the FK
+// (provider_services.service_offering_type_id, migration 148).
+interface ProviderOfferingType {
+  id: string;
+  offering_type_key: string;
+  category_key: string;
+  display_name: string;
+  tagline: string | null;
+  is_surprising: boolean;
+  market_scoped: string[] | null;
+  sort_order: number;
+}
+
 interface ServiceFormData {
   name: string;
   categoryId: string;
@@ -82,6 +100,9 @@ interface ServiceFormData {
   // Expert-specific: tier + approval workflow
   expertOfferingTypeId: string;
   approvalStatus: "draft" | "submitted" | "approved" | "rejected";
+  // Provider-specific: which /earn service_offering_types row this listing IS
+  // (migration 148 FK). "" = unlinked (legacy row, or not yet picked).
+  serviceOfferingTypeId: string;
   // Provider-specific: status + features
   active: boolean;
   revisionsIncluded: number;
@@ -154,6 +175,7 @@ function buildEmptyForm(role: "expert" | "provider"): ServiceFormData {
     deliveryMethod: "in-person",
     expertOfferingTypeId: "",
     approvalStatus: "draft",
+    serviceOfferingTypeId: "",
     active: true,
     revisionsIncluded: 0,
     includesExpertNotes: false,
@@ -233,6 +255,7 @@ function mapServiceToForm(s: any, role: "expert" | "provider"): ServiceFormData 
     deliveryMethod: fromCanonicalDelivery(s.deliveryMethod),
     expertOfferingTypeId: s.expertOfferingTypeId || "",
     approvalStatus: s.approvalStatus || "draft",
+    serviceOfferingTypeId: s.serviceOfferingTypeId || "",
     active: s.status === "active",
     revisionsIncluded: Number(s.revisionsIncluded || 0),
     includesExpertNotes: Boolean(s.includesExpertNotes),
@@ -318,6 +341,7 @@ function tierFormatsToAllowedMethods(formats: string[]): Set<string> {
 export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   const [, navigate] = useLocation();
   const { toast } = useToast();
+  const { user } = useAuth();
   const isEditMode = !!id;
   const [creationSuccess, setCreationSuccess] = useState(false);
   const [newIncluded, setNewIncluded] = useState("");
@@ -335,6 +359,39 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     enabled: role === "expert",
     staleTime: 5 * 60_000,
   });
+
+  // Provider /earn offering catalog (offering-first provider create, §17).
+  // Public, 5-min-cached endpoint — content.routes.ts already filters is_active=true.
+  const { data: providerOfferingTypesRaw = [] } = useQuery<ProviderOfferingType[]>({
+    queryKey: ["/api/offering-types/services"],
+    enabled: role === "provider",
+    staleTime: 5 * 60_000,
+  });
+
+  // Affiliate-sourced categories (aff_*) are partner inventory, not something a
+  // provider signs up to offer (see earn-roles.ts isAffiliateCategory) — never
+  // creatable here. Filtered client-side; the public endpoint stays unchanged.
+  const providerOfferingTypes = providerOfferingTypesRaw.filter(
+    (o) => !!o.category_key && !isAffiliateCategory(o.category_key) && (o as any).is_active !== false
+  );
+
+  // Partition the expert tier picker by the signed-in user's expert role, using
+  // the existing ratified serviceTier→role vocabulary in lib/earn-roles.ts
+  // (never invented here). That module only defines a partition for
+  // local_expert (LOCAL_EXPERT_TIERS) vs travel_expert (TRIP_PLANNER_TIERS) —
+  // event_planner / executive_assistant / not-yet-loaded users have no defined
+  // subset, so they see the full unpartitioned list rather than a fabricated one.
+  const visibleExpertOfferingTypes = (() => {
+    if (role !== "expert") return expertOfferingTypes;
+    const userRole = (user as any)?.role;
+    if (userRole === "local_expert") {
+      return expertOfferingTypes.filter((t) => (LOCAL_EXPERT_TIERS as readonly string[]).includes(t.serviceTier));
+    }
+    if (userRole === "travel_expert" || userRole === "expert") {
+      return expertOfferingTypes.filter((t) => (TRIP_PLANNER_TIERS as readonly string[]).includes(t.serviceTier));
+    }
+    return expertOfferingTypes;
+  })();
 
   // Canonical service-template gallery (expert create-from-template — Phase 2).
   // Selection pre-fills the form; the write still goes through the canonical
@@ -371,6 +428,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
 
   const categoryPreSelected = useRef(false);
   const offeringTypeKeyPreSelected = useRef(false);
+  const providerOfferingTypeKeyPreSelected = useRef(false);
 
   const templatePreFilled = useRef(false);
 
@@ -425,6 +483,33 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     }
   }, [expertOfferingTypes, isEditMode, role]);
 
+  // Pre-select the /earn offering from ?offeringTypeKey= for providers (same
+  // URL contract as the expert effect above — the /earn CTA passes this key).
+  // Waits for both catalogs so the derived category can resolve in one step.
+  useEffect(() => {
+    if (
+      role !== "provider" ||
+      isEditMode ||
+      providerOfferingTypes.length === 0 ||
+      categories.length === 0 ||
+      providerOfferingTypeKeyPreSelected.current
+    ) return;
+    const raw = typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("offeringTypeKey") || ""
+      : "";
+    if (!raw) return;
+    const match = providerOfferingTypes.find((o) => o.offering_type_key === raw);
+    if (match) {
+      providerOfferingTypeKeyPreSelected.current = true;
+      const catMatch = categories.find((c) => c.categoryKey === match.category_key);
+      setFormData((prev) => ({
+        ...prev,
+        serviceOfferingTypeId: match.id,
+        categoryId: catMatch ? catMatch.id : prev.categoryId,
+      }));
+    }
+  }, [providerOfferingTypes, categories, isEditMode, role]);
+
   // Pre-select category from ?category= URL param
   useEffect(() => {
     if (!isEditMode && categories.length > 0 && !categoryPreSelected.current) {
@@ -474,6 +559,21 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
 
   const set = (key: keyof ServiceFormData, value: any) =>
     setFormData((prev) => ({ ...prev, [key]: value }));
+
+  // Offering-first provider create (§17): picking a /earn offering sets the FK
+  // and DERIVES the category from the offering's category_key — the
+  // chip↔picker vocabulary break this closes. Category becomes a read-only
+  // display once an offering is chosen (see the Category field below).
+  const handleSelectProviderOffering = (o: ProviderOfferingType) => {
+    const catMatch = categories.find((c) => c.categoryKey === o.category_key);
+    setFormData((prev) => ({
+      ...prev,
+      serviceOfferingTypeId: o.id,
+      categoryId: catMatch ? catMatch.id : prev.categoryId,
+      subcategoryId: "",
+      categoryAttributes: {},
+    }));
+  };
 
   const handleAddIncluded = () => {
     if (newIncluded.trim()) {
@@ -537,6 +637,17 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         throw new Error("Add a meeting point — in-person services must show travelers where to meet. Save as draft to finish later.");
       }
 
+      // Offering-first / tier-required on a NEW create only (submit/publish, not draft) —
+      // editing a legacy service with no linkage must still save (don't brick old rows).
+      if (!isEditMode && submitAction !== "draft") {
+        if (role === "provider" && !formData.serviceOfferingTypeId) {
+          throw new Error("Pick an offering from the /earn catalog before publishing — it links this listing to what you signed up to provide. Save as draft to finish later.");
+        }
+        if (role === "expert" && !formData.expertOfferingTypeId) {
+          throw new Error("Select a service tier before submitting for approval. Save as draft to finish later.");
+        }
+      }
+
       // Compute price scalar and priceBasedOn from the selected pricing model
       let priceScalar = String(formData.basePrice);
       let pricingTiersPayload: PricingTier[] = [];
@@ -591,6 +702,9 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         payload.includesExpertNotes = formData.includesExpertNotes;
         payload.contentAffinityTags = formData.contentAffinityTags;
         payload.status = submitAction === "publish" ? "active" : "draft";
+        if (formData.serviceOfferingTypeId) {
+          payload.serviceOfferingTypeId = formData.serviceOfferingTypeId;
+        }
       } else {
         // Expert: send tier FK + approvalStatus for workflow
         if (formData.expertOfferingTypeId) {
@@ -708,6 +822,49 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         </span>
       </div>
 
+      {/* ── Offering-first provider create (§17): pick the /earn offering FIRST — ────
+          category derives from it below. Shown for both create and edit so an edited
+          legacy row's (unset) linkage is visible, but only REQUIRED on a new create
+          (enforced in createMutation + the Publish button, not here). ── */}
+      {role === "provider" && (
+        <Card data-testid="provider-offering-picker">
+          <CardHeader>
+            <CardTitle>What are you offering? *</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {providerOfferingTypesRaw.length === 0 ? (
+              <p className="text-xs text-muted-foreground">Loading offerings…</p>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {providerOfferingTypes.map((o) => (
+                  <button
+                    key={o.id}
+                    type="button"
+                    onClick={() => handleSelectProviderOffering(o)}
+                    className={`text-left p-3 rounded-lg border-2 transition-colors ${
+                      formData.serviceOfferingTypeId === o.id
+                        ? "border-primary bg-primary/5"
+                        : "border-gray-200 hover:border-gray-300"
+                    }`}
+                    data-testid={`option-offering-${o.offering_type_key}`}
+                  >
+                    <p className="font-medium text-sm text-gray-900">{o.display_name}</p>
+                    {o.tagline && (
+                      <p className="text-xs text-gray-500 mt-0.5">{o.tagline}</p>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+            <p className="text-xs text-muted-foreground">
+              Pick the offering that matches what you provide — this sets your category below and links
+              your listing to the /earn catalog. Required before publishing; you can save as a draft
+              without one and finish later.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
       {/* ── Start from a template (expert create — absorbed from the wizard, Phase 2) ── */}
       {role === "expert" && !isEditMode && serviceTemplates.length > 0 && (
         <Card data-testid="service-template-gallery">
@@ -762,26 +919,46 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             />
           </div>
 
-          {/* Category — single canonical taxonomy */}
+          {/* Category — single canonical taxonomy; derived + locked when a provider offering is selected (§17) */}
           <div>
             <Label htmlFor="category">Category *</Label>
-            <Select
-              value={formData.categoryId}
-              onValueChange={(v) => {
-                setFormData((prev) => ({ ...prev, categoryId: v, subcategoryId: "", categoryAttributes: {} }));
-              }}
-            >
-              <SelectTrigger id="category" className="mt-2">
-                <SelectValue placeholder="Select a category" />
-              </SelectTrigger>
-              <SelectContent>
-                {categories.map((cat) => (
-                  <SelectItem key={cat.id} value={cat.id}>
-                    {cat.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {role === "provider" && formData.serviceOfferingTypeId ? (
+              <div className="mt-2 flex items-center justify-between gap-3 rounded-md border bg-secondary/40 px-3 py-2">
+                <span className="text-sm font-medium" data-testid="text-derived-category">
+                  {selectedCategory?.name ?? "—"}
+                </span>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => set("serviceOfferingTypeId", "")}
+                  data-testid="button-change-offering"
+                >
+                  Change offering
+                </Button>
+              </div>
+            ) : (
+              <Select
+                value={formData.categoryId}
+                onValueChange={(v) => {
+                  setFormData((prev) => ({ ...prev, categoryId: v, subcategoryId: "", categoryAttributes: {} }));
+                }}
+              >
+                <SelectTrigger id="category" className="mt-2">
+                  <SelectValue placeholder="Select a category" />
+                </SelectTrigger>
+                <SelectContent>
+                  {categories.map((cat) => (
+                    <SelectItem key={cat.id} value={cat.id}>
+                      {cat.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+            {role === "provider" && formData.serviceOfferingTypeId && (
+              <p className="text-xs text-muted-foreground mt-1">Derived from your selected /earn offering above.</p>
+            )}
             {selectedCategory?.description && (
               <p className="text-xs text-muted-foreground mt-1">{selectedCategory.description}</p>
             )}
@@ -1031,7 +1208,9 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             )}
           </div>
 
-          {/* Expert Tier Picker */}
+          {/* Expert Tier Picker — partitioned by the signed-in user's expert role where
+              lib/earn-roles.ts defines one (local_expert / travel_expert); otherwise
+              shows the full unpartitioned catalog (see visibleExpertOfferingTypes). */}
           {role === "expert" && (
             <div>
               <Label>Service Tier *</Label>
@@ -1039,7 +1218,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                 <p className="text-xs text-muted-foreground mt-2">Loading tiers…</p>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
-                  {expertOfferingTypes.map((tier) => (
+                  {visibleExpertOfferingTypes.map((tier) => (
                     <button
                       key={tier.id}
                       type="button"
@@ -1748,7 +1927,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                 <Button
                   className="bg-primary hover:bg-primary/90 flex-1"
                   onClick={() => createMutation.mutate("submit")}
-                  disabled={createMutation.isPending || !formData.name || !formData.categoryId}
+                  disabled={createMutation.isPending || !formData.name || !formData.categoryId || (!isEditMode && !formData.expertOfferingTypeId)}
                 >
                   {createMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
                   Submit for Approval
@@ -1768,8 +1947,8 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                 <Button
                   className="bg-primary hover:bg-primary/90 flex-1"
                   onClick={() => createMutation.mutate("publish")}
-                  disabled={createMutation.isPending || !formData.name || !formData.categoryId || publishBlocked}
-                  title={publishBlocked ? "Complete background verification before publishing this category" : undefined}
+                  disabled={createMutation.isPending || !formData.name || !formData.categoryId || publishBlocked || (!isEditMode && !formData.serviceOfferingTypeId)}
+                  title={publishBlocked ? "Complete background verification before publishing this category" : (!isEditMode && !formData.serviceOfferingTypeId) ? "Pick an offering from the /earn catalog first" : undefined}
                   data-testid="button-publish-service"
                 >
                   {createMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
