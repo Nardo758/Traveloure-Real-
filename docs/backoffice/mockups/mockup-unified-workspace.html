@@ -16,17 +16,9 @@
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --ink: #F0EFEA;
-      --mid: #9C9B92;
-      --line: #33332F;
-      --ground: #191917;
-      --card: #211F1D;
-      --brand: #F07068;
-      --brand-soft: #3A2523;
-      --ok: #5CBF94;
-      --ok-soft: #1F3229;
-      --warn: #E0A050;
-      --warn-soft: #362A18;
+      --ink: #F0EFEA; --mid: #9C9B92; --line: #33332F; --ground: #191917; --card: #211F1D;
+      --brand: #F07068; --brand-soft: #3A2523; --ok: #5CBF94; --ok-soft: #1F3229;
+      --warn: #E0A050; --warn-soft: #362A18;
       --frame-shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 28px rgba(0,0,0,.35);
     }
   }
@@ -53,23 +45,29 @@
 
   .eyebrow { font-size: 11.5px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; color: var(--brand); }
   h1 { font-size: 30px; font-weight: 800; letter-spacing: -.02em; margin: 6px 0 10px; text-wrap: balance; }
-  .lede { color: var(--mid); max-width: 640px; margin: 0 0 8px; }
+  .lede { color: var(--mid); max-width: 660px; margin: 0 0 8px; }
   .meta { font-size: 12.5px; color: var(--mid); }
 
-  /* ── one-builder flow diagram ─────────────────────────────── */
+  /* ── build-first flow diagram ─────────────────────────────── */
   .flow { display: flex; align-items: stretch; gap: 0; margin: 36px 0 8px; flex-wrap: wrap; }
+  .flow-in {
+    display: flex; flex-direction: column; justify-content: center; min-width: 150px;
+    background: var(--card); border: 1px dashed var(--line); border-radius: 14px; padding: 16px 20px;
+  }
+  .flow-in b { font-size: 14px; }
+  .flow-in span { font-size: 11.5px; color: var(--mid); }
   .flow-builder {
     background: var(--ink); color: var(--ground); border-radius: 14px; padding: 18px 22px;
-    display: flex; flex-direction: column; justify-content: center; min-width: 190px;
+    display: flex; flex-direction: column; justify-content: center; min-width: 200px;
   }
   .flow-builder b { font-size: 16px; }
   .flow-builder span { font-size: 12px; opacity: .75; }
   .flow-arrow { display: flex; align-items: center; padding: 0 14px; color: var(--mid); font-size: 20px; }
-  .flow-outs { display: flex; flex-direction: column; gap: 8px; flex: 1; min-width: 260px; }
+  .flow-outs { display: flex; flex-direction: column; gap: 8px; flex: 1; min-width: 280px; }
   .flow-out { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 9px 14px; display: flex; align-items: baseline; gap: 10px; }
   .flow-out b { font-size: 13.5px; }
   .flow-out span { font-size: 12px; color: var(--mid); }
-  .flow-note { font-size: 12.5px; color: var(--mid); margin: 10px 0 0; }
+  .flow-note { font-size: 12.5px; color: var(--mid); margin: 10px 0 0; max-width: 720px; }
 
   section { margin-top: 64px; }
   .sec-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 6px; }
@@ -78,7 +76,7 @@
     border-radius: 999px; padding: 3px 10px; letter-spacing: .04em;
   }
   h2 { font-size: 20px; font-weight: 750; letter-spacing: -.01em; margin: 0; }
-  .sec-sub { color: var(--mid); font-size: 13.5px; margin: 4px 0 20px; max-width: 620px; }
+  .sec-sub { color: var(--mid); font-size: 13.5px; margin: 4px 0 20px; max-width: 640px; }
 
   .frame-grid { display: grid; grid-template-columns: minmax(0,1fr) 250px; gap: 24px; align-items: start; }
   @media (max-width: 860px) { .frame-grid { grid-template-columns: 1fr; } }
@@ -90,7 +88,6 @@
   .urlbar { flex: 1; font-size: 11.5px; color: var(--mid); background: var(--ground); border-radius: 6px; padding: 3px 10px; }
   .screen { padding: 20px 22px 24px; }
 
-  /* console primitives inside frames */
   .k-label { font-size: 10.5px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; color: var(--mid); margin-bottom: 8px; }
   .row {
     display: flex; align-items: center; justify-content: space-between; gap: 10px;
@@ -107,16 +104,16 @@
   .chip.mut { color: var(--mid); background: var(--ground); border: 1px solid var(--line); }
   .btn-primary {
     display: flex; align-items: center; gap: 10px; border: 1px solid var(--brand); background: var(--brand-soft);
-    border-radius: 10px; padding: 12px 14px; font-size: 14px; font-weight: 700; color: var(--ink);
+    border-radius: 10px; padding: 12px 14px; font-size: 14px; font-weight: 700; color: var(--ink); margin-bottom: 16px;
   }
   .btn-primary small { display: block; font-weight: 400; font-size: 11.5px; color: var(--mid); }
   .quiet-links { display: flex; gap: 18px; border-top: 1px solid var(--line); margin-top: 18px; padding-top: 12px; font-size: 12px; color: var(--mid); flex-wrap: wrap; }
   .quiet-links s { opacity: .55; }
 
   /* builder frame */
-  .bld { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 0; }
+  .bld { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1.05fr); gap: 0; }
   @media (max-width: 720px) { .bld { grid-template-columns: 1fr; } }
-  .bld-top { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; padding: 12px 18px; border-bottom: 1px solid var(--line); }
+  .bld-top { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; padding: 12px 18px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
   .bld-top .title { font-size: 15px; font-weight: 750; }
   .bld-left { padding: 16px 18px; border-right: 1px solid var(--line); }
   @media (max-width: 720px) { .bld-left { border-right: none; border-bottom: 1px solid var(--line); } }
@@ -133,19 +130,19 @@
   .tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); margin: -14px -16px 14px; padding: 0 10px; }
   .tab { font-size: 12px; font-weight: 650; color: var(--mid); padding: 10px 10px 8px; border-bottom: 2px solid transparent; }
   .tab.on { color: var(--ink); border-bottom-color: var(--brand); }
-  .pub-block { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; }
-  .pub-block h4 { margin: 0 0 8px; font-size: 12.5px; font-weight: 750; }
-  .sharecard {
-    border-radius: 10px; overflow: hidden; border: 1px solid var(--line); margin-bottom: 10px;
-  }
-  .sharecard .sc-top { background: var(--brand); color: #fff; padding: 14px 16px; }
-  .sharecard .sc-top b { font-size: 15px; display: block; }
-  .sharecard .sc-top span { font-size: 11px; opacity: .85; }
-  .sharecard .sc-bot { display: flex; justify-content: space-between; padding: 8px 16px; font-size: 10.5px; color: var(--mid); background: var(--card); }
-  .caption { font-size: 12.5px; background: var(--ground); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; }
-  .tags { display: flex; flex-wrap: wrap; gap: 5px; }
-  .tag { font-size: 10.5px; color: var(--mid); background: var(--ground); border: 1px solid var(--line); border-radius: 999px; padding: 2px 8px; }
-  .mini-actions { display: flex; gap: 8px; margin-top: 10px; }
+
+  /* distribution channels */
+  .chan { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin-bottom: 10px; }
+  .chan-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+  .chan-head h4 { margin: 0; font-size: 13px; font-weight: 750; }
+  .chan p { margin: 0 0 8px; font-size: 12px; color: var(--mid); }
+  .sharecard { border-radius: 10px; overflow: hidden; border: 1px solid var(--line); margin-bottom: 8px; }
+  .sharecard .sc-top { background: var(--brand); color: #fff; padding: 12px 14px; }
+  .sharecard .sc-top b { font-size: 14px; display: block; }
+  .sharecard .sc-top span { font-size: 10.5px; opacity: .85; }
+  .sharecard .sc-bot { display: flex; justify-content: space-between; padding: 7px 14px; font-size: 10px; color: var(--mid); background: var(--card); }
+  .caption { font-size: 12px; background: var(--ground); border-radius: 8px; padding: 9px 11px; margin-bottom: 6px; }
+  .mini-actions { display: flex; gap: 8px; flex-wrap: wrap; }
   .mini-btn { font-size: 11.5px; font-weight: 700; border-radius: 8px; padding: 6px 12px; border: 1px solid var(--line); color: var(--ink); background: var(--card); }
   .mini-btn.hot { background: var(--brand); border-color: var(--brand); color: #fff; }
 
@@ -168,45 +165,50 @@
 
 <div class="wrap">
   <div class="eyebrow">Traveloure · Expert Console consolidation</div>
-  <h1>One workstation, every output</h1>
-  <p class="lede">The target design for the consolidated Expert Workspace — the amended dispatch made visible. An expert opens one builder and everything they make leaves through it: client itineraries, store trips, and promo content.</p>
-  <p class="meta">Mockup for decision-maker ratification · Jul 27, 2026 · pairs with EXPERT_CONSOLE_FIX_DISPATCH (amended) · source of truth: docs/backoffice/mockups/</p>
+  <h1>One door in. Every channel out.</h1>
+  <p class="lede">The build is the asset. An expert enters the Workstation through one door, builds, and then <em>distributes</em> — to a client, to the store, to social. Creation never forks; only distribution does.</p>
+  <p class="meta">Mockup v2 for decision-maker ratification · Jul 27, 2026 · supersedes v1's three-entry model per decision-maker direction · source of truth: docs/backoffice/mockups/</p>
 
   <div class="flow">
+    <div class="flow-in"><b>One entry</b><span>New build, or open an existing one</span></div>
+    <div class="flow-arrow">→</div>
     <div class="flow-builder">
       <b>The Workstation</b>
-      <span>PlanCard builder + right panel</span>
+      <span>PlanCard builder — every build starts identical</span>
     </div>
     <div class="flow-arrow">→</div>
     <div class="flow-outs">
-      <div class="flow-out"><b>Client itinerary</b><span>delivered to an assigned traveler</span></div>
-      <div class="flow-out"><b>Store trip</b><span>priced &amp; sold in the Ready Made Trips store</span></div>
-      <div class="flow-out"><b>Promo content</b><span>share card + caption, from the Publish panel</span></div>
+      <div class="flow-out"><b>Client</b><span>deliver to an assigned traveler's trip</span></div>
+      <div class="flow-out"><b>Store</b><span>price it → Ready Made Trips (admin review)</span></div>
+      <div class="flow-out"><b>Social</b><span>share card + caption → Instagram / your /p/ page</span></div>
     </div>
   </div>
-  <p class="flow-note">Platform-page curation (Job 4) rides the store lane via admin boards — no separate expert flow. The Itinerary Templates lane sunsets into the store lane (Phase 2, gated on prod counts).</p>
+  <p class="flow-note">A build can ship through more than one channel — the same Kyoto week can be delivered to a client, listed in the store, and promoted on Instagram. Platform-page placement rides the Store channel (admin boards curate from approved store trips); it is not a fourth thing the expert does.</p>
 
   <!-- ── Screen 1 ────────────────────────────────────────────── -->
   <section>
-    <div class="sec-head"><span class="sec-num">Screen 1</span><h2>Workspace home — pick or start, land building</h2></div>
-    <p class="sec-sub">No launchpad of links. Assigned trips open in one click; a store build creates its draft and drops straight into the builder.</p>
+    <div class="sec-head"><span class="sec-num">Screen 1</span><h2>Workspace home — your builds, one door</h2></div>
+    <p class="sec-sub">One create action. Below it, everything you're working on — client builds and your own drafts in one list, badged by where they're distributed, not segregated by lane.</p>
     <div class="frame-grid">
       <div class="frame">
         <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="urlbar">traveloure.com/expert/workspace</span></div>
         <div class="screen">
-          <div class="k-label">Build for a client</div>
-          <div class="row">
-            <span><span class="t">Kyoto Autumn Week — Tanaka family</span><br><span class="s">Kyoto · Yuki Tanaka · 12 Nov 2026</span></span>
-            <span class="go">Open builder →</span>
-          </div>
-          <div class="row">
-            <span><span class="t">Proposal weekend in Gion</span><br><span class="s">Kyoto · M. Okafor · 3 Oct 2026 · <span class="chip warn">pending accept</span></span></span>
-            <span class="go">Open builder →</span>
+          <div class="btn-primary">✎ New build
+            <small>Opens a blank build in the Workstation. Decide where it ships later.</small>
           </div>
 
-          <div class="k-label" style="margin-top:18px;">Create for your store</div>
-          <div class="btn-primary">🏪 New store trip
-            <small>Starts a draft and opens the builder immediately.</small>
+          <div class="k-label">Your builds</div>
+          <div class="row">
+            <span><span class="t">Kyoto Autumn Week</span><br><span class="s">Kyoto · 12 Nov 2026 · <span class="chip brand">Client — Tanaka family</span></span></span>
+            <span class="go">Open →</span>
+          </div>
+          <div class="row">
+            <span><span class="t">Kyoto Insider Week</span><br><span class="s">Kyoto · 5 days · <span class="chip ok">Store — approved</span> <span class="chip mut">Social — 2 posts</span></span></span>
+            <span class="go">Open →</span>
+          </div>
+          <div class="row">
+            <span><span class="t">Gion proposal weekend</span><br><span class="s">Kyoto · 2 days · <span class="chip mut">Draft — not distributed</span></span></span>
+            <span class="go">Open →</span>
           </div>
 
           <div class="quiet-links">
@@ -215,28 +217,27 @@
         </div>
       </div>
       <div class="notes">
-        <div class="note done"><b>Action-first entry</b><p>Inline trip list + one-click open landed Jul 27 (with the route-param fix).</p></div>
-        <div class="note"><b>Smart landing</b><p>Exactly one active assignment and no open draft → skip this screen, open that trip directly.</p></div>
-        <div class="note"><b>Struck links = consolidation</b><p>Itinerary Templates sunsets into the store lane; Content Studio folds into the Publish panel (Screen 2). Link row shrinks to Store Listings + DMO Library.</p></div>
-        <div class="note"><b>Event-planner gate, visible</b><p>Event planners see the store section disabled with the message: “Store listings are open to Local and Travel Experts during the Kyoto launch.” One named business-rule constant.</p></div>
+        <div class="note"><b>One create, no fork</b><p>"New build" replaces v1's separate client/store entries. The build is unlabeled at birth; channels attach in the Distribute panel.</p></div>
+        <div class="note"><b>Client trips are builds too</b><p>An accepted assignment appears in the same list, badged Client — not a separate entry path. Smart landing still applies: one build total → open it directly.</p></div>
+        <div class="note"><b>Badges = distribution state</b><p>Each row shows where the build has shipped. One build, several badges is normal — that's the point.</p></div>
+        <div class="note"><b>Struck links = consolidation</b><p>Itinerary Templates sunsets into the Store channel; Content Studio folds into Distribute → Social.</p></div>
       </div>
     </div>
   </section>
 
   <!-- ── Screen 2 ────────────────────────────────────────────── -->
   <section>
-    <div class="sec-head"><span class="sec-num">Screen 2</span><h2>The builder with the Publish panel</h2></div>
-    <p class="sec-sub">Store-authoring mode shown. The right panel gains a Publish tab — Content Studio's working parts, moved to where the content already lives.</p>
+    <div class="sec-head"><span class="sec-num">Screen 2</span><h2>The builder with the Distribute panel</h2></div>
+    <p class="sec-sub">Build on the left; ship on the right. Three channels on one build, each with its own state — none of them chosen at creation time.</p>
     <div class="frame-grid">
       <div class="frame">
-        <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="urlbar">traveloure.com/expert/workspace/rm-8f2c…</span></div>
+        <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="urlbar">traveloure.com/expert/workspace/bld-8f2c…</span></div>
         <div class="bld">
           <div class="bld-top">
             <span style="color:var(--mid);">←</span>
             <span class="title">Kyoto Insider Week</span>
-            <span class="chip brand">Store trip</span>
-            <span class="chip mut">Draft</span>
-            <span style="margin-left:auto;" class="chip ok">¥ priced · ready to submit</span>
+            <span class="chip ok">Store — approved</span>
+            <span class="chip mut">Social — 2 posts</span>
           </div>
           <div class="bld-left">
             <div class="day">Day 1 — Higashiyama</div>
@@ -253,35 +254,38 @@
           </div>
           <div class="panel">
             <div class="tabs">
-              <span class="tab">Listing</span><span class="tab">AI Gaps</span><span class="tab">Browse</span><span class="tab on">Publish</span>
+              <span class="tab">AI Gaps</span><span class="tab">Browse</span><span class="tab on">Distribute</span>
             </div>
-            <div class="pub-block">
-              <h4>Share card</h4>
+
+            <div class="chan">
+              <div class="chan-head"><h4>→ Client</h4><span class="chip mut">not attached</span></div>
+              <p>Deliver this build into an assigned traveler's trip.</p>
+              <div class="mini-actions"><span class="mini-btn">Attach to assignment…</span></div>
+            </div>
+
+            <div class="chan">
+              <div class="chan-head"><h4>→ Store</h4><span class="chip ok">Approved · ¥48,000</span></div>
+              <p>Listed in Ready Made Trips. Price or description changes re-enter review.</p>
+              <div class="mini-actions"><span class="mini-btn">Edit listing</span><span class="mini-btn">View in store</span></div>
+            </div>
+
+            <div class="chan">
+              <div class="chan-head"><h4>→ Social</h4><span class="chip mut">2 posts</span></div>
               <div class="sharecard">
                 <div class="sc-top"><b>Kyoto Insider Week</b><span>5 days · by Kenji · Traveloure</span></div>
                 <div class="sc-bot"><span>traveloure.com/p/kenji</span><span>Ready Made Trips</span></div>
               </div>
-              <div class="mini-actions"><span class="mini-btn hot">Generate share card</span><span class="mini-btn">Download</span></div>
-            </div>
-            <div class="pub-block">
-              <h4>Caption &amp; hashtags</h4>
               <div class="caption">Five days in Kyoto the guidebooks skip — dawn temples, a tea master in Ninenzaka, and the etiquette that opens Gion's doors. Full trip on my Traveloure page.</div>
-              <div class="tags"><span class="tag">#kyoto</span><span class="tag">#kyototravel</span><span class="tag">#japantrip</span><span class="tag">#hiddenkyoto</span></div>
-              <div class="mini-actions"><span class="mini-btn">Regenerate</span><span class="mini-btn">Copy</span><span class="mini-btn">Post to Instagram</span></div>
-            </div>
-            <div class="pub-block">
-              <h4>Knowledge nuggets</h4>
-              <div class="caption" style="margin-bottom:6px;">“Kiyomizu's main hall queue clears by 8:50 — enter from Chawan-zaka, not the main slope.”</div>
-              <div class="mini-actions"><span class="mini-btn">+ New nugget</span></div>
+              <div class="mini-actions"><span class="mini-btn hot">Generate share card</span><span class="mini-btn">Caption + hashtags</span><span class="mini-btn">Post to Instagram</span></div>
             </div>
           </div>
         </div>
       </div>
       <div class="notes">
-        <div class="note"><b>Share card = the one PNG service</b><p>Calls the existing share-image service with this trip's real data — a trip/listing layout parameter, never a second renderer.</p></div>
-        <div class="note"><b>Caption AI moves server-side</b><p>Prompt chain lives in a shared promo-text service the provider engine will import later. The current Content Studio saves nothing — this replaces it, attached to real content.</p></div>
-        <div class="note"><b>Nuggets open to the whole expert family</b><p>Write-gate widens via the canonical shared/roles helper — including bare “expert” (13 real accounts the dispatch's hand-written list missed).</p></div>
-        <div class="note"><b>Same panel, client mode</b><p>On an assigned trip the tabs read Chat · AI Gaps · Browse · Earnings · Publish — promote a client trip's highlights without leaving it.</p></div>
+        <div class="note"><b>Channels, not modes</b><p>v1's "store listing vs client trip" mode split becomes three channel cards with independent state on one build. The listing wraps the build when you ship to Store — not before.</p></div>
+        <div class="note"><b>Share card = the one PNG service</b><p>Social channel calls the existing share-image service with this build's real data — a build layout parameter, never a second renderer.</p></div>
+        <div class="note"><b>Caption AI moves server-side</b><p>One shared promo-text service (the provider engine imports it later). The current Content Studio saves nothing — this replaces it, attached to real content.</p></div>
+        <div class="note"><b>Client channel, honest v1</b><p>A build opened FROM an assignment is already attached. Attaching a free-standing draft to an assignment (copy items in) is the one new mechanism — scoped as its own step.</p></div>
       </div>
     </div>
   </section>
@@ -290,12 +294,12 @@
   <div class="decisions">
     <h2>What this ratifies</h2>
     <div class="dec-grid">
-      <div class="dec"><b>Templates lane sunsets — seller side first</b><p>Retire the seller surface and block new listings now; the consumer wind-down (purchases, Discover tab, search) is its own decision-maker-read phase. Buyers keep access to purchased itineraries.</p><span class="chip warn">gated on prod counts</span></div>
-      <div class="dec"><b>Content Studio → Publish panel</b><p>The studio page becomes a redirect; its working parts (share, caption, nuggets, Instagram) live in the builder where content is made.</p><span class="chip brand">Phase 3</span></div>
-      <div class="dec"><b>Smart landing</b><p>One assignment, no drafts → straight into the builder. Everything else keeps the Screen-1 home.</p><span class="chip brand">Phase 4</span></div>
-      <div class="dec"><b>Sidebar returns to the builder</b><p>Workspace and Store Listings wrap in ExpertLayout like every other console page — no more chromeless dead-ends (audit #7).</p><span class="chip mut">audit fix</span></div>
-      <div class="dec"><b>Kyoto market rule enforced</b><p>Store submits validate the market against one named constant + a DB constraint, with the prod preflight run before publish.</p><span class="chip mut">F8</span></div>
-      <div class="dec"><b>DMO builds land here, correctly</b><p>“Build Ready Made Trip” creates a store draft and opens this builder — not an unpriceable row in the sunsetting lane (audit #4/#5).</p><span class="chip warn">misroute fix</span></div>
+      <div class="dec"><b>Build-first, distribute-later</b><p>One "New build" entry; the client/store/social choice moves into the Distribute panel. Server change: a listing is created FROM an existing build ("ship to store"), instead of listing-then-trip.</p><span class="chip brand">the v2 model</span></div>
+      <div class="dec"><b>Templates lane sunsets — seller side first</b><p>Retire the seller surface and block new listings now; consumer wind-down is its own decision-maker-read phase. Buyers keep purchased itineraries.</p><span class="chip warn">gated on prod counts</span></div>
+      <div class="dec"><b>Content Studio → Distribute → Social</b><p>The studio page becomes a redirect; share card, caption AI, and Instagram publish live on the build they promote.</p><span class="chip brand">Phase 3</span></div>
+      <div class="dec"><b>DMO builds land here</b><p>"Build from DMO Library" creates a build and opens this Workstation — not an unpriceable row in the sunsetting lane.</p><span class="chip warn">misroute fix</span></div>
+      <div class="dec"><b>Sidebar returns to the builder</b><p>Workspace wraps in ExpertLayout like every other console page — no more chromeless dead-ends.</p><span class="chip mut">audit fix</span></div>
+      <div class="dec"><b>Kyoto market rule + event-planner gate, explicit</b><p>Store channel validates market against one named constant (+ DB constraint with prod preflight); event planners see the Store channel disabled with the launch message, not hidden.</p><span class="chip mut">F8 / F3</span></div>
     </div>
   </div>
 </div>
