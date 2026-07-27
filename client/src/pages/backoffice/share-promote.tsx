@@ -13,14 +13,17 @@
  * Only APPROVED (+ active/published, matching each lane's own public read-gate — F2 / §10)
  * offerings are offered for sharing: a submitted/draft listing has no public page and its
  * share-image endpoint 404s (F2 gate in share-images.routes.ts), so surfacing it here would be
- * a dead preview. Real share images (SH1, /api/share-image/service/:id.png) exist for the
- * SERVICE lane only; templates and Ready Made Trips get link + caption sharing for now.
+ * a dead preview. Real share images (SH1, /api/share-image/service/:id.png; Phase A3,
+ * /api/share-image/ready-made/:id.png) exist for the SERVICE and READY_MADE lanes; templates
+ * get link + caption sharing for now.
  *
  * §16: every share action here is either copy-to-clipboard or an informational wa.me/X intent
  * link (never a raw booking CTA), and the link always routes back through the platform's own
  * short link (/r/:code) or storefront (/p/:handle) — never off-platform.
- * §13: captions are pre-filled from real offering fields only (name, city, the short link) and
- * are user-editable; nothing fabricated.
+ * §13: captions for service/ready_made/storefront are generated server-side by the shared
+ * promo-text service (GET /api/promo-text — AI best-effort over real fields only, deterministic
+ * template fallback; Phase A3) and remain user-editable; the template lane still uses the local
+ * deterministic fallback below. Nothing fabricated either way.
  */
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -269,14 +272,43 @@ export default function SharePromote() {
 
   const [caption, setCaption] = useState("");
   useEffect(() => {
-    if (selected) setCaption(buildOfferingCaption(selected));
+    if (!selected) return;
+    // Client-side fallback shows immediately; the server caption (when available) replaces it.
+    setCaption(buildOfferingCaption(selected));
+    // The promo-text endpoint only knows the service/ready_made lanes today — templates keep the
+    // local deterministic fallback above.
+    if (selected.lane !== "service" && selected.lane !== "ready_made") return;
+    let cancelled = false;
+    fetch(`/api/promo-text?targetType=${selected.lane}&targetId=${selected.id}`, { credentials: "include" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!cancelled && data?.caption) setCaption(data.caption);
+      })
+      .catch(() => {
+        // Fetch error — the client-side fallback set above stays in place.
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [selected?.lane, selected?.id]);
 
   const [storefrontCaption, setStorefrontCaption] = useState("");
   useEffect(() => {
-    if (handle) {
-      setStorefrontCaption(`Check out everything I offer on Traveloure — my storefront is @${handle}.`);
-    }
+    if (!handle) return;
+    // Client-side fallback shows immediately; the server caption (when available) replaces it.
+    setStorefrontCaption(`Check out everything I offer on Traveloure — my storefront is @${handle}.`);
+    let cancelled = false;
+    fetch(`/api/promo-text?targetType=storefront`, { credentials: "include" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!cancelled && data?.caption) setStorefrontCaption(data.caption);
+      })
+      .catch(() => {
+        // Fetch error — the client-side fallback set above stays in place.
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [handle]);
 
   return (

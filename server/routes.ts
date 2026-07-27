@@ -114,6 +114,7 @@ import serviceRequestsRoutes from "./routes/service-requests.routes";
 import tripContextRoutes from "./routes/trip-context.routes";
 import guestInvitesRoutes from "./routes/guest-invites";
 import shareImagesRoutes from "./routes/share-images.routes";
+import promoTextRoutes from "./routes/promo-text.routes";
 import paymentMethodsRoutes from "./routes/payment-methods.routes";
 import {
   insertTripParticipantSchema, 
@@ -635,6 +636,11 @@ export async function registerRoutes(
   // F2/REV-MOD-gated in the router; the render itself is pure in share-image.service.ts. Mounted
   // per §9.
   app.use(shareImagesRoutes);
+
+  // Phase A3: GET /api/promo-text — shared server-side caption generation (AI best-effort,
+  // deterministic fallback) for the service/ready_made/storefront distribution lanes. Session-
+  // authenticated + owner-verified (§14). Mounted per §9.
+  app.use(promoTextRoutes);
 
   // FP-1 frictionless payments: saved-card management (GET/POST/DELETE /api/me/payment-methods*).
   // Session-scoped; cards live only in Stripe's vault. Mounted per §9.

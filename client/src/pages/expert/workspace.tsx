@@ -1623,7 +1623,7 @@ export default function ExpertWorkspace() {
                 </div>
                 <div style={{ padding: "12px" }}>
                   <button
-                    onClick={() => safeNavigate(`/expert/content-studio?prefill=1&title=${encodeURIComponent(tripTitle)}&destination=${encodeURIComponent(trip?.destination ?? "")}`)}
+                    onClick={() => safeNavigate(`/expert/content-studio?prefill=1&title=${encodeURIComponent(tripTitle)}&destination=${encodeURIComponent(trip?.destination ?? "")}${isAuthoring && listing?.id ? `&targetType=ready_made&targetId=${listing.id}` : ""}`)}
                     data-testid="button-distribute-social-studio"
                     style={{ padding: "7px 14px", borderRadius: 8, fontSize: 12, fontWeight: 600, background: "white", color: P, border: `1.5px solid ${P}`, cursor: "pointer", marginBottom: 8 }}
                   >
