@@ -28,7 +28,6 @@ import {
   MapPin,
   PenSquare,
   Library,
-  Map,
   Store,
   Share2,
 } from "lucide-react";
@@ -56,12 +55,10 @@ function buildMenuGroups(expertType?: string | null) {
       label: "Business",
       items: [
         { title: "My Offerings", href: "/expert/services", icon: Briefcase },
-        // Seller-side vocabulary (§10 label standard): "Ready Made Trips" is the CONSUMER store
-        // page; the seller console keeps "Itinerary Templates" (the Airbnb listings/homes split).
         // "Store Listings" is the workstation→store pipeline console (decision-maker model,
         // 2026-07-25: one store, stocked from the Workstation; "Trips by Locals" is a consumer
-        // shelf section by author type, never a seller-console name).
-        { title: "Itinerary Templates", href: "/expert/templates", icon: Map },
+        // shelf section by author type, never a seller-console name). The former
+        // "Itinerary Templates" seller entry is retired (§10/§17 seller-surface sunset).
         ...(isEventPlanner ? [] : [{ title: "Store Listings", href: "/expert/ready-made", icon: Store }]),
         { title: isEventPlanner ? "Promo Content" : isLocalExpert ? "Local Guides" : "Content Studio", href: "/expert/content-studio", icon: Palette },
         { title: "DMO Library", href: "/expert/dmo-library", icon: Library },

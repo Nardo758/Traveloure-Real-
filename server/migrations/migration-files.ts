@@ -562,4 +562,13 @@ export const MIGRATION_FILES = [
   // but never added by any migration; every Connect path threw on a schema-true DB. Additive
   // nullable + IF NOT EXISTS (no-op where grandfathered), no CHECK → no publish-push trap.
   "147_users_stripe_connect_columns.sql",
+  // 148: provider offering linkage (§17) — provider_services.service_offering_type_id FK, the
+  // migration-057 mirror. Additive nullable, ON DELETE SET NULL, no CHECK/backfill → no push trap.
+  // Closes the earn-trace "creatable but unlinked" gap for the ~96 in-person /earn offerings.
+  "148_provider_service_offering_type_fk.sql",
+  // 149: F8 launch-market CHECK on ready_made_trips.market (§12 one-wedge-Kyoto) — the write
+  // paths validate against shared/launch-markets.ts; this enforces it at the DB. Guarded
+  // (refuses on non-Kyoto rows rather than half-applying), idempotent. CHECK migration →
+  // column added to the preflight-prod-constraints.cjs manifest (the publish-trap rule).
+  "149_ready_made_market_check.sql",
 ] as const;

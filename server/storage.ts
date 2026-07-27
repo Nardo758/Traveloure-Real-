@@ -1153,8 +1153,21 @@ export class DatabaseStorage implements IStorage {
     // or an omitted value — is forced to 'submitted' (the review-queue entry state). Never trust the client
     // for approval; approval only happens via the admin queue (/api/admin/provider-services approve/reject).
     const bornApprovalStatus = (service as any).approvalStatus === 'draft' ? 'draft' : 'submitted';
+
+    // §14 posture applied to catalog linkage (§17 offering-first provider create): a client-sent
+    // serviceOfferingTypeId is a raw id, never verified server-side until now — clamp to null if it
+    // doesn't resolve against the live catalog rather than trust it blind (the same defensive posture
+    // as createServiceProviderForm's offeringTypeKey clamp, just by id instead of by key).
+    let serviceOfferingTypeId = (service as any).serviceOfferingTypeId ?? null;
+    if (serviceOfferingTypeId) {
+      const [known] = await db.select({ id: serviceOfferingTypes.id })
+        .from(serviceOfferingTypes)
+        .where(eq(serviceOfferingTypes.id, serviceOfferingTypeId));
+      if (!known) serviceOfferingTypeId = null;
+    }
+
     const [newService] = await db.insert(providerServices)
-      .values({ ...service, approvalStatus: bornApprovalStatus, trackingNumber })
+      .values({ ...service, approvalStatus: bornApprovalStatus, serviceOfferingTypeId, trackingNumber })
       .returning();
     
     // Auto-register in content tracking system
@@ -1172,8 +1185,19 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateProviderService(id: string, updates: Partial<InsertProviderService>): Promise<ProviderService | undefined> {
+    // Same clamp as createProviderService (§14/§17): only when the field is present in this
+    // update — a client-sent id that doesn't resolve against the live catalog is dropped to
+    // null rather than trusted blind. Absent from `updates` entirely → leave untouched (a
+    // PATCH that isn't touching this field must not clear an existing valid linkage).
+    let patch: Partial<InsertProviderService> = updates;
+    if (Object.prototype.hasOwnProperty.call(updates, 'serviceOfferingTypeId') && (updates as any).serviceOfferingTypeId) {
+      const [known] = await db.select({ id: serviceOfferingTypes.id })
+        .from(serviceOfferingTypes)
+        .where(eq(serviceOfferingTypes.id, (updates as any).serviceOfferingTypeId));
+      if (!known) patch = { ...updates, serviceOfferingTypeId: null as any };
+    }
     const [updated] = await db.update(providerServices)
-      .set(updates)
+      .set(patch)
       .where(eq(providerServices.id, id))
       .returning();
     return updated;

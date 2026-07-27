@@ -126,7 +126,6 @@ const AdminCrossSellAnalytics = lazy(() => import("@/pages/admin/cross-sell-anal
 const AdminQAChecklist = lazy(() => import("@/pages/admin/qa-checklist"));
 const ExpertAnalytics = lazy(() => import("@/pages/expert/analytics"));
 const ExpertContentStudio = lazy(() => import("@/pages/expert/content-studio"));
-const ExpertTemplates = lazy(() => import("@/pages/expert/templates"));
 const ExpertReadyMade = lazy(() => import("@/pages/expert/ready-made"));
 const ReadyMadeDetailPage = lazy(() => import("@/pages/ready-made-detail"));
 const StorefrontPage = lazy(() => import("@/pages/storefront"));
@@ -580,11 +579,9 @@ function Router() {
       <Route path="/expert/analytics">
         {() => <ProtectedRoute component={ExpertAnalytics} requiredRole="expert" />}
       </Route>
-      <Route path="/expert/templates">
-        {() => <ProtectedRoute component={ExpertTemplates} requiredRole="expert" />}
-      </Route>
-      {/* Trips by Locals authoring console — a DIFFERENT product from /expert/templates
-          (that's the expert_templates Guides lane). See spec v3 §0a. */}
+      {/* Trips by Locals authoring console (the ready_made_trips store lane). See spec v3 §0a.
+          The former /expert/templates seller page (expert_templates Guides lane) is retired —
+          §10/§17 seller-surface sunset; consumer/admin/purchase surfaces stay. */}
       <Route path="/expert/ready-made">
         {() => <ProtectedRoute component={ExpertReadyMade} requiredRole="expert" />}
       </Route>

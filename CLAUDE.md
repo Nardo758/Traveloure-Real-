@@ -208,7 +208,17 @@ This document captures architectural decisions to maintain consistency across co
      Wishlist silently hit the catch-all and never loaded. Now **mounted** (`app.use(savedItemsRoutes)`);
      handlers are session-scoped + owner-gated, no shadow. Proven: guard passes on main, fails on a
      removed-or-commented mount.
-10. **Expert-template marketplace — ACTIVATION IN PROGRESS** (`claude/marketplace-phaseA-gate` and follow-ons).
+10. **Expert-template marketplace — SELLER-SIDE SUNSET RATIFIED (Jul 27, 2026; supersedes "activation in progress" for the SELLER surface only).**
+    The `expert_templates` lane sunsets in favor of the `ready_made_trips` store lane ("one store, stocked from
+    the Workstation"). **Phase 2a (this program) retires ONLY the seller surface**: the `/expert/templates` seller
+    page + its create path are removed and NEW listings are blocked; the DMO Library's "Build Ready Made Trip"
+    misroute (it created an `expert_templates` row) is repointed at the real store lane. **INTACT and untouched:
+    the consumer read/purchase surface, buyers' purchased content (`/api/my-purchased-templates`), owner reads
+    (My Offerings lane 2, storefront lane 2), admin queues, and the §15 purchase/confirm money endpoints.** The
+    consumer wind-down is a SEPARATE decision-maker-read phase gated on PROD counts (dev counts were test
+    fixtures only; the test-email filter must include %@test.dev / %@t.test). Do not build new features on
+    `expert_templates`. Historical §10 record below stands for the still-live consumer surface.
+    **(Historical) ACTIVATION record:** (`claude/marketplace-phaseA-gate` and follow-ons).
     Replit commit `3ceeffc3` replaced the old ledger stub with a **real two-step Stripe checkout**: `POST
     /api/expert-templates/:id/purchase` creates a `pending_payment` purchase + Stripe PaymentIntent (no earning yet),
     and `POST /api/expert-templates/:id/purchase/confirm` server-verifies the intent (`status === 'succeeded'`, IDOR +
@@ -673,6 +683,33 @@ hotels on the same page); now they share `useAgentBooking` → the booking-agent
 per the same directive):** fold the parallel `/api/catalog/*` Travelpayouts feed into the CENTRAL content system
 (content registry / `affiliate_products` + placement rules) so all content lives in one system — a design job
 (live-priced API feeds vs registry rows), not a mechanical move; do not build a third content home in the interim.
+
+### §17 — Back-office / loop-closing program (ratified Jul 27, 2026)
+
+Governing spec: `docs/backoffice/mockups/mockup-unified-workspace.html` (v9). Locked decisions:
+- **Build-first / distribute-later.** ONE Workstation entry ("New build" + the builds list); client/store/
+  social are DISTRIBUTION CHANNELS with independent state on one build, chosen after building, never at
+  creation. Distribute channels: Client / Store / Social / **Direct (WhatsApp + trackable booking links —
+  short-links + `booking_acquisition_ref` attribution, already captured)**. A store listing is created FROM
+  an existing build ("ship to store"), not listing-then-trip.
+- **Add panel = the Central Content network.** Source pills map the registry origin taxonomy: DMO Library
+  (sourced — expert-workspace-only, invariant untouched) · Platform content · Platform services (ALL
+  F2-approved provider offerings) · Partner inventory · My services · Custom. One registry-backed search;
+  no third content home. The DMO pill keeps joining the expert-edits store.
+- **8-module console IA** (16 tabs → Today · Workstation · Inbox · Catalog · Money · Customers ·
+  Performance · Settings). Programming rule: ONE owning endpoint per number, ONE home per list — modules
+  reference, never re-render. Honest surfaces only (§13). Provider console inherits the same 8 modules.
+- **Two palettes BY DESIGN.** Traveler surface keeps global `--primary #FF385C` + cool greys; the earner
+  back office runs the warm console palette (#E85D55 + #1A1A18/#7A7A72/#E8E8E2/#FAFAF8) via the
+  `.console-scope` token block on BackofficeShell. Never restyle console pages with raw hex — use tokens.
+- **Provider offering linkage GO:** additive nullable `provider_services.service_offering_type_id` FK
+  (migration-057 pattern) + offering-first provider create (pick the /earn offering; category derives from
+  the catalog's `category_key`; chip↔picker vocabulary break closed). Expert tier becomes required;
+  the tier picker partitions by role; `aff_*`/legacy categories filtered from the provider picker.
+- **Shareable-link landing = the Yuki spec** (`docs/backoffice/mockups/mockup-offering-page.html`):
+  `/services/:id` is rebuilt to it — one page for marketplace browsing AND all shared/booking links
+  (breadcrumb into /p/, Direct-Booking trust panel, migration-144 cancellation policy, honest reviews,
+  Book Now → existing checkout rail). Short links keep redirecting there.
 
 The earning ledger is an escrow state machine: **`held → releasable → paid_out`**, plus **`reversed`**, with a
 `dispute_state`. All phases are **landed on `main`** (Jul 14, 2026):

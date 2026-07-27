@@ -360,6 +360,23 @@ export default function ContentStudio() {
     if (description) form.setValue("description", description.slice(0, 2000));
     setPageSection("content");
     setIsCreateOpen(true);
+
+    // Phase A3: when the caller also names a real offering (targetType/targetId — e.g. workspace's
+    // "Create promo in Content Studio" for a Ready Made build), prefill the Instagram caption from
+    // the shared server-side promo-text service. Non-blocking: a fetch failure just leaves the
+    // caption empty, the rest of the prefill above is untouched either way.
+    const targetType = params.get("targetType");
+    const targetId = params.get("targetId");
+    if (targetType && targetId) {
+      fetch(`/api/promo-text?targetType=${encodeURIComponent(targetType)}&targetId=${encodeURIComponent(targetId)}`, {
+        credentials: "include",
+      })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data?.caption) form.setValue("instagramCaption", data.caption.slice(0, 2200));
+        })
+        .catch(() => {});
+    }
   }, [searchParams, form]);
 
   const handleGenerateHashtags = () => {
