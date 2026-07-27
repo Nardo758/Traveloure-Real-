@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link } from "wouter";
 import { ExpertLayout } from "@/components/expert/expert-layout";
 import { HandleClaimCard } from "@/components/backoffice/handle-claim-card";
@@ -37,23 +37,19 @@ import {
 
 interface NotificationSetting {
   name: string;
+  /** Stable key in the /api/me/preferences payload (server zod allow-list). */
+  key: string;
   email: boolean;
   push: boolean;
 }
 
-// NOTE (B6 deviation, recorded here rather than silently worked around): the phase brief for
-// this tab claimed `users.preferences` jsonb exists (shared/schema.ts:78) as the persistence
-// store for Notifications + Preferences. That line is `trips.preferences`, not `users` — the
-// real `users` table (shared/models/auth.ts:38) carries no `preferences`/`settings` column, and
-// no migration ever added one (checked server/migrations for `ALTER TABLE users`). Adding one
-// requires a schema.ts change + a migration, both outside this phase's file scope
-// (server/routes/storefront.routes.ts, settings.tsx, profile.tsx only — no schema, no
-// migrations). Rather than wire a Save button to an endpoint that would 500 against a
-// nonexistent column (a worse trap than the original useState theater — silent-failure, not
-// honest-failure per §13), these two tabs get the same honest-gate treatment Part 2 mandates
-// for Security-with-no-endpoint: controls stay visible, Save is disabled, and the reason is
-// stated. Filed follow-up: add `users.preferences` (or a dedicated `user_settings` table) via a
-// real migration, then wire GET/PATCH /api/me/preferences for real.
+// B6 history: an earlier pass found `users` had NO preferences column (the brief's claimed
+// store was actually trips.preferences) and honest-gated these tabs rather than fake a save.
+// Migration 150 then added `users.preferences` jsonb for real, and GET/PATCH
+// /api/me/preferences (storefront.routes.ts — strict zod allow-list, shallow-merge into the
+// `settings` key) now persists the Notifications + Language/Timezone tabs. Security stays
+// honest-gated below (no change-password/2FA backend exists — only the token-based
+// forgot/reset flow).
 function UnavailableNote({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex items-start gap-2 p-3 bg-amber-50 rounded-lg border border-amber-200 text-sm text-amber-800">
@@ -252,20 +248,61 @@ function VerificationPayoutsTab() {
 }
 
 export default function ExpertSettings() {
-  // Notification settings — UI-only (no persistence store; see the UnavailableNote comment
-  // above for why). Controls stay visible/interactive locally so the tab isn't blank, but the
-  // Save button is disabled — never a Save that silently no-ops.
-  const [notifications, setNotifications] = useState<NotificationSetting[]>([
-    { name: "New Message", email: true, push: true },
-    { name: "Booking Request", email: true, push: true },
-    { name: "Itinerary Update", email: false, push: true },
-    { name: "Payment Received", email: true, push: true },
-    { name: "Platform Announcements", email: true, push: false },
-  ]);
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
 
-  // Preferences — same UI-only posture as notifications above.
+  // Notification + language/timezone settings — PERSISTED via GET/PATCH /api/me/preferences
+  // (users.preferences.settings, migration 150). Defaults below are the born state for a user
+  // who has never saved; the query hydrates real saved values once on load.
+  const [notifications, setNotifications] = useState<NotificationSetting[]>([
+    { name: "New Message", key: "newMessage", email: true, push: true },
+    { name: "Booking Request", key: "bookingRequest", email: true, push: true },
+    { name: "Itinerary Update", key: "itineraryUpdate", email: false, push: true },
+    { name: "Payment Received", key: "paymentReceived", email: true, push: true },
+    { name: "Platform Announcements", key: "platformAnnouncements", email: true, push: false },
+  ]);
   const [language, setLanguage] = useState("en");
   const [timezone, setTimezone] = useState("UTC+9");
+
+  const { data: savedSettings } = useQuery<{
+    notifications?: Record<string, { email?: boolean; push?: boolean }>;
+    language?: string;
+    timezone?: string;
+  }>({ queryKey: ["/api/me/preferences"] });
+  const settingsHydrated = useRef(false);
+  useEffect(() => {
+    if (!savedSettings || settingsHydrated.current) return;
+    settingsHydrated.current = true;
+    if (savedSettings.language) setLanguage(savedSettings.language);
+    if (savedSettings.timezone) setTimezone(savedSettings.timezone);
+    if (savedSettings.notifications) {
+      setNotifications((prev) =>
+        prev.map((n) => {
+          const saved = savedSettings.notifications?.[n.key];
+          return saved ? { ...n, email: saved.email ?? n.email, push: saved.push ?? n.push } : n;
+        }),
+      );
+    }
+  }, [savedSettings]);
+
+  const savePreferencesMutation = useMutation({
+    mutationFn: async () => {
+      const body = {
+        language,
+        timezone,
+        notifications: Object.fromEntries(
+          notifications.map((n) => [n.key, { email: n.email, push: n.push }]),
+        ),
+      };
+      const res = await apiRequest("PATCH", "/api/me/preferences", body);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/me/preferences"] });
+      toast({ title: "Saved", description: "Your preferences are saved." });
+    },
+    onError: () => toast({ title: "Couldn't save preferences", variant: "destructive" }),
+  });
   const [enableLeaderboard, setEnableLeaderboard] = useState(true);
   const [twoFaEnabled, setTwoFaEnabled] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -355,17 +392,18 @@ export default function ExpertSettings() {
                     </div>
                   </div>
                 ))}
-                <UnavailableNote>
-                  Saving isn't available yet — notification preferences have no backend to persist
-                  to. Toggles here are visual only until this is wired up.
-                </UnavailableNote>
                 <Button
                   className="w-full mt-4 bg-primary hover:bg-primary/90"
                   data-testid="button-save-notifications"
-                  disabled
-                  title="Not available yet — no persistence store is wired for notification preferences."
+                  disabled={savePreferencesMutation.isPending}
+                  onClick={() => savePreferencesMutation.mutate()}
                 >
-                  <Save className="w-4 h-4 mr-2" /> Save Preferences
+                  {savePreferencesMutation.isPending ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Save className="w-4 h-4 mr-2" />
+                  )}
+                  Save Preferences
                 </Button>
               </CardContent>
             </Card>
@@ -435,17 +473,18 @@ export default function ExpertSettings() {
                   </Select>
                 </div>
 
-                <UnavailableNote>
-                  Saving isn't available yet — language/timezone preferences have no backend to
-                  persist to. Selections here are visual only until this is wired up.
-                </UnavailableNote>
                 <Button
                   className="w-full bg-primary hover:bg-primary/90"
                   data-testid="button-save-preferences"
-                  disabled
-                  title="Not available yet — no persistence store is wired for these preferences."
+                  disabled={savePreferencesMutation.isPending}
+                  onClick={() => savePreferencesMutation.mutate()}
                 >
-                  <Save className="w-4 h-4 mr-2" /> Save Preferences
+                  {savePreferencesMutation.isPending ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Save className="w-4 h-4 mr-2" />
+                  )}
+                  Save Preferences
                 </Button>
               </CardContent>
             </Card>
