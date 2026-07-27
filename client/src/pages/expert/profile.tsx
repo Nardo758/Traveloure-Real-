@@ -40,7 +40,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { getRoleHomePath } from "@/lib/role-utils";
 
 const EXPERT_ROLE_LABELS: Record<string, string> = {
-  travel_expert: "Travel Advisor",
+  travel_expert: "Trip Planner",
   local_expert: "Local Expert",
   event_planner: "Event Planner",
   executive_assistant: "Executive Assistant",
@@ -388,7 +388,7 @@ export default function ExpertProfile() {
                           <SelectValue placeholder="Select your role" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="travel_expert">Travel Advisor</SelectItem>
+                          <SelectItem value="travel_expert">Trip Planner</SelectItem>
                           <SelectItem value="local_expert">
                             Local Expert{currentExpertType !== "local_expert" ? " (requires review)" : ""}
                           </SelectItem>

@@ -54,7 +54,7 @@ export const navGroupsConfig: NavGroupConfig[] = [
         title: "FIND HELP",
         items: [
           { name: "Local Experts", href: "/experts?role=local_expert", description: "City guides & neighbourhood specialists" },
-          { name: "Travel Advisors", href: "/experts?role=travel_expert", description: "Trip planners who handle every detail" },
+          { name: "Trip Planners", href: "/experts?role=travel_expert", description: "Trip planners who handle every detail" },
           { name: "Service Providers", href: "/discover?tab=services", description: "Book tours, photography, transport & more" },
         ],
       },
