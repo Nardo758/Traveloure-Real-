@@ -494,7 +494,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       {[
                         { label: "Trip Planner", desc: "Help travellers design itineraries & craft unforgettable journeys", href: "/become-expert?type=travel_expert", icon: Plane },
                         { label: "Local Expert", desc: "Turn your city knowledge into consultations & local guides", href: "/become-expert?type=local_expert", icon: MapPin },
-                        { label: "Event Planner", desc: "Plan your event — weddings, proposals & group celebrations", href: "/become-expert?type=event_planner", icon: Calendar },
+                        { label: "Event Planner", desc: "Plan your event — weddings, proposals & group celebrations", href: "/start/events", icon: Calendar },
                         { label: "Service Provider", desc: "Offer venues, transport & speciality services", href: "/become-provider", icon: Building2 },
                         { label: "Executive Assistant", desc: "Manage travel & events for high-net-worth clients", href: "/become-expert?type=executive_assistant", icon: Briefcase },
                       ].map(({ label, desc, href, icon: Icon }) => (
@@ -668,7 +668,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     {[
                       { label: "Trip Planner", href: "/become-expert?type=travel_expert", icon: Plane },
                       { label: "Local Expert", href: "/become-expert?type=local_expert", icon: MapPin },
-                      { label: "Event Planner", href: "/become-expert?type=event_planner", icon: Calendar },
+                      { label: "Event Planner", href: "/start/events", icon: Calendar },
                       { label: "Service Provider", href: "/become-provider", icon: Building2 },
                       { label: "Executive Assistant", href: "/become-expert?type=executive_assistant", icon: Briefcase },
                     ].map(({ label, href, icon: Icon }) => (
