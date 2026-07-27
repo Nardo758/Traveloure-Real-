@@ -387,6 +387,8 @@ export default function TravelExpertsPage() {
 
       const applicationData = {
         expertType: formData.expertType,
+        // The /earn card's canonical selection (migration 107) — was read but never sent.
+        ...(offeringKeyFromUrl ? { offeringTypeKey: offeringKeyFromUrl } : {}),
         firstName: formData.firstName,
         lastName: formData.lastName,
         email: formData.email,

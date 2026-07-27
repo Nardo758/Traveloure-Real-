@@ -8,7 +8,7 @@
  * Expert console + coordinator pipeline). One card, one fork question — every Event
  * Planner entry point now lands here and the person picks the business they're starting.
  */
-import { Link } from "wouter";
+import { Link, useSearch } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Building2, CalendarHeart, ArrowRight, ArrowLeft } from "lucide-react";
 
@@ -36,6 +36,13 @@ const OPTIONS = [
 ] as const;
 
 export default function StartEventsPage() {
+  // Forward the /earn card's ?offeringTypeKey=&offeringName= through the fork — dropping
+  // them here severed the signup forms' offering banner + the migration-107 persistence
+  // for all Event Planner traffic (earn-trace gap 5).
+  const search = useSearch();
+  const withSearch = (href: string) =>
+    search ? `${href}${href.includes("?") ? "&" : "?"}${search}` : href;
+
   return (
     <div className="min-h-screen bg-background">
       <div className="max-w-3xl mx-auto px-4 py-16">
@@ -57,7 +64,7 @@ export default function StartEventsPage() {
 
         <div className="grid gap-6 md:grid-cols-2">
           {OPTIONS.map((opt) => (
-            <Link key={opt.key} href={opt.href} data-testid={`option-${opt.key}`}>
+            <Link key={opt.key} href={withSearch(opt.href)} data-testid={`option-${opt.key}`}>
               <Card className="h-full cursor-pointer transition-shadow hover:shadow-md border border-border">
                 <CardContent className="p-6 flex flex-col h-full">
                   <opt.icon className="w-8 h-8 text-primary mb-4" />
