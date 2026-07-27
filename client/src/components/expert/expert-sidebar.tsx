@@ -30,6 +30,9 @@ import {
   Library,
   Store,
   Share2,
+  Inbox,
+  LayoutGrid,
+  TrendingUp,
 } from "lucide-react";
 
 function buildMenuGroups(expertType?: string | null) {
@@ -44,7 +47,8 @@ function buildMenuGroups(expertType?: string | null) {
         // /api/expert/assigned-trips with no data of its own; the grouped-by-client view now lives
         // ON Assigned Trips. "Messages" points straight at /chat (the /expert/messages routes were
         // already bare redirects). "Verification & Payouts" and "Booking Partners" removed below.
-        { title: "Dashboard", href: "/expert/dashboard", icon: Home },
+        { title: "Today", href: "/expert/today", icon: Home },
+        { title: "Inbox", href: "/expert/inbox", icon: Inbox },
         { title: isEventPlanner ? "Events" : "Bookings", href: "/expert/bookings", icon: Calendar },
         { title: "Assigned Trips", href: "/expert/assigned-trips", icon: MapPin },
         { title: "Workspace", href: "/expert/workspace", icon: PenSquare },
@@ -54,6 +58,9 @@ function buildMenuGroups(expertType?: string | null) {
     {
       label: "Business",
       items: [
+        // Catalog (Backoffice B3): "what I sell" front door — absorbs My Offerings + Store
+        // Listings management (both stay as their own pages; Catalog surfaces/links them).
+        { title: "Catalog", href: "/expert/catalog", icon: LayoutGrid },
         { title: "My Offerings", href: "/expert/services", icon: Briefcase },
         // "Store Listings" is the workstation→store pipeline console (decision-maker model,
         // 2026-07-25: one store, stocked from the Workstation; "Trips by Locals" is a consumer
@@ -65,6 +72,10 @@ function buildMenuGroups(expertType?: string | null) {
         // Share & Promote (SH2): the mockup-6 nav entry N1 converged the label vocabulary for
         // but never actually added — real caption/link/share-image surface, not a redirect.
         { title: "Share & Promote", href: "/expert/share-promote", icon: Share2 },
+        // Performance (Backoffice B4): "which channel earns" — absorbs Share & Promote's
+        // measurement half (EarningsBySourcePanel + LinkAnalyticsPanel) + per-offering
+        // performance, one place before the broader Analytics page.
+        { title: "Performance", href: "/expert/performance", icon: TrendingUp },
         { title: "Analytics", href: "/expert/analytics", icon: BarChart3 },
         { title: "Earnings", href: "/expert/earnings", icon: DollarSign },
       ],
@@ -133,7 +144,7 @@ export function ExpertSidebar() {
                 {group.items.map((item) => {
                   const isActive =
                     location === item.href ||
-                    (item.href !== "/expert/dashboard" && location.startsWith(item.href));
+                    (item.href !== "/expert/today" && location.startsWith(item.href));
 
                   return (
                     <SidebarMenuItem key={item.title}>

@@ -571,4 +571,7 @@ export const MIGRATION_FILES = [
   // (refuses on non-Kyoto rows rather than half-applying), idempotent. CHECK migration →
   // column added to the preflight-prod-constraints.cjs manifest (the publish-trap rule).
   "149_ready_made_market_check.sql",
+  // 150: users.preferences jsonb (backoffice B6 settings persistence) — additive with default,
+  // no CHECK/backfill → no publish-push trap. App layer touches only the `settings` key.
+  "150_users_preferences.sql",
 ] as const;
