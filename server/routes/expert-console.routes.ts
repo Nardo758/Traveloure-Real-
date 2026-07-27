@@ -18,7 +18,7 @@ import { db } from "../db";
 import { storage } from "../storage";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { desc, asc, eq, or, isNull, sql, and, gte, ne, inArray } from "drizzle-orm";
-import { localExpertForms, expertServiceOfferings, coordinationStates, insertLocalKnowledgeNuggetSchema, users, vendorAvailabilitySlots, serviceReviews } from "@shared/schema";
+import { localExpertForms, expertServiceOfferings, coordinationStates, insertLocalKnowledgeNuggetSchema, users, vendorAvailabilitySlots, serviceReviews, expertTypeEnum } from "@shared/schema";
 import {
   getLocalKnowledgeNuggets,
   createLocalKnowledgeNugget,
@@ -79,7 +79,9 @@ router.patch("/api/expert/role", isAuthenticated, async (req, res) => {
     }
 
     const { expertType } = req.body;
-    const validTypes = ["travel_expert", "local_expert", "event_planner", "executive_assistant"];
+    // Canonical expert-type vocabulary (shared/schema.ts) — this endpoint writes users.role
+    // via updateLocalExpertFormType, so the valid set must never drift from the enum.
+    const validTypes: readonly string[] = expertTypeEnum;
     if (!expertType || !validTypes.includes(expertType)) {
       return res.status(400).json({ message: "Invalid expert type" });
     }

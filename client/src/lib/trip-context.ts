@@ -123,8 +123,10 @@ let hydrated = false;
 
 /**
  * Hydrate the local context from the server once per page load. The server copy
- * seeds local ONLY when local is empty — an active local session always wins
- * (it is the fresher intent; every local write pushes back to the server anyway).
+ * fills in any fields that are missing from the local session — local fields
+ * that are already set always win (fresher intent from the current tab), but
+ * server fields that are absent locally are merged in so that trip details
+ * (destination, dates, party size) survive browser restarts for signed-in users.
  */
 export async function hydrateTripContextFromServer(): Promise<void> {
   if (hydrated) return;
@@ -135,9 +137,16 @@ export async function hydrateTripContextFromServer(): Promise<void> {
     const data = await res.json().catch(() => null);
     const server = data?.context;
     if (!server || typeof server !== "object" || Object.keys(server).length === 0) return;
-    if (Object.keys(getTripContext()).length > 0) return; // local wins
+    const local = getTripContext();
+    // Merge: server provides the base, local fields override. Only write if
+    // at least one server field was missing locally (avoid a no-op write).
+    const merged: Record<string, unknown> = { ...server, ...local };
+    const addedKeys = Object.keys(server).filter(
+      (k) => !(k in local) && server[k] !== undefined && server[k] !== null,
+    );
+    if (addedKeys.length === 0) return; // local already has everything
     try {
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(server));
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
       window.dispatchEvent(new CustomEvent(CHANGE_EVENT));
     } catch {
       /* ignore */

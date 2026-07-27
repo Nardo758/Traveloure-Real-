@@ -695,7 +695,9 @@ export async function seedPopularCitiesContent(): Promise<{ gems: number; servic
         email: SEED_PROVIDER_EMAIL,
         firstName: "Traveloure",
         lastName: "Seed Provider",
-        role: "provider",
+        // Canonical vocabulary (shared/roles.ts): "service_provider" — the bare "provider"
+        // this seed previously wrote is not a real stored role anywhere in the platform.
+        role: "service_provider",
       }).returning({ id: users.id });
       userId = created.id;
     }

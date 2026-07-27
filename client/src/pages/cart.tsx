@@ -86,6 +86,8 @@ interface CartItem {
   quantity: number;
   scheduledDate: string | null;
   slotId?: string | null;
+  // Slot detail joined server-side (_enrichCartItems) — real times, never fabricated client-side.
+  slot?: { date: string; startTime: string | null; endTime: string | null } | null;
   notes: string | null;
   service: {
     id: string;
@@ -298,22 +300,26 @@ export default function CartPage() {
     });
   }, [user, authLoading, guestPendingIds]);
 
-  // Load experience context on mount
+  // Load experience context on mount.
+  // Only apply an experienceSlug filter when the context has an explicit slug —
+  // i.e. the user arrived via an experience-template flow. In all other cases
+  // (direct /cart visit, general browsing) we leave experienceSlug null so the
+  // API returns every item for the user rather than a narrow slug-filtered subset.
+  // Previously this effect set a synthetic fallback like "general" or
+  // "travel_paris" which caused the server to exclude items stored under real
+  // experience slugs, making the cart appear empty even though the TripStrip
+  // (which fetches without a slug) correctly showed a non-zero count.
   useEffect(() => {
     const context = getTripContext();
-    if (Object.keys(context).length > 0) {
-      if (context.experienceSlug) {
-        setExperienceSlug(context.experienceSlug);
-        setExperienceTitle(context.title || context.experienceType || null);
-      } else {
-        // Use experienceType + destination as fallback key to avoid cross-experience contamination
-        const fallbackKey = `${context.experienceType || 'general'}_${context.destination || 'default'}`.replace(/\s+/g, '-').toLowerCase();
-        setExperienceSlug(fallbackKey);
-        setExperienceTitle(context.title || context.experienceType || null);
-      }
-    } else {
-      setExperienceSlug("general");
+    if (context.experienceSlug) {
+      setExperienceSlug(context.experienceSlug);
+      setExperienceTitle(context.title || context.experienceType || null);
+    } else if (Object.keys(context).length > 0) {
+      // Context exists but has no slug — show title/type metadata without filtering the cart.
+      setExperienceTitle(context.title || context.experienceType || null);
+      // experienceSlug stays null → fetches all items unfiltered.
     }
+    // No context at all → experienceSlug stays null → fetch all items.
   }, []);
 
   // Load external cart items from sessionStorage when experience slug changes
@@ -450,7 +456,7 @@ export default function CartPage() {
       return res.json();
     },
     onSuccess: (data: { tripId: string; convertedCount: number }) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/cart", experienceSlug] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
       toast({
         title: `${data.convertedCount} item${data.convertedCount !== 1 ? "s" : ""} added to your trip!`,
         description: "View and arrange them in your trip itinerary.",
@@ -480,7 +486,7 @@ export default function CartPage() {
       return apiRequest("PATCH", `/api/cart/${id}`, { quantity });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/cart", experienceSlug] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
     },
     onError: () => {
       toast({ variant: "destructive", title: "Failed to update item" });
@@ -492,7 +498,7 @@ export default function CartPage() {
       return apiRequest("DELETE", `/api/cart/${id}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/cart", experienceSlug] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
       toast({ title: "Item removed from cart" });
     },
     onError: () => {
@@ -512,7 +518,7 @@ export default function CartPage() {
       return apiRequest("POST", "/api/cart", { serviceId: c.bookable.serviceId });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/cart", experienceSlug] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
       toast({ title: "Added to your cart" });
     },
     onError: () => {
@@ -541,6 +547,11 @@ export default function CartPage() {
       return res.json();
     },
     onSuccess: (data: any) => {
+      // Merge resolution (FP-4 × Replit TripStrip fix): the snapshot below MUST read the live
+      // cart items BEFORE any invalidation empties them (FP-4), so the Replit branch's
+      // top-of-function invalidation is dropped; its base-key ['/api/cart'] pattern (so the
+      // TripStrip count updates — slug-scoped keys missed it) is applied to the invalidations
+      // at the END of this handler instead. Both intents preserved.
       if (data.paymentIntent) {
         // FP-4: snapshot the real, server-derived breakdown (incl. conciergeFee, which
         // the live GET /api/cart never computes) BEFORE invalidating — the cart is about
@@ -561,7 +572,7 @@ export default function CartPage() {
         toast({ title: "Booking created!", description: "Your services have been booked." });
         setLocation("/bookings");
       }
-      queryClient.invalidateQueries({ queryKey: ["/api/cart", experienceSlug] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
       queryClient.invalidateQueries({ queryKey: ["/api/my-bookings"] });
     },
     onError: (error: any) => {
@@ -589,7 +600,7 @@ export default function CartPage() {
           title: "That time slot just booked",
           description: "One of your items' time slots is no longer available. Please pick another time from the service page, or remove it.",
         });
-        queryClient.invalidateQueries({ queryKey: ["/api/cart", experienceSlug] });
+        queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
       } else {
         toast({ variant: "destructive", title: "Checkout failed" });
       }
@@ -1430,7 +1441,16 @@ export default function CartPage() {
                                 data-testid={`text-slot-held-${item.id}`}
                               >
                                 <Lock className="w-3 h-3" />
-                                Time slot held at checkout: {format(new Date(item.scheduledDate), "PPP")}
+                                Time slot held at checkout:{" "}
+                                {item.slot?.date
+                                  ? format(new Date(`${item.slot.date}T00:00:00`), "PPP")
+                                  : format(new Date(item.scheduledDate), "PPP")}
+                                {item.slot?.startTime && (
+                                  <span>
+                                    {" · "}{item.slot.startTime}
+                                    {item.slot.endTime ? `–${item.slot.endTime}` : ""}
+                                  </span>
+                                )}
                               </div>
                             )}
                           </div>

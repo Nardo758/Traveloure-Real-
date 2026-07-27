@@ -37,6 +37,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest } from "@/lib/queryClient";
+import { getRoleHomePath } from "@/lib/role-utils";
 
 const EXPERT_ROLE_LABELS: Record<string, string> = {
   travel_expert: "Travel Advisor",
@@ -218,10 +219,18 @@ export default function ExpertProfile() {
   const saveRoleMutation = useMutation({
     mutationFn: (expertType: string) =>
       apiRequest("PATCH", "/api/expert/role", { expertType }),
-    onSuccess: () => {
+    onSuccess: (_data, expertType) => {
       queryClient.invalidateQueries({ queryKey: ["/api/experts", user?.id] });
       queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
       toast({ title: "Role updated successfully" });
+      // Console-family change (e.g. → Executive Assistant): this page sits behind
+      // ProtectedRoute requiredRole="expert", which re-evaluates against the refetched
+      // role and would dead-end on "Access Denied". Navigate to the new role's console
+      // home instead of stranding the user (the reported role-switch console bug).
+      const newHome = getRoleHomePath(expertType);
+      if (newHome !== getRoleHomePath(user?.role ?? "user")) {
+        window.location.href = newHome;
+      }
     },
     onError: (error: any) => {
       let message = "Failed to update role";
