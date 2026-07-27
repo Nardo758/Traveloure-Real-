@@ -117,6 +117,43 @@
   --input: 60 12% 90%;
   --text-dark: 60 4% 10%;
   --text-mid: 60 3% 46%;
+
+  /* ── Raw console color tokens (W-2, mockup-unified-workspace v9 palette) ──
+     For inline styles inside console pages: consume var(--console-*) — never a
+     raw hex literal in a console page file (§17 "use tokens"). ok/warn/danger
+     are the semantic state trio; *-soft are their wash backgrounds. */
+  --console-ink: #1A1A18;
+  --console-mid: #7A7A72;
+  --console-faint: #A8A8A0;
+  --console-line: #E8E8E2;
+  --console-ground: #FAFAF8;
+  --console-card: #FFFFFF;
+  --console-brand: #E85D55;
+  --console-brand-soft: #FDEFEE;
+  --console-ok: #2E7D5B;
+  --console-ok-soft: #EAF4EF;
+  --console-warn: #B45309;
+  --console-warn-soft: #FCF3E7;
+  --console-danger: #B3261E;
+  --console-danger-soft: #F9E7E6;
+}
+
+/* Dark counterparts (mockup v9 dark theme — warm-neutral, not a naive invert). */
+.dark .console-scope {
+  --console-ink: #F0EFEA;
+  --console-mid: #9C9B92;
+  --console-faint: #6E6D66;
+  --console-line: #33332F;
+  --console-ground: #191917;
+  --console-card: #211F1D;
+  --console-brand: #F07068;
+  --console-brand-soft: #3A2523;
+  --console-ok: #5CBF94;
+  --console-ok-soft: #1F3229;
+  --console-warn: #E0A050;
+  --console-warn-soft: #362A18;
+  --console-danger: #F28B82;
+  --console-danger-soft: #3A2422;
 }
 
 .dark {
