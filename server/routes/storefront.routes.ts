@@ -139,6 +139,89 @@ async function isOwnerIdentityVerified(userId: string): Promise<boolean> {
   return providerForm?.status === "verified";
 }
 
+// ─── Settings persistence (backoffice B6, migration 150) ────────────────────────────────────
+//
+// users.preferences is a namespaced jsonb; the Settings console owns ONLY its `settings` key.
+// §14: user from session only. PATCH is a strict zod allow-list of exactly the fields the
+// Settings tabs render (never raw req.body into jsonb — the trip-contexts PUT precedent), and
+// the write SHALLOW-MERGES into preferences.settings so other namespaces are never clobbered.
+
+const notificationChannelSchema = z.object({
+  email: z.boolean().optional(),
+  push: z.boolean().optional(),
+}).strict();
+
+const settingsPatchSchema = z.object({
+  notifications: z.object({
+    newMessage: notificationChannelSchema.optional(),
+    bookingRequest: notificationChannelSchema.optional(),
+    itineraryUpdate: notificationChannelSchema.optional(),
+    paymentReceived: notificationChannelSchema.optional(),
+    platformAnnouncements: notificationChannelSchema.optional(),
+  }).strict().optional(),
+  language: z.string().trim().max(20).optional(),
+  timezone: z.string().trim().max(30).optional(),
+}).strict();
+
+router.get("/api/me/preferences", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub ?? req.user?.id;
+    if (!userId) return res.status(401).json({ message: "Authentication required" });
+    const [me] = await db
+      .select({ preferences: users.preferences })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    if (!me) return res.status(401).json({ message: "Authentication required" });
+    const prefs = (me.preferences as any) ?? {};
+    res.json(prefs.settings ?? {});
+  } catch (err) {
+    console.error("[me/preferences] read error:", err);
+    res.status(500).json({ message: "Failed to load preferences" });
+  }
+});
+
+router.patch("/api/me/preferences", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub ?? req.user?.id;
+    if (!userId) return res.status(401).json({ message: "Authentication required" });
+
+    const parsed = settingsPatchSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ message: "Invalid preferences", errors: parsed.error.flatten() });
+    }
+
+    const [me] = await db
+      .select({ preferences: users.preferences })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    if (!me) return res.status(401).json({ message: "Authentication required" });
+
+    const current = ((me.preferences as any) ?? {});
+    const currentSettings = current.settings ?? {};
+    const patch = parsed.data;
+    const nextSettings = {
+      ...currentSettings,
+      ...(patch.language !== undefined ? { language: patch.language } : {}),
+      ...(patch.timezone !== undefined ? { timezone: patch.timezone } : {}),
+      ...(patch.notifications
+        ? { notifications: { ...(currentSettings.notifications ?? {}), ...patch.notifications } }
+        : {}),
+    };
+
+    await db
+      .update(users)
+      .set({ preferences: { ...current, settings: nextSettings } })
+      .where(eq(users.id, userId));
+
+    res.json(nextSettings);
+  } catch (err) {
+    console.error("[me/preferences] write error:", err);
+    res.status(500).json({ message: "Failed to save preferences" });
+  }
+});
+
 // ─── Activation checklist (Build 1, "Open your business") ───────────────────────────────────
 //
 // GET /api/me/business-setup — the setup-progress aggregate for the console checklist card.
