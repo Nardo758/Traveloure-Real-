@@ -1,0 +1,277 @@
+<title>Destination Formats — one store, many shapes</title>
+<style>
+  :root {
+    --ink: #1A1A18;
+    --paper: #FAFAF8;
+    --mist: #E8E8E2;
+    --haze: #F3F3EE;
+    --ash: #7A7A72;
+    --console: #E85D55;   /* earner back-office accent (ratified two-palettes) */
+    --traveler: #FF385C;  /* traveler-surface accent */
+    --good: #2C7A44;
+    --frame-bg: #FFFFFF;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ink: #ECEAE4;
+      --paper: #171715;
+      --mist: #34342F;
+      --haze: #22221F;
+      --ash: #9C9C92;
+      --frame-bg: #1E1E1B;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ink: #ECEAE4; --paper: #171715; --mist: #34342F; --haze: #22221F; --ash: #9C9C92; --frame-bg: #1E1E1B;
+  }
+  :root[data-theme="light"] {
+    --ink: #1A1A18; --paper: #FAFAF8; --mist: #E8E8E2; --haze: #F3F3EE; --ash: #7A7A72; --frame-bg: #FFFFFF;
+  }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.55;
+    margin: 0;
+    padding: 0 20px 80px;
+  }
+  .wrap { max-width: 1060px; margin: 0 auto; }
+
+  /* Spec voice = serif; product screens = the app's own sans. */
+  h1, h2, .spec-note b { font-family: Georgia, "Times New Roman", serif; letter-spacing: -0.01em; }
+  h1 { font-size: 34px; line-height: 1.15; margin: 56px 0 10px; text-wrap: balance; }
+  h2 { font-size: 24px; margin: 64px 0 6px; }
+  .sub { color: var(--ash); max-width: 62ch; margin: 0 0 8px; }
+  .eyebrow { text-transform: uppercase; letter-spacing: 0.14em; font-size: 11px; font-weight: 700; color: var(--console); }
+
+  .frame { border: 1px solid var(--mist); border-radius: 14px; overflow: hidden; background: var(--frame-bg); margin: 22px 0; }
+  .chrome { display: flex; align-items: center; gap: 6px; padding: 9px 14px; border-bottom: 1px solid var(--mist); background: var(--haze); }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--mist); }
+  .urlbar { margin-left: 10px; font-size: 11px; color: var(--ash); font-family: ui-monospace, Menlo, Consolas, monospace; }
+  .screen { padding: 18px 20px 22px; overflow-x: auto; }
+
+  /* resolver diagram */
+  .chain { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 18px 0 6px; }
+  .chip { border: 1.5px solid var(--mist); border-radius: 999px; padding: 5px 13px; font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+  .chip.hit { border-color: var(--console); color: var(--console); background: color-mix(in srgb, var(--console) 7%, transparent); }
+  .arrow { color: var(--ash); font-size: 13px; }
+  .resolve-table { width: 100%; border-collapse: collapse; font-size: 12.5px; margin-top: 14px; }
+  .resolve-table th { text-align: left; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--ash); padding: 6px 10px; border-bottom: 1px solid var(--mist); }
+  .resolve-table td { padding: 8px 10px; border-bottom: 1px solid var(--haze); font-variant-numeric: tabular-nums; }
+  .fmt { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11.5px; color: var(--console); font-weight: 600; }
+
+  /* builder (console palette) vs store (traveler palette) framing */
+  .lane-tag { display: inline-block; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.12em; padding: 3px 9px; border-radius: 5px; margin-bottom: 12px; }
+  .lane-tag.builder { background: color-mix(in srgb, var(--console) 12%, transparent); color: var(--console); }
+  .lane-tag.store { background: color-mix(in srgb, var(--traveler) 12%, transparent); color: var(--traveler); }
+
+  .hood { border: 1px solid var(--mist); border-radius: 11px; margin-bottom: 12px; overflow: hidden; }
+  .hood-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 9px 13px; background: var(--haze); border-bottom: 1px solid var(--mist); }
+  .hood-name { font-weight: 700; font-size: 14px; }
+  .hood-meta { font-size: 11px; color: var(--ash); }
+  .item { display: flex; gap: 10px; padding: 8px 13px; border-bottom: 1px solid var(--haze); font-size: 13px; align-items: baseline; }
+  .item:last-child { border-bottom: 0; }
+  .badge { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+  .b-temple { background: color-mix(in srgb, var(--console) 10%, transparent); color: var(--console); }
+  .b-food { background: color-mix(in srgb, var(--good) 12%, transparent); color: var(--good); }
+  .b-exp { background: var(--haze); color: var(--ash); }
+  .day-ribbon { margin-left: auto; font-size: 10.5px; color: var(--ash); white-space: nowrap; }
+
+  .timeline { border-left: 2px solid var(--mist); margin: 6px 0 6px 8px; padding-left: 16px; }
+  .t-row { position: relative; padding: 7px 0; font-size: 13px; }
+  .t-row::before { content: ""; position: absolute; left: -21.5px; top: 13px; width: 9px; height: 9px; border-radius: 50%; background: var(--console); }
+  .t-time { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11.5px; color: var(--ash); margin-right: 10px; }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } }
+  .panel { border: 1px solid var(--mist); border-radius: 11px; padding: 12px 14px; }
+  .panel h4 { margin: 0 0 8px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.09em; color: var(--ash); }
+  .panel ul { margin: 0; padding-left: 18px; font-size: 13px; }
+  .panel li { margin: 4px 0; }
+
+  .season { display: flex; gap: 9px; align-items: baseline; border: 1px dashed var(--mist); border-radius: 9px; padding: 8px 12px; font-size: 12.5px; color: var(--ash); margin-top: 12px; }
+  .season b { color: var(--ink); }
+
+  .map-strip { height: 74px; border-radius: 9px; border: 1px solid var(--mist);
+    background: repeating-linear-gradient(115deg, var(--haze) 0 26px, transparent 26px 52px);
+    display: flex; align-items: center; justify-content: center; font-size: 12px; color: var(--ash); margin-bottom: 14px; }
+
+  .spec-note { border-left: 3px solid var(--console); background: var(--haze); border-radius: 0 10px 10px 0; padding: 10px 16px; font-size: 13.5px; margin: 14px 0; max-width: 70ch; }
+  .spec-note p { margin: 4px 0; color: var(--ash); }
+
+  .decisions { margin-top: 70px; border-top: 2px solid var(--ink); padding-top: 18px; }
+  .dec { padding: 12px 0; border-bottom: 1px solid var(--mist); }
+  .dec b { font-family: Georgia, serif; }
+  .dec p { margin: 3px 0 0; color: var(--ash); font-size: 13.5px; max-width: 75ch; }
+
+  .store-hero { border-radius: 11px; padding: 18px; color: #fff; margin-bottom: 14px;
+    background: linear-gradient(120deg, #7A2E3B, #B4434F); }
+  .store-hero h3 { margin: 0 0 4px; font-size: 20px; font-family: Georgia, serif; }
+  .store-hero .facts { display: flex; gap: 18px; font-size: 12.5px; opacity: 0.92; flex-wrap: wrap; }
+</style>
+
+<div class="wrap">
+  <p class="eyebrow">Workstation · ratified Jul 27 2026 · design mockup v1</p>
+  <h1>Destination formats: the build stops being one Trip Card</h1>
+  <p class="sub">Every build currently renders as the same day-list card — a Kyoto temple route, a Kyoto wedding,
+  and a generic city break are structurally identical. This spec gives each <b>destination × experience type</b>
+  its own format, in the builder <i>and</i> on the store page the buyer sees.</p>
+
+  <!-- ── 1 · The resolver ─────────────────────────────────────── -->
+  <h2>1 · How a build picks its format</h2>
+  <p class="sub">No new data is stored. The format is derived from two fields every build already has —
+  destination and experience type — through a fallback chain, so every existing build keeps rendering
+  exactly as today until a more specific format matches.</p>
+
+  <div class="frame"><div class="screen">
+    <div class="chain">
+      <span class="chip hit">(destination, type)</span><span class="arrow">→</span>
+      <span class="chip">destination default</span><span class="arrow">→</span>
+      <span class="chip">type default</span><span class="arrow">→</span>
+      <span class="chip">travel-generic (today's card)</span>
+    </div>
+    <table class="resolve-table">
+      <thead><tr><th>Build</th><th>Destination</th><th>Type</th><th>Resolved format</th></tr></thead>
+      <tbody>
+        <tr><td>“Kyoto in Five Temples”</td><td>Kyoto</td><td>travel</td><td class="fmt">kyoto-cultural</td></tr>
+        <tr><td>“Machiya Garden Wedding”</td><td>Kyoto</td><td>wedding</td><td class="fmt">kyoto-wedding</td></tr>
+        <tr><td>“Osaka Proposal Weekend”</td><td>Osaka</td><td>proposal</td><td class="fmt">event-generic</td></tr>
+        <tr><td>“Lisbon Long Weekend”</td><td>Lisbon</td><td>travel</td><td class="fmt">travel-generic</td></tr>
+      </tbody>
+    </table>
+  </div></div>
+
+  <div class="spec-note"><b>Zero regression by construction.</b>
+    <p>travel-generic <i>is</i> the current PlanCard. Formats are pure client resolution — no schema change,
+    no migration, improvable without touching data. New markets get a format when they open (§12).</p>
+  </div>
+
+  <!-- ── 2 · kyoto-cultural ───────────────────────────────────── -->
+  <h2>2 · <span class="fmt" style="font-size:18px">kyoto-cultural</span> — walked by neighborhood, not listed by day</h2>
+  <p class="sub">Kyoto is explored by area. The format groups the itinerary under the real
+  <code>city_neighborhoods</code> spine, with the day plan as a ribbon inside each area and honest
+  cultural sections instead of a generic activity list.</p>
+
+  <div class="frame">
+    <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      <span class="urlbar">traveloure.com/expert/workspace/:tripId</span></div>
+    <div class="screen">
+      <span class="lane-tag builder">Builder · console palette</span>
+
+      <div class="hood">
+        <div class="hood-head">
+          <span class="hood-name">Higashiyama</span>
+          <span class="hood-meta">3 places · mostly Day 1</span>
+        </div>
+        <div class="item"><span class="badge b-temple">Temple &amp; Shrine</span> Kiyomizu-dera at opening bell <span class="day-ribbon">Day 1 · 08:00</span></div>
+        <div class="item"><span class="badge b-food">Food &amp; Tea</span> Matcha &amp; wagashi, Sannenzaka teahouse <span class="day-ribbon">Day 1 · 10:30</span></div>
+        <div class="item"><span class="badge b-exp">Experience</span> Yasaka-dori lantern walk <span class="day-ribbon">Day 1 · dusk</span></div>
+      </div>
+
+      <div class="hood">
+        <div class="hood-head">
+          <span class="hood-name">Arashiyama</span>
+          <span class="hood-meta">2 places · Day 2</span>
+        </div>
+        <div class="item"><span class="badge b-exp">Experience</span> Bamboo grove before the crowds <span class="day-ribbon">Day 2 · 07:30</span></div>
+        <div class="item"><span class="badge b-temple">Temple &amp; Shrine</span> Tenryū-ji garden circuit <span class="day-ribbon">Day 2 · 09:00</span></div>
+      </div>
+
+      <div class="hood">
+        <div class="hood-head">
+          <span class="hood-name">Gion</span>
+          <span class="hood-meta">2 places · Day 2 evening</span>
+        </div>
+        <div class="item"><span class="badge b-food">Food &amp; Tea</span> Kaiseki dinner, counter seating <span class="day-ribbon">Day 2 · 18:30</span></div>
+        <div class="item"><span class="badge b-exp">Experience</span> Hanamikoji street after dark <span class="day-ribbon">Day 2 · 20:30</span></div>
+      </div>
+
+      <div class="season">🍂 <span><b>Best season: November</b> — renders only because this listing carries real
+        <code>bestSeason</code> data; the slot is omitted otherwise, never invented.</span></div>
+    </div>
+  </div>
+
+  <div class="frame">
+    <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      <span class="urlbar">traveloure.com/ready-made/:id</span></div>
+    <div class="screen">
+      <span class="lane-tag store">Store page · traveler palette</span>
+      <div class="map-strip">Neighborhood map strip — Higashiyama · Arashiyama · Gion (existing MapControlCenter data)</div>
+      <p style="font-size:13px; color:var(--ash); margin:0;">Same neighborhood-grouped sections as the builder —
+      the buyer previews the trip in the exact shape the expert authored it. Hero photo stays the listing's real
+      Unsplash pick; price, plan type, and reviews keep the existing store rails.</p>
+    </div>
+  </div>
+
+  <!-- ── 3 · kyoto-wedding ────────────────────────────────────── -->
+  <h2>3 · <span class="fmt" style="font-size:18px">kyoto-wedding</span> — venues and a timeline, not sightseeing days</h2>
+  <p class="sub">An event build is a different object: venues, a day-of schedule, vendors, and guest logistics.
+  The day-list disappears entirely.</p>
+
+  <div class="frame">
+    <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      <span class="urlbar">traveloure.com/expert/workspace/:tripId</span></div>
+    <div class="screen">
+      <span class="lane-tag builder">Builder · console palette</span>
+      <div class="grid2">
+        <div class="panel">
+          <h4>Ceremony &amp; Venues</h4>
+          <ul>
+            <li>Machiya garden venue, Nakagyō — ceremony + reception</li>
+            <li>Backup: covered engawa if rain</li>
+          </ul>
+          <h4 style="margin-top:14px">Vendors &amp; Services</h4>
+          <ul>
+            <li>Ikebana &amp; flower styling (platform service)</li>
+            <li>Photographer, half-day (platform service)</li>
+            <li>Kaiseki catering, 24 covers</li>
+          </ul>
+        </div>
+        <div class="panel">
+          <h4>Timeline — day of</h4>
+          <div class="timeline">
+            <div class="t-row"><span class="t-time">14:00</span>Venue dressing &amp; florals set</div>
+            <div class="t-row"><span class="t-time">16:00</span>Ceremony, garden</div>
+            <div class="t-row"><span class="t-time">17:00</span>Portraits, Kamo river bank</div>
+            <div class="t-row"><span class="t-time">18:30</span>Reception dinner</div>
+          </div>
+          <h4 style="margin-top:10px">Guest Logistics</h4>
+          <ul>
+            <li>Hotel block — 12 rooms, Sanjō</li>
+            <li>Charter transfer, KIX → venue</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="frame">
+    <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      <span class="urlbar">traveloure.com/ready-made/:id</span></div>
+    <div class="screen">
+      <span class="lane-tag store">Store page · traveler palette</span>
+      <div class="store-hero">
+        <h3>Machiya Garden Wedding — Kyoto</h3>
+        <div class="facts"><span>Venue-led</span><span>Date window: Oct–Nov</span><span>Up to 24 guests</span></div>
+      </div>
+      <p style="font-size:13px; color:var(--ash); margin:0;">Leads with venue, date window, and party size;
+      the timeline and vendor sections follow. Day-by-day exists only as a secondary view.</p>
+    </div>
+  </div>
+
+  <!-- ── Decisions ────────────────────────────────────────────── -->
+  <div class="decisions">
+    <h2 style="margin-top:0">Decisions this mockup encodes</h2>
+    <div class="dec"><b>Both axes, ratified.</b><p>Format = destination × experience type. Kyoto formats first
+      (kyoto-cultural, kyoto-wedding); event-generic covers events elsewhere; travel-generic is the unchanged fallback.</p></div>
+    <div class="dec"><b>Builder and store share one format.</b><p>The format is part of the product — the expert
+      authors in it, the buyer previews in it. One registry, two consumers, no fork.</p></div>
+    <div class="dec"><b>Derived, not stored.</b><p>Resolved from trips.destination + eventType at render time.
+      No migration, no publish-push trap. Pinning a format per build becomes an additive column only if ever needed.</p></div>
+    <div class="dec"><b>Honest slots (§13).</b><p>Seasonal notes, maps, and counts render only from real data;
+      unmapped items land in a visible generic section, never dropped or invented.</p></div>
+    <div class="dec"><b>Build order.</b><p>F1 registry + extract travel-generic (behavior-identical refactor) →
+      F2 kyoto-cultural → F3 kyoto-wedding + event-generic → F4 store pages consume format layouts.</p></div>
+  </div>
+</div>
