@@ -268,6 +268,7 @@ export default function ExpertSettings() {
     notifications?: Record<string, { email?: boolean; push?: boolean }>;
     language?: string;
     timezone?: string;
+    showOnLeaderboard?: boolean;
   }>({ queryKey: ["/api/me/preferences"] });
   const settingsHydrated = useRef(false);
   useEffect(() => {
@@ -275,6 +276,7 @@ export default function ExpertSettings() {
     settingsHydrated.current = true;
     if (savedSettings.language) setLanguage(savedSettings.language);
     if (savedSettings.timezone) setTimezone(savedSettings.timezone);
+    if (savedSettings.showOnLeaderboard !== undefined) setEnableLeaderboard(savedSettings.showOnLeaderboard);
     if (savedSettings.notifications) {
       setNotifications((prev) =>
         prev.map((n) => {
@@ -290,6 +292,7 @@ export default function ExpertSettings() {
       const body = {
         language,
         timezone,
+        showOnLeaderboard: enableLeaderboard,
         notifications: Object.fromEntries(
           notifications.map((n) => [n.key, { email: n.email, push: n.push }]),
         ),
@@ -616,13 +619,25 @@ export default function ExpertSettings() {
                 {enableLeaderboard && (
                   <div className="p-4 bg-green-50 rounded-lg border border-green-200">
                     <p className="text-sm text-green-700">
-                      ✓ Your profile is visible on the expert leaderboard. Your ranking updates daily based on client ratings and booking activity.
+                      ✓ Leaderboard visibility is enabled.
                     </p>
                   </div>
                 )}
 
-                <Button className="w-full bg-primary hover:bg-primary/90" data-testid="button-save-leaderboard">
-                  <Save className="w-4 h-4 mr-2" /> Save Preference
+                {/* Audit B-5: this Save had no handler and no store — now persists via the same
+                    /api/me/preferences mutation as the other tabs. */}
+                <Button
+                  className="w-full bg-primary hover:bg-primary/90"
+                  data-testid="button-save-leaderboard"
+                  disabled={savePreferencesMutation.isPending}
+                  onClick={() => savePreferencesMutation.mutate()}
+                >
+                  {savePreferencesMutation.isPending ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Save className="w-4 h-4 mr-2" />
+                  )}
+                  Save Preference
                 </Button>
               </CardContent>
             </Card>

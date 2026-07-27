@@ -83,7 +83,11 @@ function NeedsResponseSection() {
 
   const pendingBookingsCount = (bookings ?? []).filter((b) => b.status === "pending").length;
   const pendingInvitesCount = (assignedTrips ?? []).filter((t) => t.status === "pending").length;
-  const coordinationCount = (coordinationData?.engagements ?? []).length;
+  // Audit B-8: only engagements still in flight count as "needs your response" —
+  // completed/cancelled ones aren't waiting on the coordinator.
+  const coordinationCount = (coordinationData?.engagements ?? []).filter(
+    (e) => e.status !== "completed" && e.status !== "cancelled",
+  ).length;
   const pendingAgentRequestsCount = (agentRequests ?? []).filter((r) => r.status === "pending").length;
 
   const rows = [
@@ -237,7 +241,9 @@ function MoneyStripSection() {
           </Link>
         ) : (
           <p className="text-xs text-console-mid" data-testid="text-today-stripe-connected">
-            {stripeStatus.status === "complete"
+            {/* Server vocabulary is active | under_review | onboarding_incomplete (audit B-2 —
+                "complete" never matches, so a verified account read as forever-in-progress). */}
+            {stripeStatus.status === "active"
               ? "Stripe account connected and verified."
               : "Stripe account connected — verification in progress."}
           </p>

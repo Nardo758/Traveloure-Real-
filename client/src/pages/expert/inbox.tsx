@@ -26,10 +26,12 @@ import { useToast } from "@/hooks/use-toast";
 
 // ─── Section 1: Bookings needing a response ─────────────────────────────────
 
+// Shape per GET /api/expert/bookings (audit B-6): traveler is a nested sanitized object
+// (displayName), and there is no `date` field — createdAt is the request timestamp.
 interface InboxBooking {
   id: string;
-  travelerName?: string;
-  date?: string;
+  traveler?: { displayName?: string | null } | null;
+  createdAt?: string;
   status: string;
   tripId?: string;
   totalAmount?: string | number | null;
@@ -84,12 +86,14 @@ function BookingsSection() {
                   <div className="flex items-center gap-2 flex-wrap mb-1">
                     <span className="font-medium text-console-darkest flex items-center gap-1.5">
                       <User className="w-3.5 h-3.5 text-console-mid" />
-                      {booking.travelerName || "Traveler"}
+                      {booking.traveler?.displayName || "Traveler"}
                     </span>
                     <StatusBadge status={booking.status} />
                   </div>
-                  {booking.date && (
-                    <p className="text-xs text-console-mid">{booking.date}</p>
+                  {booking.createdAt && (
+                    <p className="text-xs text-console-mid">
+                      Requested {new Date(booking.createdAt).toLocaleDateString()}
+                    </p>
                   )}
                 </div>
                 <div className="flex gap-2 flex-shrink-0">
@@ -147,7 +151,7 @@ function DisputedBookingsSection() {
                 <ShieldAlert className="w-4 h-4 text-amber-600 mt-0.5 flex-shrink-0" />
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-console-darkest">
-                    {booking.travelerName || "A traveler"} disputed this booking
+                    {booking.traveler?.displayName || "A traveler"} disputed this booking
                   </p>
                   <p className="text-xs text-console-mid mt-0.5">
                     The platform team is reviewing it; related earnings stay held until it resolves.
@@ -506,7 +510,11 @@ function ReviewRepliesSection() {
   const { data, isLoading } = useQuery<{ opportunities: PostingOpportunity[] }>({
     queryKey: ["/api/me/posting-opportunities"],
   });
-  const reviews = (data?.opportunities ?? []).filter((o) => o.kind === "new_review");
+  // Audit B-3: filter to reviews WITHOUT a reply — the endpoint now emits `responded`,
+  // so a replied review clears from this queue on refetch instead of reappearing forever.
+  const reviews = (data?.opportunities ?? []).filter(
+    (o) => o.kind === "new_review" && !(o as any).responded,
+  );
 
   return (
     <section data-testid="section-inbox-reviews">
