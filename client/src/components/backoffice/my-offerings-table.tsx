@@ -25,7 +25,7 @@ interface OfferingRow {
   name: string;
   price: string | null;
   approval: string; // normalized: approved | submitted | draft | rejected | unknown
-  editHref: string;
+  editHref: string | null;
   publicHref: string | null; // only when approved (+published where applicable)
   nextAvailability: string | null; // ISO date, service lane only; null = no slots / not applicable
 }
@@ -86,7 +86,9 @@ export function MyOfferingsTable() {
         name: t.title ?? "Untitled template",
         price: t.price != null ? `$${Number(t.price).toFixed(0)}` : null,
         approval,
-        editHref: "/expert/templates",
+        // Seller surface retired (§10/§17 sunset) — existing templates stay readable/sellable
+        // but have no edit page; new store trips are built in the Workstation.
+        editHref: null,
         publicHref: approval === "approved" && t.isPublished ? `/expert-templates/${t.id}` : null,
         nextAvailability: null,
       };
@@ -180,12 +182,14 @@ export function MyOfferingsTable() {
                     </td>
                     <td className="py-2.5">
                       <div className="flex items-center gap-1">
-                        <Link href={row.editHref}>
-                          <Button size="sm" variant="ghost" data-testid={`button-edit-${row.lane}-${row.id}`}>
-                            <Pencil className="w-3.5 h-3.5 mr-1" />
-                            Edit
-                          </Button>
-                        </Link>
+                        {row.editHref && (
+                          <Link href={row.editHref}>
+                            <Button size="sm" variant="ghost" data-testid={`button-edit-${row.lane}-${row.id}`}>
+                              <Pencil className="w-3.5 h-3.5 mr-1" />
+                              Edit
+                            </Button>
+                          </Link>
+                        )}
                         {row.publicHref && (
                           <Button size="sm" variant="ghost" onClick={() => share(row)} data-testid={`button-share-${row.lane}-${row.id}`}>
                             <Share2 className="w-3.5 h-3.5 mr-1" />
