@@ -290,6 +290,53 @@
     </div>
   </section>
 
+  <!-- ── Screen 3 ────────────────────────────────────────────── -->
+  <section>
+    <div class="sec-head"><span class="sec-num">Screen 3</span><h2>Today — the back office around the Workstation</h2></div>
+    <p class="sec-sub">Production is only the middle loop. The back office is the operations layer a solo operator never builds for themselves: one inbox, one money ledger, one answer to "which channel earns." Every number here has exactly one home — Today references, it never re-renders.</p>
+    <div class="frame-grid">
+      <div class="frame">
+        <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="urlbar">traveloure.com/expert/today</span></div>
+        <div class="screen">
+          <div class="k-label">Needs your response · 3</div>
+          <div class="row">
+            <span><span class="t">New booking — Gion evening walk</span><br><span class="s">Yuki Tanaka · 14 Nov · ¥12,000</span></span>
+            <span class="go">Accept / Decline</span>
+          </div>
+          <div class="row">
+            <span><span class="t">Trip assignment — Proposal weekend</span><br><span class="s">M. Okafor · awaiting your accept · 2 days</span></span>
+            <span class="go">Review →</span>
+          </div>
+          <div class="row">
+            <span><span class="t">Agent booking request — rooftop dinner</span><br><span class="s">via Discover · book off-site &amp; log to trip</span></span>
+            <span class="go">Handle →</span>
+          </div>
+
+          <div class="k-label" style="margin-top:18px;">Money</div>
+          <div class="row" style="font-variant-numeric: tabular-nums;">
+            <span class="s">Cleared <b style="color:var(--ink); font-size:14px;">¥184,000</b></span>
+            <span class="s">In escrow <b style="color:var(--ink); font-size:14px;">¥52,000</b></span>
+            <span class="s">Paid out <b style="color:var(--ink); font-size:14px;">¥310,000</b></span>
+            <span class="go">Request payout →</span>
+          </div>
+
+          <div class="k-label" style="margin-top:18px;">Channels · last 30 days</div>
+          <div class="row" style="font-variant-numeric: tabular-nums;">
+            <span class="s">Store <b style="color:var(--ink);">3 sales</b> · 214 views</span>
+            <span class="s">Social <b style="color:var(--ink);">2 bookings</b> · 96 link clicks</span>
+            <span class="s">Clients <b style="color:var(--ink);">1 delivered</b></span>
+          </div>
+        </div>
+      </div>
+      <div class="notes">
+        <div class="note"><b>One inbox</b><p>Bookings, assignments, coordination engagements, agent-booking requests, disputes — today scattered across four tabs (and rendered three times on the Dashboard alone) — become one actionable queue.</p></div>
+        <div class="note"><b>One money surface</b><p>Revenue currently renders on four tabs from three endpoints that can disagree. Today shows the escrow ledger's held → cleared → paid, fed by one endpoint; the Money tab is its only detail view.</p></div>
+        <div class="note"><b>Channel attribution is a read, not a build</b><p>Short-link clicks and the booking acquisition_ref are already captured — no tab reports them. This answers the operator's real question: which distribution channel earns.</p></div>
+        <div class="note"><b>IA: 16 tabs → ~8</b><p>Today · Workstation · Catalog · Inbox · Money · Customers · Performance · Settings. Sequenced AFTER the workstation consolidation — no migrating duplicates we're about to delete. Same pattern then stamps onto the Provider console.</p></div>
+      </div>
+    </div>
+  </section>
+
   <!-- ── Decisions strip ─────────────────────────────────────── -->
   <div class="decisions">
     <h2>What this ratifies</h2>
@@ -300,6 +347,7 @@
       <div class="dec"><b>DMO builds land here</b><p>"Build from DMO Library" creates a build and opens this Workstation — not an unpriceable row in the sunsetting lane.</p><span class="chip warn">misroute fix</span></div>
       <div class="dec"><b>Sidebar returns to the builder</b><p>Workspace wraps in ExpertLayout like every other console page — no more chromeless dead-ends.</p><span class="chip mut">audit fix</span></div>
       <div class="dec"><b>Kyoto market rule + event-planner gate, explicit</b><p>Store channel validates market against one named constant (+ DB constraint with prod preflight); event planners see the Store channel disabled with the launch message, not hidden.</p><span class="chip mut">F8 / F3</span></div>
+      <div class="dec"><b>Back-office lane follows the workstation lane</b><p>Today / Inbox / Money / Customers / Performance is its own lane, built on the consolidated console — one home per datum, Today references and never re-renders. The Provider console inherits the same pattern.</p><span class="chip brand">next lane</span></div>
     </div>
   </div>
 </div>
