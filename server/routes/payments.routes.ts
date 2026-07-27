@@ -5,6 +5,7 @@ import { storage } from "../storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
+import { isExpertRole, isProviderRole, isEarnerRole } from "@shared/roles";
 import { eq, and, or, like, ilike, sql, desc, count, ne, isNotNull, asc } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
 import { 
@@ -357,7 +358,9 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
             .from(users)
             .where(eq(users.id, item.service.userId))
             .limit(1);
-          if (providerRow?.role === "provider") {
+          // Canonical vocabulary (shared/roles.ts): stored role is "service_provider" —
+          // the old `=== "provider"` was always false, misrouting provider items to the expert band.
+          if (isProviderRole(providerRow?.role)) {
             isProviderService = true;
           }
         }
@@ -407,7 +410,8 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
             .from(users)
             .where(eq(users.id, item.service.userId))
             .limit(1);
-          if (providerRow?.role === "provider") {
+          // Canonical vocabulary (shared/roles.ts) — see the quote loop above.
+          if (isProviderRole(providerRow?.role)) {
             isProviderService2 = true;
           }
         }
@@ -614,7 +618,8 @@ router.get("/api/cart/fee-preview", isAuthenticated, async (req, res) => {
             .from(users)
             .where(eq(users.id, item.service.userId))
             .limit(1);
-          if (providerRow?.role === "provider") {
+          // Canonical vocabulary (shared/roles.ts) — mirrors the checkout loops.
+          if (isProviderRole(providerRow?.role)) {
             isProviderServicePreview = true;
           }
         }
@@ -671,7 +676,9 @@ router.post("/api/stripe/connect/onboard", isAuthenticated, async (req, res) => 
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user) return res.status(404).json({ error: "User not found" });
-      if (!['expert', 'service_provider'].includes(user.role || '')) {
+      // Full earner set (shared/roles.ts): the previous ['expert','service_provider'] pair
+      // locked local_expert / travel_expert / event_planner out of payout onboarding entirely.
+      if (!isEarnerRole(user.role)) {
         return res.status(403).json({ error: "Only experts and providers can onboard for payouts" });
       }
 
@@ -684,7 +691,9 @@ router.post("/api/stripe/connect/onboard", isAuthenticated, async (req, res) => 
       let accountId = existing.stripeAccountId;
       if (!accountId) {
         const result = await stripeConnectService.createConnectedAccount(
-          userId, user.email!, user.role === 'expert' ? 'expert' : 'provider', (user as any).name || undefined
+          // Connect account type follows the role FAMILY (any expert-family role → 'expert'),
+          // not the bare string — local_expert/travel_expert/event_planner are experts here.
+          userId, user.email!, isExpertRole(user.role) ? 'expert' : 'provider', (user as any).name || undefined
         );
         accountId = result.accountId;
         await storage.updateUserStripeAccount(userId, accountId!, 'onboarding_incomplete');
@@ -827,7 +836,6 @@ router.get("/api/fee-bands/:bandKey", async (req, res) => {
   // idempotency-safe Stripe transfer (PATCH /api/admin/payouts/:id, §15 FIX 1). No new
   // payout mechanics. Buildable now that the escrow spine defines a real "available" balance
   // (releasable earnings) — the reason self-service was deferred is resolved.
-  const EXPERT_ROLES = new Set(["expert", "travel_expert", "local_expert", "event_planner"]);
   const MIN_PAYOUT_REQUEST_CENTS = 1000; // $10 — mirrors the admin path threshold
 
   router.post("/api/payouts/request", isAuthenticated, async (req, res) => {
@@ -837,8 +845,8 @@ router.get("/api/fee-bands/:bandKey", async (req, res) => {
       const user = await storage.getUser(userId);
       if (!user) return res.status(401).json({ error: "Not authenticated" });
 
-      const isProvider = user.role === "service_provider";
-      const isExpert = EXPERT_ROLES.has(user.role ?? "");
+      const isProvider = isProviderRole(user.role);
+      const isExpert = isExpertRole(user.role);
       if (!isProvider && !isExpert) {
         return res.status(403).json({ error: "Only providers and experts can request payouts" });
       }

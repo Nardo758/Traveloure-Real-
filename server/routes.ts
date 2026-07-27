@@ -72,6 +72,7 @@ import { buildEventTimeline, getEventVendorGaps } from "./services/event-coordin
 import { trackAnthropicResponse } from "./services/ai-cost-tracker";
 import { revenueTrackingService } from "./services/revenue-tracking.service";
 import { experienceTypes as experienceTypesTable, coordinationStates, coordinationFeeCredits, platformRevenue } from "@shared/schema";
+import { isExpertRole, isProviderRole } from "@shared/roles";
 import Stripe from "stripe";
 import { sharedCache } from "./services/shared-cache.service";
 import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, createPublicProfile, getDisplayName, redactContactInfo } from "./utils/data-sanitizer";
@@ -1040,13 +1041,17 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             ? Date.now() - new Date(ownerRow.createdAt).getTime() < NINETY_DAYS_MS
             : false;
 
+          // Role-vocabulary audit (Jul 27, 2026): users.role stores "service_provider",
+          // NEVER bare "provider" — the previous `ownerRole === "provider"` was always
+          // false, silently routing every provider-owned booking through the expert split.
+          const ownerIsProvider = isProviderRole(ownerRole);
           const commission =
-            ownerRole === "provider"
+            ownerIsProvider
               ? calculateCommission(totalAmount, BookingType.PROVIDER_BOOKING, { providerTier: 1 })
               : calculateCommission(totalAmount, BookingType.EXPERT_SESSION, { isNewExpert });
 
           bookingType =
-            ownerRole === "provider" ? BookingType.PROVIDER_BOOKING : BookingType.EXPERT_SESSION;
+            ownerIsProvider ? BookingType.PROVIDER_BOOKING : BookingType.EXPERT_SESSION;
 
           // Per-service revenueShareRate is the final override when explicitly set
           // (consistent with checkout logic in payments.routes.ts).
@@ -1060,7 +1065,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           } else {
             platformFeeAmt = commission.platformFee.toFixed(2);
             providerEarningsAmt = (
-              ownerRole === "provider"
+              ownerIsProvider
                 ? (commission.providerPayout ?? 0)
                 : (commission.expertPayout ?? 0)
             ).toFixed(2);
@@ -2756,7 +2761,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const user = await db.select().from(users).where(eq(users.id, userId)).then(r => r[0]);
       
-      if (!user || (user.role !== "expert" && user.role !== "admin")) {
+      // Full expert family (shared/roles.ts): the previous bare `role !== "expert"` check
+      // 403'd local_expert / travel_expert / event_planner off their own listings endpoint.
+      if (!user || (!isExpertRole(user.role) && user.role !== "admin")) {
         return res.status(403).json({ message: "Expert access required" });
       }
 
@@ -5007,7 +5014,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           .from(users)
           .where(eq(users.id, item.service.userId))
           .limit(1);
-        if (providerRow?.role === "provider") isProviderService = true;
+        // Canonical vocabulary (shared/roles.ts): stored role is "service_provider", never "provider".
+        if (isProviderRole(providerRow?.role)) isProviderService = true;
       }
       const rates = await resolveCommissionRates(
         isProviderService
