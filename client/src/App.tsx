@@ -43,6 +43,7 @@ const ExpertAIAssistant = lazy(() => import("@/pages/expert/ai-assistant"));
 const ExpertBookings = lazy(() => import("@/pages/expert/bookings"));
 const ExpertInbox = lazy(() => import("@/pages/expert/inbox"));
 const ExpertCatalog = lazy(() => import("@/pages/expert/catalog"));
+const ExpertPerformance = lazy(() => import("@/pages/expert/performance"));
 const ExpertServices = lazy(() => import("@/pages/expert/services"));
 const ExpertAssignedTrips = lazy(() => import("@/pages/expert/assigned-trips"));
 const EADashboard = lazy(() => import("@/pages/ea/dashboard"));
@@ -576,7 +577,7 @@ function Router() {
         {() => <ProtectedRoute component={ExpertEarnings} requiredRole="expert" />}
       </Route>
       <Route path="/expert/performance">
-        <Redirect to="/expert/analytics?tab=performance" />
+        {() => <ProtectedRoute component={ExpertPerformance} requiredRole="expert" />}
       </Route>
       <Route path="/expert/revenue-optimization">
         <Redirect to="/expert/analytics?tab=revenue-optimization" />
