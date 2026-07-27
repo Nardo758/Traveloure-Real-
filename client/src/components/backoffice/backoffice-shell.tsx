@@ -41,7 +41,8 @@ export function BackofficeShell({
 
   return (
     <SidebarProvider style={style as React.CSSProperties}>
-      <div className="flex min-h-screen w-full" style={{ background: "#FAFAF8" }}>
+      {/* console-scope: the earner back office runs the warm console palette (see index.css) */}
+      <div className="console-scope flex min-h-screen w-full" style={{ background: "#FAFAF8" }}>
         {sidebar}
         <div className="flex flex-col flex-1 min-w-0">
           <header

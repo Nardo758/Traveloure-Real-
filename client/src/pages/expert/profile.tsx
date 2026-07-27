@@ -609,7 +609,7 @@ export default function ExpertProfile() {
             <div className="flex justify-end">
               <Button
                 size="sm"
-                className="bg-primary hover:bg-[#e0324f] text-white"
+                className="bg-primary hover:bg-primary/90 text-white"
                 disabled={saveNeighborhoodsMutation.isPending || neighborhoodsLoading}
                 onClick={() => saveNeighborhoodsMutation.mutate()}
                 data-testid="button-save-neighbourhoods"

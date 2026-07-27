@@ -82,6 +82,7 @@ import {
   type ProviderBookingRequest, type InsertProviderBookingRequest,
   type ExpertVendorCoordination, type InsertExpertVendorCoordination,
   expertOfferingTypes,
+  serviceOfferingTypes,
   expertMatchAnalytics, destinationSearchPatterns, destinationMetricsHistory,
   type ExpertMatchAnalytics, type InsertExpertMatchAnalytics,
   type DestinationSearchPattern, type InsertDestinationSearchPattern,
@@ -907,6 +908,14 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createLocalExpertForm(form: InsertLocalExpertForm & { userId: string }): Promise<LocalExpertForm> {
+    // Same clamp as createServiceProviderForm: offering_type_key FKs into expert_offering_types
+    // (migration 107); an unknown key from a stale /earn link must not fail the application.
+    if (form.offeringTypeKey) {
+      const [known] = await db.select({ k: expertOfferingTypes.offeringTypeKey })
+        .from(expertOfferingTypes)
+        .where(eq(expertOfferingTypes.offeringTypeKey, form.offeringTypeKey));
+      if (!known) form = { ...form, offeringTypeKey: null };
+    }
     const [newForm] = await db.insert(localExpertForms).values(form).returning();
     return newForm;
   }
@@ -1085,6 +1094,15 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createServiceProviderForm(form: InsertServiceProviderForm & { userId: string }): Promise<ServiceProviderForm> {
+    // offering_type_key is an FK into service_offering_types (migration 107). The value rides
+    // in from the /earn card's URL param — clamp unknown/stale keys to null so a bad shared
+    // link degrades to "no offering hint" instead of failing the whole signup on the FK.
+    if (form.offeringTypeKey) {
+      const [known] = await db.select({ k: serviceOfferingTypes.offeringTypeKey })
+        .from(serviceOfferingTypes)
+        .where(eq(serviceOfferingTypes.offeringTypeKey, form.offeringTypeKey));
+      if (!known) form = { ...form, offeringTypeKey: null };
+    }
     const [newForm] = await db.insert(serviceProviderForms).values(form).returning();
     return newForm;
   }

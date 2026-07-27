@@ -15,13 +15,15 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ExpertLayout } from "@/components/expert/expert-layout";
 import { Loader2, Map as MapIcon, Plus } from "lucide-react";
 import type { ReadyMadeListing } from "@/components/expert/ready-made-listing-panel";
 import { planTypeLabel } from "@shared/ready-made-plan-types";
 
+// Console palette (two-palettes decision — warm back-office greys, see index.css .console-scope).
 const G: Record<number, string> = {
-  50: "#F9FAFB", 200: "#E5E7EB", 400: "#9CA3AF",
-  500: "#6B7280", 600: "#4B5563", 700: "#374151", 900: "#111827",
+  50: "#FAFAF8", 200: "#E8E8E2", 400: "#A8A8A0",
+  500: "#7A7A72", 600: "#5C5C55", 700: "#45453F", 900: "#1A1A18",
 };
 
 type ListingRow = ReadyMadeListing & { sourceTripId: string; updatedAt: string | null };
@@ -69,8 +71,11 @@ export default function ExpertReadyMade() {
     onError: (e: Error) => toast({ title: "Not started", description: e.message, variant: "destructive" }),
   });
 
+  // ExpertLayout wrap (design-audit fix 3): this page previously rendered a bare <main> with
+  // no sidebar/topbar — clicking "Store Listings" dropped the user out of the console chrome.
   return (
-    <main style={{ padding: "32px 24px", maxWidth: 860, margin: "0 auto", fontFamily: "'Inter',-apple-system,sans-serif" }}>
+    <ExpertLayout title="Store Listings">
+    <div style={{ padding: "32px 24px", maxWidth: 860, margin: "0 auto", fontFamily: "'Inter',-apple-system,sans-serif" }}>
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16, marginBottom: 6 }}>
         <div>
           <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
@@ -168,6 +173,7 @@ export default function ExpertReadyMade() {
           </div>
         )}
       </div>
-    </main>
+    </div>
+    </ExpertLayout>
   );
 }
