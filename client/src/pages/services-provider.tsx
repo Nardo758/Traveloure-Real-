@@ -187,6 +187,10 @@ export default function ServicesProviderPage() {
         serviceOffers: offeringNameFromUrl
           ? Array.from(new Set([offeringNameFromUrl, ...formData.serviceCategories]))
           : formData.serviceCategories,
+        // The /earn card's canonical selection (migration 107 column) — previously read from
+        // the URL but never sent, leaving offering_type_key universally NULL and starving the
+        // providers-by-offering count endpoint. Server clamps unknown keys to null.
+        ...(offeringKeyFromUrl ? { offeringTypeKey: offeringKeyFromUrl } : {}),
         description: formData.description,
         termsAndConditions: formData.agreeToTerms,
         infoConfirmation: formData.hasLicense,
