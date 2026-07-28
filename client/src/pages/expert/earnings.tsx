@@ -18,6 +18,8 @@ import { StripeConnectCard } from "@/components/stripe-connect-card";
 import { EarningsBySourcePanel } from "@/components/backoffice/earnings-by-source-panel";
 import { PageHeader, StatCard, StatusBadge, EmptyState } from "@/components/backoffice/primitives";
 
+// Console IA C8 (§17 17→9 collapse): module renamed Earnings → Money — route moved to
+// /expert/money (/expert/earnings redirects); label/title only, no endpoint or queryKey change.
 // The one Money ledger endpoint (GET /api/expert/earnings/details, server/routes/experts.routes.ts:220)
 // backed by revenue-tracking.service.ts:252-276. Vocabulary: `availableEarnings` = RELEASABLE (cleared,
 // payable now); `pendingEarnings` = HELD in escrow. This page is its first consumer.
@@ -106,7 +108,7 @@ export default function ExpertEarnings() {
 
   if (isLoading) {
     return (
-      <ExpertLayout title="Earnings">
+      <ExpertLayout title="Money">
         <div className="flex items-center justify-center h-64">
           <Loader2 className="w-8 h-8 animate-spin text-console-mid" />
         </div>
@@ -115,7 +117,7 @@ export default function ExpertEarnings() {
   }
 
   return (
-    <ExpertLayout title="Earnings">
+    <ExpertLayout title="Money">
       <div className="p-6 space-y-6">
         <PageHeader
           title="Money"

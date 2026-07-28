@@ -252,7 +252,9 @@ export default function Notifications() {
                                   <X className="w-3 h-3 mr-1" />
                                   Decline
                                 </Button>
-                                <Link href="/expert/bookings">
+                                {/* C5: /expert/bookings retired — pending booking requests live on
+                                    Inbox's Queue tab (the default). */}
+                                <Link href="/expert/inbox">
                                   <Button
                                     size="sm"
                                     variant="ghost"

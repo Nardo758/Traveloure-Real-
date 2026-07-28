@@ -38,9 +38,17 @@ export const expertRoutesConfig: RoleRouteConfig[] = [
   { href: '/expert/ready-made',         description: 'Retired Store Listings -> redirects to Catalog (C1)' },
   { href: '/expert/performance',        description: 'Performance — channel attribution (B4)' },
   { href: '/expert/customers',          description: 'Customers — honest self-scoped aggregation (C4)' },
-  { href: '/expert/clients',            description: 'Client list' },
-  { href: '/expert/assigned-trips',     description: 'Trips assigned to this expert' },
-  { href: '/expert/bookings',           description: 'Booking requests' },
+  // /expert/clients is kept deliberately (B5/C1 redirect pattern): it redirects to
+  // /expert/customers (C5) — the by-client view's home — so the gate exercises the
+  // redirect AND the Customers page it lands on.
+  { href: '/expert/clients',            description: 'Retired client list -> redirects to Customers (C5)' },
+  // /expert/assigned-trips redirects to /expert/inbox?tab=assignments (C5 Assigned Trips
+  // retirement) — the list + accept action live on Inbox's Assigned Trips tab; the Suggest
+  // flow moved to the Workstation Distribute→Client card; by-client lives on Customers.
+  { href: '/expert/assigned-trips',     description: 'Retired Assigned Trips -> redirects to Inbox assignments tab (C5)' },
+  // /expert/bookings redirects to /expert/inbox?tab=history (C5 Bookings retirement) —
+  // history/stats, visa-status management, and the trip-plan snapshot live on Inbox History.
+  { href: '/expert/bookings',           description: 'Retired Bookings -> redirects to Inbox history tab (C5)' },
   // /expert/services is kept deliberately (B5/C1 redirect pattern): it redirects to
   // /expert/catalog (C2 My Offerings retirement), so the gate exercises the redirect
   // AND the Catalog page it lands on. The ServiceForm routes (/new, /:id/edit) are
@@ -50,18 +58,34 @@ export const expertRoutesConfig: RoleRouteConfig[] = [
   // listed so the redirect is smoke-tested; the provider console keeps its own
   // /provider/share-promote page until C9.
   { href: '/expert/share-promote',      description: 'Retired Share & Promote -> redirects to Catalog (C2)' },
-  { href: '/expert/earnings',           description: 'Earnings & payout history' },
-  { href: '/expert/analytics',          description: 'Performance analytics' },
+  { href: '/expert/money',              description: 'Money — earnings + payouts (C8)' },
+  // /expert/earnings is kept deliberately (B5/C1 redirect pattern): it redirects to
+  // /expert/money (C8 Earnings → Money module rename), so the gate exercises the
+  // redirect AND the Money page it lands on.
+  { href: '/expert/earnings',           description: 'Retired Earnings -> redirects to Money (C8)' },
+  // /expert/analytics redirects to /expert/performance?tab=analytics (C6 Analytics
+  // retirement) — the analytics page is hosted as Performance's Analytics tab (its
+  // internal 9-tab picker rides ?sub= there); listed so the gate exercises the
+  // redirect AND the Performance page it lands on. /expert/revenue-optimization and
+  // /expert/leaderboard redirect the same way with &sub=.
+  { href: '/expert/analytics',          description: 'Retired Analytics -> redirects to Performance analytics tab (C6)' },
   { href: '/expert/ai-assistant',       description: 'Expert AI task delegation' },
   { href: '/expert/content-studio',     description: 'Content creation studio' },
-  { href: '/expert/profile',            description: 'Public expert profile' },
+  // /expert/profile is kept deliberately (B5/C1 redirect pattern): it redirects to
+  // /expert/settings?tab=profile (C8 Profile → Settings first-tab merge), so the gate
+  // exercises the redirect AND the Settings page it lands on.
+  { href: '/expert/profile',            description: 'Retired Profile -> redirects to Settings profile tab (C8)' },
   { href: '/expert/settings',           description: 'Account settings' },
   { href: '/expert/verification',       description: 'Expert verification status' },
   // '/expert/contract-categories' removed: page deleted by the expert-console
   // consolidation (9959ca80) with no redirect — it now hits the 404 catch-all.
   { href: '/expert/booking-partners',   description: 'Booking partner configuration' },
   { href: '/expert/workspace',          description: 'Trip planning workspace' },
-  { href: '/expert/dmo-library',        description: 'DMO destination library' },
+  // /expert/dmo-library is kept deliberately (B5/C1 redirect pattern): it redirects to
+  // /expert/workspace (C7 DMO Library retirement) — the Add panel's DMO drawer now carries
+  // browse/add AND review-and-refine — so the gate exercises the redirect AND the
+  // Workstation it lands on.
+  { href: '/expert/dmo-library',        description: 'Retired DMO Library -> redirects to Workstation (C7)' },
 ];
 
 // ── Provider routes (requiredRole="provider") ────────────────────────────────

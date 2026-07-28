@@ -117,10 +117,14 @@ interface RevenueOptimizationData {
   insights: Array<{ type: string; title: string; description: string; impact: string; priority: string }>;
 }
 
-export default function ExpertAnalytics() {
+// Console IA C6 (§17 17→9 collapse): this page is hosted as Performance's Analytics tab
+// (performance.tsx lazy-mounts it with embedded). Embedded, ?tab= belongs to the host
+// page, so the internal tab rides ?sub= instead; standalone (no route mounts it anymore,
+// but keep it working) still reads ?tab=.
+export default function ExpertAnalytics({ embedded = false }: { embedded?: boolean } = {}) {
   const search = useSearch();
   const params = new URLSearchParams(search);
-  const tabParam = params.get("tab") ?? "opportunities";
+  const tabParam = params.get(embedded ? "sub" : "tab") ?? "opportunities";
 
   const { data: analytics, isLoading: analyticsLoading } = useQuery<AnalyticsDashboard>({
     queryKey: ["/api/expert/analytics/dashboard"],
@@ -283,8 +287,9 @@ export default function ExpertAnalytics() {
     },
   ];
 
-  return (
-    <ExpertLayout title="Analytics">
+  // C6: embedded, the host Performance page already provides the ExpertLayout shell —
+  // wrapping again would nest two BackofficeShells/sidebars.
+  const content = (
       <div className="p-6 space-y-6">
         <div>
           <h1 className="text-2xl font-bold text-foreground" data-testid="text-analytics-title">
@@ -830,7 +835,7 @@ export default function ExpertAnalytics() {
                     <h2 className="text-xl font-semibold text-foreground" data-testid="text-revenue-title">Revenue Optimization</h2>
                     <p className="text-muted-foreground text-sm">Maximize your earnings with AI-powered insights</p>
                   </div>
-                  <Link href="/expert/earnings">
+                  <Link href="/expert/money">
                     <Button variant="outline" size="sm" data-testid="button-view-earnings">
                       <Wallet className="w-4 h-4 mr-2" /> View Earnings
                     </Button>
@@ -1104,6 +1109,8 @@ export default function ExpertAnalytics() {
           </>
         )}
       </div>
-    </ExpertLayout>
   );
+
+  if (embedded) return content;
+  return <ExpertLayout title="Analytics">{content}</ExpertLayout>;
 }

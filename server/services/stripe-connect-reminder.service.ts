@@ -144,7 +144,9 @@ class StripeConnectReminderService {
         title: "Set up payouts to get paid",
         message:
           "You have been approved but haven't connected your Stripe account yet. Complete Stripe Connect setup so you can receive payouts for your bookings.",
-        data: { link: u.role === "local_expert" ? "/expert/earnings" : "/provider/earnings" } as Record<string, unknown>,
+        // C8: expert Earnings module renamed Money (§17) — /expert/earnings redirects to /expert/money.
+        // The provider console keeps /provider/earnings until the C9 nine-module stamp.
+        data: { link: u.role === "local_expert" ? "/expert/money" : "/provider/earnings" } as Record<string, unknown>,
       }));
 
       await db.insert(notifications).values(notificationRows);

@@ -656,12 +656,13 @@ router.post("/api/admin/coordination-states/:id/assign-coordinator", isAuthentic
         userId: expertId,
         type: "booking_request",
         title: "New event coordination assignment",
-        message: `You've been assigned to coordinate a ${updated.experienceType} in ${updated.destination ?? "TBC"}. Find it under Event coordination on Assigned Trips.`,
+        message: `You've been assigned to coordinate a ${updated.experienceType} in ${updated.destination ?? "TBC"}. Find it under Coordination engagements in your Inbox.`,
         relatedId: updated.id,
         relatedType: "coordination_state",
         data: {
           ...(updated.tripId ? { tripId: updated.tripId } : {}),
-          workspacePath: updated.tripId ? `/expert/workspace/${updated.tripId}` : "/expert/assigned-trips",
+          // C5: /expert/assigned-trips retired — coordination engagements live on Inbox's Queue.
+          workspacePath: updated.tripId ? `/expert/workspace/${updated.tripId}` : "/expert/inbox",
         },
       } as any);
     } catch (notifyErr) {
@@ -1348,10 +1349,10 @@ router.patch("/api/admin/expert-applications/:id/status", isAuthenticated, async
         type: "application_approved",
         title: "Application Approved! 🎉",
         message: "Congratulations! Your expert application has been approved. Complete your Stripe Connect setup to start receiving payouts.",
-        data: { link: "/expert/earnings" },
+        data: { link: "/expert/money" }, // C8: Earnings module renamed Money (§17); old route redirects
       });
 
-      // Send the applicant a congratulations email with a link to /expert/earnings
+      // Send the applicant a congratulations email with a link to /expert/money
       const [approvedApplicant] = await db
         .select({ email: users.email, firstName: users.firstName })
         .from(users)
