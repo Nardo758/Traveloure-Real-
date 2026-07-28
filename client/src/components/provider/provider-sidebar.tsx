@@ -24,13 +24,21 @@ import {
   MessageSquare,
   TrendingUp,
   Users,
+  Wrench,
 } from "lucide-react";
 
 // Console IA C9 (§17 17→9 collapse): the provider console adopts the SAME nine-module IA the
 // expert console reached in PR-Ca/PR-Cb — Today · Calendar · Inbox · Catalog · Money ·
-// Customers · Performance · Settings — with ONE deliberate exception: Workstation (the
-// Provider Product Builder) stays OUT. It is a separately-gated lane awaiting its own
-// bundle-schema + money-path ratifications (§17 "GATED separately"); no placeholder entry.
+// Customers · Performance · Settings.
+// PB: Workstation (the Provider Product Builder) LANDED, completing the provider NINE. Its
+// two §17 gates were ratified Jul 28, 2026 ("Product Builder — the two gated calls
+// RATIFIED"): ① component linkage = the bundle_components join table (migration 151; a
+// bundle IS a provider_services row, product_shape='bundle' — no new service table) and
+// ② the bundle money path = ONE booking row at the bundle's own stored price (§14
+// server-derived; components re-verified approved+active at booking). The bundle rung is
+// live (born-submitted, unlocks at 2+ approved services — the §17 creation ladder); the
+// property rung (per-night pricing, room availability) is a later phase and renders as an
+// honest non-interactive card, not a dead button.
 const menuGroups = [
   {
     label: "Work",
@@ -57,6 +65,10 @@ const menuGroups = [
       // entry the only paths into /chat would be per-booking message buttons. KEEP until
       // the provider Inbox absorption above lands.
       { title: "Messages", href: "/chat", icon: MessageSquare },
+      // PB: the Product Builder (§17 creation ladder — single service → bundle → property).
+      // Placed after Messages: the expert sidebar carries Workstation in its Work group too;
+      // the provider Work group keeps its existing order and appends the new module.
+      { title: "Workstation", href: "/provider/workstation", icon: Wrench },
     ],
   },
   {

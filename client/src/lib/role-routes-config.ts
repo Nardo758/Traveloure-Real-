@@ -90,12 +90,14 @@ export const expertRoutesConfig: RoleRouteConfig[] = [
 // ── Provider routes (requiredRole="provider") ────────────────────────────────
 
 // Console IA C9 (§17 17→9 collapse): the provider console runs the expert console's
-// nine-module IA (minus the separately-gated Workstation/Product Builder). Retired routes
+// nine-module IA. PB completed the NINE: the Workstation/Product Builder landed once its
+// two §17 gates were ratified (bundle join-table schema + bundle money path). Retired routes
 // are kept deliberately (the B5/C1 redirect pattern) so the gate exercises the redirect AND
 // the module page it lands on.
 export const providerRoutesConfig: RoleRouteConfig[] = [
   { href: '/provider/dashboard',    description: 'Today — ops home (C9 label-only rename)' },
   { href: '/provider/calendar',     description: 'Channel Calendar — 9th module (C9)' },
+  { href: '/provider/workstation',  description: 'Workstation — Product Builder: single service → bundle → property ladder (PB)' },
   { href: '/provider/bookings',     description: 'Bookings — the Inbox-module seat (C9 keep)' },
   { href: '/provider/services',     description: 'Catalog — offerings + availability + share tools (C9)' },
   { href: '/provider/customers',    description: 'Customers — honest self-scoped aggregation (C9)' },

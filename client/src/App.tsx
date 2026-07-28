@@ -70,6 +70,7 @@ const ProviderPerformance = lazy(() => import("@/pages/provider/performance"));
 const ProviderCalendar = lazy(() => import("@/pages/provider/calendar"));
 const ProviderCustomers = lazy(() => import("@/pages/provider/customers"));
 const ProviderSettings = lazy(() => import("@/pages/provider/settings"));
+const ProviderWorkstation = lazy(() => import("@/pages/provider/workstation"));
 const ProviderResources = lazy(() => import("@/pages/provider/resources"));
 const AdminDashboard = lazy(() => import("@/pages/admin/dashboard"));
 const AdminUsers = lazy(() => import("@/pages/admin/users"));
@@ -745,8 +746,9 @@ function Router() {
           nine-module IA — Today (dashboard, label-only rename) · Calendar (Channel Calendar)
           · Inbox seat (Bookings, kept) · Catalog (services) · Money (earnings, renamed) ·
           Customers (new) · Performance (hosts Analytics) · Settings (hosts Profile).
-          Workstation (the Provider Product Builder) is deliberately absent — its own
-          separately-gated lane (§17). */}
+          PB: Workstation (the Provider Product Builder) landed after its §17 gated
+          ratifications — the bundle rung is live (/provider/workstation), the property
+          rung stays gated. */}
       <Route path="/provider/dashboard">
         {() => <ProtectedRoute component={ProviderDashboard} requiredRole="provider" />}
       </Route>
@@ -770,6 +772,12 @@ function Router() {
       </Route>
       <Route path="/provider/services/:id/edit">
         {() => <ProtectedRoute component={ProviderServiceForm} requiredRole="provider" />}
+      </Route>
+      {/* PB (§17 Product Builder): the provider Workstation — the creation ladder
+          (single service → bundle → property). Bundle rung live (migration 151 +
+          /api/provider/bundles); property rung honestly gated (later phase). */}
+      <Route path="/provider/workstation">
+        {() => <ProtectedRoute component={ProviderWorkstation} requiredRole="provider" />}
       </Route>
       {/* Console IA C9: Earnings renamed Money — the ratified module name (route move
           /provider/earnings → /provider/money; same page, no endpoint or queryKey change).
