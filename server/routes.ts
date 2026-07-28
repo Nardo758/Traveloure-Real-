@@ -42,6 +42,7 @@ import {
   adminNotifications,
   expertRequests,
   funnelEvents,
+  bundleComponents,
 } from "@shared/schema";
 import {
   TAB_CONTENT_TYPE_MAP,
@@ -239,6 +240,28 @@ function sanitizeObject<T extends Record<string, any>>(obj: T): T {
     }
   }
   return result;
+}
+
+// Migration 151 (§17 Product Builder): bundle_components.component_service_id is
+// ON DELETE RESTRICT — a service that sits inside a bundle cannot be deleted until it is
+// removed from the bundle. Postgres surfaces that as FK violation 23503; translate it into
+// an honest 409 naming the containing bundle(s) instead of an opaque 500. Returns true
+// when the response was sent (the error was this case), false to fall through.
+async function respondIfServiceInBundle(err: any, serviceId: string, res: any): Promise<boolean> {
+  const code = err?.code ?? err?.cause?.code;
+  if (code !== "23503") return false;
+  const rows = await db
+    .select({ serviceName: providerServices.serviceName })
+    .from(bundleComponents)
+    .innerJoin(providerServices, eq(bundleComponents.bundleServiceId, providerServices.id))
+    .where(eq(bundleComponents.componentServiceId, serviceId));
+  // A 23503 from some other referencing table (not bundle membership) falls through.
+  if (rows.length === 0) return false;
+  res.status(409).json({
+    message: "This service is part of a bundle — remove it from the bundle(s) before deleting it.",
+    bundles: rows.map((r) => r.serviceName),
+  });
+  return true;
 }
 
 export async function registerRoutes(
@@ -1981,7 +2004,14 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     if (!ownedService) {
       return res.status(404).json({ message: "Service not found or not owned by you" });
     }
-    await storage.deleteProviderService(req.params.id);
+    try {
+      await storage.deleteProviderService(req.params.id);
+    } catch (err: any) {
+      // Migration 151 RESTRICT: honest 409 when the service sits inside a bundle.
+      if (await respondIfServiceInBundle(err, req.params.id, res)) return;
+      console.error("Error deleting provider service:", err);
+      return res.status(500).json({ message: "Failed to delete service" });
+    }
     res.status(204).send();
   });
 
@@ -2878,6 +2908,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       await storage.deleteProviderServiceListing(req.params.id);
       res.json({ success: true });
     } catch (err) {
+      // Migration 151 RESTRICT: honest 409 when the service sits inside a bundle
+      // (a since-rejected component still occupies its bundle_components row).
+      if (await respondIfServiceInBundle(err, req.params.id, res)) return;
       console.error("Error deleting custom service:", err);
       res.status(500).json({ message: "Failed to delete custom service" });
     }
