@@ -39,14 +39,13 @@ const BookingConfirmationPage = lazy(() => import("@/pages/BookingConfirmationPa
 const ExpertToday = lazy(() => import("@/pages/expert/today"));
 const ExpertCalendar = lazy(() => import("@/pages/expert/calendar"));
 const ExpertEarnings = lazy(() => import("@/pages/expert/earnings"));
-const ExpertProfile = lazy(() => import("@/pages/expert/profile"));
+// Console IA C8: ExpertProfile is no longer routed standalone — settings.tsx lazy-mounts it
+// as its Profile tab (the C6 embedded pattern); /expert/profile redirects there below.
 const ExpertAIAssistant = lazy(() => import("@/pages/expert/ai-assistant"));
-const ExpertBookings = lazy(() => import("@/pages/expert/bookings"));
 const ExpertInbox = lazy(() => import("@/pages/expert/inbox"));
 const ExpertCatalog = lazy(() => import("@/pages/expert/catalog"));
 const ExpertPerformance = lazy(() => import("@/pages/expert/performance"));
 const ExpertCustomers = lazy(() => import("@/pages/expert/customers"));
-const ExpertAssignedTrips = lazy(() => import("@/pages/expert/assigned-trips"));
 const EADashboard = lazy(() => import("@/pages/ea/dashboard"));
 const EAExecutives = lazy(() => import("@/pages/ea/executives"));
 const EAClients = lazy(() => import("@/pages/ea/clients"));
@@ -128,7 +127,6 @@ const AdminRoutingQueue = lazy(() => import("@/pages/admin/routing-queue"));
 const AdminConciergeRequests = lazy(() => import("@/pages/admin/concierge-requests"));
 const AdminCrossSellAnalytics = lazy(() => import("@/pages/admin/cross-sell-analytics"));
 const AdminQAChecklist = lazy(() => import("@/pages/admin/qa-checklist"));
-const ExpertAnalytics = lazy(() => import("@/pages/expert/analytics"));
 const ExpertContentStudio = lazy(() => import("@/pages/expert/content-studio"));
 const ReadyMadeDetailPage = lazy(() => import("@/pages/ready-made-detail"));
 const StorefrontPage = lazy(() => import("@/pages/storefront"));
@@ -136,7 +134,6 @@ const ExpertSettings = lazy(() => import("@/pages/expert/settings"));
 const ExpertServiceForm = lazy(() => import("@/pages/expert/service-form"));
 const ProviderServiceForm = lazy(() => import("@/pages/provider/service-form"));
 const ExpertWorkspace = lazy(() => import("@/pages/expert/workspace"));
-const DmoLibrary = lazy(() => import("@/pages/expert/dmo-library"));
 const SharePromote = lazy(() => import("@/pages/backoffice/share-promote"));
 const CartPage = lazy(() => import("@/pages/cart"));
 const MyBookingsPage = lazy(() => import("@/pages/my-bookings"));
@@ -553,13 +550,19 @@ function Router() {
         <Redirect to="/chat" />
       </Route>
       <Route path="/expert/clients">
-        <Redirect to="/expert/assigned-trips" />
+        <Redirect to="/expert/customers" />
       </Route>
+      {/* Console IA C5 (§17 17→9): Assigned Trips retired — the list + accept action live on
+          Inbox's Assigned Trips tab; the Suggest flow moved to the Workstation
+          Distribute→Client card; the by-client grouping lives on /expert/customers. */}
       <Route path="/expert/assigned-trips">
-        {() => <ProtectedRoute component={ExpertAssignedTrips} requiredRole="expert" />}
+        <Redirect to="/expert/inbox?tab=assignments" />
       </Route>
+      {/* Console IA C5: Bookings retired — booking history/stats, visa-status management,
+          and the trip-plan snapshot live on Inbox's History tab; pending accept/decline was
+          already Inbox's Queue. */}
       <Route path="/expert/bookings">
-        {() => <ProtectedRoute component={ExpertBookings} requiredRole="expert" />}
+        <Redirect to="/expert/inbox?tab=history" />
       </Route>
       <Route path="/expert/inbox">
         {() => <ProtectedRoute component={ExpertInbox} requiredRole="expert" />}
@@ -589,8 +592,15 @@ function Router() {
       <Route path="/expert/service-listings">
         <Redirect to="/expert/services/new" />
       </Route>
-      <Route path="/expert/earnings">
+      {/* Console IA C8 (§17 17→9 collapse): Earnings renamed Money — the ratified module
+          name (route move /expert/earnings → /expert/money; same page, no endpoint or
+          queryKey change). The redirect keeps every existing /expert/earnings navigation
+          working (B5 dashboard pattern). */}
+      <Route path="/expert/money">
         {() => <ProtectedRoute component={ExpertEarnings} requiredRole="expert" />}
+      </Route>
+      <Route path="/expert/earnings">
+        <Redirect to="/expert/money" />
       </Route>
       <Route path="/expert/performance">
         {() => <ProtectedRoute component={ExpertPerformance} requiredRole="expert" />}
@@ -601,14 +611,19 @@ function Router() {
       <Route path="/expert/customers">
         {() => <ProtectedRoute component={ExpertCustomers} requiredRole="expert" />}
       </Route>
+      {/* Console IA C6: Analytics retired as a standalone page — it is hosted as
+          Performance's Analytics tab (performance.tsx lazy-mounts the analytics
+          component embedded; its internal 9-tab picker rides ?sub= there so it can't
+          collide with Performance's ?tab=). The two routes that redirected INTO
+          /expert/analytics are re-pointed the same way, ?tab=X becoming &sub=X. */}
       <Route path="/expert/revenue-optimization">
-        <Redirect to="/expert/analytics?tab=revenue-optimization" />
+        <Redirect to="/expert/performance?tab=analytics&sub=revenue-optimization" />
       </Route>
       <Route path="/expert/leaderboard">
-        <Redirect to="/expert/analytics?tab=leaderboard" />
+        <Redirect to="/expert/performance?tab=analytics&sub=leaderboard" />
       </Route>
       <Route path="/expert/analytics">
-        {() => <ProtectedRoute component={ExpertAnalytics} requiredRole="expert" />}
+        <Redirect to="/expert/performance?tab=analytics" />
       </Route>
       {/* Console IA C1 (§17 17→9 collapse): Store Listings retired into Catalog — the
           MyOfferingsTable ready_made lane carries list + approval status, listing editing
@@ -625,7 +640,7 @@ function Router() {
         {() => <ProtectedRoute component={ExpertContentStudio} requiredRole="expert" />}
       </Route>
       <Route path="/expert/clients/:id">
-        {() => <Redirect to="/expert/assigned-trips" />}
+        {() => <Redirect to="/expert/customers" />}
       </Route>
       <Route path="/expert/settings">
         {() => <ProtectedRoute component={ExpertSettings} requiredRole="expert" />}
@@ -633,8 +648,13 @@ function Router() {
       <Route path="/expert/verification">
         <Redirect to="/expert/settings" />
       </Route>
+      {/* Console IA C8 (§17 17→9 collapse): Profile retired as a standalone page — it is
+          hosted as Settings' FIRST tab (settings.tsx lazy-mounts the profile component
+          embedded, the C6 pattern; Settings keeps defaulting to its Verification tab —
+          the actionable surface). The redirect keeps every existing /expert/profile
+          navigation working (B5 dashboard pattern). */}
       <Route path="/expert/profile">
-        {() => <ProtectedRoute component={ExpertProfile} requiredRole="expert" />}
+        <Redirect to="/expert/settings?tab=profile" />
       </Route>
       <Route path="/expert/booking-partners">
         <Redirect to="/expert/workspace" />
@@ -648,8 +668,14 @@ function Router() {
       <Route path="/expert/workspace">
         {() => <ProtectedRoute component={ExpertWorkspace} requiredRole="expert" />}
       </Route>
+      {/* Console IA C7 (§17 17→9 collapse): DMO Library retired into the Workstation — the
+          Add panel's DMO drawer (DmoPickerCore) now carries browse/add AND the
+          review-and-refine flow (expert_dmo_edits, same content/:id/edit → edits/:id/submit
+          write), resolving the C1 keep-reason. DMO content stays expert-workspace-only
+          (`sourced` origin) — never a traveler surface. The redirect keeps every existing
+          /expert/dmo-library navigation working (B5 dashboard pattern). */}
       <Route path="/expert/dmo-library">
-        {() => <ProtectedRoute component={DmoLibrary} requiredRole="expert" />}
+        <Redirect to="/expert/workspace" />
       </Route>
       {/* Console IA C2 (§17 17→9 collapse): expert Share & Promote retired into Catalog —
           the offering-scoped creation half (per-row share kits, posting opportunities,

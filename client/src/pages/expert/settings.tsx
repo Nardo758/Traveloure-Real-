@@ -1,7 +1,8 @@
-import { useState, useEffect, useRef } from "react";
-import { Link } from "wouter";
+import { useState, useEffect, useRef, lazy, Suspense } from "react";
+import { Link, useSearch } from "wouter";
 import { ExpertLayout } from "@/components/expert/expert-layout";
 import { HandleClaimCard } from "@/components/backoffice/handle-claim-card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -33,7 +34,16 @@ import {
   Loader2,
   ArrowRight,
   Info,
+  User,
 } from "lucide-react";
+
+// Console IA C8 (§17 17→9 collapse): Profile retired as a standalone page and hosted as
+// this page's FIRST tab (the C6 analytics-in-performance pattern — a mount, not an
+// extraction; profile.tsx stays intact as a component, lazy-loaded here so its ~780-line
+// bundle only loads when the tab opens). Settings keeps DEFAULTING to Verification (the
+// actionable surface); Profile is first in ORDER only. Deep-link: ?tab=profile
+// (/expert/profile redirects there).
+const ExpertProfile = lazy(() => import("@/pages/expert/profile"));
 
 interface NotificationSetting {
   name: string;
@@ -247,9 +257,28 @@ function VerificationPayoutsTab() {
   );
 }
 
+const SETTINGS_TABS = [
+  "profile",
+  "verification",
+  "notifications",
+  "availability",
+  "templates",
+  "preferences",
+  "security",
+  "leaderboard",
+] as const;
+
 export default function ExpertSettings() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  // C8: ?tab= deep-linking (the performance.tsx useSearch → URLSearchParams convention).
+  // Unknown/absent ?tab= falls back to Verification — the kept default.
+  const search = useSearch();
+  const requestedTab = new URLSearchParams(search).get("tab");
+  const tabParam = (SETTINGS_TABS as readonly string[]).includes(requestedTab ?? "")
+    ? (requestedTab as (typeof SETTINGS_TABS)[number])
+    : "verification";
 
   // Notification + language/timezone settings — PERSISTED via GET/PATCH /api/me/preferences
   // (users.preferences.settings, migration 150). Defaults below are the born state for a user
@@ -331,8 +360,12 @@ export default function ExpertSettings() {
 
         <HandleClaimCard />
 
-        <Tabs defaultValue="verification" className="w-full">
-          <TabsList className="grid w-full grid-cols-7">
+        <Tabs defaultValue={tabParam} className="w-full">
+          <TabsList className="grid w-full grid-cols-8">
+            {/* C8: Profile is the FIRST tab in order; Verification stays the default. */}
+            <TabsTrigger value="profile" className="flex items-center gap-2" data-testid="tab-profile">
+              <User className="w-4 h-4" /> Profile
+            </TabsTrigger>
             <TabsTrigger value="verification" className="flex items-center gap-2" data-testid="tab-verification">
               <ShieldCheck className="w-4 h-4" /> Verification
             </TabsTrigger>
@@ -355,6 +388,22 @@ export default function ExpertSettings() {
               <Eye className="w-4 h-4" /> Leaderboard
             </TabsTrigger>
           </TabsList>
+
+          {/* Profile Tab — C8: the profile page rendered embedded (no second ExpertLayout;
+              the profile.tsx seam drops its own p-6/max-w since this container already
+              provides them). Lazy + Suspense mirrors the C6 performance.tsx mount. */}
+          <TabsContent value="profile" className="mt-6">
+            <Suspense
+              fallback={
+                <div className="space-y-4">
+                  <Skeleton className="h-28 w-full" />
+                  <Skeleton className="h-64 w-full" />
+                </div>
+              }
+            >
+              <ExpertProfile embedded />
+            </Suspense>
+          </TabsContent>
 
           {/* Verification & Payouts Tab */}
           <TabsContent value="verification" className="mt-6">

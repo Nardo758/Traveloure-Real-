@@ -4,27 +4,28 @@
  * /expert/dashboard              Main expert landing page
  * /expert/clients                Grouped client list (from assigned trips)
  * /expert/clients/:id            Individual client detail view
- * /expert/assigned-trips         Full list of all assigned trips
+ * /expert/assigned-trips         → redirects to /expert/inbox?tab=assignments (C5)
  * /expert/workspace/:tripId      Per-trip workspace: suggestions, AI, chat links
  * /expert/messages               → redirects to /chat (consolidated messaging)
  * /expert/messages/:clientId     Workspace entry from a client message thread
- * /expert/bookings               Booking management
+ * /expert/bookings               → redirects to /expert/inbox?tab=history (C5)
  * /expert/services               Expert service listings
  * /expert/services/new           Create service (form)
  * /expert/services/:id/edit      Edit service (form)
  * /expert/services/templates     Service template library
  * /expert/service-wizard         Guided service creation wizard
  * /expert/service-listings       Provider service-listing management
- * /expert/earnings               Earnings + Stripe Connect payout
- * /expert/performance            Performance metrics
- * /expert/revenue-optimization   Revenue optimization dashboard
- * /expert/leaderboard            Expert leaderboard
- * /expert/analytics              Business analytics
+ * /expert/money                  Money — earnings + Stripe Connect payout (C8)
+ * /expert/earnings               → redirects to /expert/money (C8)
+ * /expert/performance            Performance metrics + hosted Analytics tab (C6)
+ * /expert/revenue-optimization   → redirects to /expert/performance?tab=analytics&sub=revenue-optimization (C6)
+ * /expert/leaderboard            → redirects to /expert/performance?tab=analytics&sub=leaderboard (C6)
+ * /expert/analytics              → redirects to /expert/performance?tab=analytics (C6)
  * /expert/templates              Message/response templates
  * /expert/content-studio         Content creation studio
  * /expert/content-studio/:type   Specific content type creator
  * /expert/ai-assistant           Expert AI assistant
- * /expert/profile                Expert profile settings
+ * /expert/profile                → redirects to /expert/settings?tab=profile (C8)
  * /expert/settings               Account settings
  * /expert/contract-categories    Contract category management
  * /expert/booking-partners       Booking partner integrations

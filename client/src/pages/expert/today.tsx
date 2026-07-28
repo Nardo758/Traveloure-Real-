@@ -12,7 +12,7 @@
  *  1. "Needs your response" — COUNTS ONLY, same four queries Inbox (/expert/inbox) uses to
  *     render the actual lists: /api/expert/bookings, /api/expert/assigned-trips,
  *     /api/expert/coordination-engagements, /api/affiliate-booking-requests/expert.
- *  2. Money strip — GET /api/expert/earnings/details `summary` (the /expert/earnings page,
+ *  2. Money strip — GET /api/expert/earnings/details `summary` (the /expert/money page,
  *     rebuilt in B1, is its detail view).
  *  3. Connect status — GET /api/stripe/connect/status ONLY (never /api/expert/dashboard).
  *  4. Channel snapshot — GET /api/me/earnings-by-source, compact top sources (full breakdown
@@ -273,7 +273,7 @@ function MoneyStripSection() {
             <Wallet className="w-4 h-4 text-console-mid" />
             Money
           </CardTitle>
-          <Link href="/expert/earnings">
+          <Link href="/expert/money">
             <span
               className="text-xs font-medium text-primary hover:underline cursor-pointer"
               data-testid="link-today-money"
@@ -319,7 +319,7 @@ function MoneyStripSection() {
         {stripeLoading ? (
           <Skeleton className="h-9 rounded-lg" />
         ) : !stripeStatus?.connected ? (
-          <Link href="/expert/earnings">
+          <Link href="/expert/money">
             <div
               className="bg-amber-50 border border-amber-300 rounded-lg p-3 flex items-center justify-between gap-3 cursor-pointer hover:bg-amber-100/60 transition-colors"
               data-testid="banner-today-stripe-connect"
