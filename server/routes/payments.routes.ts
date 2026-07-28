@@ -19,6 +19,7 @@ import {
   userExperienceItems, userExperiences, providerServices, cartItems, trips,
   serviceBookings, serviceReviews, notifications, serviceProviderForms,
   shortLinks,
+  bundleComponents,
   insertCustomVenueSchema, insertGeneratedItinerarySchema,
   insertTemporalAnchorSchema, insertDayBoundarySchema, insertEnergyTrackingSchema,
   temporalAnchors, itineraryItems, generatedItineraries,
@@ -264,6 +265,35 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         return res.status(400).json({ message: "Cart is empty" });
       }
 
+      // ── §17 bundles (migration 151): re-verify + snapshot BEFORE any write ──────────
+      // For each bundle in the cart, every component must STILL be approved+active
+      // (F2: no unapproved service hides inside a sellable bundle) — 409 before any
+      // slot claim / booking row / Stripe call otherwise. The component list is
+      // snapshot into bookingDetails below (contents locked at purchase — the
+      // ready-made snapshot posture). No-op for non-bundle services.
+      const bundleSnapshots = new Map<string, Array<{ id: string; serviceName: string }>>();
+      for (const item of cartData) {
+        if (item.service?.productShape !== "bundle" || bundleSnapshots.has(item.service.id)) continue;
+        const components = await db
+          .select({
+            id: providerServices.id,
+            serviceName: providerServices.serviceName,
+            approvalStatus: providerServices.approvalStatus,
+            status: providerServices.status,
+          })
+          .from(bundleComponents)
+          .innerJoin(providerServices, eq(bundleComponents.componentServiceId, providerServices.id))
+          .where(eq(bundleComponents.bundleServiceId, item.service.id))
+          .orderBy(asc(bundleComponents.position));
+        if (
+          components.length === 0 ||
+          components.some((c) => c.approvalStatus !== "approved" || c.status !== "active")
+        ) {
+          return res.status(409).json({ message: "bundle_component_unavailable" });
+        }
+        bundleSnapshots.set(item.service.id, components.map((c) => ({ id: c.id, serviceName: c.serviceName })));
+      }
+
       // ── C3 (§15): ATOMIC slot claims BEFORE any booking row or Stripe call ─────────────
       // Each slot-bound item claims capacity via storage.bookSlot (conditional UPDATE ...
       // WHERE booked_count < capacity RETURNING — the DB row transition IS the concurrency
@@ -456,6 +486,10 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
             scheduledDate: item.scheduledDate,
             notes: item.notes || notes,
             quantity: item.quantity || 1,
+            // §17: component snapshot verified above — bundle contents locked at purchase.
+            ...(bundleSnapshots.has(item.serviceId)
+              ? { bundleComponents: bundleSnapshots.get(item.serviceId) }
+              : {}),
           },
           totalAmount: price.toFixed(2),
           platformFee: totalPlatformFeeAmt.toFixed(2),
