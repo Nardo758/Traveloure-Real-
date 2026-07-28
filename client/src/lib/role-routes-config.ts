@@ -25,7 +25,13 @@ export interface RoleRouteConfig {
 // ── Expert routes (requiredRole="expert") ───────────────────────────────────
 
 export const expertRoutesConfig: RoleRouteConfig[] = [
-  { href: '/expert/dashboard',          description: 'Expert home dashboard' },
+  // /expert/dashboard is kept deliberately: it redirects to /expert/today (B5 retirement),
+  // so the gate exercises the redirect AND the Today page it lands on.
+  { href: '/expert/dashboard',          description: 'Retired dashboard -> redirects to Today' },
+  { href: '/expert/today',              description: 'Today ops home (B5)' },
+  { href: '/expert/inbox',              description: 'Inbox — one actionable queue (B2)' },
+  { href: '/expert/catalog',            description: 'Catalog — offerings + availability slots (B3)' },
+  { href: '/expert/performance',        description: 'Performance — channel attribution (B4)' },
   { href: '/expert/clients',            description: 'Client list' },
   { href: '/expert/assigned-trips',     description: 'Trips assigned to this expert' },
   { href: '/expert/bookings',           description: 'Booking requests' },

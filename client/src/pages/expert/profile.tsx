@@ -295,15 +295,9 @@ export default function ExpertProfile() {
   return (
     <ExpertLayout title="Profile">
       <div className="p-6 space-y-6 max-w-4xl">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-console-darkest">Business Profile</h1>
-            <p className="text-console-mid">Manage your public profile and preferences</p>
-          </div>
-          <Button className="bg-primary " data-testid="button-save-profile">
-            <Save className="w-4 h-4 mr-2" />
-            Save Changes
-          </Button>
+        <div>
+          <h1 className="text-2xl font-bold text-console-darkest">Business Profile</h1>
+          <p className="text-console-mid">Manage your public profile and preferences</p>
         </div>
 
         {/* Profile Photo */}
@@ -609,7 +603,7 @@ export default function ExpertProfile() {
             <div className="flex justify-end">
               <Button
                 size="sm"
-                className="bg-primary hover:bg-[#e0324f] text-white"
+                className="bg-primary hover:bg-primary/90 text-white"
                 disabled={saveNeighborhoodsMutation.isPending || neighborhoodsLoading}
                 onClick={() => saveNeighborhoodsMutation.mutate()}
                 data-testid="button-save-neighbourhoods"

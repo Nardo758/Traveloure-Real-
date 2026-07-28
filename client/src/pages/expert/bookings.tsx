@@ -2,6 +2,7 @@ import { ExpertLayout } from "@/components/expert/expert-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { StatusBadge, type StatusBadgeEntry } from "@/components/backoffice/primitives";
 import { Calendar } from "@/components/ui/calendar";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -478,16 +479,12 @@ export default function ExpertBookings() {
     setVisaDialogOpen(true);
   };
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "confirmed":
-        return <Badge className="bg-green-100 text-green-700 border-green-200"><CheckCircle className="w-3 h-3 mr-1" /> Confirmed</Badge>;
-      case "pending":
-        return <Badge className="bg-yellow-100 text-yellow-700 border-yellow-200"><AlertCircle className="w-3 h-3 mr-1" /> Pending</Badge>;
-      default:
-        return <Badge variant="outline">{status}</Badge>;
-    }
+  // B0: local switch replaced by the shared StatusBadge primitive (client/src/components/backoffice/primitives.tsx).
+  const bookingStatusMap: Record<string, StatusBadgeEntry> = {
+    confirmed: { label: "Confirmed", className: "bg-green-100 text-green-700 border-green-200", icon: CheckCircle },
+    pending: { label: "Pending", className: "bg-yellow-100 text-yellow-700 border-yellow-200", icon: AlertCircle },
   };
+  const getStatusBadge = (status: string) => <StatusBadge status={status} map={bookingStatusMap} />;
 
   return (
     <ExpertLayout title="Bookings">

@@ -46,6 +46,9 @@ export const users = pgTable("users", {
   role: varchar("role", { length: 30 }).default("user"),
   bio: varchar("bio", { length: 500 }),
   specialties: jsonb("specialties").default([]),
+  // Namespaced user preferences (migration 150, backoffice B6): the Settings console reads/writes
+  // ONLY the `settings` key via GET/PATCH /api/me/preferences (zod allow-list + shallow merge).
+  preferences: jsonb("preferences").default({}),
   termsAcceptedAt: timestamp("terms_accepted_at"),
   privacyAcceptedAt: timestamp("privacy_accepted_at"),
   termsVersion: varchar("terms_version", { length: 20 }),

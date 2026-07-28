@@ -71,7 +71,12 @@ const FONT_CONFIG = [
 
 // --- Public types ----------------------------------------------------------------------------
 
-export type ShareImageKind = "service-feed" | "service-story" | "review";
+export type ShareImageKind =
+  | "service-feed"
+  | "service-story"
+  | "review"
+  | "ready-made-feed"
+  | "ready-made-story";
 
 export interface ServiceShareImageData {
   serviceName: string;
@@ -84,6 +89,18 @@ export interface ServiceShareImageData {
   earnerName?: string | null;
   earnerHandle?: string | null;
   /** Footer path text, e.g. "/p/somehandle" or "/services/abc123". */
+  path: string;
+}
+
+export interface ReadyMadeShareImageData {
+  title: string;
+  market: string;
+  durationDays: number;
+  /** Real price in cents, or null when the listing has no price set (§13 — never invent one). */
+  priceCents: number | null;
+  authorName?: string | null;
+  authorHandle?: string | null;
+  /** Footer path text, e.g. "/p/somehandle" or "/ready-made/abc123". */
   path: string;
 }
 
@@ -324,6 +341,145 @@ function buildServiceElement(
   );
 }
 
+function buildReadyMadeElement(
+  data: ReadyMadeShareImageData,
+  opts: { width: number; height: number; story: boolean },
+): El {
+  const { width, height, story } = opts;
+  const pad = story ? 96 : 72;
+  const titleSize = story ? 88 : 68;
+  const metaSize = story ? 42 : 34;
+  const smallSize = story ? 32 : 26;
+  const footerSize = story ? 36 : 30;
+
+  const priceText = formatPrice(data.priceCents != null ? data.priceCents / 100 : null);
+  const authorText = formatEarnerLine(data.authorName, data.authorHandle);
+
+  const middleChildren: El[] = [
+    h(
+      "div",
+      {
+        display: "flex",
+        fontFamily: "Inter",
+        fontWeight: 700,
+        fontSize: titleSize,
+        lineHeight: 1.15,
+        color: DARK_TEXT,
+        marginBottom: story ? 44 : 30,
+      },
+      data.title,
+    ),
+    h(
+      "div",
+      {
+        display: "flex",
+        fontFamily: "Inter",
+        fontWeight: 400,
+        fontSize: metaSize,
+        color: DARK_SECONDARY,
+        marginBottom: story ? 22 : 16,
+      },
+      `${data.durationDays}-day · ${data.market}`,
+    ),
+  ];
+
+  if (priceText) {
+    middleChildren.push(
+      h(
+        "div",
+        {
+          display: "flex",
+          fontFamily: "Inter",
+          fontWeight: 700,
+          fontSize: metaSize,
+          color: DARK_TEXT,
+          marginBottom: story ? 22 : 16,
+        },
+        `From ${priceText}`,
+      ),
+    );
+  }
+
+  // No rating line here — there is no rating aggregate for Ready Made Trips (§13, never fabricate).
+
+  if (authorText) {
+    middleChildren.push(
+      h(
+        "div",
+        {
+          display: "flex",
+          fontFamily: "Inter",
+          fontWeight: 400,
+          fontSize: smallSize,
+          color: DARK_SECONDARY,
+        },
+        authorText,
+      ),
+    );
+  }
+
+  return h(
+    "div",
+    {
+      display: "flex",
+      flexDirection: "column",
+      justifyContent: "space-between",
+      width,
+      height,
+      padding: pad,
+      backgroundColor: DARK_BG,
+      fontFamily: "Inter",
+    },
+    [
+      h(
+        "div",
+        {
+          display: "flex",
+          fontFamily: "Inter",
+          fontWeight: 700,
+          fontSize: story ? 32 : 26,
+          letterSpacing: 4,
+          color: DARK_SECONDARY,
+        },
+        "TRAVELOURE",
+      ),
+      h(
+        "div",
+        { display: "flex", flexDirection: "column", flex: 1, justifyContent: "center" },
+        middleChildren,
+      ),
+      h(
+        "div",
+        {
+          display: "flex",
+          flexDirection: "column",
+          borderTop: `2px solid ${DARK_SECONDARY}`,
+          paddingTop: story ? 36 : 26,
+        },
+        [
+          h(
+            "div",
+            { display: "flex", fontFamily: "Inter", fontWeight: 700, fontSize: footerSize, color: DARK_TEXT },
+            "Book on Traveloure",
+          ),
+          h(
+            "div",
+            {
+              display: "flex",
+              fontFamily: "Inter",
+              fontWeight: 400,
+              fontSize: smallSize,
+              color: DARK_SECONDARY,
+              marginTop: 8,
+            },
+            data.path,
+          ),
+        ],
+      ),
+    ],
+  );
+}
+
 function buildReviewElement(data: ReviewShareImageData): El {
   const width = 1080;
   const height = 1350;
@@ -414,9 +570,10 @@ function buildReviewElement(data: ReviewShareImageData): El {
 
 export function renderShareImage(kind: "service-feed" | "service-story", data: ServiceShareImageData): Promise<Buffer>;
 export function renderShareImage(kind: "review", data: ReviewShareImageData): Promise<Buffer>;
+export function renderShareImage(kind: "ready-made-feed" | "ready-made-story", data: ReadyMadeShareImageData): Promise<Buffer>;
 export async function renderShareImage(
   kind: ShareImageKind,
-  data: ServiceShareImageData | ReviewShareImageData,
+  data: ServiceShareImageData | ReviewShareImageData | ReadyMadeShareImageData,
 ): Promise<Buffer> {
   let element: El;
   let width: number;
@@ -434,6 +591,14 @@ export async function renderShareImage(
     width = 1080;
     height = 1350;
     element = buildReviewElement(data as ReviewShareImageData);
+  } else if (kind === "ready-made-feed") {
+    width = 1080;
+    height = 1350;
+    element = buildReadyMadeElement(data as ReadyMadeShareImageData, { width, height, story: false });
+  } else if (kind === "ready-made-story") {
+    width = 1080;
+    height = 1920;
+    element = buildReadyMadeElement(data as ReadyMadeShareImageData, { width, height, story: true });
   } else {
     throw new Error(`Unknown share-image kind: ${kind}`);
   }

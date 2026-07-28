@@ -114,6 +114,7 @@ import serviceRequestsRoutes from "./routes/service-requests.routes";
 import tripContextRoutes from "./routes/trip-context.routes";
 import guestInvitesRoutes from "./routes/guest-invites";
 import shareImagesRoutes from "./routes/share-images.routes";
+import promoTextRoutes from "./routes/promo-text.routes";
 import paymentMethodsRoutes from "./routes/payment-methods.routes";
 import {
   insertTripParticipantSchema, 
@@ -635,6 +636,11 @@ export async function registerRoutes(
   // F2/REV-MOD-gated in the router; the render itself is pure in share-image.service.ts. Mounted
   // per §9.
   app.use(shareImagesRoutes);
+
+  // Phase A3: GET /api/promo-text — shared server-side caption generation (AI best-effort,
+  // deterministic fallback) for the service/ready_made/storefront distribution lanes. Session-
+  // authenticated + owner-verified (§14). Mounted per §9.
+  app.use(promoTextRoutes);
 
   // FP-1 frictionless payments: saved-card management (GET/POST/DELETE /api/me/payment-methods*).
   // Session-scoped; cards live only in Stripe's vault. Mounted per §9.
@@ -2970,22 +2976,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     }
   });
 
-  // Create new template (authenticated)
-  app.post("/api/expert/templates", isAuthenticated, async (req, res) => {
-    try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
-      // Field whitelist (Gap 2): only expert-editable content fields; ownership is server-set;
-      // never born-published — publishing is approval-gated via the shared queue.
-      const template = await storage.createExpertTemplate({
-        ...pickExpertTemplateFields(req.body),
-        expertId: userId,
-        isPublished: false,
-      });
-      res.json(template);
-    } catch (err) {
-      console.error("Error creating template:", err);
-      res.status(500).json({ message: "Failed to create template" });
-    }
+  // Create new template — RETIRED (seller-surface sunset, §10/§17). Gone tombstone, not a
+  // deletion: the route shape stays stable; GET/PATCH/submit/purchase/confirm remain intact.
+  app.post("/api/expert/templates", isAuthenticated, async (_req, res) => {
+    res.status(410).json({ message: "New itinerary-template listings are retired — build store trips in the Workstation instead." });
   });
 
   // Update template (authenticated - owner only)
@@ -3753,6 +3747,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // === Destination Calendar (Public travel guide) ===
   
   // Public provider verification status (for service detail page badge)
+  // A6: also surfaces the owner's storefront handle (migration 136, users.handle) so the
+  // service-detail page can breadcrumb into /p/:handle — additive select, null when unclaimed.
   app.get("/api/providers/:userId/public-verification", async (req, res) => {
     try {
       const [form] = await db.select({
@@ -3761,13 +3757,19 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       }).from(serviceProviderForms)
         .where(eq(serviceProviderForms.userId, req.params.userId))
         .limit(1);
-      if (!form) return res.json({ identityVerified: false, businessVerified: false });
+      const [userRow] = await db.select({ handle: users.handle })
+        .from(users)
+        .where(eq(users.id, req.params.userId))
+        .limit(1);
+      const handle = userRow?.handle ?? null;
+      if (!form) return res.json({ identityVerified: false, businessVerified: false, handle });
       res.json({
         identityVerified: form.identityVerificationStatus === "verified",
         businessVerified: form.businessVerificationStatus === "verified",
+        handle,
       });
     } catch {
-      res.json({ identityVerified: false, businessVerified: false });
+      res.json({ identityVerified: false, businessVerified: false, handle: null });
     }
   });
 

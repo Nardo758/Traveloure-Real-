@@ -1,4 +1,5 @@
 import { ProviderLayout } from "@/components/provider/provider-layout";
+import { StatCard } from "@/components/backoffice/primitives";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -122,19 +123,13 @@ export default function ProviderAnalytics() {
         {/* Metrics Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {metrics.map((metric) => (
-            <Card key={metric.label}>
-              <CardContent className="p-6">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <p className="text-sm text-console-dark">{metric.label}</p>
-                    <p className="text-2xl font-bold text-console-darkest mt-2">{metric.value}</p>
-                  </div>
-                  <div className={`w-12 h-12 rounded-lg flex items-center justify-center bg-opacity-10 ${metric.color}`} style={{ backgroundColor: metric.color + "15" }}>
-                    <metric.icon className={`w-6 h-6 ${metric.color}`} />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            <StatCard
+              key={metric.label}
+              label={metric.label}
+              value={metric.value}
+              icon={metric.icon}
+              iconClassName={`bg-console-bg ${metric.color}`}
+            />
           ))}
         </div>
 

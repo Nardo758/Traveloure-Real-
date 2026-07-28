@@ -35,6 +35,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
+import { PageHeader, EmptyState } from "@/components/backoffice/primitives";
 
 interface ServiceTemplate {
   id: string;
@@ -283,17 +284,18 @@ export default function ExpertServices() {
   return (
     <ExpertLayout title="Services">
       <div className="p-6 space-y-6">
-        <div className="flex items-center justify-between gap-4 flex-wrap">
-          <div>
-            <h1 className="text-2xl font-bold text-console-darkest" data-testid="text-services-title">My Services</h1>
-            <p className="text-console-mid">Create and manage your service offerings</p>
-          </div>
-          <Link href="/expert/services/new">
-            <Button className="bg-primary " data-testid="button-add-service">
-              <Plus className="w-4 h-4 mr-2" /> Create Service
-            </Button>
-          </Link>
-        </div>
+        <PageHeader
+          testId="text-services-title"
+          title="My Services"
+          subtitle="Create and manage your service offerings"
+          actions={
+            <Link href="/expert/services/new">
+              <Button className="bg-primary " data-testid="button-add-service">
+                <Plus className="w-4 h-4 mr-2" /> Create Service
+              </Button>
+            </Link>
+          }
+        />
 
         {expertRoleLabel && (
           templateCount > 0 ? (
@@ -461,16 +463,18 @@ export default function ExpertServices() {
                     </div>
                   ))
                 ) : services.length === 0 ? (
-                  <div className="text-center py-12">
-                    <Package className="w-12 h-12 text-console-mid mx-auto mb-4" />
-                    <h3 className="text-lg font-medium text-console-darkest mb-2">No services yet</h3>
-                    <p className="text-console-mid mb-4">Create your first service to start accepting bookings</p>
-                    <Link href="/expert/services/new">
-                      <Button className="bg-primary " data-testid="button-create-first-service">
-                        <Plus className="w-4 h-4 mr-2" /> Create Service
-                      </Button>
-                    </Link>
-                  </div>
+                  <EmptyState
+                    icon={Package}
+                    title="No services yet"
+                    body="Create your first service to start accepting bookings"
+                    cta={
+                      <Link href="/expert/services/new">
+                        <Button className="bg-primary " data-testid="button-create-first-service">
+                          <Plus className="w-4 h-4 mr-2" /> Create Service
+                        </Button>
+                      </Link>
+                    }
+                  />
                 ) : (
                   services.map(renderServiceCard)
                 )}

@@ -34,8 +34,12 @@ export async function dbHealthCheck(): Promise<boolean> {
 // ─── Offering Types ───────────────────────────────────────────────────────────
 
 export async function getServiceOfferingTypes(market?: string | null): Promise<any[]> {
+  // `id` added (§17 offering-first provider create): ServiceForm needs the row's
+  // PK to persist provider_services.service_offering_type_id (migration 148 FK).
+  // Additive column in the SELECT only — existing consumers (earn.tsx) ignore
+  // unknown fields, so this is backward-compatible.
   const result = await db.execute(sql`
-    SELECT offering_type_key, category_key, display_name, tagline,
+    SELECT id, offering_type_key, category_key, display_name, tagline,
            is_surprising, market_scoped, sort_order
     FROM service_offering_types
     WHERE is_active = true

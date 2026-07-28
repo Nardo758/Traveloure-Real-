@@ -273,12 +273,6 @@ export default function ExpertAnalytics() {
     },
   ];
 
-  const instantPayoutBalance = {
-    available: revSummary.availableBalance,
-    pending: revSummary.pendingBalance,
-    processing: 0,
-  };
-
   const actionableRevenueInsights = revenueInsights.length > 0 ? revenueInsights : [
     {
       type: "opportunity",
@@ -859,9 +853,6 @@ export default function ExpertAnalytics() {
                             <div>
                               <p className="text-sm text-muted-foreground">This Month</p>
                               <p className="text-2xl font-bold text-foreground">${earningsProjection.current.toLocaleString()}</p>
-                              <p className="text-sm text-green-600 flex items-center gap-1">
-                                <ArrowUpRight className="w-3 h-3" /> +15% vs last month
-                              </p>
                             </div>
                             <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
                               <DollarSign className="w-6 h-6 text-primary" />
@@ -1082,29 +1073,6 @@ export default function ExpertAnalytics() {
                         </div>
                       </CardContent>
                     </Card>
-
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <Card className="border border-green-200 bg-green-50 dark:bg-green-950/20" data-testid="card-available-balance">
-                        <CardContent className="p-4">
-                          <p className="text-sm text-green-700">Available for Payout</p>
-                          <p className="text-3xl font-bold text-green-700">${instantPayoutBalance.available.toLocaleString()}</p>
-                        </CardContent>
-                      </Card>
-                      <Card className="border" data-testid="card-pending-balance">
-                        <CardContent className="p-4">
-                          <p className="text-sm text-muted-foreground">Pending</p>
-                          <p className="text-2xl font-bold text-foreground">${instantPayoutBalance.pending.toLocaleString()}</p>
-                          <p className="text-xs text-muted-foreground mt-1">Available after trip completion</p>
-                        </CardContent>
-                      </Card>
-                      <Card className="border" data-testid="card-processing">
-                        <CardContent className="p-4">
-                          <p className="text-sm text-muted-foreground">Processing</p>
-                          <p className="text-2xl font-bold text-foreground">${instantPayoutBalance.processing.toLocaleString()}</p>
-                          <p className="text-xs text-muted-foreground mt-1">Being transferred</p>
-                        </CardContent>
-                      </Card>
-                    </div>
                   </>
                 )}
               </TabsContent>

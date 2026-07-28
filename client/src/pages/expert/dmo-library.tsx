@@ -4,6 +4,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { ExpertLayout } from "@/components/expert/expert-layout";
+import { EmptyState } from "@/components/backoffice/primitives";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -133,11 +134,11 @@ export default function DmoLibrary() {
     },
     onSuccess: (data: any) => {
       toast({
-        title: "Draft trip created",
-        description: `${data.places} places across ${data.days} day(s). Price it and submit for review to sell it.`,
+        title: "Draft store trip created",
+        description: "Draft store trip created — opening the builder",
       });
       setSelected(new Set());
-      navigate("/expert/templates");
+      navigate(data.redirect ?? `/expert/workspace/${data.tripId}`);
     },
     onError: (err: Error) => {
       toast({ title: "Couldn't build trip", description: err.message, variant: "destructive" });
@@ -192,14 +193,11 @@ export default function DmoLibrary() {
             ))}
           </div>
         ) : items.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-muted py-16 text-center">
-            <Library className="w-10 h-10 mx-auto text-muted-foreground/40 mb-3" />
-            <h3 className="font-semibold mb-1">No content in your library yet</h3>
-            <p className="text-sm text-muted-foreground max-w-sm mx-auto">
-              Approved DMO/heritage content for Kyoto will appear here as it is ingested — ready for you to
-              refine and build into trips.
-            </p>
-          </div>
+          <EmptyState
+            icon={Library}
+            title="No content in your library yet"
+            body="Approved DMO/heritage content for Kyoto will appear here as it is ingested — ready for you to refine and build into trips."
+          />
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {items.map((item) => (

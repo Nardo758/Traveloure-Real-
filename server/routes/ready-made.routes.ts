@@ -2,9 +2,11 @@
  * ready-made.routes.ts — Ready-Made Trips authoring, Phase 1 (brief v1.1 §1–2, spec v3).
  *
  * Two endpoints:
- *  • POST /api/expert/ready-made — create the authoring pair: a trip with userId=NULL +
- *    authorId=caller (traveler-surface exclusion by construction, §2a) and a ready_made_trips
- *    listing row born 'draft' (D1a). Role-gated per D3: local_expert | travel_expert (+ admin),
+ *  • POST /api/expert/ready-made — create a BUILD: a trip with userId=NULL + authorId=caller
+ *    (traveler-surface exclusion by construction, §2a). W-1 (§17 build-first/distribute-later):
+ *    the build is unlabeled at birth — NO listing row is created here anymore; a store listing
+ *    is created FROM the build via POST /api/expert/ready-made/from-trip/:tripId ("ship to
+ *    store", idempotent per trip). Role-gated per D3: local_expert | travel_expert (+ admin),
  *    resolved by DB lookup (§2-style — never the session's possibly-stale role string).
  *  • GET /api/expert/workspace-context/:tripId — server-side mode resolution for the dual-mode
  *    workspace: assignment row exists → 'assignment'; else trip.authorId === caller → 'authoring';
@@ -20,6 +22,7 @@ import { storage } from "../storage";
 import { trips, readyMadeTrips, readyMadePurchases, tripExpertAdvisors, itineraryItems, users } from "@shared/schema";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { READY_MADE_PLAN_TYPE_KEYS, type ReadyMadePlanTypeKey } from "@shared/ready-made-plan-types";
+import { LAUNCH_MARKETS, isLaunchMarket, STORE_GATE_MESSAGE } from "@shared/launch-markets";
 import { getAuthoredTrip } from "../utils/trip-authorship";
 import { holdWindowDays } from "../config/earnings-hold.config";
 import { getBand } from "../services/commission";
@@ -41,12 +44,17 @@ function isAuthenticated(req: any, res: any, next: any) {
 }
 
 const createReadyMadeSchema = z.object({
-  title: z.string().trim().min(1).max(200).default("Untitled ready-made trip"),
-  market: z.string().trim().min(1).max(100).default("Kyoto"), // §12: Kyoto-only launch (server default, not client-trusted scope)
+  title: z.string().trim().min(1).max(200).default("Untitled build"),
+  // Location-aware builds (W-4): a BUILD can be for any destination — the location the expert
+  // sets here drives what data loads (neighborhood grouping, platform-services search, format
+  // resolution). The §12 launch gate does NOT belong at build creation; it is enforced where it
+  // means something — ship-to-store (/from-trip, isLaunchMarket) + the migration-149 DB CHECK on
+  // the LISTING's market. Default stays the launch market for a blank create.
+  destination: z.string().trim().min(1).max(100).default(LAUNCH_MARKETS[0]),
   durationDays: z.number().int().min(1).max(30).default(3),
 });
 
-// ─── Create the authoring pair ───────────────────────────────────────────────
+// ─── Create a build (trip only — the listing comes later via ship-to-store) ──
 router.post("/api/expert/ready-made", isAuthenticated, async (req, res) => {
   try {
     const userId = sessionUserId(req);
@@ -54,14 +62,14 @@ router.post("/api/expert/ready-made", isAuthenticated, async (req, res) => {
     // D3 role gate — DB lookup, not the session role string.
     const user = await storage.getUser(userId);
     if (!user || !AUTHOR_ROLES.has(user.role ?? "")) {
-      return res.status(403).json({ message: "Ready-made authoring requires a local expert or trip advisor role" });
+      return res.status(403).json({ message: STORE_GATE_MESSAGE });
     }
 
     const parsed = createReadyMadeSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
       return res.status(400).json({ message: "Invalid input", errors: parsed.error.flatten() });
     }
-    const { title, market, durationDays } = parsed.data;
+    const { title, destination, durationDays } = parsed.data;
 
     // Placeholder dates: authoring trips are templates-in-the-making, not scheduled travel; the
     // buyer's CLONE gets real dates. trips.start/end are NOT NULL so we anchor a synthetic window.
@@ -69,47 +77,189 @@ router.post("/api/expert/ready-made", isAuthenticated, async (req, res) => {
     const end = new Date(start.getTime() + (durationDays - 1) * 24 * 60 * 60 * 1000);
     const fmt = (d: Date) => d.toISOString().slice(0, 10);
 
-    const result = await db.transaction(async (tx) => {
-      const [trip] = await tx
-        .insert(trips)
-        .values({
-          userId: null,          // §2a: NULL owner = excluded from every traveler surface
-          authorId: userId,      // authoring-mode scope key
-          title,
-          destination: market,
-          startDate: fmt(start),
-          endDate: fmt(end),
-          status: "draft",
-          numberOfTravelers: 2,
-          adults: 2,
-          kids: 0,
-        } as any)
-        .returning();
-
-      const [listing] = await tx
-        .insert(readyMadeTrips)
-        .values({
-          authorId: userId,
-          sourceTripId: trip.id,
-          market,
-          title,
-          durationDays,
-          status: "draft",       // born-draft (D1a) — approval only via the admin action
-        } as any)
-        .returning();
-
-      return { trip, listing };
-    });
+    // W-1 (§17 build-first): the build is born WITHOUT a listing — "decide where it ships later."
+    // The store listing is created from this trip via /from-trip/:tripId (ship to store).
+    const [trip] = await db
+      .insert(trips)
+      .values({
+        userId: null,          // §2a: NULL owner = excluded from every traveler surface
+        authorId: userId,      // authoring-mode scope key
+        title,
+        destination,
+        startDate: fmt(start),
+        endDate: fmt(end),
+        status: "draft",
+        numberOfTravelers: 2,
+        adults: 2,
+        kids: 0,
+      } as any)
+      .returning();
 
     res.status(201).json({
-      tripId: result.trip.id,
-      listingId: result.listing.id,
+      tripId: trip.id,
       mode: "authoring",
-      redirect: `/expert/workspace/${result.trip.id}`,
+      redirect: `/expert/workspace/${trip.id}`,
     });
   } catch (err: any) {
     console.error("[ready-made] create error:", err);
-    res.status(500).json({ message: "Failed to create ready-made trip", error: err.message });
+    res.status(500).json({ message: "Failed to create build", error: err.message });
+  }
+});
+
+// ─── W-1: Ship to store (§17 build-first/distribute-later) ───────────────────
+// Creates the ready_made_trips listing FROM an existing authored build — the only way a
+// listing is born. Idempotent per trip (§15 posture): the INSERT itself is conditional on
+// no listing existing for this sourceTripId, so a double-click/retry returns the existing
+// listing instead of creating a second. Client-ASSIGNED trips are not shippable here —
+// they are the traveler's trip; turning one into a product is a clone-to-build decision
+// deferred to W-2+ (privacy: a listing snapshot would expose the client's itinerary).
+const shipToStoreSchema = z.object({
+  title: z.string().trim().min(1).max(200).optional(),
+  market: z.string().trim().min(1).max(100).optional(),
+});
+
+router.post("/api/expert/ready-made/from-trip/:tripId", isAuthenticated, async (req, res) => {
+  try {
+    const userId = sessionUserId(req);
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+    // D3 role gate — DB lookup, not the session role string.
+    const user = await storage.getUser(userId);
+    if (!user || !AUTHOR_ROLES.has(user.role ?? "")) {
+      return res.status(403).json({ message: STORE_GATE_MESSAGE });
+    }
+
+    const tripId = req.params.tripId;
+    // Owner gate: explicit present-value author check (never getTripRole).
+    const trip = await getAuthoredTrip(tripId, userId);
+    if (!trip) return res.status(403).json({ message: "Not this build's author" });
+
+    const parsed = shipToStoreSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ message: "Invalid input", errors: parsed.error.flatten() });
+    }
+
+    // §12/F8 launch scope — enforced here (the store lane), backstopped by the migration-149 CHECK.
+    const market = parsed.data.market ?? trip.destination ?? "";
+    if (!isLaunchMarket(market)) {
+      return res.status(400).json({ message: STORE_GATE_MESSAGE });
+    }
+    const title = (parsed.data.title ?? trip.title ?? "Untitled build").slice(0, 200);
+
+    // Duration from the build's own date window, clamped to the listing contract (1–30).
+    const spanMs =
+      new Date(trip.endDate as any).getTime() - new Date(trip.startDate as any).getTime();
+    const durationDays = Math.min(
+      30,
+      Math.max(1, Number.isFinite(spanMs) ? Math.round(spanMs / 86_400_000) + 1 : 1),
+    );
+
+    const newId = crypto.randomUUID();
+    const inserted = await db.execute(sql`
+      INSERT INTO ready_made_trips (id, author_id, source_trip_id, market, title, duration_days, status)
+      SELECT ${newId}, ${userId}, ${tripId}, ${market}, ${title}, ${durationDays}, 'draft'
+      WHERE NOT EXISTS (SELECT 1 FROM ready_made_trips WHERE source_trip_id = ${tripId})
+      RETURNING id
+    `);
+    const row = (inserted as any).rows?.[0];
+    if (!row) {
+      const [existing] = await db
+        .select()
+        .from(readyMadeTrips)
+        .where(eq(readyMadeTrips.sourceTripId, tripId))
+        .limit(1);
+      return res.status(200).json({ listingId: existing?.id ?? null, tripId, alreadyExists: true });
+    }
+    return res.status(201).json({ listingId: row.id, tripId, alreadyExists: false });
+  } catch (err: any) {
+    console.error("[ready-made] ship-to-store error:", err);
+    res.status(500).json({ message: "Failed to ship build to store", error: err.message });
+  }
+});
+
+// ─── W-3: the author's builds (Workstation home "Your builds" lane) ──────────
+// Every trip the caller AUTHORED — including unshipped builds that have no listing yet —
+// LEFT-JOINed with the store listing when one exists (one row per trip; source_trip_id is
+// unique per the ship-to-store idempotency, so the join can never fan out). ROUTE ORDER:
+// registered BEFORE any GET /api/expert/ready-made/:id-style route so the literal "builds"
+// segment can never be captured by an :id param (Express matches in registration order).
+router.get("/api/expert/ready-made/builds", isAuthenticated, async (req, res) => {
+  try {
+    const userId = sessionUserId(req);
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+    // D3 role gate — DB lookup, not the session role string (same posture as create).
+    const user = await storage.getUser(userId);
+    if (!user || !AUTHOR_ROLES.has(user.role ?? "")) {
+      return res.status(403).json({ message: STORE_GATE_MESSAGE });
+    }
+
+    const rows = await db
+      .select({
+        id: trips.id,
+        title: trips.title,
+        destination: trips.destination,
+        startDate: trips.startDate,
+        endDate: trips.endDate,
+        status: trips.status,
+        createdAt: trips.createdAt,
+        listingId: readyMadeTrips.id,
+        listingStatus: readyMadeTrips.status,
+      })
+      .from(trips)
+      .leftJoin(readyMadeTrips, eq(readyMadeTrips.sourceTripId, trips.id))
+      .where(eq(trips.authorId, userId))
+      .orderBy(desc(trips.createdAt));
+
+    res.json({ builds: rows });
+  } catch (err: any) {
+    console.error("[ready-made] builds error:", err);
+    res.status(500).json({ message: "Failed to load builds", error: err.message });
+  }
+});
+
+// ─── W-3/W-4: authored-build edit (title + destination) ──────────────────────
+// An authored build has no direct trips-PATCH surface (that path is traveler-owner-gated).
+// This edits the trip directly. W-4 (location-aware builds): `destination` joins `title` in the
+// allow-list — the location the expert sets drives what data loads (neighborhood grouping,
+// platform-services search, format resolution). Allow-list body — these two fields ONLY, never
+// raw req.body (the Gap-2 mass-assignment lesson, §10); at least one must be present. Owner
+// gate = getAuthoredTrip (explicit present-value author check, never getTripRole). The §12
+// launch gate does NOT apply here — it lives on ship-to-store; a listing's market is its own
+// field and is unaffected by a later build-destination edit. ROUTE ORDER: registered BEFORE
+// PATCH /api/expert/ready-made/:id so the literal "build" segment can't be captured by :id.
+const editBuildSchema = z.object({
+  title: z.string().trim().min(1).max(200).optional(),
+  destination: z.string().trim().min(1).max(100).optional(),
+}).strict().refine((d) => d.title !== undefined || d.destination !== undefined, {
+  message: "Provide title and/or destination",
+});
+
+router.patch("/api/expert/ready-made/build/:tripId", isAuthenticated, async (req, res) => {
+  try {
+    const userId = sessionUserId(req);
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+    // Owner gate: explicit present-value author check (never getTripRole).
+    const trip = await getAuthoredTrip(req.params.tripId, userId);
+    if (!trip) return res.status(403).json({ message: "Not this build's author" });
+
+    const parsed = editBuildSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ message: "Invalid input", errors: parsed.error.flatten() });
+    }
+
+    const [updated] = await db
+      .update(trips)
+      .set({
+        ...(parsed.data.title !== undefined ? { title: parsed.data.title } : {}),
+        ...(parsed.data.destination !== undefined ? { destination: parsed.data.destination } : {}),
+      } as any)
+      .where(eq(trips.id, trip.id))
+      .returning({ id: trips.id, title: trips.title, destination: trips.destination });
+
+    res.json({ trip: updated });
+  } catch (err: any) {
+    console.error("[ready-made] build edit error:", err);
+    res.status(500).json({ message: "Failed to edit build", error: err.message });
   }
 });
 
@@ -197,7 +347,8 @@ const heroMetaSchema = z.object({
 const patchListingSchema = z
   .object({
     title: z.string().trim().min(1).max(200),
-    market: z.string().trim().min(1).max(100),
+    market: z.string().trim().min(1).max(100)
+      .refine(isLaunchMarket, { message: STORE_GATE_MESSAGE }), // §12/F8 launch scope
     durationDays: z.number().int().min(1).max(30),
     // Closed vocabulary — the "Type of Plan" line of the store's quality structure.
     planType: z.enum(READY_MADE_PLAN_TYPE_KEYS as [ReadyMadePlanTypeKey, ...ReadyMadePlanTypeKey[]]).nullable(),
@@ -326,6 +477,10 @@ router.post("/api/expert/ready-made/:id/submit", isAuthenticated, async (req, re
     }
     if (listing.priceCents === null || listing.priceCents === undefined) {
       missing.push({ requirement: "price", message: "Set a price" });
+    }
+    // §12/F8: a grandfathered non-launch-market listing can't enter the store queue.
+    if (!isLaunchMarket(listing.market)) {
+      missing.push({ requirement: "market", message: STORE_GATE_MESSAGE });
     }
 
     // No empty days: the buyer is purchasing a complete plan, not a scaffold.
@@ -525,7 +680,7 @@ router.get("/api/expert/ready-made/hero-search", isAuthenticated, async (req, re
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
     const user = await storage.getUser(userId);
     if (!user || !AUTHOR_ROLES.has(user.role ?? "")) {
-      return res.status(403).json({ message: "Ready-made authoring requires a local expert or trip advisor role" });
+      return res.status(403).json({ message: STORE_GATE_MESSAGE });
     }
 
     if (!unsplashService.isReady()) {

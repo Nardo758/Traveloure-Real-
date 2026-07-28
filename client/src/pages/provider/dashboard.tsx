@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { ProviderLayout } from "@/components/provider/provider-layout";
+import { StatCard } from "@/components/backoffice/primitives";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -130,17 +131,14 @@ export default function ProviderDashboard() {
         {/* Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {stats.map((stat) => (
-            <Card key={stat.label} data-testid={`card-stat-${stat.label.toLowerCase().replace(/\s+/g, "-")}`}>
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-console-mid">{stat.label}</p>
-                    <p className="text-2xl font-bold text-console-darkest">{stat.value}</p>
-                  </div>
-                  <stat.icon className={`w-8 h-8 ${stat.color}`} />
-                </div>
-              </CardContent>
-            </Card>
+            <StatCard
+              key={stat.label}
+              testId={`card-stat-${stat.label.toLowerCase().replace(/\s+/g, "-")}`}
+              label={stat.label}
+              value={stat.value}
+              icon={stat.icon}
+              iconClassName={stat.color}
+            />
           ))}
         </div>
 

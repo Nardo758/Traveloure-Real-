@@ -25,7 +25,7 @@ interface OfferingRow {
   name: string;
   price: string | null;
   approval: string; // normalized: approved | submitted | draft | rejected | unknown
-  editHref: string;
+  editHref: string | null;
   publicHref: string | null; // only when approved (+published where applicable)
   nextAvailability: string | null; // ISO date, service lane only; null = no slots / not applicable
 }
@@ -55,7 +55,9 @@ export function MyOfferingsTable() {
 
   const services = useQuery<any[]>({ queryKey: ["/api/expert/services"] });
   const templates = useQuery<any[]>({ queryKey: ["/api/expert/templates"] });
-  const readyMade = useQuery<any[]>({ queryKey: ["/api/expert/ready-made/mine"] });
+  // /mine returns { listings: [...] } (ready-made.routes.ts), NOT a bare array — audit
+  // finding: the old Array.isArray guard silently emptied this lane forever.
+  const readyMade = useQuery<{ listings: any[] }>({ queryKey: ["/api/expert/ready-made/mine"] });
   // Backoffice C1: soonest future, not-fully-booked vendor_availability_slots row per
   // service id (service lane only — templates/Ready Made Trips have no slots).
   const nextAvailability = useQuery<Record<string, string>>({ queryKey: ["/api/me/next-availability"] });
@@ -86,12 +88,14 @@ export function MyOfferingsTable() {
         name: t.title ?? "Untitled template",
         price: t.price != null ? `$${Number(t.price).toFixed(0)}` : null,
         approval,
-        editHref: "/expert/templates",
+        // Seller surface retired (§10/§17 sunset) — existing templates stay readable/sellable
+        // but have no edit page; new store trips are built in the Workstation.
+        editHref: null,
         publicHref: approval === "approved" && t.isPublished ? `/expert-templates/${t.id}` : null,
         nextAvailability: null,
       };
     }),
-    ...(Array.isArray(readyMade.data) ? readyMade.data : []).map((r: any): OfferingRow => {
+    ...(readyMade.data?.listings ?? []).map((r: any): OfferingRow => {
       const approval = r.status ?? "unknown";
       return {
         id: r.id,
@@ -180,12 +184,14 @@ export function MyOfferingsTable() {
                     </td>
                     <td className="py-2.5">
                       <div className="flex items-center gap-1">
-                        <Link href={row.editHref}>
-                          <Button size="sm" variant="ghost" data-testid={`button-edit-${row.lane}-${row.id}`}>
-                            <Pencil className="w-3.5 h-3.5 mr-1" />
-                            Edit
-                          </Button>
-                        </Link>
+                        {row.editHref && (
+                          <Link href={row.editHref}>
+                            <Button size="sm" variant="ghost" data-testid={`button-edit-${row.lane}-${row.id}`}>
+                              <Pencil className="w-3.5 h-3.5 mr-1" />
+                              Edit
+                            </Button>
+                          </Link>
+                        )}
                         {row.publicHref && (
                           <Button size="sm" variant="ghost" onClick={() => share(row)} data-testid={`button-share-${row.lane}-${row.id}`}>
                             <Share2 className="w-3.5 h-3.5 mr-1" />

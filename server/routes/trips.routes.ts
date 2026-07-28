@@ -2893,11 +2893,16 @@ router.get("/itinerary-view/:token", async (req, res, next) => {
         `<meta name="twitter:image" content="${ogImage}" />`,
       ].join("\n    ");
 
-      // Read index.html and inject tags into <head>
+      // Read index.html and inject tags into <head>. ESM-safe resolution (no __dirname in the
+      // dev runtime — the ReferenceError silently killed injection via catch/next()); prod
+      // serves the BUILT template (hashed assets) whenever it exists.
       let template: string;
       const clientTemplateDev = path.resolve(process.cwd(), "client", "index.html");
-      const clientTemplateProd = path.resolve(__dirname, "public", "index.html");
-      const templatePath = fs.existsSync(clientTemplateDev) ? clientTemplateDev : clientTemplateProd;
+      const clientTemplateProd = path.resolve(process.cwd(), "dist", "public", "index.html");
+      const templatePath =
+        process.env.NODE_ENV === "production" && fs.existsSync(clientTemplateProd)
+          ? clientTemplateProd
+          : clientTemplateDev;
 
       if (!fs.existsSync(templatePath)) return next();
 

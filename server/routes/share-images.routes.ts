@@ -13,10 +13,15 @@
 import { Router } from "express";
 import { eq } from "drizzle-orm";
 import { db } from "../db";
-import { users } from "@shared/schema";
+import { readyMadeTrips, users } from "@shared/schema";
 import { storage } from "../storage";
 import { heavyReadRateLimiter } from "../infrastructure/rate-limiter";
-import { renderShareImage, type ServiceShareImageData, type ReviewShareImageData } from "../services/share-image.service";
+import {
+  renderShareImage,
+  type ServiceShareImageData,
+  type ReviewShareImageData,
+  type ReadyMadeShareImageData,
+} from "../services/share-image.service";
 
 const router = Router();
 
@@ -65,6 +70,42 @@ router.get("/api/share-image/service/:id.png", heavyReadRateLimiter, async (req,
     return sendPng(res, buf);
   } catch (error: any) {
     console.error("[share-images] service render failed:", error);
+    return res.status(500).json({ message: "Failed to render share image" });
+  }
+});
+
+// GET /api/share-image/ready-made/:id.png?format=feed|story
+router.get("/api/share-image/ready-made/:id.png", heavyReadRateLimiter, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const format = req.query.format === "story" ? "story" : "feed";
+
+    const [row] = await db
+      .select()
+      .from(readyMadeTrips)
+      .where(eq(readyMadeTrips.id, id))
+      .limit(1);
+    // F2/§10 read-gate: never render a card for a listing that isn't public yet.
+    if (!row || row.status !== "approved" || row.active !== true) {
+      return res.status(404).json({ message: "Trip not found" });
+    }
+
+    const { name: authorName, handle: authorHandle } = await loadOwnerNameAndHandle(row.authorId);
+
+    const data: ReadyMadeShareImageData = {
+      title: row.title,
+      market: row.market,
+      durationDays: row.durationDays,
+      priceCents: row.priceCents ?? null,
+      authorName,
+      authorHandle,
+      path: authorHandle ? `/p/${authorHandle}` : `/ready-made/${row.id}`,
+    };
+
+    const buf = await renderShareImage(format === "story" ? "ready-made-story" : "ready-made-feed", data);
+    return sendPng(res, buf);
+  } catch (error: any) {
+    console.error("[share-images] ready-made render failed:", error);
     return res.status(500).json({ message: "Failed to render share image" });
   }
 });

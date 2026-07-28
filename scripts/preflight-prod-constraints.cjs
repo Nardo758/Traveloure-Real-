@@ -90,6 +90,13 @@ const CONSTRAINT_MANIFEST = [
     fallback: "not_applicable", // new column born 'not_applicable' — no legacy rows can violate
     note: "migration 119 transport-provided disclosure",
   },
+  {
+    table: "ready_made_trips", column: "market", nullable: false,
+    allowed: ["Kyoto"],
+    remap: {},
+    fallback: null, // launch-scope field — never guess-map; a non-Kyoto row needs a decision, not a rewrite
+    note: "migration 149 F8 launch-market scope (§12 one-wedge-Kyoto); widen alongside shared/launch-markets.ts",
+  },
 ];
 
 const url = process.argv[2] || process.env.PREFLIGHT_DATABASE_URL || process.env.DATABASE_URL;

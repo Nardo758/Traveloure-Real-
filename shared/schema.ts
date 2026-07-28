@@ -642,6 +642,10 @@ export const providerServices = pgTable("provider_services", {
 
   // Expert 5-tier connection (FK managed at DB level by migration 057)
   expertOfferingTypeId: uuid("expert_offering_type_id"),
+  // Migration 148 (§17): the provider-side offering linkage — which /earn service_offering_types
+  // row this listing IS. Nullable; NULL = created before the offering-first form (identity never
+  // captured) — never fabricate a backfill.
+  serviceOfferingTypeId: uuid("service_offering_type_id"),
 
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
