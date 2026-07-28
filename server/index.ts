@@ -403,20 +403,27 @@ async function runDatabaseSeeding() {
     logger.error({ err }, "Failed to seed trip ownership collaborators");
   }
 
-  // E2E test accounts — seeded in non-production environments only.
-  // ENVIRONMENT=PROD is set in the shared env vars for the deployed app.
-  // This guard prevents known-password admin test accounts from being created
-  // in the live production database.
-  if (process.env.ENVIRONMENT !== "PROD") {
+  // E2E test accounts — FAIL-SAFE gate (dispatch P0 fix, Jul 28 2026).
+  // The old gate keyed on ENVIRONMENT === "PROD", an env var the deployed app
+  // did NOT actually carry — so production took the SEED branch and re-created
+  // the known-password admin account at every boot. Security gates must fail
+  // safe: seeding now requires being NON-production (NODE_ENV) OR an explicit
+  // ALLOW_TEST_ACCOUNTS=1 (set by the CI gates, which boot the production
+  // bundle against a throwaway DB and need these accounts). Anything else —
+  // including a deploy carrying no env vars at all — PURGES instead of seeding.
+  const allowTestAccounts =
+    (process.env.NODE_ENV !== "production" || process.env.ALLOW_TEST_ACCOUNTS === "1") &&
+    process.env.ENVIRONMENT !== "PROD";
+  if (allowTestAccounts) {
     try {
       await seedE2EAccounts();
-      logger.info("E2E test accounts ready (staging/dev)");
+      logger.info("E2E test accounts ready (dev/CI)");
     } catch (err) {
       logger.error({ err }, "Failed to seed E2E test accounts");
     }
   } else {
-    // PROD: purge any E2E test accounts that may have been manually seeded
-    // before this env-gate existed. Idempotent — no-op once already clean.
+    // Production (or anything not explicitly allowed): purge any test accounts
+    // present. Idempotent — no-op once clean.
     try {
       await purgeE2EAccountsFromProd();
     } catch (err) {
@@ -485,9 +492,18 @@ if (process.env.NODE_ENV === "production") {
   });
 
   // Set up frontend serving before error handlers.
-  // Production: static serving was already mounted before migrations (see pre-bind block
-  // above) so we skip it here to avoid double-mounting. Dev needs Vite dev server.
-  if (process.env.NODE_ENV !== "production") {
+  // Production: the pre-bind serveStatic catch-all now steps aside once routesReady
+  // flips (dispatch P1 fix, Jul 28 2026 — it was permanently swallowing every
+  // server-rendered route registered above: the /p/:handle, /services/:id and
+  // /ready-made/:id OG injections and the /r/:code short-link redirects — the
+  // entire Direct channel was structurally dead in prod). The REAL SPA fallback
+  // mounts HERE, after every server route, so those routes win first.
+  // Dev needs the Vite dev server.
+  if (process.env.NODE_ENV === "production") {
+    app.locals.routesReady = true;
+    const { mountSpaFallback } = await import("./static");
+    mountSpaFallback(app);
+  } else {
     const { setupVite } = await import("./vite");
     await setupVite(httpServer, app);
   }

@@ -1,24 +1,30 @@
 /**
- * Catalog — Backoffice Phase B3 (ratified v9 spec, module 4).
+ * Catalog — Backoffice Phase B3 (ratified v9 spec, module 4) + Console IA C2
+ * (§17 17→9 collapse; mockup-console-pages.html section 5, the Catalog frame).
  *
  * "Catalog — what I sell: services + builds + their distribution states, per-service
  * availability (closes the 'no slot UI for experts' hole). Absorbs: My Offerings, Store
- * Listings management."
+ * Listings management." §17: "Catalog = the storefront's management home."
  *
- * This page is the front door: the existing cross-lane MyOfferingsTable (services + itinerary
- * templates + Ready Made Trips, unmodified — it already aggregates the three owner-console
- * endpoints), a new Availability section wired to the Part 1 slot-CRUD endpoints
- * (server/routes/expert-console.routes.ts), and a quick-link card into the Store Listings
- * management page (which stays the dedicated Ready Made Trips console per the absorption note
- * — Catalog surfaces it, it doesn't replace it).
+ * C2 completed the absorption: the STOREFRONT HEADER at the top (the /p/:handle link,
+ * honest Live status derived from the same approval gates the public page enforces,
+ * Preview + Copy link, and the storefront caption share tool); the MyOfferingsTable now
+ * carries the real per-service actions (edit/pause/duplicate — lifted from the retired
+ * /expert/services page's wiring); and Share & Promote's offering-scoped creation half
+ * (per-row share kits + the Posting Opportunities card) moved in via the shared
+ * components/backoffice/share-tools.tsx. Both "My Offerings" (/expert/services) and
+ * "Share & Promote" (/expert/share-promote) now redirect here.
  */
 import { useState } from "react";
 import { Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useAuth } from "@/hooks/use-auth";
 import { ExpertLayout } from "@/components/expert/expert-layout";
 import { MyOfferingsTable } from "@/components/backoffice/my-offerings-table";
+import { PostingOpportunitiesCard, StorefrontShareTools, ensureShortLink } from "@/components/backoffice/share-tools";
 import { PageHeader, EmptyState, StatusBadge } from "@/components/backoffice/primitives";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -32,7 +38,7 @@ import {
 } from "@/components/ui/select";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { LayoutGrid, CalendarClock, Store, Trash2, Plus, ArrowRight } from "lucide-react";
+import { LayoutGrid, CalendarClock, Trash2, Plus, Copy, ExternalLink } from "lucide-react";
 
 interface MyService {
   id: string;
@@ -72,6 +78,128 @@ function formatSlotDate(dateStr: string): string {
   const d = new Date(`${dateStr}T00:00:00`);
   if (Number.isNaN(d.getTime())) return dateStr;
   return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", year: "numeric" });
+}
+
+// ─── Storefront header (C2 — mockup section 5) ──────────────────────────────
+
+/**
+ * The /p/:handle management header. Handle comes from the session-backed cached auth user
+ * (/api/auth/user — §14: never client-supplied); the Live count N is derived from the SAME
+ * three owner-console queries the offerings table already loads (react-query dedups the
+ * keys — no new endpoint), filtered by each lane's PUBLIC read-gate so the chip mirrors
+ * exactly what /p/:handle serves (storefront.routes.ts: services approved+active; templates
+ * approved+published; Ready Made status approved; 404 at zero — that IS "not live"). §13:
+ * no chip renders until the real counts are loaded.
+ */
+function StorefrontHeader() {
+  const { toast } = useToast();
+  const { user } = useAuth();
+  const handle = (user as any)?.handle as string | null | undefined;
+
+  const services = useQuery<any[]>({ queryKey: ["/api/expert/services"] });
+  const templates = useQuery<any[]>({ queryKey: ["/api/expert/templates"] });
+  const readyMade = useQuery<{ listings: any[] }>({ queryKey: ["/api/expert/ready-made/mine"] });
+  const countsLoaded = !services.isLoading && !templates.isLoading && !readyMade.isLoading;
+
+  const approvedCount =
+    (Array.isArray(services.data) ? services.data : []).filter(
+      (s: any) => s.approvalStatus === "approved" && s.status === "active",
+    ).length +
+    (Array.isArray(templates.data) ? templates.data : []).filter(
+      (t: any) => t.approvalStatus === "approved" && t.isPublished,
+    ).length +
+    (readyMade.data?.listings ?? []).filter((r: any) => r.status === "approved").length;
+
+  const isLive = !!handle && countsLoaded && approvedCount > 0;
+  const publicPath = handle ? `/p/${handle}` : null;
+  const publicUrl = publicPath ? `${window.location.origin}${publicPath}` : null;
+
+  async function copyLink() {
+    if (!publicUrl || !publicPath) return;
+    // Same tracked short-link rail the share tools use, full-URL fallback on any error.
+    const link = await ensureShortLink({ targetType: "storefront" }, publicPath);
+    await navigator.clipboard.writeText(link);
+    toast({ title: "Link copied", description: link });
+  }
+
+  return (
+    <Card className="border border-console-light" data-testid="card-storefront-header">
+      <CardContent className="p-4 space-y-4">
+        <div className="flex items-center gap-3 flex-wrap">
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold text-console-darkest">Your storefront</h2>
+            {handle ? (
+              <p
+                className="text-[12.5px] text-console-mid truncate"
+                style={{ fontFamily: "ui-monospace, Menlo, monospace" }}
+                data-testid="text-storefront-url"
+              >
+                {window.location.host}
+                {publicPath}
+              </p>
+            ) : (
+              <p className="text-sm text-console-mid" data-testid="text-storefront-no-handle">
+                No handle yet —{" "}
+                <Link href="/expert/settings">
+                  <span className="underline cursor-pointer font-medium" style={{ color: "#E85D55" }} data-testid="link-storefront-claim-handle">
+                    Claim your handle in Settings →
+                  </span>
+                </Link>
+              </p>
+            )}
+          </div>
+          {handle && (
+            countsLoaded ? (
+              isLive ? (
+                <Badge
+                  className="text-xs border bg-green-100 text-green-800 border-green-200"
+                  data-testid="badge-storefront-live"
+                >
+                  Live · {approvedCount} approved item{approvedCount === 1 ? "" : "s"}
+                </Badge>
+              ) : (
+                <Badge
+                  className="text-xs border bg-amber-100 text-amber-800 border-amber-200"
+                  data-testid="badge-storefront-not-live"
+                >
+                  Not live yet — approval pending
+                </Badge>
+              )
+            ) : (
+              <Skeleton className="h-5 w-32" />
+            )
+          )}
+          <span className="flex-1" />
+          {isLive && publicUrl && (
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => window.open(publicUrl, "_blank", "noopener,noreferrer")}
+                data-testid="button-storefront-preview"
+              >
+                <ExternalLink className="w-3.5 h-3.5 mr-1.5" />
+                Preview
+              </Button>
+              <Button size="sm" variant="outline" onClick={copyLink} data-testid="button-storefront-copy-link">
+                <Copy className="w-3.5 h-3.5 mr-1.5" />
+                Copy link
+              </Button>
+            </div>
+          )}
+        </div>
+
+        {/* C2: the storefront caption share tool (moved from Share & Promote) — only when the
+            page is actually live; promoting a 404 storefront would be a dead share (§13). */}
+        {isLive && handle && (
+          <div className="pt-3 border-t border-console-light">
+            <p className="text-xs font-medium text-console-mid mb-2">Share your storefront</p>
+            <StorefrontShareTools handle={handle} />
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
 }
 
 // ─── Availability section ────────────────────────────────────────────────────
@@ -286,35 +414,10 @@ function AvailabilitySection() {
   );
 }
 
-// ─── Store Listings quick block ──────────────────────────────────────────────
-
-function StoreListingsQuickBlock() {
-  return (
-    <section data-testid="section-catalog-store-listings">
-      <h2 className="text-sm font-semibold text-console-mid uppercase tracking-wide mb-2">
-        Store Listings
-      </h2>
-      <Link href="/expert/ready-made">
-        <Card className="border border-console-light hover:border-primary/40 transition-colors cursor-pointer" data-testid="card-catalog-store-listings">
-          <CardContent className="p-4 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="w-10 h-10 rounded-lg bg-console-bg flex items-center justify-center flex-shrink-0">
-                <Store className="w-5 h-5 text-console-darkest" />
-              </div>
-              <div className="min-w-0">
-                <p className="font-medium text-console-darkest">Store Listings</p>
-                <p className="text-xs text-console-mid">Manage your Ready Made Trips</p>
-              </div>
-            </div>
-            <ArrowRight className="w-4 h-4 text-console-mid flex-shrink-0" />
-          </CardContent>
-        </Card>
-      </Link>
-    </section>
-  );
-}
-
 // ─── Page ─────────────────────────────────────────────────────────────────
+// C2: the StoreListingsQuickBlock was REMOVED — it linked to /expert/ready-made, which the
+// C1 retirement turned into a redirect straight back to /expert/catalog (a navigation loop).
+// Ready Made rows in the offerings table now open their source build in the Workstation.
 
 export default function ExpertCatalog() {
   return (
@@ -325,14 +428,33 @@ export default function ExpertCatalog() {
           subtitle="Everything you sell, in one place"
           icon={LayoutGrid}
           testId="text-catalog-title"
+          actions={
+            // The retired /expert/services page's create entry, preserved (the /new + /:id/edit
+            // ServiceForm routes are untouched — only the list page redirects here).
+            <Link href="/expert/services/new">
+              <Button className="bg-primary" data-testid="button-catalog-new-service">
+                <Plus className="w-4 h-4 mr-2" /> New Service
+              </Button>
+            </Link>
+          }
         />
+
+        <StorefrontHeader />
 
         <section data-testid="section-catalog-offerings">
           <MyOfferingsTable />
         </section>
 
         <AvailabilitySection />
-        <StoreListingsQuickBlock />
+
+        {/* C2: Share & Promote's opportunity-scoped creation half (review share cards +
+            open-slot promos) — real rows only (§13). */}
+        <section data-testid="section-catalog-promote">
+          <h2 className="text-sm font-semibold text-console-mid uppercase tracking-wide mb-2">
+            Promote
+          </h2>
+          <PostingOpportunitiesCard />
+        </section>
       </div>
     </ExpertLayout>
   );
