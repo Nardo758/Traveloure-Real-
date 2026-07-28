@@ -5659,7 +5659,46 @@ router.get("/api/search/experiences", async (req, res) => {
       const apiKey = process.env.GOOGLE_MAPS_API_KEY;
       const results: any[] = [];
 
-      // ── Google Places Text Search ──
+      // ── Platform provider services FIRST (W-3 task 2: "one registry-backed search" —
+      //    platform inventory is the primary catalog; external places supplement it) ──
+      try {
+        // F2 public read-gate: approved+active listings only. (W-3 repair: this block used to call
+        // getProviderServices with a filter object in the USERID position, so it matched no rows and
+        // the platform arm of this search had always been empty — now reads the full catalog and
+        // applies the status + approval gates here.)
+        const platformProviders = (await storage.getAllProviderServices())
+          .filter((s: any) => s.status === "active" && s.approvalStatus === "approved");
+        const dest = (destination || "").toLowerCase();
+        const qLower = (q || "").toLowerCase();
+        const catLower = (category || "").toLowerCase();
+        for (const p of platformProviders) {
+          const nameMatch = p.serviceName?.toLowerCase().includes(qLower);
+          const catMatch = !catLower || catLower === "all" || p.serviceType?.toLowerCase().includes(catLower) || (p as any).category?.toLowerCase().includes(catLower);
+          const destMatch = !dest || p.location?.toLowerCase().includes(dest);
+          if ((nameMatch || destMatch) && catMatch) {
+            results.push({
+              id: `pl_${p.id}`,
+              source: "platform",
+              name: p.serviceName,
+              address: p.location || null,
+              category: p.serviceType || (p as any).category || "activity",
+              rating: null,
+              reviewCount: null,
+              priceLevel: null,
+              priceLabel: p.price ? `$${p.price}` : null,
+              location: null,
+              photoUrl: null,
+              mapsUrl: null,
+              // W-3 task 1: the stable provider_services linkage — the client passes this
+              // as providerServiceId into POST /api/trips/:tripId/itinerary-items so a
+              // build assembled from bookable inventory keeps the inventory link.
+              platformId: p.id,
+            });
+          }
+        }
+      } catch (_) {}
+
+      // ── Google Places Text Search (secondary — supplements the platform catalog) ──
       if (apiKey) {
         const catToType: Record<string, string> = {
           dining: "restaurant",
@@ -5707,39 +5746,6 @@ router.get("/api/search/experiences", async (req, res) => {
           }
         }
       }
-
-      // ── Platform providers (secondary) ──
-      try {
-        // F2 public read-gate: approved listings only (see the twin note in routes.ts — same pre-existing
-        // userId-position arg bug; the filter keeps the gate correct if that is ever repaired).
-        const platformProviders = (await storage.getProviderServices({ status: "active" } as any))
-          .filter((s: any) => s.approvalStatus === "approved");
-        const dest = (destination || "").toLowerCase();
-        const qLower = (q || "").toLowerCase();
-        const catLower = (category || "").toLowerCase();
-        for (const p of platformProviders) {
-          const nameMatch = p.serviceName?.toLowerCase().includes(qLower);
-          const catMatch = !catLower || catLower === "all" || p.serviceType?.toLowerCase().includes(catLower) || (p as any).category?.toLowerCase().includes(catLower);
-          const destMatch = !dest || p.location?.toLowerCase().includes(dest);
-          if ((nameMatch || destMatch) && catMatch) {
-            results.push({
-              id: `pl_${p.id}`,
-              source: "platform",
-              name: p.serviceName,
-              address: p.location || null,
-              category: p.serviceType || (p as any).category || "activity",
-              rating: null,
-              reviewCount: null,
-              priceLevel: null,
-              priceLabel: p.price ? `$${p.price}` : null,
-              location: null,
-              photoUrl: null,
-              mapsUrl: null,
-              platformId: p.id,
-            });
-          }
-        }
-      } catch (_) {}
 
       res.json({ results, count: results.length });
     } catch (error: any) {
