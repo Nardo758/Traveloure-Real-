@@ -4,11 +4,11 @@
  * /expert/dashboard              Main expert landing page
  * /expert/clients                Grouped client list (from assigned trips)
  * /expert/clients/:id            Individual client detail view
- * /expert/assigned-trips         Full list of all assigned trips
+ * /expert/assigned-trips         → redirects to /expert/inbox?tab=assignments (C5)
  * /expert/workspace/:tripId      Per-trip workspace: suggestions, AI, chat links
  * /expert/messages               → redirects to /chat (consolidated messaging)
  * /expert/messages/:clientId     Workspace entry from a client message thread
- * /expert/bookings               Booking management
+ * /expert/bookings               → redirects to /expert/inbox?tab=history (C5)
  * /expert/services               Expert service listings
  * /expert/services/new           Create service (form)
  * /expert/services/:id/edit      Edit service (form)
