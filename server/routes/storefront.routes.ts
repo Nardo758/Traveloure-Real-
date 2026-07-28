@@ -27,6 +27,17 @@ import { db } from "../db";
 import { users, providerServices, expertTemplates, readyMadeTrips, localExpertForms, serviceProviderForms } from "@shared/schema";
 import { EARNER_ROLES as CANONICAL_EARNER_ROLES, isEarnerRole, isProviderRole } from "@shared/roles";
 import { planTypeLabel } from "@shared/ready-made-plan-types";
+import { getViteDevServer } from "../vite-dev-server";
+
+// Dev-only: raw client/index.html has no @vitejs/plugin-react refresh preamble —
+// serving it as-is makes the SPA throw "can't detect preamble" and render blank.
+// Run the OG-injected template through vite.transformIndexHtml in dev; in prod the
+// BUILT template (hashed assets, preamble-free React) is served untransformed.
+async function finalizeOgTemplate(url: string, template: string): Promise<string> {
+  const vite = getViteDevServer();
+  if (!vite) return template;
+  return vite.transformIndexHtml(url, template);
+}
 
 const router = Router();
 
@@ -501,6 +512,7 @@ router.get("/p/:handle", async (req, res, next) => {
 
     let template = fs.readFileSync(templatePath, "utf-8");
     template = template.replace("<head>", `<head>\n    ${ogTags}`);
+    template = await finalizeOgTemplate(req.originalUrl, template);
     return res.status(200).set({ "Content-Type": "text/html" }).end(template);
   } catch (err) {
     console.error("[storefront] OG injection error:", err);
@@ -568,6 +580,7 @@ router.get("/services/:id", async (req, res, next) => {
 
     let template = fs.readFileSync(templatePath, "utf-8");
     template = template.replace("<head>", `<head>\n    ${ogTags}`);
+    template = await finalizeOgTemplate(req.originalUrl, template);
     return res.status(200).set({ "Content-Type": "text/html" }).end(template);
   } catch (err) {
     console.error("[storefront] OG injection error (service):", err);
@@ -641,6 +654,7 @@ router.get("/ready-made/:id", async (req, res, next) => {
 
     let template = fs.readFileSync(templatePath, "utf-8");
     template = template.replace("<head>", `<head>\n    ${ogTags}`);
+    template = await finalizeOgTemplate(req.originalUrl, template);
     return res.status(200).set({ "Content-Type": "text/html" }).end(template);
   } catch (err) {
     console.error("[storefront] OG injection error (ready-made):", err);
