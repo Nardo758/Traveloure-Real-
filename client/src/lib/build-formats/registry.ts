@@ -11,8 +11,9 @@
  * F2 adds the first real structures to the F1 skeleton: `client:kyoto-cultural` (grouping
  * "neighborhoods" — the city_neighborhoods walk), `client:kyoto-wedding` and `client:event`
  * (grouping "venue-timeline"). `client:default` (grouping "days") stays today's PlanCard
- * day-list, unchanged — zero regression for non-Kyoto / non-event builds. Later phases add
- * `social:*` (F3), `store:*` / `direct:*` (F4).
+ * day-list, unchanged — zero regression for non-Kyoto / non-event builds. F3 adds
+ * `social:default` → `social:story` (grouping "story-frames", the Distribute-panel social kit);
+ * `store:*` / `direct:*` land in F4.
  *
  * Vocabulary is NOT duplicated here: it resolves through the existing
  * `getTemplateConfig(eventType)` (client/src/components/plancard/plancard-types.tsx), which
@@ -145,6 +146,14 @@ const REGISTRY: Record<string, RegistryEntry> = {
   "client:wedding": CLIENT_EVENT,
   "client:proposal": CLIENT_EVENT,
   "client:corporate": CLIENT_EVENT,
+  // social:story — the F3 social kit (SocialKitCard: hero → highlight frames of real build
+  // items → CTA frame). Every social render resolves here in v1; type/market flavoring later.
+  "social:default": {
+    key: "social:story",
+    channel: "social",
+    grouping: "story-frames",
+    sections: [],
+  },
 };
 
 function norm(value: string | null | undefined): string | null {
