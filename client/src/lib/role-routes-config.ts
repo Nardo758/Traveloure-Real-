@@ -29,6 +29,7 @@ export const expertRoutesConfig: RoleRouteConfig[] = [
   // so the gate exercises the redirect AND the Today page it lands on.
   { href: '/expert/dashboard',          description: 'Retired dashboard -> redirects to Today' },
   { href: '/expert/today',              description: 'Today ops home (B5)' },
+  { href: '/expert/calendar',           description: 'Channel Calendar — 9th module (C3)' },
   { href: '/expert/inbox',              description: 'Inbox — one actionable queue (B2)' },
   { href: '/expert/catalog',            description: 'Catalog — offerings + availability slots (B3)' },
   // /expert/ready-made is kept deliberately (B5 dashboard pattern): it redirects to
