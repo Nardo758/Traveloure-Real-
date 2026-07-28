@@ -61,7 +61,12 @@ interface CrossSellStats {
   }>;
 }
 
-export default function ProviderAnalytics() {
+// Console IA C9 (§17 17→9 collapse): this page is hosted as Performance's Analytics tab
+// (provider performance.tsx lazy-mounts it with embedded — the expert C6 pattern). It has
+// no internal ?tab= reading, so no ?sub= param seam is needed; embedded only skips the
+// ProviderLayout wrap (a second wrap would nest two BackofficeShells/sidebars).
+// /provider/analytics redirects to /provider/performance?tab=analytics.
+export default function ProviderAnalytics({ embedded = false }: { embedded?: boolean } = {}) {
   const { data: analytics, isLoading } = useQuery<ProviderAnalytics>({
     queryKey: ["/api/provider/analytics/dashboard"],
   });
@@ -98,22 +103,21 @@ export default function ProviderAnalytics() {
   ];
 
   if (isLoading) {
-    return (
-      <ProviderLayout title="Analytics">
-        <div className="p-6 space-y-6">
-          <Skeleton className="h-10 w-48" />
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            {[...Array(4)].map((_, i) => (
-              <Skeleton key={i} className="h-32" />
-            ))}
-          </div>
+    const skeleton = (
+      <div className="p-6 space-y-6">
+        <Skeleton className="h-10 w-48" />
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          {[...Array(4)].map((_, i) => (
+            <Skeleton key={i} className="h-32" />
+          ))}
         </div>
-      </ProviderLayout>
+      </div>
     );
+    if (embedded) return skeleton;
+    return <ProviderLayout title="Analytics">{skeleton}</ProviderLayout>;
   }
 
-  return (
-    <ProviderLayout title="Analytics">
+  const content = (
       <div className="p-6 space-y-6">
         <div>
           <h1 className="text-3xl font-bold text-console-darkest">Analytics Dashboard</h1>
@@ -301,6 +305,9 @@ export default function ProviderAnalytics() {
         {/* Service Recommendations */}
         <ProviderServiceRecommendations />
       </div>
-    </ProviderLayout>
   );
+
+  // C9: embedded, the host Performance page already provides the ProviderLayout shell.
+  if (embedded) return content;
+  return <ProviderLayout title="Analytics">{content}</ProviderLayout>;
 }

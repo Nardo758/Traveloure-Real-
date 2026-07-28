@@ -6,7 +6,7 @@
  * 'direct' by column default, not because they were measured as direct acquisitions — the panel
  * always shows a caveat rather than presenting that default as a measured fact.
  *
- * Shared between /provider/earnings and /expert/money (C8 rename) — one component, both roles.
+ * Shared between /provider/money (C9 rename) and /expert/money (C8 rename) — one component, both roles.
  */
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
