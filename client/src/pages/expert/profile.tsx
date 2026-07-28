@@ -110,7 +110,9 @@ function ExpertOfferingTypesCard() {
             const price = formatCents(offering.base_price_cents);
             return (
               <div
-                key={offering.id}
+                // key on offering_type_key, not id — the list endpoint's rows don't carry
+                // an id field, so keying on it raised React's missing-key warning (P2-3).
+                key={offering.offering_type_key}
                 className="flex items-center justify-between gap-3 rounded-lg border p-3 bg-background"
                 data-testid={`row-offering-type-${offering.offering_type_key}`}
               >
