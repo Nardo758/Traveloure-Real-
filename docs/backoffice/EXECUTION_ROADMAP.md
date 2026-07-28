@@ -267,7 +267,16 @@ per PR. Three PR cycles:
   their real bookings/trips/threads) + sidebar entry. Seeds from Assigned Trips' by-client view
   (C1 fact) but does NOT yet retire that page (the Suggest flow still lives there → C5).
 
-### PR-Cb — the Inbox absorption + the folds that finish the collapse
+### PR-Cb — the Inbox absorption + the folds that finish the collapse ✅ LANDED (Jul 28, 2026)
+All four phases executed as mapped (each big file touched once; gates green at tsc-219 baseline every
+phase; one production-bundle boot proof — 401s on the self-scoped aggregates, SPA routes serving, and
+the P0 purge re-proven on this head). Deltas from the map, recorded: C5 also re-pointed
+/expert/clients(+/:id) to /expert/customers (the by-client home — semantically better than Inbox) and
+fixed a latent bookings.tsx bug by lifting onto the verified GET /api/expert/bookings shape (traveler
+names now render); C7 additionally carried the Factory-wire-B per-item "Create social post" prefill
+into the refine editor (the no-function-loss rule — it would otherwise have lost its only entry
+point); C8 kept Verification as Settings' default tab (Profile is first in ORDER only) and left the
+provider Stripe-reminder branch on /provider/earnings until C9.
 - **C5 Inbox, touched ONCE — agent (L):** absorbs the C1-enumerated uniques: booking HISTORY tab
   (confirmed/completed + stats), the visa-status dialog (PATCH /api/service-bookings/:id/visa-status),
   the plan-snapshot view, a recent-threads queue linking into /chat, and the assignment context; the

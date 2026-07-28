@@ -759,6 +759,33 @@ Governing spec: `docs/backoffice/mockups/mockup-unified-workspace.html` (v9). Lo
   C4 Customers → C5 Money rename + Settings/Profile merge → C6 provider nine-module stamp; the Product Builder
   is its own post-PR-C lane gated on the bundle ratifications. Open taste calls: Messages (folded into Inbox
   by default) and AI Assistant (kept as a utility row by default).
+  - **PR-Ca LANDED (#319, Jul 28, 2026):** Catalog completed (storefront header mirroring the /p/:handle
+    read-gates; Edit/Pause/Duplicate wired; Share&Promote's creation half via shared `share-tools.tsx`;
+    My Offerings + Share&Promote → Catalog redirects), the Channel Calendar (`GET /api/me/calendar`,
+    read-only 62-day aggregate, §14 session-scoped; coordination dates OMITTED — the §7 never-written
+    `dates` jsonb, §13), Customers (`GET /api/me/customers`, gross booked-value labeled NOT earnings),
+    and the C1 honest first cut (Store Listings retired; every kept entry's unique functions enumerated
+    in sidebar comments — the absorb-first/collapse-last discipline).
+  - **PR-Cb LANDED (Jul 28, 2026): the expert sidebar reaches the NINE.** C5: Inbox (touched once)
+    absorbed the Bookings uniques (history tab + stats, visa-status dialog, trip-plan snapshot — on the
+    VERIFIED `GET /api/expert/bookings` shape, fixing the old page's never-rendered traveler names) and
+    the Assigned Trips list+accept; its Messages tab is a real recent-threads queue over `GET /api/chats`
+    (the /chat endpoint) deep-linking `/chat?clientId=`; the traveler-approval Suggest flow moved to its
+    semantic home, the Workstation Distribute→Client card (assignment branch only). Retired:
+    /expert/bookings → Inbox history, /expert/assigned-trips → Inbox assignments, Messages entry
+    (/chat stays the thread home); /expert/clients(+/:id) → /expert/customers. C6: Performance hosts the
+    intact ~1100-line Analytics page as an embedded lazy tab — host owns `?tab=`, the embedded 9-tab
+    picker rides `?sub=` (param-collision seam); /expert/analytics, /expert/revenue-optimization,
+    /expert/leaderboard redirect in. C7: DmoPickerCore (the Workstation Add-panel DMO drawer) gained
+    review-and-refine (the exact `expert_dmo_edits` content/:id/edit → edits/:id/submit writes) AND the
+    Factory-wire-B per-item Create-social-post prefill (no-function-loss carry); /expert/dmo-library →
+    /expert/workspace; `sourced` stays expert-workspace-only. C8: Earnings renamed Money
+    (/expert/money; inbound links + notification/email strings re-pointed; provider branch stays
+    /provider/earnings until C9); Profile merged as Settings' FIRST tab (embedded seam, Verification
+    stays the default; `?tab=` deep-linking added). Retired routes stay listed in role-routes-config
+    (the gate exercises redirect + landing). Final sidebar: Today · Calendar · Inbox · Workstation |
+    Catalog · Content Studio · Customers · Performance · Money | AI Assistant · Settings — the NINE
+    modules + the two recorded-default extras. PR-Cc (C9 provider stamp) remains.
 
 The earning ledger is an escrow state machine: **`held → releasable → paid_out`**, plus **`reversed`**, with a
 `dispute_state`. All phases are **landed on `main`** (Jul 14, 2026):
