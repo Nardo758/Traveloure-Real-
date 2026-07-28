@@ -133,7 +133,6 @@ const ExpertSettings = lazy(() => import("@/pages/expert/settings"));
 const ExpertServiceForm = lazy(() => import("@/pages/expert/service-form"));
 const ProviderServiceForm = lazy(() => import("@/pages/provider/service-form"));
 const ExpertWorkspace = lazy(() => import("@/pages/expert/workspace"));
-const DmoLibrary = lazy(() => import("@/pages/expert/dmo-library"));
 const SharePromote = lazy(() => import("@/pages/backoffice/share-promote"));
 const CartPage = lazy(() => import("@/pages/cart"));
 const MyBookingsPage = lazy(() => import("@/pages/my-bookings"));
@@ -656,8 +655,14 @@ function Router() {
       <Route path="/expert/workspace">
         {() => <ProtectedRoute component={ExpertWorkspace} requiredRole="expert" />}
       </Route>
+      {/* Console IA C7 (§17 17→9 collapse): DMO Library retired into the Workstation — the
+          Add panel's DMO drawer (DmoPickerCore) now carries browse/add AND the
+          review-and-refine flow (expert_dmo_edits, same content/:id/edit → edits/:id/submit
+          write), resolving the C1 keep-reason. DMO content stays expert-workspace-only
+          (`sourced` origin) — never a traveler surface. The redirect keeps every existing
+          /expert/dmo-library navigation working (B5 dashboard pattern). */}
       <Route path="/expert/dmo-library">
-        {() => <ProtectedRoute component={DmoLibrary} requiredRole="expert" />}
+        <Redirect to="/expert/workspace" />
       </Route>
       {/* Console IA C2 (§17 17→9 collapse): expert Share & Promote retired into Catalog —
           the offering-scoped creation half (per-row share kits, posting opportunities,

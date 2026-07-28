@@ -1197,17 +1197,20 @@ export default function ExpertWorkspace() {
           </div>
         )}
 
-        {/* Quiet links (v9 :226-228): consolidation targets are struck from here, not re-linked. */}
-        <div style={{ display: "flex", flexWrap: "wrap", gap: 16, fontSize: 12, color: MID, borderTop: `1px solid ${LINE}`, paddingTop: 12, marginTop: 18 }}>
-          {[
-            ...(isEventPlanner ? [] : [{ label: "Store Listings", href: "/expert/ready-made", icon: Store }]),
-            { label: "DMO Library", href: "/expert/dmo-library", icon: Search },
-          ].map((l) => (
-            <button key={l.href} onClick={() => setLocation(l.href)} data-testid={`workspace-link-${l.label.toLowerCase().replace(/\s+/g, "-")}`} style={{ display: "flex", alignItems: "center", gap: 6, color: MID, background: "none", border: "none", cursor: "pointer", padding: 0, fontSize: 12 }}>
-              <l.icon style={{ width: 13, height: 13 }} /> {l.label}
-            </button>
-          ))}
-        </div>
+        {/* Quiet links (v9 :226-228): consolidation targets are struck from here, not re-linked.
+            C7: "DMO Library" struck — /expert/dmo-library now redirects here; the library lives
+            in the per-build Add panel's DMO drawer (browse/add + review-and-refine). */}
+        {!isEventPlanner && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 16, fontSize: 12, color: MID, borderTop: `1px solid ${LINE}`, paddingTop: 12, marginTop: 18 }}>
+            {[
+              { label: "Store Listings", href: "/expert/ready-made", icon: Store },
+            ].map((l) => (
+              <button key={l.href} onClick={() => setLocation(l.href)} data-testid={`workspace-link-${l.label.toLowerCase().replace(/\s+/g, "-")}`} style={{ display: "flex", alignItems: "center", gap: 6, color: MID, background: "none", border: "none", cursor: "pointer", padding: 0, fontSize: 12 }}>
+                <l.icon style={{ width: 13, height: 13 }} /> {l.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
       </ExpertLayout>
     );

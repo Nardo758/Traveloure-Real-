@@ -23,7 +23,6 @@ import {
   Palette,
   Settings,
   PenSquare,
-  Library,
   Inbox,
   LayoutGrid,
   TrendingUp,
@@ -83,10 +82,10 @@ function buildMenuGroups(expertType?: string | null) {
         // Content Studio, a real creation surface (AI content, Instagram, guides) nothing else
         // covers. Its Workstation fold (mockup section 0) pends a later phase.
         { title: isEventPlanner ? "Promo Content" : isLocalExpert ? "Local Guides" : "Content Studio", href: "/expert/content-studio", icon: Palette },
-        // C1: KEPT — the Workstation Add panel's DMO pill (DmoPickerCore) is browse/add only;
-        // the review-and-refine flow (expert_dmo_edits) lives only on dmo-library.tsx. Fold
-        // pends the Add-panel drawer gaining refine.
-        { title: "DMO Library", href: "/expert/dmo-library", icon: Library },
+        // Console IA C7: "DMO Library" entry RETIRED — the C1 keep-reason is resolved: the
+        // Workstation Add panel's DMO drawer (DmoPickerCore) now carries the review-and-refine
+        // flow (expert_dmo_edits) alongside browse/add, so the library's one home is the
+        // Add panel. /expert/dmo-library redirects to /expert/workspace.
         // Console IA C2: "Share & Promote" entry RETIRED — the C1 keep-reason is resolved:
         // the offering/storefront-scoped creation half (per-row share kits, posting
         // opportunities, storefront caption) moved onto Catalog via the shared
