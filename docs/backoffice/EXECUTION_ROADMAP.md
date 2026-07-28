@@ -302,3 +302,22 @@ Kyoto-gated); the build PATCH allow-list gains `destination`; the builder destin
 editable for authored builds (assignment trips stay read-only — the destination belongs to the
 traveler); "New build" gains a destination input. Everything downstream recomputes on context
 invalidation because the reads are derived, not stored client-side.
+
+### Replit prod dispatch — final verdict (Jul 28, 2026, browser-verified with screenshots)
+All dispatch sections PASS: §0 deploy freshness (post-republish), §1 single "New build" lane,
+§2 location-aware create, §3 builder conformance (3-tab panel Add·AI Gaps·Distribute, warm
+`--console-brand` ≈ #E85D55, no #FF385C, no "FOR SALE" badge, build-first Store copy), §4 Kyoto
+gate + idempotency, §5 KyotoCulturalView neighborhood grouping ("Elsewhere in Kyoto" honest
+bucket, Day-list fallback tab), §6 social-kit honesty (zero-item placeholder → real frames with
+the real item name; CTA frame shows the honest no-link state), §8 book-via-agent + expert inbox.
+The two P-findings (P0 test-account seeding, P1 static catch-all killing the Direct channel)
+were fixed in PR #319 and are live post-republish — the §7 "OG dead in prod" table line is the
+PRE-fix state (task #954 = the P1 fix); re-check is a one-liner curl for og:title.
+**Filed from the verdict (not built):**
+- **Workstation inline event-type picker** — format resolution works off `trips.eventType`, but
+  the builder exposes no way to see/change it, so format-switching (cultural ↔ venue-timeline)
+  is opaque for authored builds; venue-timeline was untestable via UI. Shape: surface the type
+  on the build header chip row; editable for AUTHORED builds only (assignment trips' type
+  belongs to the traveler — the W-4 destination rule); PATCH allow-list gains `eventType`.
+- **Social frame palette design pass** — story-frame thumbnails render very dark (near-black
+  gradients); legible but below visual bar. Design-taste lane, not correctness (§13 holds).
