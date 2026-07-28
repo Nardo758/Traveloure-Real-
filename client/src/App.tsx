@@ -358,6 +358,11 @@ function Router() {
       <Route path="/bookings">
         {() => <ProtectedRoute component={MyBookingsPage} />}
       </Route>
+      {/* Alias — the page file/docs call this "my-bookings" and links have used both forms;
+          /my-bookings previously client-404'd (dispatch P2-2). */}
+      <Route path="/my-bookings">
+        <Redirect to="/bookings" />
+      </Route>
       <Route path="/my-events">
         {() => <ProtectedRoute component={MyEventsPage} />}
       </Route>
