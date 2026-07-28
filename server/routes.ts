@@ -4272,6 +4272,42 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         });
       }
       const updated = await storage.updateServiceBookingStatus(req.params.id, status, reason);
+
+      // E1: trip-share bridge. When an EXPERT accepts a booking that carries a
+      // tripId (routes.ts /api/expert-booking-requests stores it on the
+      // service_bookings.tripId column), create-or-reuse the trip_expert_advisors
+      // row linking that trip to the accepting expert so the shared trip appears
+      // in their Workstation. Session-verified acting expert (booking.providerId
+      // === userId, checked above) — never from body (§14). Idempotent (§15): the
+      // table has a UNIQUE(tripId, localExpertId) index, so an existing row (any
+      // status) is reused rather than re-inserted; a pending row is atomically
+      // flipped to accepted. Accept-only — decline/other statuses never reach here.
+      if (status === "confirmed" && booking.tripId) {
+        try {
+          const [ownerRow] = await db
+            .select({ role: users.role })
+            .from(users)
+            .where(eq(users.id, userId))
+            .limit(1);
+          if (isExpertRole(ownerRow?.role)) {
+            const existing = await storage.getTripExpertAdvisoryAssignment(booking.tripId, userId);
+            if (!existing) {
+              await storage.createTripExpertAdvisor({
+                tripId: booking.tripId,
+                localExpertId: userId,
+                status: "accepted",
+              });
+            } else if (existing.status === "pending") {
+              await storage.acceptTripAssignment(existing.id, userId);
+            }
+            // Any other existing status (already accepted, rejected) is left as-is.
+          }
+        } catch (bridgeErr) {
+          // Non-fatal: the booking accept itself must still succeed.
+          console.error("Failed to bridge booking accept to trip_expert_advisors:", bridgeErr);
+        }
+      }
+
       res.json(updated);
     } catch (err) {
       res.status(500).json({ message: "Failed to update booking status" });
