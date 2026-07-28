@@ -18,7 +18,6 @@ import {
   Bot,
   MessageSquare,
   Calendar,
-  Briefcase,
   DollarSign,
   BarChart3,
   User,
@@ -28,7 +27,6 @@ import {
   MapPin,
   PenSquare,
   Library,
-  Share2,
   Inbox,
   LayoutGrid,
   TrendingUp,
@@ -71,10 +69,12 @@ function buildMenuGroups(expertType?: string | null) {
         // Console IA C1: "Store Listings" entry RETIRED — /expert/ready-made now redirects to
         // /expert/catalog (list + approval status live in the MyOfferingsTable ready_made lane;
         // editing lives on the build in the Workstation Distribute panel; creation is
-        // ship-to-store from a build). "My Offerings" is KEPT: Catalog's table has no
-        // per-service edit link, pause/activate, or duplicate — those live only on
-        // /expert/services; its fold is a later C-phase item once Catalog absorbs them.
-        { title: "My Offerings", href: "/expert/services", icon: Briefcase },
+        // ship-to-store from a build).
+        // Console IA C2: "My Offerings" entry RETIRED — the C1 keep-reason is resolved:
+        // Catalog's table now carries the per-service edit (/expert/services/:id/edit),
+        // pause/activate, and duplicate actions, and Catalog's header carries the create
+        // entry; /expert/services redirects to /expert/catalog (the ServiceForm /new and
+        // /:id/edit routes are untouched).
         // C1: KEPT — "Local Guides" is not a page; it is this entry's local-expert label for
         // Content Studio, a real creation surface (AI content, Instagram, guides) nothing else
         // covers. Its Workstation fold (mockup section 0) pends a later phase.
@@ -83,10 +83,12 @@ function buildMenuGroups(expertType?: string | null) {
         // the review-and-refine flow (expert_dmo_edits) lives only on dmo-library.tsx. Fold
         // pends the Add-panel drawer gaining refine.
         { title: "DMO Library", href: "/expert/dmo-library", icon: Library },
-        // C1: KEPT — Performance absorbs only the MEASUREMENT half (link/attribution panels);
-        // the creation half here is offering/storefront-scoped (per-service share images,
-        // review cards, storefront captions), which the per-build Distribute panel doesn't cover.
-        { title: "Share & Promote", href: "/expert/share-promote", icon: Share2 },
+        // Console IA C2: "Share & Promote" entry RETIRED — the C1 keep-reason is resolved:
+        // the offering/storefront-scoped creation half (per-row share kits, posting
+        // opportunities, storefront caption) moved onto Catalog via the shared
+        // components/backoffice/share-tools.tsx; Performance already carries the measurement
+        // half; /expert/share-promote redirects to /expert/catalog. The provider console keeps
+        // its own /provider/share-promote page until the C9 nine-module stamp.
         // Performance (Backoffice B4): "which channel earns" — absorbs Share & Promote's
         // measurement half (EarningsBySourcePanel + LinkAnalyticsPanel) + per-offering
         // performance, one place before the broader Analytics page.
