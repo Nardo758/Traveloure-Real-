@@ -12,8 +12,15 @@
  * "neighborhoods" — the city_neighborhoods walk), `client:kyoto-wedding` and `client:event`
  * (grouping "venue-timeline"). `client:default` (grouping "days") stays today's PlanCard
  * day-list, unchanged — zero regression for non-Kyoto / non-event builds. F3 adds
- * `social:default` → `social:story` (grouping "story-frames", the Distribute-panel social kit);
- * `store:*` / `direct:*` land in F4.
+ * `social:default` → `social:story` (grouping "story-frames", the Distribute-panel social kit).
+ * F4 adds the store family mirroring the client family — `store:kyoto-cultural` (leads with a
+ * neighborhood strip), `store:kyoto-wedding` (leads with the venue hero), `store:default` (the
+ * current Ready Made detail page, zero regression — the terminal store fallback) — plus
+ * `direct:default` (grouping "link-preview": the OG/link-preview format; the actual OG tags are
+ * injected server-side by storefront.routes.ts's /ready-made/:id interception, extending the
+ * existing /p/:handle pattern). Store entries' `layout` records
+ * `{ surface: "ready-made-detail", lead: "map-strip" | "venue-hero" | "standard" }` — the store
+ * detail page branches its LEAD section only; the §10 teaser gate is untouched.
  *
  * Vocabulary is NOT duplicated here: it resolves through the existing
  * `getTemplateConfig(eventType)` (client/src/components/plancard/plancard-types.tsx), which
@@ -121,10 +128,35 @@ const CLIENT_EVENT: RegistryEntry = {
 };
 
 /**
+ * store:* — the Ready Made Trip product page (F4). Entries mirror the client family; the store
+ * detail is TEASER-GATED (§10) so it never renders itinerary sections — the section lists are
+ * carried as structural metadata for parity with the client twin, and the page consumes only
+ * `layout.lead` to re-lead itself. `lead: "map-strip"` = a neighborhood strip band (real
+ * city_neighborhoods names — no fabricated pins); `lead: "venue-hero"` = the mockup's venue-led
+ * hero (title + market + facts row of REAL DTO fields only, §13); `lead: "standard"` = the
+ * current page, unchanged.
+ */
+const STORE_KYOTO_CULTURAL: RegistryEntry = {
+  key: "store:kyoto-cultural",
+  channel: "store",
+  grouping: "neighborhoods",
+  sections: KYOTO_CULTURAL_SECTIONS,
+  layout: { surface: "ready-made-detail", lead: "map-strip" },
+};
+
+const STORE_KYOTO_WEDDING: RegistryEntry = {
+  key: "store:kyoto-wedding",
+  channel: "store",
+  grouping: "venue-timeline",
+  sections: VENUE_TIMELINE_SECTIONS,
+  layout: { surface: "ready-made-detail", lead: "venue-hero" },
+};
+
+/**
  * Registry: `client:default` is today's PlanCard day-list (zero regression by construction);
  * the F2 Kyoto/event entries are aliased under every candidate key resolveFormat can emit for
  * them (keys are lowercase-normalized; market keys use the city segment before any comma).
- * Other channel defaults are added when their surfaces start consuming the registry (F3–F4).
+ * All four channels register a default now (social F3, store/direct F4).
  */
 const REGISTRY: Record<string, RegistryEntry> = {
   "client:default": {
@@ -154,6 +186,33 @@ const REGISTRY: Record<string, RegistryEntry> = {
     grouping: "story-frames",
     sections: [],
   },
+  // store:kyoto-cultural — a Kyoto travel listing, and the Kyoto market default (a Kyoto
+  // listing with a null/other non-event type resolves here via the (channel, market) fallback).
+  "store:travel:kyoto": STORE_KYOTO_CULTURAL,
+  "store:kyoto": STORE_KYOTO_CULTURAL,
+  // store:kyoto-wedding — Kyoto event listings (wedding family), mirroring the client keys.
+  "store:wedding:kyoto": STORE_KYOTO_WEDDING,
+  "store:proposal:kyoto": STORE_KYOTO_WEDDING,
+  "store:honeymoon:kyoto": STORE_KYOTO_WEDDING,
+  // store:default — the CURRENT Ready Made detail layout (zero regression by construction);
+  // the terminal fallback for every store render that misses the Kyoto entries.
+  "store:default": {
+    key: "store:default",
+    channel: "store",
+    grouping: "days",
+    sections: [],
+    layout: { surface: "ready-made-detail", lead: "standard" },
+  },
+  // direct:default — the link-preview format (WhatsApp shares + trackable booking short-links).
+  // The rendering itself is the server-side OG injection (storefront.routes.ts /ready-made/:id,
+  // extending the /p/:handle pattern); this entry records the channel's structure so every
+  // direct render resolves to a real format instead of leaking to client:default.
+  "direct:default": {
+    key: "direct:default",
+    channel: "direct",
+    grouping: "link-preview",
+    sections: [],
+  },
 };
 
 function norm(value: string | null | undefined): string | null {
@@ -178,9 +237,9 @@ function normMarket(value: string | null | undefined): string | null {
  * Fallback chain: (channel, type, market) → (channel, type) → (channel, market) → channel
  * default. Channel is never null — every rendering surface knows which channel it is. Market
  * matching normalizes case/whitespace and keys on the city segment (normMarket — the same
- * vocabulary posture as LAUNCH_MARKETS, §12). Any lookup that misses every candidate resolves
- * to the channel default (today `client:default` — the terminal fallback for every channel
- * until the other channel defaults land with their consuming surfaces, F3–F4).
+ * vocabulary posture as LAUNCH_MARKETS, §12). Every channel now registers its own default
+ * (client/social F1–F3, store/direct F4); `client:default` remains the belt-and-suspenders
+ * terminal fallback that can no longer be reached through a registered channel.
  */
 export function resolveFormat(
   channel: Channel,
@@ -204,8 +263,8 @@ export function resolveFormat(
       break;
     }
   }
-  // client:default is the terminal fallback for every channel until the other channel
-  // defaults land with their consuming surfaces (F3–F4).
+  // Unreachable for registered channels (each has a `<channel>:default` row); kept as the
+  // belt-and-suspenders terminal fallback.
   if (!entry) entry = REGISTRY["client:default"];
 
   return { ...entry, vocabulary: getTemplateConfig(experienceType) };
