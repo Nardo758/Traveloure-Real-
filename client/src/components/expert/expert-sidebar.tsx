@@ -18,6 +18,7 @@ import {
   Bot,
   MessageSquare,
   Calendar,
+  CalendarDays,
   DollarSign,
   BarChart3,
   User,
@@ -45,6 +46,9 @@ function buildMenuGroups(expertType?: string | null) {
         // ON Assigned Trips. "Messages" points straight at /chat (the /expert/messages routes were
         // already bare redirects). "Verification & Payouts" and "Booking Partners" removed below.
         { title: "Today", href: "/expert/today", icon: Home },
+        // Channel Calendar — the ratified 9th module (Console IA PR-Ca C3, §17): one
+        // channel-filtered timeline; every event links out to its owning module.
+        { title: "Calendar", href: "/expert/calendar", icon: CalendarDays },
         { title: "Inbox", href: "/expert/inbox", icon: Inbox },
         // Console IA C1 (§17 17→9): Bookings + Assigned Trips are KEPT for now — Inbox covers
         // only the actionable queues (pending accept/decline, invites, disputes). Bookings still

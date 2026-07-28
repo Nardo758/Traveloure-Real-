@@ -37,6 +37,7 @@ const NotFound = lazy(() => import("@/pages/not-found"));
 const SignupPage = lazy(() => import("@/pages/Signup").then((m) => ({ default: m.SignupPage })));
 const BookingConfirmationPage = lazy(() => import("@/pages/BookingConfirmationPage"));
 const ExpertToday = lazy(() => import("@/pages/expert/today"));
+const ExpertCalendar = lazy(() => import("@/pages/expert/calendar"));
 const ExpertEarnings = lazy(() => import("@/pages/expert/earnings"));
 const ExpertProfile = lazy(() => import("@/pages/expert/profile"));
 const ExpertAIAssistant = lazy(() => import("@/pages/expert/ai-assistant"));
@@ -529,6 +530,12 @@ function Router() {
       </Route>
       <Route path="/expert/today">
         {() => <ProtectedRoute component={ExpertToday} requiredRole="expert" />}
+      </Route>
+      {/* Channel Calendar — the console's 9th module (Console IA PR-Ca C3, §17): one
+          channel-filtered month view over GET /api/me/calendar; events link to their
+          owning module (Inbox / Workstation / Catalog), never re-rendered here. */}
+      <Route path="/expert/calendar">
+        {() => <ProtectedRoute component={ExpertCalendar} requiredRole="expert" />}
       </Route>
       {/* /expert/ai-assistant is role-specific AI task delegation (auto-draft, vendor research,
           quality scoring) — distinct from /chat (human messaging). Keep separate. */}
