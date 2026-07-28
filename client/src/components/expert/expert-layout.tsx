@@ -16,10 +16,10 @@
  * /expert/service-wizard         Guided service creation wizard
  * /expert/service-listings       Provider service-listing management
  * /expert/earnings               Earnings + Stripe Connect payout
- * /expert/performance            Performance metrics
- * /expert/revenue-optimization   Revenue optimization dashboard
- * /expert/leaderboard            Expert leaderboard
- * /expert/analytics              Business analytics
+ * /expert/performance            Performance metrics + hosted Analytics tab (C6)
+ * /expert/revenue-optimization   → redirects to /expert/performance?tab=analytics&sub=revenue-optimization (C6)
+ * /expert/leaderboard            → redirects to /expert/performance?tab=analytics&sub=leaderboard (C6)
+ * /expert/analytics              → redirects to /expert/performance?tab=analytics (C6)
  * /expert/templates              Message/response templates
  * /expert/content-studio         Content creation studio
  * /expert/content-studio/:type   Specific content type creator
