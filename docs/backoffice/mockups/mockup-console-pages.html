@@ -214,6 +214,62 @@
     </div>
   </div>
 
+  <!-- ── 3b · Provider Workstation ────────────────────────────── -->
+  <h2>3b · <span class="modtag new">Provider Workstation</span> — the Product Builder</h2>
+  <p class="sub">A provider is a merchant, not a list of services. Their Workstation composes PRODUCTS:
+  a <b>bundle</b> (a B&amp;B packaging room + breakfast + tour as one priced product), a <b>single tour</b>
+  (today's service), or a <b>property</b> (accommodation with photos, per-night pricing, availability).
+  Same build-first spine, same Distribute panel, same formats — different product shapes.</p>
+
+  <div class="frame">
+    <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      <span class="urlbar">traveloure.com/provider/workspace · New product → Bundle</span></div>
+    <div class="screen">
+      <div class="grid2">
+        <div class="panel">
+          <h4>Compose — from My services</h4>
+          <div class="mrow"><span class="pill p-mut">Stay</span> Machiya guesthouse room <span class="right">3 nights</span></div>
+          <div class="mrow"><span class="pill p-ok">Included</span> Daily breakfast <span class="right">×4 days</span></div>
+          <div class="mrow"><span class="pill p-brand">Experience</span> Sunrise boat tour <span class="right">day 2</span></div>
+          <div class="mrow"><span class="pill p-brand">Experience</span> Guided temple walk <span class="right">day 3</span></div>
+          <div class="mrow quiet">+ Add from My services · Partner inventory</div>
+        </div>
+        <div class="panel">
+          <h4>Product</h4>
+          <div class="mrow"><b>Kyoto Riverside Escape</b> <span class="pill p-info">Bundle</span></div>
+          <div class="mrow">3 nights · 4 days <span class="right">one price: $620</span></div>
+          <div class="mrow quiet">Inclusions row derives from the REAL components above —
+            Stay · Daily Breakfast · Private Tours · Sightseeing. Nothing typed in by hand (§13).</div>
+          <div class="mrow"><span class="btn">Distribute</span> <span class="quiet">storefront · store · social · direct</span></div>
+        </div>
+      </div>
+
+      <h4 style="font-size:11px; text-transform:uppercase; letter-spacing:0.09em; color:var(--ash); margin:14px 0 7px;">
+        Distribute → Social output (the ad, generated from the product)</h4>
+      <div style="max-width:270px; aspect-ratio:4/5; border-radius:12px; overflow:hidden; position:relative;
+        background:linear-gradient(180deg, var(--info) 0%, var(--ink) 100%); color:#fff; padding:14px; box-sizing:border-box;
+        display:flex; flex-direction:column; justify-content:flex-end;">
+        <div style="font-size:10px; letter-spacing:0.12em; text-transform:uppercase; opacity:0.85;">Kyoto · Kenji's Guesthouse</div>
+        <div style="font-size:22px; font-weight:800; line-height:1.1; margin:2px 0 8px;">Riverside Escape</div>
+        <div style="display:flex; gap:6px; margin-bottom:8px;">
+          <span style="background:rgba(255,255,255,0.18); border-radius:999px; padding:3px 9px; font-size:10.5px;">🌙 3 nights · 4 days</span>
+          <span style="background:rgba(255,255,255,0.18); border-radius:999px; padding:3px 9px; font-size:10.5px; font-weight:700;">$620</span>
+        </div>
+        <div style="display:flex; gap:0; border:1px solid rgba(255,255,255,0.35); border-radius:9px; font-size:8.5px; text-align:center; overflow:hidden;">
+          <span style="flex:1; padding:6px 2px; border-right:1px solid rgba(255,255,255,0.35);">STAY</span>
+          <span style="flex:1; padding:6px 2px; border-right:1px solid rgba(255,255,255,0.35);">BREAKFAST</span>
+          <span style="flex:1; padding:6px 2px; border-right:1px solid rgba(255,255,255,0.35);">PRIVATE TOURS</span>
+          <span style="flex:1; padding:6px 2px;">SIGHTSEEING</span>
+        </div>
+        <div style="font-size:9.5px; opacity:0.8; margin-top:8px;">traveloure.com/p/kenji → book direct</div>
+      </div>
+      <div class="spec-note"><b>The inclusions row is the components list, restyled.</b> The social kit renders this
+      from the bundle's real parts — the same F3 caption/share-image engines, with new <code>social:package</code> /
+      <code>store:package</code> registry entries. Property products render the Airbnb-shaped variant: photo hero,
+      per-night price, availability calendar (the Catalog slots), landing on the existing offering page.</div>
+    </div>
+  </div>
+
   <!-- ── 4 · Inbox ────────────────────────────────────────────── -->
   <h2>4 · <span class="modtag">Inbox</span> — absorbs Bookings, Assigned Trips, Messages</h2>
   <div class="frame">
@@ -329,8 +385,18 @@
       that feeds the Calendar.</p></div>
     <div class="dec"><b>Customers is honest aggregation.</b><p>Derived from this earner's real bookings/purchases/
       trips; self-scoped; no invented CRM fields without ratification.</p></div>
+    <div class="dec"><b>Provider = nine modules too — Workstation is the Product Builder.</b><p>Corrected from
+      "provider minus Workstation": providers compose PRODUCTS — bundles (own services packaged with one price),
+      single tours, properties (accommodation + photos + per-night pricing + availability). Same build-first/
+      distribute-later spine; the social kit renders the package ad from real components.</p></div>
+    <div class="dec"><b>Bundle product type needs schema ratification before build.</b><p>provider_services stays
+      canonical (no new service table — the FAQ prohibition); a bundle is a provider_services row whose COMPONENT
+      linkage (join rows or jsonb) is a decision-maker schema call. Booking a bundle = ONE server-derived price
+      from the stored product (§14), one booking row, component fulfillment behind it — the money design gets its
+      own brief before any code.</p></div>
     <div class="dec"><b>Build order (PR-C).</b><p>C1 sidebar collapse + redirects (deletion-first, cheapest) →
       C2 Catalog storefront header + availability move → C3 Calendar (read-only aggregate first, slot-editing links
-      out) → C4 Customers → C5 Money rename + Settings/Profile merge. Provider console inherits the same nine.</p></div>
+      out) → C4 Customers → C5 Money rename + Settings/Profile merge → C6 provider 9-module stamp. The provider
+      Product Builder (bundles/properties) is its OWN lane after PR-C, gated on the bundle schema ratification.</p></div>
   </div>
 </div>
