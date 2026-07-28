@@ -27,6 +27,7 @@ import { db } from "../db";
 import { users, providerServices, expertTemplates, readyMadeTrips, localExpertForms, serviceProviderForms } from "@shared/schema";
 import { EARNER_ROLES as CANONICAL_EARNER_ROLES, isEarnerRole, isProviderRole } from "@shared/roles";
 import { planTypeLabel } from "@shared/ready-made-plan-types";
+import { transformDevHtml } from "../vite-dev-html";
 
 const router = Router();
 
@@ -500,7 +501,15 @@ router.get("/p/:handle", async (req, res, next) => {
     if (!fs.existsSync(templatePath)) return next();
 
     let template = fs.readFileSync(templatePath, "utf-8");
+    // Strip the template's own static og:title/og:description before injecting ours —
+    // otherwise crawlers see duplicate tags (the injected pair still wins on order, but
+    // duplicates are sloppy). Only sites that inject their own tags run this.
+    template = template.replace(/<meta property="og:(title|description)"[^>]*>\s*/g, "");
     template = template.replace("<head>", `<head>\n    ${ogTags}`);
+    // Dev-only: run the raw index.html through Vite's transform so the React-refresh
+    // preamble/client injections are present (prod never registers a transformer, so this
+    // is a no-op pass-through there).
+    template = await transformDevHtml(req.originalUrl, template);
     return res.status(200).set({ "Content-Type": "text/html" }).end(template);
   } catch (err) {
     console.error("[storefront] OG injection error:", err);
@@ -567,7 +576,15 @@ router.get("/services/:id", async (req, res, next) => {
     if (!fs.existsSync(templatePath)) return next();
 
     let template = fs.readFileSync(templatePath, "utf-8");
+    // Strip the template's own static og:title/og:description before injecting ours —
+    // otherwise crawlers see duplicate tags (the injected pair still wins on order, but
+    // duplicates are sloppy). Only sites that inject their own tags run this.
+    template = template.replace(/<meta property="og:(title|description)"[^>]*>\s*/g, "");
     template = template.replace("<head>", `<head>\n    ${ogTags}`);
+    // Dev-only: run the raw index.html through Vite's transform so the React-refresh
+    // preamble/client injections are present (prod never registers a transformer, so this
+    // is a no-op pass-through there).
+    template = await transformDevHtml(req.originalUrl, template);
     return res.status(200).set({ "Content-Type": "text/html" }).end(template);
   } catch (err) {
     console.error("[storefront] OG injection error (service):", err);
@@ -640,7 +657,15 @@ router.get("/ready-made/:id", async (req, res, next) => {
     if (!fs.existsSync(templatePath)) return next();
 
     let template = fs.readFileSync(templatePath, "utf-8");
+    // Strip the template's own static og:title/og:description before injecting ours —
+    // otherwise crawlers see duplicate tags (the injected pair still wins on order, but
+    // duplicates are sloppy). Only sites that inject their own tags run this.
+    template = template.replace(/<meta property="og:(title|description)"[^>]*>\s*/g, "");
     template = template.replace("<head>", `<head>\n    ${ogTags}`);
+    // Dev-only: run the raw index.html through Vite's transform so the React-refresh
+    // preamble/client injections are present (prod never registers a transformer, so this
+    // is a no-op pass-through there).
+    template = await transformDevHtml(req.originalUrl, template);
     return res.status(200).set({ "Content-Type": "text/html" }).end(template);
   } catch (err) {
     console.error("[storefront] OG injection error (ready-made):", err);

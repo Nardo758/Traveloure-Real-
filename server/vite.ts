@@ -5,6 +5,7 @@ import viteConfig from "../vite.config";
 import fs from "fs";
 import path from "path";
 import { nanoid } from "nanoid";
+import { registerViteHtmlTransformer } from "./vite-dev-html";
 
 const viteLogger = createLogger();
 
@@ -30,6 +31,11 @@ export async function setupVite(server: Server, app: Express) {
   });
 
   app.use(vite.middlewares);
+
+  // Lets other dev-only-affected routes (the OG-injection sites, which read client/index.html
+  // raw off disk) run their HTML through the same Vite transform so the React-refresh preamble/
+  // client injections are present — otherwise those pages render blank in the dev preview.
+  registerViteHtmlTransformer((url, html) => vite.transformIndexHtml(url, html));
 
   app.use("*", async (req, res, next) => {
     const url = req.originalUrl;
