@@ -733,6 +733,33 @@ Governing spec: `docs/backoffice/mockups/mockup-unified-workspace.html` (v9). Lo
   `docs/backoffice/DISTRIBUTION_FORMATS.md` (renamed from DESTINATION_FORMATS.md with the correction).
   PlanCard's `embedded` mode is orthogonal and stays.
 
+- **Console IA — 17→9 collapse + Channel Calendar (ratified Jul 28, 2026; amends the 8-module IA to NINE).**
+  Modules: Today · **Calendar (new 9th)** · Workstation · Inbox · Catalog · Money · Customers · Performance ·
+  Settings. Absorptions (redirects, never deletions): Bookings/Assigned Trips/Messages → Inbox; My Offerings/
+  Store Listings → Catalog; DMO Library/Local Guides → Workstation Add-panel source drawers; Analytics +
+  Share&Promote's link views → Performance (creation actions already live on builds in Distribute); Profile →
+  Settings; Earnings renamed Money. **Calendar rules:** ONE channel-filtered calendar (never per-channel
+  calendars); event lanes inbound (bookings/agent requests/store purchases) · outbound (client deliveries,
+  coordination milestones) · availability (Catalog slots) · store lifecycle; every event backed by a real row
+  (§13 — social scheduling lane renders empty until the kit really schedules); events REFERENCE their owning
+  module, never re-render (the one-home rule). **Catalog = the storefront's management home** (/p/:handle
+  header + lanes + availability editing). **Customers = honest self-scoped aggregation** from this earner's
+  real bookings/purchases/trips — no invented CRM fields without ratification. **Provider console = the same
+  NINE, with Workstation = the Product Builder** (corrected from "minus Workstation"): product shapes = single
+  service (ServiceForm, exists) · **bundle** (own approved services composed under ONE price; unlocks at 2+
+  approved services; components must be approved — no unapproved service hides inside a sellable bundle) ·
+  **property** (accommodation deepened: photos, per-night pricing, room availability). **Creation ladder**
+  (/earn → service → catalog → bundle → property): one door growing with the merchant, progressive reveal,
+  every rung through the SAME F2 approval queue/storefront/Calendar/Distribute rails. **GATED separately (not
+  ratified yet, own briefs before code):** the bundle's component-linkage schema (provider_services stays
+  canonical — no new service table; join rows vs jsonb is a decision-maker schema call) and the bundle money
+  path (booking = ONE server-derived price from the stored product, §14; one booking row; component
+  fulfillment design). Design doc: docs/backoffice/mockups/mockup-console-pages.html. Build = PR-C: C1 sidebar
+  collapse+redirects → C2 Catalog storefront header+availability → C3 Calendar (read-only aggregate first) →
+  C4 Customers → C5 Money rename + Settings/Profile merge → C6 provider nine-module stamp; the Product Builder
+  is its own post-PR-C lane gated on the bundle ratifications. Open taste calls: Messages (folded into Inbox
+  by default) and AI Assistant (kept as a utility row by default).
+
 The earning ledger is an escrow state machine: **`held → releasable → paid_out`**, plus **`reversed`**, with a
 `dispute_state`. All phases are **landed on `main`** (Jul 14, 2026):
 - **Phase 1 (#163, migration 112):** unified both `expert_earnings` + `provider_earnings` onto the one vocabulary

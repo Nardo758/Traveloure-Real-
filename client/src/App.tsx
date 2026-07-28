@@ -37,6 +37,7 @@ const NotFound = lazy(() => import("@/pages/not-found"));
 const SignupPage = lazy(() => import("@/pages/Signup").then((m) => ({ default: m.SignupPage })));
 const BookingConfirmationPage = lazy(() => import("@/pages/BookingConfirmationPage"));
 const ExpertToday = lazy(() => import("@/pages/expert/today"));
+const ExpertCalendar = lazy(() => import("@/pages/expert/calendar"));
 const ExpertEarnings = lazy(() => import("@/pages/expert/earnings"));
 const ExpertProfile = lazy(() => import("@/pages/expert/profile"));
 const ExpertAIAssistant = lazy(() => import("@/pages/expert/ai-assistant"));
@@ -44,7 +45,7 @@ const ExpertBookings = lazy(() => import("@/pages/expert/bookings"));
 const ExpertInbox = lazy(() => import("@/pages/expert/inbox"));
 const ExpertCatalog = lazy(() => import("@/pages/expert/catalog"));
 const ExpertPerformance = lazy(() => import("@/pages/expert/performance"));
-const ExpertServices = lazy(() => import("@/pages/expert/services"));
+const ExpertCustomers = lazy(() => import("@/pages/expert/customers"));
 const ExpertAssignedTrips = lazy(() => import("@/pages/expert/assigned-trips"));
 const EADashboard = lazy(() => import("@/pages/ea/dashboard"));
 const EAExecutives = lazy(() => import("@/pages/ea/executives"));
@@ -129,7 +130,6 @@ const AdminCrossSellAnalytics = lazy(() => import("@/pages/admin/cross-sell-anal
 const AdminQAChecklist = lazy(() => import("@/pages/admin/qa-checklist"));
 const ExpertAnalytics = lazy(() => import("@/pages/expert/analytics"));
 const ExpertContentStudio = lazy(() => import("@/pages/expert/content-studio"));
-const ExpertReadyMade = lazy(() => import("@/pages/expert/ready-made"));
 const ReadyMadeDetailPage = lazy(() => import("@/pages/ready-made-detail"));
 const StorefrontPage = lazy(() => import("@/pages/storefront"));
 const ExpertSettings = lazy(() => import("@/pages/expert/settings"));
@@ -532,6 +532,12 @@ function Router() {
       <Route path="/expert/today">
         {() => <ProtectedRoute component={ExpertToday} requiredRole="expert" />}
       </Route>
+      {/* Channel Calendar — the console's 9th module (Console IA PR-Ca C3, §17): one
+          channel-filtered month view over GET /api/me/calendar; events link to their
+          owning module (Inbox / Workstation / Catalog), never re-rendered here. */}
+      <Route path="/expert/calendar">
+        {() => <ProtectedRoute component={ExpertCalendar} requiredRole="expert" />}
+      </Route>
       {/* /expert/ai-assistant is role-specific AI task delegation (auto-draft, vendor research,
           quality scoring) — distinct from /chat (human messaging). Keep separate. */}
       <Route path="/expert/ai-assistant">
@@ -561,8 +567,13 @@ function Router() {
       <Route path="/expert/catalog">
         {() => <ProtectedRoute component={ExpertCatalog} requiredRole="expert" />}
       </Route>
+      {/* Console IA C2 (§17 17→9 collapse): "My Offerings" (/expert/services list page)
+          retired into Catalog — the MyOfferingsTable now carries the page's per-service
+          edit (/expert/services/:id/edit), pause/activate (PATCH …/:id/status), and
+          duplicate (POST …/:id/duplicate) actions, and Catalog's header carries the
+          create entry. The ServiceForm routes below (/new, /:id/edit) are untouched. */}
       <Route path="/expert/services">
-        {() => <ProtectedRoute component={ExpertServices} requiredRole="expert" />}
+        <Redirect to="/expert/catalog" />
       </Route>
       {/* Wizard retired (§5 Phase 3): ServiceForm is the single offering-creation surface;
           it absorbed the wizard's from-template gallery + requirements field in Phase 2. */}
@@ -584,6 +595,12 @@ function Router() {
       <Route path="/expert/performance">
         {() => <ProtectedRoute component={ExpertPerformance} requiredRole="expert" />}
       </Route>
+      {/* Customers — Console IA C4 (§17 module 6): honest self-scoped aggregation over this
+          earner's real bookings / store purchases / assigned trips (GET /api/me/customers).
+          Detail rows link out to the owning modules; no CRM fields are invented. */}
+      <Route path="/expert/customers">
+        {() => <ProtectedRoute component={ExpertCustomers} requiredRole="expert" />}
+      </Route>
       <Route path="/expert/revenue-optimization">
         <Redirect to="/expert/analytics?tab=revenue-optimization" />
       </Route>
@@ -593,11 +610,13 @@ function Router() {
       <Route path="/expert/analytics">
         {() => <ProtectedRoute component={ExpertAnalytics} requiredRole="expert" />}
       </Route>
-      {/* Trips by Locals authoring console (the ready_made_trips store lane). See spec v3 §0a.
-          The former /expert/templates seller page (expert_templates Guides lane) is retired —
-          §10/§17 seller-surface sunset; consumer/admin/purchase surfaces stay. */}
+      {/* Console IA C1 (§17 17→9 collapse): Store Listings retired into Catalog — the
+          MyOfferingsTable ready_made lane carries list + approval status, listing editing
+          lives on the build in the Workstation (ReadyMadeListingPanel via Distribute), and
+          new listings are created ship-to-store from a build (build-first). The redirect
+          keeps every existing /expert/ready-made navigation working (B5 dashboard pattern). */}
       <Route path="/expert/ready-made">
-        {() => <ProtectedRoute component={ExpertReadyMade} requiredRole="expert" />}
+        <Redirect to="/expert/catalog" />
       </Route>
       <Route path="/expert/content-studio">
         {() => <ProtectedRoute component={ExpertContentStudio} requiredRole="expert" />}
@@ -632,11 +651,14 @@ function Router() {
       <Route path="/expert/dmo-library">
         {() => <ProtectedRoute component={DmoLibrary} requiredRole="expert" />}
       </Route>
-      {/* Share & Promote (SH2) — one shared page component, mounted per-role so each console's
-          sidebar link and ProtectedRoute guard stay role-scoped (SharePromote itself picks
-          ExpertLayout vs ProviderLayout off the session user's role). */}
+      {/* Console IA C2 (§17 17→9 collapse): expert Share & Promote retired into Catalog —
+          the offering-scoped creation half (per-row share kits, posting opportunities,
+          storefront caption) lives on /expert/catalog via the moved share-tools components;
+          the measurement half already lives on Performance. The PROVIDER route
+          (/provider/share-promote) keeps the SharePromote page until the C9 provider
+          nine-module stamp. */}
       <Route path="/expert/share-promote">
-        {() => <ProtectedRoute component={SharePromote} requiredRole="expert" />}
+        <Redirect to="/expert/catalog" />
       </Route>
 
       {/* Executive Assistant Dashboard Routes (use EALayout - no global Layout) */}

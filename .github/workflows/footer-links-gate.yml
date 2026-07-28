@@ -99,6 +99,9 @@ jobs:
           AMADEUS_API_SECRET: amadeus-ci-stub-no-real-calls
           GIT_COMMIT: ${{ github.sha }}
           NODE_ENV: production
+          # P0 fail-safe gate (server/index.ts): a production-bundle boot purges
+          # test accounts unless explicitly allowed. This CI DB is throwaway.
+          ALLOW_TEST_ACCOUNTS: '1'
           PORT: 5000
           PGUSER: postgres
           PGPASSWORD: postgres

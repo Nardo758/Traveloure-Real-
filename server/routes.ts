@@ -103,6 +103,8 @@ import storefrontRoutes from "./routes/storefront.routes";
 import shortLinksRoutes from "./routes/short-links.routes";
 import readyMadeRoutes from "./routes/ready-made.routes";
 import expertConsoleRoutes from "./routes/expert-console.routes";
+import calendarRoutes from "./routes/calendar.routes";
+import customersRoutes from "./routes/customers.routes";
 import contentRoutes, { seedDatabase, registerDiscoveryRoutes } from "./routes/content.routes";
 import paymentsRoutes from "./routes/payments.routes";
 import crossSellRoutes from "./routes/cross-sell.routes";
@@ -612,6 +614,14 @@ export async function registerRoutes(
   // Sidebar-audit repair: formerly-dark expert console endpoints (role, ESO service-template
   // catalog, knowledge-nuggets) — ported verbatim out of the unmounted experts.routes.ts (§9).
   app.use(expertConsoleRoutes);
+  // Channel Calendar (Console IA PR-Ca C3, §17): GET /api/me/calendar — read-only, session-scoped
+  // aggregate over existing tables (slots, bookings, agent requests, store purchases/lifecycle,
+  // assigned-trip deliveries). Zero writes. Mounted per §9.
+  app.use(calendarRoutes);
+  // Customers (Console IA PR-Ca C4, §17 module 6): GET /api/me/customers — read-only,
+  // session-scoped honest aggregation over this earner's real bookings / store purchases /
+  // assigned trips. No invented CRM fields, zero writes. Mounted per §9.
+  app.use(customersRoutes);
 
   // Saved items / dashboard Wishlist — GET/POST/DELETE /api/saved-items (session-scoped, owner-gated).
   // Was imported-but-unmounted, so the dashboard Wishlist hit the Vite catch-all and never loaded;

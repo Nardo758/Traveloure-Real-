@@ -29,13 +29,27 @@ export const expertRoutesConfig: RoleRouteConfig[] = [
   // so the gate exercises the redirect AND the Today page it lands on.
   { href: '/expert/dashboard',          description: 'Retired dashboard -> redirects to Today' },
   { href: '/expert/today',              description: 'Today ops home (B5)' },
+  { href: '/expert/calendar',           description: 'Channel Calendar — 9th module (C3)' },
   { href: '/expert/inbox',              description: 'Inbox — one actionable queue (B2)' },
   { href: '/expert/catalog',            description: 'Catalog — offerings + availability slots (B3)' },
+  // /expert/ready-made is kept deliberately (B5 dashboard pattern): it redirects to
+  // /expert/catalog (C1 Store Listings retirement), so the gate exercises the redirect
+  // AND the Catalog page it lands on.
+  { href: '/expert/ready-made',         description: 'Retired Store Listings -> redirects to Catalog (C1)' },
   { href: '/expert/performance',        description: 'Performance — channel attribution (B4)' },
+  { href: '/expert/customers',          description: 'Customers — honest self-scoped aggregation (C4)' },
   { href: '/expert/clients',            description: 'Client list' },
   { href: '/expert/assigned-trips',     description: 'Trips assigned to this expert' },
   { href: '/expert/bookings',           description: 'Booking requests' },
-  { href: '/expert/services',           description: 'Published services' },
+  // /expert/services is kept deliberately (B5/C1 redirect pattern): it redirects to
+  // /expert/catalog (C2 My Offerings retirement), so the gate exercises the redirect
+  // AND the Catalog page it lands on. The ServiceForm routes (/new, /:id/edit) are
+  // parameterised/creation surfaces and stay live.
+  { href: '/expert/services',           description: 'Retired My Offerings -> redirects to Catalog (C2)' },
+  // /expert/share-promote redirects to /expert/catalog (C2 Share & Promote retirement) —
+  // listed so the redirect is smoke-tested; the provider console keeps its own
+  // /provider/share-promote page until C9.
+  { href: '/expert/share-promote',      description: 'Retired Share & Promote -> redirects to Catalog (C2)' },
   { href: '/expert/earnings',           description: 'Earnings & payout history' },
   { href: '/expert/analytics',          description: 'Performance analytics' },
   { href: '/expert/ai-assistant',       description: 'Expert AI task delegation' },
