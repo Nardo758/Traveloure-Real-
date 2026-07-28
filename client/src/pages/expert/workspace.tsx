@@ -11,6 +11,7 @@ import { ServicePickerModal } from "@/components/expert/service-picker-modal";
 import ReadyMadeListingPanel, { type ReadyMadeListing } from "@/components/expert/ready-made-listing-panel";
 import { resolveFormat } from "@/lib/build-formats/registry";
 import { ClientFormatView } from "@/components/build-formats/ClientFormatView";
+import { SocialKitCard } from "@/components/build-formats/SocialKitCard";
 import { STORE_GATE_MESSAGE } from "@shared/launch-markets";
 import { APIProvider, Map, AdvancedMarker, InfoWindow } from "@vis.gl/react-google-maps";
 import {
@@ -2011,21 +2012,31 @@ export default function ExpertWorkspace() {
                 )}
               </div>
 
-              {/* Social channel — honest: link to the studio; the F3 social kit replaces this. */}
+              {/* Social channel — F3 social kit (registry social:default → social:story): story
+                  preview rail + the caption/share-image pack riding the existing promo-text +
+                  SH1 share-image endpoints. All data already in scope; the handle resolves
+                  inside SocialKitCard from the cached auth user. */}
               <div style={chanCardStyle}>
                 <div style={chanHeadStyle}>
                   <Sparkles style={{ width: 12, height: 12, color: MID }} />
                   <span style={{ fontSize: 12, fontWeight: 700, color: INK }}>Social</span>
                 </div>
-                <div style={{ padding: "12px" }}>
+                <SocialKitCard
+                  tripTitle={tripTitle}
+                  destination={trip?.destination || null}
+                  experienceType={tripExperienceType}
+                  days={days}
+                  listing={isAuthoring && listing?.id ? { id: listing.id, status: (listing as any).status } : null}
+                  directLink={directLink}
+                />
+                <div style={{ padding: "0 12px 12px" }}>
                   <button
                     onClick={() => safeNavigate(`/expert/content-studio?prefill=1&title=${encodeURIComponent(tripTitle)}&destination=${encodeURIComponent(trip?.destination ?? "")}${isAuthoring && listing?.id ? `&targetType=ready_made&targetId=${listing.id}` : ""}`)}
                     data-testid="button-distribute-social-studio"
-                    style={{ ...btnPrimaryStyle, padding: "7px 14px", fontSize: 12, marginBottom: 8 }}
+                    style={{ background: "none", border: "none", cursor: "pointer", padding: 0, fontSize: 12, color: MID, fontWeight: 600 }}
                   >
-                    Create promo in Content Studio →
+                    Open Content Studio →
                   </button>
-                  <div style={{ fontSize: 11, color: MID }}>The story view and caption pack for builds arrive with the social kit.</div>
                 </div>
               </div>
 
