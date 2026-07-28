@@ -1,20 +1,48 @@
 /**
  * MyOfferingsTable — the mockup's single cross-lane offerings table (backoffice Phase 1c;
- * docs/backoffice/mockups/mockup-backoffice-dashboard.html "My Offerings").
+ * docs/backoffice/mockups/mockup-backoffice-dashboard.html "My Offerings"; Console IA C2 —
+ * mockup-console-pages.html section 5, the Catalog frame).
  *
  * Pure client aggregation of the three existing owner-console endpoints — no new backend
  * (EXPERT_SIDE_MAP: "client aggregation + a normalized status column"). Status vocabulary maps
  * 1:1 onto the real approval lifecycle (D1a): draft → submitted ("Pending Review") → approved /
  * rejected. Share links only exist for approved items (the public read-gates would 404 otherwise).
+ *
+ * C2 (§17 17→9): the table absorbed the per-service actions that used to live only on
+ * /expert/services (the C1-found gap that kept "My Offerings" in the sidebar):
+ *   - Edit    → /expert/services/:id/edit (the real ServiceForm edit route; the old
+ *               editHref was the bare page link "/expert/services" — a dead affordance)
+ *   - Pause / Activate → PATCH /api/expert/services/:id/status  (lifted from services.tsx)
+ *   - Duplicate        → POST  /api/expert/services/:id/duplicate (lifted from services.tsx)
+ * Ready Made rows open their SOURCE BUILD in the Workstation (/expert/workspace/:sourceTripId
+ * — listing editing lives on the build's Distribute panel, per the C1 Store Listings record).
+ * It also absorbed Share & Promote's per-offering creation half: the Share menu offers the
+ * tracked short link plus the full share kit (feed/story images + caption) via the moved
+ * share-tools components — identical server calls (§16-safe).
  */
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { LayoutList, Share2, Pencil } from "lucide-react";
+import { LayoutList, Share2, Pencil, Copy, Pause, Play, Link2, Image as ImageIcon, Hammer } from "lucide-react";
+import { OfferingShareDetail, OfferingShareOption } from "@/components/backoffice/share-tools";
 
 type Lane = "service" | "template" | "ready_made";
 
@@ -23,9 +51,13 @@ interface OfferingRow {
   lane: Lane;
   laneLabel: string;
   name: string;
+  city: string | null;
   price: string | null;
   approval: string; // normalized: approved | submitted | draft | rejected | unknown
+  /** service lane only: the provider_services active/paused/draft visibility status. */
+  serviceStatus: string | null;
   editHref: string | null;
+  editLabel: string;
   publicHref: string | null; // only when approved (+published where applicable)
   nextAvailability: string | null; // ISO date, service lane only; null = no slots / not applicable
 }
@@ -52,6 +84,7 @@ const STATUS_CLASS: Record<string, string> = {
 
 export function MyOfferingsTable() {
   const { toast } = useToast();
+  const [shareTarget, setShareTarget] = useState<OfferingRow | null>(null);
 
   const services = useQuery<any[]>({ queryKey: ["/api/expert/services"] });
   const templates = useQuery<any[]>({ queryKey: ["/api/expert/templates"] });
@@ -61,6 +94,35 @@ export function MyOfferingsTable() {
   // Backoffice C1: soonest future, not-fully-booked vendor_availability_slots row per
   // service id (service lane only — templates/Ready Made Trips have no slots).
   const nextAvailability = useQuery<Record<string, string>>({ queryKey: ["/api/me/next-availability"] });
+
+  // C2: pause/activate + duplicate — the SAME endpoints/invalidations services.tsx used
+  // (PATCH /api/expert/services/:id/status; POST /api/expert/services/:id/duplicate).
+  const toggleStatusMutation = useMutation({
+    mutationFn: async ({ id, status }: { id: string; status: string }) => {
+      return apiRequest("PATCH", `/api/expert/services/${id}/status`, { status });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/expert/services"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/expert/analytics"] });
+      toast({ title: "Service status updated" });
+    },
+    onError: () => {
+      toast({ title: "Failed to update status", variant: "destructive" });
+    },
+  });
+
+  const duplicateMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return apiRequest("POST", `/api/expert/services/${id}/duplicate`, {});
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/expert/services"] });
+      toast({ title: "Service duplicated successfully" });
+    },
+    onError: () => {
+      toast({ title: "Failed to duplicate service", variant: "destructive" });
+    },
+  });
 
   const isLoading = services.isLoading || templates.isLoading || readyMade.isLoading;
 
@@ -72,9 +134,14 @@ export function MyOfferingsTable() {
         lane: "service",
         laneLabel: "Service",
         name: s.serviceName ?? s.title ?? "Untitled service",
+        city: s.city ?? null,
         price: s.price != null ? `$${Number(s.price).toFixed(0)}` : null,
         approval,
-        editHref: "/expert/services",
+        serviceStatus: s.status ?? null,
+        // C2: the real per-service ServiceForm edit route (was the dead page link
+        // "/expert/services" — now itself a redirect to Catalog).
+        editHref: `/expert/services/${s.id}/edit`,
+        editLabel: "Edit",
         publicHref: approval === "approved" ? `/services/${s.id}` : null,
         nextAvailability: nextAvailability.data?.[s.id] ?? null,
       };
@@ -86,11 +153,14 @@ export function MyOfferingsTable() {
         lane: "template",
         laneLabel: "Itinerary Template",
         name: t.title ?? "Untitled template",
+        city: null,
         price: t.price != null ? `$${Number(t.price).toFixed(0)}` : null,
         approval,
+        serviceStatus: null,
         // Seller surface retired (§10/§17 sunset) — existing templates stay readable/sellable
         // but have no edit page; new store trips are built in the Workstation.
         editHref: null,
+        editLabel: "Edit",
         publicHref: approval === "approved" && t.isPublished ? `/expert-templates/${t.id}` : null,
         nextAvailability: null,
       };
@@ -102,16 +172,22 @@ export function MyOfferingsTable() {
         lane: "ready_made",
         laneLabel: "Ready Made Trip",
         name: r.title ?? "Untitled trip",
+        city: null,
         price: r.priceCents != null ? `$${(r.priceCents / 100).toFixed(0)}` : null,
         nextAvailability: null,
         approval,
-        editHref: "/expert/ready-made",
+        serviceStatus: null,
+        // C2: open the SOURCE BUILD in the Workstation (listing editing lives on the build's
+        // Distribute panel). The old "/expert/ready-made" href now redirects back to Catalog —
+        // a loop, not an edit path.
+        editHref: r.sourceTripId ? `/expert/workspace/${r.sourceTripId}` : null,
+        editLabel: "Open build",
         publicHref: approval === "approved" ? `/ready-made/${r.id}` : null,
       };
     }),
   ];
 
-  async function share(row: OfferingRow) {
+  async function copyShareLink(row: OfferingRow) {
     if (!row.publicHref) return;
     const fallbackUrl = `${window.location.origin}${row.publicHref}`;
     try {
@@ -132,6 +208,18 @@ export function MyOfferingsTable() {
       toast({ title: "Link copied", description: fallbackUrl });
     }
   }
+
+  const shareOffering: OfferingShareOption | null = shareTarget && shareTarget.publicHref
+    ? {
+        id: shareTarget.id,
+        lane: shareTarget.lane,
+        laneLabel: shareTarget.laneLabel,
+        name: shareTarget.name,
+        city: shareTarget.city,
+        price: shareTarget.price,
+        publicHref: shareTarget.publicHref,
+      }
+    : null;
 
   return (
     <Card data-testid="card-my-offerings">
@@ -174,9 +262,16 @@ export function MyOfferingsTable() {
                     <td className="py-2.5 pr-3 font-medium">{row.name}</td>
                     <td className="py-2.5 pr-3 text-muted-foreground">{row.laneLabel}</td>
                     <td className="py-2.5 pr-3">
-                      <Badge className={`text-xs border ${STATUS_CLASS[row.approval] ?? "bg-gray-100 text-gray-600 border-gray-200"}`}>
-                        {STATUS_LABEL[row.approval] ?? row.approval}
-                      </Badge>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <Badge className={`text-xs border ${STATUS_CLASS[row.approval] ?? "bg-gray-100 text-gray-600 border-gray-200"}`}>
+                          {STATUS_LABEL[row.approval] ?? row.approval}
+                        </Badge>
+                        {row.lane === "service" && row.serviceStatus === "paused" && (
+                          <Badge className="text-xs border bg-yellow-100 text-yellow-800 border-yellow-200">
+                            Paused
+                          </Badge>
+                        )}
+                      </div>
                     </td>
                     <td className="py-2.5 pr-3">{row.price ?? "—"}</td>
                     <td className="py-2.5 pr-3 text-muted-foreground" data-testid={`next-availability-${row.lane}-${row.id}`}>
@@ -187,16 +282,76 @@ export function MyOfferingsTable() {
                         {row.editHref && (
                           <Link href={row.editHref}>
                             <Button size="sm" variant="ghost" data-testid={`button-edit-${row.lane}-${row.id}`}>
-                              <Pencil className="w-3.5 h-3.5 mr-1" />
-                              Edit
+                              {row.lane === "ready_made" ? (
+                                <Hammer className="w-3.5 h-3.5 mr-1" />
+                              ) : (
+                                <Pencil className="w-3.5 h-3.5 mr-1" />
+                              )}
+                              {row.editLabel}
                             </Button>
                           </Link>
                         )}
-                        {row.publicHref && (
-                          <Button size="sm" variant="ghost" onClick={() => share(row)} data-testid={`button-share-${row.lane}-${row.id}`}>
-                            <Share2 className="w-3.5 h-3.5 mr-1" />
-                            Share
+                        {row.lane === "service" && row.serviceStatus && row.serviceStatus !== "draft" && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            disabled={toggleStatusMutation.isPending}
+                            onClick={() =>
+                              toggleStatusMutation.mutate({
+                                id: row.id,
+                                status: row.serviceStatus === "active" ? "paused" : "active",
+                              })
+                            }
+                            data-testid={`button-toggle-status-${row.lane}-${row.id}`}
+                          >
+                            {row.serviceStatus === "active" ? (
+                              <>
+                                <Pause className="w-3.5 h-3.5 mr-1" />
+                                Pause
+                              </>
+                            ) : (
+                              <>
+                                <Play className="w-3.5 h-3.5 mr-1" />
+                                Activate
+                              </>
+                            )}
                           </Button>
+                        )}
+                        {row.lane === "service" && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            disabled={duplicateMutation.isPending}
+                            onClick={() => duplicateMutation.mutate(row.id)}
+                            data-testid={`button-duplicate-${row.lane}-${row.id}`}
+                          >
+                            <Copy className="w-3.5 h-3.5 mr-1" />
+                            Duplicate
+                          </Button>
+                        )}
+                        {row.publicHref && (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button size="sm" variant="ghost" data-testid={`button-share-${row.lane}-${row.id}`}>
+                                <Share2 className="w-3.5 h-3.5 mr-1" />
+                                Share
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem
+                                onClick={() => copyShareLink(row)}
+                                data-testid={`menu-copy-link-${row.lane}-${row.id}`}
+                              >
+                                <Link2 className="w-4 h-4 mr-2" /> Copy link
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => setShareTarget(row)}
+                                data-testid={`menu-share-kit-${row.lane}-${row.id}`}
+                              >
+                                <ImageIcon className="w-4 h-4 mr-2" /> Share images &amp; caption…
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         )}
                       </div>
                     </td>
@@ -206,6 +361,25 @@ export function MyOfferingsTable() {
             </table>
           </div>
         )}
+
+        {/* C2: the per-offering share kit (feed/story images + caption + §16 actions), reusing
+            the moved share-tools components — images only for approved+ACTIVE services, the
+            same gate share-images.routes.ts enforces (a paused service's image 404s). */}
+        <Dialog open={!!shareOffering} onOpenChange={(open) => !open && setShareTarget(null)}>
+          <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto" data-testid="dialog-share-kit">
+            <DialogHeader>
+              <DialogTitle>{shareOffering?.name ?? "Share"}</DialogTitle>
+            </DialogHeader>
+            {shareOffering && (
+              <OfferingShareDetail
+                offering={shareOffering}
+                showImages={
+                  shareOffering.lane === "service" && shareTarget?.serviceStatus === "active"
+                }
+              />
+            )}
+          </DialogContent>
+        </Dialog>
       </CardContent>
     </Card>
   );

@@ -44,7 +44,6 @@ const ExpertBookings = lazy(() => import("@/pages/expert/bookings"));
 const ExpertInbox = lazy(() => import("@/pages/expert/inbox"));
 const ExpertCatalog = lazy(() => import("@/pages/expert/catalog"));
 const ExpertPerformance = lazy(() => import("@/pages/expert/performance"));
-const ExpertServices = lazy(() => import("@/pages/expert/services"));
 const ExpertAssignedTrips = lazy(() => import("@/pages/expert/assigned-trips"));
 const EADashboard = lazy(() => import("@/pages/ea/dashboard"));
 const EAExecutives = lazy(() => import("@/pages/ea/executives"));
@@ -560,8 +559,13 @@ function Router() {
       <Route path="/expert/catalog">
         {() => <ProtectedRoute component={ExpertCatalog} requiredRole="expert" />}
       </Route>
+      {/* Console IA C2 (§17 17→9 collapse): "My Offerings" (/expert/services list page)
+          retired into Catalog — the MyOfferingsTable now carries the page's per-service
+          edit (/expert/services/:id/edit), pause/activate (PATCH …/:id/status), and
+          duplicate (POST …/:id/duplicate) actions, and Catalog's header carries the
+          create entry. The ServiceForm routes below (/new, /:id/edit) are untouched. */}
       <Route path="/expert/services">
-        {() => <ProtectedRoute component={ExpertServices} requiredRole="expert" />}
+        <Redirect to="/expert/catalog" />
       </Route>
       {/* Wizard retired (§5 Phase 3): ServiceForm is the single offering-creation surface;
           it absorbed the wizard's from-template gallery + requirements field in Phase 2. */}
@@ -633,11 +637,14 @@ function Router() {
       <Route path="/expert/dmo-library">
         {() => <ProtectedRoute component={DmoLibrary} requiredRole="expert" />}
       </Route>
-      {/* Share & Promote (SH2) — one shared page component, mounted per-role so each console's
-          sidebar link and ProtectedRoute guard stay role-scoped (SharePromote itself picks
-          ExpertLayout vs ProviderLayout off the session user's role). */}
+      {/* Console IA C2 (§17 17→9 collapse): expert Share & Promote retired into Catalog —
+          the offering-scoped creation half (per-row share kits, posting opportunities,
+          storefront caption) lives on /expert/catalog via the moved share-tools components;
+          the measurement half already lives on Performance. The PROVIDER route
+          (/provider/share-promote) keeps the SharePromote page until the C9 provider
+          nine-module stamp. */}
       <Route path="/expert/share-promote">
-        {() => <ProtectedRoute component={SharePromote} requiredRole="expert" />}
+        <Redirect to="/expert/catalog" />
       </Route>
 
       {/* Executive Assistant Dashboard Routes (use EALayout - no global Layout) */}
