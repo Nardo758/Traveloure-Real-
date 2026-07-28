@@ -585,6 +585,11 @@ export const providerServices = pgTable("provider_services", {
   // Neighborhood tag (v2 spec §5.1) — soft reference into city_neighborhoods.slug.
   neighborhood: varchar("neighborhood", { length: 100 }),
 
+  // Product Builder shape (§17, migration 151) — NULL = single service (every pre-151 row),
+  // 'bundle' = a bundle row whose components live in bundle_components. Additive nullable,
+  // app-layer values, no DB CHECK (the migration-129 posture).
+  productShape: varchar("product_shape", { length: 20 }),
+
   // Content location normalization (Lane A Phase 1, migration 129) — additive nullable coordinate
   // columns. Backfilled from city_neighborhoods centroids where the neighborhood slug resolves;
   // NULL when unresolvable (NULL is the honest state — no city-center fallback). NOT read by the
@@ -649,6 +654,20 @@ export const providerServices = pgTable("provider_services", {
 
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// === Bundle components (Product Builder §17, migration 151 — ratified join-table decision) ===
+// A bundle IS a provider_services row (product_shape='bundle') so the F2 approval queue,
+// storefront read-gates, and checkout rails work unchanged; this table links it to its
+// component services. component FK is ON DELETE RESTRICT — a service inside a bundle cannot
+// be deleted until removed from the bundle (silently vanishing components would change a
+// sellable bundle's contents underneath the buyer).
+export const bundleComponents = pgTable("bundle_components", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  bundleServiceId: varchar("bundle_service_id").notNull().references(() => providerServices.id, { onDelete: "cascade" }),
+  componentServiceId: varchar("component_service_id").notNull().references(() => providerServices.id, { onDelete: "restrict" }),
+  position: integer("position").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
 // === Category Field Schema (admin-configurable per-category dynamic fields) ===
@@ -1433,6 +1452,7 @@ export type ServiceSubcategory = typeof serviceSubcategories.$inferSelect;
 export type InsertServiceSubcategory = z.infer<typeof insertServiceSubcategorySchema>;
 export type ProviderService = typeof providerServices.$inferSelect;
 export type InsertProviderService = z.infer<typeof insertProviderServiceSchema>;
+export type BundleComponent = typeof bundleComponents.$inferSelect;
 export type FAQ = typeof faqs.$inferSelect;
 export type InsertFAQ = z.infer<typeof insertFaqSchema>;
 export type Wallet = typeof wallets.$inferSelect;

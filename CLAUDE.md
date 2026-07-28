@@ -818,6 +818,24 @@ Governing spec: `docs/backoffice/mockups/mockup-unified-workspace.html` (v9). Lo
     steps re-pointed at each console's Catalog (the calendar is read-only on both consoles now).
     Final provider sidebar: Today · Calendar · Bookings · Messages | Catalog · Customers ·
     Performance · Money | Settings.
+  - **Product Builder — the two gated calls RATIFIED (Jul 28, 2026, decision-maker):** ① bundle
+    component linkage = **JOIN TABLE** (`bundle_components`, migration 151: `bundle_service_id`
+    FK→`provider_services` ON DELETE CASCADE, `component_service_id` FK ON DELETE **RESTRICT** — a
+    service inside a bundle can't be deleted until removed from it; UNIQUE pair + no-self CHECK;
+    new table → no publish-push trap). A bundle IS a `provider_services` row
+    (`product_shape='bundle'`, additive nullable column, NULL = single service) so the F2 queue,
+    storefront read-gates, and checkout rails work unchanged — no new service table (FAQ
+    prohibition holds). ② bundle money path = ONE booking row against the bundle's own
+    `provider_services` row at its stored price (§14 server-derived; all components belong to the
+    SAME provider → single earning, no split), with the component list **SNAPSHOT into
+    bookingDetails at checkout** (contents + price locked at purchase — the ready-made snapshot
+    posture); at booking time the server re-verifies every component is still
+    `approved`+`active` (409 otherwise — F2: no unapproved service hides inside a sellable
+    bundle). ③ build order = **BUNDLE FIRST** (property — per-night pricing, room availability —
+    is a later phase with its own money brief). Bundle create is server-clamped born-`submitted`
+    (D1a), requires ≥2 components, all owned by the session user and `approved`+`active`;
+    price/component-set changes to an approved bundle re-enter review (the A3 material-change
+    rule). Bundle create UI unlocks at 2+ approved services (the §17 creation ladder).
 
 The earning ledger is an escrow state machine: **`held → releasable → paid_out`**, plus **`reversed`**, with a
 `dispute_state`. All phases are **landed on `main`** (Jul 14, 2026):

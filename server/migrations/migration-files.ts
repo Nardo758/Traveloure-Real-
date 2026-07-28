@@ -574,4 +574,9 @@ export const MIGRATION_FILES = [
   // 150: users.preferences jsonb (backoffice B6 settings persistence) — additive with default,
   // no CHECK/backfill → no publish-push trap. App layer touches only the `settings` key.
   "150_users_preferences.sql",
+  // 151: Product Builder bundle shape (§17, ratified join-table decision) —
+  // provider_services.product_shape (additive nullable, no CHECK/DEFAULT) + NEW
+  // bundle_components join table (FKs → provider_services; CASCADE on bundle,
+  // RESTRICT on component; CHECK/UNIQUE safe — new table, no legacy rows) → no push trap.
+  "151_bundle_components.sql",
 ] as const;
