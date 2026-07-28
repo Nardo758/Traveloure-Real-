@@ -129,7 +129,6 @@ const AdminCrossSellAnalytics = lazy(() => import("@/pages/admin/cross-sell-anal
 const AdminQAChecklist = lazy(() => import("@/pages/admin/qa-checklist"));
 const ExpertAnalytics = lazy(() => import("@/pages/expert/analytics"));
 const ExpertContentStudio = lazy(() => import("@/pages/expert/content-studio"));
-const ExpertReadyMade = lazy(() => import("@/pages/expert/ready-made"));
 const ReadyMadeDetailPage = lazy(() => import("@/pages/ready-made-detail"));
 const StorefrontPage = lazy(() => import("@/pages/storefront"));
 const ExpertSettings = lazy(() => import("@/pages/expert/settings"));
@@ -593,11 +592,13 @@ function Router() {
       <Route path="/expert/analytics">
         {() => <ProtectedRoute component={ExpertAnalytics} requiredRole="expert" />}
       </Route>
-      {/* Trips by Locals authoring console (the ready_made_trips store lane). See spec v3 §0a.
-          The former /expert/templates seller page (expert_templates Guides lane) is retired —
-          §10/§17 seller-surface sunset; consumer/admin/purchase surfaces stay. */}
+      {/* Console IA C1 (§17 17→9 collapse): Store Listings retired into Catalog — the
+          MyOfferingsTable ready_made lane carries list + approval status, listing editing
+          lives on the build in the Workstation (ReadyMadeListingPanel via Distribute), and
+          new listings are created ship-to-store from a build (build-first). The redirect
+          keeps every existing /expert/ready-made navigation working (B5 dashboard pattern). */}
       <Route path="/expert/ready-made">
-        {() => <ProtectedRoute component={ExpertReadyMade} requiredRole="expert" />}
+        <Redirect to="/expert/catalog" />
       </Route>
       <Route path="/expert/content-studio">
         {() => <ProtectedRoute component={ExpertContentStudio} requiredRole="expert" />}

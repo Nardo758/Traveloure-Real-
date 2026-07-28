@@ -31,6 +31,10 @@ export const expertRoutesConfig: RoleRouteConfig[] = [
   { href: '/expert/today',              description: 'Today ops home (B5)' },
   { href: '/expert/inbox',              description: 'Inbox — one actionable queue (B2)' },
   { href: '/expert/catalog',            description: 'Catalog — offerings + availability slots (B3)' },
+  // /expert/ready-made is kept deliberately (B5 dashboard pattern): it redirects to
+  // /expert/catalog (C1 Store Listings retirement), so the gate exercises the redirect
+  // AND the Catalog page it lands on.
+  { href: '/expert/ready-made',         description: 'Retired Store Listings -> redirects to Catalog (C1)' },
   { href: '/expert/performance',        description: 'Performance — channel attribution (B4)' },
   { href: '/expert/clients',            description: 'Client list' },
   { href: '/expert/assigned-trips',     description: 'Trips assigned to this expert' },
