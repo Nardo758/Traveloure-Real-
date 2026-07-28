@@ -174,6 +174,84 @@ router.post("/api/expert/ready-made/from-trip/:tripId", isAuthenticated, async (
   }
 });
 
+// ─── W-3: the author's builds (Workstation home "Your builds" lane) ──────────
+// Every trip the caller AUTHORED — including unshipped builds that have no listing yet —
+// LEFT-JOINed with the store listing when one exists (one row per trip; source_trip_id is
+// unique per the ship-to-store idempotency, so the join can never fan out). ROUTE ORDER:
+// registered BEFORE any GET /api/expert/ready-made/:id-style route so the literal "builds"
+// segment can never be captured by an :id param (Express matches in registration order).
+router.get("/api/expert/ready-made/builds", isAuthenticated, async (req, res) => {
+  try {
+    const userId = sessionUserId(req);
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+    // D3 role gate — DB lookup, not the session role string (same posture as create).
+    const user = await storage.getUser(userId);
+    if (!user || !AUTHOR_ROLES.has(user.role ?? "")) {
+      return res.status(403).json({ message: STORE_GATE_MESSAGE });
+    }
+
+    const rows = await db
+      .select({
+        id: trips.id,
+        title: trips.title,
+        destination: trips.destination,
+        startDate: trips.startDate,
+        endDate: trips.endDate,
+        status: trips.status,
+        createdAt: trips.createdAt,
+        listingId: readyMadeTrips.id,
+        listingStatus: readyMadeTrips.status,
+      })
+      .from(trips)
+      .leftJoin(readyMadeTrips, eq(readyMadeTrips.sourceTripId, trips.id))
+      .where(eq(trips.authorId, userId))
+      .orderBy(desc(trips.createdAt));
+
+    res.json({ builds: rows });
+  } catch (err: any) {
+    console.error("[ready-made] builds error:", err);
+    res.status(500).json({ message: "Failed to load builds", error: err.message });
+  }
+});
+
+// ─── W-3: pre-listing build rename ───────────────────────────────────────────
+// An authored build with NO listing yet has no PATCH surface for its title (the with-listing
+// path PATCHes the listing, which syncs the trip title server-side). This renames the trip
+// directly. Allow-list body — `title` ONLY, never raw req.body (the Gap-2 mass-assignment
+// lesson, §10). Owner gate = getAuthoredTrip (explicit present-value author check, never
+// getTripRole). ROUTE ORDER: registered BEFORE PATCH /api/expert/ready-made/:id so the
+// literal "build" segment can't be captured by the :id param.
+const renameBuildSchema = z.object({
+  title: z.string().trim().min(1).max(200),
+}).strict();
+
+router.patch("/api/expert/ready-made/build/:tripId", isAuthenticated, async (req, res) => {
+  try {
+    const userId = sessionUserId(req);
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+    // Owner gate: explicit present-value author check (never getTripRole).
+    const trip = await getAuthoredTrip(req.params.tripId, userId);
+    if (!trip) return res.status(403).json({ message: "Not this build's author" });
+
+    const parsed = renameBuildSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ message: "Invalid input", errors: parsed.error.flatten() });
+    }
+
+    const [updated] = await db
+      .update(trips)
+      .set({ title: parsed.data.title } as any)
+      .where(eq(trips.id, trip.id))
+      .returning({ id: trips.id, title: trips.title });
+
+    res.json({ trip: updated });
+  } catch (err: any) {
+    console.error("[ready-made] build rename error:", err);
+    res.status(500).json({ message: "Failed to rename build", error: err.message });
+  }
+});
+
 // ─── Workspace mode resolution (dual-mode bootstrap) ─────────────────────────
 router.get("/api/expert/workspace-context/:tripId", isAuthenticated, async (req, res) => {
   try {

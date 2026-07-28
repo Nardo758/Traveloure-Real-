@@ -392,23 +392,24 @@ export default function ExpertWorkspace() {
     onSuccess: (body) => setLocation(body.redirect),
   });
 
-  // P1-2 unified builds list: authored store-lane builds ride the /mine listings query
-  // (each row carries sourceTripId + status → the distribution badge). Home-only.
-  const { data: myListingsData } = useQuery<{
-    listings: Array<{ id: string; sourceTripId: string; title: string | null; status: string; market: string | null; durationDays: number | null; updatedAt: string | null }>;
+  // P1-2 unified builds list, W-3 task 3: the authored lane rides GET /api/expert/ready-made/builds
+  // — every authored trip, INCLUDING unshipped builds with no listing yet, LEFT-JOINed with the
+  // store listing when one exists (one row per trip, so no duplicates). Home-only.
+  const { data: myBuildsData } = useQuery<{
+    builds: Array<{ id: string; title: string | null; destination: string | null; startDate: string | null; endDate: string | null; status: string | null; createdAt: string | null; listingId: string | null; listingStatus: string | null }>;
   }>({
-    queryKey: ["/api/expert/ready-made/mine"],
+    queryKey: ["/api/expert/ready-made/builds"],
     enabled: !tripId,
   });
   const smartLandingFired = useRef(false);
   useEffect(() => {
     if (tripId || smartLandingFired.current) return;
     if (!assignedTrips || assignedTrips.length !== 1) return;
-    if (!myListingsData) return; // wait for the listings answer — never guess
-    if ((myListingsData.listings ?? []).length !== 0) return;
+    if (!myBuildsData) return; // wait for the builds answer — never guess
+    if ((myBuildsData.builds ?? []).length !== 0) return;
     smartLandingFired.current = true;
     setLocation(`/expert/workspace/${assignedTrips[0].trip_id}`);
-  }, [tripId, assignedTrips, myListingsData, setLocation]);
+  }, [tripId, assignedTrips, myBuildsData, setLocation]);
 
   // Distribute → Direct channel: trackable booking link for the store listing
   // (mirrors share-promote.tsx's ensureShortLink pattern; owner-verified server-side).
@@ -446,6 +447,7 @@ export default function ExpertWorkspace() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/expert/workspace-context/${tripId}`] });
       queryClient.invalidateQueries({ queryKey: ["/api/expert/ready-made/mine"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/expert/ready-made/builds"] });
       toast({ title: "Shipped to store", description: "Price it and submit for review below." });
     },
   });
@@ -461,6 +463,22 @@ export default function ExpertWorkspace() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/expert/workspace-context/${tripId}`] });
       queryClient.invalidateQueries({ queryKey: ["/api/expert/ready-made/mine"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/expert/ready-made/builds"] });
+    },
+    onError: (e: any) => toast({ title: "Couldn't rename the build", description: e.message, variant: "destructive" }),
+  });
+
+  // W-3 task 4: pre-listing rename — an authored build with NO listing yet PATCHes the trip
+  // title via the build-only endpoint (owner-gated server-side; title-only allow-list).
+  // commitTitle picks between the two by whether workspaceCtx.listing exists.
+  const renameBuildMutation = useMutation({
+    mutationFn: async (title: string) => {
+      const res = await apiRequest("PATCH", `/api/expert/ready-made/build/${tripId}`, { title });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/expert/workspace-context/${tripId}`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/expert/ready-made/builds"] });
     },
     onError: (e: any) => toast({ title: "Couldn't rename the build", description: e.message, variant: "destructive" }),
   });
@@ -666,6 +684,13 @@ export default function ExpertWorkspace() {
         // Audit A-4 (§13): Google's priceLevel is a 0-4 band, not a dollar amount — never
         // convert it into an invented cost figure on the itinerary.
         notes: result.mapsUrl ? `Google Maps: ${result.mapsUrl}` : undefined,
+        // W-3 task 1: a platform result is REAL bookable inventory — carry the
+        // provider_services id exactly as the ServicePickerModal path does
+        // (providerServiceId), so the plan item keeps its inventory link. Google
+        // Places results stay unlinked — they have no platform inventory (§13 honest).
+        ...(result.source === "platform" && result.platformId
+          ? { providerServiceId: result.platformId }
+          : {}),
       };
       const res = await apiRequest("POST", `/api/trips/${tripId}/itinerary-items`, body);
       return res.json();
@@ -821,7 +846,7 @@ export default function ExpertWorkspace() {
 
   // ── Screen 1: workspace home — ONE create action + ONE "Your builds" list (v9 :208-224).
   if (!tripId) {
-    const listings = myListingsData?.listings ?? [];
+    const builds = myBuildsData?.builds ?? [];
     type BuildRow = { key: string; title: string; sub: React.ReactNode; open: () => void; sortKey: string };
     const rows: BuildRow[] = [
       ...(assignedTrips ?? []).map((t): BuildRow => ({
@@ -836,23 +861,31 @@ export default function ExpertWorkspace() {
         open: () => setLocation(`/expert/workspace/${t.trip_id}`),
         sortKey: t.assigned_at ?? "",
       })),
-      ...listings.map((l): BuildRow => {
-        const chip = LISTING_CHIP[l.status] ?? { label: `Store — ${l.status}`, tone: "mut" as ChipTone };
+      // W-3 task 3: authored lane = the builds endpoint — unshipped builds (no listing)
+      // appear too, badged "Draft — not distributed"; shipped ones keep the Store badge
+      // from the REAL listing status (§13). One row per trip — no duplicates.
+      ...builds.map((b): BuildRow => {
+        const chip = b.listingId
+          ? (LISTING_CHIP[b.listingStatus ?? ""] ?? { label: `Store — ${b.listingStatus}`, tone: "mut" as ChipTone })
+          : { label: "Draft — not distributed", tone: "mut" as ChipTone };
+        // Honest duration from the build's own date window (the same window ship-to-store reads).
+        const spanMs = b.startDate && b.endDate ? new Date(b.endDate).getTime() - new Date(b.startDate).getTime() : NaN;
+        const durationDays = Number.isFinite(spanMs) ? Math.max(1, Math.round(spanMs / 86_400_000) + 1) : null;
         return {
-          key: `listing-${l.id}`,
-          title: l.title || "Untitled build",
+          key: `build-${b.id}`,
+          title: b.title || "Untitled build",
           sub: (
             <>
-              {l.market || "—"}{l.durationDays ? ` · ${l.durationDays} days` : ""}{" "}
+              {b.destination || "—"}{durationDays ? ` · ${durationDays} days` : ""}{" "}
               <StateChip tone={chip.tone}>{chip.label}</StateChip>
             </>
           ),
-          open: () => setLocation(`/expert/workspace/${l.sourceTripId}`),
-          sortKey: l.updatedAt ?? "",
+          open: () => setLocation(`/expert/workspace/${b.id}`),
+          sortKey: b.createdAt ?? "",
         };
       }),
     ].sort((a, b) => (b.sortKey || "").localeCompare(a.sortKey || ""));
-    const listLoading = tripsLoading || (!myListingsData && !tripId);
+    const listLoading = tripsLoading || !myBuildsData;
 
     return (
       <ExpertLayout title="Workspace">
@@ -1010,7 +1043,11 @@ export default function ExpertWorkspace() {
   const commitTitle = () => {
     setEditingTitle(false);
     const next = titleDraft.trim();
-    if (next && next !== tripTitle) renameListingMutation.mutate(next);
+    if (!next || next === tripTitle) return;
+    // W-3 task 4: with a listing → PATCH the listing (it syncs the trip title server-side);
+    // without one → the build-only rename endpoint. Picked by whether the listing exists.
+    if (listing?.id) renameListingMutation.mutate(next);
+    else renameBuildMutation.mutate(next);
   };
 
   const sectionLabelStyle: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: FAINT, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 7 };
@@ -1048,9 +1085,9 @@ export default function ExpertWorkspace() {
         ) : (
           <span style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
             <span style={{ fontSize: 15, fontWeight: 750, color: INK, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} data-testid="text-build-title">{tripTitle}</span>
-            {isAuthoring && listing && (
+            {isAuthoring && (
               <button onClick={() => { setTitleDraft(tripTitle); setEditingTitle(true); }} data-testid="button-edit-title" title="Rename build" style={{ background: "none", border: "none", cursor: "pointer", color: FAINT, display: "flex", padding: 2 }}>
-                {renameListingMutation.isPending ? <Loader2 style={{ width: 12, height: 12 }} className="animate-spin" /> : <Pencil style={{ width: 12, height: 12 }} />}
+                {(renameListingMutation.isPending || renameBuildMutation.isPending) ? <Loader2 style={{ width: 12, height: 12 }} className="animate-spin" /> : <Pencil style={{ width: 12, height: 12 }} />}
               </button>
             )}
           </span>
@@ -1383,7 +1420,9 @@ export default function ExpertWorkspace() {
               </div>
 
               <div style={{ borderTop: `1px solid ${LINE}`, padding: "5px 12px", textAlign: "center", flexShrink: 0 }}>
-                <span style={{ fontSize: 10, color: FAINT }}>Powered by Google Places · Traveloure</span>
+                {/* W-3 task 2: Google attribution stays (TOS), but the catalog is Traveloure's —
+                    only the supplemental places results are Google's. */}
+                <span style={{ fontSize: 10, color: FAINT }}>Traveloure platform catalog · Places results powered by Google</span>
               </div>
             </div>
           )}
