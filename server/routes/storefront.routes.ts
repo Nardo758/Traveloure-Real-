@@ -9,6 +9,9 @@
  *   GET   /p/:handle              — server-side OG-injected HTML shell (the trips.routes.ts
  *                                   /itinerary-view/:token route-interception pattern), then the SPA
  *                                   takes over client-side.
+ *   GET   /services/:id           — same OG injection for the shareable offering page.
+ *   GET   /ready-made/:id         — same OG injection for the Ready Made detail (the F4 `direct:*`
+ *                                   link-preview format; approved+active only).
  *
  * Trust posture: the storefront lists ONLY admin-approved offerings (each lane's approval gate is
  * the platform's live trust review — F2/§10/Ready-Made queues), and 404s when the earner has zero
@@ -23,6 +26,7 @@ import { eq, and, sql } from "drizzle-orm";
 import { db } from "../db";
 import { users, providerServices, expertTemplates, readyMadeTrips, localExpertForms, serviceProviderForms } from "@shared/schema";
 import { EARNER_ROLES as CANONICAL_EARNER_ROLES, isEarnerRole, isProviderRole } from "@shared/roles";
+import { planTypeLabel } from "@shared/ready-made-plan-types";
 
 const router = Router();
 
@@ -484,9 +488,15 @@ router.get("/p/:handle", async (req, res, next) => {
       `<meta name="twitter:description" content="${esc(description)}" />`,
     ].join("\n    ");
 
+    // ESM-safe template resolution (the dev runtime has no __dirname — a ReferenceError here
+    // silently killed the injection via the catch/next()). Prod must serve the BUILT template
+    // (hashed asset paths), so it wins whenever it exists under a production run.
     const clientTemplateDev = path.resolve(process.cwd(), "client", "index.html");
-    const clientTemplateProd = path.resolve(__dirname, "public", "index.html");
-    const templatePath = fs.existsSync(clientTemplateDev) ? clientTemplateDev : clientTemplateProd;
+    const clientTemplateProd = path.resolve(process.cwd(), "dist", "public", "index.html");
+    const templatePath =
+      process.env.NODE_ENV === "production" && fs.existsSync(clientTemplateProd)
+        ? clientTemplateProd
+        : clientTemplateDev;
     if (!fs.existsSync(templatePath)) return next();
 
     let template = fs.readFileSync(templatePath, "utf-8");
@@ -545,9 +555,15 @@ router.get("/services/:id", async (req, res, next) => {
       `<meta name="twitter:description" content="${esc(description)}" />`,
     ].join("\n    ");
 
+    // ESM-safe template resolution (the dev runtime has no __dirname — a ReferenceError here
+    // silently killed the injection via the catch/next()). Prod must serve the BUILT template
+    // (hashed asset paths), so it wins whenever it exists under a production run.
     const clientTemplateDev = path.resolve(process.cwd(), "client", "index.html");
-    const clientTemplateProd = path.resolve(__dirname, "public", "index.html");
-    const templatePath = fs.existsSync(clientTemplateDev) ? clientTemplateDev : clientTemplateProd;
+    const clientTemplateProd = path.resolve(process.cwd(), "dist", "public", "index.html");
+    const templatePath =
+      process.env.NODE_ENV === "production" && fs.existsSync(clientTemplateProd)
+        ? clientTemplateProd
+        : clientTemplateDev;
     if (!fs.existsSync(templatePath)) return next();
 
     let template = fs.readFileSync(templatePath, "utf-8");
@@ -555,6 +571,79 @@ router.get("/services/:id", async (req, res, next) => {
     return res.status(200).set({ "Content-Type": "text/html" }).end(template);
   } catch (err) {
     console.error("[storefront] OG injection error (service):", err);
+    return next(); // fall through to SPA on any error
+  }
+});
+
+// Server-side OG injection for /ready-made/:id — the `direct:*` link-preview format (F4,
+// docs/backoffice/DISTRIBUTION_FORMATS.md): WhatsApp shares and /r/:code short-links land on
+// this page, and crawlers never run the SPA's JS, so the preview card must be in the initial
+// HTML. Same interception pattern as /p/:handle above. Gate mirrors the public read gate on
+// GET /api/ready-made/:id (approved + active ONLY — an author's unapproved preview never gets
+// OG data; it falls through to the default SPA shell). Every tag renders only real listing
+// fields (§13): title, market, durationDays, planType; og:image only when heroImageUrl exists.
+router.get("/ready-made/:id", async (req, res, next) => {
+  try {
+    const [listing] = await db
+      .select({
+        id: readyMadeTrips.id,
+        title: readyMadeTrips.title,
+        planType: readyMadeTrips.planType,
+        market: readyMadeTrips.market,
+        durationDays: readyMadeTrips.durationDays,
+        heroImageUrl: readyMadeTrips.heroImageUrl,
+      })
+      .from(readyMadeTrips)
+      .where(
+        and(
+          eq(readyMadeTrips.id, req.params.id),
+          eq(readyMadeTrips.status, "approved"),
+          eq(readyMadeTrips.active, true),
+        ),
+      )
+      .limit(1);
+
+    if (!listing) return next(); // unapproved/unknown → default SPA shell (no draft oracle)
+
+    const planLabel = planTypeLabel(listing.planType) ?? "trip plan";
+    const title = `${listing.title} | Traveloure`;
+    const description = `A ${listing.durationDays}-day ${planLabel.toLowerCase()} for ${listing.market}, expert-built on Traveloure — buy it and it becomes your own editable trip.`;
+    const shareUrl = `${req.protocol}://${req.get("host")}/ready-made/${listing.id}`;
+    const ogImage =
+      listing.heroImageUrl ??
+      `${req.protocol}://${req.get("host")}/og-cover.png`;
+
+    const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
+    const ogTags = [
+      `<title>${esc(title)}</title>`,
+      `<meta name="description" content="${esc(description)}" />`,
+      `<meta property="og:type" content="website" />`,
+      `<meta property="og:url" content="${esc(shareUrl)}" />`,
+      `<meta property="og:title" content="${esc(title)}" />`,
+      `<meta property="og:description" content="${esc(description)}" />`,
+      `<meta property="og:image" content="${esc(ogImage)}" />`,
+      `<meta property="og:site_name" content="Traveloure" />`,
+      `<meta name="twitter:card" content="summary_large_image" />`,
+      `<meta name="twitter:title" content="${esc(title)}" />`,
+      `<meta name="twitter:description" content="${esc(description)}" />`,
+    ].join("\n    ");
+
+    // ESM-safe template resolution (the dev runtime has no __dirname — a ReferenceError here
+    // silently killed the injection via the catch/next()). Prod must serve the BUILT template
+    // (hashed asset paths), so it wins whenever it exists under a production run.
+    const clientTemplateDev = path.resolve(process.cwd(), "client", "index.html");
+    const clientTemplateProd = path.resolve(process.cwd(), "dist", "public", "index.html");
+    const templatePath =
+      process.env.NODE_ENV === "production" && fs.existsSync(clientTemplateProd)
+        ? clientTemplateProd
+        : clientTemplateDev;
+    if (!fs.existsSync(templatePath)) return next();
+
+    let template = fs.readFileSync(templatePath, "utf-8");
+    template = template.replace("<head>", `<head>\n    ${ogTags}`);
+    return res.status(200).set({ "Content-Type": "text/html" }).end(template);
+  } catch (err) {
+    console.error("[storefront] OG injection error (ready-made):", err);
     return next(); // fall through to SPA on any error
   }
 });
