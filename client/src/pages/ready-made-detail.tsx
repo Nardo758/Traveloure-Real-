@@ -11,6 +11,16 @@
  * returns the same redacted DTO with preview:true) — what they ship is what they previewed.
  * Purchase: the safe 2-step (POST /purchase 202 → shared StripeCheckout → POST /purchase/confirm
  * → redirect into the clone). The client never sends an amount (§14).
+ *
+ * F4 (distribution formats, §17): this page is the STORE channel surface — it consumes the
+ * build-format registry (`resolveFormat("store", …)`) and branches its LEAD section only:
+ * `map-strip` (store:kyoto-cultural) leads with an honest neighborhood NAME strip (real
+ * city_neighborhoods rows for the listing's market — the DTO carries no coordinates and the
+ * teaser gate exposes no itinerary, so no map/pins are fabricated, §13); `venue-hero`
+ * (store:kyoto-wedding) leads with the mockup's venue-led hero rendering ONLY real DTO fields
+ * (title, market, durationDays, bestSeason when present — party size is NOT in the DTO, so it
+ * is omitted); `standard` (store:default) is the page exactly as before. The §10 teaser gate is
+ * untouched, and the author's preview-as-buyer renders the same branch automatically.
  */
 import { useState } from "react";
 import { useParams, useLocation, Link } from "wouter";
@@ -25,6 +35,7 @@ import StripeCheckout from "@/components/booking/StripeCheckout";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { planTypeLabel } from "@shared/ready-made-plan-types";
+import { resolveFormat } from "@/lib/build-formats/registry";
 import { CalendarDays, Loader2, MapPin, ShoppingBag, Sun } from "lucide-react";
 
 interface DetailListing {
@@ -48,6 +59,56 @@ const TYPE_LABELS: Record<string, string> = {
   activity: "Activities", food: "Food & dining", transport: "Transport",
   accommodation: "Stays", venue: "Venues", note: "Notes",
 };
+
+/**
+ * The listing's experience type for the format resolver, derived from the closed
+ * READY_MADE_PLAN_TYPES vocabulary (the DTO's only type field). Event plan types map onto the
+ * resolver's event vocabulary (the same words the client/store registry keys use); the
+ * itinerary plan types are all "travel". Unknown/null → null (falls through the resolver chain).
+ */
+const PLAN_TYPE_EXPERIENCE: Record<string, string> = {
+  wedding_plan: "wedding",
+  proposal_plan: "proposal",
+  corporate_retreat_plan: "corporate",
+  birthday_plan: "birthday",
+  hiking_itinerary: "travel",
+  road_trip_itinerary: "travel",
+  city_itinerary: "travel",
+  food_culture_itinerary: "travel",
+};
+
+interface CityNeighborhood {
+  id: string;
+  city: string;
+  name: string;
+}
+
+/**
+ * store:kyoto-cultural lead — the honest lighter variant of the mockup's map strip. The store
+ * DTO carries no coordinates and the teaser gate exposes no itinerary items, so there is
+ * nothing real to pin on a map (MapControlCenter renders from trip activities with lat/lng —
+ * unavailable here by design). Instead: the REAL neighborhood names for the listing's market
+ * from the live /api/city-neighborhoods catalog. Renders nothing when the market has no
+ * neighborhood rows — never a fabricated strip (§13).
+ */
+function NeighborhoodStrip({ market }: { market: string }) {
+  const { data } = useQuery<CityNeighborhood[]>({ queryKey: ["/api/city-neighborhoods"] });
+  const city = market.split(",")[0].trim().toLowerCase();
+  const hoods = (data ?? []).filter((n) => n.city.trim().toLowerCase() === city);
+  if (hoods.length === 0) return null;
+  return (
+    <div className="mb-5 rounded-xl border border-border bg-muted/40 px-4 py-3" data-testid="lead-map-strip">
+      <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-2">
+        <MapPin className="w-3.5 h-3.5" /> Neighborhoods of {market.split(",")[0].trim()}
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {hoods.map((n) => (
+          <Badge key={n.id} variant="outline">{n.name}</Badge>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export default function ReadyMadeDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -128,6 +189,13 @@ export default function ReadyMadeDetailPage() {
   const inside = listing.insideCounts;
   const price = listing.priceCents === null ? null : (listing.priceCents / 100).toFixed(2);
 
+  // F4: this page is the STORE channel surface — resolve the distribution format from the
+  // listing's own DTO fields (planType → experience type, market) and branch the LEAD only.
+  // Unmatched listings resolve store:default → "standard" → the page exactly as before.
+  const experienceType = listing.planType ? PLAN_TYPE_EXPERIENCE[listing.planType] ?? null : null;
+  const storeFormat = resolveFormat("store", experienceType, listing.market);
+  const lead = (storeFormat.layout?.lead as "map-strip" | "venue-hero" | "standard" | undefined) ?? "standard";
+
   return (
     <div className="max-w-3xl mx-auto p-4 sm:p-6">
       {/* ── Branded page header — the quality structure's frame ── */}
@@ -147,21 +215,52 @@ export default function ReadyMadeDetailPage() {
         </div>
       )}
 
-      {/* Type of Plan — the structure's headline */}
-      <div className="text-sm font-semibold uppercase tracking-wide text-muted-foreground" data-testid="text-plan-type">
-        {planTypeLabel(listing.planType) ?? "Trip plan"}
-      </div>
-      <h1 className="text-2xl sm:text-3xl font-bold text-foreground mt-1 mb-3" data-testid="text-rm-title">{listing.title}</h1>
+      {lead === "venue-hero" ? (
+        /* store:kyoto-wedding lead — the mockup's venue-led hero. Facts row renders ONLY real
+           DTO fields: durationDays always exists; bestSeason (the date window) only when the
+           listing carries it; party size is NOT in the DTO, so it is never shown (§13). */
+        <div
+          className="rounded-2xl p-6 sm:p-8 mb-4 text-white bg-gradient-to-br from-[#7A2E3B] to-[#B4434F]"
+          data-testid="lead-venue-hero"
+        >
+          <div className="text-xs font-semibold uppercase tracking-wide text-white/80" data-testid="text-plan-type">
+            {planTypeLabel(listing.planType) ?? "Trip plan"}
+          </div>
+          <h1 className="text-2xl sm:text-3xl font-bold mt-1" data-testid="text-rm-title">
+            {listing.title} — {listing.market}
+          </h1>
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-sm text-white/90 mt-3">
+            <span className="flex items-center gap-1"><CalendarDays className="w-4 h-4" />{listing.durationDays} days</span>
+            {listing.bestSeason && <span className="flex items-center gap-1"><Sun className="w-4 h-4" />Date window: {listing.bestSeason}</span>}
+          </div>
+        </div>
+      ) : (
+        <>
+          {/* Type of Plan — the structure's headline */}
+          <div className="text-sm font-semibold uppercase tracking-wide text-muted-foreground" data-testid="text-plan-type">
+            {planTypeLabel(listing.planType) ?? "Trip plan"}
+          </div>
+          <h1 className="text-2xl sm:text-3xl font-bold text-foreground mt-1 mb-3" data-testid="text-rm-title">{listing.title}</h1>
+        </>
+      )}
 
       <div className="flex flex-wrap items-center gap-3 text-sm text-muted-foreground mb-4">
-        <span className="flex items-center gap-1"><MapPin className="w-4 h-4" />{listing.market}</span>
-        <span className="flex items-center gap-1"><CalendarDays className="w-4 h-4" />{listing.durationDays} days</span>
-        {listing.bestSeason && <span className="flex items-center gap-1"><Sun className="w-4 h-4" />Best in {listing.bestSeason}</span>}
+        {/* The venue hero already carries market/duration/season — don't repeat them below it. */}
+        {lead !== "venue-hero" && (
+          <>
+            <span className="flex items-center gap-1"><MapPin className="w-4 h-4" />{listing.market}</span>
+            <span className="flex items-center gap-1"><CalendarDays className="w-4 h-4" />{listing.durationDays} days</span>
+            {listing.bestSeason && <span className="flex items-center gap-1"><Sun className="w-4 h-4" />Best in {listing.bestSeason}</span>}
+          </>
+        )}
         <Badge variant="secondary" data-testid="badge-rm-section">
           {listing.section === "trips_by_locals" ? `Trip by a Local — ${listing.authorName}` : `By Trip Planner ${listing.authorName}`}
         </Badge>
         {listing.badge && <Badge>{listing.badge}</Badge>}
       </div>
+
+      {/* store:kyoto-cultural lead — the neighborhood strip band above the existing content. */}
+      {lead === "map-strip" && <NeighborhoodStrip market={listing.market} />}
 
       {listing.heroImageUrl && (
         <div className="mb-5">
