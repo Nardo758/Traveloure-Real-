@@ -237,6 +237,61 @@ Sequence: merge #315 → PR-W → PR-F. Relative spend: W-2 is the one large ite
 page must be rewritten to spec once); everything else is S/M because discovery is already done and
 no file is written twice.
 
+## PR-C — Console absorb-then-collapse (mapped Jul 28, 2026; token-optimized)
+
+C1's no-function-loss verification (committed 0aec4f54) is the PAID-FOR discovery: every kept entry's
+unique functions are enumerated with file/endpoint facts. Briefs quote those verbatim — agents EDIT,
+never re-explore. **Token-shaping rules:** each big file is opened by exactly ONE agent across the whole
+program (catalog.tsx→C2, inbox.tsx→C5, performance.tsx→C6, dmo-picker-modal.tsx→C7); workspace.tsx gets
+seam-scale edits only; the two genuinely new builds (Calendar, Customers) are new-file phases — cheap
+per token because nothing existing is rewritten; retirement redirects ride the SAME phase as the
+absorption that earns them (never a separate pass); one behavioral boot per PR; CLAUDE.md updated once
+per PR. Three PR cycles:
+
+### PR-Ca — absorptions that finish Catalog + the two new modules (C1 rides this branch)
+- **C2 Catalog, touched ONCE — agent (M):** storefront header (/p/:handle link + live status + preview);
+  offerings-table gains the actions C1 found missing (edit → the real /expert/services/:id/edit route,
+  pause/activate PATCH, duplicate POST — endpoints exist, wiring only); absorbs Share&Promote's
+  offering-scoped creation (per-row Share menu: feed/story share images, review cards, open-slot promo;
+  storefront caption into the header) since Performance already carries the measurement half. EARNS TWO
+  retirements in the same phase: My Offerings → /expert/catalog, Share&Promote → /expert/catalog.
+  Filed rider: draft-listing preview-as-buyer affordance in ReadyMadeListingPanel.
+- **C3 Calendar — agent (L, one of two unavoidable larges):** ONE new read-only server aggregate
+  (GET /api/me/calendar?month= — composes existing tables only: availability slots, service_bookings,
+  affiliate_booking_requests, ready-made purchases + status transitions, client-delivery steps,
+  coordination dates; §14 session-scoped; no new tables, no migration) + the new calendar page
+  (channel-filter chips, month grid, event lanes per the mockup; every event links to its owning
+  module) + sidebar entry + a referenced today-strip on Today. §13: empty lanes render empty.
+- **C4 Customers — agent (M):** new GET /api/me/customers (self-scoped aggregate from this earner's
+  service_bookings + assigned trips + purchases; no CRM fields) + the new page (list → detail with
+  their real bookings/trips/threads) + sidebar entry. Seeds from Assigned Trips' by-client view
+  (C1 fact) but does NOT yet retire that page (the Suggest flow still lives there → C5).
+
+### PR-Cb — the Inbox absorption + the folds that finish the collapse
+- **C5 Inbox, touched ONCE — agent (L):** absorbs the C1-enumerated uniques: booking HISTORY tab
+  (confirmed/completed + stats), the visa-status dialog (PATCH /api/service-bookings/:id/visa-status),
+  the plan-snapshot view, a recent-threads queue linking into /chat, and the assignment context; the
+  Suggest flow moves to the Workstation Distribute→Client card (seam-scale workspace.tsx edit —
+  client-delivery state is its semantic home). EARNS: Bookings → /expert/inbox, Assigned Trips →
+  /expert/inbox, Messages entry retired (threads stay on /chat, reachable via Inbox queue).
+- **C6 Performance, touched ONCE — agent (M):** hosts Analytics as a tab (mount the existing page
+  component — no extraction rewrite; /expert/analytics → /expert/performance?tab=analytics, re-point
+  the two inbound redirects C1 found). EARNS: Analytics retirement.
+- **C7 DMO refine drawer — agent (M):** DmoPickerCore (its own file) gains the review-and-refine flow
+  (the dmo-library edit mutations, quoted from C1). EARNS: DMO Library → /expert/workspace.
+- **C8 renames/merges — agent (S):** Earnings → Money (route+label+redirect), Profile merged into
+  Settings as the first tab (+redirect). Sidebar reaches the NINE. Content Studio + AI Assistant stay
+  (recorded defaults).
+
+### PR-Cc — provider nine-module stamp
+- **C9 — agent (M/L):** provider sidebar onto the same 9-module IA reusing the shared shell/primitives;
+  provider pages mapped per module; same no-function-loss verification posture (quote provider console
+  audit facts; verify before any retirement). Product Builder stays OUT (own lane, gated on the bundle
+  schema + money ratifications per §17).
+
+Relative spend: C3 + C5 are the two larges (genuinely new build; biggest absorption). Everything else
+S/M because C1's discovery is reused and no file is opened twice.
+
 ### W-4 — location-aware builds (decision-maker report, post-PR-F)
 The build's DESTINATION is what the data loads from (neighborhood grouping, platform-services
 search, format resolution — all derive from trips.destination), but it was implicit: create
