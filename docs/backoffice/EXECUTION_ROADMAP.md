@@ -236,3 +236,14 @@ per PR, not per phase.
 Sequence: merge #315 → PR-W → PR-F. Relative spend: W-2 is the one large item (unavoidable — the
 page must be rewritten to spec once); everything else is S/M because discovery is already done and
 no file is written twice.
+
+### W-4 — location-aware builds (decision-maker report, post-PR-F)
+The build's DESTINATION is what the data loads from (neighborhood grouping, platform-services
+search, format resolution — all derive from trips.destination), but it was implicit: create
+silently defaulted Kyoto with no input AND refused any other destination (a W-1 leftover), and
+the builder chip was read-only. W-4: create accepts a free `destination` (the §12 gate stays
+ONLY on ship-to-store + the migration-149 CHECK — a build can be for anywhere; the STORE is
+Kyoto-gated); the build PATCH allow-list gains `destination`; the builder destination chip is
+editable for authored builds (assignment trips stay read-only — the destination belongs to the
+traveler); "New build" gains a destination input. Everything downstream recomputes on context
+invalidation because the reads are derived, not stored client-side.
