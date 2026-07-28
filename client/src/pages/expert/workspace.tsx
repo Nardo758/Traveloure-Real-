@@ -329,6 +329,12 @@ export default function ExpertWorkspace() {
   const [servicePickerOpen, setServicePickerOpen] = useState(false);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
+  // W-4 location-aware builds: the destination chip is editable for authored builds.
+  const [editingDest, setEditingDest] = useState(false);
+  const [destDraft, setDestDraft] = useState("");
+  // W-4: destination set at CREATE time — it drives what data the build loads. Server
+  // defaults to the launch market when left blank.
+  const [newBuildDest, setNewBuildDest] = useState("");
 
   // Browse / map search state
   const [browseQuery, setBrowseQuery] = useState("");
@@ -381,11 +387,14 @@ export default function ExpertWorkspace() {
   // only (trip, authorId=caller, NO listing) — where it ships is decided later in Distribute.
   const startBuild = useMutation({
     mutationFn: async () => {
+      // W-4: the build's destination — the location its data loads from. Blank → the
+      // server's launch-market default. The §12 gate applies only at ship-to-store.
+      const dest = newBuildDest.trim();
       const res = await fetch("/api/expert/ready-made", {
         method: "POST",
         headers: { "content-type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({}),
+        body: JSON.stringify(dest ? { destination: dest } : {}),
       });
       const body = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(body.message ?? "Could not start a new build");
@@ -470,12 +479,14 @@ export default function ExpertWorkspace() {
     onError: (e: any) => toast({ title: "Couldn't rename the build", description: e.message, variant: "destructive" }),
   });
 
-  // W-3 task 4: pre-listing rename — an authored build with NO listing yet PATCHes the trip
-  // title via the build-only endpoint (owner-gated server-side; title-only allow-list).
-  // commitTitle picks between the two by whether workspaceCtx.listing exists.
+  // W-3/W-4: authored-build edit — title and/or destination via the build-only endpoint
+  // (owner-gated server-side; strict two-field allow-list). commitTitle picks between the
+  // listing PATCH and this by whether workspaceCtx.listing exists; destination edits always
+  // go here (W-4 location-aware builds — the destination drives what data loads, and the
+  // derived `destination`/format/neighborhood reads all recompute on context invalidation).
   const renameBuildMutation = useMutation({
-    mutationFn: async (title: string) => {
-      const res = await apiRequest("PATCH", `/api/expert/ready-made/build/${tripId}`, { title });
+    mutationFn: async (patch: { title?: string; destination?: string }) => {
+      const res = await apiRequest("PATCH", `/api/expert/ready-made/build/${tripId}`, patch);
       return res.json();
     },
     onSuccess: () => {
@@ -900,7 +911,17 @@ export default function ExpertWorkspace() {
           One door in — build first, decide where it ships later.
         </div>
 
-        {/* ONE create action (P1-1). The build is unlabeled at birth; channels attach in Distribute. */}
+        {/* ONE create action (P1-1). The build is unlabeled at birth; channels attach in Distribute.
+            W-4: the destination is set here — it is the location the build's data loads from
+            (neighborhoods, platform-services search, format). Blank → the launch-market default. */}
+        <input
+          value={newBuildDest}
+          onChange={e => setNewBuildDest(e.target.value)}
+          placeholder="Where is this build for? (default: Kyoto)"
+          data-testid="input-new-build-destination"
+          disabled={isEventPlanner}
+          style={{ width: "100%", boxSizing: "border-box", fontSize: 13, color: INK, border: `1px solid ${LINE}`, borderRadius: 9, padding: "9px 12px", marginBottom: 8, outline: "none", background: CARD }}
+        />
         <button
           onClick={() => !isEventPlanner && startBuild.mutate()}
           disabled={startBuild.isPending || isEventPlanner}
@@ -1049,7 +1070,15 @@ export default function ExpertWorkspace() {
     // W-3 task 4: with a listing → PATCH the listing (it syncs the trip title server-side);
     // without one → the build-only rename endpoint. Picked by whether the listing exists.
     if (listing?.id) renameListingMutation.mutate(next);
-    else renameBuildMutation.mutate(next);
+    else renameBuildMutation.mutate({ title: next });
+  };
+
+  // W-4: commit an authoring build's destination — the location the data loads from.
+  const commitDestination = () => {
+    setEditingDest(false);
+    const next = destDraft.trim();
+    if (!next || next === (trip?.destination ?? "")) return;
+    renameBuildMutation.mutate({ destination: next });
   };
 
   const sectionLabelStyle: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: FAINT, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 7 };
@@ -1095,10 +1124,44 @@ export default function ExpertWorkspace() {
           </span>
         )}
 
-        {/* Trip facts as header chips (P2-7/8: the left rail folds away) */}
-        {trip?.destination && (
-          <StateChip tone="mut" testId="chip-build-destination"><MapPin style={{ width: 9, height: 9 }} /> {trip.destination}</StateChip>
-        )}
+        {/* Trip facts as header chips (P2-7/8: the left rail folds away).
+            W-4: the destination is EDITABLE for authored builds — it is the location the data
+            loads from (neighborhood grouping, platform-services search, format resolution all
+            derive from trip.destination and recompute when the context query invalidates).
+            Assignment trips keep it read-only (the destination belongs to the traveler). */}
+        {editingDest ? (
+          <input
+            value={destDraft}
+            autoFocus
+            onChange={e => setDestDraft(e.target.value)}
+            onBlur={commitDestination}
+            onKeyDown={e => { if (e.key === "Enter") commitDestination(); if (e.key === "Escape") setEditingDest(false); }}
+            data-testid="input-build-destination"
+            placeholder="Destination city"
+            style={{ fontSize: 12, color: INK, border: `1.5px solid ${LINE}`, borderRadius: 999, padding: "2px 10px", outline: "none", background: CARD, width: 150 }}
+          />
+        ) : trip?.destination ? (
+          isAuthoring ? (
+            <button
+              onClick={() => { setDestDraft(trip.destination || ""); setEditingDest(true); }}
+              data-testid="chip-build-destination"
+              title="Change destination — the build's data loads from this location"
+              style={{ background: "none", border: "none", padding: 0, cursor: "pointer" }}
+            >
+              <StateChip tone="mut"><MapPin style={{ width: 9, height: 9 }} /> {trip.destination} <Pencil style={{ width: 8, height: 8 }} /></StateChip>
+            </button>
+          ) : (
+            <StateChip tone="mut" testId="chip-build-destination"><MapPin style={{ width: 9, height: 9 }} /> {trip.destination}</StateChip>
+          )
+        ) : isAuthoring ? (
+          <button
+            onClick={() => { setDestDraft(""); setEditingDest(true); }}
+            data-testid="chip-build-destination"
+            style={{ background: "none", border: "none", padding: 0, cursor: "pointer" }}
+          >
+            <StateChip tone="warn"><MapPin style={{ width: 9, height: 9 }} /> Set destination</StateChip>
+          </button>
+        ) : null}
         {isAuthoring ? (
           (listing as any)?.durationDays ? <StateChip tone="mut" testId="chip-build-duration">{(listing as any).durationDays} days</StateChip> : null
         ) : (
