@@ -171,19 +171,37 @@ async function purgeE2EAccountsFromProd() {
   }
 
   // Step 2: best-effort delete (LIKE pattern — the .test TLD is RFC-2606
-  // reserved and can never belong to a real user). FK-blocked rows stay
-  // neutralized rather than failing the whole purge.
+  // reserved and can never belong to a real user). PER-ROW, not one bulk
+  // statement: a single DELETE fails ENTIRELY if ANY row is FK-referenced,
+  // which left all 60 prod residue rows behind (dispatch P1-1, Jul 28 2026)
+  // when only some carried trips/bookings. Row-by-row removes every
+  // unreferenced account; FK-blocked ones stay neutralized and are logged.
   try {
-    const deleted = await db
-      .delete(users)
-      .where(sql`${users.email} LIKE '%@traveloure.test'`)
-      .returning({ email: users.email, role: users.role });
-    if (deleted.length > 0) {
-      console.warn(`[security] Purged ${deleted.length} @traveloure.test account(s) from PROD DB:`);
-      deleted.forEach((r) => console.warn(`  - ${r.email} (${r.role})`));
+    const targets = await db
+      .select({ id: users.id, email: users.email })
+      .from(users)
+      .where(sql`${users.email} LIKE '%@traveloure.test'`);
+    let deleted = 0;
+    const blocked: string[] = [];
+    for (const t of targets) {
+      try {
+        await db.delete(users).where(eq(users.id, t.id));
+        deleted++;
+      } catch {
+        blocked.push(t.email ?? t.id);
+      }
+    }
+    if (deleted > 0) {
+      console.warn(`[security] Purged ${deleted}/${targets.length} @traveloure.test account(s) from PROD DB.`);
+    }
+    if (blocked.length > 0) {
+      console.warn(
+        `[security] ${blocked.length} test account(s) FK-blocked from deletion — remain NEUTRALIZED (role user, unverifiable password):`,
+      );
+      blocked.forEach((e) => console.warn(`  - ${e}`));
     }
   } catch (err) {
-    console.warn(`[security] Test-account delete blocked (likely FK references) — accounts remain NEUTRALIZED:`, err);
+    console.warn(`[security] Test-account purge enumeration failed — accounts remain NEUTRALIZED:`, err);
   }
 }
 
