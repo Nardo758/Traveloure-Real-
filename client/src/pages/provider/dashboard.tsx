@@ -96,9 +96,13 @@ export default function ProviderDashboard() {
     );
   }
 
+  // Console IA C9 (§17 17→9 collapse): this dashboard is the provider console's TODAY seat
+  // (module 1, ops home) — the sidebar entry is labeled "Today" and the route stays
+  // /provider/dashboard (label-only rename, the cheapest honest move; no expert today-strip
+  // rebuild — this page already leads with today's bookings + pending action items).
   if (analyticsLoading) {
     return (
-      <ProviderLayout title="Dashboard">
+      <ProviderLayout title="Today">
         <div className="flex items-center justify-center h-64">
           <Loader2 className="w-8 h-8 animate-spin text-console-dark" />
         </div>
@@ -107,7 +111,7 @@ export default function ProviderDashboard() {
   }
 
   return (
-    <ProviderLayout title="Dashboard">
+    <ProviderLayout title="Today">
       <div className="p-6 space-y-6">
         <PayoutBanner
           stripeConnectStatus={stripeStatus?.status ?? "not_started"}

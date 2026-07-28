@@ -1583,8 +1583,9 @@ router.post("/api/admin/providers/:userId/remind-stripe", isAuthenticated, async
       userId,
       type: "stripe_connect_reminder",
       title: "Complete Your Payout Setup",
-      message: "An admin has sent you a reminder to complete your Stripe Connect setup so you can receive payouts. Visit your earnings page to get started.",
-      data: { link: "/provider/earnings" },
+      message: "An admin has sent you a reminder to complete your Stripe Connect setup so you can receive payouts. Visit your Money page to get started.",
+      // C9: provider Earnings module renamed Money (§17) — /provider/earnings redirects here.
+      data: { link: "/provider/money" },
     });
     res.json({ ok: true });
   });
@@ -1611,7 +1612,8 @@ router.patch("/api/admin/provider-applications/:id/status", isAuthenticated, asy
         type: "application_approved",
         title: "Application Approved! 🎉",
         message: "Congratulations! Your provider application has been approved. Complete your Stripe Connect setup to start receiving payouts.",
-        data: { link: "/provider/earnings" },
+        // C9: provider Earnings module renamed Money (§17) — /provider/earnings redirects here.
+        data: { link: "/provider/money" },
       });
       // Send approval email (fire-and-forget)
       const providerUser = await storage.getUser(updated.userId);
