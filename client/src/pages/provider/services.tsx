@@ -117,6 +117,9 @@ interface Service {
   averageRating?: string;
   reviewCount?: number;
   contentAffinityTags?: string[];
+  // PB (§17 Product Builder): a bundle IS a provider_services row (product_shape='bundle',
+  // migration 151) — it appears in this list like any listing; NULL = single service.
+  productShape?: string | null;
 }
 
 const AFFINITY_TAG_LABELS: Record<string, string> = {
@@ -749,6 +752,9 @@ export default function ProviderServices() {
                 : `$${rawPrice}`;
               const categoryName = service.categoryId ? (categoryNameById[service.categoryId] || service.serviceType || "") : (service.serviceType || "");
               const isActive = service.status === "active";
+              // PB: bundles are edited in the Workstation's bundle builder (components +
+              // price live there), not the ServiceForm.
+              const isBundle = service.productShape === "bundle";
 
               return (
                 <Card
@@ -761,6 +767,11 @@ export default function ProviderServices() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <h3 className="font-semibold text-console-darkest truncate">{displayName}</h3>
+                          {isBundle && (
+                            <Badge variant="outline" className="text-[10px]" data-testid={`badge-bundle-${service.id}`}>
+                              Bundle
+                            </Badge>
+                          )}
                           {service.isFeatured && (
                             <Badge className="bg-primary text-white text-[10px]" data-testid={`badge-featured-${service.id}`}>
                               Featured
@@ -839,20 +850,25 @@ export default function ProviderServices() {
                     </div>
 
                     <div className="flex gap-2 mt-4 pt-3 border-t border-console-light">
-                      <Link href={`/provider/services/${service.id}/edit`}>
+                      <Link href={isBundle ? "/provider/workstation" : `/provider/services/${service.id}/edit`}>
                         <Button variant="outline" size="sm" data-testid={`button-edit-${service.id}`}>
                           <Edit className="w-4 h-4 mr-1" /> Edit
                         </Button>
                       </Link>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => duplicateMutation.mutate(service.id)}
-                        disabled={duplicateMutation.isPending}
-                        data-testid={`button-duplicate-${service.id}`}
-                      >
-                        <Copy className="w-4 h-4 mr-1" /> Duplicate
-                      </Button>
+                      {/* PB: no Duplicate for bundles — duplicateService copies the
+                          provider_services row only, not bundle_components, so the copy
+                          would be a component-less bundle (filed server follow-up). */}
+                      {!isBundle && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => duplicateMutation.mutate(service.id)}
+                          disabled={duplicateMutation.isPending}
+                          data-testid={`button-duplicate-${service.id}`}
+                        >
+                          <Copy className="w-4 h-4 mr-1" /> Duplicate
+                        </Button>
+                      )}
                       {/* C9 Share & Promote absorption: share kit only for approved+active
                           services — the F2 gate the public page + share image enforce. */}
                       {service.approvalStatus === "approved" && isActive && (
