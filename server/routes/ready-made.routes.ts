@@ -45,10 +45,12 @@ function isAuthenticated(req: any, res: any, next: any) {
 
 const createReadyMadeSchema = z.object({
   title: z.string().trim().min(1).max(200).default("Untitled build"),
-  // §12/F8: the launch scope is VALIDATED, not just a default — a non-launch market is refused
-  // here and by the migration-149 DB CHECK. Set lives in shared/launch-markets.ts.
-  market: z.string().trim().min(1).max(100).default(LAUNCH_MARKETS[0])
-    .refine(isLaunchMarket, { message: STORE_GATE_MESSAGE }),
+  // Location-aware builds (W-4): a BUILD can be for any destination — the location the expert
+  // sets here drives what data loads (neighborhood grouping, platform-services search, format
+  // resolution). The §12 launch gate does NOT belong at build creation; it is enforced where it
+  // means something — ship-to-store (/from-trip, isLaunchMarket) + the migration-149 DB CHECK on
+  // the LISTING's market. Default stays the launch market for a blank create.
+  destination: z.string().trim().min(1).max(100).default(LAUNCH_MARKETS[0]),
   durationDays: z.number().int().min(1).max(30).default(3),
 });
 
@@ -67,7 +69,7 @@ router.post("/api/expert/ready-made", isAuthenticated, async (req, res) => {
     if (!parsed.success) {
       return res.status(400).json({ message: "Invalid input", errors: parsed.error.flatten() });
     }
-    const { title, market, durationDays } = parsed.data;
+    const { title, destination, durationDays } = parsed.data;
 
     // Placeholder dates: authoring trips are templates-in-the-making, not scheduled travel; the
     // buyer's CLONE gets real dates. trips.start/end are NOT NULL so we anchor a synthetic window.
@@ -83,7 +85,7 @@ router.post("/api/expert/ready-made", isAuthenticated, async (req, res) => {
         userId: null,          // §2a: NULL owner = excluded from every traveler surface
         authorId: userId,      // authoring-mode scope key
         title,
-        destination: market,
+        destination,
         startDate: fmt(start),
         endDate: fmt(end),
         status: "draft",
@@ -214,16 +216,22 @@ router.get("/api/expert/ready-made/builds", isAuthenticated, async (req, res) =>
   }
 });
 
-// ─── W-3: pre-listing build rename ───────────────────────────────────────────
-// An authored build with NO listing yet has no PATCH surface for its title (the with-listing
-// path PATCHes the listing, which syncs the trip title server-side). This renames the trip
-// directly. Allow-list body — `title` ONLY, never raw req.body (the Gap-2 mass-assignment
-// lesson, §10). Owner gate = getAuthoredTrip (explicit present-value author check, never
-// getTripRole). ROUTE ORDER: registered BEFORE PATCH /api/expert/ready-made/:id so the
-// literal "build" segment can't be captured by the :id param.
-const renameBuildSchema = z.object({
-  title: z.string().trim().min(1).max(200),
-}).strict();
+// ─── W-3/W-4: authored-build edit (title + destination) ──────────────────────
+// An authored build has no direct trips-PATCH surface (that path is traveler-owner-gated).
+// This edits the trip directly. W-4 (location-aware builds): `destination` joins `title` in the
+// allow-list — the location the expert sets drives what data loads (neighborhood grouping,
+// platform-services search, format resolution). Allow-list body — these two fields ONLY, never
+// raw req.body (the Gap-2 mass-assignment lesson, §10); at least one must be present. Owner
+// gate = getAuthoredTrip (explicit present-value author check, never getTripRole). The §12
+// launch gate does NOT apply here — it lives on ship-to-store; a listing's market is its own
+// field and is unaffected by a later build-destination edit. ROUTE ORDER: registered BEFORE
+// PATCH /api/expert/ready-made/:id so the literal "build" segment can't be captured by :id.
+const editBuildSchema = z.object({
+  title: z.string().trim().min(1).max(200).optional(),
+  destination: z.string().trim().min(1).max(100).optional(),
+}).strict().refine((d) => d.title !== undefined || d.destination !== undefined, {
+  message: "Provide title and/or destination",
+});
 
 router.patch("/api/expert/ready-made/build/:tripId", isAuthenticated, async (req, res) => {
   try {
@@ -234,21 +242,24 @@ router.patch("/api/expert/ready-made/build/:tripId", isAuthenticated, async (req
     const trip = await getAuthoredTrip(req.params.tripId, userId);
     if (!trip) return res.status(403).json({ message: "Not this build's author" });
 
-    const parsed = renameBuildSchema.safeParse(req.body ?? {});
+    const parsed = editBuildSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
       return res.status(400).json({ message: "Invalid input", errors: parsed.error.flatten() });
     }
 
     const [updated] = await db
       .update(trips)
-      .set({ title: parsed.data.title } as any)
+      .set({
+        ...(parsed.data.title !== undefined ? { title: parsed.data.title } : {}),
+        ...(parsed.data.destination !== undefined ? { destination: parsed.data.destination } : {}),
+      } as any)
       .where(eq(trips.id, trip.id))
-      .returning({ id: trips.id, title: trips.title });
+      .returning({ id: trips.id, title: trips.title, destination: trips.destination });
 
     res.json({ trip: updated });
   } catch (err: any) {
-    console.error("[ready-made] build rename error:", err);
-    res.status(500).json({ message: "Failed to rename build", error: err.message });
+    console.error("[ready-made] build edit error:", err);
+    res.status(500).json({ message: "Failed to edit build", error: err.message });
   }
 });
 
