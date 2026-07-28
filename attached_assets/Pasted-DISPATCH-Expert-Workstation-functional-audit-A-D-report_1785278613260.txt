@@ -1,0 +1,18 @@
+DISPATCH — Expert Workstation functional audit §A–§D (report-only)
+
+Read CLAUDE.md §16 (affiliate-outbound rule) and §17 (Workstation/distribution contract) first. Hard rules: REPORT-ONLY — no code commits/pushes/edits, no schema changes, no npm install; run against the dev workspace at current main (b654ad51+), never prod accounts; never accept "copy dev database over production." Evidence per claim: screenshot or file:line pointer. For every gap, classify the root cause — UI-missing (backend exists, no surface), backend-missing (surface would have nothing to call), or both — and name the files.
+
+§A — Day management (reported gap: "could only add to Day 1, no way to switch to Day 2").
+In /expert/workspace, open an authored multi-day build. Ground-truth: (a) does the data model carry days — check itinerary_items.day_number writes and whether the Add panel / DmoPickerCore (client/src/components/expert/dmo-picker-modal.tsx) receive a fixed dayNumber prop from workspace.tsx; (b) is there ANY UI to change the target day before adding, or to move an item between days after adding; (c) how does the canvas group items when multiple days exist. Report exactly where day selection dead-ends and the smallest fix shape (e.g. a day picker in the Add panel header + a move-to-day action on canvas items).
+
+§B — Transport source (reported gap: no way to add transport; wants a DMO-style drawer pulling affiliate transport).
+Inventory the transport supply that already exists server-side: the Travelpayouts transport cards, transport_booking_options, the transport-hub routes, and the §16 booking-agent rail (POST /api/affiliate-booking-requests). Confirm the Add panel has NO transport source pill today. Then assess what a "Transport" drawer (the DMO-drawer pattern) would need to list affiliate transport options and add one to the itinerary §16-compliantly — no raw affiliate URL ever reaching the client; booking routes through the agent rail or the item attaches as informational. Report which existing endpoint(s) could power the drawer's list and exactly what's missing. Design assessment only — do not build.
+
+§C — Expert Notes (reported gap: no notes section in the builder).
+The Trip Plan Card contract carries expert notes (render-time, per-channel — §17 distribution formats). Ground-truth where notes live today: the workspace notes endpoints (grep server for the trip-notes handlers ported into booking-actions.ts), the PlanCard notes rendering (client/src/components/plancard/*), and whether the BUILDER has any authoring UI (per-item or per-trip) — and whether it differs between assignment trips and authored builds. Report the exact seam: where authoring exists, where rendering exists, where the gap is, and the smallest fix shape.
+
+§D — Bounded capability sweep.
+Walk the full loop ONCE as an expert: New build (destination set) → Add from EACH source pill (DMO / platform content / platform services / my services / custom) → AI Gaps tab → Distribute: Client card, Store (ship-to-store), Social kit, Direct link. For each step: does the control do what it claims (real request fired, real state change)? List every dead control, missing affordance, or §13 honesty violation you hit. Cap the sweep at this loop — no adversarial deep-dive beyond it.
+
+Report format: one gap table (ID / what / root-cause class / files / severity P1–P3 / smallest-fix shape), §A–§C rows first, then §D findings. One screenshot per confirmed gap, no prose beyond the table.
+

@@ -650,6 +650,7 @@ export default function OptimizePage() {
                 </div>
                 <Button
                   className="bg-primary hover:bg-primary/90 text-white px-8"
+                  onClick={() => setLocation("/cart")}
                   data-testid="button-proceed-booking"
                 >
                   Proceed to Booking
