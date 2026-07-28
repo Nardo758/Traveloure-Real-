@@ -63,6 +63,7 @@ import {
   localKnowledgeNuggets, insertLocalKnowledgeNuggetSchema,
   contentPlacementRules,
   type InsertContentPlacementRule,
+  bundleComponents,
 } from "@shared/schema";
 import {
   TAB_CONTENT_TYPE_MAP,
@@ -1949,6 +1950,26 @@ router.get("/api/services/:id", async (req, res) => {
     // routes.ts shadow copy, where 23ece804 applied the gate to the dead duplicate.
     if (!service || service.status !== "active" || service.approvalStatus !== "approved") {
       return res.status(404).json({ message: "Service not found" });
+    }
+    // §17 bundles (migration 151): additive component list on the public detail. Same F2
+    // read-gate per component — only components STILL approved+active are exposed; an
+    // unapproved/paused component never leaks through the bundle's page.
+    if (service.productShape === "bundle") {
+      const components = await db
+        .select({
+          id: providerServices.id,
+          serviceName: providerServices.serviceName,
+          shortDescription: providerServices.shortDescription,
+        })
+        .from(bundleComponents)
+        .innerJoin(providerServices, eq(bundleComponents.componentServiceId, providerServices.id))
+        .where(and(
+          eq(bundleComponents.bundleServiceId, service.id),
+          eq(providerServices.approvalStatus, "approved"),
+          eq(providerServices.status, "active"),
+        ))
+        .orderBy(asc(bundleComponents.position));
+      return res.json({ ...service, bundleComponents: components });
     }
     res.json(service);
   });

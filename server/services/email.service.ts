@@ -1185,7 +1185,8 @@ interface ProviderApplicationApprovalParams {
 /**
  * Fire-and-forget email to a provider applicant when their application is
  * approved. Congratulates them, explains the Stripe Connect next step, and
- * links directly to /provider/earnings. Never throws.
+ * links directly to /provider/money (C9: the Earnings module renamed Money;
+ * /provider/earnings redirects there). Never throws.
  */
 export async function sendProviderApplicationApprovalEmail(
   params: ProviderApplicationApprovalParams
@@ -1200,7 +1201,7 @@ export async function sendProviderApplicationApprovalEmail(
   }
 
   const greeting = params.firstName ? `Hi ${escHtml(params.firstName)},` : "Hi,";
-  const earningsUrl = `${getAppBaseUrl()}/provider/earnings`;
+  const earningsUrl = `${getAppBaseUrl()}/provider/money`;
 
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">

@@ -57,6 +57,9 @@ export function SetupChecklistCard() {
 
   const { steps, consoleFamily = "expert", storefrontPath } = data;
   const base = consoleFamily === "provider" ? "/provider" : "/expert";
+  // C9: the Catalog module is /expert/catalog vs /provider/services (the provider console
+  // kept its route, label-only rename) — availability editing and the share tools live there.
+  const catalogPath = consoleFamily === "provider" ? "/provider/services" : "/expert/catalog";
 
   const items: Array<{
     key: string;
@@ -78,7 +81,8 @@ export function SetupChecklistCard() {
       label: "Connect payouts",
       doneLabel: "Payouts connected",
       done: steps.payouts.done,
-      href: `${base}/earnings`,
+      // C8/C9: the Earnings module is renamed Money on both consoles.
+      href: `${base}/money`,
     },
     {
       key: "firstOffering",
@@ -103,7 +107,9 @@ export function SetupChecklistCard() {
             label: "Set your availability",
             doneLabel: `${steps.availability.count} open slot${(steps.availability.count ?? 0) === 1 ? "" : "s"}`,
             done: steps.availability.done,
-            href: `${base}/calendar`,
+            // Slot EDITING lives on Catalog (the ratified placement); /…/calendar is the
+            // read-only Channel Calendar on both consoles (C3/C9).
+            href: catalogPath,
           },
         ]
       : []),
@@ -192,7 +198,9 @@ export function SetupChecklistCard() {
         )}
         <div className="flex items-center gap-2 pt-3">
           <Button asChild size="sm" variant="outline">
-            <Link href={`${base}/share-promote`}>Share your storefront</Link>
+            {/* C2/C9: Share & Promote retired into Catalog on both consoles — link the
+                share tools' real home rather than riding the redirect. */}
+            <Link href={catalogPath}>Share your storefront</Link>
           </Button>
           {storefrontPath && (
             <Button asChild size="sm" variant="ghost">

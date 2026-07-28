@@ -6,10 +6,12 @@ import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { 
-  Bell, 
-  CreditCard, 
-  Shield, 
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Bell,
+  CreditCard,
+  Shield,
   Clock,
   User,
   Building,
@@ -23,7 +25,18 @@ import {
   Loader2,
   FileText,
 } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, lazy, Suspense } from "react";
+import { useSearch } from "wouter";
+
+// Console IA C9 (§17 17→9 collapse): Profile retired as a standalone page and hosted as
+// this page's FIRST tab (the expert C8 pattern — a mount, not an extraction; profile.tsx
+// stays intact as a component, lazy-loaded here so its bundle only loads when the tab
+// opens). Settings keeps DEFAULTING to its own content (the actionable verification +
+// preferences surface); Profile is first in ORDER only. Deep-link: ?tab=profile
+// (/provider/profile redirects there).
+const ProviderProfile = lazy(() => import("@/pages/provider/profile"));
+
+const SETTINGS_TABS = ["profile", "settings"] as const;
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
 import { apiRequest } from "@/lib/queryClient";
@@ -298,6 +311,14 @@ function VerificationPayoutsSection() {
 export default function ProviderSettings() {
   const { toast } = useToast();
 
+  // C9: ?tab= deep-linking (the expert settings C8 convention). Unknown/absent ?tab= falls
+  // back to the settings content — the kept default.
+  const search = useSearch();
+  const requestedTab = new URLSearchParams(search).get("tab");
+  const tabParam = (SETTINGS_TABS as readonly string[]).includes(requestedTab ?? "")
+    ? (requestedTab as (typeof SETTINGS_TABS)[number])
+    : "settings";
+
   const { data: serverSettings } = useQuery<ProviderSettingsData>({
     queryKey: ["/api/provider/settings"],
   });
@@ -355,6 +376,35 @@ export default function ProviderSettings() {
     <ProviderLayout title="Settings">
       <div className="p-6 space-y-6 max-w-4xl">
         <HandleClaimCard />
+
+        <Tabs defaultValue={tabParam} className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            {/* C9: Profile is the FIRST tab in order; the settings content stays the default. */}
+            <TabsTrigger value="profile" className="flex items-center gap-2" data-testid="tab-profile">
+              <Building className="w-4 h-4" /> Profile
+            </TabsTrigger>
+            <TabsTrigger value="settings" className="flex items-center gap-2" data-testid="tab-settings">
+              <User className="w-4 h-4" /> Settings
+            </TabsTrigger>
+          </TabsList>
+
+          {/* Profile Tab — C9: the profile page rendered embedded (no second ProviderLayout;
+              the profile.tsx seam drops its own p-6 since this container already provides
+              it). Lazy + Suspense mirrors the expert C8 mount. */}
+          <TabsContent value="profile" className="mt-6">
+            <Suspense
+              fallback={
+                <div className="space-y-4">
+                  <Skeleton className="h-28 w-full" />
+                  <Skeleton className="h-64 w-full" />
+                </div>
+              }
+            >
+              <ProviderProfile embedded />
+            </Suspense>
+          </TabsContent>
+
+          <TabsContent value="settings" className="mt-6 space-y-6">
 
         {/* Verification & Payouts */}
         <div>
@@ -553,6 +603,9 @@ export default function ProviderSettings() {
             {saveSettingsMutation.isPending ? "Saving..." : "Save All Settings"}
           </Button>
         </div>
+
+          </TabsContent>
+        </Tabs>
       </div>
     </ProviderLayout>
   );

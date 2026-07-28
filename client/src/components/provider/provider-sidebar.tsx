@@ -14,45 +14,101 @@ import {
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import {
-  LayoutDashboard,
+  Home,
   CalendarCheck,
-  Package,
+  CalendarDays,
   DollarSign,
-  BarChart3,
-  Calendar,
-  Building,
+  LayoutGrid,
   Settings,
   LogOut,
   MessageSquare,
-  Share2,
+  TrendingUp,
+  Users,
+  Wrench,
 } from "lucide-react";
 
+// Console IA C9 (§17 17→9 collapse): the provider console adopts the SAME nine-module IA the
+// expert console reached in PR-Ca/PR-Cb — Today · Calendar · Inbox · Catalog · Money ·
+// Customers · Performance · Settings.
+// PB: Workstation (the Provider Product Builder) LANDED, completing the provider NINE. Its
+// two §17 gates were ratified Jul 28, 2026 ("Product Builder — the two gated calls
+// RATIFIED"): ① component linkage = the bundle_components join table (migration 151; a
+// bundle IS a provider_services row, product_shape='bundle' — no new service table) and
+// ② the bundle money path = ONE booking row at the bundle's own stored price (§14
+// server-derived; components re-verified approved+active at booking). The bundle rung is
+// live (born-submitted, unlocks at 2+ approved services — the §17 creation ladder); the
+// property rung (per-night pricing, room availability) is a later phase and renders as an
+// honest non-interactive card, not a dead button.
 const menuGroups = [
   {
     label: "Work",
     items: [
-      { title: "Dashboard", href: "/provider/dashboard", icon: LayoutDashboard },
-      { title: "Calendar", href: "/provider/calendar", icon: Calendar },
+      // C9: "Dashboard" relabeled "Today" (module 1, ops home) — route unchanged; the page
+      // already leads with today's bookings + pending action items.
+      { title: "Today", href: "/provider/dashboard", icon: Home },
+      // C9: /provider/calendar is now the Channel Calendar (the ratified 9th module — the
+      // expert C3 pattern on GET /api/me/calendar, provider-real chips only). The old
+      // availability-editor sheets there were non-persisting previews; REAL slot editing
+      // moved to its ratified Catalog home (/provider/services availability section).
+      { title: "Calendar", href: "/provider/calendar", icon: CalendarDays },
+      // C9 KEPT (Inbox seat, honest label): "Bookings" is the provider console's actionable
+      // queue — pending accept/decline (PATCH /api/provider/bookings/:id/status), the
+      // visa-status management dialog, stats, and per-booking message deep-links into /chat.
+      // A provider Inbox page (queue + history + messages tabs, the expert C5 shape) does
+      // not exist yet; relabeling this "Inbox" without that absorption would be a costume.
+      // KEEP until a real provider Inbox absorbs it.
       { title: "Bookings", href: "/provider/bookings", icon: CalendarCheck },
-      { title: "Messages", href: "/provider/messages", icon: MessageSquare },
+      // C9 KEPT: Messages points straight at /chat (the thread home — ChatWithRoleLayout
+      // applies ProviderLayout for providers; /provider/messages was already a bare
+      // redirect there). The expert C5 retirement of this entry relied on Inbox's
+      // recent-threads tab, which the provider console doesn't have yet — without this
+      // entry the only paths into /chat would be per-booking message buttons. KEEP until
+      // the provider Inbox absorption above lands.
+      { title: "Messages", href: "/chat", icon: MessageSquare },
+      // PB: the Product Builder (§17 creation ladder — single service → bundle → property).
+      // Placed after Messages: the expert sidebar carries Workstation in its Work group too;
+      // the provider Work group keeps its existing order and appends the new module.
+      { title: "Workstation", href: "/provider/workstation", icon: Wrench },
     ],
   },
   {
     label: "Business",
     items: [
-      { title: "My Offerings", href: "/provider/services", icon: Package },
-      // Share & Promote (SH2): the mockup-6 nav entry N1 converged the label vocabulary for
-      // but never actually added — real caption/link/share-image surface, not a redirect.
-      { title: "Share & Promote", href: "/provider/share-promote", icon: Share2 },
-      { title: "Earnings", href: "/provider/earnings", icon: DollarSign },
-      { title: "Analytics", href: "/provider/analytics", icon: BarChart3 },
+      // C9: "My Offerings" relabeled "Catalog" (module 5, "what I sell") — route unchanged.
+      // The page absorbed the storefront header (/p/:handle management), availability slot
+      // editing (the ratified Catalog placement), and Share & Promote's creation half
+      // (per-service share kits + posting opportunities via the shared
+      // components/backoffice/share-tools.tsx — the same absorption expert C2 did).
+      { title: "Catalog", href: "/provider/services", icon: LayoutGrid },
+      // C9: "Share & Promote" entry RETIRED — its unique functions live on Catalog (per-
+      // service share kit, posting opportunities, storefront share); the measurement half
+      // (LinkAnalyticsPanel) already renders on the Analytics tab under Performance.
+      // /provider/share-promote redirects to /provider/services.
+      // Customers — module 6: honest self-scoped aggregation over this provider's real
+      // bookings (GET /api/me/customers); no invented CRM fields.
+      { title: "Customers", href: "/provider/customers", icon: Users },
+      { title: "Performance", href: "/provider/performance", icon: TrendingUp },
+      // C9: "Analytics" entry RETIRED — the page (intact) is hosted as Performance's
+      // Analytics tab (the expert C6 fold); /provider/analytics redirects to
+      // /provider/performance?tab=analytics.
+      // C9: module renamed Earnings → Money per §17; /provider/earnings redirects to
+      // /provider/money (same page; inbound notification/email links re-pointed).
+      { title: "Money", href: "/provider/money", icon: DollarSign },
     ],
   },
   {
     label: "Account",
     items: [
-      { title: "Profile", href: "/provider/profile", icon: Building },
+      // C9: "Profile" entry RETIRED — the profile page lives as Settings' FIRST tab
+      // (settings.tsx lazy-mounts it embedded; Settings still defaults to its own content,
+      // the actionable verification/preferences surface). /provider/profile redirects to
+      // /provider/settings?tab=profile.
       { title: "Settings", href: "/provider/settings", icon: Settings },
+      // C9 note — /provider/resources (static onboarding guides) stays ROUTED but keeps its
+      // pre-C9 state of having no sidebar entry: it is not one of the NINE, its content is
+      // static sample-guide copy with no backing content system, and promoting it to the
+      // nav would advertise a surface §13 can't stand behind. Retiring the route outright
+      // needs a home (e.g. a help center) that doesn't exist yet.
     ],
   },
 ];

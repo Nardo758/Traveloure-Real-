@@ -108,6 +108,7 @@ import {
   expertUpdatedItineraries,
   aiGeneratedItineraries,
   tripAnalyticsEnhanced,
+  bundleComponents,
 } from "@shared/schema";
 import { eq, ilike, and, desc, or, count, gt, gte, lte, avg, inArray, asc, isNotNull, isNull, ne, sql as sqlOp } from "drizzle-orm";
 import { authStorage } from "./replit_integrations/auth/storage";
@@ -1495,6 +1496,25 @@ export class DatabaseStorage implements IStorage {
       averageRating: null,
       reviewCount: 0,
     }).returning();
+    // PB (§17 bundles, migration 151): a bundle's identity includes its components —
+    // copying only the provider_services row would create a component-less bundle
+    // (spreading serviceData already carries productShape onto the copy). Copy the
+    // bundle_components rows too so the duplicate is a real, editable bundle.
+    if (original.productShape === "bundle" && newService) {
+      const components = await db
+        .select()
+        .from(bundleComponents)
+        .where(eq(bundleComponents.bundleServiceId, original.id));
+      if (components.length > 0) {
+        await db.insert(bundleComponents).values(
+          components.map((c) => ({
+            bundleServiceId: newService.id,
+            componentServiceId: c.componentServiceId,
+            position: c.position,
+          })),
+        );
+      }
+    }
     return newService;
   }
 

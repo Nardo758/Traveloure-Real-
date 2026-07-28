@@ -44,6 +44,7 @@ import {
   coordinationStates,
   readyMadeTrips,
   expertTypeEnum,
+  bundleComponents,
 } from "@shared/schema";
 import {
   TAB_CONTENT_TYPE_MAP,
@@ -1583,8 +1584,9 @@ router.post("/api/admin/providers/:userId/remind-stripe", isAuthenticated, async
       userId,
       type: "stripe_connect_reminder",
       title: "Complete Your Payout Setup",
-      message: "An admin has sent you a reminder to complete your Stripe Connect setup so you can receive payouts. Visit your earnings page to get started.",
-      data: { link: "/provider/earnings" },
+      message: "An admin has sent you a reminder to complete your Stripe Connect setup so you can receive payouts. Visit your Money page to get started.",
+      // C9: provider Earnings module renamed Money (§17) — /provider/earnings redirects here.
+      data: { link: "/provider/money" },
     });
     res.json({ ok: true });
   });
@@ -1611,7 +1613,8 @@ router.patch("/api/admin/provider-applications/:id/status", isAuthenticated, asy
         type: "application_approved",
         title: "Application Approved! 🎉",
         message: "Congratulations! Your provider application has been approved. Complete your Stripe Connect setup to start receiving payouts.",
-        data: { link: "/provider/earnings" },
+        // C9: provider Earnings module renamed Money (§17) — /provider/earnings redirects here.
+        data: { link: "/provider/money" },
       });
       // Send approval email (fire-and-forget)
       const providerUser = await storage.getUser(updated.userId);
@@ -2762,6 +2765,22 @@ router.delete("/api/admin/services/:id", isAuthenticated, async (req, res) => {
       await deleteProviderService(req.params.id);
       res.json({ ok: true });
     } catch (err: any) {
+      // Migration 151 (§17): bundle_components.component_service_id is ON DELETE RESTRICT —
+      // a service inside a bundle can't be deleted until removed from it. Surface the FK
+      // violation (23503) as an honest 409 naming the bundle(s), not an opaque 500.
+      if ((err?.code ?? err?.cause?.code) === "23503") {
+        const inBundles = await db
+          .select({ serviceName: providerServices.serviceName })
+          .from(bundleComponents)
+          .innerJoin(providerServices, eq(bundleComponents.bundleServiceId, providerServices.id))
+          .where(eq(bundleComponents.componentServiceId, req.params.id));
+        if (inBundles.length > 0) {
+          return res.status(409).json({
+            message: "This service is part of a bundle — remove it from the bundle(s) before deleting it.",
+            bundles: inBundles.map((r) => r.serviceName),
+          });
+        }
+      }
       res.status(500).json({ message: "Failed to delete service", error: err.message });
     }
   });

@@ -1,606 +1,290 @@
-import { ProviderLayout } from "@/components/provider/provider-layout";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  ChevronLeft,
-  ChevronRight,
-  Calendar as CalendarIcon,
-  Calendar,
-  Clock,
-  Users,
-  MapPin,
-  Loader2,
-  Edit2,
-  Trash2
-} from "lucide-react";
-import { useState, useMemo } from "react";
+/**
+ * Provider Channel Calendar — Console IA C9 (§17 17→9 collapse, the provider nine-module
+ * stamp; transplants the expert calendar.tsx C3 pattern onto ProviderLayout).
+ *
+ * This route previously carried the "Availability Calendar" page. Its function accounting
+ * (the absorb-first/collapse-last discipline):
+ *   - booking month grid (bookingDetails.scheduledDate) → covered by this calendar's inbound
+ *     lane, which reads the REAL schedule (claimed slot date COALESCE scheduledDate) from the
+ *     same GET /api/me/calendar aggregate the expert console uses — a superset of the old read.
+ *   - day-detail booking cards + "Upcoming Bookings" list → those re-rendered another module's
+ *     surface; per the one-home rule events here REFERENCE /provider/bookings instead.
+ *   - "Edit Schedule" / "Block Dates" sheets → were explicitly non-persisting local previews
+ *     ("Preview only — availability scheduling is coming soon", Save disabled), so no real
+ *     function is lost. REAL slot editing (vendor_availability_slots, the canonical model)
+ *     lives on Catalog (/provider/services availability section, the /api/me/services/:id/slots
+ *     CRUD) — the ratified "availability editing belongs to Catalog" placement.
+ *
+ * ONE channel-filtered calendar (never per-channel calendars). Every event is backed by a real
+ * row; an empty month renders an honest empty grid (§13). Chips are the PROVIDER-real subset:
+ * the aggregate can only emit booking + availability events for a provider role (agent
+ * requests are expert-family-only server-side; store lifecycle / purchases / client
+ * deliveries hang off expert-authored listings and assignments), so the expert console's
+ * Client/Store/Direct chips are deliberately NOT rendered here — a filter chip over a lane
+ * that can never populate would be a dead control, not honesty.
+ *
+ * Styling: console tokens ONLY (var(--console-*) / tailwind console-*) — zero raw hex (§17).
+ */
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { ServiceBooking, ProviderService } from "@shared/schema";
+import { Link } from "wouter";
+import { ProviderLayout } from "@/components/provider/provider-layout";
+import { PageHeader } from "@/components/backoffice/primitives";
+import { Skeleton } from "@/components/ui/skeleton";
+import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 
-type BookingWithService = ServiceBooking & { service?: ProviderService };
+// ─── Types (the calendar.routes.ts event shape) ─────────────────────────────
 
-interface ScheduleRule {
-  day: string;
-  startTime: string;
-  endTime: string;
-  active: boolean;
-}
+type Lane = "inbound" | "outbound" | "availability" | "store";
 
-interface BlackoutDate {
+interface CalendarEvent {
   id: string;
-  startDate: string;
-  endDate: string;
-  reason: "Personal" | "Vehicle Maintenance" | "Family" | "Holiday" | "Other";
+  lane: Lane;
+  kind: string;
+  date: string; // YYYY-MM-DD
+  title: string;
+  href: string;
+  status?: string;
 }
+
+// ─── Chips (provider-real subset — see header) ──────────────────────────────
+
+type ChipKey = "all" | "bookings" | "availability";
+
+const CHIPS: { key: ChipKey; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "bookings", label: "Bookings" },
+  { key: "availability", label: "Availability" },
+];
+
+function matchesChip(e: CalendarEvent, chip: ChipKey): boolean {
+  switch (chip) {
+    case "all":
+      return true;
+    case "bookings":
+      return e.kind === "booking";
+    case "availability":
+      return e.lane === "availability";
+  }
+}
+
+// ─── Lane colors (console tokens only — §17) ────────────────────────────────
+
+const LANE_STYLE: Record<Lane, { background: string; color: string }> = {
+  inbound: { background: "var(--console-brand-soft)", color: "var(--console-brand)" },
+  outbound: { background: "var(--console-warn-soft)", color: "var(--console-warn)" },
+  availability: { background: "var(--console-ok-soft)", color: "var(--console-ok)" },
+  store: { background: "var(--console-info-soft)", color: "var(--console-info)" },
+};
+
+const LEGEND: { lane: Lane; label: string }[] = [
+  { lane: "inbound", label: "Inbound — bookings on your services" },
+  { lane: "availability", label: "Availability you've opened" },
+];
+
+// ─── Month helpers (local, no TZ drift — the grid is a pure YYYY-MM-DD lattice) ──
+
+function pad2(n: number): string {
+  return n < 10 ? `0${n}` : String(n);
+}
+
+function ymd(year: number, month0: number, day: number): string {
+  return `${year}-${pad2(month0 + 1)}-${pad2(day)}`;
+}
+
+function monthLabel(year: number, month0: number): string {
+  return new Date(year, month0, 1).toLocaleDateString(undefined, {
+    month: "long",
+    year: "numeric",
+  });
+}
+
+// ─── Page ───────────────────────────────────────────────────────────────────
 
 export default function ProviderCalendar() {
-  const [currentDate, setCurrentDate] = useState(new Date());
-  const [selectedDate, setSelectedDate] = useState<number | null>(null);
-  const [viewMode, setViewMode] = useState<"month" | "week">("month");
-  const [scheduleRules, setScheduleRules] = useState<ScheduleRule[]>([
-    { day: "Monday", startTime: "06:00", endTime: "22:00", active: true },
-    { day: "Tuesday", startTime: "06:00", endTime: "22:00", active: true },
-    { day: "Wednesday", startTime: "06:00", endTime: "22:00", active: true },
-    { day: "Thursday", startTime: "06:00", endTime: "22:00", active: true },
-    { day: "Friday", startTime: "06:00", endTime: "22:00", active: true },
-    { day: "Saturday", startTime: "08:00", endTime: "20:00", active: true },
-    { day: "Sunday", startTime: "08:00", endTime: "20:00", active: false },
-  ]);
-  // Availability scheduling has no backend yet (there is no provider-availability
-  // table/endpoint). These editors are a local-only PREVIEW — nothing here persists.
-  // Gated honestly with a "coming soon" note + a disabled Save until the backend lands.
-  const [blackoutDates, setBlackoutDates] = useState<BlackoutDate[]>([]);
-  const [newBlackoutStart, setNewBlackoutStart] = useState("");
-  const [newBlackoutEnd, setNewBlackoutEnd] = useState("");
-  const [newBlackoutReason, setNewBlackoutReason] = useState<"Personal" | "Vehicle Maintenance" | "Family" | "Holiday" | "Other">("Personal");
+  const today = new Date();
+  const [year, setYear] = useState(today.getFullYear());
+  const [month0, setMonth0] = useState(today.getMonth());
+  const [chip, setChip] = useState<ChipKey>("all");
 
-  const { data: bookings, isLoading } = useQuery<BookingWithService[]>({
-    queryKey: ["/api/provider/bookings"],
+  const daysInMonth = new Date(year, month0 + 1, 0).getDate();
+  const from = ymd(year, month0, 1);
+  const to = ymd(year, month0, daysInMonth);
+  const todayStr = ymd(today.getFullYear(), today.getMonth(), today.getDate());
+
+  // Month switch changes from/to → the query key → a refetch of the new window.
+  const { data, isLoading } = useQuery<{ events: CalendarEvent[] }>({
+    queryKey: ["/api/me/calendar", { from, to }],
   });
 
-  const year = currentDate.getFullYear();
-  const month = currentDate.getMonth();
-  const monthName = currentDate.toLocaleString('default', { month: 'long' });
-  
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const firstDayOfMonth = new Date(year, month, 1).getDay();
-  const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
-  const emptyDays = Array.from({ length: firstDayOfMonth }, (_, i) => i);
-
-  const bookingsByDate = useMemo(() => {
-    if (!bookings) return {};
-    const map: Record<number, BookingWithService[]> = {};
-    bookings.forEach((booking) => {
-      const details = booking.bookingDetails as { scheduledDate?: string } | null;
-      if (details?.scheduledDate) {
-        const bookingDate = new Date(details.scheduledDate);
-        if (bookingDate.getFullYear() === year && bookingDate.getMonth() === month) {
-          const day = bookingDate.getDate();
-          if (!map[day]) map[day] = [];
-          map[day].push(booking);
-        }
-      }
-    });
+  const eventsByDate = useMemo(() => {
+    const map = new Map<string, CalendarEvent[]>();
+    for (const e of data?.events ?? []) {
+      if (!matchesChip(e, chip)) continue;
+      const list = map.get(e.date);
+      if (list) list.push(e);
+      else map.set(e.date, [e]);
+    }
     return map;
-  }, [bookings, year, month]);
+  }, [data, chip]);
 
-  const getBookingsForDay = (day: number) => bookingsByDate[day] || [];
-  const selectedBookings = selectedDate ? getBookingsForDay(selectedDate) : [];
-
-  const navigateMonth = (direction: number) => {
-    setCurrentDate(new Date(year, month + direction, 1));
-    setSelectedDate(null);
+  const prevMonth = () => {
+    if (month0 === 0) {
+      setYear((y) => y - 1);
+      setMonth0(11);
+    } else {
+      setMonth0((m) => m - 1);
+    }
   };
-
-  const updateScheduleRule = (dayIndex: number, field: keyof ScheduleRule, value: any) => {
-    const updated = [...scheduleRules];
-    updated[dayIndex] = { ...updated[dayIndex], [field]: value };
-    setScheduleRules(updated);
-  };
-
-  const addBlackoutDate = () => {
-    if (newBlackoutStart && newBlackoutEnd) {
-      const newId = (Math.max(...blackoutDates.map(b => parseInt(b.id)), 0) + 1).toString();
-      setBlackoutDates([
-        ...blackoutDates,
-        { id: newId, startDate: newBlackoutStart, endDate: newBlackoutEnd, reason: newBlackoutReason }
-      ]);
-      setNewBlackoutStart("");
-      setNewBlackoutEnd("");
-      setNewBlackoutReason("Personal");
+  const nextMonth = () => {
+    if (month0 === 11) {
+      setYear((y) => y + 1);
+      setMonth0(0);
+    } else {
+      setMonth0((m) => m + 1);
     }
   };
 
-  const deleteBlackoutDate = (id: string) => {
-    setBlackoutDates(blackoutDates.filter(b => b.id !== id));
-  };
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case "confirmed": return "bg-green-100 text-green-700 border-green-200";
-      case "completed": return "bg-blue-100 text-blue-700 border-blue-200";
-      case "pending": return "bg-amber-100 text-amber-700 border-amber-200";
-      case "cancelled": return "bg-red-100 text-red-700 border-red-200";
-      default: return "bg-console-bg text-console-dark border-console-light";
-    }
-  };
-
-  const upcomingBookings = useMemo(() => {
-    if (!bookings) return [];
-    const today = new Date();
-    return bookings
-      .filter((booking) => {
-        const details = booking.bookingDetails as { scheduledDate?: string } | null;
-        if (!details?.scheduledDate) return false;
-        const bookingDate = new Date(details.scheduledDate);
-        return bookingDate >= today && booking.status !== "cancelled";
-      })
-      .sort((a, b) => {
-        const dateA = new Date((a.bookingDetails as any)?.scheduledDate || 0);
-        const dateB = new Date((b.bookingDetails as any)?.scheduledDate || 0);
-        return dateA.getTime() - dateB.getTime();
-      })
-      .slice(0, 6);
-  }, [bookings]);
-
-  if (isLoading) {
-    return (
-      <ProviderLayout title="Calendar">
-        <div className="flex items-center justify-center h-64">
-          <Loader2 className="w-8 h-8 animate-spin text-primary" />
-        </div>
-      </ProviderLayout>
-    );
-  }
+  // Monday-start grid (mockup §1): JS getDay() is 0=Sun..6=Sat → leading blanks = (day+6)%7.
+  const firstWeekday = new Date(year, month0, 1).getDay();
+  const leadingBlanks = (firstWeekday + 6) % 7;
+  const cells: (number | null)[] = [
+    ...Array.from({ length: leadingBlanks }, () => null),
+    ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
+  ];
+  while (cells.length % 7 !== 0) cells.push(null);
 
   return (
     <ProviderLayout title="Calendar">
-      <div className="p-6 space-y-6">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h2 className="text-xl font-semibold text-console-darkest">Availability Calendar</h2>
-            <p className="text-console-dark">View and manage your upcoming bookings</p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex gap-1 bg-console-bg p-1 rounded-lg">
-              <Button
-                size="sm"
-                variant={viewMode === "month" ? "default" : "ghost"}
-                onClick={() => setViewMode("month")}
-                className="text-sm"
+      <div className="p-6 max-w-6xl mx-auto space-y-4">
+        <PageHeader
+          title="Calendar"
+          subtitle="Every channel, one timeline — each event links to its owning module."
+          icon={CalendarDays}
+          testId="text-calendar-title"
+        />
+
+        {/* Toolbar: month nav + channel filter chips */}
+        <div className="flex flex-wrap items-center gap-2" data-testid="toolbar-calendar">
+          <span className="text-[15px] font-bold text-console-darkest" data-testid="text-calendar-month">
+            {monthLabel(year, month0)}
+          </span>
+          <button
+            type="button"
+            onClick={prevMonth}
+            aria-label="Previous month"
+            className="p-1 rounded-md text-console-mid hover:text-console-darkest hover:bg-console-hover"
+            data-testid="button-calendar-prev"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+          <button
+            type="button"
+            onClick={nextMonth}
+            aria-label="Next month"
+            className="p-1 rounded-md text-console-mid hover:text-console-darkest hover:bg-console-hover"
+            data-testid="button-calendar-next"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
+          <span className="flex-1" />
+          {CHIPS.map((c) => {
+            const on = chip === c.key;
+            return (
+              <button
+                key={c.key}
+                type="button"
+                onClick={() => setChip(c.key)}
+                className="rounded-full px-3 py-0.5 text-[11.5px] font-semibold border"
+                style={
+                  on
+                    ? {
+                        borderColor: "var(--console-brand)",
+                        color: "var(--console-brand)",
+                        background: "var(--console-brand-soft)",
+                      }
+                    : { borderColor: "var(--console-line)", color: "var(--console-mid)" }
+                }
+                data-testid={`chip-calendar-${c.key}`}
               >
-                Month
-              </Button>
-              <Button
-                size="sm"
-                variant={viewMode === "week" ? "default" : "ghost"}
-                onClick={() => setViewMode("week")}
-                className="text-sm"
-              >
-                Week
-              </Button>
-            </div>
-            <Sheet>
-              <SheetTrigger asChild>
-                <Button variant="outline" size="sm" className="text-sm">
-                  <Edit2 className="w-4 h-4 mr-2" /> Edit Schedule
-                </Button>
-              </SheetTrigger>
-              <SheetContent>
-                <SheetHeader>
-                  <SheetTitle>Edit Weekly Schedule</SheetTitle>
-                </SheetHeader>
-                <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                  Preview only — availability scheduling is coming soon. Changes here aren't saved yet.
+                {c.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Month grid — honest empty when nothing is scheduled (§13). */}
+        {isLoading ? (
+          <Skeleton className="h-96 rounded-xl" data-testid="skeleton-calendar" />
+        ) : (
+          <div className="overflow-x-auto">
+            <div
+              className="grid grid-cols-7 rounded-xl border border-console-light overflow-hidden min-w-[660px] bg-white dark:bg-transparent"
+              data-testid="grid-calendar"
+            >
+              {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((d) => (
+                <div
+                  key={d}
+                  className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-console-mid border-b border-console-light bg-console-bg"
+                >
+                  {d}
                 </div>
-                <div className="space-y-4 mt-6">
-                  {scheduleRules.map((rule, idx) => (
-                    <div key={rule.day} className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <Label className="font-medium">{rule.day}</Label>
-                        <label className="flex items-center gap-2">
-                          <input
-                            type="checkbox"
-                            checked={rule.active}
-                            onChange={(e) => updateScheduleRule(idx, "active", e.target.checked)}
-                            className="w-4 h-4 rounded border-console-light"
-                          />
-                          <span className="text-sm text-console-dark">Active</span>
-                        </label>
+              ))}
+              {cells.map((day, i) => {
+                const dateStr = day == null ? null : ymd(year, month0, day);
+                const dayEvents = dateStr ? eventsByDate.get(dateStr) ?? [] : [];
+                const isToday = dateStr === todayStr;
+                return (
+                  <div
+                    key={i}
+                    className="min-h-[86px] border-b border-r border-console-light/60 p-1.5 [&:nth-child(7n)]:border-r-0"
+                    data-testid={dateStr ? `cell-calendar-${dateStr}` : undefined}
+                  >
+                    {day != null && (
+                      <div
+                        className="text-[10px] mb-1 tabular-nums"
+                        style={{
+                          color: isToday ? "var(--console-brand)" : "var(--console-mid)",
+                          fontWeight: isToday ? 700 : 400,
+                        }}
+                      >
+                        {day}
                       </div>
-                      <div className="flex gap-2">
-                        <div className="flex-1">
-                          <Label className="text-xs text-console-dark">Start</Label>
-                          <Input
-                            type="time"
-                            value={rule.startTime}
-                            onChange={(e) => updateScheduleRule(idx, "startTime", e.target.value)}
-                            disabled={!rule.active}
-                            className="text-sm"
-                          />
-                        </div>
-                        <div className="flex-1">
-                          <Label className="text-xs text-console-dark">End</Label>
-                          <Input
-                            type="time"
-                            value={rule.endTime}
-                            onChange={(e) => updateScheduleRule(idx, "endTime", e.target.value)}
-                            disabled={!rule.active}
-                            className="text-sm"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                  <Button className="w-full mt-6" disabled title="Saving your availability is coming soon">
-                    Saving coming soon
-                  </Button>
-                </div>
-              </SheetContent>
-            </Sheet>
-            <Sheet>
-              <SheetTrigger asChild>
-                <Button variant="outline" size="sm" className="text-sm">
-                  <Calendar className="w-4 h-4 mr-2" /> Block Dates
-                </Button>
-              </SheetTrigger>
-              <SheetContent>
-                <SheetHeader>
-                  <SheetTitle>Block Dates</SheetTitle>
-                </SheetHeader>
-                <div className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                  Preview only — blocking dates is coming soon. Anything added here isn't saved yet.
-                </div>
-                <div className="space-y-4 mt-6">
-                  <div>
-                    <Label htmlFor="block-start">Start Date</Label>
-                    <Input
-                      id="block-start"
-                      type="date"
-                      value={newBlackoutStart}
-                      onChange={(e) => setNewBlackoutStart(e.target.value)}
-                      className="mt-1"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="block-end">End Date</Label>
-                    <Input
-                      id="block-end"
-                      type="date"
-                      value={newBlackoutEnd}
-                      onChange={(e) => setNewBlackoutEnd(e.target.value)}
-                      className="mt-1"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="block-reason">Reason</Label>
-                    <Select value={newBlackoutReason} onValueChange={(val: any) => setNewBlackoutReason(val)}>
-                      <SelectTrigger id="block-reason" className="mt-1">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="Personal">Personal</SelectItem>
-                        <SelectItem value="Vehicle Maintenance">Vehicle Maintenance</SelectItem>
-                        <SelectItem value="Family">Family</SelectItem>
-                        <SelectItem value="Holiday">Holiday</SelectItem>
-                        <SelectItem value="Other">Other</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <Button onClick={addBlackoutDate} className="w-full bg-primary hover:bg-primary/90">
-                    Add Blocked Period
-                  </Button>
-                  <div className="space-y-2 mt-6">
-                    <Label className="font-semibold">Current Blackouts</Label>
-                    {blackoutDates.map((blackout) => (
-                      <div key={blackout.id} className="p-3 bg-console-bg rounded-lg border border-console-light flex items-center justify-between">
-                        <div className="text-sm">
-                          <p className="font-medium text-console-darkest">{blackout.startDate} to {blackout.endDate}</p>
-                          <p className="text-xs text-console-dark">{blackout.reason}</p>
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => deleteBlackoutDate(blackout.id)}
+                    )}
+                    {dayEvents.map((e) => (
+                      <Link key={e.id} href={e.href}>
+                        <span
+                          className="block rounded-[5px] px-1.5 py-0.5 mb-1 text-[10.5px] font-semibold leading-tight truncate cursor-pointer hover:opacity-80"
+                          style={LANE_STYLE[e.lane]}
+                          title={e.title}
+                          data-testid={`event-calendar-${e.id}`}
                         >
-                          <Trash2 className="w-4 h-4 text-red-600" />
-                        </Button>
-                      </div>
+                          {e.title}
+                        </span>
+                      </Link>
                     ))}
                   </div>
-                </div>
-              </SheetContent>
-            </Sheet>
+                );
+              })}
+            </div>
           </div>
-        </div>
-
-        {viewMode === "week" && (
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between gap-2">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => navigateMonth(-1)}
-              >
-                <ChevronLeft className="w-5 h-5" />
-              </Button>
-              <CardTitle>Week of {currentDate.toLocaleDateString('default', { month: 'long', day: 'numeric', year: 'numeric' })}</CardTitle>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => navigateMonth(1)}
-              >
-                <ChevronRight className="w-5 h-5" />
-              </Button>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto">
-                <div className="grid grid-cols-7 gap-1">
-                  {["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].map((day, dayIdx) => (
-                    <div key={day} className="min-w-max">
-                      <div className="text-center text-sm font-semibold text-console-darkest py-2 px-2 border-b border-console-light">
-                        {day.slice(0, 3)}
-                      </div>
-                      <div className="space-y-1">
-                        {Array.from({ length: 17 }, (_, i) => {
-                          const hour = 6 + i;
-                          const hourStr = hour.toString().padStart(2, "0");
-                          const activeRule = scheduleRules.find((r, idx) => dayIdx === idx);
-                          const isActive = activeRule?.active ?? true;
-                          const isAvailable =
-                            isActive &&
-                            hourStr >= (activeRule?.startTime.split(":")[0] || "06") &&
-                            hourStr < (activeRule?.endTime.split(":")[0] || "22");
-
-                          return (
-                            <div
-                              key={`${day}-${hourStr}`}
-                              className={`h-8 px-1 text-xs flex items-center justify-center rounded border ${
-                                isAvailable
-                                  ? "bg-green-50 border-green-200 text-green-700 font-medium"
-                                  : "bg-console-bg border-console-light text-console-dark"
-                              }`}
-                            >
-                              {hourStr}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
         )}
 
-        {viewMode === "month" && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <Card className="lg:col-span-2">
-            <CardHeader className="flex flex-row items-center justify-between gap-2">
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                onClick={() => navigateMonth(-1)}
-                data-testid="button-prev-month"
-              >
-                <ChevronLeft className="w-5 h-5" />
-              </Button>
-              <CardTitle data-testid="text-current-month">{monthName} {year}</CardTitle>
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                onClick={() => navigateMonth(1)}
-                data-testid="button-next-month"
-              >
-                <ChevronRight className="w-5 h-5" />
-              </Button>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-7 gap-1 mb-2">
-                {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
-                  <div key={day} className="text-center text-sm font-medium text-console-mid py-2">
-                    {day}
-                  </div>
-                ))}
-              </div>
-              
-              <div className="grid grid-cols-7 gap-1">
-                {emptyDays.map((i) => (
-                  <div key={`empty-${i}`} className="h-20 bg-console-bg rounded-lg" />
-                ))}
-                {days.map((day) => {
-                  const dayBookings = getBookingsForDay(day);
-                  const hasBookings = dayBookings.length > 0;
-                  const isSelected = selectedDate === day;
-                  const hasConfirmed = dayBookings.some(b => b.status === "confirmed");
-                  const hasPending = dayBookings.some(b => b.status === "pending");
-                  
-                  return (
-                    <button
-                      key={day}
-                      onClick={() => setSelectedDate(day)}
-                      className={`h-20 p-1 rounded-lg border transition-colors text-left ${
-                        isSelected 
-                          ? "border-primary bg-primary/5" 
-                          : hasBookings 
-                            ? hasConfirmed 
-                              ? "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800" 
-                              : "bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800"
-                            : "bg-white border-console-light hover:bg-console-hover"
-                      }`}
-                      data-testid={`calendar-day-${day}`}
-                    >
-                      <span className="text-sm font-medium text-console-darkest">
-                        {day}
-                      </span>
-                      {hasBookings && (
-                        <div className="mt-1">
-                          <Badge 
-                            className={`text-xs truncate max-w-full ${
-                              hasConfirmed 
-                                ? "bg-green-100 text-green-700 border-green-200" 
-                                : "bg-amber-100 text-amber-700 border-amber-200"
-                            }`}
-                          >
-                            {dayBookings.length} booking{dayBookings.length > 1 ? "s" : ""}
-                          </Badge>
-                        </div>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-
-              <div className="flex flex-wrap gap-4 mt-4 pt-4 border-t border-console-light">
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 bg-green-50 border border-green-200 rounded" />
-                  <span className="text-sm text-console-dark">Confirmed</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 bg-amber-50 border border-amber-200 rounded" />
-                  <span className="text-sm text-console-dark">Pending</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 bg-white border border-console-light rounded" />
-                  <span className="text-sm text-console-dark">Available</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <CalendarIcon className="w-5 h-5 text-primary" />
-                {selectedDate ? `${monthName} ${selectedDate}, ${year}` : "Select a Date"}
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {selectedBookings.length > 0 ? (
-                <div className="space-y-3">
-                  {selectedBookings.map((booking) => {
-                    const details = booking.bookingDetails as { notes?: string; quantity?: number } | null;
-                    return (
-                      <div 
-                        key={booking.id}
-                        className="p-4 bg-console-bg rounded-lg space-y-3" 
-                        data-testid={`card-booking-${booking.id}`}
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <h3 className="font-semibold text-console-darkest text-sm">
-                            {booking.service?.serviceName || "Service"}
-                          </h3>
-                          <Badge className={getStatusColor(booking.status || "pending")}>
-                            {booking.status || "pending"}
-                          </Badge>
-                        </div>
-                        <div className="space-y-2 text-sm text-console-dark">
-                          {booking.service?.location && (
-                            <div className="flex items-center gap-2">
-                              <MapPin className="w-4 h-4" />
-                              {booking.service.location}
-                            </div>
-                          )}
-                          <div className="flex items-center gap-2">
-                            <Users className="w-4 h-4" />
-                            Qty: {details?.quantity || 1}
-                          </div>
-                          {details?.notes && (
-                            <p className="text-xs italic">{details.notes}</p>
-                          )}
-                        </div>
-                        <div className="text-sm font-medium text-console-darkest">
-                          ${booking.totalAmount}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : selectedDate ? (
-                <div className="text-center py-8" data-testid="text-no-bookings">
-                  <CalendarIcon className="w-12 h-12 mx-auto text-console-light mb-3" />
-                  <p className="text-console-mid">No bookings on this date</p>
-                </div>
-              ) : (
-                <div className="text-center py-8 text-console-mid">
-                  <p>Click on a date to see bookings</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
+        {/* Legend */}
+        <div className="flex flex-wrap gap-4 text-[11.5px] text-console-mid" data-testid="legend-calendar">
+          {LEGEND.map((l) => (
+            <span key={l.lane} className="flex items-center gap-1.5">
+              <span
+                className="inline-block w-2.5 h-2.5 rounded-[3px] border"
+                style={{
+                  background: LANE_STYLE[l.lane].background,
+                  borderColor: LANE_STYLE[l.lane].color,
+                }}
+              />
+              {l.label}
+            </span>
+          ))}
         </div>
-        )}
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Upcoming Bookings</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {upcomingBookings.length > 0 ? (
-              <div className="space-y-3">
-                {upcomingBookings.map((booking) => {
-                  const details = booking.bookingDetails as { scheduledDate?: string } | null;
-                  const date = details?.scheduledDate ? new Date(details.scheduledDate) : null;
-                  return (
-                    <div 
-                      key={booking.id}
-                      className="flex items-center justify-between py-3 border-b border-console-light last:border-0"
-                      data-testid={`row-booking-${booking.id}`}
-                    >
-                      <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 bg-console-bg rounded-lg flex flex-col items-center justify-center">
-                          {date && (
-                            <>
-                              <span className="text-xs text-console-mid">{date.toLocaleString('default', { month: 'short' })}</span>
-                              <span className="font-bold text-console-darkest">{date.getDate()}</span>
-                            </>
-                          )}
-                        </div>
-                        <div>
-                          <p className="font-medium text-console-darkest">
-                            {booking.service?.serviceName || "Service Booking"}
-                          </p>
-                          <div className="flex items-center gap-3 text-sm text-console-mid">
-                            <span>${booking.totalAmount}</span>
-                            {booking.service?.location && (
-                              <span>{booking.service.location}</span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                      <Badge className={getStatusColor(booking.status || "pending")}>
-                        {booking.status || "pending"}
-                      </Badge>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div className="text-center py-8 text-console-mid">
-                <CalendarIcon className="w-12 h-12 mx-auto text-console-light mb-3" />
-                <p>No upcoming bookings</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
       </div>
     </ProviderLayout>
   );

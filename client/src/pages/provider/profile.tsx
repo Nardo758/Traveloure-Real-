@@ -19,7 +19,12 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 
-export default function ProviderProfile() {
+// Console IA C9 (§17 17→9 collapse): this page is hosted as Settings' FIRST tab (provider
+// settings.tsx lazy-mounts it with embedded — the expert C8 pattern). It has no internal
+// ?tab= reading, so no param seam is needed; embedded skips the ProviderLayout wrap and the
+// page's own p-6 (the Settings tab container already provides both).
+// /provider/profile redirects to /provider/settings?tab=profile.
+export default function ProviderProfile({ embedded = false }: { embedded?: boolean } = {}) {
   const { user } = useAuth();
 
   const businessInfo = {
@@ -50,9 +55,8 @@ export default function ProviderProfile() {
 
   const photos = user?.photos || [];
 
-  return (
-    <ProviderLayout title="Business Profile">
-      <div className="p-6 space-y-6">
+  const content = (
+      <div className={embedded ? "space-y-6" : "p-6 space-y-6"}>
         {/* Header Card */}
         <Card>
           <CardContent className="p-6">
@@ -246,6 +250,9 @@ export default function ProviderProfile() {
           </div>
         </div>
       </div>
-    </ProviderLayout>
   );
+
+  // C9: embedded, the host Settings page already provides the ProviderLayout shell.
+  if (embedded) return content;
+  return <ProviderLayout title="Business Profile">{content}</ProviderLayout>;
 }
