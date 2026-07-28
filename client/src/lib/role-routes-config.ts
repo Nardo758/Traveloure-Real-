@@ -55,8 +55,7 @@ export const expertRoutesConfig: RoleRouteConfig[] = [
   // parameterised/creation surfaces and stay live.
   { href: '/expert/services',           description: 'Retired My Offerings -> redirects to Catalog (C2)' },
   // /expert/share-promote redirects to /expert/catalog (C2 Share & Promote retirement) —
-  // listed so the redirect is smoke-tested; the provider console keeps its own
-  // /provider/share-promote page until C9.
+  // listed so the redirect is smoke-tested; C9 retired the provider twin the same way.
   { href: '/expert/share-promote',      description: 'Retired Share & Promote -> redirects to Catalog (C2)' },
   { href: '/expert/money',              description: 'Money — earnings + payouts (C8)' },
   // /expert/earnings is kept deliberately (B5/C1 redirect pattern): it redirects to
@@ -90,17 +89,33 @@ export const expertRoutesConfig: RoleRouteConfig[] = [
 
 // ── Provider routes (requiredRole="provider") ────────────────────────────────
 
+// Console IA C9 (§17 17→9 collapse): the provider console runs the expert console's
+// nine-module IA (minus the separately-gated Workstation/Product Builder). Retired routes
+// are kept deliberately (the B5/C1 redirect pattern) so the gate exercises the redirect AND
+// the module page it lands on.
 export const providerRoutesConfig: RoleRouteConfig[] = [
-  { href: '/provider/dashboard',    description: 'Provider home dashboard' },
-  { href: '/provider/bookings',     description: 'Booking requests' },
-  { href: '/provider/services',     description: 'Published services' },
-  { href: '/provider/earnings',     description: 'Earnings & payout history' },
-  { href: '/provider/performance',  description: 'Performance metrics' },
-  { href: '/provider/analytics',    description: 'Analytics overview' },
-  { href: '/provider/calendar',     description: 'Availability calendar' },
-  { href: '/provider/profile',      description: 'Public provider profile' },
-  { href: '/provider/settings',     description: 'Account settings' },
-  { href: '/provider/resources',    description: 'Provider resources & guides' },
+  { href: '/provider/dashboard',    description: 'Today — ops home (C9 label-only rename)' },
+  { href: '/provider/calendar',     description: 'Channel Calendar — 9th module (C9)' },
+  { href: '/provider/bookings',     description: 'Bookings — the Inbox-module seat (C9 keep)' },
+  { href: '/provider/services',     description: 'Catalog — offerings + availability + share tools (C9)' },
+  { href: '/provider/customers',    description: 'Customers — honest self-scoped aggregation (C9)' },
+  { href: '/provider/performance',  description: 'Performance — hosts Analytics as a tab (C9)' },
+  // /provider/analytics redirects to /provider/performance?tab=analytics (C9 Analytics
+  // retirement — the page is hosted as Performance's Analytics tab).
+  { href: '/provider/analytics',    description: 'Retired Analytics -> redirects to Performance analytics tab (C9)' },
+  { href: '/provider/money',        description: 'Money — earnings + payout requests (C9 rename)' },
+  // /provider/earnings redirects to /provider/money (C9 Earnings → Money module rename).
+  { href: '/provider/earnings',     description: 'Retired Earnings -> redirects to Money (C9)' },
+  // /provider/profile redirects to /provider/settings?tab=profile (C9 Profile → Settings
+  // first-tab merge).
+  { href: '/provider/profile',      description: 'Retired Profile -> redirects to Settings profile tab (C9)' },
+  { href: '/provider/settings',     description: 'Account settings (hosts Profile as first tab, C9)' },
+  // /provider/share-promote redirects to /provider/services (C9 Share & Promote retirement —
+  // share kits/posting opportunities/storefront tools live on Catalog).
+  { href: '/provider/share-promote', description: 'Retired Share & Promote -> redirects to Catalog (C9)' },
+  // Not one of the NINE: routed but deliberately unlisted in the sidebar (static guides,
+  // no backing content system) — see the provider-sidebar C9 note.
+  { href: '/provider/resources',    description: 'Provider resources & guides (quiet extra)' },
 ];
 
 // ── Executive Assistant routes (requiredRole="executive_assistant") ──────────

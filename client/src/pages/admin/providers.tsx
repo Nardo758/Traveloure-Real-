@@ -507,7 +507,8 @@ export default function AdminProviders() {
                             data-testid={`button-earnings-${provider.id}`}
                             title="View provider earnings page"
                           >
-                            <a href={`/provider/earnings`} target="_blank" rel="noopener noreferrer">
+                            {/* C9: provider Earnings renamed Money (/provider/earnings redirects) */}
+                            <a href={`/provider/money`} target="_blank" rel="noopener noreferrer">
                               <ExternalLink className="w-3.5 h-3.5 mr-1" />
                               Earnings
                             </a>

@@ -1,13 +1,26 @@
+/**
+ * Provider Performance — Console IA C9 (§17 17→9 collapse, the provider nine-module stamp).
+ *
+ * C9 mirrors the expert C6 fold: this page HOSTS the Analytics page as a tab — a mount, not
+ * an extraction (analytics.tsx stays intact as a component, lazy-loaded here so its bundle
+ * only loads when the tab opens). This page reads ?tab= (overview | analytics); the embedded
+ * analytics page has no internal ?tab= reading of its own (unlike the expert analytics
+ * page's 9-tab picker), so no ?sub= seam is needed. /provider/analytics redirects to
+ * /provider/performance?tab=analytics.
+ */
+import { lazy, Suspense } from "react";
+import { useSearch } from "wouter";
 import { ProviderLayout } from "@/components/provider/provider-layout";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
 import { useQuery } from "@tanstack/react-query";
-import { 
-  Star, 
-  TrendingUp, 
+import {
+  Star,
+  TrendingUp,
   DollarSign,
   Users,
   BarChart3,
@@ -15,6 +28,11 @@ import {
   Calendar
 } from "lucide-react";
 import { ProviderServiceRecommendations } from "@/components/provider/service-recommendations";
+
+// C9: lazy so the analytics bundle only loads when its tab is opened (App.tsx dropped its
+// own ProviderAnalytics lazy import — this is the only mount). Named …Page to avoid
+// colliding with the ProviderAnalytics response interface below.
+const ProviderAnalyticsPage = lazy(() => import("@/pages/provider/analytics"));
 
 interface ProviderAnalytics {
   summary: {
@@ -42,6 +60,9 @@ interface ProviderAnalytics {
 }
 
 export default function ProviderPerformance() {
+  const search = useSearch();
+  const tabParam = new URLSearchParams(search).get("tab") === "analytics" ? "analytics" : "overview";
+
   const { data: analytics, isLoading } = useQuery<ProviderAnalytics>({
     queryKey: ["/api/provider/analytics/dashboard"],
   });
@@ -89,14 +110,22 @@ export default function ProviderPerformance() {
 
   return (
     <ProviderLayout title="Performance">
-      <div className="p-6 space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground" data-testid="text-performance-title">
-            Performance Analytics
-          </h1>
-          <p className="text-muted-foreground">Track your business performance and compare with benchmarks</p>
+      <Tabs defaultValue={tabParam} className="w-full">
+        <div className="p-6 pb-0">
+          <div className="mb-4">
+            <h1 className="text-2xl font-bold text-foreground" data-testid="text-performance-title">
+              Performance
+            </h1>
+            <p className="text-muted-foreground">Track your business performance and compare with benchmarks</p>
+          </div>
+          <TabsList data-testid="tabs-performance">
+            <TabsTrigger value="overview" data-testid="tab-performance-overview">Overview</TabsTrigger>
+            <TabsTrigger value="analytics" data-testid="tab-performance-analytics">Analytics</TabsTrigger>
+          </TabsList>
         </div>
 
+        <TabsContent value="overview">
+          <div className="p-6 space-y-6">
         {isLoading ? (
           <div className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -293,7 +322,24 @@ export default function ProviderPerformance() {
             </div>
           </>
         )}
-      </div>
+          </div>
+        </TabsContent>
+
+        {/* C9: the analytics page rendered embedded — no second ProviderLayout (its embedded
+            seam skips the shell). Its content carries its own p-6. */}
+        <TabsContent value="analytics" data-testid="content-performance-analytics">
+          <Suspense
+            fallback={
+              <div className="p-6 space-y-4">
+                <Skeleton className="h-28 w-full" />
+                <Skeleton className="h-64 w-full" />
+              </div>
+            }
+          >
+            <ProviderAnalyticsPage embedded />
+          </Suspense>
+        </TabsContent>
+      </Tabs>
     </ProviderLayout>
   );
 }

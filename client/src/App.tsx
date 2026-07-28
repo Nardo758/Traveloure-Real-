@@ -65,9 +65,10 @@ const ProviderBookings = lazy(() => import("@/pages/provider/bookings"));
 const ProviderServices = lazy(() => import("@/pages/provider/services"));
 const ProviderEarnings = lazy(() => import("@/pages/provider/earnings"));
 const ProviderPerformance = lazy(() => import("@/pages/provider/performance"));
-const ProviderAnalytics = lazy(() => import("@/pages/provider/analytics"));
+// C9: ProviderAnalytics/ProviderProfile lazy imports dropped — those pages are now mounted
+// only as embedded tabs (provider performance.tsx / settings.tsx); their routes redirect.
 const ProviderCalendar = lazy(() => import("@/pages/provider/calendar"));
-const ProviderProfile = lazy(() => import("@/pages/provider/profile"));
+const ProviderCustomers = lazy(() => import("@/pages/provider/customers"));
 const ProviderSettings = lazy(() => import("@/pages/provider/settings"));
 const ProviderResources = lazy(() => import("@/pages/provider/resources"));
 const AdminDashboard = lazy(() => import("@/pages/admin/dashboard"));
@@ -134,7 +135,8 @@ const ExpertSettings = lazy(() => import("@/pages/expert/settings"));
 const ExpertServiceForm = lazy(() => import("@/pages/expert/service-form"));
 const ProviderServiceForm = lazy(() => import("@/pages/provider/service-form"));
 const ExpertWorkspace = lazy(() => import("@/pages/expert/workspace"));
-const SharePromote = lazy(() => import("@/pages/backoffice/share-promote"));
+// C9: SharePromote lazy import dropped — the page is retired (both console routes redirect
+// into their Catalogs; the sharing primitives live in components/backoffice/share-tools.tsx).
 const CartPage = lazy(() => import("@/pages/cart"));
 const MyBookingsPage = lazy(() => import("@/pages/my-bookings"));
 const MyEventsPage = lazy(() => import("@/pages/my-events"));
@@ -685,9 +687,9 @@ function Router() {
       {/* Console IA C2 (§17 17→9 collapse): expert Share & Promote retired into Catalog —
           the offering-scoped creation half (per-row share kits, posting opportunities,
           storefront caption) lives on /expert/catalog via the moved share-tools components;
-          the measurement half already lives on Performance. The PROVIDER route
-          (/provider/share-promote) keeps the SharePromote page until the C9 provider
-          nine-module stamp. */}
+          the measurement half already lives on Performance. C9 retired the PROVIDER route
+          the same way (/provider/share-promote → /provider/services), so the SharePromote
+          page itself is gone — share-tools.tsx carries the primitives for both consoles. */}
       <Route path="/expert/share-promote">
         <Redirect to="/expert/catalog" />
       </Route>
@@ -739,6 +741,12 @@ function Router() {
       </Route>
 
       {/* Service Provider Dashboard Routes (use ProviderLayout - no global Layout) */}
+      {/* Console IA C9 (§17 17→9 collapse): the provider console adopts the expert console's
+          nine-module IA — Today (dashboard, label-only rename) · Calendar (Channel Calendar)
+          · Inbox seat (Bookings, kept) · Catalog (services) · Money (earnings, renamed) ·
+          Customers (new) · Performance (hosts Analytics) · Settings (hosts Profile).
+          Workstation (the Provider Product Builder) is deliberately absent — its own
+          separately-gated lane (§17). */}
       <Route path="/provider/dashboard">
         {() => <ProtectedRoute component={ProviderDashboard} requiredRole="provider" />}
       </Route>
@@ -763,20 +771,42 @@ function Router() {
       <Route path="/provider/services/:id/edit">
         {() => <ProtectedRoute component={ProviderServiceForm} requiredRole="provider" />}
       </Route>
-      <Route path="/provider/earnings">
+      {/* Console IA C9: Earnings renamed Money — the ratified module name (route move
+          /provider/earnings → /provider/money; same page, no endpoint or queryKey change).
+          The redirect keeps every existing /provider/earnings navigation working (the C8
+          expert pattern; the reminder/approval notification + email links are re-pointed). */}
+      <Route path="/provider/money">
         {() => <ProtectedRoute component={ProviderEarnings} requiredRole="provider" />}
+      </Route>
+      <Route path="/provider/earnings">
+        <Redirect to="/provider/money" />
       </Route>
       <Route path="/provider/performance">
         {() => <ProtectedRoute component={ProviderPerformance} requiredRole="provider" />}
       </Route>
+      {/* Console IA C9: Analytics retired as a standalone page — it is hosted as
+          Performance's Analytics tab (provider performance.tsx lazy-mounts the analytics
+          component embedded; it has no internal ?tab= picker, so no ?sub= seam). */}
       <Route path="/provider/analytics">
-        {() => <ProtectedRoute component={ProviderAnalytics} requiredRole="provider" />}
+        <Redirect to="/provider/performance?tab=analytics" />
       </Route>
+      {/* Console IA C9: /provider/calendar is the provider Channel Calendar (the 9th module,
+          the expert C3 pattern). The old page's availability-editor sheets were
+          non-persisting previews; real slot editing lives on Catalog (/provider/services). */}
       <Route path="/provider/calendar">
         {() => <ProtectedRoute component={ProviderCalendar} requiredRole="provider" />}
       </Route>
+      {/* Customers — Console IA C9 (§17 module 6): honest self-scoped aggregation over this
+          provider's real bookings (GET /api/me/customers). Detail rows link to the owning
+          modules; no CRM fields are invented. */}
+      <Route path="/provider/customers">
+        {() => <ProtectedRoute component={ProviderCustomers} requiredRole="provider" />}
+      </Route>
+      {/* Console IA C9: Profile retired as a standalone page — it is hosted as Settings'
+          FIRST tab (provider settings.tsx lazy-mounts the profile component embedded, the
+          expert C8 pattern; Settings keeps defaulting to its own settings content). */}
       <Route path="/provider/profile">
-        {() => <ProtectedRoute component={ProviderProfile} requiredRole="provider" />}
+        <Redirect to="/provider/settings?tab=profile" />
       </Route>
       <Route path="/provider/settings">
         {() => <ProtectedRoute component={ProviderSettings} requiredRole="provider" />}
@@ -784,8 +814,13 @@ function Router() {
       <Route path="/provider/resources">
         {() => <ProtectedRoute component={ProviderResources} requiredRole="provider" />}
       </Route>
+      {/* Console IA C9: provider Share & Promote retired into Catalog — per-service share
+          kits, posting opportunities, and the storefront share tools live on
+          /provider/services via the shared components/backoffice/share-tools.tsx (the same
+          absorption expert C2 did); the measurement half renders on Performance's Analytics
+          tab. This retires the SharePromote page entirely (its expert route redirected in C2). */}
       <Route path="/provider/share-promote">
-        {() => <ProtectedRoute component={SharePromote} requiredRole="provider" />}
+        <Redirect to="/provider/services" />
       </Route>
 
       {/* Admin Dashboard Routes (use AdminLayout - no global Layout) */}

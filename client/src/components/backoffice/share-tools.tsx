@@ -1,9 +1,10 @@
 /**
  * share-tools — the offering-scoped sharing/creation primitives, MOVED verbatim out of
  * pages/backoffice/share-promote.tsx by Console IA C2 (§17 17→9 collapse) so Catalog can
- * absorb Share & Promote's creation half without rebuilding it. share-promote.tsx (still
- * mounted for the provider console) imports from here too — ONE implementation, every
- * server call identical to the SH2/SH3/A3 originals:
+ * absorb Share & Promote's creation half without rebuilding it. C9 finished the collapse:
+ * share-promote.tsx is deleted (both console routes redirect into their Catalogs — expert
+ * /expert/catalog, provider /provider/services), and BOTH Catalog pages compose these
+ * primitives — ONE implementation, every server call identical to the SH2/SH3/A3 originals:
  *   - POST /api/short-links (tracked short link, graceful full-URL fallback)
  *   - GET  /api/promo-text?targetType=… (server captions, deterministic client fallback)
  *   - GET  /api/me/posting-opportunities (SH3 — real rows only, §13)
