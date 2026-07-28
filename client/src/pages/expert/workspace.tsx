@@ -10,6 +10,7 @@ import { DmoPickerCore } from "@/components/expert/dmo-picker-modal";
 import { ServicePickerModal } from "@/components/expert/service-picker-modal";
 import ReadyMadeListingPanel, { type ReadyMadeListing } from "@/components/expert/ready-made-listing-panel";
 import { resolveFormat } from "@/lib/build-formats/registry";
+import { ClientFormatView } from "@/components/build-formats/ClientFormatView";
 import { STORE_GATE_MESSAGE } from "@shared/launch-markets";
 import { APIProvider, Map, AdvancedMarker, InfoWindow } from "@vis.gl/react-google-maps";
 import {
@@ -1150,6 +1151,34 @@ export default function ExpertWorkspace() {
                   role="expert"
                   stage="full"
                   embedded
+                />
+              )}
+
+              {/* F2: the non-days client-channel structures (client:kyoto-cultural neighborhoods,
+                  client:kyoto-wedding / client:event venue-timeline). ClientFormatView's quiet
+                  "Day list" toggle re-renders the same PlanCard embedded block above, so the
+                  expert keeps PlanCard's item controls for editing (Structure is the default). */}
+              {buildFormat.grouping !== "days" && trip && (
+                <ClientFormatView
+                  format={buildFormat}
+                  destination={trip.destination || null}
+                  days={days}
+                  bestSeason={listing?.bestSeason ?? null}
+                  dayListView={
+                    <PlanCard
+                      trip={{
+                        id: tripId!,
+                        destination: trip.destination,
+                        title: trip.trip_title,
+                        startDate: trip.start_date,
+                        endDate: trip.end_date,
+                        numberOfTravelers: (trip as any).number_of_travelers ?? 1,
+                      }}
+                      role="expert"
+                      stage="full"
+                      embedded
+                    />
+                  }
                 />
               )}
 
