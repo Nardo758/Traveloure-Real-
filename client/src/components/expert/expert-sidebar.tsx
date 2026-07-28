@@ -16,8 +16,6 @@ import { Button } from "@/components/ui/button";
 import {
   Home,
   Bot,
-  MessageSquare,
-  Calendar,
   CalendarDays,
   DollarSign,
   BarChart3,
@@ -25,7 +23,6 @@ import {
   LogOut,
   Palette,
   Settings,
-  MapPin,
   PenSquare,
   Library,
   Inbox,
@@ -51,18 +48,21 @@ function buildMenuGroups(expertType?: string | null) {
         // channel-filtered timeline; every event links out to its owning module.
         { title: "Calendar", href: "/expert/calendar", icon: CalendarDays },
         { title: "Inbox", href: "/expert/inbox", icon: Inbox },
-        // Console IA C1 (§17 17→9): Bookings + Assigned Trips are KEPT for now — Inbox covers
-        // only the actionable queues (pending accept/decline, invites, disputes). Bookings still
-        // uniquely carries booking history (confirmed/completed), visa-status management, and
-        // the trip-plan snapshot; Assigned Trips uniquely carries the traveler-approval Suggest
-        // flow (POST /api/trips/:id/suggestions + log) and the by-client grouped view. Their
-        // folds into Inbox/Customers are later C-phase items, gated on those absorptions.
-        { title: isEventPlanner ? "Events" : "Bookings", href: "/expert/bookings", icon: Calendar },
-        { title: "Assigned Trips", href: "/expert/assigned-trips", icon: MapPin },
+        // Console IA C5 (§17 17→9): "Bookings" entry RETIRED — the C1 keep-reason is resolved:
+        // Inbox's History tab now carries booking history (confirmed/completed + stats), the
+        // visa-status management dialog (PATCH /api/service-bookings/:id/visa-status), and the
+        // trip-plan snapshot; pending accept/decline was already Inbox's Queue.
+        // /expert/bookings redirects to /expert/inbox?tab=history. Note: this entry carried an
+        // event-planner conditional label ("Events" when expertType === "event_planner").
+        // Console IA C5: "Assigned Trips" entry RETIRED — the assigned-trips list + accept
+        // action live on Inbox's Assigned Trips tab; the traveler-approval Suggest flow
+        // (POST /api/trips/:id/suggestions + log) moved to the Workstation Distribute→Client
+        // card (client-delivery state is its semantic home); the by-client grouped view lives
+        // on Customers. /expert/assigned-trips redirects to /expert/inbox?tab=assignments.
         // C1: "Workstation" is the ratified module name (route unchanged — label-only rename).
         { title: "Workstation", href: "/expert/workspace", icon: PenSquare },
-        // C1: Messages KEPT — Inbox does not render message threads; /chat stays the thread home.
-        { title: "Messages", href: "/chat", icon: MessageSquare },
+        // Console IA C5: "Messages" entry RETIRED — Inbox's Messages tab is the recent-threads
+        // queue linking into /chat (which stays the thread home; this entry pointed there).
       ],
     },
     {

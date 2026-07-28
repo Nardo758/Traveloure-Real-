@@ -20,7 +20,7 @@ import {
   FileText, CheckCircle, Clock, StickyNote, X, ShieldCheck, ExternalLink, User, Mail,
   CreditCard, CalendarDays, Loader2, ArrowLeft, Users,
   Search, Star, MapPinned, Shield, BatteryLow,
-  ShoppingBag, Store, Copy, Megaphone, AlertTriangle,
+  ShoppingBag, Store, Copy, Megaphone, AlertTriangle, Lightbulb, XCircle,
 } from "lucide-react";
 
 const MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
@@ -285,6 +285,209 @@ const LISTING_CHIP: Record<string, { label: string; tone: ChipTone }> = {
 };
 
 const formatDate = (d?: string | null) => d ? new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—";
+
+// ── Suggest flow (Console IA C5): moved here from the retired /expert/assigned-trips
+// page — the traveler-approval suggestion rail is client-delivery state, so it lives on
+// the Distribute→Client card. Endpoints unchanged: POST /api/trips/:id/suggestions +
+// GET /api/trips/:id/suggestions (the log). Assignment trips only (the Client card's
+// non-authoring branch guarantees that).
+interface TripSuggestion {
+  id: string;
+  type: string;
+  day_number: number | null;
+  title: string;
+  description: string | null;
+  estimated_cost: string | null;
+  status: "pending" | "approved" | "rejected";
+  rejection_note: string | null;
+  created_at: string;
+}
+
+interface SuggestionPayload {
+  type: string;
+  dayNumber?: number;
+  title: string;
+  description?: string;
+  estimatedCost?: number;
+}
+
+const SUGGESTION_TYPES = [
+  { value: "activity", label: "Activity" },
+  { value: "food", label: "Food / Restaurant" },
+  { value: "accommodation", label: "Accommodation" },
+  { value: "transport", label: "Transport" },
+  { value: "venue", label: "Venue" },
+  { value: "note", label: "General note" },
+];
+
+const suggestFieldStyle: React.CSSProperties = {
+  width: "100%", padding: "6px 9px", borderRadius: 8, border: `1px solid ${LINE}`,
+  background: CARD, color: INK, fontSize: 12, fontFamily: "inherit", boxSizing: "border-box",
+};
+
+function ClientSuggestPanel({ tripId }: { tripId: string }) {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [form, setForm] = useState({ type: "activity", dayNumber: "", title: "", description: "", estimatedCost: "" });
+
+  const { data: suggestionsData, isLoading: suggestionsLoading } = useQuery<{ suggestions: TripSuggestion[] }>({
+    queryKey: [`/api/trips/${tripId}/suggestions`],
+    enabled: !!tripId && open,
+  });
+  const suggestions = suggestionsData?.suggestions ?? [];
+
+  const submitSuggestionMutation = useMutation({
+    mutationFn: async (payload: SuggestionPayload) => {
+      const res = await apiRequest("POST", `/api/trips/${tripId}/suggestions`, payload);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/suggestions`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/expert/assigned-trips"] });
+      setForm({ type: "activity", dayNumber: "", title: "", description: "", estimatedCost: "" });
+      toast({ title: "Suggestion sent!", description: "The traveler will review your idea." });
+    },
+    onError: (err: any) => {
+      toast({ title: "Could not submit suggestion", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const handleSubmit = () => {
+    if (!form.title.trim()) return;
+    const payload: SuggestionPayload = { type: form.type, title: form.title.trim() };
+    if (form.dayNumber) payload.dayNumber = parseInt(form.dayNumber, 10);
+    if (form.description.trim()) payload.description = form.description.trim();
+    if (form.estimatedCost) payload.estimatedCost = parseFloat(form.estimatedCost);
+    submitSuggestionMutation.mutate(payload);
+  };
+
+  return (
+    <div style={{ border: `1px solid ${LINE}`, borderRadius: 8, overflow: "hidden" }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        data-testid="button-toggle-suggest"
+        style={{ width: "100%", padding: "7px 10px", background: GROUND, border: "none", display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}
+      >
+        <Lightbulb style={{ width: 11, height: 11, color: MID }} />
+        <span style={{ fontSize: 11.5, fontWeight: 700, color: INK }}>Suggest to client</span>
+        {open && !suggestionsLoading && <StateChip tone="mut">{suggestions.length}</StateChip>}
+        <span style={{ marginLeft: "auto", display: "flex", color: FAINT }}>
+          {open ? <ChevronUp style={{ width: 12, height: 12 }} /> : <ChevronDown style={{ width: 12, height: 12 }} />}
+        </span>
+      </button>
+      {open && (
+        <div style={{ padding: "10px", display: "flex", flexDirection: "column", gap: 8 }}>
+          <p style={{ fontSize: 11, color: MID, margin: 0 }}>
+            Your suggestion goes to the traveler for approval. Approved suggestions are added to their itinerary.
+          </p>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+            <select
+              value={form.type}
+              onChange={(e) => setForm(f => ({ ...f, type: e.target.value }))}
+              data-testid="select-suggestion-type"
+              style={suggestFieldStyle}
+            >
+              {SUGGESTION_TYPES.map(t => (
+                <option key={t.value} value={t.value}>{t.label}</option>
+              ))}
+            </select>
+            <input
+              type="number"
+              min={1}
+              placeholder="Day (optional)"
+              value={form.dayNumber}
+              onChange={(e) => setForm(f => ({ ...f, dayNumber: e.target.value }))}
+              data-testid="input-suggestion-day"
+              style={suggestFieldStyle}
+            />
+          </div>
+          <input
+            placeholder="Title — e.g. Visit Senso-ji Temple at sunrise"
+            value={form.title}
+            onChange={(e) => setForm(f => ({ ...f, title: e.target.value }))}
+            data-testid="input-suggestion-title"
+            style={suggestFieldStyle}
+          />
+          <textarea
+            placeholder="Details (optional) — why this is special, how to book, insider tips…"
+            rows={2}
+            value={form.description}
+            onChange={(e) => setForm(f => ({ ...f, description: e.target.value }))}
+            data-testid="input-suggestion-description"
+            style={{ ...suggestFieldStyle, resize: "vertical" }}
+          />
+          <input
+            type="number"
+            min={0}
+            placeholder="Estimated cost (USD, optional)"
+            value={form.estimatedCost}
+            onChange={(e) => setForm(f => ({ ...f, estimatedCost: e.target.value }))}
+            data-testid="input-suggestion-cost"
+            style={suggestFieldStyle}
+          />
+          <button
+            onClick={handleSubmit}
+            disabled={submitSuggestionMutation.isPending || !form.title.trim()}
+            data-testid="button-submit-suggestion"
+            style={{ ...btnPrimaryStyle, padding: "7px 12px", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, opacity: submitSuggestionMutation.isPending || !form.title.trim() ? 0.6 : 1 }}
+          >
+            {submitSuggestionMutation.isPending
+              ? <Loader2 style={{ width: 12, height: 12 }} className="animate-spin" />
+              : <Lightbulb style={{ width: 12, height: 12 }} />}
+            Send suggestion
+          </button>
+
+          {/* Suggestion log — real statuses only (§13). */}
+          <div style={{ borderTop: `1px solid ${LINE}`, paddingTop: 8 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: INK, marginBottom: 6 }}>Your previous suggestions</div>
+            {suggestionsLoading ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {[1, 2].map(i => <Skeleton key={i} className="h-10 rounded-lg" />)}
+              </div>
+            ) : suggestions.length === 0 ? (
+              <p style={{ fontSize: 11.5, color: MID, margin: 0 }}>No suggestions sent yet.</p>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }} data-testid="expert-suggestions-log">
+                {suggestions.map(s => (
+                  <div
+                    key={s.id}
+                    data-testid={`expert-suggestion-log-${s.id}`}
+                    style={{
+                      border: `1px solid ${LINE}`, borderRadius: 8, padding: "7px 10px", fontSize: 12,
+                      background: s.status === "approved" ? OK_SOFT : s.status === "rejected" ? DANGER_SOFT : GROUND,
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ fontWeight: 600, color: INK, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.title}</span>
+                      {s.status === "approved" && (
+                        <span style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 10, color: OK, flexShrink: 0 }}>
+                          <CheckCircle style={{ width: 11, height: 11 }} /> Approved
+                        </span>
+                      )}
+                      {s.status === "rejected" && (
+                        <span style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 10, color: DANGER, flexShrink: 0 }}>
+                          <XCircle style={{ width: 11, height: 11 }} /> Declined
+                        </span>
+                      )}
+                      {s.status === "pending" && (
+                        <span style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 10, color: WARN, flexShrink: 0 }}>
+                          <Clock style={{ width: 11, height: 11 }} /> Pending
+                        </span>
+                      )}
+                    </div>
+                    {s.rejection_note && (
+                      <p style={{ fontSize: 10.5, color: DANGER, fontStyle: "italic", margin: "3px 0 0" }}>"{s.rejection_note}"</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function ExpertWorkspace() {
   const { tripId } = useParams<{ tripId: string }>();
@@ -965,7 +1168,7 @@ export default function ExpertWorkspace() {
         ) : rows.length === 0 ? (
           <div style={{ padding: 16, borderRadius: 12, border: `1px dashed ${LINE}`, fontSize: 13.5, color: MID }} data-testid="text-builds-empty">
             Nothing here yet — start a new build above, or accept a trip assignment.{" "}
-            <button onClick={() => setLocation("/expert/assigned-trips")} data-testid="link-assigned-trips-empty" style={{ color: BRAND, background: "none", border: "none", cursor: "pointer", padding: 0, fontSize: 13.5, fontWeight: 600 }}>
+            <button onClick={() => setLocation("/expert/inbox?tab=assignments")} data-testid="link-assigned-trips-empty" style={{ color: BRAND, background: "none", border: "none", cursor: "pointer", padding: 0, fontSize: 13.5, fontWeight: 600 }}>
               View Assigned Trips
             </button>
           </div>
@@ -1783,6 +1986,9 @@ export default function ExpertWorkspace() {
                         {workspaceStatus === "draft" ? "Send edits for client review" : "Mark delivered"}
                       </button>
                     )}
+
+                    {/* Suggest to client — traveler-approval rail (C5, from /expert/assigned-trips). */}
+                    <ClientSuggestPanel tripId={tripId!} />
 
                     {/* Event coordination — client-delivery state for event-type trips (P3-19). */}
                     {isEvent && (

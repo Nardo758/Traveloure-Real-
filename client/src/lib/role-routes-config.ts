@@ -38,9 +38,17 @@ export const expertRoutesConfig: RoleRouteConfig[] = [
   { href: '/expert/ready-made',         description: 'Retired Store Listings -> redirects to Catalog (C1)' },
   { href: '/expert/performance',        description: 'Performance — channel attribution (B4)' },
   { href: '/expert/customers',          description: 'Customers — honest self-scoped aggregation (C4)' },
-  { href: '/expert/clients',            description: 'Client list' },
-  { href: '/expert/assigned-trips',     description: 'Trips assigned to this expert' },
-  { href: '/expert/bookings',           description: 'Booking requests' },
+  // /expert/clients is kept deliberately (B5/C1 redirect pattern): it redirects to
+  // /expert/customers (C5) — the by-client view's home — so the gate exercises the
+  // redirect AND the Customers page it lands on.
+  { href: '/expert/clients',            description: 'Retired client list -> redirects to Customers (C5)' },
+  // /expert/assigned-trips redirects to /expert/inbox?tab=assignments (C5 Assigned Trips
+  // retirement) — the list + accept action live on Inbox's Assigned Trips tab; the Suggest
+  // flow moved to the Workstation Distribute→Client card; by-client lives on Customers.
+  { href: '/expert/assigned-trips',     description: 'Retired Assigned Trips -> redirects to Inbox assignments tab (C5)' },
+  // /expert/bookings redirects to /expert/inbox?tab=history (C5 Bookings retirement) —
+  // history/stats, visa-status management, and the trip-plan snapshot live on Inbox History.
+  { href: '/expert/bookings',           description: 'Retired Bookings -> redirects to Inbox history tab (C5)' },
   // /expert/services is kept deliberately (B5/C1 redirect pattern): it redirects to
   // /expert/catalog (C2 My Offerings retirement), so the gate exercises the redirect
   // AND the Catalog page it lands on. The ServiceForm routes (/new, /:id/edit) are

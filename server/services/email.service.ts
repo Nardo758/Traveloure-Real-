@@ -252,7 +252,8 @@ export async function sendBookingAlertEmail(params: BookingAlertParams): Promise
     return;
   }
 
-  const bookingsUrl = `${getAppBaseUrl()}/expert/bookings`;
+  // C5: /expert/bookings retired — new booking requests land on Inbox's Queue tab.
+  const bookingsUrl = `${getAppBaseUrl()}/expert/inbox`;
 
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">

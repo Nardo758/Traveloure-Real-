@@ -41,12 +41,10 @@ const ExpertCalendar = lazy(() => import("@/pages/expert/calendar"));
 const ExpertEarnings = lazy(() => import("@/pages/expert/earnings"));
 const ExpertProfile = lazy(() => import("@/pages/expert/profile"));
 const ExpertAIAssistant = lazy(() => import("@/pages/expert/ai-assistant"));
-const ExpertBookings = lazy(() => import("@/pages/expert/bookings"));
 const ExpertInbox = lazy(() => import("@/pages/expert/inbox"));
 const ExpertCatalog = lazy(() => import("@/pages/expert/catalog"));
 const ExpertPerformance = lazy(() => import("@/pages/expert/performance"));
 const ExpertCustomers = lazy(() => import("@/pages/expert/customers"));
-const ExpertAssignedTrips = lazy(() => import("@/pages/expert/assigned-trips"));
 const EADashboard = lazy(() => import("@/pages/ea/dashboard"));
 const EAExecutives = lazy(() => import("@/pages/ea/executives"));
 const EAClients = lazy(() => import("@/pages/ea/clients"));
@@ -553,13 +551,19 @@ function Router() {
         <Redirect to="/chat" />
       </Route>
       <Route path="/expert/clients">
-        <Redirect to="/expert/assigned-trips" />
+        <Redirect to="/expert/customers" />
       </Route>
+      {/* Console IA C5 (§17 17→9): Assigned Trips retired — the list + accept action live on
+          Inbox's Assigned Trips tab; the Suggest flow moved to the Workstation
+          Distribute→Client card; the by-client grouping lives on /expert/customers. */}
       <Route path="/expert/assigned-trips">
-        {() => <ProtectedRoute component={ExpertAssignedTrips} requiredRole="expert" />}
+        <Redirect to="/expert/inbox?tab=assignments" />
       </Route>
+      {/* Console IA C5: Bookings retired — booking history/stats, visa-status management,
+          and the trip-plan snapshot live on Inbox's History tab; pending accept/decline was
+          already Inbox's Queue. */}
       <Route path="/expert/bookings">
-        {() => <ProtectedRoute component={ExpertBookings} requiredRole="expert" />}
+        <Redirect to="/expert/inbox?tab=history" />
       </Route>
       <Route path="/expert/inbox">
         {() => <ProtectedRoute component={ExpertInbox} requiredRole="expert" />}
@@ -625,7 +629,7 @@ function Router() {
         {() => <ProtectedRoute component={ExpertContentStudio} requiredRole="expert" />}
       </Route>
       <Route path="/expert/clients/:id">
-        {() => <Redirect to="/expert/assigned-trips" />}
+        {() => <Redirect to="/expert/customers" />}
       </Route>
       <Route path="/expert/settings">
         {() => <ProtectedRoute component={ExpertSettings} requiredRole="expert" />}
