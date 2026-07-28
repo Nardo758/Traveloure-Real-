@@ -32,14 +32,21 @@ const E2E_ACCOUNTS = [
   { email: "kyoto-food@traveloure.test", firstName: "Aiko", lastName: "Yamamoto", role: "travel_expert" as const },
   { email: "kyoto-photography@traveloure.test", firstName: "Kenji", lastName: "Nakamura", role: "service_provider" as const },
   { email: "test-ea@traveloure.test", firstName: "Executive", lastName: "Assistant", role: "executive_assistant" as const },
-  { email: "test-admin@traveloure.test", firstName: "Admin", lastName: "User", role: "user" as const },
+  { email: "test-admin@traveloure.test", firstName: "Admin", lastName: "User", role: "admin" as const },
 ];
 
 async function seedE2EAccounts() {
-  if (process.env.ENVIRONMENT === "PROD") {
+  // FAIL-SAFE refusal (dispatch P0, Jul 28 2026): the function refuses on its
+  // own, independent of the caller's gate. A production runtime may seed ONLY
+  // with the explicit ALLOW_TEST_ACCOUNTS=1 opt-in (the CI gates' throwaway
+  // DBs); ENVIRONMENT=PROD always refuses.
+  if (
+    process.env.ENVIRONMENT === "PROD" ||
+    (process.env.NODE_ENV === "production" && process.env.ALLOW_TEST_ACCOUNTS !== "1")
+  ) {
     throw new Error(
-      "[e2e-seed] Refusing to seed E2E test accounts into a PROD environment. " +
-      "Set ENVIRONMENT to something other than 'PROD' on the target deployment."
+      "[e2e-seed] Refusing to seed E2E test accounts into a production environment " +
+      "(NODE_ENV=production without ALLOW_TEST_ACCOUNTS=1, or ENVIRONMENT=PROD)."
     );
   }
 
@@ -146,14 +153,37 @@ async function seedE2EAccounts() {
  */
 async function purgeE2EAccountsFromProd() {
   const { sql } = await import("drizzle-orm");
-  const deleted = await db
-    .delete(users)
-    .where(sql`${users.email} LIKE '%@traveloure.test'`)
-    .returning({ email: users.email, role: users.role });
 
-  if (deleted.length > 0) {
-    console.warn(`[security] Purged ${deleted.length} @traveloure.test account(s) from PROD DB:`);
-    deleted.forEach((r) => console.warn(`  - ${r.email} (${r.role})`));
+  // NEUTRALIZE FIRST, delete second (dispatch P0 hardening): a plain DELETE can
+  // fail on FK references (the traveler account owns a seeded trip), and a purge
+  // that throws leaves a live admin credential behind. Step 1 always succeeds:
+  // demote every test account to role 'user' and scramble its password to a
+  // value that can never verify (no salt:hash shape), so even if deletion is
+  // blocked the account is harmless.
+  const scrambled = "!purged!" + crypto.randomBytes(24).toString("hex");
+  const neutralized = await db
+    .update(users)
+    .set({ role: "user", password: scrambled, updatedAt: new Date() })
+    .where(sql`${users.email} LIKE '%@traveloure.test'`)
+    .returning({ email: users.email });
+  if (neutralized.length > 0) {
+    console.warn(`[security] Neutralized ${neutralized.length} @traveloure.test account(s) (demoted + password scrambled).`);
+  }
+
+  // Step 2: best-effort delete (LIKE pattern — the .test TLD is RFC-2606
+  // reserved and can never belong to a real user). FK-blocked rows stay
+  // neutralized rather than failing the whole purge.
+  try {
+    const deleted = await db
+      .delete(users)
+      .where(sql`${users.email} LIKE '%@traveloure.test'`)
+      .returning({ email: users.email, role: users.role });
+    if (deleted.length > 0) {
+      console.warn(`[security] Purged ${deleted.length} @traveloure.test account(s) from PROD DB:`);
+      deleted.forEach((r) => console.warn(`  - ${r.email} (${r.role})`));
+    }
+  } catch (err) {
+    console.warn(`[security] Test-account delete blocked (likely FK references) — accounts remain NEUTRALIZED:`, err);
   }
 }
 

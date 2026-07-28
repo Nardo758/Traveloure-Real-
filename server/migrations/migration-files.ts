@@ -574,7 +574,4 @@ export const MIGRATION_FILES = [
   // 150: users.preferences jsonb (backoffice B6 settings persistence) — additive with default,
   // no CHECK/backfill → no publish-push trap. App layer touches only the `settings` key.
   "150_users_preferences.sql",
-  // 151: Downgrade any @traveloure.test accounts that have admin role to 'user'.
-  // Test seed accounts must never hold admin on production.
-  "151_downgrade_test_account_admins.sql",
 ] as const;

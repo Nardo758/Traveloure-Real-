@@ -41,6 +41,95 @@ import {
   Star,
 } from "lucide-react";
 
+// ─── Section 0: Today's schedule strip (Channel Calendar reference — C3) ────
+//
+// SAME endpoint as /expert/calendar (GET /api/me/calendar), queried for just today's
+// date; rows LINK OUT to each event's owning module — referenced, never re-rendered
+// (no month grid here). §13: empty day renders a quiet "Nothing scheduled today".
+
+interface TodayCalendarEvent {
+  id: string;
+  lane: "inbound" | "outbound" | "availability" | "store";
+  kind: string;
+  date: string;
+  title: string;
+  href: string;
+}
+
+const SCHEDULE_LANE_STYLE: Record<TodayCalendarEvent["lane"], { background: string; color: string }> = {
+  inbound: { background: "var(--console-brand-soft)", color: "var(--console-brand)" },
+  outbound: { background: "var(--console-warn-soft)", color: "var(--console-warn)" },
+  availability: { background: "var(--console-ok-soft)", color: "var(--console-ok)" },
+  store: { background: "var(--console-info-soft)", color: "var(--console-info)" },
+};
+
+function TodayScheduleSection() {
+  const now = new Date();
+  const pad = (n: number) => (n < 10 ? `0${n}` : String(n));
+  const todayStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+
+  const { data, isLoading } = useQuery<{ events: TodayCalendarEvent[] }>({
+    queryKey: ["/api/me/calendar", { from: todayStr, to: todayStr }],
+  });
+  const events = data?.events ?? [];
+
+  return (
+    <Card className="border border-console-light" data-testid="card-today-schedule">
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between gap-3">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <CalendarDays className="w-4 h-4 text-console-mid" />
+            Today's schedule
+          </CardTitle>
+          <Link href="/expert/calendar">
+            <span
+              className="text-xs font-medium text-primary hover:underline cursor-pointer"
+              data-testid="link-today-calendar"
+            >
+              Calendar →
+            </span>
+          </Link>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="space-y-2">
+            {[1, 2].map((i) => (
+              <Skeleton key={i} className="h-8 rounded-lg" />
+            ))}
+          </div>
+        ) : events.length === 0 ? (
+          <p className="text-sm text-console-mid" data-testid="text-today-nothing-scheduled">
+            Nothing scheduled today.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {events.map((e) => (
+              <Link key={e.id} href={e.href}>
+                <div
+                  className="flex items-center gap-2.5 py-1.5 cursor-pointer group"
+                  data-testid={`row-today-schedule-${e.id}`}
+                >
+                  <span
+                    className="inline-block w-2.5 h-2.5 rounded-[3px] flex-shrink-0 border"
+                    style={{
+                      background: SCHEDULE_LANE_STYLE[e.lane].background,
+                      borderColor: SCHEDULE_LANE_STYLE[e.lane].color,
+                    }}
+                  />
+                  <span className="text-sm text-console-darkest truncate group-hover:underline">
+                    {e.title}
+                  </span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 // ─── Section 1: Needs your response (counts only) ───────────────────────────
 
 interface InboxBooking {
@@ -439,6 +528,7 @@ export default function ExpertToday() {
       <div className="p-6 max-w-4xl mx-auto space-y-6">
         <PageHeader title="Today" subtitle={todaySubtitle} icon={Home} testId="text-today-title" />
 
+        <TodayScheduleSection />
         <NeedsResponseSection />
         <MoneyStripSection />
         <ChannelSnapshotSection />

@@ -136,6 +136,9 @@
   --console-warn-soft: #FCF3E7;
   --console-danger: #B3261E;
   --console-danger-soft: #F9E7E6;
+  /* info — the Channel Calendar's store-lifecycle lane (mockup-console-pages §1 legend). */
+  --console-info: #3B6EA5;
+  --console-info-soft: #EAF1F8;
 }
 
 /* Dark counterparts (mockup v9 dark theme — warm-neutral, not a naive invert). */
@@ -154,6 +157,9 @@
   --console-warn-soft: #362A18;
   --console-danger: #F28B82;
   --console-danger-soft: #3A2422;
+  /* info — the Channel Calendar's store-lifecycle lane (mockup-console-pages §1 legend). */
+  --console-info: #86ACD8;
+  --console-info-soft: #1E2A38;
 }
 
 .dark {
