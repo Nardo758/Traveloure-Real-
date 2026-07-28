@@ -165,7 +165,12 @@ class LeadRoutingService {
 
       return scores.sort((a, b) => b.totalScore - a.totalScore);
     } catch (error: any) {
-      console.error('[LeadRouting] scoreExperts error:', error.message);
+      // E2(a): log the real error loudly — this was previously swallowed to just
+      // error.message, silently starving the routing queue of any diagnosable
+      // signal. Still returns [] (a routing failure must not 500 the traveler's
+      // request); the caller stamps the request 'unassigned' and (E2b) it now
+      // surfaces in the admin queue instead of vanishing.
+      console.error('[LeadRouting] scoreExperts error — routing query failed, returning no candidates:', error);
       return [];
     }
   }

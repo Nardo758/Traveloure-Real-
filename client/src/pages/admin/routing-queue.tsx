@@ -43,6 +43,21 @@ interface QueueItem {
   scores_json: any[] | null;
 }
 
+// E2: eligible expert for the manual-assign picker on stranded/unassigned rows —
+// same shape the concierge-requests coordinator picker consumes.
+interface Coordinator {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  role: string;
+}
+
+function coordinatorLabel(c: Coordinator) {
+  const full = `${c.first_name || ""} ${c.last_name || ""}`.trim();
+  return full ? `${full}${c.email ? ` · ${c.email}` : ""}` : c.email || c.id;
+}
+
 interface ScoreBreakdown {
   expertId: string;
   expertName: string;
@@ -62,12 +77,62 @@ function ScoreBadge({ label, value, max, color }: { label: string; value: number
   );
 }
 
-function QueueRow({ item }: { item: QueueItem }) {
+// E2(c): manual-assign picker for a stranded row (status='unassigned', no
+// assigned_expert_id — routing found no candidates). Stamps assigned_expert_id +
+// status='assigned' server-side; the row then behaves exactly like a routed lead
+// and the existing Confirm button (below) opens the workspace.
+function ManualAssign({ item, coordinators }: { item: QueueItem; coordinators: Coordinator[] }) {
+  const [selected, setSelected] = useState<string>("");
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  const assignMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/admin/leads/${item.id}/assign`, { expertId: selected });
+      return res.json() as Promise<any>;
+    },
+    onSuccess: () => {
+      toast({ title: "Expert assigned", description: "Confirm the assignment below to open the workspace." });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/routing-queue"] });
+    },
+    onError: (err: any) => {
+      toast({ title: "Error", description: err.message || "Failed to assign an expert.", variant: "destructive" });
+    },
+  });
+
+  return (
+    <div className="flex items-center gap-2">
+      <Select value={selected} onValueChange={setSelected}>
+        <SelectTrigger className="h-8 text-xs w-56" data-testid={`select-manual-assign-${item.id}`}>
+          <SelectValue placeholder="Pick an expert…" />
+        </SelectTrigger>
+        <SelectContent>
+          {coordinators.map((c) => (
+            <SelectItem key={c.id} value={c.id}>{coordinatorLabel(c)}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <Button
+        size="sm"
+        variant="outline"
+        className="text-xs h-8"
+        disabled={!selected || assignMutation.isPending}
+        onClick={() => assignMutation.mutate()}
+        data-testid={`button-manual-assign-${item.id}`}
+      >
+        {assignMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Assign"}
+      </Button>
+    </div>
+  );
+}
+
+function QueueRow({ item, coordinators }: { item: QueueItem; coordinators: Coordinator[] }) {
   const [expanded, setExpanded] = useState(false);
   const [reassignExpertId, setReassignExpertId] = useState<string>("");
   const [confirmed, setConfirmed] = useState(false);
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const isUnassigned = item.status === "unassigned" && !item.assigned_expert_id;
 
   const scores: ScoreBreakdown[] = Array.isArray(item.scores_json) ? item.scores_json : [];
   const topScore = scores[0];
@@ -122,21 +187,28 @@ function QueueRow({ item }: { item: QueueItem }) {
             {item.request_type && (
               <Badge variant="outline" className="text-[10px]">{item.request_type}</Badge>
             )}
+            {isUnassigned && (
+              <Badge className="text-[10px] bg-red-100 text-red-700 border-red-200 hover:bg-red-100" data-testid={`badge-unassigned-${item.id}`}>
+                Unassigned
+              </Badge>
+            )}
           </div>
           <div className="flex flex-wrap gap-3 text-xs text-gray-500">
             <span className="flex items-center gap-1">
               <User className="w-3 h-3" />
               Traveler: {item.traveler_name || item.user_id?.slice(0, 8) || "—"}
             </span>
-            <span className="flex items-center gap-1">
-              <Star className="w-3 h-3 text-amber-500" />
-              Expert: <strong className="text-gray-700 dark:text-gray-300">{item.expert_name || "—"}</strong>
-              {item.top_score != null && (
-                <span className="ml-1 px-1.5 py-0.5 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 rounded text-[10px] font-semibold">
-                  {item.top_score}/100
-                </span>
-              )}
-            </span>
+            {!isUnassigned && (
+              <span className="flex items-center gap-1">
+                <Star className="w-3 h-3 text-amber-500" />
+                Expert: <strong className="text-gray-700 dark:text-gray-300">{item.expert_name || "—"}</strong>
+                {item.top_score != null && (
+                  <span className="ml-1 px-1.5 py-0.5 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 rounded text-[10px] font-semibold">
+                    {item.top_score}/100
+                  </span>
+                )}
+              </span>
+            )}
           </div>
           {topScore && (
             <div className="flex flex-wrap gap-4 pt-1">
@@ -146,10 +218,15 @@ function QueueRow({ item }: { item: QueueItem }) {
               <ScoreBadge label="Resp" value={topScore.responseRateScore} max={15} color="text-orange-500" />
             </div>
           )}
+          {isUnassigned && (
+            <div className="pt-2">
+              <ManualAssign item={item} coordinators={coordinators} />
+            </div>
+          )}
         </div>
 
         <div className="flex items-center gap-2 flex-shrink-0">
-          {otherCandidates.length > 0 && (
+          {!isUnassigned && otherCandidates.length > 0 && (
             <Button
               variant="outline"
               size="sm"
@@ -162,24 +239,26 @@ function QueueRow({ item }: { item: QueueItem }) {
               {expanded ? <ChevronUp className="w-3 h-3 ml-1" /> : <ChevronDown className="w-3 h-3 ml-1" />}
             </Button>
           )}
-          <Button
-            size="sm"
-            className={confirmed ? "bg-green-600 text-white text-xs h-8 cursor-default" : "bg-[#E85D55] hover:bg-[#d44e47] text-white text-xs h-8"}
-            onClick={() => !confirmed && confirmMutation.mutate()}
-            disabled={confirmMutation.isPending || confirmed}
-            data-testid={`button-confirm-assignment-${item.id}`}
-          >
-            {confirmMutation.isPending ? (
-              <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
-            ) : (
-              <CheckCircle className="w-3.5 h-3.5 mr-1" />
-            )}
-            {confirmed ? "Confirmed" : "Confirm"}
-          </Button>
+          {!isUnassigned && (
+            <Button
+              size="sm"
+              className={confirmed ? "bg-green-600 text-white text-xs h-8 cursor-default" : "bg-[#E85D55] hover:bg-[#d44e47] text-white text-xs h-8"}
+              onClick={() => !confirmed && confirmMutation.mutate()}
+              disabled={confirmMutation.isPending || confirmed}
+              data-testid={`button-confirm-assignment-${item.id}`}
+            >
+              {confirmMutation.isPending ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" />
+              ) : (
+                <CheckCircle className="w-3.5 h-3.5 mr-1" />
+              )}
+              {confirmed ? "Confirmed" : "Confirm"}
+            </Button>
+          )}
         </div>
       </div>
 
-      {expanded && otherCandidates.length > 0 && (
+      {!isUnassigned && expanded && otherCandidates.length > 0 && (
         <div className="px-4 pb-4 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/40">
           <p className="text-xs text-gray-500 py-3">Pick a different expert from the scored candidates:</p>
           <div className="flex items-center gap-2">
@@ -220,9 +299,15 @@ function QueueRow({ item }: { item: QueueItem }) {
 }
 
 export default function AdminRoutingQueue() {
+  // unassigned=1 widens the query to also surface stranded rows (E2b) alongside
+  // the routed queue.
   const { data: items, isLoading, error } = useQuery<QueueItem[]>({
-    queryKey: ["/api/admin/routing-queue"],
+    queryKey: ["/api/admin/routing-queue", { unassigned: 1 }],
   });
+  const { data: coordinatorData } = useQuery<{ coordinators: Coordinator[] }>({
+    queryKey: ["/api/admin/coordinators"],
+  });
+  const coordinators = coordinatorData?.coordinators ?? [];
 
   return (
     <AdminLayout title="Routing Queue">
@@ -271,7 +356,7 @@ export default function AdminRoutingQueue() {
               </div>
             )}
             {!isLoading && items && items.map((item) => (
-              <QueueRow key={item.id} item={item} />
+              <QueueRow key={item.id} item={item} coordinators={coordinators} />
             ))}
           </CardContent>
         </Card>
