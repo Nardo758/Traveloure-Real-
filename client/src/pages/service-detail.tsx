@@ -38,6 +38,7 @@ import {
   CalendarCheck,
   Car,
   Handshake,
+  Package,
 } from "lucide-react";
 import {
   Dialog,
@@ -90,6 +91,16 @@ interface Service {
   // the old fabricated "free cancellation" claim.
   cancellationPolicyType: string | null;
   cancellationPolicy: string | null;
+  // §17 bundles (migration 151): additive component list, present only when this service
+  // is a bundle (productShape === 'bundle'). F2-gated server-side — only still-approved+
+  // active components are ever included.
+  bundleComponents?: BundleComponent[];
+}
+
+interface BundleComponent {
+  id: string;
+  serviceName: string;
+  shortDescription: string;
 }
 
 // X1: display labels for cancellationPolicyType — mirrors shared/schema.ts
@@ -474,6 +485,35 @@ export default function ServiceDetailPage() {
                       </li>
                     ))}
                   </ul>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* §17 bundles (migration 151): components of this bundle, server-gated to only
+                still-approved+active items. No section at all for a non-bundle service. */}
+            {Array.isArray(service.bundleComponents) && service.bundleComponents.length > 0 && (
+              <Card data-testid="card-bundle-components">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Package className="w-5 h-5 text-primary" /> What's inside this bundle
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="divide-y">
+                    {service.bundleComponents.map((component) => (
+                      <Link
+                        key={component.id}
+                        href={`/services/${component.id}`}
+                        data-testid={`bundle-component-${component.id}`}
+                        className="block py-3 hover-elevate rounded-md px-2 -mx-2"
+                      >
+                        <p className="font-medium">{component.serviceName}</p>
+                        {component.shortDescription && (
+                          <p className="text-sm text-muted-foreground mt-0.5">{component.shortDescription}</p>
+                        )}
+                      </Link>
+                    ))}
+                  </div>
                 </CardContent>
               </Card>
             )}
