@@ -36,21 +36,43 @@ jobs:
             echo "run=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: actions/checkout@v4
+      # The production boot PURGES the seeded @traveloure.test accounts on every start
+      # (the PR #319 P0 security fix), so a production target correctly refuses their
+      # login with 401 — that is the fix WORKING, not a test failure. Auth-dependent
+      # smoke can only run against a deploy that opts in via ALLOW_TEST_ACCOUNTS=1
+      # (a staging deploy). Only a clean 401 skips; any other status (404 broken
+      # deploy, 500, timeouts) falls through and lets the suite fail loudly.
+      - name: Probe target accepts test accounts (P0 purge posture)
+        id: authprobe
         if: steps.guard.outputs.run == 'true'
+        run: |
+          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 \
+            -X POST "$E2E_BASE_URL/api/auth/login" \
+            -H 'Content-Type: application/json' \
+            -d "{\"email\":\"test-traveler-kyoto@traveloure.test\",\"password\":\"$E2E_TEST_PASSWORD\"}") || code=000
+          if [ "$code" = "401" ]; then
+            echo "::notice::Deployed target refuses seeded test accounts (401) — the EXPECTED production posture since the P0 boot purge (PR #319). Auth smoke needs a deploy with ALLOW_TEST_ACCOUNTS=1; skipping (non-blocking)."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Auth probe returned $code — proceeding (200 = accounts seeded; anything else fails loudly in the suite)."
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.guard.outputs.run == 'true' && steps.authprobe.outputs.run == 'true'
 
       - uses: actions/setup-node@v4
-        if: steps.guard.outputs.run == 'true'
+        if: steps.guard.outputs.run == 'true' && steps.authprobe.outputs.run == 'true'
         with:
           node-version: '20'
           cache: 'npm'
 
       - name: Install dependencies
-        if: steps.guard.outputs.run == 'true'
+        if: steps.guard.outputs.run == 'true' && steps.authprobe.outputs.run == 'true'
         run: npm ci
 
       - name: Cache Playwright browsers
-        if: steps.guard.outputs.run == 'true'
+        if: steps.guard.outputs.run == 'true' && steps.authprobe.outputs.run == 'true'
         uses: actions/cache@v4
         id: playwright-cache
         with:
@@ -58,19 +80,19 @@ jobs:
           key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
 
       - name: Install Playwright (chromium)
-        if: steps.guard.outputs.run == 'true' && steps.playwright-cache.outputs.cache-hit != 'true'
+        if: steps.guard.outputs.run == 'true' && steps.authprobe.outputs.run == 'true' && steps.playwright-cache.outputs.cache-hit != 'true'
         run: npx playwright install --with-deps chromium
 
       - name: Install Playwright system deps (cache hit)
-        if: steps.guard.outputs.run == 'true' && steps.playwright-cache.outputs.cache-hit == 'true'
+        if: steps.guard.outputs.run == 'true' && steps.authprobe.outputs.run == 'true' && steps.playwright-cache.outputs.cache-hit == 'true'
         run: npx playwright install-deps chromium
 
       - name: Run deploy smoke (chromium)
-        if: steps.guard.outputs.run == 'true'
+        if: steps.guard.outputs.run == 'true' && steps.authprobe.outputs.run == 'true'
         run: npm run test:e2e:deploy:smoke
 
       - name: Upload report
-        if: ${{ always() && steps.guard.outputs.run == 'true' }}
+        if: ${{ always() && steps.guard.outputs.run == 'true' && steps.authprobe.outputs.run == 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: e2e-deploy-smoke-report
