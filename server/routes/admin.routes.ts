@@ -44,6 +44,7 @@ import {
   coordinationStates,
   readyMadeTrips,
   expertTypeEnum,
+  bundleComponents,
 } from "@shared/schema";
 import {
   TAB_CONTENT_TYPE_MAP,
@@ -2764,6 +2765,22 @@ router.delete("/api/admin/services/:id", isAuthenticated, async (req, res) => {
       await deleteProviderService(req.params.id);
       res.json({ ok: true });
     } catch (err: any) {
+      // Migration 151 (§17): bundle_components.component_service_id is ON DELETE RESTRICT —
+      // a service inside a bundle can't be deleted until removed from it. Surface the FK
+      // violation (23503) as an honest 409 naming the bundle(s), not an opaque 500.
+      if ((err?.code ?? err?.cause?.code) === "23503") {
+        const inBundles = await db
+          .select({ serviceName: providerServices.serviceName })
+          .from(bundleComponents)
+          .innerJoin(providerServices, eq(bundleComponents.bundleServiceId, providerServices.id))
+          .where(eq(bundleComponents.componentServiceId, req.params.id));
+        if (inBundles.length > 0) {
+          return res.status(409).json({
+            message: "This service is part of a bundle — remove it from the bundle(s) before deleting it.",
+            bundles: inBundles.map((r) => r.serviceName),
+          });
+        }
+      }
       res.status(500).json({ message: "Failed to delete service", error: err.message });
     }
   });
