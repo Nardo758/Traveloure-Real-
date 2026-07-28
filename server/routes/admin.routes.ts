@@ -5342,6 +5342,13 @@ router.get("/api/admin/routing-queue", isAuthenticated, async (req, res) => {
       if (!adminUser || adminUser.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
+      // E2(b): stranded rows — leadRoutingService.scoreExperts returned [] (e.g. a
+      // swallowed SQL error), so the request has no assigned_expert_id and was
+      // stamped status='unassigned'. They never satisfy the base WHERE below (it
+      // requires assigned_expert_id IS NOT NULL) and were previously invisible to
+      // any admin surface. `?unassigned=1` widens the query to also include them;
+      // default (no query param) keeps the original routed-queue-only shape.
+      const includeUnassigned = req.query.unassigned === "1";
       const result = await db.execute(sql`
         SELECT
           er.id,
@@ -5364,19 +5371,72 @@ router.get("/api/admin/routing-queue", isAuthenticated, async (req, res) => {
         LEFT JOIN users eu ON eu.id = er.assigned_expert_id
         LEFT JOIN lead_routing_logs lrl ON lrl.trip_id::text = er.trip_id
           AND lrl.assigned_expert_id = er.assigned_expert_id
-        WHERE er.assigned_expert_id IS NOT NULL
+        WHERE (
+          er.assigned_expert_id IS NOT NULL
           AND er.status NOT IN ('confirmed', 'completed', 'cancelled')
           AND NOT EXISTS (
             SELECT 1 FROM trip_expert_advisors tea
             WHERE tea.trip_id = er.trip_id
               AND tea.local_expert_id = er.assigned_expert_id
           )
+        )
+        ${includeUnassigned ? sql`OR er.status = 'unassigned'` : sql``}
         ORDER BY er.created_at DESC
         LIMIT 100
       `);
       res.json(result.rows);
     } catch (error: any) {
       res.status(500).json({ error: error.message });
+    }
+  });
+
+  // POST /api/admin/leads/:expertRequestId/assign — manual admin assignment for a lead that
+  // auto-routing failed to place (E2: scoreExperts returned [], the row was stamped
+  // status='unassigned' with no assigned_expert_id, and previously had no way back into the
+  // pipeline). Stamps the same fields the successful auto-routed path stamps
+  // (assignExpertAdvisorToRequest in booking-actions.service.ts: assigned_expert_id +
+  // status='assigned' + assigned_at) so the EXISTING confirm endpoint below can run unchanged.
+router.post("/api/admin/leads/:expertRequestId/assign", isAuthenticated, async (req, res) => {
+    const adminUser = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+    if (!adminUser || adminUser.role !== "admin") {
+      return res.status(403).json({ message: "Admin access required" });
+    }
+    try {
+      const { expertId } = z.object({ expertId: z.string().min(1) }).parse(req.body);
+
+      // Mirror the assign-coordinator picker's eligibility check: a real,
+      // non-suspended, non-deleted expert-family user.
+      const [expert] = await db
+        .select({ id: users.id, role: users.role, isSuspended: users.isSuspended, isDeleted: users.isDeleted })
+        .from(users)
+        .where(eq(users.id, expertId))
+        .limit(1);
+      if (
+        !expert ||
+        !isExpertRole(expert.role) ||
+        expert.isSuspended ||
+        expert.isDeleted
+      ) {
+        return res.status(400).json({ message: "Target user is not an eligible expert" });
+      }
+
+      const { expertRequestId } = req.params;
+      const [updated] = await db
+        .update(expertRequests)
+        .set({ assignedExpertId: expertId, status: "assigned", assignedAt: new Date() })
+        .where(eq(expertRequests.id, expertRequestId))
+        .returning();
+      if (!updated) {
+        return res.status(404).json({ message: "Lead not found" });
+      }
+
+      res.json({ success: true, expertRequest: updated });
+    } catch (err: any) {
+      if (err instanceof z.ZodError) {
+        return res.status(400).json({ message: "Validation error", errors: err.errors });
+      }
+      console.error("Admin manual lead-assign error:", err);
+      res.status(500).json({ message: "Failed to assign expert to lead" });
     }
   });
 
