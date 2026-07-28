@@ -1,13 +1,16 @@
 import { useState } from "react";
+import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { MapPin, Plus, Check, Library, Search } from "lucide-react";
+import { MapPin, Plus, Check, Library, Search, Pencil, Sparkles } from "lucide-react";
 
 interface DmoItem {
   id: string;
@@ -34,6 +37,11 @@ const TYPE_TO_ITEM: Record<string, string> = {
  * DmoPickerCore — the modal's search + list + add body, extracted (Phase A2) so the
  * workspace's Add panel can embed the same browse/add flow inline without the Dialog
  * chrome. Same fetch, same POST /api/trips/:tripId/itinerary-items write — one logic home.
+ *
+ * C7 (§17 17→9): also carries the review-and-refine flow (expert_dmo_edits) folded in
+ * from the retired dmo-library.tsx — same POST /api/expert-workspace/content/:id/edit →
+ * PATCH /api/expert-workspace/edits/:id/submit write, verbatim — so the Add panel's DMO
+ * drawer is the library's one home; /expert/dmo-library redirects to the Workstation.
  */
 export function DmoPickerCore({
   tripId,
@@ -45,8 +53,60 @@ export function DmoPickerCore({
   onAdded: () => void;
 }) {
   const { toast } = useToast();
+  const [, navigate] = useLocation();
   const [q, setQ] = useState("");
   const [added, setAdded] = useState<Set<string>>(new Set());
+
+  // Refine editor state (one open editor at a time, form state scoped to it).
+  const [refiningId, setRefiningId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editTags, setEditTags] = useState("");
+  const [refined, setRefined] = useState<Set<string>>(new Set());
+
+  function toggleRefine(item: DmoItem) {
+    if (refiningId === item.id) {
+      setRefiningId(null);
+      return;
+    }
+    setRefiningId(item.id);
+    setEditName(item.name ?? "");
+    setEditDescription(item.description ?? "");
+    setEditTags((item.tags ?? []).join(", "));
+    // Reopening re-enables save (mirrors dmo-library.tsx's reset on open).
+    setRefined((prev) => {
+      const next = new Set(prev);
+      next.delete(item.id);
+      return next;
+    });
+  }
+
+  // Save enrichment as a draft edit, then submit it — refines the raw content (name,
+  // description, tags) before it's built into a Ready Made Trip or a client itinerary.
+  const submitEnrichment = useMutation({
+    mutationFn: async (item: DmoItem) => {
+      const tags = editTags
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean);
+      const editRes = await apiRequest("POST", `/api/expert-workspace/content/${item.id}/edit`, {
+        editedName: editName || undefined,
+        editedDescription: editDescription || undefined,
+        editedTags: tags.length > 0 ? tags : undefined,
+      });
+      const edit = await editRes.json();
+      await apiRequest("PATCH", `/api/expert-workspace/edits/${edit.id}/submit`);
+      return edit;
+    },
+    onSuccess: (_edit, item) => {
+      setRefined((prev) => new Set(prev).add(item.id));
+      queryClient.invalidateQueries({ queryKey: ["/api/expert-workspace/library"] });
+      toast({ title: "Saved", description: "Your refinements were saved to this content." });
+    },
+    onError: (err: any) => {
+      toast({ title: "Could not save", description: String(err?.message ?? err), variant: "destructive" });
+    },
+  });
 
   const { data, isLoading } = useQuery<LibraryResponse>({
     queryKey: ["/api/expert-workspace/library", "Kyoto", "picker"],
@@ -102,45 +162,124 @@ export function DmoPickerCore({
           </div>
         ) : items.length === 0 ? (
           <p className="text-sm text-muted-foreground py-8 text-center">
-            No approved content in your library yet. Ask an admin to approve DMO content, or add it from the
-            DMO Library.
+            No approved content in your library yet. Ask an admin to approve DMO content — it will
+            appear here, ready to refine and add to trips.
           </p>
         ) : (
           <div className="space-y-2">
             {items.map((it) => (
               <div
                 key={it.id}
-                className="flex items-start justify-between gap-3 rounded-lg border p-3"
+                className="rounded-lg border p-3"
                 data-testid={`dmo-picker-row-${it.id}`}
               >
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-sm truncate">{it.name}</span>
-                    <Badge variant="outline" className="capitalize shrink-0 text-xs">{it.contentType}</Badge>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-sm truncate">{it.name}</span>
+                      <Badge variant="outline" className="capitalize shrink-0 text-xs">{it.contentType}</Badge>
+                    </div>
+                    {it.neighborhood && (
+                      <span className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
+                        <MapPin className="w-3 h-3" /> {it.neighborhood}
+                      </span>
+                    )}
+                    {it.description && (
+                      <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{it.description}</p>
+                    )}
                   </div>
-                  {it.neighborhood && (
-                    <span className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
-                      <MapPin className="w-3 h-3" /> {it.neighborhood}
-                    </span>
-                  )}
-                  {it.description && (
-                    <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{it.description}</p>
-                  )}
+                  <div className="flex flex-col items-stretch gap-1 shrink-0">
+                    <Button
+                      size="sm"
+                      variant={added.has(it.id) ? "outline" : "default"}
+                      disabled={added.has(it.id) || addMutation.isPending}
+                      onClick={() => addMutation.mutate(it)}
+                      data-testid={`button-dmo-add-${it.id}`}
+                    >
+                      {added.has(it.id) ? (
+                        <><Check className="w-3.5 h-3.5 mr-1" />Added</>
+                      ) : (
+                        <><Plus className="w-3.5 h-3.5 mr-1" />Add</>
+                      )}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-muted-foreground"
+                      onClick={() => toggleRefine(it)}
+                      data-testid={`button-dmo-refine-${it.id}`}
+                    >
+                      <Pencil className="w-3.5 h-3.5 mr-1" />
+                      {refiningId === it.id ? "Close" : "Refine"}
+                    </Button>
+                  </div>
                 </div>
-                <Button
-                  size="sm"
-                  variant={added.has(it.id) ? "outline" : "default"}
-                  disabled={added.has(it.id) || addMutation.isPending}
-                  onClick={() => addMutation.mutate(it)}
-                  className="shrink-0"
-                  data-testid={`button-dmo-add-${it.id}`}
-                >
-                  {added.has(it.id) ? (
-                    <><Check className="w-3.5 h-3.5 mr-1" />Added</>
-                  ) : (
-                    <><Plus className="w-3.5 h-3.5 mr-1" />Add</>
-                  )}
-                </Button>
+
+                {refiningId === it.id && (
+                  <div className="mt-3 rounded-md border bg-muted/30 p-3 space-y-3" data-testid={`dmo-refine-editor-${it.id}`}>
+                    <p className="text-xs text-muted-foreground flex gap-2">
+                      <Sparkles className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                      Refine the raw content below so it's ready to build into a Ready Made Trip or a
+                      client itinerary.
+                    </p>
+                    <div className="space-y-1">
+                      <Label htmlFor={`dmo-refine-name-${it.id}`} className="text-xs">Name</Label>
+                      <Input
+                        id={`dmo-refine-name-${it.id}`}
+                        value={editName}
+                        onChange={(e) => setEditName(e.target.value)}
+                        data-testid="input-dmo-refine-name"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor={`dmo-refine-description-${it.id}`} className="text-xs">Description</Label>
+                      <Textarea
+                        id={`dmo-refine-description-${it.id}`}
+                        rows={4}
+                        value={editDescription}
+                        onChange={(e) => setEditDescription(e.target.value)}
+                        data-testid="input-dmo-refine-description"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor={`dmo-refine-tags-${it.id}`} className="text-xs">Tags (comma-separated)</Label>
+                      <Input
+                        id={`dmo-refine-tags-${it.id}`}
+                        value={editTags}
+                        onChange={(e) => setEditTags(e.target.value)}
+                        data-testid="input-dmo-refine-tags"
+                      />
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      {/* Factory wire B (carried from the retired dmo-library.tsx): library item →
+                          Content Studio prefilled draft — research becomes social content. */}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-muted-foreground"
+                        onClick={() =>
+                          navigate(
+                            `/expert/content-studio?prefill=1&title=${encodeURIComponent(it.name ?? "")}` +
+                              `&destination=Kyoto&type=travel-guide` +
+                              `&description=${encodeURIComponent((it.description ?? "").slice(0, 500))}`,
+                          )
+                        }
+                        data-testid={`button-social-post-${it.id}`}
+                      >
+                        Create social post
+                      </Button>
+                      <Button
+                        size="sm"
+                        disabled={submitEnrichment.isPending || refined.has(it.id)}
+                        onClick={() => submitEnrichment.mutate(it)}
+                        data-testid="button-dmo-refine-submit"
+                      >
+                        <Sparkles className="w-3.5 h-3.5 mr-1" />
+                        {refined.has(it.id) ? "Saved" : submitEnrichment.isPending ? "Saving…" : "Save refinements"}
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>

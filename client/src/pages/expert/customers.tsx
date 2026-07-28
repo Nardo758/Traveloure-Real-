@@ -5,7 +5,8 @@
  * store purchases, and assigned trips (GET /api/me/customers — read-only). No invented CRM
  * fields (no notes, no tags, no lead status — none exist, none are faked, per the ratified
  * section-7 decision). The expanded detail REFERENCES each item's owning module (bookings →
- * /expert/bookings, trips → the Workstation build, purchases → the Catalog listing lane) —
+ * Inbox History (/expert/inbox?tab=history, C5), trips → the Workstation build, purchases →
+ * the Catalog listing lane) —
  * this page never re-renders another module's surface (§17 one-home-per-list rule).
  *
  * Money label honesty (§13): the figure shown is BOOKED VALUE — the gross amount customers
@@ -100,7 +101,7 @@ function CustomerDetail({ customer }: { customer: CustomerRow }) {
             {bookings.map((b) => (
               <li key={b.id} className="flex items-center justify-between gap-3 text-sm">
                 <Link
-                  href="/expert/bookings"
+                  href="/expert/inbox?tab=history"
                   className="flex items-center gap-1.5 text-console-darkest hover:text-primary hover:underline min-w-0"
                 >
                   <Calendar className="w-3.5 h-3.5 flex-shrink-0 text-console-mid" />

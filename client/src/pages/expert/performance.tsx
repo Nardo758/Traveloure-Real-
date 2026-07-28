@@ -12,15 +12,28 @@
  * columns already returned by GET /api/expert/services (provider_services.bookingsCount /
  * totalRevenue / averageRating / reviewCount — no new backend, §13 honest-data rule: rating
  * renders only when reviewCount > 0, otherwise "New", never a fabricated number).
+ *
+ * Console IA C6 (§17 17→9 collapse): Performance also HOSTS the Analytics page as a tab —
+ * a mount, not an extraction (analytics.tsx stays intact as a component, lazy-loaded here).
+ * Param collision: this page reads ?tab= (overview | analytics); the embedded analytics
+ * component's own 9-tab picker rides ?sub= (its embedded seam), so the two never collide.
+ * /expert/analytics, /expert/revenue-optimization, and /expert/leaderboard all redirect in.
  */
+import { lazy, Suspense } from "react";
+import { useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { ExpertLayout } from "@/components/expert/expert-layout";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LinkAnalyticsPanel } from "@/components/backoffice/link-analytics-panel";
 import { EarningsBySourcePanel } from "@/components/backoffice/earnings-by-source-panel";
 import { PageHeader, EmptyState, StatusBadge } from "@/components/backoffice/primitives";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TrendingUp, Star, LayoutList } from "lucide-react";
+
+// C6: lazy so the ~1100-line analytics bundle only loads when its tab is opened
+// (App.tsx dropped its own ExpertAnalytics lazy import — this is the only mount).
+const ExpertAnalytics = lazy(() => import("@/pages/expert/analytics"));
 
 interface MyServiceRow {
   id: string;
@@ -125,32 +138,61 @@ function OfferingPerformanceSection() {
 }
 
 export default function ExpertPerformance() {
+  const search = useSearch();
+  const params = new URLSearchParams(search);
+  const tabParam = params.get("tab") === "analytics" ? "analytics" : "overview";
+
   return (
     <ExpertLayout title="Performance">
-      <div className="p-6 max-w-4xl mx-auto space-y-8">
-        <PageHeader
-          title="Performance"
-          subtitle="Which channel earns — clicks, attributed bookings, and how each offering performs"
-          icon={TrendingUp}
-          testId="text-performance-title"
-        />
+      <Tabs defaultValue={tabParam} className="w-full">
+        <div className="p-6 pb-0 max-w-4xl mx-auto space-y-4">
+          <PageHeader
+            title="Performance"
+            subtitle="Which channel earns — clicks, attributed bookings, and how each offering performs"
+            icon={TrendingUp}
+            testId="text-performance-title"
+          />
+          <TabsList data-testid="tabs-performance">
+            <TabsTrigger value="overview" data-testid="tab-performance-overview">Overview</TabsTrigger>
+            <TabsTrigger value="analytics" data-testid="tab-performance-analytics">Analytics</TabsTrigger>
+          </TabsList>
+        </div>
 
-        <section data-testid="section-performance-channel-attribution">
-          <h2 className="text-sm font-semibold text-console-mid uppercase tracking-wide mb-2">
-            Channel Attribution
-          </h2>
-          <EarningsBySourcePanel />
-        </section>
+        <TabsContent value="overview">
+          <div className="p-6 max-w-4xl mx-auto space-y-8">
+            <section data-testid="section-performance-channel-attribution">
+              <h2 className="text-sm font-semibold text-console-mid uppercase tracking-wide mb-2">
+                Channel Attribution
+              </h2>
+              <EarningsBySourcePanel />
+            </section>
 
-        <section data-testid="section-performance-link-analytics">
-          <h2 className="text-sm font-semibold text-console-mid uppercase tracking-wide mb-2">
-            Share-Link Analytics
-          </h2>
-          <LinkAnalyticsPanel />
-        </section>
+            <section data-testid="section-performance-link-analytics">
+              <h2 className="text-sm font-semibold text-console-mid uppercase tracking-wide mb-2">
+                Share-Link Analytics
+              </h2>
+              <LinkAnalyticsPanel />
+            </section>
 
-        <OfferingPerformanceSection />
-      </div>
+            <OfferingPerformanceSection />
+          </div>
+        </TabsContent>
+
+        {/* C6: the analytics page rendered embedded — no second ExpertLayout, internal
+            tabs on ?sub= (see the analytics.tsx seam). Its content carries its own p-6. */}
+        <TabsContent value="analytics" data-testid="content-performance-analytics">
+          <Suspense
+            fallback={
+              <div className="p-6 space-y-4">
+                <Skeleton className="h-28 w-full" />
+                <Skeleton className="h-64 w-full" />
+              </div>
+            }
+          >
+            <ExpertAnalytics embedded />
+          </Suspense>
+        </TabsContent>
+      </Tabs>
     </ExpertLayout>
   );
 }

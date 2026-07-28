@@ -16,18 +16,12 @@ import { Button } from "@/components/ui/button";
 import {
   Home,
   Bot,
-  MessageSquare,
-  Calendar,
   CalendarDays,
   DollarSign,
-  BarChart3,
-  User,
   LogOut,
   Palette,
   Settings,
-  MapPin,
   PenSquare,
-  Library,
   Inbox,
   LayoutGrid,
   TrendingUp,
@@ -51,18 +45,21 @@ function buildMenuGroups(expertType?: string | null) {
         // channel-filtered timeline; every event links out to its owning module.
         { title: "Calendar", href: "/expert/calendar", icon: CalendarDays },
         { title: "Inbox", href: "/expert/inbox", icon: Inbox },
-        // Console IA C1 (§17 17→9): Bookings + Assigned Trips are KEPT for now — Inbox covers
-        // only the actionable queues (pending accept/decline, invites, disputes). Bookings still
-        // uniquely carries booking history (confirmed/completed), visa-status management, and
-        // the trip-plan snapshot; Assigned Trips uniquely carries the traveler-approval Suggest
-        // flow (POST /api/trips/:id/suggestions + log) and the by-client grouped view. Their
-        // folds into Inbox/Customers are later C-phase items, gated on those absorptions.
-        { title: isEventPlanner ? "Events" : "Bookings", href: "/expert/bookings", icon: Calendar },
-        { title: "Assigned Trips", href: "/expert/assigned-trips", icon: MapPin },
+        // Console IA C5 (§17 17→9): "Bookings" entry RETIRED — the C1 keep-reason is resolved:
+        // Inbox's History tab now carries booking history (confirmed/completed + stats), the
+        // visa-status management dialog (PATCH /api/service-bookings/:id/visa-status), and the
+        // trip-plan snapshot; pending accept/decline was already Inbox's Queue.
+        // /expert/bookings redirects to /expert/inbox?tab=history. Note: this entry carried an
+        // event-planner conditional label ("Events" when expertType === "event_planner").
+        // Console IA C5: "Assigned Trips" entry RETIRED — the assigned-trips list + accept
+        // action live on Inbox's Assigned Trips tab; the traveler-approval Suggest flow
+        // (POST /api/trips/:id/suggestions + log) moved to the Workstation Distribute→Client
+        // card (client-delivery state is its semantic home); the by-client grouped view lives
+        // on Customers. /expert/assigned-trips redirects to /expert/inbox?tab=assignments.
         // C1: "Workstation" is the ratified module name (route unchanged — label-only rename).
         { title: "Workstation", href: "/expert/workspace", icon: PenSquare },
-        // C1: Messages KEPT — Inbox does not render message threads; /chat stays the thread home.
-        { title: "Messages", href: "/chat", icon: MessageSquare },
+        // Console IA C5: "Messages" entry RETIRED — Inbox's Messages tab is the recent-threads
+        // queue linking into /chat (which stays the thread home; this entry pointed there).
       ],
     },
     {
@@ -84,10 +81,10 @@ function buildMenuGroups(expertType?: string | null) {
         // Content Studio, a real creation surface (AI content, Instagram, guides) nothing else
         // covers. Its Workstation fold (mockup section 0) pends a later phase.
         { title: isEventPlanner ? "Promo Content" : isLocalExpert ? "Local Guides" : "Content Studio", href: "/expert/content-studio", icon: Palette },
-        // C1: KEPT — the Workstation Add panel's DMO pill (DmoPickerCore) is browse/add only;
-        // the review-and-refine flow (expert_dmo_edits) lives only on dmo-library.tsx. Fold
-        // pends the Add-panel drawer gaining refine.
-        { title: "DMO Library", href: "/expert/dmo-library", icon: Library },
+        // Console IA C7: "DMO Library" entry RETIRED — the C1 keep-reason is resolved: the
+        // Workstation Add panel's DMO drawer (DmoPickerCore) now carries the review-and-refine
+        // flow (expert_dmo_edits) alongside browse/add, so the library's one home is the
+        // Add panel. /expert/dmo-library redirects to /expert/workspace.
         // Console IA C2: "Share & Promote" entry RETIRED — the C1 keep-reason is resolved:
         // the offering/storefront-scoped creation half (per-row share kits, posting
         // opportunities, storefront caption) moved onto Catalog via the shared
@@ -101,18 +98,24 @@ function buildMenuGroups(expertType?: string | null) {
         // bookings / store purchases / assigned trips; no invented CRM fields.
         { title: "Customers", href: "/expert/customers", icon: Users },
         { title: "Performance", href: "/expert/performance", icon: TrendingUp },
-        // C1: KEPT — Analytics carries 9 tabs (funnel, market intelligence, client value,
-        // revenue optimization, leaderboard, …) Performance doesn't; /expert/revenue-optimization
-        // and /expert/leaderboard also redirect INTO it. Fold-as-tab is a later phase.
-        { title: "Analytics", href: "/expert/analytics", icon: BarChart3 },
-        { title: "Earnings", href: "/expert/earnings", icon: DollarSign },
+        // Console IA C6: "Analytics" entry RETIRED — the C1 keep-reason is resolved: the
+        // fold-as-tab landed. The analytics page (its 9 internal tabs intact) is hosted as
+        // Performance's Analytics tab (performance.tsx lazy-mounts it embedded; its internal
+        // tab picker rides ?sub= so it can't collide with Performance's ?tab=). The two
+        // inbound redirects (/expert/revenue-optimization, /expert/leaderboard) are
+        // re-pointed at /expert/performance?tab=analytics&sub=…; /expert/analytics itself
+        // redirects to /expert/performance?tab=analytics.
+        // Console IA C8: module renamed Earnings → Money per §17; /expert/earnings redirects.
+        { title: "Money", href: "/expert/money", icon: DollarSign },
       ],
     },
     {
       label: "Account",
       items: [
         { title: "AI Assistant", href: "/expert/ai-assistant", icon: Bot },
-        { title: "Profile", href: "/expert/profile", icon: User },
+        // Console IA C8: "Profile" entry RETIRED — the profile page lives as Settings' FIRST
+        // tab (settings.tsx lazy-mounts it embedded; Settings still defaults to Verification,
+        // the actionable surface). /expert/profile redirects to /expert/settings?tab=profile.
         // Verification & Payouts merged into Settings — the two pages hit the identical five
         // endpoints, and Settings already opens on its Verification tab.
         { title: "Settings", href: "/expert/settings", icon: Settings },
