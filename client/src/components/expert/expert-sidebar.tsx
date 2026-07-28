@@ -28,7 +28,6 @@ import {
   MapPin,
   PenSquare,
   Library,
-  Store,
   Share2,
   Inbox,
   LayoutGrid,
@@ -49,9 +48,17 @@ function buildMenuGroups(expertType?: string | null) {
         // already bare redirects). "Verification & Payouts" and "Booking Partners" removed below.
         { title: "Today", href: "/expert/today", icon: Home },
         { title: "Inbox", href: "/expert/inbox", icon: Inbox },
+        // Console IA C1 (§17 17→9): Bookings + Assigned Trips are KEPT for now — Inbox covers
+        // only the actionable queues (pending accept/decline, invites, disputes). Bookings still
+        // uniquely carries booking history (confirmed/completed), visa-status management, and
+        // the trip-plan snapshot; Assigned Trips uniquely carries the traveler-approval Suggest
+        // flow (POST /api/trips/:id/suggestions + log) and the by-client grouped view. Their
+        // folds into Inbox/Customers are later C-phase items, gated on those absorptions.
         { title: isEventPlanner ? "Events" : "Bookings", href: "/expert/bookings", icon: Calendar },
         { title: "Assigned Trips", href: "/expert/assigned-trips", icon: MapPin },
-        { title: "Workspace", href: "/expert/workspace", icon: PenSquare },
+        // C1: "Workstation" is the ratified module name (route unchanged — label-only rename).
+        { title: "Workstation", href: "/expert/workspace", icon: PenSquare },
+        // C1: Messages KEPT — Inbox does not render message threads; /chat stays the thread home.
         { title: "Messages", href: "/chat", icon: MessageSquare },
       ],
     },
@@ -59,23 +66,34 @@ function buildMenuGroups(expertType?: string | null) {
       label: "Business",
       items: [
         // Catalog (Backoffice B3): "what I sell" front door — absorbs My Offerings + Store
-        // Listings management (both stay as their own pages; Catalog surfaces/links them).
+        // Listings management.
         { title: "Catalog", href: "/expert/catalog", icon: LayoutGrid },
+        // Console IA C1: "Store Listings" entry RETIRED — /expert/ready-made now redirects to
+        // /expert/catalog (list + approval status live in the MyOfferingsTable ready_made lane;
+        // editing lives on the build in the Workstation Distribute panel; creation is
+        // ship-to-store from a build). "My Offerings" is KEPT: Catalog's table has no
+        // per-service edit link, pause/activate, or duplicate — those live only on
+        // /expert/services; its fold is a later C-phase item once Catalog absorbs them.
         { title: "My Offerings", href: "/expert/services", icon: Briefcase },
-        // "Store Listings" is the workstation→store pipeline console (decision-maker model,
-        // 2026-07-25: one store, stocked from the Workstation; "Trips by Locals" is a consumer
-        // shelf section by author type, never a seller-console name). The former
-        // "Itinerary Templates" seller entry is retired (§10/§17 seller-surface sunset).
-        ...(isEventPlanner ? [] : [{ title: "Store Listings", href: "/expert/ready-made", icon: Store }]),
+        // C1: KEPT — "Local Guides" is not a page; it is this entry's local-expert label for
+        // Content Studio, a real creation surface (AI content, Instagram, guides) nothing else
+        // covers. Its Workstation fold (mockup section 0) pends a later phase.
         { title: isEventPlanner ? "Promo Content" : isLocalExpert ? "Local Guides" : "Content Studio", href: "/expert/content-studio", icon: Palette },
+        // C1: KEPT — the Workstation Add panel's DMO pill (DmoPickerCore) is browse/add only;
+        // the review-and-refine flow (expert_dmo_edits) lives only on dmo-library.tsx. Fold
+        // pends the Add-panel drawer gaining refine.
         { title: "DMO Library", href: "/expert/dmo-library", icon: Library },
-        // Share & Promote (SH2): the mockup-6 nav entry N1 converged the label vocabulary for
-        // but never actually added — real caption/link/share-image surface, not a redirect.
+        // C1: KEPT — Performance absorbs only the MEASUREMENT half (link/attribution panels);
+        // the creation half here is offering/storefront-scoped (per-service share images,
+        // review cards, storefront captions), which the per-build Distribute panel doesn't cover.
         { title: "Share & Promote", href: "/expert/share-promote", icon: Share2 },
         // Performance (Backoffice B4): "which channel earns" — absorbs Share & Promote's
         // measurement half (EarningsBySourcePanel + LinkAnalyticsPanel) + per-offering
         // performance, one place before the broader Analytics page.
         { title: "Performance", href: "/expert/performance", icon: TrendingUp },
+        // C1: KEPT — Analytics carries 9 tabs (funnel, market intelligence, client value,
+        // revenue optimization, leaderboard, …) Performance doesn't; /expert/revenue-optimization
+        // and /expert/leaderboard also redirect INTO it. Fold-as-tab is a later phase.
         { title: "Analytics", href: "/expert/analytics", icon: BarChart3 },
         { title: "Earnings", href: "/expert/earnings", icon: DollarSign },
       ],
