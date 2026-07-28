@@ -32,7 +32,7 @@ const E2E_ACCOUNTS = [
   { email: "kyoto-food@traveloure.test", firstName: "Aiko", lastName: "Yamamoto", role: "travel_expert" as const },
   { email: "kyoto-photography@traveloure.test", firstName: "Kenji", lastName: "Nakamura", role: "service_provider" as const },
   { email: "test-ea@traveloure.test", firstName: "Executive", lastName: "Assistant", role: "executive_assistant" as const },
-  { email: "test-admin@traveloure.test", firstName: "Admin", lastName: "User", role: "admin" as const },
+  { email: "test-admin@traveloure.test", firstName: "Admin", lastName: "User", role: "user" as const },
 ];
 
 async function seedE2EAccounts() {

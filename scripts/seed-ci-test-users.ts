@@ -52,7 +52,7 @@ const CI_USERS = [
   {
     email: 'ci-admin@traveloure.test',
     password: 'CITestAdmin!99',
-    role: 'admin',
+    role: 'user',
     firstName: 'CI',
     lastName: 'Admin',
   },
