@@ -74,7 +74,11 @@ export const expertRoutesConfig: RoleRouteConfig[] = [
   // consolidation (9959ca80) with no redirect — it now hits the 404 catch-all.
   { href: '/expert/booking-partners',   description: 'Booking partner configuration' },
   { href: '/expert/workspace',          description: 'Trip planning workspace' },
-  { href: '/expert/dmo-library',        description: 'DMO destination library' },
+  // /expert/dmo-library is kept deliberately (B5/C1 redirect pattern): it redirects to
+  // /expert/workspace (C7 DMO Library retirement) — the Add panel's DMO drawer now carries
+  // browse/add AND review-and-refine — so the gate exercises the redirect AND the
+  // Workstation it lands on.
+  { href: '/expert/dmo-library',        description: 'Retired DMO Library -> redirects to Workstation (C7)' },
 ];
 
 // ── Provider routes (requiredRole="provider") ────────────────────────────────
