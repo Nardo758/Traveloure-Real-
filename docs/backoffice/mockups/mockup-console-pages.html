@@ -1,0 +1,336 @@
+<title>Console Pages — the 17→9 collapse, with the Channel Calendar</title>
+<style>
+  :root {
+    --ink: #1A1A18; --paper: #FAFAF8; --mist: #E8E8E2; --haze: #F3F3EE; --ash: #7A7A72;
+    --brand: #E85D55; --brand-soft: #FDEFEE;
+    --ok: #2E7D5B; --ok-soft: #EAF4EF; --warn: #B45309; --warn-soft: #FCF3E7;
+    --info: #3E7183; --info-soft: #EAF1F4;
+    --frame-bg: #FFFFFF;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --ink:#F0EFEA; --paper:#191917; --mist:#33332F; --haze:#22221F; --ash:#9C9B92;
+      --brand:#F07068; --brand-soft:#3A2523; --ok:#5CBF94; --ok-soft:#1F3229; --warn:#E0A050; --warn-soft:#362A18;
+      --info:#7FB3C4; --info-soft:#1E2E34; --frame-bg:#211F1D; }
+  }
+  :root[data-theme="dark"] { --ink:#F0EFEA; --paper:#191917; --mist:#33332F; --haze:#22221F; --ash:#9C9B92;
+    --brand:#F07068; --brand-soft:#3A2523; --ok:#5CBF94; --ok-soft:#1F3229; --warn:#E0A050; --warn-soft:#362A18;
+    --info:#7FB3C4; --info-soft:#1E2E34; --frame-bg:#211F1D; }
+  :root[data-theme="light"] { --ink:#1A1A18; --paper:#FAFAF8; --mist:#E8E8E2; --haze:#F3F3EE; --ash:#7A7A72;
+    --brand:#E85D55; --brand-soft:#FDEFEE; --ok:#2E7D5B; --ok-soft:#EAF4EF; --warn:#B45309; --warn-soft:#FCF3E7;
+    --info:#3E7183; --info-soft:#EAF1F4; --frame-bg:#FFFFFF; }
+
+  body { background: var(--paper); color: var(--ink); margin: 0; padding: 0 20px 80px;
+    font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; line-height: 1.55; }
+  .wrap { max-width: 1060px; margin: 0 auto; }
+  h1, h2, .dec b { font-family: Georgia, "Times New Roman", serif; letter-spacing: -0.01em; }
+  h1 { font-size: 34px; line-height: 1.15; margin: 56px 0 10px; text-wrap: balance; }
+  h2 { font-size: 22px; margin: 58px 0 4px; }
+  .sub { color: var(--ash); max-width: 64ch; margin: 0 0 8px; font-size: 14.5px; }
+  .eyebrow { text-transform: uppercase; letter-spacing: 0.14em; font-size: 11px; font-weight: 700; color: var(--brand); }
+  .modtag { display: inline-block; font-family: ui-monospace, Menlo, monospace; font-size: 11px; color: var(--brand);
+    background: var(--brand-soft); border-radius: 5px; padding: 2px 8px; font-weight: 600; margin-right: 6px; }
+  .new { background: var(--ok-soft); color: var(--ok); }
+
+  .frame { border: 1px solid var(--mist); border-radius: 14px; overflow: hidden; background: var(--frame-bg); margin: 18px 0; }
+  .chrome { display: flex; align-items: center; gap: 6px; padding: 8px 14px; border-bottom: 1px solid var(--mist); background: var(--haze); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--mist); }
+  .urlbar { margin-left: 10px; font-size: 11px; color: var(--ash); font-family: ui-monospace, Menlo, monospace; }
+  .screen { padding: 16px 18px 20px; overflow-x: auto; }
+
+  /* sidebar map */
+  .side-map { display: grid; grid-template-columns: 1fr 44px 1fr; gap: 0 8px; align-items: start; font-size: 12.5px; }
+  .side-col { border: 1px solid var(--mist); border-radius: 11px; padding: 10px 14px; }
+  .side-col h4 { margin: 0 0 8px; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--ash); }
+  .side-col ul { margin: 0; padding: 0; list-style: none; }
+  .side-col li { padding: 3px 0; }
+  .gone { color: var(--ash); text-decoration: line-through; }
+  .arrowcell { text-align: center; color: var(--ash); font-size: 18px; padding-top: 60px; }
+
+  /* generic module frame internals */
+  .mrow { display: flex; gap: 10px; align-items: baseline; padding: 7px 0; border-bottom: 1px solid var(--haze); font-size: 13px; }
+  .mrow:last-child { border-bottom: 0; }
+  .pill { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+  .p-brand { background: var(--brand-soft); color: var(--brand); }
+  .p-ok { background: var(--ok-soft); color: var(--ok); }
+  .p-warn { background: var(--warn-soft); color: var(--warn); }
+  .p-info { background: var(--info-soft); color: var(--info); }
+  .p-mut { background: var(--haze); color: var(--ash); }
+  .right { margin-left: auto; font-size: 11px; color: var(--ash); white-space: nowrap; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  @media (max-width: 760px) { .grid2, .grid3 { grid-template-columns: 1fr; } }
+  .panel { border: 1px solid var(--mist); border-radius: 11px; padding: 11px 13px; }
+  .panel h4 { margin: 0 0 7px; font-size: 11px; text-transform: uppercase; letter-spacing: 0.09em; color: var(--ash); }
+  .stat { font-size: 21px; font-weight: 750; font-variant-numeric: tabular-nums; }
+  .statsub { font-size: 11px; color: var(--ash); }
+  .btn { display: inline-block; border: 1px solid var(--brand); background: var(--brand-soft); color: var(--ink);
+    border-radius: 8px; padding: 6px 13px; font-size: 12px; font-weight: 650; }
+  .quiet { color: var(--ash); font-size: 12px; }
+
+  /* calendar */
+  .cal-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+  .cal-chip { border: 1.5px solid var(--mist); border-radius: 999px; padding: 3px 11px; font-size: 11.5px; font-weight: 650; color: var(--ash); }
+  .cal-chip.on { border-color: var(--brand); color: var(--brand); background: var(--brand-soft); }
+  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); border: 1px solid var(--mist); border-radius: 11px; overflow: hidden; min-width: 660px; }
+  .cal-head { background: var(--haze); font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--ash);
+    padding: 6px 8px; border-bottom: 1px solid var(--mist); font-weight: 700; }
+  .cal-cell { min-height: 86px; border-bottom: 1px solid var(--haze); border-right: 1px solid var(--haze); padding: 5px 6px; font-size: 10.5px; }
+  .cal-cell:nth-child(7n) { border-right: 0; }
+  .cal-day { color: var(--ash); font-variant-numeric: tabular-nums; margin-bottom: 3px; font-size: 10px; }
+  .ev { border-radius: 5px; padding: 2px 6px; margin-bottom: 3px; font-weight: 600; line-height: 1.3; display: block; }
+  .ev.in  { background: var(--brand-soft); color: var(--brand); }
+  .ev.out { background: var(--warn-soft); color: var(--warn); }
+  .ev.avail { background: var(--ok-soft); color: var(--ok); }
+  .ev.store { background: var(--info-soft); color: var(--info); }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 11.5px; color: var(--ash); margin-top: 10px; }
+  .swatch { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+
+  .spec-note { border-left: 3px solid var(--brand); background: var(--haze); border-radius: 0 10px 10px 0;
+    padding: 9px 15px; font-size: 13px; margin: 12px 0; max-width: 72ch; color: var(--ash); }
+  .spec-note b { color: var(--ink); }
+  .decisions { margin-top: 66px; border-top: 2px solid var(--ink); padding-top: 16px; }
+  .dec { padding: 11px 0; border-bottom: 1px solid var(--mist); }
+  .dec p { margin: 3px 0 0; color: var(--ash); font-size: 13.5px; max-width: 76ch; }
+</style>
+
+<div class="wrap">
+  <p class="eyebrow">Back office · console IA collapse (PR-C) · design mockup v1</p>
+  <h1>Nine modules, one calendar for every channel</h1>
+  <p class="sub">The v9 spec ratified 8 modules; the current sidebar carries 17 entries because the collapse was
+  filed, not executed. This mockup shows every target page — and adds the missing piece the decision-maker
+  flagged: a <b>Channel Calendar</b> where everything inbound (bookings, requests, purchases) and outbound
+  (deliveries, availability, milestones) lives on one timeline. Proposed as the 9th module, amending §17.</p>
+
+  <!-- ── 0 · The collapse ─────────────────────────────────────── -->
+  <h2>0 · The sidebar: 17 → 9</h2>
+  <div class="frame"><div class="screen">
+    <div class="side-map">
+      <div class="side-col">
+        <h4>Today (17 entries)</h4>
+        <ul>
+          <li>Today</li><li>Inbox</li><li class="gone">Bookings</li><li class="gone">Assigned Trips</li>
+          <li>Workspace</li><li class="gone">Messages</li><li>Catalog</li><li class="gone">My Offerings</li>
+          <li class="gone">Store Listings</li><li class="gone">Local Guides</li><li class="gone">DMO Library</li>
+          <li class="gone">Share &amp; Promote</li><li>Performance</li><li class="gone">Analytics</li>
+          <li>Earnings</li><li class="gone">AI Assistant*</li><li class="gone">Profile</li><li>Settings</li>
+        </ul>
+      </div>
+      <div class="arrowcell">→</div>
+      <div class="side-col">
+        <h4>Target (9 modules)</h4>
+        <ul>
+          <li><b>Today</b></li>
+          <li><b>Calendar</b> <span class="pill p-ok">new</span></li>
+          <li><b>Workstation</b> <span class="quiet">(absorbs DMO Library, Local Guides)</span></li>
+          <li><b>Inbox</b> <span class="quiet">(absorbs Bookings, Assigned Trips, Messages)</span></li>
+          <li><b>Catalog</b> <span class="quiet">(absorbs My Offerings, Store Listings + storefront header)</span></li>
+          <li><b>Money</b> <span class="quiet">(Earnings renamed)</span></li>
+          <li><b>Customers</b> <span class="pill p-ok">new build</span></li>
+          <li><b>Performance</b> <span class="quiet">(absorbs Analytics, Share &amp; Promote link views)</span></li>
+          <li><b>Settings</b> <span class="quiet">(absorbs Profile)</span></li>
+        </ul>
+      </div>
+    </div>
+    <div class="spec-note"><b>One owning page per list.</b> Every struck entry redirects into its absorbing module —
+    no data or action is lost, only the duplicate door. *AI Assistant: decision-maker's call — utility row or fold.</div>
+  </div></div>
+
+  <!-- ── 1 · Calendar ─────────────────────────────────────────── -->
+  <h2>1 · <span class="modtag new">Calendar</span> — every channel, one timeline</h2>
+  <p class="sub">Inbound = commitments arriving (booked slots, agent requests, store purchases, coordination
+  events). Outbound = commitments leaving (client deliveries due, availability you've opened, listing
+  milestones). Filter by channel; every event is backed by a real database row — an empty week renders empty.</p>
+
+  <div class="frame">
+    <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      <span class="urlbar">traveloure.com/expert/calendar</span></div>
+    <div class="screen">
+      <div class="cal-toolbar">
+        <span style="font-weight:750; font-size:15px;">November 2026</span>
+        <span class="quiet">‹ ›</span>
+        <span style="flex:1"></span>
+        <span class="cal-chip on">All</span><span class="cal-chip">Client</span><span class="cal-chip">Store</span>
+        <span class="cal-chip">Direct</span><span class="cal-chip">Bookings</span><span class="cal-chip">Availability</span>
+      </div>
+      <div class="cal-grid">
+        <div class="cal-head">Mon</div><div class="cal-head">Tue</div><div class="cal-head">Wed</div>
+        <div class="cal-head">Thu</div><div class="cal-head">Fri</div><div class="cal-head">Sat</div><div class="cal-head">Sun</div>
+        <div class="cal-cell"><div class="cal-day">2</div><span class="ev avail">3 open slots · Tea ceremony</span></div>
+        <div class="cal-cell"><div class="cal-day">3</div><span class="ev in">Booked · Gion food walk (2)</span></div>
+        <div class="cal-cell"><div class="cal-day">4</div></div>
+        <div class="cal-cell"><div class="cal-day">5</div><span class="ev out">Delivery due · Tanaka itinerary</span></div>
+        <div class="cal-cell"><div class="cal-day">6</div><span class="ev in">Agent request · Fushimi tour</span></div>
+        <div class="cal-cell"><div class="cal-day">7</div><span class="ev in">Booked · Tea ceremony (4)</span><span class="ev avail">1 open slot</span></div>
+        <div class="cal-cell"><div class="cal-day">8</div></div>
+        <div class="cal-cell"><div class="cal-day">9</div><span class="ev store">Listing approved · Autumn Week</span></div>
+        <div class="cal-cell"><div class="cal-day">10</div></div>
+        <div class="cal-cell"><div class="cal-day">11</div><span class="ev in">Store purchase · Autumn Week</span></div>
+        <div class="cal-cell"><div class="cal-day">12</div><span class="ev out">Coordination · venue visit</span></div>
+        <div class="cal-cell"><div class="cal-day">13</div></div>
+        <div class="cal-cell"><div class="cal-day">14</div><span class="ev in">Booked · Gion food walk (6)</span></div>
+        <div class="cal-cell"><div class="cal-day">15</div><span class="ev out">Wedding · day-of timeline</span></div>
+      </div>
+      <div class="legend">
+        <span><span class="swatch" style="background:var(--brand-soft); border:1px solid var(--brand)"></span>Inbound — bookings, requests, purchases</span>
+        <span><span class="swatch" style="background:var(--warn-soft); border:1px solid var(--warn)"></span>Outbound — deliveries &amp; milestones</span>
+        <span><span class="swatch" style="background:var(--ok-soft); border:1px solid var(--ok)"></span>Availability you've opened</span>
+        <span><span class="swatch" style="background:var(--info-soft); border:1px solid var(--info)"></span>Store lifecycle</span>
+      </div>
+      <div class="spec-note"><b>Data sources (all live today):</b> availability slots (Catalog's slot CRUD) ·
+      service bookings on those slots · agent-booking requests · store purchases · listing status transitions ·
+      client-delivery steps on assigned trips · coordination event dates. <b>Social scheduled posts join when the
+      social kit gains scheduling — the lane exists in the filter, empty until real (§13).</b> Clicking any event
+      opens its owning surface (Inbox item, Workstation build, Catalog listing) — the calendar references, never
+      re-implements.</div>
+    </div>
+  </div>
+
+  <!-- ── 2 · Today ────────────────────────────────────────────── -->
+  <h2>2 · <span class="modtag">Today</span> — the morning answer</h2>
+  <div class="frame">
+    <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      <span class="urlbar">traveloure.com/expert/today</span></div>
+    <div class="screen">
+      <div class="grid3">
+        <div class="panel"><h4>Needs action</h4><div class="stat">4</div><div class="statsub">2 bookings · 1 review · 1 request</div></div>
+        <div class="panel"><h4>Today's schedule</h4><div class="stat">2</div><div class="statsub">Gion walk 10:00 · delivery due 18:00</div></div>
+        <div class="panel"><h4>This week</h4><div class="stat">$310</div><div class="statsub">3 bookings cleared to releasable</div></div>
+      </div>
+      <div class="spec-note">Unchanged in structure — gains a <b>today strip from the Calendar</b> (same rows, referenced
+      not re-rendered) so the schedule answer starts here and clicks through.</div>
+    </div>
+  </div>
+
+  <!-- ── 3 · Workstation ──────────────────────────────────────── -->
+  <h2>3 · <span class="modtag">Workstation</span> — already to spec, plus the research drawers</h2>
+  <div class="frame">
+    <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      <span class="urlbar">traveloure.com/expert/workspace</span></div>
+    <div class="screen">
+      <div class="mrow"><span class="pill p-brand">New build</span> Where is this build for? → one door, destination set at birth</div>
+      <div class="mrow">Your builds <span class="pill p-mut">Client — Tanaka</span> <span class="pill p-info">Store — approved</span> <span class="pill p-mut">Draft — not distributed</span></div>
+      <div class="mrow quiet">DMO Library and Local Guides fold IN: they are source drawers of the Add panel (the §17
+      central-content pills), not sidebar destinations. The standalone pages redirect here.</div>
+    </div>
+  </div>
+
+  <!-- ── 4 · Inbox ────────────────────────────────────────────── -->
+  <h2>4 · <span class="modtag">Inbox</span> — absorbs Bookings, Assigned Trips, Messages</h2>
+  <div class="frame">
+    <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      <span class="urlbar">traveloure.com/expert/inbox</span></div>
+    <div class="screen">
+      <div class="mrow"><span class="pill p-brand">Booking</span> Gion food walk — 2 guests, Nov 3 <span class="right">Accept · Decline</span></div>
+      <div class="mrow"><span class="pill p-brand">Assignment</span> Tanaka family trip — pending <span class="right">Accept → opens in Workstation</span></div>
+      <div class="mrow"><span class="pill p-warn">Review</span> "Wonderful tea ceremony…" <span class="right">Reply</span></div>
+      <div class="mrow"><span class="pill p-brand">Agent request</span> Fushimi Inari sunrise tour <span class="right">Claim</span></div>
+      <div class="mrow"><span class="pill p-mut">Message</span> Thread — Tanaka family <span class="right">Open</span></div>
+      <div class="spec-note">The Bookings and Assigned Trips pages retire into redirects — their rows were already
+      Inbox queues. Messages threads join as a queue type (or stay a utility row — decision-maker's call).</div>
+    </div>
+  </div>
+
+  <!-- ── 5 · Catalog ──────────────────────────────────────────── -->
+  <h2>5 · <span class="modtag">Catalog</span> — your storefront, managed in one place</h2>
+  <div class="frame">
+    <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      <span class="urlbar">traveloure.com/expert/catalog</span></div>
+    <div class="screen">
+      <div class="panel" style="margin-bottom:12px; display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+        <div><h4 style="margin-bottom:2px">Your storefront</h4>
+          <span style="font-family:ui-monospace,Menlo,monospace; font-size:12.5px;">traveloure.com/p/kenji</span></div>
+        <span class="pill p-ok">Live · 3 approved items</span>
+        <span style="flex:1"></span>
+        <span class="btn">Preview</span> <span class="btn">Copy link</span>
+      </div>
+      <div class="mrow"><span class="pill p-mut">Service</span> Private tea ceremony <span class="pill p-ok">Approved</span> <span class="right">$85 · availability →</span></div>
+      <div class="mrow"><span class="pill p-info">Ready Made</span> Kyoto Autumn Culture Week <span class="pill p-ok">Approved</span> <span class="right">$249 · 2 sales</span></div>
+      <div class="mrow"><span class="pill p-mut">Service</span> Gion evening food walk <span class="pill p-warn">In review</span> <span class="right">$60</span></div>
+      <div class="spec-note"><b>The storefront answer:</b> /p/:handle already exists and shows ALL approved lanes —
+      Ready Made Trips are one shelf, not the store. Catalog becomes its management home: the header owns the link +
+      preview; My Offerings and Store Listings fold in as lanes below. Availability editing lives here and feeds the
+      Calendar's green blocks.</div>
+    </div>
+  </div>
+
+  <!-- ── 6 · Money ────────────────────────────────────────────── -->
+  <h2>6 · <span class="modtag">Money</span> — Earnings, renamed, unchanged spine</h2>
+  <div class="frame">
+    <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      <span class="urlbar">traveloure.com/expert/money</span></div>
+    <div class="screen">
+      <div class="grid3">
+        <div class="panel"><h4>Held</h4><div class="stat">$120</div><div class="statsub">clears Nov 9</div></div>
+        <div class="panel"><h4>Available</h4><div class="stat">$310</div><div class="statsub"><span class="btn" style="padding:3px 10px; font-size:11px;">Request payout</span></div></div>
+        <div class="panel"><h4>Paid out</h4><div class="stat">$1,240</div><div class="statsub">lifetime</div></div>
+      </div>
+      <div class="spec-note">The one-ledger endpoint and escrow vocabulary are already live — this is a rename +
+      route move (/expert/earnings → /expert/money), old route redirects.</div>
+    </div>
+  </div>
+
+  <!-- ── 7 · Customers ────────────────────────────────────────── -->
+  <h2>7 · <span class="modtag new">Customers</span> — module 6, the new build</h2>
+  <div class="frame">
+    <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      <span class="urlbar">traveloure.com/expert/customers</span></div>
+    <div class="screen">
+      <div class="mrow"><b>Tanaka family</b> <span class="pill p-brand">Active trip</span> <span class="right">2 bookings · $340 lifetime · last contact Nov 2</span></div>
+      <div class="mrow"><b>M. Chen</b> <span class="pill p-ok">Repeat</span> <span class="right">3 bookings · 1 package · $505 lifetime</span></div>
+      <div class="mrow"><b>A. Osei</b> <span class="pill p-mut">One-time</span> <span class="right">1 booking · $85</span></div>
+      <div class="spec-note"><b>Honest aggregation only:</b> a customer row is derived from real bookings, purchases,
+      and assigned trips for THIS earner — no CRM fields are invented. Row detail: their bookings, trips, threads,
+      and notes (a real new column only if ratified). Feeds nothing to other earners — strictly self-scoped.</div>
+    </div>
+  </div>
+
+  <!-- ── 8 · Performance ──────────────────────────────────────── -->
+  <h2>8 · <span class="modtag">Performance</span> — absorbs Analytics + link attribution</h2>
+  <div class="frame">
+    <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      <span class="urlbar">traveloure.com/expert/performance</span></div>
+    <div class="screen">
+      <div class="grid3">
+        <div class="panel"><h4>Storefront visits</h4><div class="stat">86</div><div class="statsub">30 days</div></div>
+        <div class="panel"><h4>Link clicks</h4><div class="stat">41</div><div class="statsub">3 links · Direct channel</div></div>
+        <div class="panel"><h4>Attributed bookings</h4><div class="stat">5</div><div class="statsub">via acquisition ref</div></div>
+      </div>
+      <div class="spec-note">Analytics' charts move in as a tab; Share &amp; Promote reduces to its attribution/link
+      views here (creation actions already live on builds in Distribute). Every number backed by tracked rows.</div>
+    </div>
+  </div>
+
+  <!-- ── 9 · Settings ─────────────────────────────────────────── -->
+  <h2>9 · <span class="modtag">Settings</span> — absorbs Profile</h2>
+  <div class="frame">
+    <div class="chrome"><span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      <span class="urlbar">traveloure.com/expert/settings</span></div>
+    <div class="screen">
+      <div class="mrow"><span class="pill p-mut">Profile</span> Name, photo, bio, expertise <span class="right">merged in as the first tab</span></div>
+      <div class="mrow"><span class="pill p-mut">Storefront</span> Handle claim (/p/kenji) <span class="right">links to Catalog header</span></div>
+      <div class="mrow"><span class="pill p-mut">Notifications · Payments · Security</span> <span class="right">persisted saves (already live)</span></div>
+    </div>
+  </div>
+
+  <!-- ── Decisions ────────────────────────────────────────────── -->
+  <div class="decisions">
+    <h2 style="margin-top:0">Decisions this mockup encodes (for ratification)</h2>
+    <div class="dec"><b>Calendar = the 9th module, amending §17's 8.</b><p>One calendar, channel-filtered — never
+      per-channel calendars. Inbound/outbound/availability/store-lifecycle event taxonomy as legended above.</p></div>
+    <div class="dec"><b>Every calendar event is a real row.</b><p>Slots, bookings, requests, purchases, delivery
+      steps, listing transitions, coordination dates — all live tables today. Social scheduling joins only when the
+      kit really schedules (§13: the lane renders empty until then).</p></div>
+    <div class="dec"><b>The calendar references, never re-renders.</b><p>Clicking an event opens its owning module
+      (one home per datum — the §17 programming rule).</p></div>
+    <div class="dec"><b>17 → 9 by absorption, not deletion.</b><p>Every retired entry redirects into its absorbing
+      module; no action or list is lost. Open taste calls: Messages (Inbox queue vs utility row) and AI Assistant.</p></div>
+    <div class="dec"><b>Catalog = the storefront's management home.</b><p>/p/:handle is already the public store
+      across ALL lanes (Ready Made is one shelf); Catalog gains the link/preview header and the availability editor
+      that feeds the Calendar.</p></div>
+    <div class="dec"><b>Customers is honest aggregation.</b><p>Derived from this earner's real bookings/purchases/
+      trips; self-scoped; no invented CRM fields without ratification.</p></div>
+    <div class="dec"><b>Build order (PR-C).</b><p>C1 sidebar collapse + redirects (deletion-first, cheapest) →
+      C2 Catalog storefront header + availability move → C3 Calendar (read-only aggregate first, slot-editing links
+      out) → C4 Customers → C5 Money rename + Settings/Profile merge. Provider console inherits the same nine.</p></div>
+  </div>
+</div>
