@@ -39,7 +39,8 @@ const BookingConfirmationPage = lazy(() => import("@/pages/BookingConfirmationPa
 const ExpertToday = lazy(() => import("@/pages/expert/today"));
 const ExpertCalendar = lazy(() => import("@/pages/expert/calendar"));
 const ExpertEarnings = lazy(() => import("@/pages/expert/earnings"));
-const ExpertProfile = lazy(() => import("@/pages/expert/profile"));
+// Console IA C8: ExpertProfile is no longer routed standalone — settings.tsx lazy-mounts it
+// as its Profile tab (the C6 embedded pattern); /expert/profile redirects there below.
 const ExpertAIAssistant = lazy(() => import("@/pages/expert/ai-assistant"));
 const ExpertInbox = lazy(() => import("@/pages/expert/inbox"));
 const ExpertCatalog = lazy(() => import("@/pages/expert/catalog"));
@@ -591,8 +592,15 @@ function Router() {
       <Route path="/expert/service-listings">
         <Redirect to="/expert/services/new" />
       </Route>
-      <Route path="/expert/earnings">
+      {/* Console IA C8 (§17 17→9 collapse): Earnings renamed Money — the ratified module
+          name (route move /expert/earnings → /expert/money; same page, no endpoint or
+          queryKey change). The redirect keeps every existing /expert/earnings navigation
+          working (B5 dashboard pattern). */}
+      <Route path="/expert/money">
         {() => <ProtectedRoute component={ExpertEarnings} requiredRole="expert" />}
+      </Route>
+      <Route path="/expert/earnings">
+        <Redirect to="/expert/money" />
       </Route>
       <Route path="/expert/performance">
         {() => <ProtectedRoute component={ExpertPerformance} requiredRole="expert" />}
@@ -640,8 +648,13 @@ function Router() {
       <Route path="/expert/verification">
         <Redirect to="/expert/settings" />
       </Route>
+      {/* Console IA C8 (§17 17→9 collapse): Profile retired as a standalone page — it is
+          hosted as Settings' FIRST tab (settings.tsx lazy-mounts the profile component
+          embedded, the C6 pattern; Settings keeps defaulting to its Verification tab —
+          the actionable surface). The redirect keeps every existing /expert/profile
+          navigation working (B5 dashboard pattern). */}
       <Route path="/expert/profile">
-        {() => <ProtectedRoute component={ExpertProfile} requiredRole="expert" />}
+        <Redirect to="/expert/settings?tab=profile" />
       </Route>
       <Route path="/expert/booking-partners">
         <Redirect to="/expert/workspace" />

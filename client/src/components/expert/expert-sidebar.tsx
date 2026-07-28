@@ -18,7 +18,6 @@ import {
   Bot,
   CalendarDays,
   DollarSign,
-  User,
   LogOut,
   Palette,
   Settings,
@@ -106,14 +105,17 @@ function buildMenuGroups(expertType?: string | null) {
         // inbound redirects (/expert/revenue-optimization, /expert/leaderboard) are
         // re-pointed at /expert/performance?tab=analytics&sub=…; /expert/analytics itself
         // redirects to /expert/performance?tab=analytics.
-        { title: "Earnings", href: "/expert/earnings", icon: DollarSign },
+        // Console IA C8: module renamed Earnings → Money per §17; /expert/earnings redirects.
+        { title: "Money", href: "/expert/money", icon: DollarSign },
       ],
     },
     {
       label: "Account",
       items: [
         { title: "AI Assistant", href: "/expert/ai-assistant", icon: Bot },
-        { title: "Profile", href: "/expert/profile", icon: User },
+        // Console IA C8: "Profile" entry RETIRED — the profile page lives as Settings' FIRST
+        // tab (settings.tsx lazy-mounts it embedded; Settings still defaults to Verification,
+        // the actionable surface). /expert/profile redirects to /expert/settings?tab=profile.
         // Verification & Payouts merged into Settings — the two pages hit the identical five
         // endpoints, and Settings already opens on its Verification tab.
         { title: "Settings", href: "/expert/settings", icon: Settings },

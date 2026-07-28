@@ -835,7 +835,7 @@ export default function ExpertAnalytics({ embedded = false }: { embedded?: boole
                     <h2 className="text-xl font-semibold text-foreground" data-testid="text-revenue-title">Revenue Optimization</h2>
                     <p className="text-muted-foreground text-sm">Maximize your earnings with AI-powered insights</p>
                   </div>
-                  <Link href="/expert/earnings">
+                  <Link href="/expert/money">
                     <Button variant="outline" size="sm" data-testid="button-view-earnings">
                       <Wallet className="w-4 h-4 mr-2" /> View Earnings
                     </Button>

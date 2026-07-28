@@ -1349,10 +1349,10 @@ router.patch("/api/admin/expert-applications/:id/status", isAuthenticated, async
         type: "application_approved",
         title: "Application Approved! 🎉",
         message: "Congratulations! Your expert application has been approved. Complete your Stripe Connect setup to start receiving payouts.",
-        data: { link: "/expert/earnings" },
+        data: { link: "/expert/money" }, // C8: Earnings module renamed Money (§17); old route redirects
       });
 
-      // Send the applicant a congratulations email with a link to /expert/earnings
+      // Send the applicant a congratulations email with a link to /expert/money
       const [approvedApplicant] = await db
         .select({ email: users.email, firstName: users.firstName })
         .from(users)
