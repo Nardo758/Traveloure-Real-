@@ -31,6 +31,7 @@ import {
   Inbox,
   LayoutGrid,
   TrendingUp,
+  Users,
 } from "lucide-react";
 
 function buildMenuGroups(expertType?: string | null) {
@@ -96,6 +97,9 @@ function buildMenuGroups(expertType?: string | null) {
         // Performance (Backoffice B4): "which channel earns" — absorbs Share & Promote's
         // measurement half (EarningsBySourcePanel + LinkAnalyticsPanel) + per-offering
         // performance, one place before the broader Analytics page.
+        // Customers — Console IA C4 (§17 module 6): honest self-scoped aggregation from real
+        // bookings / store purchases / assigned trips; no invented CRM fields.
+        { title: "Customers", href: "/expert/customers", icon: Users },
         { title: "Performance", href: "/expert/performance", icon: TrendingUp },
         // C1: KEPT — Analytics carries 9 tabs (funnel, market intelligence, client value,
         // revenue optimization, leaderboard, …) Performance doesn't; /expert/revenue-optimization

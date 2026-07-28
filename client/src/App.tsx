@@ -45,6 +45,7 @@ const ExpertBookings = lazy(() => import("@/pages/expert/bookings"));
 const ExpertInbox = lazy(() => import("@/pages/expert/inbox"));
 const ExpertCatalog = lazy(() => import("@/pages/expert/catalog"));
 const ExpertPerformance = lazy(() => import("@/pages/expert/performance"));
+const ExpertCustomers = lazy(() => import("@/pages/expert/customers"));
 const ExpertAssignedTrips = lazy(() => import("@/pages/expert/assigned-trips"));
 const EADashboard = lazy(() => import("@/pages/ea/dashboard"));
 const EAExecutives = lazy(() => import("@/pages/ea/executives"));
@@ -593,6 +594,12 @@ function Router() {
       </Route>
       <Route path="/expert/performance">
         {() => <ProtectedRoute component={ExpertPerformance} requiredRole="expert" />}
+      </Route>
+      {/* Customers — Console IA C4 (§17 module 6): honest self-scoped aggregation over this
+          earner's real bookings / store purchases / assigned trips (GET /api/me/customers).
+          Detail rows link out to the owning modules; no CRM fields are invented. */}
+      <Route path="/expert/customers">
+        {() => <ProtectedRoute component={ExpertCustomers} requiredRole="expert" />}
       </Route>
       <Route path="/expert/revenue-optimization">
         <Redirect to="/expert/analytics?tab=revenue-optimization" />

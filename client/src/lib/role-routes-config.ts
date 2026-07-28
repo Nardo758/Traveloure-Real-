@@ -37,6 +37,7 @@ export const expertRoutesConfig: RoleRouteConfig[] = [
   // AND the Catalog page it lands on.
   { href: '/expert/ready-made',         description: 'Retired Store Listings -> redirects to Catalog (C1)' },
   { href: '/expert/performance',        description: 'Performance — channel attribution (B4)' },
+  { href: '/expert/customers',          description: 'Customers — honest self-scoped aggregation (C4)' },
   { href: '/expert/clients',            description: 'Client list' },
   { href: '/expert/assigned-trips',     description: 'Trips assigned to this expert' },
   { href: '/expert/bookings',           description: 'Booking requests' },
