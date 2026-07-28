@@ -89,8 +89,8 @@ function buildMenuGroups(expertType?: string | null) {
         // the offering/storefront-scoped creation half (per-row share kits, posting
         // opportunities, storefront caption) moved onto Catalog via the shared
         // components/backoffice/share-tools.tsx; Performance already carries the measurement
-        // half; /expert/share-promote redirects to /expert/catalog. The provider console keeps
-        // its own /provider/share-promote page until the C9 nine-module stamp.
+        // half; /expert/share-promote redirects to /expert/catalog. (C9 retired the provider
+        // twin the same way — the SharePromote page is gone.)
         // Performance (Backoffice B4): "which channel earns" — absorbs Share & Promote's
         // measurement half (EarningsBySourcePanel + LinkAnalyticsPanel) + per-offering
         // performance, one place before the broader Analytics page.

@@ -8,7 +8,8 @@
  * bookings/revenue respect the selected range — labeled honestly rather than implying clicks
  * are range-filtered.
  *
- * Shared between /expert/analytics and /provider/analytics — one component, both roles.
+ * Shared between the expert and provider analytics surfaces (each hosted as its console's
+ * Performance → Analytics tab since C6/C9) — one component, both roles.
  */
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";

@@ -786,6 +786,38 @@ Governing spec: `docs/backoffice/mockups/mockup-unified-workspace.html` (v9). Lo
     (the gate exercises redirect + landing). Final sidebar: Today · Calendar · Inbox · Workstation |
     Catalog · Content Studio · Customers · Performance · Money | AI Assistant · Settings — the NINE
     modules + the two recorded-default extras. PR-Cc (C9 provider stamp) remains.
+  - **PR-Cc LANDED (Jul 28, 2026): the provider console reaches the NINE (minus the separately-gated
+    Workstation/Product Builder — deliberately absent, no placeholder).** Today = /provider/dashboard
+    (label-only rename; the page already leads with today's bookings + action items). Calendar =
+    /provider/calendar REPLACED with the Channel Calendar (expert C3 pattern on the role-aware
+    `GET /api/me/calendar`; chips are the provider-real subset All/Bookings/Availability — the
+    agent-request/store/delivery lanes are expert-only server-side, and a chip over a lane that can
+    never populate would be a dead control). **The old page's "availability editor" was found to be a
+    NON-PERSISTING local preview** ("coming soon", Save disabled — no backend write), so nothing real
+    was lost; REAL slot editing moved to its ratified Catalog home: /provider/services absorbed the
+    expert catalog's AvailabilitySection verbatim (the role-agnostic, ownership-gated
+    `/api/me/services/:id/slots` CRUD) plus the storefront header (/p/:handle management, F2-gated
+    Live chip) plus Share & Promote's creation half (per-service share-kit dialog + Posting
+    Opportunities via the shared `share-tools.tsx`) — so **/provider/share-promote redirects to
+    /provider/services and the SharePromote page is DELETED** (both consoles' Catalogs now compose
+    the shared primitives; C2's "until C9" note resolved). Customers = new /provider/customers on the
+    same `GET /api/me/customers` aggregate (bookings lane live; purchases/trips lanes structurally
+    empty for providers, rendered data-driven, never faked). Performance hosts the intact Analytics
+    page as an embedded lazy tab (?tab=analytics; no ?sub= seam needed — the provider analytics page
+    has no internal tab picker); /provider/analytics redirects in. Money = /provider/earnings →
+    /provider/money (page unchanged; re-pointed: stripe-connect-reminder provider branch + its test,
+    the two admin.routes.ts notification links, the provider-approval email, admin/providers.tsx
+    Earnings button, SetupChecklistCard payouts step). Profile merged as Settings' FIRST tab
+    (embedded seam, settings-content stays default, ?tab=profile; /provider/profile redirects).
+    **KEEPS (absorb-first discipline):** "Bookings" stays the honestly-labeled Inbox-module seat
+    (accept/decline, visa-status dialog, stats — no provider Inbox page exists yet; relabeling
+    without absorption would be a costume) and "Messages" stays, pointing straight at /chat (the
+    provider console has no recent-threads tab; without the entry /chat is only reachable via
+    per-booking buttons). /provider/resources stays routed but sidebar-unlisted (static guide copy,
+    not one of the NINE, no honest home to retire it into). SetupChecklistCard availability/share
+    steps re-pointed at each console's Catalog (the calendar is read-only on both consoles now).
+    Final provider sidebar: Today · Calendar · Bookings · Messages | Catalog · Customers ·
+    Performance · Money | Settings.
 
 The earning ledger is an escrow state machine: **`held → releasable → paid_out`**, plus **`reversed`**, with a
 `dispute_state`. All phases are **landed on `main`** (Jul 14, 2026):

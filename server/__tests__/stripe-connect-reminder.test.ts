@@ -129,10 +129,11 @@ describe('StripeConnectReminderService.runReminders()', () => {
     assert.strictEqual(row.type, 'stripe_connect_reminder');
     assert.ok(row.title, 'notification row must have a title');
     assert.ok(row.message, 'notification row must have a message');
+    // C9: provider Earnings module renamed Money (§17) — the reminder now links /provider/money.
     assert.strictEqual(
       row.data?.link,
-      '/provider/earnings',
-      'provider link must point to /provider/earnings',
+      '/provider/money',
+      'provider link must point to /provider/money',
     );
   });
 
