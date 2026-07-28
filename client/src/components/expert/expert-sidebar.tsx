@@ -18,7 +18,6 @@ import {
   Bot,
   CalendarDays,
   DollarSign,
-  BarChart3,
   User,
   LogOut,
   Palette,
@@ -101,10 +100,13 @@ function buildMenuGroups(expertType?: string | null) {
         // bookings / store purchases / assigned trips; no invented CRM fields.
         { title: "Customers", href: "/expert/customers", icon: Users },
         { title: "Performance", href: "/expert/performance", icon: TrendingUp },
-        // C1: KEPT — Analytics carries 9 tabs (funnel, market intelligence, client value,
-        // revenue optimization, leaderboard, …) Performance doesn't; /expert/revenue-optimization
-        // and /expert/leaderboard also redirect INTO it. Fold-as-tab is a later phase.
-        { title: "Analytics", href: "/expert/analytics", icon: BarChart3 },
+        // Console IA C6: "Analytics" entry RETIRED — the C1 keep-reason is resolved: the
+        // fold-as-tab landed. The analytics page (its 9 internal tabs intact) is hosted as
+        // Performance's Analytics tab (performance.tsx lazy-mounts it embedded; its internal
+        // tab picker rides ?sub= so it can't collide with Performance's ?tab=). The two
+        // inbound redirects (/expert/revenue-optimization, /expert/leaderboard) are
+        // re-pointed at /expert/performance?tab=analytics&sub=…; /expert/analytics itself
+        // redirects to /expert/performance?tab=analytics.
         { title: "Earnings", href: "/expert/earnings", icon: DollarSign },
       ],
     },

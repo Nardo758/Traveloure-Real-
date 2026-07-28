@@ -126,7 +126,6 @@ const AdminRoutingQueue = lazy(() => import("@/pages/admin/routing-queue"));
 const AdminConciergeRequests = lazy(() => import("@/pages/admin/concierge-requests"));
 const AdminCrossSellAnalytics = lazy(() => import("@/pages/admin/cross-sell-analytics"));
 const AdminQAChecklist = lazy(() => import("@/pages/admin/qa-checklist"));
-const ExpertAnalytics = lazy(() => import("@/pages/expert/analytics"));
 const ExpertContentStudio = lazy(() => import("@/pages/expert/content-studio"));
 const ReadyMadeDetailPage = lazy(() => import("@/pages/ready-made-detail"));
 const StorefrontPage = lazy(() => import("@/pages/storefront"));
@@ -605,14 +604,19 @@ function Router() {
       <Route path="/expert/customers">
         {() => <ProtectedRoute component={ExpertCustomers} requiredRole="expert" />}
       </Route>
+      {/* Console IA C6: Analytics retired as a standalone page — it is hosted as
+          Performance's Analytics tab (performance.tsx lazy-mounts the analytics
+          component embedded; its internal 9-tab picker rides ?sub= there so it can't
+          collide with Performance's ?tab=). The two routes that redirected INTO
+          /expert/analytics are re-pointed the same way, ?tab=X becoming &sub=X. */}
       <Route path="/expert/revenue-optimization">
-        <Redirect to="/expert/analytics?tab=revenue-optimization" />
+        <Redirect to="/expert/performance?tab=analytics&sub=revenue-optimization" />
       </Route>
       <Route path="/expert/leaderboard">
-        <Redirect to="/expert/analytics?tab=leaderboard" />
+        <Redirect to="/expert/performance?tab=analytics&sub=leaderboard" />
       </Route>
       <Route path="/expert/analytics">
-        {() => <ProtectedRoute component={ExpertAnalytics} requiredRole="expert" />}
+        <Redirect to="/expert/performance?tab=analytics" />
       </Route>
       {/* Console IA C1 (§17 17→9 collapse): Store Listings retired into Catalog — the
           MyOfferingsTable ready_made lane carries list + approval status, listing editing

@@ -59,7 +59,12 @@ export const expertRoutesConfig: RoleRouteConfig[] = [
   // /provider/share-promote page until C9.
   { href: '/expert/share-promote',      description: 'Retired Share & Promote -> redirects to Catalog (C2)' },
   { href: '/expert/earnings',           description: 'Earnings & payout history' },
-  { href: '/expert/analytics',          description: 'Performance analytics' },
+  // /expert/analytics redirects to /expert/performance?tab=analytics (C6 Analytics
+  // retirement) — the analytics page is hosted as Performance's Analytics tab (its
+  // internal 9-tab picker rides ?sub= there); listed so the gate exercises the
+  // redirect AND the Performance page it lands on. /expert/revenue-optimization and
+  // /expert/leaderboard redirect the same way with &sub=.
+  { href: '/expert/analytics',          description: 'Retired Analytics -> redirects to Performance analytics tab (C6)' },
   { href: '/expert/ai-assistant',       description: 'Expert AI task delegation' },
   { href: '/expert/content-studio',     description: 'Content creation studio' },
   { href: '/expert/profile',            description: 'Public expert profile' },
