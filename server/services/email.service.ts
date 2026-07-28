@@ -930,7 +930,7 @@ interface ExpertApplicationApprovalParams {
 /**
  * Fire-and-forget email to an expert applicant when their application is
  * approved. Congratulates them, explains the Stripe Connect next step, and
- * links directly to /expert/earnings. Never throws.
+ * links directly to /expert/money (the C8-renamed Earnings module). Never throws.
  */
 export async function sendExpertApplicationApprovalEmail(
   params: ExpertApplicationApprovalParams
@@ -942,7 +942,7 @@ export async function sendExpertApplicationApprovalEmail(
   }
 
   const greeting = params.firstName ? `Hi ${escHtml(params.firstName)},` : "Hi,";
-  const earningsUrl = `${getAppBaseUrl()}/expert/earnings`;
+  const earningsUrl = `${getAppBaseUrl()}/expert/money`; // C8: Earnings → Money; old route redirects
 
   const html = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">

@@ -150,7 +150,11 @@ function ExpertOfferingTypesCard() {
   );
 }
 
-export default function ExpertProfile() {
+// Console IA C8 (§17 17→9 collapse): this page is hosted as Settings' FIRST tab
+// (settings.tsx lazy-mounts it with embedded — the C6 analytics-in-performance pattern).
+// It has no internal ?tab= reading, so no param seam is needed; embedded only skips the
+// ExpertLayout wrap. /expert/profile redirects to /expert/settings?tab=profile.
+export default function ExpertProfile({ embedded = false }: { embedded?: boolean } = {}) {
   const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -292,9 +296,12 @@ export default function ExpertProfile() {
     setSpecialties(specialties.filter((s) => s !== specialty));
   };
 
-  return (
-    <ExpertLayout title="Profile">
-      <div className="p-6 space-y-6 max-w-4xl">
+  // C8: embedded, the host Settings page already provides the ExpertLayout shell —
+  // wrapping again would nest two BackofficeShells/sidebars (the C6 analytics seam).
+  // Embedded also drops this page's own p-6/max-w-4xl: Settings' tab container already
+  // carries both, and doubling them would over-inset the content.
+  const content = (
+      <div className={embedded ? "space-y-6" : "p-6 space-y-6 max-w-4xl"}>
         <div>
           <h1 className="text-2xl font-bold text-console-darkest">Business Profile</h1>
           <p className="text-console-mid">Manage your public profile and preferences</p>
@@ -778,6 +785,8 @@ export default function ExpertProfile() {
           </CardContent>
         </Card>
       </div>
-    </ExpertLayout>
   );
+
+  if (embedded) return content;
+  return <ExpertLayout title="Profile">{content}</ExpertLayout>;
 }

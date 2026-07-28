@@ -1452,7 +1452,7 @@ export default function ExpertWorkspace() {
                 />
               )}
 
-              {/* Cost footer — real item costs only (the earnings surfaces live in /expert/earnings, P2-15) */}
+              {/* Cost footer — real item costs only (the earnings surfaces live in /expert/money, P2-15) */}
               {totalItems > 0 && (
                 <div style={{ background: CARD, borderRadius: 10, border: `1px solid ${LINE}`, padding: "10px 14px", marginTop: 12, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
                   <div style={{ display: "flex", gap: 20, flexWrap: "wrap" }}>
@@ -2313,7 +2313,7 @@ export default function ExpertWorkspace() {
               </div>
 
               {/* P2-15: earnings have ONE home — the Money module. */}
-              <button onClick={() => safeNavigate("/expert/earnings")} data-testid="link-view-earnings" style={{ alignSelf: "flex-start", background: "none", border: "none", cursor: "pointer", padding: 0, fontSize: 12, color: MID, fontWeight: 600 }}>
+              <button onClick={() => safeNavigate("/expert/money")} data-testid="link-view-earnings" style={{ alignSelf: "flex-start", background: "none", border: "none", cursor: "pointer", padding: 0, fontSize: 12, color: MID, fontWeight: 600 }}>
                 View earnings →
               </button>
             </div>

@@ -58,7 +58,11 @@ export const expertRoutesConfig: RoleRouteConfig[] = [
   // listed so the redirect is smoke-tested; the provider console keeps its own
   // /provider/share-promote page until C9.
   { href: '/expert/share-promote',      description: 'Retired Share & Promote -> redirects to Catalog (C2)' },
-  { href: '/expert/earnings',           description: 'Earnings & payout history' },
+  { href: '/expert/money',              description: 'Money — earnings + payouts (C8)' },
+  // /expert/earnings is kept deliberately (B5/C1 redirect pattern): it redirects to
+  // /expert/money (C8 Earnings → Money module rename), so the gate exercises the
+  // redirect AND the Money page it lands on.
+  { href: '/expert/earnings',           description: 'Retired Earnings -> redirects to Money (C8)' },
   // /expert/analytics redirects to /expert/performance?tab=analytics (C6 Analytics
   // retirement) — the analytics page is hosted as Performance's Analytics tab (its
   // internal 9-tab picker rides ?sub= there); listed so the gate exercises the
@@ -67,7 +71,10 @@ export const expertRoutesConfig: RoleRouteConfig[] = [
   { href: '/expert/analytics',          description: 'Retired Analytics -> redirects to Performance analytics tab (C6)' },
   { href: '/expert/ai-assistant',       description: 'Expert AI task delegation' },
   { href: '/expert/content-studio',     description: 'Content creation studio' },
-  { href: '/expert/profile',            description: 'Public expert profile' },
+  // /expert/profile is kept deliberately (B5/C1 redirect pattern): it redirects to
+  // /expert/settings?tab=profile (C8 Profile → Settings first-tab merge), so the gate
+  // exercises the redirect AND the Settings page it lands on.
+  { href: '/expert/profile',            description: 'Retired Profile -> redirects to Settings profile tab (C8)' },
   { href: '/expert/settings',           description: 'Account settings' },
   { href: '/expert/verification',       description: 'Expert verification status' },
   // '/expert/contract-categories' removed: page deleted by the expert-console

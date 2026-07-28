@@ -136,7 +136,8 @@ describe('StripeConnectReminderService.runReminders()', () => {
     );
   });
 
-  it('(A) local_expert link points to /expert/earnings', async () => {
+  // C8: expert Earnings module renamed Money (§17) — the reminder now links /expert/money.
+  it('(A) local_expert link points to /expert/money', async () => {
     const insertedRows: any[][] = [];
 
     (db as any).select = makeSelectSequence([
@@ -153,7 +154,7 @@ describe('StripeConnectReminderService.runReminders()', () => {
 
     await (stripeConnectReminderScheduler as any).runReminders();
 
-    assert.strictEqual(insertedRows[0][0].data?.link, '/expert/earnings');
+    assert.strictEqual(insertedRows[0][0].data?.link, '/expert/money');
   });
 
   it('(B) connected provider is excluded — no notification inserted', async () => {
