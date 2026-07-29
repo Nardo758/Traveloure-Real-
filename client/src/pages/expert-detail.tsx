@@ -646,8 +646,11 @@ export default function ExpertDetailPage() {
                     <div className="space-y-2">
                       <div className="flex items-center justify-between text-sm">
                         <span className="text-muted-foreground">Starting from</span>
+                        {/* D5 (UX audit Jul 29): the literal "$" + fallback string produced
+                            "$Contact" when there was no price — the "$" only makes sense
+                            with a real number. */}
                         <span className="text-2xl font-bold">
-                          ${services[0]?.price || "Contact"}
+                          {services[0]?.price ? `$${services[0].price}` : "Contact for pricing"}
                         </span>
                       </div>
                       {services.length > 0 && (

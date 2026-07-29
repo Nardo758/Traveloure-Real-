@@ -350,7 +350,8 @@ export default function AdminData() {
               Tracks how much DMO content we hold per type against an editorial target, so the scraper can
               prioritize the thin categories. <span className="font-medium">Fill gaps</span> runs targeted
               Tavily searches for the missing categories; new content lands{" "}
-              <span className="font-medium">hidden</span> in the Expert Workspace for review (D1a).
+              <span className="font-medium">hidden</span> in the Expert Workspace — an admin must approve
+              it before any expert can see or use it.
             </p>
 
             {gapData?.analysis?.rows?.length ? (

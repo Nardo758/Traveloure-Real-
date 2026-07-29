@@ -46,8 +46,17 @@ import {
   CalendarDays,
   Inbox,
   Sparkles,
+  Wrench,
 } from "lucide-react";
 
+// D4 (UX audit Jul 29) admin nav regrouping — labels/grouping only, no route changes:
+//  - "Reconciliation" (hosts the Chargebacks & Disputes queue) moved SYSTEM → MONEY and
+//    relabeled "Reconciliation & Disputes" — disputes are a money queue, but had no nav
+//    entry of their own and were buried under a SYSTEM label an admin wouldn't think to
+//    check for a money problem.
+//  - "QA Checklist" (a raw dev tool) moved out of SYSTEM's business queues into its own
+//    "Developer" group at the bottom, so it no longer sits beside Reconciliation/Platform
+//    APIs/Data as if it were another operational queue.
 const menuGroups = [
   {
     label: "Overview",
@@ -93,21 +102,32 @@ const menuGroups = [
       // Fees points at the LIVE fee-bands editor; Category Fees is a tab there.
       { title: "Fees", href: "/admin/fee-bands", icon: Percent },
       { title: "Event Packages", href: "/admin/event-packages", icon: Crown },
+      // D4: moved from System — this page's own headline queue is Chargebacks & Disputes,
+      // a money problem, not a system-health one. Relabeled so "Disputes" is discoverable
+      // directly in the nav instead of only after opening the page.
+      { title: "Reconciliation & Disputes", href: "/admin/reconciliation", icon: ShieldAlert },
     ],
   },
   {
     label: "System",
     items: [
       { title: "AI Costs", href: "/admin/ai-costs", icon: Cpu },
-      { title: "Reconciliation", href: "/admin/reconciliation", icon: ShieldAlert },
       { title: "Platform APIs", href: "/admin/platform-providers", icon: PlugZap },
-      { title: "QA Checklist", href: "/admin/qa-checklist", icon: ClipboardList },
       // Data hub links the one-off backfill tools (neighborhoods, gem photos).
       { title: "Data", href: "/admin/data", icon: Database },
       { title: "Neighborhood Backfill", href: "/admin/neighborhood-backfill", icon: MapPin },
       { title: "Gem Photo Backfill", href: "/admin/gem-photo-backfill", icon: ImageIcon },
       { title: "Notifications", href: "/admin/notifications", icon: Bell },
       { title: "Settings", href: "/admin/system", icon: Settings },
+    ],
+  },
+  {
+    // D4: QA Checklist is a raw internal dev tool, not a business queue — pulled out of
+    // System into its own clearly-labeled group instead of sitting beside Reconciliation/
+    // Platform APIs/Data as if it were another operational surface.
+    label: "Developer",
+    items: [
+      { title: "QA Checklist", href: "/admin/qa-checklist", icon: Wrench },
     ],
   },
 ];
@@ -170,7 +190,14 @@ export function AdminSidebar() {
         </Link>
       </SidebarHeader>
 
-      <SidebarContent className="px-2.5 py-3 group-data-[collapsible=icon]:px-1">
+      {/* D4 (UX audit Jul 29): "long sidebar with no below-fold cue" — the content list scrolls
+          (SidebarContent is already overflow-auto) but gave no visual hint that there was more
+          below the fold. A soft bottom fade-mask signals "keep scrolling" without changing any
+          layout/routing. */}
+      <SidebarContent
+        className="px-2.5 py-3 group-data-[collapsible=icon]:px-1"
+        style={{ WebkitMaskImage: "linear-gradient(to bottom, black calc(100% - 20px), transparent 100%)", maskImage: "linear-gradient(to bottom, black calc(100% - 20px), transparent 100%)" }}
+      >
         {menuGroups.map((group) => (
           <SidebarGroup key={group.label} className="mb-3 p-0">
             <SidebarGroupLabel
@@ -204,7 +231,7 @@ export function AdminSidebar() {
                       >
                         <Link
                           href={item.href}
-                          data-testid={`nav-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
+                          data-testid={`nav-${item.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "")}`}
                         >
                           <item.icon className="w-4 h-4" style={{ opacity: isActive ? 1 : 0.7 }} />
                           <span className="text-[13px] flex-1">{item.title}</span>
