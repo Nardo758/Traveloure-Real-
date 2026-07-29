@@ -1,0 +1,16 @@
+DISPATCH — post-republish verification (deploy now carries #322–#330: console collapse PR-Ca/Cb/Cc, bundle rung, property rung, migrations 148–153). Read-mostly; step 4 creates test rows using test accounts only. Report each step's actual output — never mark a step passed without its evidence.
+
+1. Deploy freshness. curl -s https://<deployed-host>/api/version — the sha must be c43b09b2 (the #330 merge). If it's anything older, the republish didn't take; stop and report.
+
+2. Migrations 148–153 applied. Against the PROD DATABASE_URL:
+
+Expect 148 through 153 all present. Then confirm the schema landed:
+
+3. Console collapse smoke (browser, one pass each). Log in as a test expert: sidebar shows the NINE (Today · Calendar · Inbox · Workstation | Catalog · Content Studio · Customers · Performance · Money | AI Assistant · Settings); /expert/bookings, /expert/assigned-trips, /expert/dmo-library, /expert/analytics, /expert/earnings all redirect to their new homes and land on real content. As a test provider: /provider/calendar is the Channel Calendar, /provider/services has the storefront header + availability editing + share tools, /provider/earnings → /provider/money, /provider/share-promote → /provider/services.
+
+4. Product Builder rungs (test accounts, real Stripe test key — the one leg local proof couldn't run).
+
+Bundle: as a provider with 2+ approved services, create a bundle in the Workstation → born submitted, never approved.
+Property: create a property with 2 room types → all rows born submitted. Approve the property + ONE room via the admin queue → the public /services/<propertyId> page shows only the approved room. Set night availability (range dialog) on that room, then as a test traveler: pick check-in/check-out on the room page → add to cart → cart shows nights × rate → checkout through Stripe test payment to completion. Verify the booking row: total_amount = nights × nightly rate, booking_details carries {checkIn, checkOut, nights, nightlyRate, propertyId}, slot_id set, and the claimed nights' booked_count incremented in vendor_availability_slots.
+Negative: attempt a second checkout overlapping the same sold-out night (capacity 1) → expect 409 nights_unavailable and no orphaned claims (booked_count unchanged after the 409).
+5. Report as a pass/fail table with the actual outputs (sha, migration list, booking row values). Anything red: report it verbatim — do not attempt fixes in prod.
