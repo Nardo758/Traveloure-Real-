@@ -14,9 +14,11 @@ import { Search, Plus, Check } from "lucide-react";
  * §16 (affiliate-outbound rule): the raw /api/catalog/ground-transport payload (CatalogItem,
  * server/services/travelpayouts/omio.service.ts) also carries `bookingUrl` / `affiliateUrl`.
  * This interface deliberately OMITS both — they are never read off the payload, never stored
- * in state, and never forwarded in the add-to-itinerary write below. This surface is
- * list-and-add only; a "book via agent" action belongs to the §16 booking-agent rail
- * (POST /api/affiliate-booking-requests), not this drawer.
+ * in state, and never forwarded in either write below. The per-row "Book via agent" action
+ * rides the §16 rail's catalog variant (POST /api/affiliate-booking-requests/from-catalog):
+ * the client sends only {provider, itemId, destination} and the SERVER re-resolves the item
+ * from the same catalog feed and attaches the affiliate URL itself — the URL never exists
+ * client-side.
  */
 interface TransportOption {
   id: string;
@@ -31,8 +33,9 @@ interface GroundTransportResponse { items: TransportOption[]; total: number }
 /**
  * TransportPickerCore — the Add panel's seventh source pill (Workstation audit B-1).
  * Lists ground-transport routes for the build's destination from the existing Travelpayouts/
- * Omio catalog feed and drops an INFORMATIONAL itinerary item — no URL persisted, no booking
- * action wired here (§16). Modeled on DmoPickerCore's search + list + add structure.
+ * Omio catalog feed. Two actions per row: Add drops an INFORMATIONAL itinerary item (no URL
+ * persisted), and Book via agent files a §16 booking-agent request via the from-catalog rail
+ * (URL resolved server-side). Modeled on DmoPickerCore's search + list + add structure.
  */
 export function TransportPickerCore({
   tripId,
@@ -48,6 +51,7 @@ export function TransportPickerCore({
   const { toast } = useToast();
   const [q, setQ] = useState("");
   const [added, setAdded] = useState<Set<string>>(new Set());
+  const [agentRequested, setAgentRequested] = useState<Set<string>>(new Set());
 
   const { data, isLoading, isError } = useQuery<GroundTransportResponse>({
     queryKey: ["/api/catalog/ground-transport", destination],
@@ -89,6 +93,29 @@ export function TransportPickerCore({
     },
     onError: (err: any) => {
       toast({ title: "Couldn't add item", description: String(err?.message ?? err), variant: "destructive" });
+    },
+  });
+
+  // §16: only a catalog REFERENCE goes up — the server re-resolves the item and attaches the
+  // affiliate URL itself (this component never holds one to send).
+  const agentBookMutation = useMutation({
+    mutationFn: async (opt: TransportOption) => {
+      const res = await apiRequest("POST", "/api/affiliate-booking-requests/from-catalog", {
+        provider: "omio",
+        itemId: opt.id,
+        destination,
+      });
+      return res.json();
+    },
+    onSuccess: (_res, opt) => {
+      setAgentRequested((prev) => new Set(prev).add(opt.id));
+      toast({
+        title: "Booking request sent",
+        description: `A booking agent will arrange "${opt.title}" and confirm with you.`,
+      });
+    },
+    onError: (err: any) => {
+      toast({ title: "Couldn't request booking", description: String(err?.message ?? err), variant: "destructive" });
     },
   });
 
@@ -140,19 +167,35 @@ export function TransportPickerCore({
                     </span>
                   )}
                 </div>
-                <Button
-                  size="sm"
-                  variant={added.has(opt.id) ? "outline" : "default"}
-                  disabled={added.has(opt.id) || addMutation.isPending}
-                  onClick={() => addMutation.mutate(opt)}
-                  data-testid={`button-transport-add-${opt.id}`}
-                >
-                  {added.has(opt.id) ? (
-                    <><Check className="w-3.5 h-3.5 mr-1" />Added</>
-                  ) : (
-                    <><Plus className="w-3.5 h-3.5 mr-1" />Add</>
-                  )}
-                </Button>
+                <div className="flex flex-col items-end gap-1.5 shrink-0">
+                  <Button
+                    size="sm"
+                    variant={added.has(opt.id) ? "outline" : "default"}
+                    disabled={added.has(opt.id) || addMutation.isPending}
+                    onClick={() => addMutation.mutate(opt)}
+                    data-testid={`button-transport-add-${opt.id}`}
+                  >
+                    {added.has(opt.id) ? (
+                      <><Check className="w-3.5 h-3.5 mr-1" />Added</>
+                    ) : (
+                      <><Plus className="w-3.5 h-3.5 mr-1" />Add</>
+                    )}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-xs h-7"
+                    disabled={agentRequested.has(opt.id) || agentBookMutation.isPending}
+                    onClick={() => agentBookMutation.mutate(opt)}
+                    data-testid={`button-transport-agent-book-${opt.id}`}
+                  >
+                    {agentRequested.has(opt.id) ? (
+                      <><Check className="w-3.5 h-3.5 mr-1" />Agent requested</>
+                    ) : (
+                      <>Book via agent</>
+                    )}
+                  </Button>
+                </div>
               </div>
             </div>
           ))}
