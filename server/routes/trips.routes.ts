@@ -49,6 +49,13 @@ import {
   SURFACE_DEFAULT_AFFILIATE_CATEGORIES,
   SURFACE_SLUGS,
 } from "@shared/content-surface-map";
+// L3b′: the itinerary-share / OG family renders from the ONE TripPlan service's VARIANT producer
+// (docs/EXECUTION_MAP.md §3, CLAUDE.md §18) instead of its own hand-rolled variant shape.
+import {
+  assembleTripPlanFromVariant,
+  TripPlanVariantNotFoundError,
+} from "../services/trip-plan.service";
+import type { PreviewTripPlan, VariantFullTripPlan } from "@shared/trip-plan";
 import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant, type TripPreferences } from "../itinerary-optimizer";
 import { complexityTier } from "../services/smart-sequencing.service";
 import { getFee } from "../services/optimization-fee.service";
@@ -2105,70 +2112,83 @@ router.get("/api/itinerary-share/:token", async (req, res) => {
 
       await storage.incrementSharedItineraryViewCount(shared.id, shared.viewCount);
 
-      const [variant, items, legs, exportCache, sharer] = await Promise.all([
-        storage.getItineraryVariantById(shared.variantId),
-        storage.getItineraryVariantItemsByVariantId(shared.variantId),
-        storage.getTransportLegsByVariantId(shared.variantId),
+      // ── Thin caller (L3b′): the plan assembly lives in the ONE TripPlan service, VARIANT
+      // producer. The share token is keyed on `variantId`, so the plan is assembled from the
+      // variant's own snapshot rows and NEVER from the live trip — a share link keeps rendering
+      // exactly what was shared. The token gate above is authoritative; the assembler authorizes
+      // nothing (redaction level = channel contract). This surface has always rendered the full
+      // body to a token holder, so it asks for 'full' — and then emits ONLY the pre-existing
+      // response keys below, so nothing the envelope newly carries (vendorPhone,
+      // confirmationNumber, meetingPoint, expertNote, booked/bookVia, …) leaks onto this surface.
+      let plan: VariantFullTripPlan;
+      try {
+        plan = await assembleTripPlanFromVariant(shared.variantId, "full");
+      } catch (e) {
+        if (e instanceof TripPlanVariantNotFoundError) {
+          return res.status(404).json({ error: "Variant not found" });
+        }
+        throw e;
+      }
+
+      const [exportCache, sharer, rawLegs] = await Promise.all([
         storage.getMapsExportCacheByVariantId(shared.variantId),
         storage.getUserPublicProfile(shared.sharedByUserId),
+        // PRE-EXISTING §16 stray, preserved verbatim: this response has always carried each leg's
+        // `linked_product_url` (the client renders it as a raw outbound "Book transport" link).
+        // TripPlan deliberately NEVER carries an affiliate/deep-link URL — the URL stays
+        // server-side and unbooked chauffeured legs are marked `bookVia: 'agent-rail'` — so this
+        // ONE field is read outside the envelope rather than smuggled into it. FILED: route the
+        // client's "Book transport" action through the booking-agent rail (§16), then delete this
+        // read and the key with it.
+        storage.getTransportLegsByVariantId(shared.variantId),
       ]);
 
-      if (!variant) return res.status(404).json({ error: "Variant not found" });
-      const comparison = await storage.getItineraryComparison(variant.comparisonId);
+      const affiliateUrlByLegId: Record<string, string | null> = {};
+      for (const l of rawLegs) affiliateUrlByLegId[l.id] = l.linkedProductUrl ?? null;
 
-      const dayNumbers = Array.from(new Set(items.map(i => i.dayNumber))).sort((a, b) => a - b);
-      const days = dayNumbers.map(dayNum => {
-        const dayItems = items.filter(i => i.dayNumber === dayNum).sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
-        const dayLegs = legs.filter(l => l.dayNumber === dayNum).sort((a, b) => a.legOrder - b.legOrder);
+      const days = plan.days.map(day => ({
+        dayNumber: day.dayNumber,
+        // `dateIso` is the machine YYYY-MM-DD the envelope carries; "" when the snapshot has no
+        // start date (the pre-existing behaviour — never a guessed date).
+        date: day.dateIso ?? "",
+        activities: day.activities.map(a => ({
+          id: a.id,
+          name: a.name,
+          startTime: a.startTime,
+          endTime: a.endTime,
+          lat: a.lat,
+          lng: a.lng,
+          category: a.category ?? null,
+          cost: a.cost,
+          description: a.description ?? null,
+          location: a.location,
+          duration: a.durationMinutes ?? null,
+        })),
+        transportLegs: day.transports.map(leg => ({
+          id: leg.id,
+          legOrder: leg.legOrder,
+          fromName: leg.fromName,
+          toName: leg.toName,
+          recommendedMode: leg.recommendedMode,
+          userSelectedMode: leg.userSelectedMode,
+          distanceDisplay: leg.distanceDisplay,
+          distanceMeters: leg.distanceMeters ?? null,
+          estimatedDurationMinutes: leg.estimatedDurationMinutes,
+          estimatedCostUsd: leg.estimatedCostUsd,
+          energyCost: leg.energyCost ?? null,
+          alternativeModes: leg.alternativeModes,
+          linkedProductUrl: affiliateUrlByLegId[leg.id] ?? null,
+          fromLat: leg.fromLat,
+          fromLng: leg.fromLng,
+          toLat: leg.toLat,
+          toLng: leg.toLng,
+        })),
+      }));
 
-        const startDate = comparison?.startDate ? new Date(comparison.startDate) : null;
-        let dateStr = "";
-        if (startDate) {
-          const d = new Date(startDate);
-          d.setDate(d.getDate() + dayNum - 1);
-          dateStr = d.toISOString().split("T")[0];
-        }
-
-        return {
-          dayNumber: dayNum,
-          date: dateStr,
-          activities: dayItems.map(item => ({
-            id: item.id,
-            name: item.name,
-            startTime: item.startTime,
-            endTime: item.endTime,
-            lat: item.latitude ? parseFloat(item.latitude as any) : null,
-            lng: item.longitude ? parseFloat(item.longitude as any) : null,
-            category: item.serviceType,
-            cost: item.price ? parseFloat(item.price as any) : 0,
-            description: item.description,
-            location: item.location,
-            duration: item.duration,
-          })),
-          transportLegs: dayLegs.map(leg => ({
-            id: leg.id,
-            legOrder: leg.legOrder,
-            fromName: leg.fromName,
-            toName: leg.toName,
-            recommendedMode: leg.recommendedMode,
-            userSelectedMode: leg.userSelectedMode,
-            distanceDisplay: leg.distanceDisplay,
-            distanceMeters: leg.distanceMeters,
-            estimatedDurationMinutes: leg.estimatedDurationMinutes,
-            estimatedCostUsd: leg.estimatedCostUsd,
-            energyCost: leg.energyCost,
-            alternativeModes: leg.alternativeModes,
-            linkedProductUrl: leg.linkedProductUrl,
-            fromLat: leg.fromLat,
-            fromLng: leg.fromLng,
-            toLat: leg.toLat,
-            toLng: leg.toLng,
-          })),
-        };
-      });
-
-      const totalTransportCost = legs.reduce((sum, l) => sum + (l.estimatedCostUsd || 0), 0);
-      const totalTransportMinutes = legs.reduce((sum, l) => sum + (l.estimatedDurationMinutes || 0), 0);
+      // Totals run over the plan's FULL leg list (`plan.legs`), which — like the read this
+      // replaced — includes legs whose day carries no items.
+      const totalTransportCost = plan.legs.reduce((sum, l) => sum + (l.estimatedCostUsd || 0), 0);
+      const totalTransportMinutes = plan.legs.reduce((sum, l) => sum + (l.estimatedDurationMinutes || 0), 0);
 
       // This endpoint is PUBLIC (no auth required) — any token holder can reach it, including
       // an anonymous "view"-only link passed to a friend/family member. expertNotes/expertDiff
@@ -2184,19 +2204,20 @@ router.get("/api/itinerary-share/:token", async (req, res) => {
 
       res.json({
         variant: {
-          id: variant.id,
-          name: variant.name,
-          description: variant.description,
-          destination: comparison?.destination,
+          id: plan.meta.sourceRef.id,
+          name: plan.meta.title,
+          description: plan.meta.description,
+          destination: plan.meta.destination,
           dateRange: {
-            start: comparison?.startDate,
-            end: comparison?.endDate,
+            start: plan.meta.dates.start,
+            end: plan.meta.dates.end,
           },
-          totalCost: variant.totalCost,
-          optimizationScore: variant.optimizationScore,
+          // RAW producer figures (decimal string / int) — see TripPlanSourceFigures.
+          totalCost: plan.sourceFigures?.totalCost ?? null,
+          optimizationScore: plan.sourceFigures?.optimizationScore ?? null,
           days,
           transportSummary: {
-            totalLegs: legs.length,
+            totalLegs: plan.legs.length,
             totalMinutes: totalTransportMinutes,
             totalCostUsd: Math.round(totalTransportCost * 100) / 100,
           },
@@ -2902,11 +2923,20 @@ router.get("/itinerary-view/:token", async (req, res, next) => {
       const shared = await storage.getSharedItineraryByToken(token);
       if (!shared) return next(); // Let SPA handle 404
 
-      const variant = await storage.getItineraryVariantById(shared.variantId);
-      const comparison = variant ? await storage.getItineraryComparison(variant.comparisonId) : null;
+      // ── Thin caller (L3b′): 'preview' is the OG/link-card channel — meta ONLY, no itinerary body
+      // of any kind is loaded or rendered (§3). Assembled from the VARIANT snapshot the token is
+      // keyed on, so an existing link's card text never changes because the trip moved on.
+      let preview: PreviewTripPlan | null = null;
+      try {
+        preview = await assembleTripPlanFromVariant(shared.variantId, "preview");
+      } catch (e) {
+        // A share row whose variant is gone: fall through to the same generic copy this route has
+        // always used rather than 404 the SPA route.
+        if (!(e instanceof TripPlanVariantNotFoundError)) throw e;
+      }
 
-      const destination = comparison?.destination || "an amazing destination";
-      const variantName = variant?.name || "Travel Itinerary";
+      const destination = preview?.meta.destination || "an amazing destination";
+      const variantName = preview?.meta.title || "Travel Itinerary";
       const title = `${variantName} – ${destination} | Traveloure`;
       const description = `Explore this AI-powered itinerary for ${destination}. View day-by-day activities, transport options, and more — shared via Traveloure.`;
       const shareUrl = `${req.protocol}://${req.get("host")}/itinerary-view/${token}`;

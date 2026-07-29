@@ -70,6 +70,26 @@ export type AssembledRedactionLevel = Exclude<RedactionLevel, "social">;
  */
 export type TripPlanActivitySource = "platform" | "expert" | "sourced-derived" | "affiliate";
 
+/**
+ * Which data home a plan was assembled FROM (L3b′). Two producers exist today:
+ *
+ *  • `trip`    — `trips` + `itinerary_items` (+ the selected variant's legs). LIVE by reference:
+ *                re-assembling always reflects the current trip.
+ *  • `variant` — `itinerary_variants` + `itinerary_variant_items` + `transport_legs`. A SNAPSHOT:
+ *                the adapter reads the variant's own rows and NEVER the live trip, so a shared
+ *                variant keeps rendering exactly what was shared, forever. This is the whole point
+ *                of keying share links on `variantId` (`shared_itineraries.variant_id`).
+ *
+ * `id` is the producer's own primary key (`trips.id` / `itinerary_variants.id`) — the reference that
+ * circulates (§3 "circulate by REFERENCE").
+ */
+export type TripPlanSourceKind = "trip" | "variant";
+
+export interface TripPlanSourceRef {
+  kind: TripPlanSourceKind;
+  id: string;
+}
+
 /** Expert attribution — "delivered by". Emitted only when a real expert row exists. */
 export interface TripPlanExpertAttribution {
   expertId: string;
@@ -88,8 +108,26 @@ export interface TripPlanDates {
  */
 export interface TripPlanMeta {
   tripPlanVersion: TripPlanVersion;
-  tripId: string;
+  /**
+   * Which data home this plan came from (L3b′). Always present — a circulated plan must be able to
+   * say what it is a plan OF, independently of whether a `trips` row backs it.
+   */
+  sourceRef: TripPlanSourceRef;
+  /**
+   * The `trips` row this plan belongs to, when one does.
+   *
+   * NULLABLE (widened by L3b′): a **variant-produced** plan may have no trip at all —
+   * `itinerary_comparisons.trip_id` is nullable, so an optimizer comparison created straight off a
+   * `user_experiences` flow (never applied to a trip) has none. `null` is the honest value; the plan
+   * is still fully identified by `meta.sourceRef`. Trip-produced plans always carry it.
+   */
+  tripId: string | null;
   title: string | null;
+  /**
+   * Plan-level description (`itinerary_variants.description` on the variant producer). Null when the
+   * producer has none — never a generated blurb (§13).
+   */
+  description: string | null;
   destination: string | null;
   dates: TripPlanDates;
   status: string | null;
@@ -128,7 +166,12 @@ export interface TripPlanActivity {
   /** LEGACY ALIAS of `startTime`, empty-string when absent (PlanCardActivity.time). */
   time: string;
 
-  location: string;
+  /**
+   * NULLABLE (widened by L3b′): the variant producer passes `itinerary_variant_items.location`
+   * through RAW so "no location recorded" stays `null` instead of becoming an empty string. The trip
+   * producer still normalizes to `""`, as before — its output is unchanged.
+   */
+  location: string | null;
   lat: number | null;
   lng: number | null;
 
@@ -146,6 +189,20 @@ export interface TripPlanActivity {
   /** Derived from the RAW `itinerary_items.status === 'completed'` — no dedicated column exists. */
   visited: boolean;
   source: TripPlanActivitySource;
+
+  // ── OPTIONAL producer-native fields (L3b′, additive) ──────────────────────────────────────
+  // Emitted only by producers whose rows actually carry them, so a producer that does not is
+  // byte-identical to before this addition (an absent key, not a null one).
+  /** Free-text activity description (`itinerary_variant_items.description`). */
+  description?: string | null;
+  /** Planned duration in minutes (`itinerary_variant_items.duration`). */
+  durationMinutes?: number | null;
+  /**
+   * The producer's RAW category string (`itinerary_variant_items.service_type` /
+   * `itinerary_items.item_type`), unmapped. `type` above is the MAPPED display value; this is the
+   * source vocabulary, for consumers that need to re-map it themselves.
+   */
+  category?: string | null;
 
   // ── Existing plancard contract fields (kept — live consumers read them) ────────────────
   /** Display type, via the plancard `mapItemType` mapping. */
@@ -218,7 +275,13 @@ export interface TripPlanLeg {
   legOrder: number;
   recommendedMode: string;
   userSelectedMode: string | null;
-  alternativeModes: TripPlanLegAlternativeMode[];
+  /**
+   * NULLABLE (widened by L3b′): the variant producer passes `transport_legs.alternative_modes`
+   * through RAW, preserving the honest difference between NULL (the optimizer never computed
+   * alternatives for this leg) and `[]` (it computed none). The trip producer normalizes to `[]`, as
+   * before — its output is unchanged.
+   */
+  alternativeModes: TripPlanLegAlternativeMode[] | null;
   fromLat: number | null;
   fromLng: number | null;
   toLat: number | null;
@@ -227,6 +290,13 @@ export interface TripPlanLeg {
   distanceDisplay: string;
   estimatedDurationMinutes: number;
   estimatedCostUsd: number | null;
+
+  // ── OPTIONAL producer-native fields (L3b′, additive — absent, not null, on producers that
+  //    do not emit them) ────────────────────────────────────────────────────────────────────────
+  /** Machine distance (`transport_legs.distance_meters`); `distance`/`distanceDisplay` is the label. */
+  distanceMeters?: number | null;
+  /** Optimizer energy cost for the chosen mode (`transport_legs.energy_cost`). */
+  energyCost?: number | null;
 }
 
 export interface TripPlanDay {
@@ -236,6 +306,13 @@ export interface TripPlanDay {
   dayNum: number;
   /** Formatted day label ("Mon, Oct 6") — the existing plancard contract. */
   date: string;
+  /**
+   * OPTIONAL (L3b′, additive): the same day as a machine `YYYY-MM-DD` string, for consumers that
+   * need to compute rather than display (`date` above is locale-formatted). `null` when the producer
+   * has no start date to count from — never a guessed date (§13). Absent on producers that do not
+   * emit it, so their output is unchanged.
+   */
+  dateIso?: string | null;
   /** Derived day headline; the `teaser` level's `title`. */
   label: string;
   activities: TripPlanActivity[];
@@ -323,19 +400,55 @@ export interface TripPlanPlancardExtras {
   stats: TripPlanStats;
 }
 
+/**
+ * Producer-native plan-level figures, passed through **RAW** — the same LEGACY ALIAS precedent as
+ * `name`/`time`/`dayNum` above. `itinerary_variants.total_cost` is a SQL decimal, so the row value
+ * is a string like `"1240.50"`; parsing it to a number would silently change every pre-envelope
+ * consumer's rendering (`"$1240.50"` → `"$1240.5"`). New consumers should parse defensively.
+ * Absent on producers that have no plan-level figures.
+ */
+export interface TripPlanSourceFigures {
+  /** RAW as stored (decimal string on `itinerary_variants`). */
+  totalCost: string | number | null;
+  optimizationScore: number | null;
+}
+
 /** `full` — owner / delivered traveler / assigned expert / admin. */
 export interface FullTripPlan {
   redactionLevel: "full";
   meta: TripPlanMeta;
   days: TripPlanDay[];
-  /** Flat leg list (§3). Same leg objects as `days[].transports`. */
+  /**
+   * Flat leg list (§3). The trip producer emits exactly the legs placed on `days[].transports`; the
+   * variant producer emits EVERY leg row of the snapshot (a leg whose day carries no items is still
+   * part of the plan's transport totals), so `legs` is a superset of the day-placed legs there.
+   */
   legs: TripPlanLeg[];
   /** Trip-level expert note (`trips.expertNotes`); null when the expert wrote none. */
   tripNote: string | null;
   budget: TripPlanBudget | null;
-  changeLogRef: TripPlanChangeLogRef;
+  /**
+   * NULLABLE (widened by L3b′): the change log is tripId-scoped, so a variant-produced plan with no
+   * linked trip (`itinerary_comparisons.trip_id` null) has no log to point at. Null rather than a
+   * reference to an endpoint that cannot answer.
+   */
+  changeLogRef: TripPlanChangeLogRef | null;
+  /** OPTIONAL (L3b′, additive) — see `TripPlanSourceFigures`. */
+  sourceFigures?: TripPlanSourceFigures | null;
   plancard: TripPlanPlancardExtras;
 }
+
+/**
+ * The `full` plan as produced by the VARIANT adapter (`assembleTripPlanFromVariant`).
+ *
+ * It is the same §3 envelope, minus the `plancard` block — and that is deliberate, not a gap: the
+ * `plancard` extras are the pre-envelope `/api/trips/:tripId/plancard` route contract (explicitly
+ * "NOT part of the §3 envelope" above), and a variant snapshot has no trip role, no change log and
+ * no `trips` row to fill them with. §13 says omit what you cannot honestly supply rather than invent
+ * a `tripRole` or an empty `trip` block. Every §3 field — `meta`/`days`/`legs`/`tripNote`/`budget`/
+ * `changeLogRef` — is present, so a consumer written against the envelope renders both producers.
+ */
+export type VariantFullTripPlan = Omit<FullTripPlan, "plancard">;
 
 /** A `teaser` day: day + title ONLY — the §10 `redactTemplateContent` shape. */
 export interface TeaserTripPlanDay {
