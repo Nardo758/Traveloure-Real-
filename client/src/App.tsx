@@ -61,7 +61,9 @@ const EAReports = lazy(() => import("@/pages/ea/reports"));
 const EAProfile = lazy(() => import("@/pages/ea/profile"));
 const EASettings = lazy(() => import("@/pages/ea/settings"));
 const ProviderDashboard = lazy(() => import("@/pages/provider/dashboard"));
-const ProviderBookings = lazy(() => import("@/pages/provider/bookings"));
+// C9 Inbox absorption: ProviderBookings lazy import dropped — the page is retired
+// (/provider/bookings redirects to /provider/inbox); ProviderInbox absorbs its uniques.
+const ProviderInbox = lazy(() => import("@/pages/provider/inbox"));
 const ProviderServices = lazy(() => import("@/pages/provider/services"));
 const ProviderEarnings = lazy(() => import("@/pages/provider/earnings"));
 const ProviderPerformance = lazy(() => import("@/pages/provider/performance"));
@@ -744,20 +746,29 @@ function Router() {
       {/* Service Provider Dashboard Routes (use ProviderLayout - no global Layout) */}
       {/* Console IA C9 (§17 17→9 collapse): the provider console adopts the expert console's
           nine-module IA — Today (dashboard, label-only rename) · Calendar (Channel Calendar)
-          · Inbox seat (Bookings, kept) · Catalog (services) · Money (earnings, renamed) ·
-          Customers (new) · Performance (hosts Analytics) · Settings (hosts Profile).
+          · Inbox (Queue/History/Messages — absorbs the retired Bookings + Messages seats,
+          C9 Inbox absorption, mirrors expert C5) · Catalog (services) · Money (earnings,
+          renamed) · Customers (new) · Performance (hosts Analytics) · Settings (hosts Profile).
           PB: Workstation (the Provider Product Builder) landed after its §17 gated
           ratifications — the bundle rung is live (/provider/workstation), the property
           rung stays gated. */}
       <Route path="/provider/dashboard">
         {() => <ProtectedRoute component={ProviderDashboard} requiredRole="provider" />}
       </Route>
+      {/* Console IA C9 Inbox absorption (§17 17→9 collapse, mirrors expert C5): "Bookings"
+          retired — accept/decline, the visa-status dialog, and stats now live on Inbox's
+          Queue tab; the search/filter capability lives on Inbox's History tab. */}
       <Route path="/provider/bookings">
-        {() => <ProtectedRoute component={ProviderBookings} requiredRole="provider" />}
+        <Redirect to="/provider/inbox" />
+      </Route>
+      <Route path="/provider/inbox">
+        {() => <ProtectedRoute component={ProviderInbox} requiredRole="provider" />}
       </Route>
       {/* /provider/messages consolidated into /chat (ChatWithRoleLayout applies ProviderLayout
           when user role is service_provider). Deep-link clientId forwarded as ?clientId=
-          so chat.tsx pre-populates the search box with the client's name. */}
+          so chat.tsx pre-populates the search box with the client's name. The sidebar's bare
+          "Messages" link is retired (C9 Inbox absorption) — Inbox's Messages tab is the new
+          entry point into /chat, but these deep-link redirects stay live for existing links. */}
       <Route path="/provider/messages/:clientId">
         {(params: any) => <Redirect to={`/chat?clientId=${params.clientId}`} />}
       </Route>

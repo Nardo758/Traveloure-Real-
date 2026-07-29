@@ -8,7 +8,8 @@
  *     lane, which reads the REAL schedule (claimed slot date COALESCE scheduledDate) from the
  *     same GET /api/me/calendar aggregate the expert console uses — a superset of the old read.
  *   - day-detail booking cards + "Upcoming Bookings" list → those re-rendered another module's
- *     surface; per the one-home rule events here REFERENCE /provider/bookings instead.
+ *     surface; per the one-home rule events here REFERENCE /provider/inbox instead (C9 Inbox
+ *     absorption retired /provider/bookings — see calendar.routes.ts hrefs.inbox).
  *   - "Edit Schedule" / "Block Dates" sheets → were explicitly non-persisting local previews
  *     ("Preview only — availability scheduling is coming soon", Save disabled), so no real
  *     function is lost. REAL slot editing (vendor_availability_slots, the canonical model)
