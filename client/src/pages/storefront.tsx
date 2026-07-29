@@ -1,65 +1,204 @@
 /**
- * Public earner storefront — /p/:handle (backoffice Phase 1b).
+ * Public earner storefront — /p/:handle (backoffice Phase 1b, identity-hero rebuild).
  *
- * The mockup's "one link that books and pays" landing surface
- * (docs/backoffice/mockups/mockup-offering-page.html breadcrumb "Yuki's Offerings").
- * Lists the earner's ADMIN-APPROVED offerings across the three lanes, each linking into the
- * existing booking-capable detail pages (/services/:id, /expert-templates/:id, /ready-made/:id).
- * Ratings are real aggregates or an honest "New" — never a fabricated number (§13).
+ * Rebuilt to the approved mockup (docs/backoffice/mockups/mockup-offering-page.html /p/yuki-flowers
+ * concept): a cover band + overlapping avatar identity hero, a verified pill gated on a genuinely
+ * approved verification signal, a real fact strip, Yuki-spec offering cards across the three lanes,
+ * a "not sure what you're looking for?" message band, and an honest trust strip. Every number/badge
+ * maps to a real field returned by GET /api/storefront/:handle — reviewCount=0 renders "New", never
+ * a fabricated score, and the verified pill only renders when the server says the identity
+ * verification is genuinely approved (§13).
  */
 import { useQuery } from "@tanstack/react-query";
 import { useRoute, Link } from "wouter";
-import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { SEOHead } from "@/components/seo-head";
-import { Star, MapPin, Share2, Sparkles, Map, Briefcase } from "lucide-react";
+import { useAuth } from "@/hooks/use-auth";
+import { useAskExpert } from "@/lib/use-ask-expert";
+import {
+  Star,
+  MapPin,
+  Share2,
+  ShieldCheck,
+  MessageCircle,
+  ShieldAlert,
+  Handshake,
+  BadgeCheck,
+} from "lucide-react";
 
-interface StorefrontData {
-  earner: {
-    name: string;
-    bio: string | null;
-    profileImageUrl: string | null;
-    role: string;
-    handle: string;
-    averageRating: number | null;
-    reviewCount: number;
-  };
-  services: Array<{
-    id: string;
-    serviceName: string;
-    price: string | null;
-    priceType: string | null;
-    averageRating: string | null;
-    reviewCount: number | null;
-  }>;
-  templates: Array<{
-    id: string;
-    title: string;
-    destination: string;
-    price: string;
-    coverImage: string | null;
-  }>;
-  readyMade: Array<{
-    id: string;
-    title: string;
-    heroImageUrl: string | null;
-    priceCents: number | null;
-  }>;
+interface StorefrontEarner {
+  // Not sensitive — user ids are already public on /experts/:id and similar surfaces.
+  id: string;
+  name: string;
+  bio: string | null;
+  profileImageUrl: string | null;
+  role: string;
+  handle: string;
+  averageRating: number | null;
+  reviewCount: number;
+  verified: boolean;
+  location: string | null;
+  memberSince: string | null;
+  coverImageUrl: string | null;
+  offeringsCount: number;
 }
 
-function RatingLine({ rating, count }: { rating: string | null; count: number | null }) {
-  if (!count || count === 0 || !rating) {
-    return <Badge variant="outline" className="text-xs">New</Badge>;
+interface StorefrontService {
+  id: string;
+  serviceName: string;
+  price: string | null;
+  priceType: string | null;
+  pricingUnit: string | null;
+  deliveryMethod: string | null;
+  serviceImage: string | null;
+  averageRating: string | null;
+  reviewCount: number | null;
+}
+
+interface StorefrontTemplate {
+  id: string;
+  title: string;
+  destination: string;
+  price: string;
+  coverImage: string | null;
+  duration: number | null;
+  averageRating: string | null;
+  reviewCount: number | null;
+}
+
+interface StorefrontReadyMade {
+  id: string;
+  title: string;
+  heroImageUrl: string | null;
+  priceCents: number | null;
+  durationDays: number | null;
+  insideCounts: { items?: number } | null;
+}
+
+interface StorefrontData {
+  earner: StorefrontEarner;
+  services: StorefrontService[];
+  templates: StorefrontTemplate[];
+  readyMade: StorefrontReadyMade[];
+}
+
+const DELIVERY_LABELS: Record<string, string> = {
+  pdf: "PDF guide",
+  video: "Video call",
+  call: "Phone call",
+  in_person: "In-person",
+  voice_notes: "Voice notes",
+  async_messaging: "Messaging",
+  hybrid: "Hybrid",
+};
+
+function priceUnitLabel(priceType: string | null, pricingUnit: string | null): string | null {
+  if (pricingUnit === "per_night") return "per night";
+  if (priceType === "per_person") return "per person";
+  if (priceType === "hourly") return "per hour";
+  if (priceType === "per_event") return "per event";
+  return null;
+}
+
+// Deterministic gradient fallback for a card with no real image — cycles a small on-brand
+// palette by a hash of the offering id so the same card always gets the same tint.
+const CARD_GRADIENTS = [
+  "from-rose-300 to-rose-500 dark:from-rose-900/70 dark:to-rose-950/80",
+  "from-emerald-300 to-emerald-600 dark:from-emerald-900/70 dark:to-emerald-950/80",
+  "from-amber-300 to-amber-600 dark:from-amber-900/70 dark:to-amber-950/80",
+  "from-sky-300 to-sky-600 dark:from-sky-900/70 dark:to-sky-950/80",
+];
+function gradientFor(id: string) {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
+  return CARD_GRADIENTS[hash % CARD_GRADIENTS.length];
+}
+
+function RatingLine({ rating, count }: { rating: string | number | null; count: number | null }) {
+  if (!count || count === 0 || rating == null) {
+    return <Badge variant="outline" className="text-[11px] w-fit">New</Badge>;
   }
   return (
-    <span className="flex items-center gap-1 text-sm text-muted-foreground">
+    <span className="flex items-center gap-1 text-xs text-muted-foreground">
       <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
       {Number(rating).toFixed(1)}
-      <span className="text-xs">({count})</span>
+      <span>· {count} review{count === 1 ? "" : "s"}</span>
     </span>
+  );
+}
+
+function OfferingCard({
+  href,
+  testId,
+  image,
+  title,
+  chips,
+  ratingSlot,
+  price,
+  unit,
+  cta,
+}: {
+  href: string;
+  testId: string;
+  image: string | null;
+  title: string;
+  chips: string[];
+  ratingSlot?: React.ReactNode;
+  price: string;
+  unit?: string | null;
+  cta: string;
+}) {
+  return (
+    <Link
+      href={href}
+      data-testid={testId}
+      className="group flex h-full flex-col overflow-hidden rounded-xl border bg-card no-underline text-inherit transition-shadow hover:shadow-lg hover:-translate-y-0.5"
+    >
+      <div
+        className={`h-36 w-full shrink-0 ${image ? "bg-cover bg-center" : `bg-gradient-to-br ${gradientFor(title)}`}`}
+        style={image ? { backgroundImage: `url(${image})` } : undefined}
+      />
+      <div className="flex flex-1 flex-col gap-2 p-4">
+        <h3 className="font-semibold leading-snug">{title}</h3>
+        {chips.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {chips.map((c) => (
+              <span
+                key={c}
+                className="rounded-full border bg-muted/60 px-2 py-0.5 text-[11px] font-medium text-muted-foreground"
+              >
+                {c}
+              </span>
+            ))}
+          </div>
+        )}
+        {ratingSlot}
+        <div className="mt-auto flex items-center justify-between gap-2 border-t pt-2.5">
+          <div className="text-base font-bold">
+            {price}
+            {unit && <span className="ml-1 text-xs font-medium text-muted-foreground">{unit}</span>}
+          </div>
+          <span className="text-sm font-semibold text-primary whitespace-nowrap">{cta}</span>
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+function LaneHeader({ eyebrow, title, count }: { eyebrow: string; title: string; count: number }) {
+  return (
+    <div className="mb-4 flex items-baseline justify-between gap-2">
+      <div>
+        <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground">{eyebrow}</div>
+        <h2 className="mt-0.5 text-xl font-bold">{title}</h2>
+      </div>
+      <div className="text-sm tabular-nums text-muted-foreground">
+        {count} available
+      </div>
+    </div>
   );
 }
 
@@ -67,6 +206,8 @@ export default function StorefrontPage() {
   const [, params] = useRoute("/p/:handle");
   const handle = params?.handle ?? "";
   const { toast } = useToast();
+  const { user } = useAuth();
+  const askExpert = useAskExpert();
 
   const { data, isLoading, isError } = useQuery<StorefrontData>({
     queryKey: [`/api/storefront/${handle}`],
@@ -83,12 +224,15 @@ export default function StorefrontPage() {
 
   if (isLoading) {
     return (
-      <div className="max-w-4xl mx-auto px-4 py-10 space-y-6">
-        <Skeleton className="h-24 w-full rounded-xl" />
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {[...Array(4)].map((_, i) => (
-            <Skeleton key={i} className="h-36 rounded-xl" />
-          ))}
+      <div className="min-h-screen bg-background">
+        <Skeleton className="h-40 sm:h-56 w-full rounded-none" />
+        <div className="max-w-5xl mx-auto px-4 py-10 space-y-6">
+          <Skeleton className="h-24 w-full rounded-xl" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {[...Array(3)].map((_, i) => (
+              <Skeleton key={i} className="h-56 rounded-xl" />
+            ))}
+          </div>
         </div>
       </div>
     );
@@ -96,156 +240,278 @@ export default function StorefrontPage() {
 
   if (isError || !data) {
     return (
-      <div className="max-w-2xl mx-auto px-4 py-20 text-center" data-testid="storefront-not-found">
-        <h1 className="text-2xl font-bold mb-2">Storefront not found</h1>
-        <p className="text-muted-foreground mb-6">
-          This link may be incorrect, or the owner has no bookable offerings yet.
-        </p>
-        <Link href="/discover">
-          <Button>Explore Traveloure</Button>
-        </Link>
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="max-w-md mx-auto px-4 py-20 text-center" data-testid="storefront-not-found">
+          <h1 className="text-2xl font-bold mb-2">Storefront not found</h1>
+          <p className="text-muted-foreground mb-6">
+            This link may be incorrect, or the owner has no bookable offerings yet.
+          </p>
+          <Link href="/discover">
+            <Button>Explore Traveloure</Button>
+          </Link>
+        </div>
       </div>
     );
   }
 
   const { earner, services, templates, readyMade } = data;
+  // Hide the CTA when the signed-in visitor IS the earner — no message-myself button/band.
+  const isOwnStorefront = !!user && String(user.id) === String(earner.id);
+  const memberSinceYear = earner.memberSince ? new Date(earner.memberSince).getFullYear() : null;
+  const initial = earner.name.charAt(0).toUpperCase() || "T";
+
+  function messageEarner() {
+    askExpert({
+      expertId: earner.id,
+      returnTo: `/p/${handle}`,
+      fallbackName: earner.name,
+      fallbackAvatar: earner.profileImageUrl ?? undefined,
+    });
+  }
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-10 space-y-10" data-testid="storefront-page">
+    <div className="min-h-screen bg-background" data-testid="storefront-page">
       <SEOHead
         title={`${earner.name} — Book local experiences | Traveloure`}
         description={earner.bio ?? `Bookable experiences from ${earner.name} on Traveloure.`}
       />
 
-      {/* Earner header */}
-      <div className="flex items-start gap-5">
-        {earner.profileImageUrl ? (
-          <img
-            src={earner.profileImageUrl}
-            alt={earner.name}
-            className="w-20 h-20 rounded-full object-cover border"
-          />
-        ) : (
-          <div className="w-20 h-20 rounded-full bg-muted flex items-center justify-center text-2xl font-semibold">
-            {earner.name.charAt(0)}
-          </div>
-        )}
-        <div className="flex-1 min-w-0">
-          <h1 className="text-2xl font-bold" data-testid="storefront-name">{earner.name}</h1>
-          <div className="flex items-center gap-2 mt-0.5">
-            <p className="text-sm text-muted-foreground">@{earner.handle}</p>
-            <span data-testid="storefront-earner-rating">
-              <RatingLine
-                rating={earner.averageRating != null ? String(earner.averageRating) : null}
-                count={earner.reviewCount}
-              />
-            </span>
-          </div>
-          {earner.bio && <p className="mt-2 text-sm text-foreground max-w-xl">{earner.bio}</p>}
+      {/* Minimal branded header (standalone page, no site chrome) — same idiom as the
+          ready-made-detail.tsx share/OG page frame. */}
+      <div className="border-b bg-card">
+        <div className="max-w-5xl mx-auto flex items-center justify-between px-4 py-3">
+          <Link href="/" className="flex items-center gap-2 no-underline text-inherit" data-testid="link-storefront-logo">
+            <div className="w-7 h-7 rounded-[8px] flex items-center justify-center" style={{ background: "#E85D55" }}>
+              <span className="text-white text-sm font-bold">T</span>
+            </div>
+            <span className="font-semibold text-foreground">Traveloure</span>
+          </Link>
         </div>
-        <Button variant="outline" size="sm" onClick={copyLink} data-testid="button-share-storefront">
-          <Share2 className="w-4 h-4 mr-1.5" />
-          Share
-        </Button>
       </div>
 
-      {/* Lane 1: services */}
-      {services.length > 0 && (
-        <section>
-          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-            <Briefcase className="w-5 h-5 text-primary" />
-            Experiences & Services
-          </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {services.map((s) => (
-              <Link key={s.id} href={`/services/${s.id}`}>
-                <Card className="hover:shadow-md transition-shadow cursor-pointer h-full" data-testid={`storefront-service-${s.id}`}>
-                  <CardContent className="p-4">
-                    <div className="flex items-start justify-between gap-2">
-                      <h3 className="font-medium">{s.serviceName}</h3>
-                      {s.price && (
-                        <span className="font-semibold whitespace-nowrap">
-                          ${Number(s.price).toFixed(0)}
-                          {s.priceType === "hourly" ? "/hr" : ""}
-                        </span>
-                      )}
-                    </div>
-                    <div className="mt-2">
-                      <RatingLine rating={s.averageRating} count={s.reviewCount} />
-                    </div>
-                  </CardContent>
-                </Card>
-              </Link>
-            ))}
-          </div>
-        </section>
-      )}
+      {/* Cover band — earner-chosen (users.preferences.storefront.coverImageUrl), gradient fallback. */}
+      <div
+        className={`h-40 sm:h-56 w-full ${earner.coverImageUrl ? "bg-cover bg-center" : "bg-gradient-to-br from-primary/50 via-primary/70 to-primary"}`}
+        style={earner.coverImageUrl ? { backgroundImage: `url(${earner.coverImageUrl})` } : undefined}
+        data-testid="storefront-cover"
+      />
 
-      {/* Lane 2: itinerary templates */}
-      {templates.length > 0 && (
-        <section>
-          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-            <Map className="w-5 h-5 text-primary" />
-            Itinerary Templates
-          </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {templates.map((t) => (
-              <Link key={t.id} href={`/expert-templates/${t.id}`}>
-                <Card className="hover:shadow-md transition-shadow cursor-pointer overflow-hidden h-full" data-testid={`storefront-template-${t.id}`}>
-                  {t.coverImage && (
-                    <img src={t.coverImage} alt={t.title} className="h-32 w-full object-cover" />
-                  )}
-                  <CardContent className="p-4">
-                    <div className="flex items-start justify-between gap-2">
-                      <h3 className="font-medium">{t.title}</h3>
-                      <span className="font-semibold whitespace-nowrap">${Number(t.price).toFixed(0)}</span>
-                    </div>
-                    <p className="text-sm text-muted-foreground mt-1 flex items-center gap-1">
-                      <MapPin className="w-3.5 h-3.5" />
-                      {t.destination}
-                    </p>
-                  </CardContent>
-                </Card>
-              </Link>
-            ))}
-          </div>
-        </section>
-      )}
+      <div className="max-w-5xl mx-auto px-4">
+        {/* Identity hero: overlapping avatar + name/handle/verified/location/rating + actions */}
+        <div className="-mt-12 sm:-mt-14 flex flex-wrap items-end gap-5 pb-2">
+          {earner.profileImageUrl ? (
+            <img
+              src={earner.profileImageUrl}
+              alt={earner.name}
+              className="w-24 h-24 sm:w-28 sm:h-28 rounded-full object-cover border-4 border-background shadow-md shrink-0"
+            />
+          ) : (
+            <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full border-4 border-background shadow-md shrink-0 flex items-center justify-center text-3xl font-bold text-white bg-gradient-to-br from-primary/60 to-primary">
+              {initial}
+            </div>
+          )}
 
-      {/* Lane 3: Ready Made Trips */}
-      {readyMade.length > 0 && (
-        <section>
-          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-primary" />
-            Ready Made Trips
-          </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {readyMade.map((r) => (
-              <Link key={r.id} href={`/ready-made/${r.id}`}>
-                <Card className="hover:shadow-md transition-shadow cursor-pointer overflow-hidden h-full" data-testid={`storefront-readymade-${r.id}`}>
-                  {r.heroImageUrl && (
-                    <img src={r.heroImageUrl} alt={r.title} className="h-32 w-full object-cover" />
-                  )}
-                  <CardContent className="p-4">
-                    <div className="flex items-start justify-between gap-2">
-                      <h3 className="font-medium">{r.title}</h3>
-                      {typeof r.priceCents === "number" && (
-                        <span className="font-semibold whitespace-nowrap">
-                          ${(r.priceCents / 100).toFixed(0)}
-                        </span>
-                      )}
-                    </div>
-                  </CardContent>
-                </Card>
-              </Link>
-            ))}
+          <div className="flex-1 min-w-[260px] pb-1">
+            <h1 className="text-2xl sm:text-3xl font-bold" data-testid="storefront-name">{earner.name}</h1>
+            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+              <span>@{earner.handle}</span>
+              {earner.verified && (
+                <span
+                  className="inline-flex items-center gap-1 rounded-full border border-primary/20 bg-primary/10 px-2.5 py-0.5 text-xs font-semibold text-primary"
+                  data-testid="badge-storefront-verified"
+                  title="This earner's identity has been verified"
+                >
+                  <ShieldCheck className="w-3 h-3" />
+                  Identity verified
+                </span>
+              )}
+              {earner.location && (
+                <span className="inline-flex items-center gap-1" data-testid="storefront-location">
+                  <MapPin className="w-3.5 h-3.5" />
+                  {earner.location}
+                </span>
+              )}
+              <span data-testid="storefront-earner-rating">
+                <RatingLine rating={earner.averageRating} count={earner.reviewCount} />
+              </span>
+            </div>
+            {earner.bio && (
+              <p className="mt-2 text-sm text-foreground max-w-2xl">{earner.bio}</p>
+            )}
           </div>
-        </section>
-      )}
 
-      <footer className="pt-6 border-t text-center text-xs text-muted-foreground">
-        Bookings and payments are secured by Traveloure. Reviews are verified purchases.
-      </footer>
+          <div className="flex gap-2 pb-1 shrink-0">
+            {!isOwnStorefront && (
+              <Button onClick={messageEarner} data-testid="button-message-storefront">
+                <MessageCircle className="w-4 h-4 mr-1.5" />
+                Message @{earner.handle}
+              </Button>
+            )}
+            <Button variant="outline" onClick={copyLink} data-testid="button-share-storefront">
+              <Share2 className="w-4 h-4 mr-1.5" />
+              Share
+            </Button>
+          </div>
+        </div>
+
+        {/* Fact strip — every number real: sum of the three lanes, real review count, real join year. */}
+        <div className="mt-6 flex flex-wrap gap-8 rounded-xl border bg-card px-6 py-4" data-testid="storefront-facts">
+          <div>
+            <div className="text-xl font-bold tabular-nums" data-testid="fact-offerings">{earner.offeringsCount}</div>
+            <div className="text-xs uppercase tracking-wide text-muted-foreground mt-0.5">Offerings</div>
+          </div>
+          <div>
+            <div className="text-xl font-bold tabular-nums" data-testid="fact-reviews">{earner.reviewCount}</div>
+            <div className="text-xs uppercase tracking-wide text-muted-foreground mt-0.5">Reviews</div>
+          </div>
+          {memberSinceYear && (
+            <div>
+              <div className="text-xl font-bold tabular-nums" data-testid="fact-member-since">{memberSinceYear}</div>
+              <div className="text-xs uppercase tracking-wide text-muted-foreground mt-0.5">On Traveloure since</div>
+            </div>
+          )}
+        </div>
+
+        {/* Lane 1: services — book directly */}
+        {services.length > 0 && (
+          <section className="mt-12" data-testid="storefront-lane-services">
+            <LaneHeader eyebrow="Book directly" title="Services" count={services.length} />
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {services.map((s) => {
+                const chips = s.deliveryMethod && DELIVERY_LABELS[s.deliveryMethod]
+                  ? [DELIVERY_LABELS[s.deliveryMethod]]
+                  : [];
+                const unit = priceUnitLabel(s.priceType, s.pricingUnit);
+                const price = s.price ? `$${Number(s.price).toFixed(0)}` : "Custom quote";
+                const cta = s.pricingUnit === "per_night" ? "Check dates →" : "View & book →";
+                return (
+                  <OfferingCard
+                    key={s.id}
+                    href={`/services/${s.id}`}
+                    testId={`storefront-service-${s.id}`}
+                    image={s.serviceImage}
+                    title={s.serviceName}
+                    chips={chips}
+                    ratingSlot={<RatingLine rating={s.averageRating} count={s.reviewCount} />}
+                    price={price}
+                    unit={s.price ? unit : null}
+                    cta={cta}
+                  />
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        {/* Lane 2: itinerary templates (seller-side vocabulary; §10) */}
+        {templates.length > 0 && (
+          <section className="mt-12" data-testid="storefront-lane-templates">
+            <LaneHeader eyebrow="Guided itineraries" title="Itinerary Templates" count={templates.length} />
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {templates.map((t) => {
+                const chips = [
+                  ...(t.duration ? [`${t.duration} day${t.duration === 1 ? "" : "s"}`] : []),
+                  t.destination,
+                ];
+                return (
+                  <OfferingCard
+                    key={t.id}
+                    href={`/expert-templates/${t.id}`}
+                    testId={`storefront-template-${t.id}`}
+                    image={t.coverImage}
+                    title={t.title}
+                    chips={chips}
+                    ratingSlot={<RatingLine rating={t.averageRating} count={t.reviewCount} />}
+                    price={`$${Number(t.price).toFixed(0)}`}
+                    cta="View template →"
+                  />
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        {/* Lane 3: Ready Made Trips — buy the whole plan (§10/§17 store channel) */}
+        {readyMade.length > 0 && (
+          <section className="mt-12" data-testid="storefront-lane-readymade">
+            <LaneHeader eyebrow="Buy the whole plan" title="Ready Made Trips" count={readyMade.length} />
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {readyMade.map((r) => {
+                const chips = [
+                  ...(r.durationDays ? [`${r.durationDays} day${r.durationDays === 1 ? "" : "s"}`] : []),
+                  ...(r.insideCounts?.items ? [`${r.insideCounts.items} stops`] : []),
+                ];
+                return (
+                  <OfferingCard
+                    key={r.id}
+                    href={`/ready-made/${r.id}`}
+                    testId={`storefront-readymade-${r.id}`}
+                    image={r.heroImageUrl}
+                    title={r.title}
+                    chips={chips}
+                    // Ready Made Trips have no review mechanism yet (§13) — no rating line,
+                    // never a perpetual fake "New" badge for a lane that can't earn reviews.
+                    price={typeof r.priceCents === "number" ? `$${(r.priceCents / 100).toFixed(0)}` : "Contact for price"}
+                    cta="Preview trip →"
+                  />
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        {/* "Not sure what you're looking for?" message band — same wiring as the hero CTA. */}
+        {!isOwnStorefront && (
+          <div className="mt-14 flex flex-wrap items-center gap-5 rounded-xl border bg-card p-6" data-testid="storefront-message-band">
+            {earner.profileImageUrl ? (
+              <img src={earner.profileImageUrl} alt={earner.name} className="w-14 h-14 rounded-full object-cover shrink-0" />
+            ) : (
+              <div className="w-14 h-14 rounded-full shrink-0 flex items-center justify-center text-lg font-bold text-white bg-gradient-to-br from-primary/60 to-primary">
+                {initial}
+              </div>
+            )}
+            <div className="flex-1 min-w-[240px]">
+              <h3 className="font-bold">Not sure what you're looking for?</h3>
+              <p className="mt-1 text-sm text-muted-foreground max-w-xl">
+                Tell {earner.name.split(" ")[0]} what you're planning — a private tour, a special
+                occasion, something seasonal — and get pointed to the right offering, or something custom.
+              </p>
+            </div>
+            <Button onClick={messageEarner} data-testid="button-message-band">
+              <MessageCircle className="w-4 h-4 mr-1.5" />
+              Start a conversation
+            </Button>
+          </div>
+        )}
+
+        {/* Trust strip — three real, general platform facts (no response-time/fabricated stats). */}
+        <div
+          className="mt-8 mb-10 grid gap-4 sm:grid-cols-3 rounded-md border-l-4 border-amber-400 dark:border-amber-600 bg-amber-50 dark:bg-amber-950/30 p-5 text-sm text-amber-900 dark:text-amber-200"
+          data-testid="storefront-trust-strip"
+        >
+          <div className="flex gap-2">
+            <ShieldAlert className="w-4 h-4 mt-0.5 shrink-0" />
+            <div>
+              <strong className="block text-xs font-semibold mb-0.5">Payment held until your booking completes</strong>
+              Funds are secured through Traveloure and release to {earner.name.split(" ")[0]} only after your experience.
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <BadgeCheck className="w-4 h-4 mt-0.5 shrink-0" />
+            <div>
+              <strong className="block text-xs font-semibold mb-0.5">Every listing is admin-reviewed</strong>
+              Offerings appear here only after Traveloure approves them.
+            </div>
+          </div>
+          <div className="flex gap-2">
+            <Handshake className="w-4 h-4 mt-0.5 shrink-0" />
+            <div>
+              <strong className="block text-xs font-semibold mb-0.5">Book and message in one place</strong>
+              Your conversation, booking, and receipts stay on Traveloure.
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
