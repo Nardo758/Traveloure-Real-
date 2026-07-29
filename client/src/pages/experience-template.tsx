@@ -755,9 +755,17 @@ export default function ExperienceTemplatePage() {
     itemCount: number;
   }
 
+  // Single source of truth (§13, matching the PR #336 fix in cart.tsx): this is the
+  // SAME unfiltered GET /api/cart query, under the identical react-query key, that
+  // TripStrip's cart chip and cart.tsx read. Previously this queried
+  // ["/api/cart", { experience: slug }] → server-filtered `GET /api/cart?experience=
+  // <slug>`, which silently drops any cart item whose stored `experienceSlug` doesn't
+  // match this page's slug (including every legacy "general"-stamped row and any item
+  // added while browsing a different experience) — the TripStrip chip showed "1 · $300"
+  // while this page's own cart summary showed 0/empty. Dropping the filter makes this
+  // page's cart state agree with every other surface unconditionally.
   const { data: serverCart, refetch: refetchCart } = useQuery<ServerCartData>({
-    queryKey: ["/api/cart", { experience: slug }],
-    enabled: !!slug,
+    queryKey: ["/api/cart"],
   });
 
   const { data: allUserExperiences } = useQuery<UserExperience[]>({
@@ -1496,7 +1504,6 @@ export default function ExperienceTemplatePage() {
     if (existing && existing.cartItemId) {
       try {
         await apiRequest("PATCH", `/api/cart/${existing.cartItemId}`, { quantity: existing.quantity + 1 });
-        queryClient.invalidateQueries({ queryKey: ["/api/cart", slug] });
         queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
         toast({ title: "Cart updated", description: "Item quantity increased" });
       } catch (error) {
@@ -1511,7 +1518,6 @@ export default function ExperienceTemplatePage() {
           payload.serviceId = item.id.startsWith("service-") ? item.id.replace("service-", "") : item.id;
         }
         await apiRequest("POST", "/api/cart", payload);
-        queryClient.invalidateQueries({ queryKey: ["/api/cart", slug] });
         queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
         toast({ title: "Added to cart", description: `${item.name} added to your cart` });
       } catch (error) {
@@ -1542,7 +1548,6 @@ export default function ExperienceTemplatePage() {
     if (item?.cartItemId) {
       try {
         await apiRequest("DELETE", `/api/cart/${item.cartItemId}`);
-        queryClient.invalidateQueries({ queryKey: ["/api/cart", slug] });
         queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
       } catch (error) {
         toast({ variant: "destructive", title: "Failed to remove from cart" });
@@ -1564,7 +1569,6 @@ export default function ExperienceTemplatePage() {
     if (item?.cartItemId) {
       try {
         await apiRequest("PATCH", `/api/cart/${item.cartItemId}`, { quantity: clampedQty });
-        queryClient.invalidateQueries({ queryKey: ["/api/cart", slug] });
         queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
       } catch (error) {
         toast({ variant: "destructive", title: "Failed to update quantity" });
