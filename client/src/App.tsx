@@ -115,7 +115,6 @@ const ExperienceTemplatePage = lazy(() => import("@/pages/experience-template"))
 const ArchitectureDiagram = lazy(() => import("@/pages/architecture-diagram"));
 const ExperiencesPage = lazy(() => import("@/pages/experiences"));
 const DealsPage = lazy(() => import("@/pages/deals"));
-const PaymentPage = lazy(() => import("@/pages/payment"));
 const TravelExpertsPage = lazy(() => import("@/pages/travel-experts"));
 const StartEventsPage = lazy(() => import("@/pages/start-events"));
 const ServicesProviderPage = lazy(() => import("@/pages/services-provider"));
@@ -451,8 +450,14 @@ function Router() {
       <Route path="/quick-start">
         {() => <Layout><ProtectedRoute component={QuickStartItinerary} /></Layout>}
       </Route>
+      {/* /payment was a stale, orphaned checkout page (no in-app Link/setLocation targets
+          it) that hard-crashed on the current object-shaped GET /api/cart response —
+          `(cartData || []).map(...)` on `{items, subtotal, total, itemCount}` throws.
+          The real checkout lives in cart.tsx's own payment step; redirect here mirrors
+          the /checkout redirect above so the route still resolves (app-routes CI gate
+          visits every registered route) instead of crashing. */}
       <Route path="/payment">
-        <PaymentPage />
+        <Redirect to="/cart" />
       </Route>
       <Route path="/booking-demo">
         {process.env.NODE_ENV === "development" ? <BookingDemo /> : <Redirect to="/" />}

@@ -23,6 +23,10 @@ interface Notification {
   type?: string;
   createdAt?: string;
   tripId?: string | null;
+  // Server field (shared/schema.ts `is_read` → `isRead`). `read` does not exist on the
+  // API response — normalized to it below, mirroring notifications.tsx:109's
+  // `read: n.isRead ?? false`, so "actions needed" and mark-as-read agree everywhere.
+  isRead?: boolean;
   read?: boolean;
 }
 
@@ -93,7 +97,11 @@ export default function Dashboard() {
     );
   }
 
-  const notifications = notificationsData ?? [];
+  // Normalize the server's `isRead` → `read`, the same one-liner notifications.tsx:109
+  // already uses — without it, `n.read` is undefined for every row (field-name
+  // mismatch) and every notification counts as unread forever, even after being
+  // marked read via the bell popover or the /notifications page.
+  const notifications = (notificationsData ?? []).map(n => ({ ...n, read: n.isRead ?? false }));
   const actionsNeeded = notifications.filter(
     n => !n.read && (n.type === "urgent" || n.type === "action")
   ).length;

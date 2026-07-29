@@ -8168,7 +8168,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   app.post("/api/trips/:tripId/activate-transport", isAuthenticated, async (req, res) => {
     try {
       const { tripId } = req.params;
-      const userId = (req as any).user?.id;
+      // Email/password sessions carry the id at claims.sub, not .id — a bare .id read
+      // made this endpoint 404 for every standard account (plancard audit F2 class).
+      const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
 
       const [trip] = await db
         .select()
