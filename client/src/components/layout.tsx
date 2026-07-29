@@ -758,7 +758,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
             {/* Footer columns */}
             {footerSectionsConfig.map((section) => (
               <div key={section.title}>
-                <h4 className="font-semibold mb-4 text-foreground text-sm uppercase tracking-wider">{section.title}</h4>
+                <h3 className="font-semibold mb-4 text-foreground text-sm uppercase tracking-wider">{section.title}</h3>
                 <ul className="space-y-3 text-sm text-muted-foreground">
                   {section.links.map((link) => (
                     <li key={link.href}>
