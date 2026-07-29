@@ -440,14 +440,32 @@ export default function CartPage() {
     }
   }, [user?.preferredCurrency]);
 
+  // Single source of truth (§13): this is the SAME unfiltered GET /api/cart query,
+  // under the identical react-query key, that TripStrip's cart chip reads — so "Your
+  // Cart" can never show fewer items/less money than the chip that links here.
+  //
+  // Previously this fetched `/api/cart?experience=${experienceSlug}`, server-side
+  // filtered to items tagged with the CURRENT TripContext.experienceSlug (+ unslugged
+  // items). TripContext.experienceSlug is sticky (sessionStorage, mirrored to the
+  // server via trip-context.ts) and drifts independently of what's actually in the
+  // cart: browsing a second, unrelated experience template after adding real items
+  // updates the context's slug without touching those items' stored slug, so the
+  // filtered fetch silently excluded them — "Your cart is empty" here while the chip
+  // (which always reads the full, unfiltered cart) correctly showed a nonzero count
+  // and total. Root-caused + reproduced against a real cart (see the trip-strip
+  // divergence writeup); the matching server-side defect — unslugged adds were being
+  // stamped with the literal string "general" instead of left NULL, defeating
+  // storage.getCartItems()'s own "unslugged items belong in every experience view"
+  // fallback — is fixed in routes.ts POST /api/cart. Fixing the query here is the
+  // durable half: it can't diverge from the chip regardless of what any experience
+  // slug (past, present, or a poisoned trip_contexts row) says.
   const { data: cart, isLoading } = useQuery<CartData>({
-    queryKey: ["/api/cart", experienceSlug],
+    queryKey: ["/api/cart"],
     queryFn: async () => {
-      const url = experienceSlug ? `/api/cart?experience=${experienceSlug}` : "/api/cart";
       const guestId = localStorage.getItem("traveloure_guest_session");
       const headers: Record<string, string> = {};
       if (guestId) headers["X-Guest-Session"] = guestId;
-      const res = await fetch(url, { credentials: "include", headers });
+      const res = await fetch("/api/cart", { credentials: "include", headers });
       if (!res.ok) throw new Error("Failed to fetch cart");
       return res.json();
     },
