@@ -24,7 +24,7 @@ import fs from "fs";
 import path from "path";
 import { eq, and, sql } from "drizzle-orm";
 import { db } from "../db";
-import { users, providerServices, expertTemplates, readyMadeTrips, localExpertForms, serviceProviderForms } from "@shared/schema";
+import { users, providerServices, expertTemplates, readyMadeTrips, localExpertForms, serviceProviderForms, expertNeighborhoods, cityNeighborhoods } from "@shared/schema";
 import { EARNER_ROLES as CANONICAL_EARNER_ROLES, isEarnerRole, isProviderRole } from "@shared/roles";
 import { planTypeLabel } from "@shared/ready-made-plan-types";
 import { transformDevHtml } from "../vite-dev-html";
@@ -144,6 +144,33 @@ async function isOwnerIdentityVerified(userId: string): Promise<boolean> {
   return providerForm?.status === "verified";
 }
 
+// Storefront identity-hero location (§13-honest): prefers the admin-managed neighborhood
+// assignment (expertNeighborhoods → city_neighborhoods — the Kyoto lead-vetting table, isLead
+// first), falling back to the local-expert onboarding form's own city/country.
+// service_provider_forms carries no clean city column (only free-text `address`), so a
+// provider with no local-expert form returns null and the client simply omits the location
+// line — no fabricated/derived location is ever shown.
+async function resolveEarnerLocation(userId: string): Promise<string | null> {
+  const [neighborhood] = await db
+    .select({ name: cityNeighborhoods.name, city: cityNeighborhoods.city })
+    .from(expertNeighborhoods)
+    .innerJoin(cityNeighborhoods, eq(expertNeighborhoods.neighborhoodId, cityNeighborhoods.id))
+    .where(eq(expertNeighborhoods.expertId, userId))
+    .orderBy(sql`${expertNeighborhoods.isLead} DESC`, expertNeighborhoods.sortOrder)
+    .limit(1);
+  if (neighborhood) return `${neighborhood.name}, ${neighborhood.city}`;
+
+  const [localForm] = await db
+    .select({ city: localExpertForms.city, country: localExpertForms.country })
+    .from(localExpertForms)
+    .where(eq(localExpertForms.userId, userId))
+    .limit(1);
+  if (localForm?.city) {
+    return localForm.country ? `${localForm.city}, ${localForm.country}` : localForm.city;
+  }
+  return null;
+}
+
 // ─── Settings persistence (backoffice B6, migration 150) ────────────────────────────────────
 //
 // users.preferences is a namespaced jsonb; the Settings console owns ONLY its `settings` key.
@@ -228,6 +255,67 @@ router.patch("/api/me/preferences", isAuthenticated, async (req: any, res) => {
   } catch (err) {
     console.error("[me/preferences] write error:", err);
     res.status(500).json({ message: "Failed to save preferences" });
+  }
+});
+
+// ─── Storefront cover image (identity-hero rebuild) ──────────────────────────────────────────
+//
+// users.preferences is a namespaced jsonb; this owns ONLY its `storefront` key — the exact
+// shallow-merge pattern ea.routes.ts uses for its `ea` sub-key (never the unrelated `settings`
+// key /api/me/preferences above owns). §14: user from session only. No new column/migration —
+// the cover image is optional earner-chosen decoration; gradient fallback renders when unset.
+
+const httpsUrlSchema = z
+  .string()
+  .trim()
+  .max(2048, "Cover image URL is too long")
+  .refine((v) => {
+    try {
+      return new URL(v).protocol === "https:";
+    } catch {
+      return false;
+    }
+  }, "Cover image URL must be a valid https URL");
+
+const storefrontPrefsPatchSchema = z.object({
+  // Present + string → set; present + null → clear; absent → leave untouched.
+  coverImageUrl: httpsUrlSchema.nullable().optional(),
+}).strict();
+
+router.patch("/api/me/storefront", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub ?? req.user?.id;
+    if (!userId) return res.status(401).json({ message: "Authentication required" });
+
+    const parsed = storefrontPrefsPatchSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ message: "Invalid storefront settings", errors: parsed.error.flatten() });
+    }
+
+    const [me] = await db
+      .select({ preferences: users.preferences })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    if (!me) return res.status(401).json({ message: "Authentication required" });
+
+    const current = (me.preferences as any) ?? {};
+    const currentStorefront = current.storefront ?? {};
+    const patch = parsed.data;
+    const nextStorefront = {
+      ...currentStorefront,
+      ...(patch.coverImageUrl !== undefined ? { coverImageUrl: patch.coverImageUrl } : {}),
+    };
+
+    await db
+      .update(users)
+      .set({ preferences: { ...current, storefront: nextStorefront } })
+      .where(eq(users.id, userId));
+
+    res.json(nextStorefront);
+  } catch (err) {
+    console.error("[me/storefront] write error:", err);
+    res.status(500).json({ message: "Failed to save storefront settings" });
   }
 });
 
@@ -342,6 +430,8 @@ async function loadStorefront(handle: string) {
       profileImageUrl: users.profileImageUrl,
       role: users.role,
       handle: users.handle,
+      createdAt: users.createdAt,
+      preferences: users.preferences,
     })
     .from(users)
     .where(and(eq(users.handle, normalized), eq(users.isDeleted, false), eq(users.isSuspended, false)))
@@ -364,6 +454,9 @@ async function loadStorefront(handle: string) {
       serviceName: providerServices.serviceName,
       price: providerServices.price,
       priceType: providerServices.priceType,
+      pricingUnit: providerServices.pricingUnit,
+      deliveryMethod: providerServices.deliveryMethod,
+      serviceImage: providerServices.serviceImage,
       averageRating: providerServices.averageRating,
       reviewCount: providerServices.reviewCount,
     })
@@ -385,6 +478,9 @@ async function loadStorefront(handle: string) {
       destination: expertTemplates.destination,
       price: expertTemplates.price,
       coverImage: expertTemplates.coverImage,
+      duration: expertTemplates.duration,
+      averageRating: expertTemplates.averageRating,
+      reviewCount: expertTemplates.reviewCount,
     })
     .from(expertTemplates)
     .where(
@@ -402,6 +498,8 @@ async function loadStorefront(handle: string) {
       title: readyMadeTrips.title,
       heroImageUrl: readyMadeTrips.heroImageUrl,
       priceCents: readyMadeTrips.priceCents,
+      durationDays: readyMadeTrips.durationDays,
+      insideCounts: readyMadeTrips.insideCounts,
     })
     .from(readyMadeTrips)
     .where(and(eq(readyMadeTrips.authorId, owner.id), eq(readyMadeTrips.status, "approved")));
@@ -428,6 +526,24 @@ async function loadStorefront(handle: string) {
   const earnerAverageRating =
     totalReviews > 0 ? Math.round((weightedSum / totalReviews) * 100) / 100 : null;
 
+  // Identity-hero fields (§13-honest, every value maps to a real row):
+  //  - verified: the SAME identityVerificationStatus==='verified' signal already used for the
+  //    "ID Verified" badge on /experts/:id and /services/:id (a completed Stripe Identity
+  //    verification session — flips only via the identity webhook, never self-reported) and
+  //    already computed above by isOwnerIdentityVerified for the V.1 gate. Reused, not
+  //    reinvented, so the pill and the gate can never disagree.
+  //  - location: resolveEarnerLocation above; null when no real field resolves — omitted
+  //    client-side, never a guessed/derived location.
+  //  - memberSince: users.createdAt, verbatim.
+  //  - coverImageUrl: the earner's own storefront.coverImageUrl preference (see PATCH
+  //    /api/me/storefront); null renders the gradient fallback.
+  const [verified, location] = await Promise.all([
+    isOwnerIdentityVerified(owner.id),
+    resolveEarnerLocation(owner.id),
+  ]);
+  const coverImageUrl = ((owner.preferences as any)?.storefront?.coverImageUrl as string | undefined) ?? null;
+  const memberSince = owner.createdAt ? owner.createdAt.toISOString() : null;
+
   return {
     earner: {
       // Not sensitive — user ids are already public on /experts/:id and similar surfaces.
@@ -442,6 +558,11 @@ async function loadStorefront(handle: string) {
       handle: owner.handle,
       averageRating: earnerAverageRating,
       reviewCount: totalReviews,
+      verified,
+      location,
+      memberSince,
+      coverImageUrl,
+      offeringsCount: total,
     },
     services,
     templates,
@@ -474,6 +595,7 @@ router.get("/p/:handle", async (req, res, next) => {
       `${count} bookable experience${count === 1 ? "" : "s"} from ${data.earner.name} on Traveloure. Secure checkout, verified reviews.`;
     const shareUrl = `${req.protocol}://${req.get("host")}/p/${data.earner.handle}`;
     const ogImage =
+      data.earner.coverImageUrl ??
       data.readyMade[0]?.heroImageUrl ??
       data.templates[0]?.coverImage ??
       data.earner.profileImageUrl ??
