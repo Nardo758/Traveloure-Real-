@@ -1318,8 +1318,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   app.post(api.chats.create.path, isAuthenticated, async (req, res) => {
      try {
       const input = api.chats.create.input.parse(req.body);
-      // For MVP, just create it directly
-      const chat = await storage.createChat(input);
+      // Sender is always the session user — a body-sent senderId would let any
+      // authenticated user write messages as someone else (§14's identity rule,
+      // applied to chat integrity).
+      const sessionUserId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const chat = await storage.createChat({ ...input, senderId: sessionUserId });
       res.status(201).json(chat);
     } catch (err) {
       if (err instanceof z.ZodError) {

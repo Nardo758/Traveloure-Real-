@@ -30,6 +30,22 @@ interface AskExpertParams {
   subject?: string | null;
   /** A known relevant expert (e.g. the neighborhood's local expert) — skips resolution. */
   expertId?: string | null;
+  /**
+   * Where to send the caller back to after signing in (e.g. the storefront page they came
+   * from). Passed straight through to the sign-in modal's `returnTo`; omitted callers keep
+   * today's behavior (post-auth lands on the role home page).
+   */
+  returnTo?: string | null;
+  /**
+   * Display fallback for chat.tsx's ?expertId lookup. `/api/experts/:id` only resolves
+   * expert-family roles (storage.getExpertsWithProfiles) — a provider (service_provider)
+   * target 404s there. When the caller already has the target's name/avatar (e.g. the
+   * storefront page, which just loaded them), pass them through so chat.tsx can render a
+   * working thread without a second, role-restricted lookup. Ignored (harmless) when the
+   * target does resolve via /api/experts/:id.
+   */
+  fallbackName?: string | null;
+  fallbackAvatar?: string | null;
 }
 
 async function resolveExpertByCity(city: string): Promise<string | null> {
@@ -56,10 +72,10 @@ export function useAskExpert() {
   const [, navigate] = useLocation();
 
   return useCallback(
-    async ({ city, subject, expertId }: AskExpertParams) => {
+    async ({ city, subject, expertId, returnTo, fallbackName, fallbackAvatar }: AskExpertParams) => {
       // Chat is auth-gated — sign in first rather than bounce to "/".
       if (!user) {
-        openSignInModal();
+        openSignInModal(returnTo ? { returnTo } : undefined);
         return;
       }
 
@@ -70,7 +86,10 @@ export function useAskExpert() {
       }
 
       if (id) {
-        navigate(`/chat?expertId=${encodeURIComponent(id)}${aboutQ}`);
+        const fallbackQ =
+          (fallbackName ? `&name=${encodeURIComponent(fallbackName)}` : "") +
+          (fallbackAvatar ? `&avatar=${encodeURIComponent(fallbackAvatar)}` : "");
+        navigate(`/chat?expertId=${encodeURIComponent(id)}${aboutQ}${fallbackQ}`);
         return;
       }
 
