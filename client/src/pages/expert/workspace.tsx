@@ -660,6 +660,12 @@ export default function ExpertWorkspace() {
   // below that return crashes with "Rendered more hooks than during the previous render"
   // when navigating landing → trip. The rendered range merges this with the real max day.
   const [extraMaxDay, setExtraMaxDay] = useState<number>(1);
+  // Trip-scoped UI state must reset when navigating between trips in the same mounted
+  // component instance, or Trip B inherits Trip A's expanded day range / focused day.
+  useEffect(() => {
+    setExtraMaxDay(1);
+    setFocusDay(1);
+  }, [tripId]);
 
   // Unowned-item fix: pulls active affiliate partners from the admin-editable
   // affiliate_partners table (LB-P4a made that table the source of truth).
@@ -1024,7 +1030,14 @@ export default function ExpertWorkspace() {
   const destination = (trip as any)?.destination || "";
   const { data: geocodeData } = useQuery<{ lat: number; lng: number }>({
     queryKey: ["/api/geocode", destination],
-    queryFn: () => fetch(`/api/geocode?address=${encodeURIComponent(destination)}`).then(r => r.json()),
+    queryFn: async () => {
+      // 404/errors return a JSON error body — must NOT flow into geocodeData, or the
+      // map receives a non-LatLng object as `center` and vis.gl throws obj.toJSON().
+      const res = await fetch(`/api/geocode?address=${encodeURIComponent(destination)}`);
+      if (!res.ok) return null;
+      const j = await res.json();
+      return Number.isFinite(j?.lat) && Number.isFinite(j?.lng) ? j : null;
+    },
     enabled: !!destination && rightTab === "add" && addSource === "platform",
     staleTime: Infinity,
   });
@@ -1044,7 +1057,9 @@ export default function ExpertWorkspace() {
     staleTime: 2 * 60 * 1000,
   });
   const searchResults = searchData?.results || [];
-  const mapCenter = geocodeData ?? { lat: 35.6762, lng: 139.6503 };
+  const mapCenter = (Number.isFinite((geocodeData as any)?.lat) && Number.isFinite((geocodeData as any)?.lng))
+    ? geocodeData!
+    : { lat: 35.6762, lng: 139.6503 };
 
   // ── Browse: add result to itinerary (day-aware — targets the focused day) ──
   const addFromSearchMutation = useMutation({
