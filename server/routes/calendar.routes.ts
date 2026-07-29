@@ -105,7 +105,7 @@ router.get("/api/me/calendar", isAuthenticated, async (req, res) => {
     const isProviderOnly = isProviderRole(role) && !isExpert;
     const hrefs = {
       slots: isProviderOnly ? "/provider/services" : "/expert/catalog",
-      inbox: isProviderOnly ? "/provider/bookings" : "/expert/inbox",
+      inbox: isProviderOnly ? "/provider/inbox" : "/expert/inbox",
       build: (tripId: string | null | undefined) =>
         tripId ? `/expert/workspace/${tripId}` : "/expert/workspace",
     };
