@@ -178,6 +178,10 @@ export interface PlanCardActivity {
   expertNote?: string;
   /** Provider-canonical Maps link (from googlePlaceId); preferred for nav. */
   mapsUrl?: string;
+  /** vendor_contracts.vendor_phone via itinerary_items.vendorContractId — null when the item has no vendor contract. */
+  vendorPhone?: string | null;
+  /** itinerary_items.confirmationNumber (falls back to bookingReference) — null until a real booking exists. */
+  confirmationNumber?: string | null;
 }
 
 export interface PlanCardTransport {
@@ -313,6 +317,13 @@ export interface PlanCardProps {
   role?: PlanCardRole;
   stage?: PlanCardStage;
   days?: PlanCardDay[];
+  /**
+   * Zero-based day index to open the card on (e.g. the page's own "today" detection).
+   * Seeds the card's internal `selectedDay` state once on mount; the card still owns
+   * day-switching after that. Omitted/out-of-range → falls back to day 0 (unchanged
+   * default behavior).
+   */
+  initialSelectedDay?: number;
   /**
    * True when the card renders INSIDE the expert Workstation builder (decision-maker,
    * Jul 27 2026): suppresses the traveler-facing chrome that duplicates or contradicts

@@ -2811,6 +2811,14 @@ router.post("/api/expert-review/:shareToken/submit", async (req, res) => {
         const diffSummary = hasDiffs
           ? ` (${Object.keys(expertDiff.activityDiffs).length} activity edits, ${Object.keys(expertDiff.transportDiffs).length} transport changes)`
           : "";
+        // GAP 4 fix (expert-loop object-flow audit, Jul 30 2026): this notification previously
+        // carried no `data` at all, so the notifications-page renderer (which only shows an
+        // action button when `n.data?.tripId` is truthy — client/src/pages/notifications.tsx)
+        // fell through to nothing clickable. The real review/accept UI lives at the token-scoped
+        // `/itinerary-view/:token` route (NOT `/trip/:id` — this is a variant/share-token flow,
+        // not always trip-backed), so `workspacePath` points there; `tripId` is set to the real
+        // trip id when the comparison has one, else the variant id (still a truthy identifier —
+        // the renderer only gates visibility on it, the actual link comes from `workspacePath`).
         await storage.createNotification({
           userId: comparison.userId,
           type: "expert_suggestion",
@@ -2818,7 +2826,11 @@ router.post("/api/expert-review/:shareToken/submit", async (req, res) => {
           message: `An expert reviewed your "${variant.name}" itinerary for ${comparison.destination || "your trip"} and sent suggestions${diffSummary}: ${notes.substring(0, 150)}${notes.length > 150 ? "..." : ""}`,
           relatedId: shared.variantId,
           relatedType: "itinerary_variant",
-        });
+          data: {
+            tripId: comparison.tripId || shared.variantId,
+            workspacePath: `/itinerary-view/${shareToken}`,
+          },
+        } as any);
       }
 
       res.json({ success: true, message: "Edits submitted and traveler notified" });

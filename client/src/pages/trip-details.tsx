@@ -108,12 +108,12 @@ export default function TripDetails() {
   const initialTab = searchParams.get("tab") || "itinerary";
   const deepSection = searchParams.get("section");
   const justOptimized = searchParams.get("optimized") === "1";
-  const { data: trip, isLoading, isError: tripError } = useTrip(id || "");
+  const { data: trip, isLoading, isError: tripError, refetch: refetchTrip } = useTrip(id || "");
   // The Generate/Regenerate buttons previously called useOptimizeTrip → the
   // nonexistent POST /api/trips/:id/optimize (Vite catch-all → error). Repointed at
   // the live generate-itinerary endpoint so a trip with no plan can actually self-generate.
   const generatePlan = useGenerateItinerary();
-  const { data: generatedItinerary, isLoading: itineraryLoading } = useGeneratedItinerary(id || "");
+  const { data: generatedItinerary, isLoading: itineraryLoading, isError: itineraryError, refetch: refetchItinerary } = useGeneratedItinerary(id || "");
   const { toast } = useToast();
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState(initialTab);
@@ -360,7 +360,26 @@ export default function TripDetails() {
     );
   }
 
-  if (tripError || !trip) {
+  // Mobile-lens audit #6: useTrip resolves a real 404 as `data: null` (no error) — only a
+  // genuine fetch/network/server failure sets isError. So this branch is reached ONLY on a
+  // failed request, and stays inside this page (never the app's auth-gate fall-through to
+  // the marketing homepage + "Sign in to continue" modal the audit reproduced). "Trip not
+  // found" below is unchanged for the real 404 case.
+  if (tripError) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4 px-6 text-center" data-testid="trip-network-error">
+        <h2 className="text-2xl font-bold">Can't reach Traveloure</h2>
+        <p className="text-muted-foreground max-w-sm">
+          We couldn't load this trip. Check your connection and try again.
+        </p>
+        <Button onClick={() => refetchTrip()} data-testid="button-retry-trip-fetch">
+          Retry
+        </Button>
+      </div>
+    );
+  }
+
+  if (!trip) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center">
         <h2 className="text-2xl font-bold mb-4">Trip not found</h2>
@@ -494,16 +513,18 @@ export default function TripDetails() {
             <Tabs value={activeTab} onValueChange={setActiveTab}>
               <div className="border-b border-border px-6 pt-4">
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
+                  {/* Mobile-lens audit #7: min-h-11 keeps each trigger's touch target at the
+                      ~44px guideline via padding growth only — labels/icons unchanged. */}
                   <TabsList className="bg-muted/50">
-                    <TabsTrigger value="itinerary" data-testid="tab-itinerary">Itinerary</TabsTrigger>
-                    <TabsTrigger value="bookings" data-testid="tab-bookings">Bookings</TabsTrigger>
-                    <TabsTrigger value="expert" data-testid="tab-expert">Ask an Expert</TabsTrigger>
-                    <TabsTrigger value="logistics" data-testid="tab-logistics" className="gap-1">
+                    <TabsTrigger value="itinerary" data-testid="tab-itinerary" className="min-h-11">Itinerary</TabsTrigger>
+                    <TabsTrigger value="bookings" data-testid="tab-bookings" className="min-h-11">Bookings</TabsTrigger>
+                    <TabsTrigger value="expert" data-testid="tab-expert" className="min-h-11">Ask an Expert</TabsTrigger>
+                    <TabsTrigger value="logistics" data-testid="tab-logistics" className="gap-1 min-h-11">
                       <Package className="w-3.5 h-3.5" />
                       Logistics
                     </TabsTrigger>
                     {isEventTrip && (
-                      <TabsTrigger value="guests" data-testid="tab-guests" className="gap-1">
+                      <TabsTrigger value="guests" data-testid="tab-guests" className="gap-1 min-h-11">
                         <UserPlus className="w-3.5 h-3.5" />
                         Guests
                       </TabsTrigger>
@@ -599,6 +620,20 @@ export default function TripDetails() {
                           </div>
                         </div>
                       ))}
+                    </div>
+                  ) : itineraryError ? (
+                    /* Mobile-lens audit #6: a failed itinerary fetch previously fell into the
+                       "No Itinerary Yet" branch below, wrongly inviting the traveler to
+                       generate a fresh (destructive) plan during a network blip. Distinct
+                       honest error + retry instead. */
+                    <div className="text-center py-16" data-testid="itinerary-network-error">
+                      <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Can't reach Traveloure</h3>
+                      <p className="text-muted-foreground max-w-md mx-auto mb-6">
+                        We couldn't load your itinerary. Check your connection and try again.
+                      </p>
+                      <Button onClick={() => refetchItinerary()} data-testid="button-retry-itinerary-fetch">
+                        Retry
+                      </Button>
                     </div>
                   ) : !generatedItinerary ? (
                     <div className="text-center py-16">
@@ -702,12 +737,20 @@ export default function TripDetails() {
                         const totalCost = planCardDays.reduce((sum, d) => sum + (d.activities?.reduce((c: number, a: any) => c + (a.cost || 0), 0) || 0), 0);
                         const efficiencyScore = totalBooked > 0 ? Math.round((totalBooked / totalActivities) * 100) : 0;
 
+                        // Mobile-lens audit #1: thread the page's already-computed "today" day
+                        // (the auto-select effect above, keyed by day-of-trip number) into the
+                        // card's initial day index. findIndex on the real dayNum rather than
+                        // assuming a gap-free 1-based array, falling back to Day 1 (index 0)
+                        // when there's no match (pre-trip / no live day).
+                        const initialDayIndex = planCardDays.findIndex(d => d.dayNum === selectedDay);
+
                         return (
                           <PlanCard
                             role="owner"
                             stage="full"
                             trip={planCardTrip}
                             days={planCardDays}
+                            initialSelectedDay={initialDayIndex >= 0 ? initialDayIndex : 0}
                           />
                         );
                       })()}

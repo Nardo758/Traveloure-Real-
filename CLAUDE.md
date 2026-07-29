@@ -606,6 +606,10 @@ world-writable fee-config, then the four below); the rule closes the class so th
   rows (`expert_review_flat`/`expert_review_book_flat`+`_percent`/`full_concierge_flat`+`_percent`); the code constants
   survive only as the documented safe-failure fallback (§8 coordination-floor posture). Same change ledgered the fee:
   `expert_review_fee` platform_revenue recorded idempotently at both completion paths (was collected, never recorded).
+  **Split now actually credited (ratified Jul 30, 2026):** the R6 split logic existed but had zero real trigger
+  (`PATCH /api/expert-requests/:id/complete` had no callers); the expert's share of a PAID request is now credited as
+  a **held** escrow earning (7-day clearance window, `expert_review_fee` surface key) at the `trip_expert_advisors`
+  `workspaceStatus → 'delivered'` transition, reusing `completeExpertRequest`/`creditExpertReviewSplit` verbatim.
 - **A2 🔴 `POST /api/bookings/refund`** — was auth-only (any user could refund any booking for any amount). Now:
   **owner-or-admin gate**; amount **server-derived** from the booking's `total_amount` (client `amount` ignored).
   **Earnings-reversal fast-follow — CLOSED by escrow Phase 4 (PR #170):** the refund now also calls

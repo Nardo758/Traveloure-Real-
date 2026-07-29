@@ -19,6 +19,7 @@ import { notifications } from '@shared/schema';
 import { EXPERT_SHARE_RATE } from '../services/commission';
 import {
   completeExpertRequest,
+  getPaidUncompletedExpertRequestIds,
   getExpertRequestsByUser,
   getVariantCost,
   getVariantOwnerAndCost,
@@ -741,6 +742,30 @@ router.post('/trips/:id/suggestions', isAuthenticated, async (req, res) => {
       estimatedCost: estimatedCost ?? null,
     });
 
+    // GAP 3 fix (expert-loop object-flow audit, Jul 30 2026): the Suggest submission was
+    // completely silent — no notification, so the traveler only discovers a pending suggestion by
+    // manually revisiting the trip page. Mirrors the (correctly-wired) workspace-status
+    // notification shape: `data.tripId` + `data.workspacePath` pointed at the traveler's own trip
+    // view (never the expert workspace) so the notifications-page action button renders and
+    // resolves. Best-effort: a notification failure never fails the suggestion create already
+    // committed above.
+    try {
+      const trip = await storage.getTrip(id);
+      if (trip?.userId) {
+        await db.insert(notifications).values({
+          userId: trip.userId,
+          type: "itinerary_update",
+          title: "New suggestion from your expert",
+          message: `Your expert suggested "${title}" for your trip.`,
+          relatedId: id,
+          relatedType: "trip",
+          data: { tripId: id, workspacePath: `/trip/${id}?tab=itinerary` },
+        } as any);
+      }
+    } catch (notifyErr) {
+      console.error("[Expert] suggestion notify failed (non-fatal):", notifyErr);
+    }
+
     res.json({ success: true, suggestionId });
   } catch (error: any) {
     console.error('Create trip suggestion error:', error);
@@ -931,6 +956,29 @@ router.patch("/expert/assignments/:assignmentId/workspace-status", isAuthenticat
       }
     } catch (notifyErr) {
       console.error("[Expert] workspace-status notify failed (non-fatal):", notifyErr);
+    }
+
+    // R7 (GAP 2 fix, expert-loop object-flow audit, ratified Jul 30 2026): delivering the
+    // bridged work is the trigger that completes any PAID `expert_requests` row bridging to this
+    // same (trip, expert) pair, crediting the expert's R6 split as a HELD escrow earning (7-day
+    // window, tied to the refund/dispute window — see earnings-hold.config.ts). Reuses
+    // `completeExpertRequest`/`creditExpertReviewSplit` VERBATIM (the only crediting logic that
+    // exists — PATCH /api/expert-requests/:id/complete had zero callers, this is the missing
+    // trigger); no third copy is written. §14: amount comes from the stored, PI-verified
+    // platform_revenue ledger row only. §15: idempotent — `completeExpertRequest`'s atomic
+    // `status <> 'completed'` claim and `creditExpertReviewSplit`'s atomic
+    // `expert_id IS NULL` claim both guard against double-credit on a repeated/racing delivered
+    // flip. Best-effort: a credit failure never blocks the workspace-status transition already
+    // committed above.
+    if (workspaceStatus === "delivered") {
+      try {
+        const paidRequestIds = await getPaidUncompletedExpertRequestIds(assignment.tripId, userId);
+        for (const requestId of paidRequestIds) {
+          await completeExpertRequest(requestId, userId);
+        }
+      } catch (creditErr) {
+        console.error("[Expert] delivered-transition expert-request credit failed (non-fatal):", creditErr);
+      }
     }
 
     res.json(updated);
