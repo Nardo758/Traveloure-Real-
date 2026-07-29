@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, Component, type ReactNode, type ErrorInfo } from "react";
 import { PlanCard } from "@/components/plancard/PlanCard";
 import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ExpertLayout } from "@/components/expert/expert-layout";
 import { DmoPickerCore } from "@/components/expert/dmo-picker-modal";
 import { ServicePickerModal } from "@/components/expert/service-picker-modal";
+import { TransportPickerCore } from "@/components/expert/transport-picker";
 import ReadyMadeListingPanel, { type ReadyMadeListing } from "@/components/expert/ready-made-listing-panel";
 import { resolveFormat } from "@/lib/build-formats/registry";
 import { ClientFormatView } from "@/components/build-formats/ClientFormatView";
@@ -247,6 +248,155 @@ function InlineAddItemForm({ tripId, dayNumber, onAdded }: { tripId: string; day
   );
 }
 
+/** D-1 (Workstation audit): local section-scoped error boundary for the Platform-services
+ *  browse map ONLY. Google Maps can throw (billing/key errors — BillingNotEnabledMapError
+ *  and friends) at mount; without a boundary that unwinds the whole workspace. This class
+ *  wraps just the map block so the results LIST beneath it (which fetches independently)
+ *  keeps working, with a one-line honest notice in place of the map. */
+class MapSectionErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error("[Workstation] Browse map failed to render:", error, info.componentStack);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ height: "100%", background: GROUND, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 6 }}>
+          <MapPin style={{ width: 24, height: 24, color: FAINT }} />
+          <span style={{ fontSize: 12, color: MID }}>Map unavailable — showing list results</span>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+/** A-2 / C-1 (Workstation audit): the canvas item editor. Collapsible, day-grouped list of
+ *  every item on the build with a "Move to day" select (A-2) and an "Expert note" textarea
+ *  (C-1b — the traveler-visible tip, distinct from the private Build notes sidebar). Both
+ *  write through the existing PATCH /api/trips/:tripId/itinerary-items/:itemId endpoint
+ *  (trips.routes.ts) — no new server surface for A-2; C-1's server change is the read-side
+ *  column preference in plancard.routes.ts. */
+function ItemsEditorPanel({
+  tripId, days, maxDay, onDayMoved,
+}: {
+  tripId: string;
+  days: { dayNumber: number; items: ItineraryItem[] }[];
+  maxDay: number;
+  onDayMoved: () => void;
+}) {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
+
+  const updateMutation = useMutation({
+    mutationFn: async ({ itemId, data }: { itemId: string; data: Record<string, any> }) => {
+      const res = await apiRequest("PATCH", `/api/trips/${tripId}/itinerary-items/${itemId}`, data);
+      return res.json();
+    },
+    onSuccess: (_res, vars) => {
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/itinerary-items`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+      if ("dayNumber" in vars.data) {
+        onDayMoved();
+        toast({ title: "Item moved" });
+      } else {
+        toast({ title: "Expert note saved" });
+      }
+    },
+    onError: () => toast({ title: "Failed to update item", variant: "destructive" }),
+  });
+
+  const allItems = days.flatMap(d => d.items);
+  if (allItems.length === 0) return null;
+
+  const labelStyle: React.CSSProperties = { fontSize: 11, fontWeight: 600, color: MID, display: "block", marginBottom: 3 };
+  const fieldStyle: React.CSSProperties = { width: "100%", padding: "6px 8px", borderRadius: 7, border: `1.5px solid ${LINE}`, fontSize: 12.5, outline: "none", boxSizing: "border-box" as any, background: CARD, color: INK };
+
+  return (
+    <div style={{ background: CARD, borderRadius: 10, border: `1px solid ${LINE}`, marginTop: 12 }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        data-testid="button-toggle-item-editor"
+        style={{ width: "100%", padding: "10px 14px", background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}
+      >
+        <Pencil style={{ width: 12, height: 12, color: MID }} />
+        <span style={{ fontSize: 12.5, fontWeight: 700, color: INK }}>Edit items</span>
+        <span style={{ fontSize: 11, color: FAINT }}>({allItems.length})</span>
+        <span style={{ marginLeft: "auto", color: FAINT, display: "flex" }}>
+          {open ? <ChevronUp style={{ width: 13, height: 13 }} /> : <ChevronDown style={{ width: 13, height: 13 }} />}
+        </span>
+      </button>
+      {open && (
+        <div style={{ padding: "0 14px 12px", display: "flex", flexDirection: "column", gap: 6 }}>
+          {allItems.map(item => {
+            const isExpanded = expandedId === item.id;
+            const draftNote = noteDrafts[item.id] ?? (item.expertNote ?? "");
+            return (
+              <div key={item.id} data-testid={`item-editor-row-${item.id}`} style={{ border: `1px solid ${LINE}`, borderRadius: 8, padding: "8px 10px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <StateChip tone="mut">Day {item.dayNumber}</StateChip>
+                  <span style={{ fontSize: 12.5, fontWeight: 600, color: INK, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</span>
+                  <button
+                    onClick={() => setExpandedId(isExpanded ? null : item.id)}
+                    data-testid={`button-expand-item-${item.id}`}
+                    style={{ ...btnQuietStyle, padding: "3px 9px", fontSize: 11 }}
+                  >
+                    {isExpanded ? "Close" : "Edit"}
+                  </button>
+                </div>
+                {isExpanded && (
+                  <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 8 }}>
+                    <div>
+                      <label style={labelStyle}>Move to day</label>
+                      <select
+                        value={item.dayNumber}
+                        onChange={e => updateMutation.mutate({ itemId: item.id, data: { dayNumber: parseInt(e.target.value, 10) } })}
+                        disabled={updateMutation.isPending}
+                        data-testid={`select-move-day-${item.id}`}
+                        style={fieldStyle}
+                      >
+                        {Array.from({ length: maxDay }, (_, i) => i + 1).map(n => (
+                          <option key={n} value={n}>Day {n}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label style={labelStyle}>Expert note <span style={{ fontWeight: 400, color: FAINT }}>(traveler-visible tip)</span></label>
+                      <textarea
+                        value={draftNote}
+                        onChange={e => setNoteDrafts(d => ({ ...d, [item.id]: e.target.value }))}
+                        placeholder="A tip your traveler will see on this item…"
+                        data-testid={`textarea-expert-note-${item.id}`}
+                        style={{ ...fieldStyle, minHeight: 56, resize: "vertical", fontFamily: "inherit" }}
+                      />
+                      <button
+                        onClick={() => updateMutation.mutate({ itemId: item.id, data: { expertNote: draftNote.trim() || null } })}
+                        disabled={updateMutation.isPending}
+                        data-testid={`button-save-expert-note-${item.id}`}
+                        style={{ ...btnPrimaryStyle, marginTop: 6, padding: "5px 12px", fontSize: 11.5 }}
+                      >
+                        Save note
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface AssignedTrip {
   trip_id: string; trip_title: string; destination: string;
   start_date: string; end_date: string; traveler_name: string;
@@ -257,6 +407,9 @@ interface ItineraryItem {
   id: string; title: string; itemType: string; status: string; dayNumber: number;
   startTime?: string | null; estimatedCost?: string | null; locationName?: string | null;
   bookingStatus?: string | null; notes?: string | null;
+  // Durable per-item expert note (migration 152, Workstation audit C-1) — the traveler-visible
+  // tip PlanCard renders per activity. Distinct from `notes` above.
+  expertNote?: string | null;
 }
 interface ItineraryData { days: { dayNumber: number; items: ItineraryItem[] }[]; total: number; }
 interface MyAssignment { id: string; tripId: string; localExpertId: string; status: string; workspaceStatus: string | null; message?: string | null; }
@@ -502,6 +655,11 @@ export default function ExpertWorkspace() {
   const [cat, setCat] = useState("all");
   // P2-13: ONE day-focus control for the whole Add panel — every add row targets this day.
   const [focusDay, setFocusDay] = useState<number>(1);
+  // A-1 "+ Day": highest expert-added target day. MUST live here with the other top-level
+  // hooks — the landing view early-returns before the trip canvas, so any hook declared
+  // below that return crashes with "Rendered more hooks than during the previous render"
+  // when navigating landing → trip. The rendered range merges this with the real max day.
+  const [extraMaxDay, setExtraMaxDay] = useState<number>(1);
 
   // Unowned-item fix: pulls active affiliate partners from the admin-editable
   // affiliate_partners table (LB-P4a made that table the source of truth).
@@ -1252,6 +1410,17 @@ export default function ExpertWorkspace() {
     ? days.map(d => d.dayNumber)
     : Array.from({ length: (isAuthoring && (listing as any)?.durationDays) ? (listing as any).durationDays : 7 }, (_, i) => i + 1);
 
+  // A-1 (Workstation audit): "+ Day" affordance. The day-focus row only renders a button per
+  // EXISTING day_number, so a fresh 1-day build has no way to target Day 2 — a day exists in
+  // the data model the moment an item is added with that dayNumber (no server change). Track
+  // the highest day the expert can target locally, seeded from (and never allowed to fall
+  // below) the highest real day, and merge it into the rendered range.
+  const existingMaxDay = dayNumbers.length > 0 ? Math.max(...dayNumbers) : 1;
+  const maxDay = Math.max(extraMaxDay, existingMaxDay);
+  const displayDayNumbers: number[] = Array.from(
+    new Set([...dayNumbers, ...Array.from({ length: maxDay }, (_, i) => i + 1)]),
+  ).sort((a, b) => a - b);
+
   // ── Distribution-state chips (P2-9): derived from REAL state only (§13) ──
   const distChips: Array<{ label: string; tone: ChipTone; testId: string }> = [];
   if (isAuthoring) {
@@ -1473,6 +1642,9 @@ export default function ExpertWorkspace() {
                   </div>
                 </div>
               )}
+
+              {/* A-2 / C-1b (Workstation audit): day-move + expert-note editor for existing items. */}
+              {tripId && <ItemsEditorPanel tripId={tripId} days={days} maxDay={maxDay} onDayMoved={triggerEnergyRecalc} />}
             </>
           )}
         </main>
@@ -1489,7 +1661,7 @@ export default function ExpertWorkspace() {
             ))}
           </div>
 
-          {/* ── Add panel: six source pills (§17 Central Content network; disabled = honest §13) ── */}
+          {/* ── Add panel: seven source pills (§17 Central Content network; disabled = honest §13) ── */}
           {rightTab === "add" && (
             <>
               <div style={{ padding: "8px 10px 6px", display: "flex", gap: 5, overflowX: "auto", flexShrink: 0 }}>
@@ -1500,6 +1672,7 @@ export default function ExpertWorkspace() {
                   { k: "partner", l: "Partner inventory" },
                   { k: "mine", l: "My services", disabled: true, why: "Coming with the catalog module" },
                   { k: "custom", l: "Custom" },
+                  { k: "transport", l: "Transport" },
                 ].map(s => (
                   <button
                     key={s.k}
@@ -1523,7 +1696,7 @@ export default function ExpertWorkspace() {
               {/* Day-focus control (P2-13): every add row below targets this day. */}
               <div style={{ padding: "0 10px 8px", borderBottom: `1px solid ${LINE}`, display: "flex", gap: 5, overflowX: "auto", flexShrink: 0, alignItems: "center" }}>
                 <span style={{ fontSize: 11, color: MID, fontWeight: 600, flexShrink: 0 }}>Adding to</span>
-                {dayNumbers.map(n => (
+                {displayDayNumbers.map(n => (
                   <button
                     key={n}
                     onClick={() => setFocusDay(n)}
@@ -1538,6 +1711,19 @@ export default function ExpertWorkspace() {
                     Day {n}
                   </button>
                 ))}
+                {/* A-1 (Workstation audit): extend the selectable range by one day, client-side —
+                    a day exists in the data model the moment an item lands with that dayNumber. */}
+                <button
+                  onClick={() => { const next = maxDay + 1; setExtraMaxDay(next); setFocusDay(next); }}
+                  data-testid="button-add-day"
+                  style={{
+                    padding: "3px 9px", borderRadius: 99, fontSize: 11, fontWeight: 650, whiteSpace: "nowrap", cursor: "pointer",
+                    border: `1px dashed ${LINE}`, background: "transparent", color: MID,
+                    display: "flex", alignItems: "center", gap: 3,
+                  }}
+                >
+                  <Plus style={{ width: 10, height: 10 }} /> Day
+                </button>
               </div>
             </>
           )}
@@ -1584,8 +1770,11 @@ export default function ExpertWorkspace() {
                 </div>
               </div>
 
-              {/* Map — browse surface (lives ONLY here, P2-18) */}
+              {/* Map — browse surface (lives ONLY here, P2-18). D-1 (Workstation audit):
+                  wrapped in a section-local error boundary — Maps can throw at mount
+                  (billing/key errors) and must not blank the results list below it. */}
               <div style={{ height: 220, flexShrink: 0, position: "relative" }}>
+                <MapSectionErrorBoundary>
                 {MAPS_KEY ? (
                   <APIProvider apiKey={MAPS_KEY}>
                     <Map
@@ -1656,6 +1845,7 @@ export default function ExpertWorkspace() {
                     <span style={{ fontSize: 12, color: MID }}>Map unavailable</span>
                   </div>
                 )}
+                </MapSectionErrorBoundary>
                 {searchResults.filter((r: any) => r.location?.lat).length > 0 && (
                   <div style={{ position: "absolute", bottom: 8, left: 8, background: CARD, borderRadius: 99, padding: "2px 8px", fontSize: 11, fontWeight: 600, color: INK, boxShadow: "0 1px 4px rgba(0,0,0,0.2)", zIndex: 10 }}>
                     {searchResults.filter((r: any) => r.location?.lat).length} pins
@@ -1776,6 +1966,15 @@ export default function ExpertWorkspace() {
                   </div>
                 ))
               )}
+            </div>
+          )}
+
+          {/* Add · Transport — ground-transport routes from the existing Travelpayouts/Omio
+              catalog feed (§16-compliant: informational add only, no affiliate/booking URL
+              ever reaches this surface — see transport-picker.tsx). */}
+          {rightTab === "add" && addSource === "transport" && (
+            <div style={{ flex: 1, overflowY: "auto", padding: "12px 12px" }}>
+              <TransportPickerCore tripId={tripId!} destination={destination} dayNumber={focusDay} onAdded={triggerEnergyRecalc} />
             </div>
           )}
 

@@ -579,4 +579,7 @@ export const MIGRATION_FILES = [
   // bundle_components join table (FKs → provider_services; CASCADE on bundle,
   // RESTRICT on component; CHECK/UNIQUE safe — new table, no legacy rows) → no push trap.
   "151_bundle_components.sql",
+  // 152: itinerary_items.expert_note (Workstation audit C-1) — additive nullable TEXT,
+  // no CHECK/DEFAULT → no push trap. PlanCard already renders it; the builder gains authoring.
+  "152_itinerary_items_expert_note.sql",
 ] as const;
