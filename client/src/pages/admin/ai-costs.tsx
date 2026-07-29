@@ -175,6 +175,18 @@ export default function AdminAICosts() {
     refetchInterval: 10_000,
   });
 
+  // L9(a): weighted by real call volume across both summaries (the same logs the Recent
+  // Calls tables below render from) — null (not a fabricated 100) until at least one call
+  // has been logged, so an all-failed dataset shows 0%, not a fallback "everything's fine".
+  const overallSuccessRate = (() => {
+    const aiCalls = aiSummary?.totalCalls ?? 0;
+    const apiCalls = apiSummary?.totalCalls ?? 0;
+    const totalCalls = aiCalls + apiCalls;
+    if (totalCalls === 0) return aiSummary || apiSummary ? 100 : null;
+    const weighted = (aiCalls * (aiSummary?.successRate ?? 100)) + (apiCalls * (apiSummary?.successRate ?? 100));
+    return Math.round(weighted / totalCalls);
+  })();
+
   const handleRefresh = () => {
     queryClient.invalidateQueries({ queryKey: ["/api/admin/ai-usage/summary"] });
     queryClient.invalidateQueries({ queryKey: ["/api/admin/ai-usage/daily"] });
@@ -311,12 +323,17 @@ export default function AdminAICosts() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-muted-foreground">Overall Success Rate</p>
-                  <p className="text-2xl font-bold text-emerald-600">
-                    {Math.round(((aiSummary?.successRate || 100) + (apiSummary?.successRate || 100)) / 2)}%
+                  {/* L9(a) fix: `|| 100` treated a real 0% success rate (all calls failed) as
+                      "missing", masking it back to 100 — exactly the gap the audit caught (100%
+                      rendered above an all-failed Recent Calls table). `??` only falls back when
+                      the summary hasn't loaded yet; a genuine 0 now renders as 0, and the color
+                      reflects it instead of a cheerful green regardless of the number. */}
+                  <p className={`text-2xl font-bold ${overallSuccessRate === null ? "text-muted-foreground" : overallSuccessRate >= 95 ? "text-emerald-600" : overallSuccessRate >= 70 ? "text-amber-600" : "text-red-600"}`}>
+                    {overallSuccessRate === null ? "—" : `${overallSuccessRate}%`}
                   </p>
                   <p className="text-xs text-muted-foreground">API reliability</p>
                 </div>
-                <CheckCircle className="w-8 h-8 text-emerald-600 opacity-80" />
+                <CheckCircle className={`w-8 h-8 opacity-80 ${overallSuccessRate === null ? "text-muted-foreground" : overallSuccessRate >= 95 ? "text-emerald-600" : overallSuccessRate >= 70 ? "text-amber-600" : "text-red-600"}`} />
               </div>
             </CardContent>
           </Card>

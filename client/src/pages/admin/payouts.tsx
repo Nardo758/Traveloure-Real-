@@ -19,6 +19,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { AdminErrorBanner } from "@/components/admin/AdminErrorBanner";
 import {
   Table,
   TableBody,
@@ -114,7 +115,7 @@ export default function AdminPayouts() {
 
   const statusFilter = activeTab === "all" ? undefined : activeTab;
 
-  const { data: payouts = [], isLoading } = useQuery<PayoutRequest[]>({
+  const { data: payouts = [], isLoading, isError, refetch } = useQuery<PayoutRequest[]>({
     queryKey: ["/api/admin/payouts", statusFilter],
     queryFn: async () => {
       const url = statusFilter
@@ -206,13 +207,23 @@ export default function AdminPayouts() {
   return (
     <AdminLayout title="Payouts Management">
       <div className="p-6 space-y-6">
+        {/* L4 fix: a failed GET /api/admin/payouts used to fall straight through to zeroed
+            stat cards + "No payout requests found" — a broken money queue looked identical
+            to an empty one. Show the failure and skip the fabricated-zero stats instead. */}
+        {isError && (
+          <AdminErrorBanner
+            label="Couldn't load payouts — server error."
+            onRetry={() => refetch()}
+            testId="banner-payouts-error"
+          />
+        )}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <Card data-testid="card-pending-count">
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-500">Pending Requests</p>
-                  <p className="text-2xl font-bold text-yellow-600" data-testid="text-pending-count">{pendingCount}</p>
+                  <p className="text-2xl font-bold text-yellow-600" data-testid="text-pending-count">{isError ? "—" : pendingCount}</p>
                 </div>
                 <div className="h-10 w-10 bg-yellow-100 rounded-full flex items-center justify-center">
                   <Clock className="h-5 w-5 text-yellow-600" />
@@ -226,7 +237,7 @@ export default function AdminPayouts() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-500">Pending Amount</p>
-                  <p className="text-2xl font-bold text-gray-900" data-testid="text-pending-amount">{formatCurrency(totalPending)}</p>
+                  <p className="text-2xl font-bold text-gray-900" data-testid="text-pending-amount">{isError ? "—" : formatCurrency(totalPending)}</p>
                 </div>
                 <div className="h-10 w-10 bg-gray-100 rounded-full flex items-center justify-center">
                   <DollarSign className="h-5 w-5 text-gray-600" />
@@ -240,7 +251,7 @@ export default function AdminPayouts() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-500">Processing</p>
-                  <p className="text-2xl font-bold text-blue-600" data-testid="text-processing-count">{processingCount}</p>
+                  <p className="text-2xl font-bold text-blue-600" data-testid="text-processing-count">{isError ? "—" : processingCount}</p>
                 </div>
                 <div className="h-10 w-10 bg-blue-100 rounded-full flex items-center justify-center">
                   <Loader2 className="h-5 w-5 text-blue-600" />
@@ -254,7 +265,7 @@ export default function AdminPayouts() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-gray-500">Completed</p>
-                  <p className="text-2xl font-bold text-green-600" data-testid="text-completed-count">{completedCount}</p>
+                  <p className="text-2xl font-bold text-green-600" data-testid="text-completed-count">{isError ? "—" : completedCount}</p>
                 </div>
                 <div className="h-10 w-10 bg-green-100 rounded-full flex items-center justify-center">
                   <CheckCircle className="h-5 w-5 text-green-600" />
@@ -288,7 +299,7 @@ export default function AdminPayouts() {
                   <div className="flex items-center justify-center py-12" data-testid="loading-payouts">
                     <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
                   </div>
-                ) : filteredPayouts.length === 0 ? (
+                ) : isError ? null : filteredPayouts.length === 0 ? (
                   <div className="text-center py-12 text-gray-500" data-testid="empty-payouts">
                     <Banknote className="h-12 w-12 mx-auto mb-3 text-gray-300" />
                     <p>No payout requests found.</p>

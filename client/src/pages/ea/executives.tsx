@@ -371,10 +371,9 @@ export default function EAExecutives() {
             </Card>
           ))}
         </div>
-
-        <Button variant="ghost" className="w-full text-primary" data-testid="button-show-all">
-          Show All 8 Executives
-        </Button>
+        {/* "Show All N Executives" removed (§13) — the list above already renders every
+            executive (no pagination/slicing), so the button was a dead link under an
+            already-complete list. Re-add only alongside real pagination. */}
       </div>
 
       {/* Edit Profile Dialog */}

@@ -87,14 +87,26 @@ const field: React.CSSProperties = {
   fontSize: 12.5, outline: "none", boxSizing: "border-box", background: "white", fontFamily: "inherit",
 };
 
+interface ListingDayGroup {
+  dayNumber: number;
+  items: unknown[];
+}
+
 export default function ReadyMadeListingPanel({
-  listing, tripId,
+  listing, tripId, days,
 }: {
   listing: ReadyMadeListing;
   tripId: string;
+  /** Real itinerary day groups (workspace.tsx's `days`) — the single source of truth for the
+   * listing's duration once real items exist (L8: was an independently-editable `durationDays`
+   * that drifted from the real itinerary, producing a "phantom" empty day at submit time). */
+  days: ListingDayGroup[];
 }) {
   const { toast } = useToast();
   const qc = useQueryClient();
+  // Once the build has real items, the day count comes ONLY from the itinerary — never a
+  // separately-typed number that can drift out of sync with what's actually on the plan.
+  const itineraryDayCount = days.length;
   const [draft, setDraft] = useState({
     title: listing.title,
     planType: listing.planType ?? "",
@@ -156,8 +168,14 @@ export default function ReadyMadeListingPanel({
       bestSeason: draft.bestSeason.trim() === "" ? null : draft.bestSeason.trim(),
       pricingMode: draft.pricingMode,
     };
-    const days = Number(draft.durationDays);
-    if (Number.isFinite(days) && days >= 1) patch.durationDays = Math.trunc(days);
+    // Real items exist → the itinerary is authoritative, always (never the stale typed value).
+    // No items yet → this is a pre-planning duration the author is still free to set.
+    if (itineraryDayCount > 0) {
+      patch.durationDays = itineraryDayCount;
+    } else {
+      const typedDays = Number(draft.durationDays);
+      if (Number.isFinite(typedDays) && typedDays >= 1) patch.durationDays = Math.trunc(typedDays);
+    }
     if (draft.price.trim() === "") {
       patch.priceCents = null;
     } else {
@@ -211,11 +229,18 @@ export default function ReadyMadeListingPanel({
   });
 
   const status = STATUS_COPY[listing.status];
+  // Duration dirtiness: with real items, compare the itinerary's real count against the last-
+  // saved value (so the panel prompts a save the moment the two disagree — e.g. right after an
+  // item is added/removed — rather than letting a stale durationDays sit unsaved and mislead the
+  // header/caption/story surfaces that read it). Without items, compare the typed draft as before.
+  const durationDirty = itineraryDayCount > 0
+    ? itineraryDayCount !== listing.durationDays
+    : draft.durationDays !== String(listing.durationDays);
   const dirty =
     draft.title !== listing.title ||
     draft.planType !== (listing.planType ?? "") ||
     draft.bestSeason !== (listing.bestSeason ?? "") ||
-    draft.durationDays !== String(listing.durationDays) ||
+    durationDirty ||
     draft.pricingMode !== listing.pricingMode ||
     draft.price !== (listing.priceCents === null ? "" : (listing.priceCents / 100).toFixed(2));
 
@@ -311,13 +336,21 @@ export default function ReadyMadeListingPanel({
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
           <div>
             <span style={label}>Days</span>
-            <input
-              value={draft.durationDays}
-              onChange={(e) => setDraft((d) => ({ ...d, durationDays: e.target.value }))}
-              data-testid="input-listing-duration"
-              inputMode="numeric"
-              style={field}
-            />
+            {itineraryDayCount > 0 ? (
+              // Derived from the real itinerary once items exist — not independently editable,
+              // so this can never drift from what the header, caption, and story slide show (L8).
+              <div style={{ ...field, background: G[50], color: G[700], cursor: "default" }} data-testid="text-listing-duration-derived">
+                {itineraryDayCount} {itineraryDayCount === 1 ? "day" : "days"}
+              </div>
+            ) : (
+              <input
+                value={draft.durationDays}
+                onChange={(e) => setDraft((d) => ({ ...d, durationDays: e.target.value }))}
+                data-testid="input-listing-duration"
+                inputMode="numeric"
+                style={field}
+              />
+            )}
           </div>
           <div>
             <span style={label}>Best season</span>
@@ -330,6 +363,13 @@ export default function ReadyMadeListingPanel({
             />
           </div>
         </div>
+        {itineraryDayCount > 0 && (
+          <div style={{ fontSize: 10.5, color: durationDirty ? "#B45309" : G[400], marginTop: -6 }} data-testid="text-listing-duration-note">
+            {durationDirty
+              ? `Matches your itinerary (${itineraryDayCount} ${itineraryDayCount === 1 ? "day" : "days"}) — save to update the listing.`
+              : "Matches your itinerary. Add or remove days on the build to change it."}
+          </div>
+        )}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
           <div>
             <span style={label}>Price (USD)</span>
