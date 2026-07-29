@@ -1,6 +1,20 @@
 import { build as esbuild } from "esbuild";
 import { build as viteBuild } from "vite";
 import { rm, readFile } from "fs/promises";
+import { execSync } from "child_process";
+
+// Real build SHA for GET /api/version (server/index.ts) — Replit's Autoscale deploy does not
+// inject a GIT_COMMIT env var at runtime, so the endpoint always reported "dev" in production.
+// Embedding the SHA at bundle time via esbuild's `define` fixes that without depending on any
+// runtime env. Falls back to "unknown" (never throws) when no git repo is available (e.g. a
+// tarball build outside a git checkout).
+function getGitSha(): string {
+  try {
+    return execSync("git rev-parse --short HEAD", { encoding: "utf-8" }).trim() || "unknown";
+  } catch {
+    return "unknown";
+  }
+}
 
 // server deps to bundle to reduce openat(2) syscalls
 // which helps cold start times
@@ -54,6 +68,7 @@ async function buildAll() {
     outfile: "dist/index.cjs",
     define: {
       "process.env.NODE_ENV": '"production"',
+      "__GIT_SHA__": JSON.stringify(getGitSha()),
     },
     minify: true,
     external: externals,
