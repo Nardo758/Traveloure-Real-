@@ -526,7 +526,7 @@ export default function LandingPage() {
                       <Sparkles className="w-6 h-6 text-white" />
                     </div>
                     <div>
-                      <h3 className="text-xl font-bold text-white">Choose Your Experience</h3>
+                      <h2 className="text-xl font-bold text-white">Choose Your Experience</h2>
                       <p className="text-sm text-white/70">Start planning with our templates</p>
                     </div>
                   </div>
