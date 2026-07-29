@@ -98,7 +98,11 @@ export const providerRoutesConfig: RoleRouteConfig[] = [
   { href: '/provider/dashboard',    description: 'Today — ops home (C9 label-only rename)' },
   { href: '/provider/calendar',     description: 'Channel Calendar — 9th module (C9)' },
   { href: '/provider/workstation',  description: 'Workstation — Product Builder: single service → bundle → property ladder (PB)' },
-  { href: '/provider/bookings',     description: 'Bookings — the Inbox-module seat (C9 keep)' },
+  { href: '/provider/inbox',        description: 'Inbox — Queue/History/Messages, absorbs Bookings + Messages (C9 Inbox)' },
+  // /provider/bookings redirects to /provider/inbox (C9 Inbox absorption, the expert C5
+  // pattern) — accept/decline, the visa-status dialog, and stats live on Inbox's Queue tab;
+  // search/filter lives on History.
+  { href: '/provider/bookings',     description: 'Retired Bookings -> redirects to Inbox (C9)' },
   { href: '/provider/services',     description: 'Catalog — offerings + availability + share tools (C9)' },
   { href: '/provider/customers',    description: 'Customers — honest self-scoped aggregation (C9)' },
   { href: '/provider/performance',  description: 'Performance — hosts Analytics as a tab (C9)' },

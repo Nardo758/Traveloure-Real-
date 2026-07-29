@@ -15,13 +15,12 @@ import {
 import { Button } from "@/components/ui/button";
 import {
   Home,
-  CalendarCheck,
   CalendarDays,
   DollarSign,
+  Inbox,
   LayoutGrid,
   Settings,
   LogOut,
-  MessageSquare,
   TrendingUp,
   Users,
   Wrench,
@@ -51,22 +50,16 @@ const menuGroups = [
       // availability-editor sheets there were non-persisting previews; REAL slot editing
       // moved to its ratified Catalog home (/provider/services availability section).
       { title: "Calendar", href: "/provider/calendar", icon: CalendarDays },
-      // C9 KEPT (Inbox seat, honest label): "Bookings" is the provider console's actionable
-      // queue — pending accept/decline (PATCH /api/provider/bookings/:id/status), the
-      // visa-status management dialog, stats, and per-booking message deep-links into /chat.
-      // A provider Inbox page (queue + history + messages tabs, the expert C5 shape) does
-      // not exist yet; relabeling this "Inbox" without that absorption would be a costume.
-      // KEEP until a real provider Inbox absorbs it.
-      { title: "Bookings", href: "/provider/bookings", icon: CalendarCheck },
-      // C9 KEPT: Messages points straight at /chat (the thread home — ChatWithRoleLayout
-      // applies ProviderLayout for providers; /provider/messages was already a bare
-      // redirect there). The expert C5 retirement of this entry relied on Inbox's
-      // recent-threads tab, which the provider console doesn't have yet — without this
-      // entry the only paths into /chat would be per-booking message buttons. KEEP until
-      // the provider Inbox absorption above lands.
-      { title: "Messages", href: "/chat", icon: MessageSquare },
+      // C9 Inbox absorption (mirrors expert C5): "Bookings" and "Messages" retired into ONE
+      // "Inbox" entry. Bookings' uniques (pending accept/decline via
+      // PATCH /api/provider/bookings/:id/status, the visa-status management dialog, stats,
+      // and search/filter) landed on Inbox's Queue + History tabs; Messages' function (a
+      // path into /chat) is now Inbox's Messages tab — a real recent-threads queue over
+      // GET /api/chats, not a bare link. /provider/bookings redirects to /provider/inbox;
+      // /chat itself stays reachable (it's the thread home the Messages tab deep-links into).
+      { title: "Inbox", href: "/provider/inbox", icon: Inbox },
       // PB: the Product Builder (§17 creation ladder — single service → bundle → property).
-      // Placed after Messages: the expert sidebar carries Workstation in its Work group too;
+      // Placed after Inbox: the expert sidebar carries Workstation in its Work group too;
       // the provider Work group keeps its existing order and appends the new module.
       { title: "Workstation", href: "/provider/workstation", icon: Wrench },
     ],
