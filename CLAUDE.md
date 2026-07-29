@@ -879,6 +879,30 @@ Governing spec: `docs/backoffice/mockups/mockup-unified-workspace.html` (v9). Lo
     error-bounded (a Maps billing/key failure collapses to list-only results instead of blanking
     the whole workspace — the audit's only P1).
 
+### §18 — Trip Card command center + TripPlan circulation object (ratified Jul 30, 2026)
+
+**The Trip Card is the FINAL PRODUCT** (decision-maker directive): every platform flow converges on one
+circulating plan object. Two ratifications:
+- **Mobile command-center structure (mockup-ratified):** ① sticky day switcher (today highlighted); ② "Up Next"
+  hero at top of screen (countdown, meeting point, expert note, primary action); ③ sticky bottom action bar
+  (Map · Message expert · Share; "Message" → "Get help" when no accepted advisor); ④ Map/Transport/Budget/
+  Change-history demoted to collapsed peers below the day list, plus a trip-level "Note from your expert"
+  section; ⑤ **mode-aware primary action** — the next activity's inbound `transport_legs` mode decides the CTA:
+  self-directed (walk/transit/bicycle/rental) → Navigate deep-linked with that mode; **booked** chauffeured
+  (taxi/rideshare/private driver) → pickup card (point, time, ride details, call driver) from REAL booking data
+  only; recommended-but-unbooked chauffeured → destination address + Book-via-agent CTA (**§16: never a raw
+  Uber/affiliate link**); no leg → destination-only Navigate (honest fallback, §13 — never fabricate a mode or
+  a booking). Expert notes (per-item `expert_note` migration 152 + trip-level) are REAL data restyled, not new.
+- **TripPlan circulation object v1 (contract in `docs/EXECUTION_MAP.md` §3 — the governing doc):** ONE
+  versioned interchange DTO (`shared/trip-plan.ts`) assembled server-side by ONE assembler (formalizing the
+  `/api/trips/:tripId/plancard` assembly); every renderer/channel consumes TripPlan. **Circulate by REFERENCE**
+  (tripId / share token), never by JSON copy; **snapshot only at money events** (ready-made purchase, bundle
+  booking — the ratified snapshot posture). **Channel = redaction level applied by the assembler**: `full`
+  (owner / delivered traveler / assigned expert / admin) · `teaser` (store; day+title, the §10
+  `redactTemplateContent` posture) · `preview` (Direct/OG link cards; no itinerary body) · `social` (§17 story
+  pack; real content only). Amendments to this contract are decision-maker calls. Model-tiered execution
+  protocol + lane queue also live in `docs/EXECUTION_MAP.md` (Fable plans/reviews; Opus/Sonnet/Haiku execute).
+
 The earning ledger is an escrow state machine: **`held → releasable → paid_out`**, plus **`reversed`**, with a
 `dispute_state`. All phases are **landed on `main`** (Jul 14, 2026):
 - **Phase 1 (#163, migration 112):** unified both `expert_earnings` + `provider_earnings` onto the one vocabulary
