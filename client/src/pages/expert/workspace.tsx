@@ -655,6 +655,11 @@ export default function ExpertWorkspace() {
   const [cat, setCat] = useState("all");
   // P2-13: ONE day-focus control for the whole Add panel — every add row targets this day.
   const [focusDay, setFocusDay] = useState<number>(1);
+  // A-1 "+ Day": highest expert-added target day. MUST live here with the other top-level
+  // hooks — the landing view early-returns before the trip canvas, so any hook declared
+  // below that return crashes with "Rendered more hooks than during the previous render"
+  // when navigating landing → trip. The rendered range merges this with the real max day.
+  const [extraMaxDay, setExtraMaxDay] = useState<number>(1);
 
   // Unowned-item fix: pulls active affiliate partners from the admin-editable
   // affiliate_partners table (LB-P4a made that table the source of truth).
@@ -1411,10 +1416,7 @@ export default function ExpertWorkspace() {
   // the highest day the expert can target locally, seeded from (and never allowed to fall
   // below) the highest real day, and merge it into the rendered range.
   const existingMaxDay = dayNumbers.length > 0 ? Math.max(...dayNumbers) : 1;
-  const [maxDay, setMaxDay] = useState<number>(existingMaxDay);
-  useEffect(() => {
-    setMaxDay(m => Math.max(m, existingMaxDay));
-  }, [existingMaxDay]);
+  const maxDay = Math.max(extraMaxDay, existingMaxDay);
   const displayDayNumbers: number[] = Array.from(
     new Set([...dayNumbers, ...Array.from({ length: maxDay }, (_, i) => i + 1)]),
   ).sort((a, b) => a - b);
@@ -1712,7 +1714,7 @@ export default function ExpertWorkspace() {
                 {/* A-1 (Workstation audit): extend the selectable range by one day, client-side —
                     a day exists in the data model the moment an item lands with that dayNumber. */}
                 <button
-                  onClick={() => { const next = maxDay + 1; setMaxDay(next); setFocusDay(next); }}
+                  onClick={() => { const next = maxDay + 1; setExtraMaxDay(next); setFocusDay(next); }}
                   data-testid="button-add-day"
                   style={{
                     padding: "3px 9px", borderRadius: 99, fontSize: 11, fontWeight: 650, whiteSpace: "nowrap", cursor: "pointer",
