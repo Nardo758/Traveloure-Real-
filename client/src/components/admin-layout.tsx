@@ -4,6 +4,7 @@ import { Bell, CheckCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
 import { UserMenu } from "@/components/user-menu";
+import { useQuery } from "@tanstack/react-query";
 
 interface AdminLayoutProps {
   children: React.ReactNode;
@@ -15,6 +16,14 @@ export function AdminLayout({ children, title }: AdminLayoutProps) {
     "--sidebar-width": "220px",
     "--sidebar-width-icon": "56px",
   };
+
+  // L9(b) fix: the dot used to render unconditionally, so it stayed lit over "0 unread"
+  // on the Notifications page. Same queryKey as that page (client/src/pages/admin/notifications.tsx)
+  // — one cached fetch, one source of truth for "unread" — so the two can never disagree.
+  const { data: notificationsData } = useQuery<Array<{ read: boolean }>>({
+    queryKey: ["/api/admin/notifications"],
+  });
+  const unreadCount = notificationsData?.filter((n) => !n.read).length ?? 0;
 
   return (
     <SidebarProvider style={style as React.CSSProperties}>
@@ -61,7 +70,12 @@ export function AdminLayout({ children, title }: AdminLayoutProps) {
                   data-testid="button-admin-notifications"
                 >
                   <Bell className="w-4 h-4" />
-                  <span className="absolute top-1.5 right-1.5 w-[7px] h-[7px] bg-[#E85D55] rounded-full" />
+                  {unreadCount > 0 && (
+                    <span
+                      className="absolute top-1.5 right-1.5 w-[7px] h-[7px] bg-[#E85D55] rounded-full"
+                      data-testid="badge-unread-notifications-dot"
+                    />
+                  )}
                 </Button>
               </Link>
               <UserMenu />

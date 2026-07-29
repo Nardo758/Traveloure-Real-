@@ -147,6 +147,7 @@ import {
   getNeighborhoodCurrentLead, getExpertFormForNeighborhoodCheck, getExpertFormCityInfo,
   clearNeighborhoodLeadTx, swapNeighborhoodLeadTx,
   validateAdjacencyTargets, updateNeighborhoodAdjacencyTx,
+  getUntaggedProviderServices, backfillProviderServiceNeighborhoods,
   getItineraryForTrip, getGeneratedItinerary, upsertTripAnalyticsEnhanced,
   getLocationSummary, getLocationSummaryData, getDestinationDemandReport, getProviderMarketReport,
   getGeographicInsightsReport, getConversionFunnelReport,
@@ -3601,6 +3602,7 @@ router.get("/api/admin/payouts", isAuthenticated, async (req, res) => {
       ].sort((a, b) => new Date(b.requestedAt || 0).getTime() - new Date(a.requestedAt || 0).getTime());
       res.json(allPayouts);
     } catch (error: any) {
+      console.error("Error fetching admin payouts:", error);
       res.status(500).json({ message: "Failed to get payouts", error: error.message });
     }
   });
@@ -5162,7 +5164,7 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
   router.get("/api/admin/expert-offering-types", isAuthenticated, async (req, res) => {
     try {
       if (!(await requireAdmin(req, res))) return;
-      const rows = await getAllExpertOfferingTypeRows();
+      const rows = await getExpertOfferingTypesList();
       res.json(rows);
     } catch (error: any) { res.status(500).json({ error: error.message }); }
   });
@@ -5935,6 +5937,43 @@ router.get("/api/admin/neighborhoods", isAuthenticated, async (req, res) => {
       ORDER BY cn.city, cn.name
     `);
     res.json(result.rows ?? []);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/admin/neighborhoods/untagged + POST /api/admin/neighborhoods/backfill —
+// L4 fix (docs/audits/ux-walkthrough-5-roles-jul29.md): these two routes never existed.
+// GET fell through to the /:id route below with id="untagged" and 404'd on
+// "Neighborhood not found"; POST 404'd the same way for any client that tried it. Both
+// are registered here, BEFORE /:id, so a literal "untagged" segment can never be
+// re-shadowed by the param route (the §9 route-shadow class — order matters).
+router.get("/api/admin/neighborhoods/untagged", isAuthenticated, async (req, res) => {
+  const auth = await isAdmin(req);
+  if (!auth.ok) return res.status(403).json({ error: "Admin access required" });
+  try {
+    const rows = await getUntaggedProviderServices();
+    const services = (rows as any[]).map((r) => ({
+      id: r.id,
+      serviceName: r.service_name,
+      city: r.city ?? (r.location && r.location.toLowerCase() !== "unknown" ? r.location : null),
+      providerFirstName: r.provider_first_name,
+      providerLastName: r.provider_last_name,
+      providerEmail: r.provider_email,
+    }));
+    res.json({ services, count: services.length });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post("/api/admin/neighborhoods/backfill", isAuthenticated, async (req, res) => {
+  const auth = await isAdmin(req);
+  if (!auth.ok) return res.status(403).json({ error: "Admin access required" });
+  try {
+    const serviceId = typeof req.body?.serviceId === "string" ? req.body.serviceId : undefined;
+    const result = await backfillProviderServiceNeighborhoods(serviceId);
+    res.json(result);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
