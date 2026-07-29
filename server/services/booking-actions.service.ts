@@ -90,9 +90,9 @@ async function creditExpertReviewSplit(
   const claim = await db.execute(sql`
     UPDATE platform_revenue
     SET expert_id = ${expertUserId},
-        expert_earnings = ROUND(gross_amount * ${expertShareRate}, 2),
-        platform_fee = ROUND(gross_amount * (1 - ${expertShareRate}), 2),
-        net_amount = ROUND(gross_amount * (1 - ${expertShareRate}), 2) - COALESCE(processing_fees, 0)
+        expert_earnings = ROUND(gross_amount * ${expertShareRate}::numeric, 2),
+        platform_fee = ROUND(gross_amount * (1 - ${expertShareRate}::numeric), 2),
+        net_amount = ROUND(gross_amount * (1 - ${expertShareRate}::numeric), 2) - COALESCE(processing_fees, 0)
     WHERE source_id = ${paymentIntentId}
       AND source_type = 'expert_review_fee'
       AND expert_id IS NULL
