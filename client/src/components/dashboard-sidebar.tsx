@@ -52,8 +52,8 @@ const menuGroups = [
   {
     label: "Account",
     items: [
-      { title: "Messages", href: "/chat", icon: MessageSquare, badge: true },
-      { title: "Notifications", href: "/notifications", icon: Bell, badge: true },
+      { title: "Messages", href: "/chat", icon: MessageSquare },
+      { title: "Notifications", href: "/notifications", icon: Bell },
       { title: "Profile", href: "/profile", icon: User },
     ],
   },

@@ -11,7 +11,7 @@ import { useDeleteTrip } from "@/hooks/use-trips";
 import { openInMaps } from "@/lib/navigate";
 import { openMapsDeepLink } from "@/lib/maps";
 import {
-  getTemplateConfig, type PlanCardProps, type PlanCardData, type PlanCardDay, type PlanCardChange, type PlanCardRole,
+  getTemplateConfig, computeDayCount, type PlanCardProps, type PlanCardData, type PlanCardDay, type PlanCardChange, type PlanCardRole,
 } from "./plancard-types";
 import { HeroSection } from "./HeroSection";
 import { OptimizerMetrics } from "./StatsRow";
@@ -336,9 +336,7 @@ function PlanCardSummary({
 
   const optimizationDeltaFromData = plancardData?.optimizationDelta ?? null;
   const lastOptimizedAt = plancardData?.lastOptimizedAt ?? null;
-  const numDays = days.length || Math.max(1, Math.round(
-    (new Date(trip.endDate ?? Date.now()).getTime() - new Date(trip.startDate ?? Date.now()).getTime()) / 86400000
-  ));
+  const numDays = computeDayCount(days, trip.startDate, trip.endDate);
 
   const optimizationScore = metrics.traveloureScore || metrics.optimizationScore;
   const hasActivities = totalActivities > 0;
@@ -1032,7 +1030,7 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
                   eventType={(trip as any).eventType}
                   planSnapshot={{
                     days: days.map(d => ({
-                      day: d.day,
+                      day: d.dayNum,
                       date: d.date,
                       activityCount: d.activities?.length ?? 0,
                     })),

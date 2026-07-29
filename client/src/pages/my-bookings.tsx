@@ -439,7 +439,7 @@ export default function MyBookingsPage() {
             <Skeleton className="h-32 w-full" />
             <Skeleton className="h-32 w-full" />
           </div>
-        ) : (!bookings || bookings.length === 0) && (purchasedPackages?.length ?? 0) === 0 ? (
+        ) : (!bookings || bookings.length === 0) && (purchasedPackages?.length ?? 0) === 0 && rmPurchases.length === 0 ? (
           <Card>
             <CardContent className="py-12 text-center">
               <Package className="w-16 h-16 mx-auto text-muted-foreground mb-4" />
@@ -452,7 +452,11 @@ export default function MyBookingsPage() {
           </Card>
         ) : (
           <Tabs
-            defaultValue={(bookings?.length ?? 0) === 0 && (purchasedPackages?.length ?? 0) > 0 ? "packages" : "all"}
+            defaultValue={
+              (bookings?.length ?? 0) === 0 && ((purchasedPackages?.length ?? 0) > 0 || rmPurchases.length > 0)
+                ? "packages"
+                : "all"
+            }
             className="space-y-4"
           >
             <TabsList data-testid="tabs-booking-status">
@@ -468,9 +472,9 @@ export default function MyBookingsPage() {
               <TabsTrigger value="completed" data-testid="tab-completed">
                 Completed ({completedBookings.length})
               </TabsTrigger>
-              {(purchasedPackages?.length ?? 0) > 0 && (
+              {((purchasedPackages?.length ?? 0) > 0 || rmPurchases.length > 0) && (
                 <TabsTrigger value="packages" data-testid="tab-packages">
-                  Trips ({purchasedPackages!.length})
+                  Trips ({(purchasedPackages?.length ?? 0) + rmPurchases.length})
                 </TabsTrigger>
               )}
             </TabsList>

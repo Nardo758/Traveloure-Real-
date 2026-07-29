@@ -112,6 +112,15 @@ const anthropic = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
+// Session-shape-safe user id read. Email/password sessions carry
+// { claims: { sub: userId } } with no top-level req.user.id — a bare
+// `(req as any).user?.id` read is always undefined for those sessions
+// (the ea.routes.ts getEaUserId fallback pattern, applied here for the
+// same bug class on the itinerary-share/expert-review surface).
+function getReqUserId(req: any): string | undefined {
+  return req.user?.claims?.sub ?? req.user?.id;
+}
+
 function sanitizeInput(input: string): string {
   if (typeof input !== 'string') return input;
   return input
@@ -1507,7 +1516,7 @@ router.post("/api/itinerary/estimate-travel", isAuthenticated, async (req, res) 
 router.post("/api/trips/:tripId/activate-transport", isAuthenticated, async (req, res) => {
     try {
       const { tripId } = req.params;
-      const userId = (req as any).user?.id;
+      const userId = getReqUserId(req);
 
       const trip = await storage.getTrip(tripId);
       if (!trip || trip.userId !== userId) return res.status(404).json({ error: "Trip not found" });
@@ -2002,7 +2011,7 @@ router.get("/api/trips/:tripId/anchor-optimization", isAuthenticated, async (req
 router.post("/api/itinerary-variants/:variantId/share", isAuthenticated, async (req, res) => {
     try {
       const { variantId } = req.params;
-      const userId = (req as any).user?.id;
+      const userId = getReqUserId(req);
       const { sharedWithUserId, permissions = "view", transportPreferences } = req.body;
 
       const variant = await storage.getItineraryVariantById(variantId);
@@ -2161,6 +2170,18 @@ router.get("/api/itinerary-share/:token", async (req, res) => {
       const totalTransportCost = legs.reduce((sum, l) => sum + (l.estimatedCostUsd || 0), 0);
       const totalTransportMinutes = legs.reduce((sum, l) => sum + (l.estimatedDurationMinutes || 0), 0);
 
+      // This endpoint is PUBLIC (no auth required) — any token holder can reach it, including
+      // an anonymous "view"-only link passed to a friend/family member. expertNotes/expertDiff
+      // carry the expert's PRIVATE per-activity review commentary and must never leave the
+      // server for a non-owner/anonymous request (client-side gating alone is not a gate — see
+      // itinerary-view.tsx's isOwnerView-conditioned rendering, which this closes the server hole for).
+      const requesterId = getReqUserId(req);
+      const isOwner = !!(shared.sharedByUserId && requesterId === shared.sharedByUserId);
+      // The expert-review flow (a "suggest"/"edit" permission link) is the one non-owner
+      // holder allowed to see the expert's notes/diff — that's the reviewing expert's own
+      // content. A plain "view" link (the everyday friend/family share) never sees it.
+      const canSeeExpertContent = isOwner || shared.permissions === "suggest" || shared.permissions === "edit";
+
       res.json({
         variant: {
           id: variant.id,
@@ -2191,16 +2212,19 @@ router.get("/api/itinerary-share/:token", async (req, res) => {
           ? {
               name: [sharer.firstName, sharer.lastName].filter(Boolean).join(" ") || "A traveler",
               avatarUrl: sharer.profileImageUrl,
-              userId: sharer.id,
+              // Owner's raw internal userId is redacted from anonymous/non-owner responses —
+              // nothing off-owner needs it, and it's needless PII exposure on a public token endpoint.
+              userId: isOwner ? sharer.id : null,
             }
           : { name: "A traveler", avatarUrl: null, userId: null },
         permissions: shared.permissions,
         expertStatus: shared.expertStatus,
-        expertNotes: shared.expertNotes || null,
-        expertDiff: shared.expertDiff || null,
+        // Private expert review content — never sent to a non-owner "view"-only link holder.
+        expertNotes: canSeeExpertContent ? (shared.expertNotes || null) : null,
+        expertDiff: canSeeExpertContent ? (shared.expertDiff || null) : null,
         transportPreferences: shared.transportPreferences,
         shareToken: token,
-        isOwner: !!(shared.sharedByUserId && (req as any).user?.id === shared.sharedByUserId),
+        isOwner,
       });
     } catch (err: any) {
       console.error("Get shared itinerary error:", err);
@@ -2514,7 +2538,7 @@ router.get("/api/itinerary-share/:token/navigate/:dayNumber/:legOrder", async (r
 
 router.get("/api/transport-legs/user", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req as any).user?.id;
+      const userId = getReqUserId(req);
       if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
       const userLegs = await storage.getUserTransportLegsWithJoin(userId);
@@ -2530,7 +2554,7 @@ router.get("/api/transport-legs/user", isAuthenticated, async (req, res) => {
 router.get("/api/itinerary-variants/:variantId/transport-legs", isAuthenticated, async (req, res) => {
     try {
       const { variantId } = req.params;
-      const userId = (req as any).user?.id;
+      const userId = getReqUserId(req);
 
       // Verify ownership: the variant must belong to a comparison owned by the requesting user
       const variantOwner = await storage.getVariantWithComparisonOwner(variantId);
@@ -2550,7 +2574,7 @@ router.get("/api/itinerary-variants/:variantId/transport-legs", isAuthenticated,
 router.post("/api/itinerary-variants/:variantId/calculate-transport", isAuthenticated, async (req, res) => {
     try {
       const { variantId } = req.params;
-      const userId = (req as any).user?.id;
+      const userId = getReqUserId(req);
       const { userPrefs } = req.body;
 
       const variant = await storage.getItineraryVariantById(variantId);
@@ -2596,7 +2620,7 @@ router.post("/api/itinerary-share/:token/suggest", async (req, res) => {
     try {
       const { token } = req.params;
       const { notes, activityDiffs, transportDiffs } = req.body;
-      const userId = (req as any).user?.id;
+      const userId = getReqUserId(req);
 
       if (!userId) return res.status(401).json({ error: "Authentication required to submit suggestions" });
       if (!notes?.trim()) return res.status(400).json({ error: "Notes are required" });
@@ -2653,7 +2677,7 @@ router.patch("/api/itinerary-share/:token/acknowledge", async (req, res) => {
     try {
       const { token } = req.params;
       const { action } = req.body;
-      const userId = (req as any).user?.id;
+      const userId = getReqUserId(req);
 
       if (!action || !["accept", "reject"].includes(action)) {
         return res.status(400).json({ error: "action must be 'accept' or 'reject'" });
@@ -2686,7 +2710,7 @@ router.post("/api/expert-review/:shareToken/submit", async (req, res) => {
     try {
       const { shareToken } = req.params;
       const { notes, activityDiffs, transportDiffs } = req.body;
-      const userId = (req as any).user?.id;
+      const userId = getReqUserId(req);
 
       if (!notes?.trim()) return res.status(400).json({ error: "Notes are required" });
       if (!userId) return res.status(401).json({ error: "Authentication required to submit expert edits" });
@@ -2810,7 +2834,7 @@ router.patch("/api/expert-review/:shareToken/acknowledge", async (req, res) => {
     try {
       const { shareToken } = req.params;
       const { action, acceptedDiffIds, rejectedDiffIds } = req.body;
-      const userId = (req as any).user?.id;
+      const userId = getReqUserId(req);
 
       if (!action || !["accept", "reject"].includes(action)) {
         return res.status(400).json({ error: "action must be 'accept' or 'reject'" });
