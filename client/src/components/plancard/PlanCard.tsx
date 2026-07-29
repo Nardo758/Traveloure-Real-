@@ -701,10 +701,17 @@ function PlanCardSummary({
 
 // ── Main PlanCard component ────────────────────────────────────────────────
 
-export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full", days: daysProp, embedded = false }: PlanCardProps) {
-  const [selectedDay, setSelectedDay] = useState(0);
+export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full", days: daysProp, embedded = false, initialSelectedDay }: PlanCardProps) {
+  // Mobile-lens audit #1: seed from the page's already-computed "today" index (when given)
+  // so a mid-flight trip opens on today's day, not always Day 1 — the temporal engine
+  // (Up Next / now-line / Live today) is already correct once the right day is showing.
+  const [selectedDay, setSelectedDay] = useState(
+    initialSelectedDay != null && initialSelectedDay >= 0 ? initialSelectedDay : 0
+  );
   const [section, setSection] = useState<"activities" | "transport">("activities");
-  const [showChanges, setShowChanges] = useState(true);
+  // Mobile-lens audit #3: default collapsed — a quiet/new trip no longer spends a full
+  // amber panel of the first mobile screen on "No changes yet" before today's activities.
+  const [showChanges, setShowChanges] = useState(false);
   const [viewMode, setViewMode] = useState<"card" | "map">("card");
   const [confirming, setConfirming] = useState(false);
   const { toast } = useToast();
@@ -908,7 +915,7 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
             onClick={() => setViewMode("card")}
             variant={viewMode === "card" ? "default" : "secondary"}
             size="sm"
-            className="flex-1 text-xs"
+            className="flex-1 text-xs min-h-11"
             data-testid={`btn-card-view-${trip.id}`}
           >
             <LayoutList className="w-3.5 h-3.5 sm:mr-1.5" />
@@ -918,7 +925,7 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
             onClick={() => setViewMode("map")}
             variant={viewMode === "map" ? "default" : "secondary"}
             size="sm"
-            className="flex-1 text-xs"
+            className="flex-1 text-xs min-h-11"
             data-testid={`btn-map-view-${trip.id}`}
           >
             <MapIcon className="w-3.5 h-3.5 sm:mr-1.5" />
@@ -1053,10 +1060,14 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
 
         {!isViewer && (
           <div className="px-3 sm:px-5 pb-4 pt-2 flex gap-2">
+            {/* Mobile-lens audit #9: the "View Itinerary" button that used to sit here linked to
+                /itinerary/:id, which redirects straight back to this same /trip/:id?tab=itinerary
+                page — a no-op button. Removed rather than repointed: this full-stage card IS the
+                itinerary view, so there's nothing additive to send the traveler to from here. */}
             <Button
               variant="outline"
               size="sm"
-              className="flex-shrink-0"
+              className="flex-shrink-0 min-h-11"
               onClick={handleOpenInMaps}
               data-testid={`button-open-maps-${trip.id}`}
             >
@@ -1064,17 +1075,6 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
               Maps
             </Button>
             {/* Concierge promoted to the front-and-center ConciergeModule above (redesign Phase 2) */}
-            <Link href={`/itinerary/${trip.id}`} className="flex-1">
-              <Button
-                size="sm"
-                className="w-full text-xs font-semibold text-white"
-                data-testid={`button-view-itinerary-${trip.id}`}
-              >
-                <Calendar className="w-3.5 h-3.5 mr-1" />
-                View Itinerary
-                <ChevronRight className="w-3.5 h-3.5 ml-0.5" />
-              </Button>
-            </Link>
           </div>
         )}
       </Card>

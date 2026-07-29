@@ -119,6 +119,30 @@ async function creditExpertReviewSplit(
   } as any);
 }
 
+/**
+ * R7 (GAP 2 fix, expert-loop object-flow audit, Jul 30 2026): find PAID, not-yet-completed
+ * `expert_requests` rows bridging to this (trip, expert) pair — the same bridge the lead-routing
+ * fire-and-forget path uses (`assignExpertAdvisorToRequest` stamps `assigned_expert_id`;
+ * `ensureTripAdvisorRow` creates the matching `trip_expert_advisors` row, both keyed on tripId).
+ * "PAID" = a verified PaymentIntent was stamped onto `optimization_context.paymentIntentId` at
+ * create (see `POST /api/expert-requests`); unpaid/free-lead requests never match, so nothing is
+ * auto-completed for them (per §14, the credit itself only ever reads the stored PI-derived
+ * ledger row — see `creditExpertReviewSplit`).
+ */
+export async function getPaidUncompletedExpertRequestIds(
+  tripId: string,
+  expertUserId: string,
+): Promise<string[]> {
+  const result = await db.execute(sql`
+    SELECT id FROM expert_requests
+    WHERE trip_id = ${tripId}
+      AND assigned_expert_id = ${expertUserId}
+      AND status <> 'completed'
+      AND optimization_context ->> 'paymentIntentId' IS NOT NULL
+  `);
+  return (result.rows || []).map((r: any) => String(r.id));
+}
+
 export async function getExpertRequestsByUser(
   userId: string,
   tripId?: string,

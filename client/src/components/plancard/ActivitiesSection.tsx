@@ -4,7 +4,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import {
   MapPin, History, MessageSquare, Activity,
-  CheckCircle2, Circle, Navigation2, ChevronDown, ChevronUp, Map,
+  CheckCircle2, Circle, Navigation2, ChevronDown, ChevronUp, Map, Phone, BadgeCheck,
 } from "lucide-react";
 import {
   TYPE_COLORS, STATUS_STYLES,
@@ -381,6 +381,11 @@ export function ActivitiesSection({
         const isUpcoming = state === "upcoming";
         const isVisited = visited.has(a.id);
         const legAfter = i < activities.length - 1 ? legs[i] : undefined;
+        // Mobile-lens audit #4: same guard/helper as the up-next FAB, attached per-row
+        // instead of only the single live-day FAB target.
+        const canNavigateRow = hasValidCoords(a.lat, a.lng) || !!a.mapsUrl;
+        const navigateRow = () =>
+          openInMaps({ destination: { lat: a.lat, lng: a.lng, name: a.name, mapsUrl: a.mapsUrl } });
 
         return (
           <div key={a.id}>
@@ -409,7 +414,7 @@ export function ActivitiesSection({
                 <div className="flex-1 flex items-center gap-2 min-w-0">
                   <button
                     onClick={() => toggleVisited(a.id)}
-                    className="flex-shrink-0 text-green-500 hover:text-green-600 transition-colors"
+                    className="flex-shrink-0 -m-3.5 p-3.5 text-green-500 hover:text-green-600 transition-colors"
                     title="Mark as not visited"
                     data-testid={`button-visited-${a.id}`}
                   >
@@ -461,7 +466,7 @@ export function ActivitiesSection({
                   <div className="flex items-start gap-2 flex-wrap">
                     <button
                       onClick={() => toggleVisited(a.id)}
-                      className="flex-shrink-0 mt-0.5 transition-colors text-muted-foreground/40 hover:text-muted-foreground"
+                      className="flex-shrink-0 -m-3.5 p-3.5 transition-colors text-muted-foreground/40 hover:text-muted-foreground"
                       title="Mark as visited"
                       data-testid={`button-visited-${a.id}`}
                     >
@@ -499,9 +504,24 @@ export function ActivitiesSection({
                     </span>
                   </div>
 
-                  <div className="text-[12px] text-muted-foreground mt-1 flex items-center gap-1">
-                    <MapPin className="w-3 h-3 flex-shrink-0" />
-                    <span data-testid={`text-activity-location-${a.id}`}>{a.location}</span>
+                  <div className="text-[12px] text-muted-foreground mt-1 flex items-center gap-1 flex-wrap">
+                    {canNavigateRow ? (
+                      <button
+                        type="button"
+                        onClick={navigateRow}
+                        className="flex items-center gap-1 -my-2 py-2 hover:text-primary transition-colors min-w-0"
+                        title="Open in Maps"
+                        data-testid={`button-navigate-row-${a.id}`}
+                      >
+                        <MapPin className="w-3 h-3 flex-shrink-0" />
+                        <span className="hover:underline truncate" data-testid={`text-activity-location-${a.id}`}>{a.location}</span>
+                      </button>
+                    ) : (
+                      <>
+                        <MapPin className="w-3 h-3 flex-shrink-0" />
+                        <span data-testid={`text-activity-location-${a.id}`}>{a.location}</span>
+                      </>
+                    )}
                     {a.cost > 0 && (
                       <span
                         className="ml-2 text-green-600 dark:text-green-400 font-semibold"
@@ -511,6 +531,33 @@ export function ActivitiesSection({
                       </span>
                     )}
                   </div>
+
+                  {/* §5 — vendor phone + confirmation number: real data only, rendered when
+                      present (no placeholders for items with neither). */}
+                  {(a.vendorPhone || a.confirmationNumber) && (
+                    <div className="text-[12px] text-muted-foreground mt-1 flex items-center gap-3 flex-wrap">
+                      {a.vendorPhone && (
+                        <a
+                          href={`tel:${a.vendorPhone}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="flex items-center gap-1 -my-2 py-2 text-blue-600 dark:text-blue-400 hover:underline"
+                          data-testid={`link-call-vendor-${a.id}`}
+                        >
+                          <Phone className="w-3 h-3 flex-shrink-0" />
+                          {a.vendorPhone}
+                        </a>
+                      )}
+                      {a.confirmationNumber && (
+                        <span
+                          className="flex items-center gap-1"
+                          data-testid={`text-confirmation-number-${a.id}`}
+                        >
+                          <BadgeCheck className="w-3 h-3 flex-shrink-0 text-emerald-600 dark:text-emerald-400" />
+                          Confirmation: {a.confirmationNumber}
+                        </span>
+                      )}
+                    </div>
+                  )}
 
                   {a.expertNote && (
                     <div
@@ -546,9 +593,12 @@ export function ActivitiesSection({
                   )}
 
                   <div className="flex gap-2.5 mt-2">
+                    {/* Mobile-lens audit #6: this was styled cursor-pointer/hover:underline with
+                        no onClick — a dead-looking-live control. No comments panel exists at this
+                        layer to open, so it's a plain (non-interactive) count, honestly styled. */}
                     {a.comments > 0 && (
                       <span
-                        className="text-[11px] text-blue-600 dark:text-blue-400 flex items-center gap-1 cursor-pointer hover:underline"
+                        className="text-[11px] text-blue-600 dark:text-blue-400 flex items-center gap-1"
                         data-testid={`link-comments-${a.id}`}
                       >
                         <MessageSquare className="w-3 h-3" /> {a.comments} comment

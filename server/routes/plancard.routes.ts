@@ -217,6 +217,18 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
     const changes = await storage.getItineraryChanges(tripId, 20);
     const commentCounts = await storage.getActivityCommentCounts(tripId);
 
+    // Mobile-lens audit §5: surface real vendor phone (vendor_contracts) + confirmation
+    // number (itinerary_items, already stored) on the activity row. Bulk-fetch once per
+    // request; render only when present (§13 — no placeholders for items with neither).
+    const vendorContractIds = [...new Set(
+      items.map(i => (i as any).vendorContractId).filter((id): id is string => !!id)
+    )];
+    const vendorContractRows = vendorContractIds.length
+      ? await storage.getVendorContractsByIds(vendorContractIds)
+      : [];
+    const vendorPhoneById: Record<string, string | null> = {};
+    for (const vc of vendorContractRows) vendorPhoneById[vc.id] = vc.vendorPhone ?? null;
+
     const dayNumbers = [...new Set(items.map(i => i.dayNumber))].sort((a, b) => a - b);
     const startDate = trip.startDate ? new Date(trip.startDate) : new Date();
 
@@ -255,6 +267,12 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
           expertNote: (item as any).expertNote || (item as any).notes || null,
           comments: commentCounts[item.id] || 0,
           suggestedBy: item.suggestedBy || null,
+          // §5: real data only — null when the item has no vendor contract / no confirmation
+          // yet, never a placeholder string.
+          vendorPhone: (item as any).vendorContractId
+            ? (vendorPhoneById[(item as any).vendorContractId] ?? null)
+            : null,
+          confirmationNumber: (item as any).confirmationNumber || (item as any).bookingReference || null,
           changes: changes
             .filter(c => c.activityId === item.id)
             .slice(0, 1)

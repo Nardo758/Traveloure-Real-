@@ -27,7 +27,7 @@ export function SectionTabs({
     <div className="flex border-b border-border px-2 sm:px-4" data-testid={`section-tabs-${tripId}`}>
       <button
         onClick={() => onSetSection("activities")}
-        className={`py-2.5 px-3 sm:px-5 border-b-2 cursor-pointer transition-all text-xs sm:text-sm font-medium flex items-center gap-1.5 ${
+        className={`min-h-11 py-2.5 px-3 sm:px-5 border-b-2 cursor-pointer transition-all text-xs sm:text-sm font-medium flex items-center gap-1.5 ${
           section === "activities"
             ? "border-primary text-primary font-bold"
             : "border-transparent text-muted-foreground hover:text-foreground"
@@ -47,7 +47,7 @@ export function SectionTabs({
 
       <button
         onClick={() => !transportLocked && onSetSection("transport")}
-        className={`py-2.5 px-3 sm:px-5 border-b-2 cursor-pointer transition-all text-xs sm:text-sm font-medium flex items-center gap-1.5 ${
+        className={`min-h-11 py-2.5 px-3 sm:px-5 border-b-2 cursor-pointer transition-all text-xs sm:text-sm font-medium flex items-center gap-1.5 ${
           transportLocked ? "opacity-50 cursor-not-allowed" : ""
         } ${
           section === "transport" && !transportLocked
@@ -67,7 +67,7 @@ export function SectionTabs({
 
       <button
         onClick={onToggleChanges}
-        className={`ml-auto py-2.5 px-2 sm:px-4 cursor-pointer transition-all text-xs font-semibold flex items-center gap-1 ${
+        className={`min-h-11 ml-auto py-2.5 px-2 sm:px-4 cursor-pointer transition-all text-xs font-semibold flex items-center gap-1 ${
           showChanges ? "text-amber-500 dark:text-amber-400" : "text-muted-foreground hover:text-foreground"
         }`}
         data-testid={`button-changes-${tripId}`}

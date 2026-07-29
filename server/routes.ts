@@ -10,7 +10,7 @@ import { storage } from "./storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import { setupAuth, registerAuthRoutes, isAuthenticated, setupFacebookAuth, setupEmailAuth } from "./replit_integrations/auth";
-import { isExpert, isProvider } from "./middleware/role-rbac";
+import { isExpert, isProvider, isEarner } from "./middleware/role-rbac";
 import { registerChatRoutes } from "./replit_integrations/chat/routes";
 import { 
   users, helpGuideTrips, touristPlaceResults, touristPlacesSearches, 
@@ -342,18 +342,27 @@ export async function registerRoutes(
     "/api/expert/assigned-trips",
   ];
   const PROVIDER_SELF_SERVICE_PREFIXES = [
-    "/api/provider/services",
     "/api/provider/verification-status",
     "/api/provider/request-verification-review",
     "/api/provider/dashboard",
     "/api/provider/analytics",
     "/api/provider/earnings",
   ];
+  // GAP 1 fix (expert-loop object-flow audit, Jul 30 2026): `/api/provider/services` is CLAUDE.md
+  // §5's single shared offering-creation endpoint for BOTH roles (ServiceForm posts here for
+  // role="expert" and role="provider" alike) — it does NOT belong under the provider-only
+  // PROVIDER_SELF_SERVICE_PREFIXES gate. Kept as its own prefix, gated by `isEarner`
+  // (expert-family OR provider OR admin — shared/roles.ts `isEarnerRole`), so the backstop still
+  // blocks a plain "user" role but no longer blocks legitimate expert-role writers.
+  const EARNER_SELF_SERVICE_PREFIXES = [
+    "/api/provider/services",
+  ];
   app.use((req: any, res: any, next: any) => {
     if (req.method === "OPTIONS") return next();
     const p: string = req.path;
     const matchesPrefix = (prefixes: string[]) =>
       prefixes.some((prefix) => p === prefix || p.startsWith(prefix + "/"));
+    if (matchesPrefix(EARNER_SELF_SERVICE_PREFIXES)) return isEarner(req, res, next);
     if (matchesPrefix(EXPERT_SELF_SERVICE_PREFIXES)) return isExpert(req, res, next);
     if (matchesPrefix(PROVIDER_SELF_SERVICE_PREFIXES)) return isProvider(req, res, next);
     next();
@@ -730,7 +739,22 @@ export async function registerRoutes(
     if (!isOwner && !isExpert && !isManagingEa && !isGuestWithToken) {
       return res.status(401).json({ message: "Unauthorized" });
     }
-    res.json(trip);
+
+    // GAP 5 fix (expert-loop object-flow audit, Jul 30 2026): "delivered" previously had no
+    // persistent signal on the trip itself — only a one-shot notification the traveler could
+    // dismiss/miss, with no fallback UI truth. Additive, server-only field (a sibling agent
+    // renders it): the most recent active (pending/accepted) assignment's workspaceStatus, or
+    // null when no expert is currently assigned. This is the canonical inline trips GET (§9).
+    const [advisorRow] = await db.select({ workspaceStatus: tripExpertAdvisors.workspaceStatus })
+      .from(tripExpertAdvisors)
+      .where(and(
+        eq(tripExpertAdvisors.tripId, trip.id),
+        inArray(tripExpertAdvisors.status, ["pending", "accepted"]),
+      ))
+      .orderBy(desc(tripExpertAdvisors.assignedAt))
+      .limit(1);
+
+    res.json({ ...trip, expertWorkspaceStatus: advisorRow?.workspaceStatus ?? null });
   });
 
   // POST /api/trips — create a trip (guest or authenticated)
