@@ -47,8 +47,14 @@ export function BottomActionBar({
   const hasAcceptedAdvisor = advisor?.status === "accepted";
 
   return (
+    // `fixed` (not `sticky`) — the ancestor page layout (DashboardLayout's <main>, out of
+    // this component's scope) sets `overflow: auto` without ever actually developing
+    // scrollable overflow itself (see the day-switcher comment in PlanCard.tsx), which
+    // silently breaks `position: sticky` against real window scroll. `fixed` escapes that
+    // ancestor chain entirely (only trapped by transform/filter/contain, none of which are
+    // in play here) — also the more conventional choice for a persistent mobile bottom bar.
     <div
-      className="sm:hidden sticky bottom-0 z-20 flex gap-1.5 px-3 pt-2 bg-card border-t border-border"
+      className="sm:hidden fixed inset-x-0 bottom-0 z-30 flex gap-1.5 px-3 pt-2 bg-card border-t border-border"
       style={{ paddingBottom: "calc(0.5rem + env(safe-area-inset-bottom, 0px))" }}
       data-testid={`bottom-action-bar-${tripId}`}
     >
