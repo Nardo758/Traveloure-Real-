@@ -492,6 +492,20 @@ interface SuggestionPayload {
   estimatedCost?: number;
 }
 
+// Add-panel source pills (§17 Central Content network). D1/D5 (UX audit Jul 29): every
+// pill now carries a plain-language caption so a first-time expert can tell what each
+// source actually is without hovering a tooltip; `comingSoon` sources stay honestly
+// labeled but are clickable (§13 "coming soon" pattern) instead of dead/disabled.
+const ADD_SOURCES: { k: string; l: string; caption: string; comingSoon?: boolean }[] = [
+  { k: "dmo", l: "DMO Library", caption: "Local research your admin has approved for Kyoto — refine it, then drop it into a day." },
+  { k: "content", l: "Platform content", caption: "The shared Traveloure content library. Not wired up yet — the read is on the way.", comingSoon: true },
+  { k: "platform", l: "Platform services", caption: "Traveloure's approved bookable services in this city, plus a map to browse them." },
+  { k: "partner", l: "Partner inventory", caption: "External booking networks Traveloure has integrated — book off-site, log it here." },
+  { k: "mine", l: "My services", caption: "Your own approved listings. Coming with the Catalog module.", comingSoon: true },
+  { k: "custom", l: "Custom", caption: "Add anything by hand — a place, a note, or a reservation with no catalog match." },
+  { k: "transport", l: "Transport", caption: "Ground-transport routes (train, taxi, transfer) between stops." },
+];
+
 const SUGGESTION_TYPES = [
   { value: "activity", label: "Activity" },
   { value: "food", label: "Food / Restaurant" },
@@ -1712,36 +1726,37 @@ export default function ExpertWorkspace() {
             ))}
           </div>
 
-          {/* ── Add panel: seven source pills (§17 Central Content network; disabled = honest §13) ── */}
+          {/* ── Add panel: seven source pills (§17 Central Content network). D1 (UX audit Jul
+              29): the row used to sit in a horizontal-scroll container with no scroll
+              affordance — at 1440px only 3 of 7 pills were visible, so My services/Custom/
+              Transport were effectively undiscoverable. Fix: the row WRAPS instead of
+              scrolling (every pill always visible, no hidden overflow) and each pill carries
+              a one-line "what is this" caption below the row instead of a hover-only title
+              tooltip. Not-yet-built sources stay honestly labeled (§13 "coming soon", the
+              same pattern as the EA-console gate) but are now CLICKABLE — clicking shows the
+              real explanation inline instead of a disabled nub with no feedback. */}
           {rightTab === "add" && (
             <>
-              <div style={{ padding: "8px 10px 6px", display: "flex", gap: 5, overflowX: "auto", flexShrink: 0 }}>
-                {[
-                  { k: "dmo", l: "DMO Library" },
-                  { k: "content", l: "Platform content", disabled: true, why: "Coming with the content registry read" },
-                  { k: "platform", l: "Platform services" },
-                  { k: "partner", l: "Partner inventory" },
-                  { k: "mine", l: "My services", disabled: true, why: "Coming with the catalog module" },
-                  { k: "custom", l: "Custom" },
-                  { k: "transport", l: "Transport" },
-                ].map(s => (
+              <div style={{ padding: "8px 10px 4px", display: "flex", flexWrap: "wrap", gap: 5, flexShrink: 0 }}>
+                {ADD_SOURCES.map(s => (
                   <button
                     key={s.k}
-                    disabled={!!s.disabled}
-                    title={s.disabled ? s.why : undefined}
-                    onClick={() => !s.disabled && setAddSource(s.k)}
+                    onClick={() => setAddSource(s.k)}
                     data-testid={`pill-add-${s.k}`}
                     style={{
                       padding: "4px 11px", borderRadius: 99, fontSize: 11.5, fontWeight: 700, whiteSpace: "nowrap",
-                      cursor: s.disabled ? "not-allowed" : "pointer", opacity: s.disabled ? 0.45 : 1,
-                      border: addSource === s.k ? `1px solid ${BRAND}` : `1px solid ${LINE}`,
+                      cursor: "pointer", opacity: s.comingSoon && addSource !== s.k ? 0.6 : 1,
+                      border: addSource === s.k ? `1px solid ${BRAND}` : s.comingSoon ? `1px dashed ${LINE}` : `1px solid ${LINE}`,
                       background: addSource === s.k ? BRAND : CARD,
                       color: addSource === s.k ? CARD : MID,
                     }}
                   >
-                    {s.l}
+                    {s.l}{s.comingSoon ? " · Soon" : ""}
                   </button>
                 ))}
+              </div>
+              <div style={{ padding: "0 10px 8px", fontSize: 11, color: FAINT, flexShrink: 0 }}>
+                {ADD_SOURCES.find(s => s.k === addSource)?.caption}
               </div>
 
               {/* Day-focus control (P2-13): every add row below targets this day. */}
@@ -1777,6 +1792,19 @@ export default function ExpertWorkspace() {
                 </button>
               </div>
             </>
+          )}
+
+          {/* Add · Platform content / My services — D1 (UX audit Jul 29): these two pills used
+              to be `disabled` with only a hover tooltip explaining why, so clicking them did
+              nothing and left a first-time expert with no feedback. They're clickable now
+              (see ADD_SOURCES above) and land here on an honest "not built yet" panel — same
+              §13 posture as every other coming-soon state in the console. */}
+          {rightTab === "add" && (addSource === "content" || addSource === "mine") && (
+            <div style={{ flex: 1, padding: "24px 16px", textAlign: "center" }}>
+              <div style={{ padding: "18px 14px", background: GROUND, borderRadius: 10, color: MID, fontSize: 12.5 }}>
+                {ADD_SOURCES.find(s => s.k === addSource)?.caption}
+              </div>
+            </div>
           )}
 
           {/* Add · DMO Library — the picker's core, embedded (same fetch + same write). */}

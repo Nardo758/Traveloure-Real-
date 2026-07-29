@@ -1368,7 +1368,15 @@ export default function CartPage() {
                           <> (~{formatPrice(Math.abs(cartNudge.estimatedCostDelta / 100))} less)</>
                         )}
                       </span>
-                      <span className="text-muted-foreground">Plan score {cartNudge.currentScore}/100</span>
+                      {/* D5 (UX audit Jul 29): "Plan score" shown with no explanation of what
+                          it measures — a real title tooltip closes that (display text only,
+                          the underlying field name is unchanged). */}
+                      <span
+                        className="text-muted-foreground"
+                        title="Plan score: how tightly scheduled and cost-efficient your current cart is, out of 100. Lower scores mean more room for the optimizer to improve it."
+                      >
+                        Plan score {cartNudge.currentScore}/100
+                      </span>
                       <span className="ml-auto font-semibold text-primary whitespace-nowrap">
                         {cartNudge.freeRerun ? "Optimize free →" : `Optimize · ${formatPrice(cartNudge.feeCents / 100)} →`}
                       </span>

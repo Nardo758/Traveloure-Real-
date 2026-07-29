@@ -197,6 +197,9 @@ export default function ExpertAnalytics({ embedded = false }: { embedded?: boole
       case "excellent": return <Badge className="bg-green-100 text-green-700 border-green-200">Excellent</Badge>;
       case "good": return <Badge className="bg-blue-100 text-blue-700 border-blue-200">Good</Badge>;
       case "needs_improvement": return <Badge className="bg-amber-100 text-amber-700 border-amber-200">Needs Work</Badge>;
+      // D5 (UX audit Jul 29): a zero-data account was rendered "Needs Work" — an honest
+      // "No data yet" replaces the false judgment (§13 pattern).
+      case "no_data": return <Badge className="bg-muted text-muted-foreground border-border">No data yet</Badge>;
       default: return null;
     }
   };
