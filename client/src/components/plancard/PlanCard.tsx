@@ -984,58 +984,74 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
               />
             )}
 
-            {/* CLAUDE.md §18 item 1 — sticky day switcher: pinned (position: sticky) at
-                mobile widths while the day's list scrolls beneath it; today's chip
-                highlighted + past days dimmed (DaySelector.tsx). At sm+ this reverts to
-                `static` — desktop's existing non-sticky layout is unchanged (no regression),
-                matching the ratified mockup's "mobile-first" scope. */}
-            <div className="sticky top-0 z-20 bg-card sm:static sm:z-auto sm:bg-transparent">
-              <DaySelector
+            {/* CLAUDE.md §18 item 1 — sticky day switcher: "day chips pinned while the
+                day's list scrolls." The page's real scrolling ancestor at mobile widths
+                turns out to be the DashboardLayout <main> (outside this component's
+                scope) — but per the CSS spec ANY ancestor whose `overflow` isn't
+                `visible` becomes the sticky reference frame, and `main` never actually
+                develops internal scrollable overflow (its flex parent uses
+                `min-h-screen`, not `h-screen`, so `main` just grows with content instead
+                of clipping it) — so a plain `position: sticky` there silently never
+                "sticks" against real window scroll. Fix, entirely within this component:
+                give the day list ITS OWN bounded, genuinely-scrolling box at mobile
+                (`overflow-y-auto` + `max-h`) so the sticky header has a real local
+                scroll container to pin against, sidestepping the ancestor issue without
+                touching dashboard-layout.tsx (out of scope). At sm+ this wrapper is
+                `display: contents` — it disappears from the box model entirely, so
+                desktop's existing DOM/layout (non-sticky DaySelector + the separate
+                360px activities box below) is pixel-identical to before. */}
+            <div
+              className="flex flex-col overflow-y-auto max-h-[64vh] sm:contents"
+              data-testid={`mobile-day-scroll-${trip.id}`}
+            >
+              <div className="sticky top-0 z-20 bg-card sm:static sm:z-auto sm:bg-transparent">
+                <DaySelector
+                  tripId={trip.id}
+                  days={days}
+                  selectedDay={selectedDay}
+                  onSelectDay={setSelectedDay}
+                />
+              </div>
+
+              {/* CLAUDE.md §18 item 2 — "Up Next" hero, mobile-only (component self-hides
+                  at sm+ and also renders nothing when the selected day isn't
+                  live/upcoming — §13). */}
+              {!embedded && <UpNextHero tripId={trip.id} day={day} legs={dayLegs} />}
+
+              <SectionTabs
                 tripId={trip.id}
-                days={days}
-                selectedDay={selectedDay}
-                onSelectDay={setSelectedDay}
+                section={section}
+                onSetSection={setSection}
+                templateConfig={templateConfig}
+                dayActivityCount={day?.activities?.length || 0}
+                dayTransportCount={day?.transports?.length || 0}
+                confirmedActivities={confirmedActivities}
+                totalActivities={totalActivities}
+                transportLocked={transportLocked}
               />
-            </div>
 
-            {/* CLAUDE.md §18 item 2 — "Up Next" hero, mobile-only (component self-hides at
-                sm+ and also renders nothing when the selected day isn't live/upcoming — §13). */}
-            {!embedded && <UpNextHero tripId={trip.id} day={day} legs={dayLegs} />}
+              {/* CLAUDE.md §18 item 1 (cont.): capped/scrollable box only at sm+ (desktop's
+                  existing compact card view, unchanged); at mobile this div is plain flow
+                  — the OUTER wrapper above is what scrolls now. */}
+              <div className="overflow-visible sm:max-h-[360px] sm:overflow-y-auto scrollbar-hide">
+                {section === "activities" && (
+                  <ActivitiesSection
+                    tripId={trip.id}
+                    day={day}
+                    templateConfig={templateConfig}
+                    legs={dayLegs}
+                  />
+                )}
 
-            <SectionTabs
-              tripId={trip.id}
-              section={section}
-              onSetSection={setSection}
-              templateConfig={templateConfig}
-              dayActivityCount={day?.activities?.length || 0}
-              dayTransportCount={day?.transports?.length || 0}
-              confirmedActivities={confirmedActivities}
-              totalActivities={totalActivities}
-              transportLocked={transportLocked}
-            />
-
-            {/* CLAUDE.md §18 item 1 (cont.): capped/scrollable box only at sm+ (desktop's
-                existing compact card view, unchanged); at mobile the list flows in the
-                page's own scroll so the sticky switcher above has something real to pin
-                against. */}
-            <div className="overflow-visible sm:max-h-[360px] sm:overflow-y-auto scrollbar-hide">
-              {section === "activities" && (
-                <ActivitiesSection
-                  tripId={trip.id}
-                  day={day}
-                  templateConfig={templateConfig}
-                  legs={dayLegs}
-                />
-              )}
-
-              {section === "transport" && !transportLocked && (
-                <TransportSection
-                  tripId={trip.id}
-                  tripDestination={trip.destination}
-                  day={day}
-                  allowActions={!isViewer}
-                />
-              )}
+                {section === "transport" && !transportLocked && (
+                  <TransportSection
+                    tripId={trip.id}
+                    tripDestination={trip.destination}
+                    day={day}
+                    allowActions={!isViewer}
+                  />
+                )}
+              </div>
             </div>
 
             {/* CLAUDE.md §18 item 4 — Map preview / Transport / Budget / Change history /
@@ -1128,6 +1144,11 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
             {/* Concierge promoted to the front-and-center ConciergeModule above (redesign Phase 2) */}
           </div>
         )}
+
+        {/* Fixed-position spacer: BottomActionBar below is `position: fixed`, so it
+            overlays whatever's at the bottom of the viewport — this keeps the card's own
+            last section (upsells/escalation CTA) from being hidden under it. */}
+        {!embedded && <div className="sm:hidden h-16" aria-hidden="true" />}
 
         {/* CLAUDE.md §18 item 3 — sticky bottom action bar, mobile viewports only. */}
         {!embedded && (
