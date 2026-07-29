@@ -836,6 +836,20 @@ Governing spec: `docs/backoffice/mockups/mockup-unified-workspace.html` (v9). Lo
     (D1a), requires ≥2 components, all owned by the session user and `approved`+`active`;
     price/component-set changes to an approved bundle re-enter review (the A3 material-change
     rule). Bundle create UI unlocks at 2+ approved services (the §17 creation ladder).
+  - **Workstation audit fixes (Jul 28, 2026, decision-maker-reported gaps ground-truthed then built):**
+    ① day management — the Add panel's day-focus control already existed; added the "+ Day"
+    affordance and a move-item-between-days action (existing item PATCH, no new endpoint).
+    ② **Transport source pill — ADDED to the §17 Add-panel taxonomy** (decision-maker requested):
+    a DMO-style drawer listing affiliate transport from the EXISTING catalog endpoints
+    (`/api/catalog/ground-transport` etc.); **§16 holds** — the drawer never renders or stores an
+    affiliate URL client-side (the itinerary item is informational; booking routes through the
+    booking-agent rail), and it must NOT reuse `POST /api/transport-booking-options/:id/click`
+    (that path returns a redirectUrl to the client). ③ per-item expert notes — migration 152 adds
+    additive-nullable `itinerary_items.expert_note` (PlanCard already rendered it; the builder
+    gains authoring; the item-PATCH allow-list gains the field). Trip-level notes already existed
+    (PATCH /api/trips/:tripId/expert-notes). ④ the Platform-services pill's Google-Maps block is
+    error-bounded (a Maps billing/key failure collapses to list-only results instead of blanking
+    the whole workspace — the audit's only P1).
 
 The earning ledger is an escrow state machine: **`held → releasable → paid_out`**, plus **`reversed`**, with a
 `dispute_state`. All phases are **landed on `main`** (Jul 14, 2026):

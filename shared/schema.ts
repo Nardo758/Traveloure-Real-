@@ -3229,6 +3229,10 @@ export const itineraryItems = pgTable("itinerary_items", {
   // Notes and attachments
   notes: text("notes"),
   privateNotes: text("private_notes"), // Organizer-only notes
+  // Durable per-item expert note (migration 152, Workstation audit C-1) — the traveler-facing
+  // tip PlanCard renders per activity. Distinct from notes (traveler's own) and privateNotes
+  // (organizer-only): this is the EXPERT's voice on the item. Nullable; NULL = no note.
+  expertNote: text("expert_note"),
   attachments: jsonb("attachments").default([]), // [{name, url, type}]
   
   // Suggestion tracking
