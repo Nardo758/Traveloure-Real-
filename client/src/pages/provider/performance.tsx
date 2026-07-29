@@ -93,7 +93,11 @@ export default function ProviderPerformance() {
     },
   ];
 
+  // D5 (UX audit Jul 29): "Below Average" was rendered even for an account with zero
+  // bookings (avgBookingValue 0 always fails the benchmark check) — a judgment against
+  // no data, not a real comparison. `no_data` is a distinct, honest status (§13 pattern).
   const getBenchmarkStatus = (value: number, benchmark: number) => {
+    if (value <= 0) return "no_data";
     if (value >= benchmark * 1.2) return "excellent";
     if (value >= benchmark) return "good";
     return "needs_improvement";
@@ -193,12 +197,14 @@ export default function ProviderPerformance() {
                       </div>
                       <div className="text-right">
                         <p className="text-2xl font-bold text-foreground">${Math.round(analytics?.benchmarks?.avgBookingValue || 0)}</p>
-                        <Badge 
+                        <Badge
                           className={
                             getBenchmarkStatus(analytics?.benchmarks?.avgBookingValue || 0, analytics?.benchmarks?.categoryAvg || 280) === "excellent"
                               ? "bg-green-100 text-green-700 border-green-200"
                               : getBenchmarkStatus(analytics?.benchmarks?.avgBookingValue || 0, analytics?.benchmarks?.categoryAvg || 280) === "good"
                               ? "bg-blue-100 text-blue-700 border-blue-200"
+                              : getBenchmarkStatus(analytics?.benchmarks?.avgBookingValue || 0, analytics?.benchmarks?.categoryAvg || 280) === "no_data"
+                              ? "bg-muted text-muted-foreground border-border"
                               : "bg-amber-100 text-amber-700 border-amber-200"
                           }
                         >
@@ -206,6 +212,8 @@ export default function ProviderPerformance() {
                             ? "Excellent"
                             : getBenchmarkStatus(analytics?.benchmarks?.avgBookingValue || 0, analytics?.benchmarks?.categoryAvg || 280) === "good"
                             ? "Good"
+                            : getBenchmarkStatus(analytics?.benchmarks?.avgBookingValue || 0, analytics?.benchmarks?.categoryAvg || 280) === "no_data"
+                            ? "No data yet"
                             : "Below Average"
                           }
                         </Badge>

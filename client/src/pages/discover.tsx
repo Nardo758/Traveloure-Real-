@@ -246,19 +246,34 @@ function ServiceCard({
             />
             <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
             
-            {/* Heat Score Badge - Top Right */}
-            <div 
-              className="absolute top-3 right-3 w-11 h-11 rounded-xl bg-white/95 dark:bg-white/90 shadow-lg flex items-center justify-center"
-              data-testid={`badge-heat-score-${service.id}`}
-            >
-              <span className={cn(
-                "text-lg font-bold",
-                heatScore >= 90 ? "text-primary" : heatScore >= 80 ? "text-orange-500 dark:text-orange-400" : "text-amber-500 dark:text-amber-400"
-              )}>
-                {heatScore}
-              </span>
-            </div>
-            
+            {/* Heat Score Badge - Top Right. D5 (UX audit Jul 29): "Heat Score 0" rendered on
+                every zero-review service with no legend — read as a bad score, not "no data
+                yet". A real title tooltip explains the number; a service with no reviews yet
+                shows the same honest "New" the rest of the platform uses (§13) instead of a
+                fabricated-looking 0. */}
+            {reviewCount > 0 ? (
+              <div
+                className="absolute top-3 right-3 w-11 h-11 rounded-xl bg-white/95 dark:bg-white/90 shadow-lg flex items-center justify-center"
+                data-testid={`badge-heat-score-${service.id}`}
+                title={`Traveler Score: ${heatScore}/100 — based on this service's average rating (${rating.toFixed(1)}/5 from ${reviewCount} review${reviewCount === 1 ? "" : "s"})`}
+              >
+                <span className={cn(
+                  "text-lg font-bold",
+                  heatScore >= 90 ? "text-primary" : heatScore >= 80 ? "text-orange-500 dark:text-orange-400" : "text-amber-500 dark:text-amber-400"
+                )}>
+                  {heatScore}
+                </span>
+              </div>
+            ) : (
+              <div
+                className="absolute top-3 right-3 px-2.5 h-6 rounded-full bg-white/95 dark:bg-white/90 shadow-lg flex items-center justify-center"
+                data-testid={`badge-heat-score-${service.id}`}
+                title="No reviews yet — a Traveler Score appears once travelers rate this service."
+              >
+                <span className="text-[11px] font-semibold text-muted-foreground">New</span>
+              </div>
+            )}
+
             {/* Hot/Trending Badge - Top Left */}
             <div className="absolute top-3 left-3 flex items-center gap-2">
               {isHot ? (

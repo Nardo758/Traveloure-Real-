@@ -4591,23 +4591,26 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         { stage: "Completed", count: completedBookings.length, percent: bookingsMade > 0 ? (completedBookings.length / bookingsMade) * 100 : 0 },
       ];
       
-      // Calculate benchmarks
+      // Calculate benchmarks. D5 (UX audit Jul 29): a zero-data account (no bookings, no
+      // ratings) was falling through to "needs_improvement" / "good" — a judgment against
+      // an empty account, not a real comparison. "no_data" is a distinct, honest status
+      // the client renders as "No data yet" (§13 pattern — never a fabricated verdict).
       const benchmarks = {
         responseTime: { value: "2 hrs", benchmark: "1 hr", status: "good" },
-        conversionRate: { 
-          value: `${conversionRate.toFixed(0)}%`, 
-          benchmark: "55%", 
-          status: conversionRate >= 55 ? "excellent" : conversionRate >= 40 ? "good" : "needs_improvement"
+        conversionRate: {
+          value: `${conversionRate.toFixed(0)}%`,
+          benchmark: "55%",
+          status: inquiryCount === 0 ? "no_data" : conversionRate >= 55 ? "excellent" : conversionRate >= 40 ? "good" : "needs_improvement"
         },
         avgRating: {
           value: avgRating.toFixed(1),
           benchmark: "4.5",
-          status: avgRating >= 4.5 ? "excellent" : avgRating >= 4.0 ? "good" : "needs_improvement"
+          status: avgRating === 0 ? "no_data" : avgRating >= 4.5 ? "excellent" : avgRating >= 4.0 ? "good" : "needs_improvement"
         },
         avgBookingValue: {
           value: `$${totalBookings > 0 ? (totalRevenue / totalBookings).toFixed(0) : 0}`,
           benchmark: "$350",
-          status: totalRevenue / (totalBookings || 1) >= 350 ? "excellent" : "good"
+          status: totalBookings === 0 ? "no_data" : totalRevenue / totalBookings >= 350 ? "excellent" : "good"
         }
       };
       
