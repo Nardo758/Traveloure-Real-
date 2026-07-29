@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { getEnergyProfile, ENERGY_COLORS, type PlanCardDay } from "./plancard-types";
+import { todayIso } from "./plancard-temporal";
 
 interface DaySelectorProps {
   tripId: string;
@@ -12,6 +13,10 @@ interface DaySelectorProps {
 export function DaySelector({ tripId, days, selectedDay, onSelectDay, showActivityCounts }: DaySelectorProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const buttonRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  // CLAUDE.md §18 item 1: real date comparison (not the currently-selected index) drives
+  // "today's chip highlighted" + "past days dimmed" — independent of which day the
+  // traveler happens to be viewing.
+  const todayStr = todayIso(new Date());
 
   useEffect(() => {
     const btn = buttonRefs.current[selectedDay];
@@ -28,18 +33,29 @@ export function DaySelector({ tripId, days, selectedDay, onSelectDay, showActivi
         const energy = getEnergyProfile(d);
         const ec = ENERGY_COLORS[energy];
         const actCount = d.activities?.length || 0;
+        const isSelected = selectedDay === i;
+        const isToday = d.date === todayStr;
+        const isPast = d.date < todayStr;
         return (
           <button
             key={i}
             ref={(el) => { buttonRefs.current[i] = el; }}
             onClick={() => onSelectDay(i)}
-            className={`px-2.5 sm:px-4 py-2 rounded-t-xl border-b-2 cursor-pointer whitespace-nowrap transition-all text-xs sm:text-sm font-medium flex flex-col items-center gap-0.5 ${
-              selectedDay === i
+            className={`relative px-2.5 sm:px-4 py-2 rounded-t-xl border-b-2 cursor-pointer whitespace-nowrap transition-all text-xs sm:text-sm font-medium flex flex-col items-center gap-0.5 ${
+              isSelected
                 ? "bg-primary/10 border-primary text-primary font-bold"
                 : "border-transparent text-muted-foreground hover:text-foreground hover:bg-muted/50"
-            }`}
+            } ${isPast && !isSelected ? "opacity-60" : ""}`}
             data-testid={`button-day-${d.dayNum}-${tripId}`}
+            data-is-today={isToday || undefined}
           >
+            {isToday && (
+              <span
+                className="absolute top-1 right-1.5 w-1.5 h-1.5 rounded-full bg-green-500"
+                title="Today"
+                data-testid={`dot-today-${d.dayNum}-${tripId}`}
+              />
+            )}
             <span className="flex items-center gap-1" data-testid={`text-day-num-${d.dayNum}-${tripId}`}>
               D{d.dayNum}
               {showActivityCounts && (

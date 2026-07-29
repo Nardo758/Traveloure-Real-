@@ -5,16 +5,22 @@ interface SectionTabsProps {
   tripId: string;
   section: "activities" | "transport";
   onSetSection: (s: "activities" | "transport") => void;
-  showChanges: boolean;
-  onToggleChanges: () => void;
+  /**
+   * The trailing "Changes" toggle button renders only when `onToggleChanges` is passed.
+   * CLAUDE.md §18 item 4 moved Change History into a collapsed section below the day
+   * list (see CollapsedSections.tsx) — PlanCard.tsx's full-stage card omits these props
+   * now; itinerary-view.tsx still passes them for its own inline toggle, unchanged.
+   */
+  showChanges?: boolean;
+  onToggleChanges?: () => void;
   templateConfig: TemplateConfig;
   dayActivityCount: number;
   dayTransportCount: number;
   confirmedActivities: number;
   totalActivities: number;
   transportLocked: boolean;
-  changeLogCount: number;
-  expertChanges: number;
+  changeLogCount?: number;
+  expertChanges?: number;
 }
 
 export function SectionTabs({
@@ -65,21 +71,23 @@ export function SectionTabs({
         {transportLocked && <Lock className="w-3 h-3" />}
       </button>
 
-      <button
-        onClick={onToggleChanges}
-        className={`min-h-11 ml-auto py-2.5 px-2 sm:px-4 cursor-pointer transition-all text-xs font-semibold flex items-center gap-1 ${
-          showChanges ? "text-amber-500 dark:text-amber-400" : "text-muted-foreground hover:text-foreground"
-        }`}
-        data-testid={`button-changes-${tripId}`}
-      >
-        <History className="w-3.5 h-3.5" />
-        <span className="hidden sm:inline">Changes</span>
-        {changeLogCount > 0 && (
-          <span className="bg-amber-500 text-amber-950 w-4 h-4 rounded-full text-[9px] font-extrabold flex items-center justify-center" data-testid={`badge-changes-count-${tripId}`}>
-            {changeLogCount}
-          </span>
-        )}
-      </button>
+      {onToggleChanges && (
+        <button
+          onClick={onToggleChanges}
+          className={`min-h-11 ml-auto py-2.5 px-2 sm:px-4 cursor-pointer transition-all text-xs font-semibold flex items-center gap-1 ${
+            showChanges ? "text-amber-500 dark:text-amber-400" : "text-muted-foreground hover:text-foreground"
+          }`}
+          data-testid={`button-changes-${tripId}`}
+        >
+          <History className="w-3.5 h-3.5" />
+          <span className="hidden sm:inline">Changes</span>
+          {!!changeLogCount && changeLogCount > 0 && (
+            <span className="bg-amber-500 text-amber-950 w-4 h-4 rounded-full text-[9px] font-extrabold flex items-center justify-center" data-testid={`badge-changes-count-${tripId}`}>
+              {changeLogCount}
+            </span>
+          )}
+        </button>
+      )}
     </div>
   );
 }

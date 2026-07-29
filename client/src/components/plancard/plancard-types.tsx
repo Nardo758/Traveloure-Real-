@@ -3,6 +3,7 @@ import {
 } from "lucide-react";
 import { differenceInDays, isValid } from "date-fns";
 import { MODE_COLORS, MODE_ICON_MAP, getModeIcon } from "@/lib/transport-modes";
+import type { InlineTransportLegData } from "@/components/itinerary/InlineTransportSelector";
 
 // Re-exported for back-compat; the single source is @/lib/transport-modes.
 export { MODE_COLORS, MODE_ICON_MAP };
@@ -217,6 +218,42 @@ export interface PlanCardTransport {
   estimatedDurationMinutes?: number;
   estimatedCostUsd?: number | null;
   mapsUrl?: string | null;
+  /**
+   * Mode-aware primary action (CLAUDE.md §18) — a chauffeured leg's real booking detail.
+   * KNOWN GAP: `plancard.routes.ts` does not populate these fields today (no such data path
+   * exists yet) — they are forward-compat / presence-guarded so the pickup-card CTA lights
+   * up automatically once a real transport-booking data source is wired server-side. Never
+   * fabricate a value here; render nothing until the field is genuinely populated.
+   */
+  pickupPoint?: string | null;
+  pickupTime?: string | null;
+  driverPhone?: string | null;
+  rideDetails?: string | null;
+  /**
+   * §16-safe: a deep link/affiliate URL used ONLY to gate the "Book this ride" CTA's
+   * presence — never opened directly (window.open) client-side. When present, the CTA
+   * routes through the existing booking-agent rail (POST /api/affiliate-booking-requests),
+   * which keeps the URL server-side. KNOWN GAP: not populated today (see pickupPoint above).
+   */
+  bookingAffiliateUrl?: string | null;
+}
+
+/**
+ * Superset of InlineTransportLegData carrying the mode-aware primary action's (CLAUDE.md
+ * §18, item 5) forward-compat booking fields alongside the fields ActivitiesSection's
+ * TransportConnector already reads. Structurally assignable wherever InlineTransportLegData
+ * is expected (it's a strict superset) — PlanCard's `dayLegs` mapping is typed as this so
+ * the pickup/booking data survives the day.transports → dayLegs conversion instead of being
+ * silently dropped.
+ */
+export interface PlanCardLegData extends InlineTransportLegData {
+  /** Raw server-computed mode (PlanCardTransport.mode) — last-resort fallback. */
+  mode?: string;
+  pickupPoint?: string | null;
+  pickupTime?: string | null;
+  driverPhone?: string | null;
+  rideDetails?: string | null;
+  bookingAffiliateUrl?: string | null;
 }
 
 export interface PlanCardDay {
