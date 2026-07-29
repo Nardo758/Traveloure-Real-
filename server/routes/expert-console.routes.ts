@@ -298,6 +298,76 @@ router.delete("/api/me/slots/:slotId", isAuthenticated, async (req, res) => {
   }
 });
 
+// POST /api/me/services/:serviceId/slots/range — bulk-create date-only night slots across a
+// range (§17 Product Builder, PROPERTY rung — the room night-availability setup flow; also
+// usable by any other dated service that wants to publish a whole range at once). Idempotent:
+// dates already published in the range are left untouched, never duplicated or overwritten —
+// a re-run only fills the gaps. Capped at 366 nights per call (a ceiling, not a real stay).
+const slotRangeSchema = z.object({
+  startDate: z
+    .string()
+    .regex(slotDateRegex, "startDate must be YYYY-MM-DD")
+    .refine((d) => d >= new Date().toISOString().slice(0, 10), "startDate must be today or in the future"),
+  endDate: z.string().regex(slotDateRegex, "endDate must be YYYY-MM-DD"),
+  capacity: z.number().int().min(1).max(100).optional(),
+});
+
+router.post("/api/me/services/:serviceId/slots/range", isAuthenticated, async (req, res) => {
+  try {
+    const userId = sessionUserId(req);
+    const service = await requireOwnedService(userId, req.params.serviceId);
+    if (!service) return res.status(404).json({ message: "Service not found" });
+
+    const parsed = slotRangeSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ message: "Invalid range", errors: parsed.error.flatten() });
+    }
+    const { startDate, endDate, capacity } = parsed.data;
+    if (endDate <= startDate) {
+      return res.status(400).json({ message: "endDate must be after startDate" });
+    }
+
+    const dates: string[] = [];
+    let cursor = new Date(`${startDate}T00:00:00Z`);
+    const end = new Date(`${endDate}T00:00:00Z`);
+    while (cursor <= end) {
+      dates.push(cursor.toISOString().slice(0, 10));
+      cursor = new Date(cursor.getTime() + 86400000);
+    }
+    if (dates.length > 366) {
+      return res.status(400).json({ message: "A single range can cover at most 366 nights" });
+    }
+
+    // Idempotent: only insert dates NOT already published for this service.
+    const existing = await db
+      .select({ date: vendorAvailabilitySlots.date })
+      .from(vendorAvailabilitySlots)
+      .where(and(eq(vendorAvailabilitySlots.serviceId, service.id), inArray(vendorAvailabilitySlots.date, dates)));
+    const existingDates = new Set(existing.map((r) => String(r.date)));
+    const toCreate = dates.filter((d) => !existingDates.has(d));
+
+    // bookedCount/status are never client-settable — a slot is never born already booked.
+    const created = toCreate.length
+      ? await db
+          .insert(vendorAvailabilitySlots)
+          .values(
+            toCreate.map((date) => ({
+              serviceId: service.id,
+              providerId: userId,
+              date,
+              ...(capacity != null ? { capacity } : {}),
+            })),
+          )
+          .returning()
+      : [];
+
+    res.status(201).json({ created: created.length, skipped: dates.length - created.length, slots: created });
+  } catch (err) {
+    console.error("[Catalog Slots] range create error:", err);
+    res.status(500).json({ message: "Failed to create slot range" });
+  }
+});
+
 // ─── Next availability (Backoffice C1) ──────────────────────────────────────────────────────
 //
 // `vendor_availability_slots` is the CANONICAL table for concrete, dated bookable slots
