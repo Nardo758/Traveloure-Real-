@@ -214,11 +214,23 @@ app.get("/api/ready", (_req: Request, res: Response) => {
   });
 });
 
+// __GIT_SHA__ is injected at bundle time by esbuild's `define` (script/build.ts) from the real
+// `git rev-parse --short HEAD` at build time — the fix for Replit's Autoscale deploy not
+// injecting a GIT_COMMIT env var at runtime. Under dev-mode tsx (no esbuild define pass) the
+// identifier doesn't exist, so it's accessed only behind a typeof guard.
+declare const __GIT_SHA__: string | undefined;
+
 // Build-identity endpoint — lets CI confirm it is talking to the correct artifact.
-// GIT_COMMIT is injected by the CI workflow; falls back to "dev" locally.
+// Resolution order: the build-embedded SHA (works even when the deploy injects no env var) →
+// GIT_COMMIT (CI workflows set this for e2e-target environments) → GIT_SHA → "dev" locally.
 app.get("/api/version", (_req: Request, res: Response) => {
+  const sha =
+    (typeof __GIT_SHA__ !== "undefined" ? __GIT_SHA__ : undefined) ??
+    process.env.GIT_COMMIT ??
+    process.env.GIT_SHA ??
+    "dev";
   res.json({
-    sha: process.env.GIT_COMMIT ?? "dev",
+    sha,
     env: process.env.NODE_ENV ?? "development",
   });
 });

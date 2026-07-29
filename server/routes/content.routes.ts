@@ -6623,6 +6623,70 @@ router.post("/api/affiliate-booking-requests", isAuthenticated, async (req, res)
     }
   });
 
+// §16 catalog variant of the rail above, for surfaces that deliberately hold NO affiliate URL
+// (the Workstation Transport drawer strips bookingUrl/affiliateUrl at its query layer). The
+// client sends only a catalog reference — {provider, itemId, destination} — and the SERVER
+// re-resolves the item from the same catalog feed and attaches its affiliateUrl itself, so the
+// URL never exists client-side while the booking agent still gets a real link to book through.
+// affiliate_url stays NOT NULL; item name/description/price come from the server-resolved
+// catalog row, never from the body.
+router.post("/api/affiliate-booking-requests/from-catalog", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      if (!userId) return res.status(401).json({ message: "Unauthorized" });
+      const { provider, itemId, destination, origin, travelDate, travelers, userNotes } = req.body;
+      if (!provider || !itemId) {
+        return res.status(400).json({ message: "provider and itemId are required" });
+      }
+      // Allow-list of catalog resolvers — extend here when sibling transport feeds
+      // (/api/catalog/bus, /airport-transfers) gain a book-via-agent action.
+      let resolved: { title: string; description: string | null; affiliateUrl: string; partnerName: string; partnerCategory: string } | undefined;
+      if (provider === "omio") {
+        const { searchOmioRoutes } = await import("../services/travelpayouts/omio.service");
+        const items = await searchOmioRoutes({
+          origin: typeof origin === "string" ? origin : undefined,
+          destination: typeof destination === "string" ? destination : undefined,
+          limit: 50,
+        });
+        const item = items.find((i: any) => i.id === itemId);
+        if (item?.affiliateUrl) {
+          resolved = {
+            title: item.title,
+            description: item.description ?? null,
+            affiliateUrl: item.affiliateUrl,
+            partnerName: "Omio",
+            partnerCategory: "ground-transport",
+          };
+        }
+      } else {
+        return res.status(400).json({ message: "Unknown catalog provider" });
+      }
+      if (!resolved) {
+        return res.status(404).json({ message: "This route is no longer available in the catalog — try refreshing the list" });
+      }
+      const expertIds3 = await getExpertUserIds(10);
+      const expertId = expertIds3.length > 0 ? expertIds3[0] : null;
+      const status = expertId ? "assigned" : "pending";
+      const record = await storage.createAffiliateBookingRequest({
+        userId, expertId,
+        itemName: resolved.title, itemDescription: resolved.description,
+        partnerName: resolved.partnerName, partnerCategory: resolved.partnerCategory,
+        affiliateUrl: resolved.affiliateUrl,
+        travelDate: typeof travelDate === "string" ? travelDate : null,
+        travelers: Number.isInteger(travelers) && travelers > 0 ? travelers : 1,
+        userNotes: typeof userNotes === "string" ? userNotes.slice(0, 2000) : null,
+        expertNotes: null, confirmationRef: null, price: null,
+        status,
+      });
+      // Never return affiliateUrl to client
+      const { affiliateUrl: _url2, ...safe } = record;
+      return res.json(safe);
+    } catch (err: any) {
+      console.error("[AffiliateBooking] from-catalog create error:", err);
+      return res.status(500).json({ message: "Failed to create booking request" });
+    }
+  });
+
 
 router.get("/api/affiliate-booking-requests/user", isAuthenticated, async (req, res) => {
     try {

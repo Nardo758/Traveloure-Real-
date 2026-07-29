@@ -24,7 +24,6 @@ import {
   DollarSign,
   Users,
   BarChart3,
-  ArrowUpRight,
   Calendar
 } from "lucide-react";
 import { ProviderServiceRecommendations } from "@/components/provider/service-recommendations";
@@ -68,36 +67,28 @@ export default function ProviderPerformance() {
   });
 
   const metrics = [
-    { 
-      label: "Total Revenue", 
-      value: `$${(analytics?.summary?.totalRevenue || 0).toLocaleString()}`, 
-      icon: DollarSign, 
-      change: "+12%", 
-      positive: true,
+    {
+      label: "Total Revenue",
+      value: `$${(analytics?.summary?.totalRevenue || 0).toLocaleString()}`,
+      icon: DollarSign,
       suffix: ""
     },
-    { 
-      label: "Total Bookings", 
-      value: analytics?.summary?.totalBookings?.toString() || "0", 
-      icon: Calendar, 
-      change: "+8%", 
-      positive: true,
+    {
+      label: "Total Bookings",
+      value: analytics?.summary?.totalBookings?.toString() || "0",
+      icon: Calendar,
       suffix: ""
     },
-    { 
-      label: "Average Rating", 
-      value: (analytics?.summary?.avgRating || 0).toFixed(1), 
-      icon: Star, 
-      change: "+0.2", 
-      positive: true,
+    {
+      label: "Average Rating",
+      value: (analytics?.summary?.avgRating || 0).toFixed(1),
+      icon: Star,
       suffix: "/5"
     },
-    { 
-      label: "Active Services", 
-      value: analytics?.summary?.activeServices?.toString() || "0", 
-      icon: TrendingUp, 
-      change: "+1", 
-      positive: true,
+    {
+      label: "Active Services",
+      value: analytics?.summary?.activeServices?.toString() || "0",
+      icon: TrendingUp,
       suffix: ""
     },
   ];
@@ -148,10 +139,6 @@ export default function ProviderPerformance() {
                         <p className="text-2xl font-bold text-foreground">
                           {metric.value}{metric.suffix}
                         </p>
-                        <div className={`flex items-center gap-1 text-sm ${metric.positive ? "text-green-600" : "text-red-600"}`}>
-                          <ArrowUpRight className="w-4 h-4" />
-                          {metric.change} vs last month
-                        </div>
                       </div>
                       <metric.icon className={`w-8 h-8 ${metric.label === "Average Rating" ? "text-amber-500 fill-amber-500" : "text-primary"}`} />
                     </div>
