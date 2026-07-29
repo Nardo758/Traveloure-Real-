@@ -247,7 +247,12 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
           // pins read coordinates directly (no client-side geocoding).
           lat: item.latitude ? parseFloat(item.latitude.toString()) : null,
           lng: item.longitude ? parseFloat(item.longitude.toString()) : null,
-          expertNote: (item as any).notes || null,
+          // Workstation audit C-1: the durable expertNote column (migration 152) is now the
+          // primary source — an expert-authored tip written via the Workstation item editor.
+          // Falls back to the pre-existing ephemeral `notes` reading only when the column is
+          // NULL, so builds that predate the column (or only ever used the old path) keep
+          // rendering exactly as before. Column wins when non-null.
+          expertNote: (item as any).expertNote || (item as any).notes || null,
           comments: commentCounts[item.id] || 0,
           suggestedBy: item.suggestedBy || null,
           changes: changes
