@@ -6,7 +6,7 @@ import { api } from "@shared/routes";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { isExpertRole, isProviderRole, isEarnerRole } from "@shared/roles";
-import { eq, and, or, like, ilike, sql, desc, count, ne, isNotNull, asc } from "drizzle-orm";
+import { eq, and, or, like, ilike, sql, desc, count, ne, isNotNull, asc, inArray } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
 import { 
   users, helpGuideTrips, touristPlaceResults, touristPlacesSearches, 
@@ -20,6 +20,7 @@ import {
   serviceBookings, serviceReviews, notifications, serviceProviderForms,
   shortLinks,
   bundleComponents,
+  vendorAvailabilitySlots,
   insertCustomVenueSchema, insertGeneratedItinerarySchema,
   insertTemporalAnchorSchema, insertDayBoundarySchema, insertEnergyTrackingSchema,
   temporalAnchors, itineraryItems, generatedItineraries,
@@ -201,6 +202,62 @@ router.get("/api/revenue-splits", async (req, res) => {
     }
   });
 
+// ─── §17 Product Builder — PROPERTY rung (migration 153) ──────────────────────────────────
+//
+// A property IS a provider_services row (product_shape='property'); each room type is a
+// child row (product_shape='property_room', parentServiceId → property, pricing_unit=
+// 'per_night'). Ratified contract (CLAUDE.md §17, "PROPERTY rung RATIFIED"): availability
+// rides the EXISTING date-only vendor_availability_slots rail (no new table); charge =
+// nights × the stored nightly rate, §14 fully server-derived; a multi-night stay claims
+// every night atomically, all-or-nothing (§15); the night range is snapshotted into
+// bookingDetails and the first night's slot_id stamped on the booking.
+//
+// Date-range carrier: cart_items has no column for a range (slotId holds exactly one slot,
+// scheduledDate exactly one timestamp) — a new column would be its own migration for a
+// single feature. contentMeta (jsonb, already on every cart row, otherwise unused for a
+// serviceId-based add) carries {checkIn, checkOut} instead — the smallest existing carrier,
+// written by POST /api/cart (server/routes.ts) and read here unchanged.
+
+// Reads + validates the stay a room's cart row is carrying. Returns null for every non-room
+// item AND for a room item whose dates are missing/malformed/out-of-range (>30 nights) — the
+// caller decides what null means (checkout 400s; the fee preview simply prices it as 0).
+function getRoomNights(item: any): { checkIn: string; checkOut: string; nights: number } | null {
+  if (item?.service?.pricingUnit !== "per_night") return null;
+  const meta = (item?.contentMeta ?? {}) as Record<string, unknown>;
+  const checkIn = typeof meta.checkIn === "string" ? meta.checkIn : null;
+  const checkOut = typeof meta.checkOut === "string" ? meta.checkOut : null;
+  if (!checkIn || !checkOut || !/^\d{4}-\d{2}-\d{2}$/.test(checkIn) || !/^\d{4}-\d{2}-\d{2}$/.test(checkOut)) return null;
+  if (checkOut <= checkIn) return null;
+  const nights = Math.round((Date.parse(checkOut) - Date.parse(checkIn)) / 86400000);
+  if (!Number.isFinite(nights) || nights < 1 || nights > 30) return null;
+  return { checkIn, checkOut, nights };
+}
+
+// §14: a room's charge is ALWAYS nights × the stored nightly rate — never quantity × price (a
+// room's cart "quantity" is meaningless; the client pins it to 1). Every other item keeps the
+// existing price × quantity math untouched, so this can replace that line everywhere it
+// appears (checkout totals, checkout booking-creation, the cart fee-preview) with no behavior
+// change for the rest of the catalog.
+function resolveItemBaseAmount(item: any): number {
+  const stay = getRoomNights(item);
+  const rate = parseFloat(item?.service?.price || "0");
+  if (stay) return rate * stay.nights;
+  return rate * (item?.quantity || 1);
+}
+
+// The calendar-date sequence [checkIn, checkOut) — one entry per night stayed, checkout day
+// itself excluded (standard hotel semantics: a checkOut-day slot is not consumed).
+function nightDatesBetween(checkIn: string, checkOut: string): string[] {
+  const dates: string[] = [];
+  let d = new Date(`${checkIn}T00:00:00Z`);
+  const end = new Date(`${checkOut}T00:00:00Z`);
+  while (d < end) {
+    dates.push(d.toISOString().slice(0, 10));
+    d = new Date(d.getTime() + 86400000);
+  }
+  return dates;
+}
+
 router.post("/api/checkout", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
@@ -294,6 +351,44 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         bundleSnapshots.set(item.service.id, components.map((c) => ({ id: c.id, serviceName: c.serviceName })));
       }
 
+      // ── §17 property rooms: re-verify room + parent property BEFORE any claim/write ────
+      // Same F2 posture as the bundle snapshot above — approval can change between add-to-cart
+      // and checkout, so both the room AND its parent property must STILL be approved+active
+      // here (409 otherwise). Keyed by cart item id (not serviceId — a service can appear in
+      // exactly one cart row per the addToCart dedup, but item.id is the unambiguous key used
+      // by every downstream loop below).
+      const roomStays = new Map<
+        string,
+        { checkIn: string; checkOut: string; nights: number; propertyId: string; propertyName: string; roomName: string; nightlyRate: number; firstNightSlotId?: string }
+      >();
+      for (const item of cartData) {
+        if (item.service?.pricingUnit !== "per_night") continue;
+        const stay = getRoomNights(item);
+        if (!stay) {
+          return res.status(400).json({
+            message: `Missing or invalid check-in/check-out dates for "${item.service?.serviceName ?? "a room"}"`,
+          });
+        }
+        const room = item.service;
+        if (room.approvalStatus !== "approved" || room.status !== "active") {
+          return res.status(409).json({ message: "property_unavailable", detail: `"${room.serviceName}" is no longer available.` });
+        }
+        if (!room.parentServiceId) {
+          return res.status(409).json({ message: "property_unavailable", detail: `"${room.serviceName}" is not attached to a property.` });
+        }
+        const [property] = await db.select().from(providerServices).where(eq(providerServices.id, room.parentServiceId));
+        if (!property || property.approvalStatus !== "approved" || property.status !== "active") {
+          return res.status(409).json({ message: "property_unavailable", detail: `The property for "${room.serviceName}" is no longer available.` });
+        }
+        roomStays.set(item.id, {
+          ...stay,
+          propertyId: property.id,
+          propertyName: property.serviceName,
+          roomName: room.serviceName,
+          nightlyRate: parseFloat(room.price || "0"),
+        });
+      }
+
       // ── C3 (§15): ATOMIC slot claims BEFORE any booking row or Stripe call ─────────────
       // Each slot-bound item claims capacity via storage.bookSlot (conditional UPDATE ...
       // WHERE booked_count < capacity RETURNING — the DB row transition IS the concurrency
@@ -303,16 +398,60 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
       // payment later fails the booking sits payment_pending and the slot stays held — the
       // release on abandoned/refunded bookings is a filed follow-up alongside the existing
       // payment_pending recovery design (webhook completes; admin refund path can release).
+      //
+      // §17 room stays claim MULTIPLE nights (one slot per date) instead of a single itemSlotId
+      // — all-or-nothing for the stay itself, released into the SAME claimedSlotIds compensation
+      // list so a later item's failure also unwinds every night already claimed by this one.
       const claimedSlotIds: string[] = [];
+      const releaseClaimed = async (ids: string[]) => {
+        for (const id of ids) {
+          await storage.releaseSlot(id).catch((e: any) =>
+            console.error(`[checkout] slot compensation release failed for ${id}:`, e));
+        }
+      };
       for (const item of cartData) {
+        const stay = roomStays.get(item.id);
+        if (stay) {
+          const nightDates = nightDatesBetween(stay.checkIn, stay.checkOut);
+          const nightSlots = await db
+            .select({ id: vendorAvailabilitySlots.id, date: vendorAvailabilitySlots.date })
+            .from(vendorAvailabilitySlots)
+            .where(and(eq(vendorAvailabilitySlots.serviceId, item.serviceId!), inArray(vendorAvailabilitySlots.date, nightDates)));
+          const slotIdByDate = new Map(nightSlots.map((s) => [String(s.date), s.id]));
+          const unpublished = nightDates.filter((d) => !slotIdByDate.has(d));
+          if (unpublished.length > 0) {
+            await releaseClaimed(claimedSlotIds);
+            return res.status(409).json({
+              success: false,
+              error: "nights_unavailable",
+              message: `"${stay.roomName}" isn't available for ${unpublished.join(", ")}. Please pick different dates.`,
+            });
+          }
+          const claimedThisStay: string[] = [];
+          let nightFailed = false;
+          for (const d of nightDates) {
+            const claimed = await storage.bookSlot(slotIdByDate.get(d)!);
+            if (!claimed) { nightFailed = true; break; }
+            claimedThisStay.push(claimed.id);
+          }
+          if (nightFailed) {
+            await releaseClaimed([...claimedThisStay, ...claimedSlotIds]);
+            return res.status(409).json({
+              success: false,
+              error: "nights_unavailable",
+              message: `"${stay.roomName}" was just booked for one of ${stay.checkIn}–${stay.checkOut}. Please pick different dates.`,
+            });
+          }
+          claimedSlotIds.push(...claimedThisStay);
+          roomStays.set(item.id, { ...stay, firstNightSlotId: claimedThisStay[0] });
+          continue;
+        }
+
         const itemSlotId = (item as any).slotId as string | null | undefined;
         if (!itemSlotId || !item.service) continue;
         const claimed = await storage.bookSlot(itemSlotId);
         if (!claimed) {
-          for (const releaseId of claimedSlotIds) {
-            await storage.releaseSlot(releaseId).catch((e: any) =>
-              console.error(`[checkout] slot compensation release failed for ${releaseId}:`, e));
-          }
+          await releaseClaimed(claimedSlotIds);
           return res.status(409).json({
             success: false,
             error: "slot_unavailable",
@@ -323,7 +462,7 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         }
         claimedSlotIds.push(itemSlotId);
       }
-      
+
       // safeParseRate: returns fallback when value is missing, non-numeric, or outside [0,1]
       const safeParseRate = (value: any, fallback: number): number => {
         const n = parseFloat(value);
@@ -376,7 +515,8 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
       let checkoutConciergeFeeTotal = 0;
       for (const item of cartData) {
         if (!item.service) continue;
-        const itemPrice = parseFloat(item.service.price || "0") * (item.quantity || 1);
+        // §17: nights × nightly rate for a room, else the existing price × quantity (§14).
+        const itemPrice = resolveItemBaseAmount(item);
         // Map service category UUID → booking_fee_configs slug → commission rates
         let feeCategory = item.service.categoryId
           ? (catSlugMap.get(item.service.categoryId) ?? "default")
@@ -427,8 +567,10 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
       const bookings = [];
       for (const item of cartData) {
         if (!item.service) continue;
-        
-        const price = parseFloat(item.service.price || "0") * (item.quantity || 1);
+
+        // §17: nights × nightly rate for a room, else the existing price × quantity (§14).
+        const price = resolveItemBaseAmount(item);
+        const stay = roomStays.get(item.id);
         // Map service category UUID → booking_fee_configs slug → commission rates
         let feeCategory2 = item.service.categoryId
           ? (catSlugMap.get(item.service.categoryId) ?? "default")
@@ -490,6 +632,19 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
             ...(bundleSnapshots.has(item.serviceId)
               ? { bundleComponents: bundleSnapshots.get(item.serviceId) }
               : {}),
+            // §17 property rooms: the night range + rate SNAPSHOT into the booking (locked at
+            // purchase — the same ready-made snapshot posture as bundle contents above).
+            ...(stay
+              ? {
+                  propertyId: stay.propertyId,
+                  propertyName: stay.propertyName,
+                  roomName: stay.roomName,
+                  checkIn: stay.checkIn,
+                  checkOut: stay.checkOut,
+                  nights: stay.nights,
+                  nightlyRate: stay.nightlyRate,
+                }
+              : {}),
           },
           totalAmount: price.toFixed(2),
           platformFee: totalPlatformFeeAmt.toFixed(2),
@@ -500,8 +655,13 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
           source: acquisitionSource,
           ...(acquisitionRef ? { acquisitionRef } : {}),
           // C3: stamped only because the atomic bookSlot claim above already succeeded for
-          // this item — the booking row records WHICH slot's capacity it holds.
-          ...((item as any).slotId ? { slotId: (item as any).slotId } : {}),
+          // this item — the booking row records WHICH slot's capacity it holds. A room stamps
+          // its FIRST night's slot id (the stay claimed all of them; one representative id).
+          ...(stay?.firstNightSlotId
+            ? { slotId: stay.firstNightSlotId }
+            : (item as any).slotId
+              ? { slotId: (item as any).slotId }
+              : {}),
           ...(idempotencyKey ? { idempotencyKey } : {}),
         } as any);
         
@@ -641,7 +801,8 @@ router.get("/api/cart/fee-preview", isAuthenticated, async (req, res) => {
 
       for (const item of cartData) {
         if (!item.service) continue;
-        const itemPrice = parseFloat(item.service.price || "0") * (item.quantity || 1);
+        // §17: nights × nightly rate for a room, else the existing price × quantity (§14).
+        const itemPrice = resolveItemBaseAmount(item);
         let feeCategory = item.service.categoryId
           ? (catSlugMap.get(item.service.categoryId) ?? "default")
           : "default";

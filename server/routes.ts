@@ -5315,16 +5315,18 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (!serviceId && !customVenueId && !isContentAdd) {
         return res.status(400).json({ message: "Service ID, Custom Venue ID, or content item is required" });
       }
-      
-      // Verify service or custom venue exists
+
+      // Verify service or custom venue exists. Hoisted out of the block below (was
+      // block-scoped) — the §17 room-stay branch further down needs the resolved row too.
+      let service: any = null;
       if (serviceId) {
-        const service = await storage.getProviderServiceById(serviceId);
+        service = await storage.getProviderServiceById(serviceId);
         if (!service) {
           console.log("[Cart] Service not found for ID:", serviceId);
           return res.status(404).json({ message: "Service not found" });
         }
       }
-      
+
       if (customVenueId) {
         const venue = await storage.getCustomVenue(customVenueId);
         if (!venue) {
@@ -5358,6 +5360,33 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         slotScheduledDate = new Date(`${slot.date}T${(slot.startTime || "09:00").slice(0, 5)}:00`);
       }
 
+      // §17 Product Builder — property rooms: a stay is a DATE RANGE, which cart_items has no
+      // column for (slotId holds exactly one slot; scheduledDate holds exactly one timestamp).
+      // contentMeta (jsonb, already on every cart row) is the smallest honest carrier — it's
+      // untouched for a serviceId-based add otherwise (the branch above only reads it for
+      // content-type adds). §14: nights/amount are NEVER computed here — checkout derives the
+      // charge itself from the stored room row + these dates; this is an input, not money.
+      let roomStayMeta: Record<string, string> | undefined;
+      if (service?.pricingUnit === "per_night") {
+        const { checkIn, checkOut } = req.body;
+        const dateRe = /^\d{4}-\d{2}-\d{2}$/;
+        const todayStr = new Date().toISOString().slice(0, 10);
+        if (typeof checkIn !== "string" || typeof checkOut !== "string" || !dateRe.test(checkIn) || !dateRe.test(checkOut)) {
+          return res.status(400).json({ message: "checkIn and checkOut (YYYY-MM-DD) are required for this room" });
+        }
+        if (checkIn < todayStr) {
+          return res.status(400).json({ message: "checkIn must be today or later" });
+        }
+        if (checkOut <= checkIn) {
+          return res.status(400).json({ message: "checkOut must be after checkIn" });
+        }
+        const nights = Math.round((Date.parse(checkOut) - Date.parse(checkIn)) / 86400000);
+        if (nights > 30) {
+          return res.status(400).json({ message: "Stays longer than 30 nights aren't supported yet" });
+        }
+        roomStayMeta = { checkIn, checkOut };
+      }
+
       // Resolve slug aliases
       const experienceSlug = rawSlug ? resolveSlug(rawSlug) : "general";
 
@@ -5375,6 +5404,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         serviceId: serviceId || undefined,
         customVenueId: customVenueId || undefined,
         ...(isContentAdd ? { contentType, contentId, contentMeta: safeContentMeta } : {}),
+        ...(roomStayMeta ? { contentMeta: roomStayMeta } : {}),
         quantity: quantity || 1,
         tripId,
         scheduledDate: slotScheduledDate ?? (scheduledDate ? new Date(scheduledDate) : undefined),

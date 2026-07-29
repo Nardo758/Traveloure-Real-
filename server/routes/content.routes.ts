@@ -1971,6 +1971,45 @@ router.get("/api/services/:id", async (req, res) => {
         .orderBy(asc(bundleComponents.position));
       return res.json({ ...service, bundleComponents: components });
     }
+    // §17 Product Builder — PROPERTY rung: additive room list on a property's public detail.
+    // Same F2 read-gate as the bundle branch above — only STILL approved+active rooms are ever
+    // exposed, so a paused/unapproved room never leaks through the property's page.
+    if (service.productShape === "property") {
+      const rooms = await db
+        .select({
+          id: providerServices.id,
+          serviceName: providerServices.serviceName,
+          shortDescription: providerServices.shortDescription,
+          price: providerServices.price,
+          categoryAttributes: providerServices.categoryAttributes,
+        })
+        .from(providerServices)
+        .where(and(
+          eq(providerServices.parentServiceId, service.id),
+          eq(providerServices.approvalStatus, "approved"),
+          eq(providerServices.status, "active"),
+        ))
+        .orderBy(asc(providerServices.price));
+      return res.json({ ...service, rooms });
+    }
+    // A room's detail carries a link back to its property — gated the same way (an
+    // unapproved/paused property never surfaces as a clickable link on its own room's page).
+    if (service.productShape === "property_room" && service.parentServiceId) {
+      const [property] = await db
+        .select({
+          id: providerServices.id,
+          serviceName: providerServices.serviceName,
+          approvalStatus: providerServices.approvalStatus,
+          status: providerServices.status,
+        })
+        .from(providerServices)
+        .where(eq(providerServices.id, service.parentServiceId));
+      const visibleProperty =
+        property && property.approvalStatus === "approved" && property.status === "active"
+          ? { id: property.id, serviceName: property.serviceName }
+          : null;
+      return res.json({ ...service, property: visibleProperty });
+    }
     res.json(service);
   });
 
