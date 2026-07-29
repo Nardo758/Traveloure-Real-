@@ -439,6 +439,28 @@ export default function TripDetails() {
               <Badge className="bg-accent/80 backdrop-blur-md text-white border-0">
                 {trip.status}
               </Badge>
+              {/* Mobile-lens audit #9: read-only badge for the additive `expertWorkspaceStatus`
+                  field a sibling change adds to GET /api/trips/:id (nullable — coded
+                  defensively in case this lands before that field does). Honest: renders
+                  nothing when there's no assigned expert / no workspace activity yet. */}
+              {(() => {
+                const status = (trip as any).expertWorkspaceStatus as string | null | undefined;
+                if (status === "draft" || status === "in_review") {
+                  return (
+                    <Badge className="bg-amber-500/80 backdrop-blur-md text-white border-0" data-testid="badge-expert-workspace-status">
+                      Expert draft in progress
+                    </Badge>
+                  );
+                }
+                if (status === "delivered") {
+                  return (
+                    <Badge className="bg-emerald-600/80 backdrop-blur-md text-white border-0" data-testid="badge-expert-workspace-status">
+                      Delivered by your expert
+                    </Badge>
+                  );
+                }
+                return null;
+              })()}
             </div>
             <h1 className="text-4xl md:text-5xl font-display font-bold text-white mb-4">{trip.title}</h1>
             <div className="flex flex-wrap gap-6 text-white/90">
