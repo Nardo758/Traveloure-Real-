@@ -763,6 +763,15 @@ export default function TripDetails() {
                               status: "active",
                               bookingSource: undefined,
                               partnerName: undefined,
+                              // Mode-aware primary action (CLAUDE.md §18 item 5): forward these
+                              // IF the stored itineraryData already carries them — never invented
+                              // here. No server change; itineraryData is a free-shape jsonb blob,
+                              // this just stops silently dropping fields that may already be on it.
+                              pickupPoint: l.pickupPoint ?? null,
+                              pickupTime: l.pickupTime ?? null,
+                              driverPhone: l.driverPhone ?? null,
+                              rideDetails: l.rideDetails ?? null,
+                              bookingAffiliateUrl: l.bookingAffiliateUrl ?? null,
                             }));
                           })(),
                         }));
