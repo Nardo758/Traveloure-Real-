@@ -62,6 +62,12 @@ checks incl. all four mode-aware CTA states + desktop regression; sticky-context
 (DashboardLayout overflow frame no-ops position:sticky — day list got its own scroll container, `sm:contents`
 keeps desktop DOM unchanged). L4 (transport legs for expert trips + the leg pickup/booking field mapping) is now
 the unlock for the pickup/book-ride CTA states firing on real trips.*
+*L3b GROUND-TRUTH OUTCOME (Jul 30, zero code changed — correct escalation): the itinerary-share/OG family serves
+`shared_itineraries → itinerary_variants` (variant snapshots, `tripId` nullable via comparison), NOT trips —
+cross-data-home; storefront OG is offerings-only (skip); ready-made teasers read the frozen listing snapshot by
+design (skip). Resolution: build the §3-named **variant producer adapter** (L3b′) — TripPlan assembled FROM a
+variant, keyed on variantId so a share link keeps rendering the exact variant that was shared — then the share/OG
+migration becomes in-scope and semantically safe. Not an §3 amendment: "variant + legs" is already a listed producer.*
 
 Lanes L1+L2 are one dispatch once ratified (same files). L3 is the strategic lane and should lead.
 
