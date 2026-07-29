@@ -5693,10 +5693,14 @@ router.get("/api/search/experiences", async (req, res) => {
         const qLower = (q || "").toLowerCase();
         const catLower = (category || "").toLowerCase();
         for (const p of platformProviders) {
-          const nameMatch = p.serviceName?.toLowerCase().includes(qLower);
+          // Destination is a hard filter when provided (W-4 location-aware builds). Previously
+          // this was `(nameMatch || destMatch)`, and with an empty q, nameMatch was trivially
+          // true (`"x".includes("")`), so the whole (all-Kyoto) catalog leaked into every
+          // destination's browse. An empty q means "no name filter", never "matches everything".
+          const nameMatch = !qLower || p.serviceName?.toLowerCase().includes(qLower);
           const catMatch = !catLower || catLower === "all" || p.serviceType?.toLowerCase().includes(catLower) || (p as any).category?.toLowerCase().includes(catLower);
           const destMatch = !dest || p.location?.toLowerCase().includes(dest);
-          if ((nameMatch || destMatch) && catMatch) {
+          if (nameMatch && destMatch && catMatch) {
             results.push({
               id: `pl_${p.id}`,
               source: "platform",
