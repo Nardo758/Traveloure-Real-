@@ -5397,8 +5397,17 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         roomStayMeta = { checkIn, checkOut };
       }
 
-      // Resolve slug aliases
-      const experienceSlug = rawSlug ? resolveSlug(rawSlug) : "general";
+      // Resolve slug aliases. A caller with no explicit slug (Discover, service-detail,
+      // trip-details, the guest-cart migration, the upsell add) leaves this undefined —
+      // NOT the literal string "general". storage.getCartItems()'s experience-scoped read
+      // deliberately unions in `experienceSlug IS NULL` rows as "belongs in every experience
+      // cart view until scoped to one" (see its comment); writing the literal "general" here
+      // defeated that NULL-fallback (it's neither NULL nor equal to any real slug), so an
+      // item added via any of those generic paths would silently vanish from GET /api/cart
+      // whenever TripContext.experienceSlug pointed at a different (or unrelated, stale)
+      // experience — exactly the state-divergence between the trip-strip cart chip (reads
+      // the unfiltered /api/cart) and the /cart page's own historical slug-scoped fetch.
+      const experienceSlug = rawSlug ? resolveSlug(rawSlug) : undefined;
 
       // Whitelist display metadata for content items (strings only, capped).
       let safeContentMeta: Record<string, string> | undefined;
