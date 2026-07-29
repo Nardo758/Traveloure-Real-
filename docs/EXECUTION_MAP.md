@@ -53,8 +53,15 @@ semantics, anything CLAUDE.md marks "ratify first."
 | L9 | **Variant-metrics latent bug** (assembler reads `metricValue`, column is `value` → live `metrics` always `{}`) | Sonnet | Fable confirms intended display first | Found by L3a; preserved verbatim — fixing changes live displayed totals |
 | L10 | **Plancard owner-access gap** (`getTripRole` needs a `trip_collaborators` row; a trip's own `trips.userId` doesn't qualify — pre-collaborator-era trips may 403 without the author fallback) | Opus | Fable brief (auth-model call) | Found by L3a; known pre-launch bypass note already in code |
 
+| L11 | **`TransportSection.tsx:323` raw `window.open(opt.externalUrl)`** — pre-existing §16 stray on the transport booking-option button | Sonnet | none | Route through the agent rail like the TP cards; found during L1+L2 review |
+
 *L3a LANDED (commit 4b3686b4, Jul 30): DTO + assembler + full/teaser/preview proven; response backward-compatible
 (0 removed / 0 changed keys); gate byte-identical. L3b is unblocked.*
+*L1+L2 LANDED (commit 3a5acf07, Jul 30): all five §18 structural items on the real components; 34/34 behavioral
+checks incl. all four mode-aware CTA states + desktop regression; sticky-context finding fixed client-side
+(DashboardLayout overflow frame no-ops position:sticky — day list got its own scroll container, `sm:contents`
+keeps desktop DOM unchanged). L4 (transport legs for expert trips + the leg pickup/booking field mapping) is now
+the unlock for the pickup/book-ride CTA states firing on real trips.*
 
 Lanes L1+L2 are one dispatch once ratified (same files). L3 is the strategic lane and should lead.
 
