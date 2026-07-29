@@ -86,11 +86,23 @@ interface SharedItineraryResponse {
 
 function formatTime(timeStr?: string | null): string {
   if (!timeStr) return "";
-  try {
-    return new Date(timeStr).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
-  } catch {
+  // The share endpoint's variant items only ever carry a bare "HH:MM" (or "HH:MM:SS")
+  // string (itinerary_variant_items.start_time is a varchar(20), no date component) —
+  // it's already display-ready. `new Date("09:00")` produces an Invalid Date (no throw),
+  // so routing this through Date parsing rendered the literal string "Invalid Date".
+  const bareTime = timeStr.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  if (bareTime) {
+    const hours = parseInt(bareTime[1], 10);
+    if (hours >= 0 && hours <= 23) {
+      return `${String(hours).padStart(2, "0")}:${bareTime[2]}`;
+    }
     return timeStr;
   }
+  // Reserve Date parsing for genuinely ISO/timestamp-shaped inputs; never surface
+  // "Invalid Date" to the user — fall back to the raw string when unparseable.
+  const parsed = new Date(timeStr);
+  if (isNaN(parsed.getTime())) return timeStr;
+  return parsed.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
 }
 
 export default function ItineraryViewPage() {

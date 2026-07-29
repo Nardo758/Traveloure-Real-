@@ -4,7 +4,7 @@ import { differenceInDays, format, isValid } from "date-fns";
 import { Users, Share2, Download, MapPin, Calendar, Zap } from "lucide-react";
 // Badge is still used for the travelers pill below
 import { Link } from "wouter";
-import { getDestinationPhoto, type PlanCardTrip, type PlanCardDay } from "./plancard-types";
+import { getDestinationPhoto, computeDayCount, type PlanCardTrip, type PlanCardDay } from "./plancard-types";
 import { MetricStrip } from "./MetricStrip";
 
 interface HeroSectionProps {
@@ -59,7 +59,7 @@ export function HeroSection({
 
   const displayCost = totalCost || budget;
 
-  const daysCount = days.length || (startDate && endDate ? differenceInDays(endDate, startDate) + 1 : 0);
+  const daysCount = computeDayCount(days, trip.startDate, trip.endDate);
   const metricCells = [
     { label: statsLabels[0] ?? "Days", value: daysCount },
     { label: statsLabels[1] ?? "Activities", value: totalActivities },
