@@ -11,8 +11,8 @@
  * exists, never fabricated (§13). No invented CRM fields (no notes, tags, or lead status).
  *
  * The expanded detail REFERENCES each item's owning module — bookings link to
- * /provider/bookings (the provider console's Inbox seat); this page never re-renders another
- * module's surface (§17 one-home-per-list rule).
+ * /provider/inbox?tab=history (the provider console's Inbox module, C9 Inbox absorption);
+ * this page never re-renders another module's surface (§17 one-home-per-list rule).
  *
  * Money label honesty (§13): the figure shown is BOOKED VALUE — the gross amount customers
  * paid, NOT this earner's earnings. The label says so.
@@ -105,7 +105,7 @@ function CustomerDetail({ customer }: { customer: CustomerRow }) {
             {bookings.map((b) => (
               <li key={b.id} className="flex items-center justify-between gap-3 text-sm">
                 <Link
-                  href="/provider/bookings"
+                  href="/provider/inbox?tab=history"
                   className="flex items-center gap-1.5 text-console-darkest hover:text-primary hover:underline min-w-0"
                 >
                   <Calendar className="w-3.5 h-3.5 flex-shrink-0 text-console-mid" />
