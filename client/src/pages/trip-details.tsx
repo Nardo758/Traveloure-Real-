@@ -37,6 +37,28 @@ function getBookingType(actType: string): BookingType {
   return 'inApp';
 }
 
+/**
+ * Mobile-lens audit #1 fix (found in behavioral verification): the pre-existing
+ * `selectedDay` state below is set via a `useEffect` that fires AFTER first render —
+ * so when it fed `initialSelectedDay` directly, PlanCard (whose `useState` initializer
+ * only reads its prop once, on mount) could mount before the effect ran and get stuck
+ * on the stale value. This is a pure, synchronous version of that exact same "day N of
+ * the trip is today" math (not new date logic — mirrors the effect below verbatim) that
+ * the itinerary render computes directly at render time from `trip`, which is already
+ * guaranteed loaded by the point PlanCard mounts (the page bails out above if !trip) —
+ * so there is no effect/state round-trip to race against.
+ */
+function computeLiveDayNumber(startDate: string | undefined, endDate: string | undefined): number | null {
+  if (!startDate || !endDate) return null;
+  const now = new Date();
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  if (now < start || now > end) return null;
+  const daysInto = Math.floor((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+  const totalDays = Math.floor((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+  return Math.min(Math.max(daysInto, 1), totalDays);
+}
+
 function getActivityIcon(type: string) {
   switch (type?.toLowerCase()) {
     case "food": return Utensils;
@@ -119,7 +141,6 @@ export default function TripDetails() {
   const [activeTab, setActiveTab] = useState(initialTab);
   const initialSection = deepSection === 'transport' ? 'transport' : 'activities';
   const [section, setSection] = useState<Section>(initialSection);
-  const [selectedDay, setSelectedDay] = useState(1);
   const [showFullItinerary, setShowFullItinerary] = useState(false);
   const [showAnchorCapture, setShowAnchorCapture] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
@@ -147,17 +168,13 @@ export default function TripDetails() {
     }
   }, [initialTab, deepSection]);
 
-  // Auto‑select today's day when trip is live (same logic as itinerary.tsx)
-  useEffect(() => {
-    if (!trip) return;
-    const now = new Date();
-    const start = new Date(trip.startDate);
-    const end = new Date(trip.endDate);
-    if (now >= start && now <= end) {
-      const daysInto = Math.floor((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-      setSelectedDay(Math.min(Math.max(daysInto, 1), Math.floor((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1));
-    }
-  }, [trip]);
+  // Mobile-lens audit #1: this effect used to compute "today's day" into a page-level
+  // `selectedDay` state that nothing read (the original audit finding) — then, once wired
+  // to PlanCard, turned out to race PlanCard's mount (effects run after first paint, but
+  // PlanCard's day-index `useState` initializer only reads its prop once, on mount).
+  // Replaced by the synchronous `computeLiveDayNumber` helper above, called directly where
+  // `initialSelectedDay` is computed for `<PlanCard>` below — same math, no effect/state
+  // round-trip to race.
 
   const shareMutation = useMutation({
     mutationFn: async (tripId: string) => {
@@ -759,12 +776,16 @@ export default function TripDetails() {
                         const totalCost = planCardDays.reduce((sum, d) => sum + (d.activities?.reduce((c: number, a: any) => c + (a.cost || 0), 0) || 0), 0);
                         const efficiencyScore = totalBooked > 0 ? Math.round((totalBooked / totalActivities) * 100) : 0;
 
-                        // Mobile-lens audit #1: thread the page's already-computed "today" day
-                        // (the auto-select effect above, keyed by day-of-trip number) into the
-                        // card's initial day index. findIndex on the real dayNum rather than
-                        // assuming a gap-free 1-based array, falling back to Day 1 (index 0)
-                        // when there's no match (pre-trip / no live day).
-                        const initialDayIndex = planCardDays.findIndex(d => d.dayNum === selectedDay);
+                        // Mobile-lens audit #1: thread "today's" day-of-trip number into the
+                        // card's initial day index. Computed synchronously (see
+                        // computeLiveDayNumber above) rather than read from the page's
+                        // effect-driven `selectedDay` state, which races PlanCard's mount.
+                        // findIndex on the real dayNum rather than assuming a gap-free 1-based
+                        // array, falling back to Day 1 (index 0) pre/post-trip.
+                        const liveDayNumber = computeLiveDayNumber(trip.startDate, trip.endDate);
+                        const initialDayIndex = liveDayNumber != null
+                          ? planCardDays.findIndex(d => d.dayNum === liveDayNumber)
+                          : -1;
 
                         return (
                           <PlanCard
