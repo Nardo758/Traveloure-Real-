@@ -197,6 +197,21 @@ export default function ExpertsPage() {
     },
   });
 
+  // Audit A8: the default tab was hardcoded to "local_expert" even when it has zero results
+  // in the flagship Kyoto market (§12) — a first-time visitor landed on "No experts found"
+  // with real data (Trip Planners) one click away. Once real counts arrive, if the CURRENT
+  // role (still the hardcoded default — i.e. no explicit ?role= in the URL) has none, switch
+  // to the first role that does. An explicit URL/user role choice is never overridden.
+  useEffect(() => {
+    if (!roleCounts) return;
+    if (new URLSearchParams(searchString).get("role")) return;
+    if ((roleCounts[selectedRole] ?? 0) > 0) return;
+    const roleWithData = Object.keys(roleLabels).find((r) => (roleCounts[r] ?? 0) > 0);
+    if (roleWithData && roleWithData !== selectedRole) {
+      setSelectedRole(roleWithData);
+    }
+  }, [roleCounts]);
+
   // Fetch experts from API with optional experience type, destination, neighbourhood, and role filter
   const { data: apiExperts = [], isLoading: isLoadingExperts } = useQuery<any[]>({
     queryKey: ["/api/experts", selectedExperienceType, debouncedNeighbourhoodQuery, selectedDestination, selectedRole],

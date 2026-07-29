@@ -89,6 +89,12 @@ interface Booking {
 
 const statusConfig: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline"; icon: any }> = {
   pending: { label: "Pending", variant: "secondary", icon: Clock },
+  // L3: real server-written statuses (checkout creates a booking here BEFORE the Stripe
+  // charge settles — payments.routes.ts) and the payment_intent.payment_failed webhook
+  // recovery path (webhooks.routes.ts). Both were previously unmapped and silently
+  // rendered as "Pending".
+  payment_pending: { label: "Payment pending", variant: "secondary", icon: Clock },
+  failed: { label: "Payment failed", variant: "destructive", icon: XCircle },
   confirmed: { label: "Confirmed", variant: "default", icon: CheckCircle2 },
   in_progress: { label: "In Progress", variant: "default", icon: Loader2 },
   completed: { label: "Completed", variant: "default", icon: CheckCircle2 },
@@ -96,6 +102,26 @@ const statusConfig: Record<string, { label: string; variant: "default" | "second
   cancelled: { label: "Cancelled", variant: "destructive", icon: XCircle },
   refunded: { label: "Refunded", variant: "outline", icon: DollarSign },
 };
+
+// L3: a status the server writes that isn't (yet) in statusConfig above must never
+// silently masquerade as "Pending" (the old `statusConfig[x] || statusConfig.pending`
+// fallback) — render the raw value honestly instead of guessing at a known bucket.
+function getStatusDisplay(status: string): { label: string; variant: "default" | "secondary" | "destructive" | "outline"; icon: any } {
+  const known = statusConfig[status];
+  if (known) return known;
+  const label = status
+    ? status.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+    : "Unknown";
+  return { label, variant: "outline", icon: AlertCircle };
+}
+
+// L3: the three status tabs (Pending/Active/Completed) must partition every real
+// status the same way getStatusDisplay's badges do, so "All (N)" always equals the
+// sum of the tabs — an unmapped-but-real status previously counted in "All" while
+// matching none of the tab filters (visible nowhere but the All list).
+const PENDING_STATUSES = ["pending", "payment_pending"];
+const ACTIVE_STATUSES = ["confirmed", "in_progress"];
+const COMPLETED_STATUSES = ["completed", "disputed", "cancelled", "refunded", "failed"];
 
 const VISA_STATUS_STEPS: Array<{
   key: VisaBookingMetadata["visaApplicationStatus"];
@@ -388,9 +414,15 @@ export default function MyBookingsPage() {
     );
   }
 
-  const pendingBookings = bookings?.filter(b => b.status === "pending") || [];
-  const activeBookings = bookings?.filter(b => ["confirmed", "in_progress"].includes(b.status)) || [];
-  const completedBookings = bookings?.filter(b => ["completed", "disputed", "cancelled", "refunded"].includes(b.status)) || [];
+  const pendingBookings = bookings?.filter(b => PENDING_STATUSES.includes(b.status)) || [];
+  const activeBookings = bookings?.filter(b => ACTIVE_STATUSES.includes(b.status)) || [];
+  // L3: everything not caught by Pending/Active lands here — including any real-but-
+  // not-yet-enumerated status (a resolved/terminal default) rather than falling through
+  // every tab filter while still counting toward "All". The exact "All (2) / Pending (0)"
+  // divergence this fix closes.
+  const completedBookings = bookings?.filter(
+    b => !PENDING_STATUSES.includes(b.status) && !ACTIVE_STATUSES.includes(b.status)
+  ) || [];
 
   const openReviewDialog = (booking: Booking) => {
     setSelectedBooking(booking);
@@ -572,7 +604,7 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
   const { toast } = useToast();
   const [disputeOpen, setDisputeOpen] = useState(false);
   const [disputeReason, setDisputeReason] = useState("");
-  const status = statusConfig[booking.status] || statusConfig.pending;
+  const status = getStatusDisplay(booking.status);
   const StatusIcon = status.icon;
   const canReview = booking.status === "completed" && !booking.hasReview;
   // Escrow Phase 3: once the provider marks the booking completed, the traveler can either confirm

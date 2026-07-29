@@ -107,7 +107,7 @@ import expertConsoleRoutes from "./routes/expert-console.routes";
 import calendarRoutes from "./routes/calendar.routes";
 import customersRoutes from "./routes/customers.routes";
 import contentRoutes, { seedDatabase, registerDiscoveryRoutes } from "./routes/content.routes";
-import paymentsRoutes from "./routes/payments.routes";
+import paymentsRoutes, { resolveItemBaseAmount } from "./routes/payments.routes";
 import crossSellRoutes from "./routes/cross-sell.routes";
 import expertWorkspaceRoutes from "./routes/expert-workspace.routes";
 import { createDMOCrawler } from "./content/scrapers/DMOCrawler";
@@ -1318,8 +1318,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   app.post(api.chats.create.path, isAuthenticated, async (req, res) => {
      try {
       const input = api.chats.create.input.parse(req.body);
-      // For MVP, just create it directly
-      const chat = await storage.createChat(input);
+      // Sender is always the session user — a body-sent senderId would let any
+      // authenticated user write messages as someone else (§14's identity rule,
+      // applied to chat integrity).
+      const sessionUserId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const chat = await storage.createChat({ ...input, senderId: sessionUserId });
       res.status(201).json(chat);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -4591,23 +4594,26 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         { stage: "Completed", count: completedBookings.length, percent: bookingsMade > 0 ? (completedBookings.length / bookingsMade) * 100 : 0 },
       ];
       
-      // Calculate benchmarks
+      // Calculate benchmarks. D5 (UX audit Jul 29): a zero-data account (no bookings, no
+      // ratings) was falling through to "needs_improvement" / "good" — a judgment against
+      // an empty account, not a real comparison. "no_data" is a distinct, honest status
+      // the client renders as "No data yet" (§13 pattern — never a fabricated verdict).
       const benchmarks = {
         responseTime: { value: "2 hrs", benchmark: "1 hr", status: "good" },
-        conversionRate: { 
-          value: `${conversionRate.toFixed(0)}%`, 
-          benchmark: "55%", 
-          status: conversionRate >= 55 ? "excellent" : conversionRate >= 40 ? "good" : "needs_improvement"
+        conversionRate: {
+          value: `${conversionRate.toFixed(0)}%`,
+          benchmark: "55%",
+          status: inquiryCount === 0 ? "no_data" : conversionRate >= 55 ? "excellent" : conversionRate >= 40 ? "good" : "needs_improvement"
         },
         avgRating: {
           value: avgRating.toFixed(1),
           benchmark: "4.5",
-          status: avgRating >= 4.5 ? "excellent" : avgRating >= 4.0 ? "good" : "needs_improvement"
+          status: avgRating === 0 ? "no_data" : avgRating >= 4.5 ? "excellent" : avgRating >= 4.0 ? "good" : "needs_improvement"
         },
         avgBookingValue: {
           value: `$${totalBookings > 0 ? (totalRevenue / totalBookings).toFixed(0) : 0}`,
           benchmark: "$350",
-          status: totalRevenue / (totalBookings || 1) >= 350 ? "excellent" : "good"
+          status: totalBookings === 0 ? "no_data" : totalRevenue / totalBookings >= 350 ? "excellent" : "good"
         }
       };
       
@@ -5084,7 +5090,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     let platformFeeTotal = 0;
     let conciergeFeeTotal = 0;
     for (const item of items) {
-      const price = parseFloat(item.service?.price || "0") * (item.quantity || 1);
+      // §17 property rooms: nights × nightly rate, never quantity × price (a room's cart
+      // "quantity" is meaningless — the client pins it to 1). Reuses the exact same helper
+      // /api/checkout and /api/cart/fee-preview already use (payments.routes.ts) so this
+      // quote can never silently diverge from the charged total again.
+      const price = resolveItemBaseAmount(item);
       const feeCategory = item.service?.categoryId
         ? (cartCatMap.get(item.service.categoryId) ?? "default")
         : "default";

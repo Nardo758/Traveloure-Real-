@@ -49,7 +49,9 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { format, addMonths, subMonths } from "date-fns";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar as DatePickerCalendar } from "@/components/ui/calendar";
+import { format, addMonths, subMonths, subDays } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
@@ -333,6 +335,51 @@ export default function ServiceDetailPage() {
   const roomStayReady = roomNights > 0 && roomNights <= 30;
   const roomStayAvailable = roomStayReady && !roomAvailabilityLoading && roomUnavailableDates.length === 0;
 
+  // D2 (UX audit Jul 29): plain two-input date entry gave no visibility into which nights
+  // are actually open — the traveler could only find out after picking (roomUnavailableDates
+  // above, still the authoritative pre-cart check). This adds a real calendar view, fed by
+  // the SAME public C2 availability read, that grays out/disables nights with no remaining
+  // capacity BEFORE the traveler picks — no fabricated availability (§13), a date is only
+  // selectable when a real slot with remaining > 0 exists for it.
+  const [roomCalendarCursor, setRoomCalendarCursor] = useState<Date>(() => new Date());
+  const roomCalendarMonthKeys = isRoom
+    ? [format(roomCalendarCursor, "yyyy-MM"), format(addMonths(roomCalendarCursor, 1), "yyyy-MM")]
+    : [];
+  const { data: roomCalendarDays, isLoading: roomCalendarLoading } = useQuery<AvailabilityDay[]>({
+    queryKey: ["/api/services", id, "room-calendar", roomCalendarMonthKeys.join(",")],
+    queryFn: async () => {
+      const perMonth = await Promise.all(
+        roomCalendarMonthKeys.map(async (m) => {
+          const res = await fetch(`/api/services/${id}/availability?month=${m}`, { credentials: "include" });
+          if (!res.ok) return [] as AvailabilityDay[];
+          const data = (await res.json()) as AvailabilityResponse;
+          return data.days || [];
+        }),
+      );
+      return perMonth.flat();
+    },
+    enabled: isRoom,
+  });
+  const roomAvailableNightSet = new Set(
+    (roomCalendarDays || []).filter((d) => d.remaining > 0).map((d) => d.date),
+  );
+  // Check-in: the picked date itself is the first night — must have real remaining capacity.
+  const isRoomCheckInDisabled = (date: Date) => {
+    const iso = format(date, "yyyy-MM-dd");
+    return iso < todayIsoForRoom || !roomAvailableNightSet.has(iso);
+  };
+  // Check-out: not itself a night (the traveler departs that morning) — gate on the night
+  // immediately before it (the last night of the stay) actually being open. The full-range
+  // check (every night in between) still runs post-pick via roomUnavailableDates above.
+  const isRoomCheckOutDisabled = (date: Date) => {
+    const iso = format(date, "yyyy-MM-dd");
+    if (!roomCheckIn || iso <= roomCheckIn) return true;
+    const priorNight = format(subDays(date, 1), "yyyy-MM-dd");
+    return !roomAvailableNightSet.has(priorNight);
+  };
+  const [roomCheckInOpen, setRoomCheckInOpen] = useState(false);
+  const [roomCheckOutOpen, setRoomCheckOutOpen] = useState(false);
+
   const addRoomToCartMutation = useMutation({
     mutationFn: async (_vars: { proceed: boolean }) => {
       return apiRequest("POST", "/api/cart", {
@@ -396,7 +443,11 @@ export default function ServiceDetailPage() {
       maximumFractionDigits: n % 1 === 0 ? 0 : 2,
     }).format(n);
   const hasTiers = Array.isArray(service.pricingTiers) && service.pricingTiers.length > 0;
-  const priceLabel = service.priceType === "hourly" && priceNum > 0
+  // D5 (UX audit Jul 29): a per_night room fell through to the generic "per service" sub-label
+  // (jargon that also reads as factually wrong for a nightly room rate) — give it its own branch.
+  const priceLabel = service.pricingUnit === "per_night" && priceNum > 0
+    ? `${fmtPrice(priceNum)} / night`
+    : service.priceType === "hourly" && priceNum > 0
     ? `${fmtPrice(priceNum)} / hr`
     : service.priceType === "package_tiers" && priceNum > 0
     ? `from ${fmtPrice(priceNum)}`
@@ -407,7 +458,9 @@ export default function ServiceDetailPage() {
     : priceNum > 0
     ? fmtPrice(priceNum)
     : "Custom quote";
-  const priceSubLabel = service.priceType === "hourly"
+  const priceSubLabel = service.pricingUnit === "per_night" && priceNum > 0
+    ? "per night"
+    : service.priceType === "hourly"
     ? "billed by the hour"
     : service.priceType === "package_tiers"
     ? "see tiers below"
@@ -811,38 +864,90 @@ export default function ServiceDetailPage() {
                     </div>
                     <div className="grid grid-cols-2 gap-2 mb-2">
                       <div>
-                        <label className="text-xs text-muted-foreground" htmlFor="input-room-checkin">
+                        <label className="text-xs text-muted-foreground" id="label-room-checkin">
                           Check-in
                         </label>
-                        <input
-                          id="input-room-checkin"
-                          type="date"
-                          min={todayIsoForRoom}
-                          value={roomCheckIn}
-                          onChange={(e) => {
-                            setRoomCheckIn(e.target.value);
-                            if (roomCheckOut && roomCheckOut <= e.target.value) setRoomCheckOut("");
-                          }}
-                          className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-                          data-testid="input-room-checkin"
-                        />
+                        <Popover open={roomCheckInOpen} onOpenChange={setRoomCheckInOpen}>
+                          <PopoverTrigger asChild>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              aria-labelledby="label-room-checkin"
+                              className="w-full justify-start font-normal text-sm h-10"
+                              data-testid="button-room-checkin"
+                            >
+                              <Calendar className="w-3.5 h-3.5 mr-1.5 text-muted-foreground" />
+                              {roomCheckIn
+                                ? format(new Date(`${roomCheckIn}T00:00:00`), "MMM d, yyyy")
+                                : "Select date"}
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <DatePickerCalendar
+                              mode="single"
+                              month={roomCalendarCursor}
+                              onMonthChange={setRoomCalendarCursor}
+                              selected={roomCheckIn ? new Date(`${roomCheckIn}T00:00:00`) : undefined}
+                              onSelect={(date) => {
+                                if (!date) return;
+                                const iso = format(date, "yyyy-MM-dd");
+                                setRoomCheckIn(iso);
+                                if (roomCheckOut && roomCheckOut <= iso) setRoomCheckOut("");
+                                setRoomCheckInOpen(false);
+                              }}
+                              disabled={isRoomCheckInDisabled}
+                              data-testid="calendar-room-checkin"
+                            />
+                            <p className="px-3 pb-3 text-[11px] text-muted-foreground border-t pt-2">
+                              Grayed-out nights are already booked or not yet published.
+                            </p>
+                          </PopoverContent>
+                        </Popover>
                       </div>
                       <div>
-                        <label className="text-xs text-muted-foreground" htmlFor="input-room-checkout">
+                        <label className="text-xs text-muted-foreground" id="label-room-checkout">
                           Check-out
                         </label>
-                        <input
-                          id="input-room-checkout"
-                          type="date"
-                          min={roomCheckIn || todayIsoForRoom}
-                          value={roomCheckOut}
-                          onChange={(e) => setRoomCheckOut(e.target.value)}
-                          disabled={!roomCheckIn}
-                          className="w-full rounded-md border bg-background px-3 py-2 text-sm disabled:opacity-50"
-                          data-testid="input-room-checkout"
-                        />
+                        <Popover open={roomCheckOutOpen} onOpenChange={setRoomCheckOutOpen}>
+                          <PopoverTrigger asChild>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              aria-labelledby="label-room-checkout"
+                              disabled={!roomCheckIn}
+                              className="w-full justify-start font-normal text-sm h-10 disabled:opacity-50"
+                              data-testid="button-room-checkout"
+                            >
+                              <Calendar className="w-3.5 h-3.5 mr-1.5 text-muted-foreground" />
+                              {roomCheckOut
+                                ? format(new Date(`${roomCheckOut}T00:00:00`), "MMM d, yyyy")
+                                : "Select date"}
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-auto p-0" align="start">
+                            <DatePickerCalendar
+                              mode="single"
+                              month={roomCalendarCursor}
+                              onMonthChange={setRoomCalendarCursor}
+                              selected={roomCheckOut ? new Date(`${roomCheckOut}T00:00:00`) : undefined}
+                              onSelect={(date) => {
+                                if (!date) return;
+                                setRoomCheckOut(format(date, "yyyy-MM-dd"));
+                                setRoomCheckOutOpen(false);
+                              }}
+                              disabled={isRoomCheckOutDisabled}
+                              data-testid="calendar-room-checkout"
+                            />
+                            <p className="px-3 pb-3 text-[11px] text-muted-foreground border-t pt-2">
+                              Grayed-out dates would include a night that's already booked.
+                            </p>
+                          </PopoverContent>
+                        </Popover>
                       </div>
                     </div>
+                    {roomCalendarLoading && (
+                      <p className="text-[11px] text-muted-foreground mb-1">Loading real availability…</p>
+                    )}
                     {roomNights > 0 && (
                       <p className="text-sm" data-testid="text-room-nights">
                         {roomNights} night{roomNights === 1 ? "" : "s"} · {fmtPrice(priceNum * roomNights)} total

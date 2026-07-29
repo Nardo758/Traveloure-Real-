@@ -320,14 +320,22 @@ function VisaStatusDialog({
 // ownership gate + confirmed/cancelled-only transition allow-list).
 
 function StatsRow({ bookings }: { bookings: InboxBooking[] }) {
+  // L10b: real service_bookings statuses also include payment_pending, in_progress,
+  // disputed, cancelled, refunded, failed (see my-bookings.tsx's PENDING/ACTIVE/COMPLETED
+  // sets) — folding payment_pending into "Pending" and bucketing every other real status
+  // into an honest "Other" tile means Total always equals the sum of the tiles again.
+  const confirmed = bookings.filter((b) => b.status === "confirmed").length;
+  const pending = bookings.filter((b) => b.status === "pending" || b.status === "payment_pending").length;
+  const completed = bookings.filter((b) => b.status === "completed").length;
   const stats = {
     total: bookings.length,
-    confirmed: bookings.filter((b) => b.status === "confirmed").length,
-    pending: bookings.filter((b) => b.status === "pending").length,
-    completed: bookings.filter((b) => b.status === "completed").length,
+    confirmed,
+    pending,
+    completed,
+    other: bookings.length - confirmed - pending - completed,
   };
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-4 gap-4" data-testid="section-inbox-stats">
+    <div className="grid grid-cols-2 sm:grid-cols-5 gap-4" data-testid="section-inbox-stats">
       <div className="p-3 bg-console-hover rounded-lg text-center" data-testid="stat-total">
         <p className="text-2xl font-bold text-console-darkest">{stats.total}</p>
         <p className="text-sm text-console-mid">Total</p>
@@ -343,6 +351,10 @@ function StatsRow({ bookings }: { bookings: InboxBooking[] }) {
       <div className="p-3 bg-console-hover rounded-lg text-center" data-testid="stat-completed">
         <p className="text-2xl font-bold text-blue-600">{stats.completed}</p>
         <p className="text-sm text-console-mid">Completed</p>
+      </div>
+      <div className="p-3 bg-console-hover rounded-lg text-center" data-testid="stat-other">
+        <p className="text-2xl font-bold text-console-mid">{stats.other}</p>
+        <p className="text-sm text-console-mid">Other</p>
       </div>
     </div>
   );

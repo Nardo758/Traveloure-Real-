@@ -13,7 +13,9 @@ import { Link2, Copy, ExternalLink } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 
 export function HandleClaimCard({ currentHandle }: { currentHandle?: string | null }) {
-  const { user } = useAuth() as { user?: { handle?: string | null } };
+  const { user } = useAuth() as {
+    user?: { handle?: string | null; preferences?: { storefront?: { coverImageUrl?: string | null } } | null };
+  };
   const existing = currentHandle ?? user?.handle ?? null;
   const [handle, setHandle] = useState(existing ?? "");
   const { toast } = useToast();
@@ -40,6 +42,30 @@ export function HandleClaimCard({ currentHandle }: { currentHandle?: string | nu
 
   const saved = claimMutation.data?.handle ?? existing;
   const url = saved ? `${window.location.origin}/p/${saved}` : null;
+
+  // Storefront cover image — earner-chosen, optional (users.preferences.storefront.coverImageUrl,
+  // no migration). Gradient fallback renders on the storefront when unset.
+  const existingCover = user?.preferences?.storefront?.coverImageUrl ?? "";
+  const [coverImageUrl, setCoverImageUrl] = useState(existingCover);
+
+  const coverMutation = useMutation({
+    mutationFn: async (next: string) => {
+      const res = await fetch("/api/me/storefront", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ coverImageUrl: next.trim().length > 0 ? next.trim() : null }),
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body?.message ?? `Failed (${res.status})`);
+      return body as { coverImageUrl?: string | null };
+    },
+    onSuccess: () => {
+      toast({ title: "Cover image saved" });
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
+    },
+    onError: (e: Error) => toast({ title: "Could not save cover image", description: e.message, variant: "destructive" }),
+  });
 
   return (
     <Card data-testid="card-handle-claim">
@@ -110,6 +136,33 @@ export function HandleClaimCard({ currentHandle }: { currentHandle?: string | nu
             </a>
           </div>
         )}
+
+        <div className="pt-2 border-t space-y-2">
+          <label className="text-sm font-medium" htmlFor="input-cover-image-url">
+            Cover image URL
+          </label>
+          <div className="flex gap-2">
+            <Input
+              id="input-cover-image-url"
+              value={coverImageUrl}
+              onChange={(e) => setCoverImageUrl(e.target.value)}
+              placeholder="https://…"
+              maxLength={2048}
+              data-testid="input-cover-image-url"
+            />
+            <Button
+              variant="outline"
+              onClick={() => coverMutation.mutate(coverImageUrl)}
+              disabled={coverMutation.isPending}
+              data-testid="button-save-cover-image"
+            >
+              {coverMutation.isPending ? "Saving…" : "Save"}
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Shown as the banner at the top of your storefront. Leave blank to use the default gradient.
+          </p>
+        </div>
       </CardContent>
     </Card>
   );

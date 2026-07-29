@@ -3,18 +3,19 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { 
+import {
   Bot,
   Send,
   CheckCircle,
   Clock,
   X,
-  ArrowRight,
   Star
 } from "lucide-react";
 
+import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 interface EaAiTask {
   id: string; type: string; executiveName?: string; task: string;
@@ -24,8 +25,22 @@ interface EaAiTask {
 }
 
 export default function EAAIAssistant() {
+  const { toast } = useToast();
+  const [delegateText, setDelegateText] = useState("");
+
   const { data: allTasks = [] } = useQuery<EaAiTask[]>({
     queryKey: ["/api/ea/ai-tasks"],
+  });
+
+  const delegateMutation = useMutation({
+    mutationFn: (task: string) =>
+      apiRequest("POST", "/api/ea/ai-tasks", { type: "general", task }).then((r) => r.json()),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ea/ai-tasks"] });
+      toast({ title: "Task delegated", description: "Added to Pending Your Review below." });
+      setDelegateText("");
+    },
+    onError: (e: any) => toast({ title: "Could not delegate task", description: e.message, variant: "destructive" }),
   });
 
   const pendingTasks = allTasks.filter(t => t.status === "pending");
@@ -46,10 +61,6 @@ export default function EAAIAssistant() {
     tasksDelegated: allTasks.length,
     tasksCompleted: allTasks.filter(t => t.status === "approved").length,
     completionRate: allTasks.length > 0 ? Math.round(allTasks.filter(t => t.status === "approved").length / allTasks.length * 100) : 0,
-    timeSaved: 0,
-    avgQualityScore: 0,
-    editRate: 0,
-    topStrengths: [] as Array<{ skill: string; rate: number }>,
   };
 
   return (
@@ -74,17 +85,25 @@ export default function EAAIAssistant() {
           </CardHeader>
           <CardContent>
             <div className="flex gap-3">
-              <Input 
-                placeholder="Describe the task... (e.g., 'Research venues for Sarah's Tokyo dinner meeting')" 
+              <Input
+                placeholder="Describe the task... (e.g., 'Research venues for Sarah's Tokyo dinner meeting')"
                 className="flex-1"
+                value={delegateText}
+                onChange={(e) => setDelegateText(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter" && delegateText.trim()) delegateMutation.mutate(delegateText.trim()); }}
                 data-testid="input-delegate-task"
               />
-              <Button className="bg-primary hover:bg-primary/90" data-testid="button-delegate">
-                <Send className="w-4 h-4 mr-2" /> Delegate
+              <Button
+                className="bg-primary hover:bg-primary/90"
+                disabled={delegateMutation.isPending || !delegateText.trim()}
+                onClick={() => delegateMutation.mutate(delegateText.trim())}
+                data-testid="button-delegate"
+              >
+                <Send className="w-4 h-4 mr-2" /> {delegateMutation.isPending ? "Sending…" : "Delegate"}
               </Button>
             </div>
             <div className="mt-4">
-              <p className="text-sm font-medium text-gray-700 mb-2">Quick Templates:</p>
+              <p className="text-sm font-medium text-gray-700 mb-2">Quick Templates (click to fill in):</p>
               <div className="flex flex-wrap gap-2">
                 {[
                   "Research hotels in [city] for [executive]",
@@ -93,11 +112,12 @@ export default function EAAIAssistant() {
                   "Coordinate travel for [executive]'s [trip]",
                   "Research restaurants in [city]",
                 ].map((template, index) => (
-                  <Button 
-                    key={index} 
-                    variant="outline" 
+                  <Button
+                    key={index}
+                    variant="outline"
                     size="sm"
                     className="text-xs"
+                    onClick={() => setDelegateText(template)}
                     data-testid={`button-template-${index}`}
                   >
                     {template}
@@ -134,9 +154,6 @@ export default function EAAIAssistant() {
                         <p className="font-medium text-gray-900">{task.executiveName}</p>
                         <p className="text-sm text-gray-600">{task.task}</p>
                       </div>
-                      <Badge className="bg-blue-100 text-blue-700">
-                        {task.confidence}% Confidence
-                      </Badge>
                     </div>
                     
                     {task.draft && (
@@ -213,30 +230,9 @@ export default function EAAIAssistant() {
                   <span className="text-gray-600">Tasks Completed</span>
                   <span className="font-medium">{aiStats.tasksCompleted} ({aiStats.completionRate}%)</span>
                 </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Time Saved</span>
-                  <span className="font-medium">{aiStats.timeSaved} hours</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Avg Quality Score</span>
-                  <span className="font-medium">{aiStats.avgQualityScore}/10</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-600">Your Edit Rate</span>
-                  <span className="font-medium text-green-600">{aiStats.editRate}%</span>
-                </div>
-                <div className="pt-3 border-t border-gray-100">
-                  <p className="text-sm font-medium text-gray-700 mb-2">Top AI Strengths:</p>
-                  {aiStats.topStrengths.map((strength, idx) => (
-                    <div key={idx} className="flex justify-between text-sm mb-1">
-                      <span className="text-gray-600">{strength.skill}</span>
-                      <span className="text-green-600">{strength.rate}% approval</span>
-                    </div>
-                  ))}
-                </div>
-                <Button variant="ghost" className="w-full text-primary" data-testid="button-view-analytics">
-                  View Detailed Analytics <ArrowRight className="w-4 h-4 ml-1" />
-                </Button>
+                {/* Time Saved / Avg Quality Score / Edit Rate / Top AI Strengths removed —
+                    no real scorer or timing instrumentation exists yet (§13: a gauge that
+                    can never be real is worse than no gauge). Re-add once a real source lands. */}
               </CardContent>
             </Card>
 
