@@ -411,7 +411,7 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
       changeLog: changes.slice(0, 10).map(c => ({
         id: c.id,
         who: c.who,
-        action: c.action,
+        what: c.action,
         when: formatTimeAgo(c.createdAt),
         type: c.changeType,
         role: c.role,
