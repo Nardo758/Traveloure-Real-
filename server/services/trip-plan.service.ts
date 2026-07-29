@@ -1,11 +1,20 @@
 /**
- * TripPlan assembler — the ONE server-side producer of the circulating plan object.
+ * TripPlan assembler — the ONE server-side home of the circulating plan object, with one adapter per
+ * PRODUCER (§3 "producers normalize INTO TripPlan"):
+ *
+ *   • `assembleTripPlan(tripId, level)`            — `trips` + `itinerary_items` (+ the selected
+ *     variant's legs, + the `generated_itineraries` JSON fallback). LIVE by reference. Consumed by
+ *     `GET /api/trips/:tripId/plancard` (L3a).
+ *   • `assembleTripPlanFromVariant(variantId, …)`  — `itinerary_variants` +
+ *     `itinerary_variant_items` + `transport_legs`. A SNAPSHOT: it never reads the live trip.
+ *     Consumed by the itinerary-share / OG family, which is keyed on `shared_itineraries.variantId`
+ *     (L3b′).
  *
  * Governing contract: `docs/EXECUTION_MAP.md` §3 + CLAUDE.md §18. This service formalizes the
- * assembly that previously lived inline in `GET /api/trips/:tripId/plancard`; that route is now a
- * thin caller passing `'full'`. Every future renderer/channel (share view, OG injection, store
- * teaser, social pack) consumes THIS assembler at its channel's redaction level instead of building
- * its own trip shape (lane L3b).
+ * assembly that previously lived inline in `GET /api/trips/:tripId/plancard` and in the
+ * itinerary-share handlers. Both producers emit the same envelope, so a renderer written against
+ * TripPlan renders either home; shared internals (leg builder, booking resolution, day labels) exist
+ * ONCE so the two cannot drift.
  *
  * ── WHAT THIS SERVICE DOES NOT DO: AUTHORIZATION ──────────────────────────────────────────────
  * The redaction level is the CHANNEL contract, not an auth check. Callers MUST gate access
@@ -48,6 +57,7 @@ import {
   type TripPlanLeg,
   type TripPlanMeta,
   type TripPlanMetrics,
+  type VariantFullTripPlan,
 } from "@shared/trip-plan";
 import { geocodeAddress } from "../utils/geocode";
 
@@ -149,6 +159,104 @@ function dayDateLabel(startDate: Date, dayNum: number): string {
   const dayDate = new Date(startDate);
   dayDate.setDate(dayDate.getDate() + dayNum - 1);
   return dayDate.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+}
+
+/**
+ * Machine `YYYY-MM-DD` for day N counted from a plan start date. Null without a start date — no
+ * date is ever guessed (§13). Same arithmetic the itinerary-share family has always used.
+ */
+function dayDateIso(startDate: Date | null, dayNum: number): string | null {
+  if (!startDate) return null;
+  const d = new Date(startDate);
+  d.setDate(d.getDate() + dayNum - 1);
+  return d.toISOString().split("T")[0];
+}
+
+/**
+ * The primary booking option per transport leg — shared by both producers (the booking rows hang off
+ * `transport_legs.id`, so they are the LEG's own data in either data home). Drives the badge display,
+ * the §3 `booked` block and the §16 `bookVia` marker.
+ */
+interface LegBookingInfo {
+  bookingSource: "platform" | "affiliate";
+  partnerName: string | null;
+  isBooked: boolean;
+  confirmationRef: string | null;
+}
+
+async function resolveLegBookings(legs: any[]): Promise<Record<string, LegBookingInfo>> {
+  const map: Record<string, LegBookingInfo> = {};
+  if (legs.length === 0) return map;
+  const legIds = legs.map((l: any) => l.id).filter(Boolean);
+  if (legIds.length === 0) return map;
+
+  const bookingOpts = await storage.getBookingOptionsByLegIds(legIds);
+  for (const opt of bookingOpts) {
+    if (!opt.transportLegId) continue;
+    if (map[opt.transportLegId]) continue;
+    map[opt.transportLegId] = {
+      bookingSource: opt.bookingType === "platform" ? "platform" : "affiliate",
+      partnerName: opt.source !== "traveloure" ? opt.source : null,
+      // A REAL booking only — "available" is not booked (§13).
+      isBooked: opt.bookingStatus === "booked" || opt.bookingStatus === "confirmed",
+      confirmationRef: opt.confirmationRef ?? null,
+    };
+  }
+  return map;
+}
+
+/**
+ * ONE leg builder for both producers — `transport_legs` rows are literally the same table on the trip
+ * and variant paths, so there is no second mapping to drift. Producer-specific extras (the raw
+ * `distanceMeters`/`energyCost`/nullable `alternativeModes` the variant snapshot passes through) are
+ * spread on by the caller so this core's output stays byte-identical for the trip producer.
+ *
+ * §16: never carries `linked_product_url` or any other affiliate/deep-link URL — a chauffeured leg
+ * that is not really booked is marked `bookVia: 'agent-rail'` and the URL stays server-side.
+ */
+function buildTripPlanLegCore(leg: any, booking?: LegBookingInfo | null): TripPlanLeg {
+  const mode = leg.userSelectedMode || leg.recommendedMode || "walk";
+  const isBooked = !!booking?.isBooked;
+  return {
+    id: leg.id,
+    dayNumber: leg.dayNumber,
+    fromActivityId: leg.fromActivityId ?? null,
+    toActivityId: leg.toActivityId ?? null,
+    mode,
+    durationMin: leg.estimatedDurationMinutes || 0,
+    distance: leg.distanceDisplay ?? null,
+    // Real booking data only. pickupTime has no column → null, never derived from a guess (§13).
+    booked: isBooked
+      ? { pickupPoint: leg.fromName ?? null, pickupTime: null, rideRef: booking?.confirmationRef ?? null }
+      : null,
+    // §16: a chauffeured ride that is not really booked must be booked through the in-platform
+    // booking-agent rail. No affiliate/deep-link URL is ever carried on this object.
+    bookVia: !isBooked && isChauffeuredMode(mode) ? "agent-rail" : null,
+
+    // legacy plancard contract
+    from: leg.fromActivityId || "",
+    to: leg.toActivityId || "",
+    fromName: leg.fromName,
+    toName: leg.toName,
+    duration: leg.estimatedDurationMinutes || 0,
+    cost: leg.estimatedCostUsd || 0,
+    line: null,
+    status: leg.userSelectedMode ? "confirmed" : "suggested",
+    suggestedBy: leg.userSelectedMode ? null : "ai",
+    bookingSource: booking?.bookingSource ?? null,
+    partnerName: booking?.partnerName ?? null,
+    legOrder: leg.legOrder,
+    recommendedMode: leg.recommendedMode,
+    userSelectedMode: leg.userSelectedMode ?? null,
+    alternativeModes: leg.alternativeModes ?? [],
+    fromLat: leg.fromLat,
+    fromLng: leg.fromLng,
+    toLat: leg.toLat,
+    toLng: leg.toLng,
+    distanceDisplay: leg.distanceDisplay,
+    estimatedDurationMinutes: leg.estimatedDurationMinutes,
+    estimatedCostUsd: leg.estimatedCostUsd ?? null,
+  };
 }
 
 /**
@@ -326,8 +434,13 @@ export async function assembleTripPlan(
 
   const baseMeta = (dayCount: number): TripPlanMeta => ({
     tripPlanVersion: TRIP_PLAN_VERSION,
+    // LIVE-by-reference producer: re-assembling always reflects the current trip (contrast the
+    // variant adapter below, which is a snapshot).
+    sourceRef: { kind: "trip", id: trip.id },
     tripId: trip.id,
     title: trip.title ?? null,
+    // CAPABILITY GAP (§13): `trips` has no description column, so this producer has none to give.
+    description: null,
     destination: trip.destination ?? null,
     dates: {
       start: trip.startDate != null ? String(trip.startDate) : null,
@@ -400,32 +513,7 @@ export async function assembleTripPlan(
   }
 
   // transportLegId → primary booking option (badge display + the §3 `booked` block).
-  const legBookingMap: Record<
-    string,
-    {
-      bookingSource: "platform" | "affiliate";
-      partnerName: string | null;
-      isBooked: boolean;
-      confirmationRef: string | null;
-    }
-  > = {};
-  if (variantLegs.length > 0) {
-    const legIds = variantLegs.map((l: any) => l.id).filter(Boolean);
-    if (legIds.length > 0) {
-      const bookingOpts = await storage.getBookingOptionsByLegIds(legIds);
-      for (const opt of bookingOpts) {
-        if (!opt.transportLegId) continue;
-        if (legBookingMap[opt.transportLegId]) continue;
-        legBookingMap[opt.transportLegId] = {
-          bookingSource: opt.bookingType === "platform" ? "platform" : "affiliate",
-          partnerName: opt.source !== "traveloure" ? opt.source : null,
-          // A REAL booking only — "available" is not booked (§13).
-          isBooked: opt.bookingStatus === "booked" || opt.bookingStatus === "confirmed",
-          confirmationRef: opt.confirmationRef ?? null,
-        };
-      }
-    }
-  }
+  const legBookingMap = await resolveLegBookings(variantLegs);
 
   const changes = await storage.getItineraryChanges(tripId, 20);
   const commentCounts = await storage.getActivityCommentCounts(tripId);
@@ -451,51 +539,7 @@ export async function assembleTripPlan(
 
   const dayNumbers = Array.from(new Set(items.map((i) => i.dayNumber))).sort((a, b) => a - b);
 
-  const buildLeg = (leg: any): TripPlanLeg => {
-    const mode = leg.userSelectedMode || leg.recommendedMode || "walk";
-    const booking = legBookingMap[leg.id];
-    const isBooked = !!booking?.isBooked;
-    return {
-      id: leg.id,
-      dayNumber: leg.dayNumber,
-      fromActivityId: leg.fromActivityId ?? null,
-      toActivityId: leg.toActivityId ?? null,
-      mode,
-      durationMin: leg.estimatedDurationMinutes || 0,
-      distance: leg.distanceDisplay ?? null,
-      // Real booking data only. pickupTime has no column → null, never derived from a guess (§13).
-      booked: isBooked
-        ? { pickupPoint: leg.fromName ?? null, pickupTime: null, rideRef: booking?.confirmationRef ?? null }
-        : null,
-      // §16: a chauffeured ride that is not really booked must be booked through the in-platform
-      // booking-agent rail. No affiliate/deep-link URL is ever carried on this object.
-      bookVia: !isBooked && isChauffeuredMode(mode) ? "agent-rail" : null,
-
-      // legacy plancard contract
-      from: leg.fromActivityId || "",
-      to: leg.toActivityId || "",
-      fromName: leg.fromName,
-      toName: leg.toName,
-      duration: leg.estimatedDurationMinutes || 0,
-      cost: leg.estimatedCostUsd || 0,
-      line: null,
-      status: leg.userSelectedMode ? "confirmed" : "suggested",
-      suggestedBy: leg.userSelectedMode ? null : "ai",
-      bookingSource: booking?.bookingSource ?? null,
-      partnerName: booking?.partnerName ?? null,
-      legOrder: leg.legOrder,
-      recommendedMode: leg.recommendedMode,
-      userSelectedMode: leg.userSelectedMode ?? null,
-      alternativeModes: leg.alternativeModes ?? [],
-      fromLat: leg.fromLat,
-      fromLng: leg.fromLng,
-      toLat: leg.toLat,
-      toLng: leg.toLng,
-      distanceDisplay: leg.distanceDisplay,
-      estimatedDurationMinutes: leg.estimatedDurationMinutes,
-      estimatedCostUsd: leg.estimatedCostUsd ?? null,
-    };
-  };
+  const buildLeg = (leg: any): TripPlanLeg => buildTripPlanLegCore(leg, legBookingMap[leg.id]);
 
   const buildActivity = (item: any): TripPlanActivity => {
     const title = item.title;
@@ -737,6 +781,248 @@ export async function assembleTripPlan(
           (c) => c.role === "expert" && c.changeType === "suggest",
         ).length,
       },
+    },
+  };
+}
+
+// ── Producer adapter 2: the VARIANT snapshot (L3b′) ───────────────────────────────────────────
+//
+// Data home: `itinerary_variants` + `itinerary_variant_items` + `transport_legs` (+ the variant's
+// `itinerary_comparisons` parent for destination/dates/budget/tripId). This is the home the
+// itinerary-share / OG family serves — `shared_itineraries.variant_id` — which is a DIFFERENT home
+// from `assembleTripPlan`'s `trips` + `itinerary_items`.
+//
+// ── THE SEMANTIC RULE (the whole point of this adapter) ───────────────────────────────────────
+// It reads the VARIANT'S OWN ROWS and NEVER the live trip. A share link keyed on `variantId` keeps
+// rendering exactly the plan that was shared, forever — even after the traveler edits (or deletes
+// items from) the trip the variant was applied to. Anything that lives only on the live trip
+// (itinerary items, trip transactions, the change log, expert notes, completion state) is therefore
+// NOT read here; where the envelope has a field for it, the field is null/empty and says why (§13).
+//
+// ── CAPABILITY GAPS, stated once (§13 — null, never fabricated) ───────────────────────────────
+//  • vendorPhone / confirmationNumber — `itinerary_variant_items` has no vendorContractId and no
+//    confirmation column. A variant is a PROPOSAL; nothing is booked on it.
+//  • expertNote / tripNote — no expert-note column. (`shared_itineraries.expertNotes` is
+//    SHARE-scoped private review commentary, gated per-share by the route; it is deliberately kept
+//    out of the plan object so it can never ride a plan to a surface that has not gated it.)
+//  • mapsUrl — no `google_place_id` on variant items.
+//  • meetingPoint — a variant item's `provider_service_id` points at a LIVE `provider_services` row;
+//    reading it would break the snapshot rule above, so it is not read.
+//  • visited — no completion column on a snapshot.
+//  • deliveredBy — a variant carries no expert attribution. (`shared_itineraries.sharedByUserId` is
+//    the TRAVELER who shared it, not an expert — emitting them as "delivered by" would misattribute.)
+//  • budget.spentBreakdown — real spend is trip-scoped live state (`trip_transactions`); not read.
+
+/** Raised when the variant row does not exist. Callers map this to their own 404. */
+export class TripPlanVariantNotFoundError extends Error {
+  constructor(variantId: string) {
+    super(`Itinerary variant ${variantId} not found`);
+    this.name = "TripPlanVariantNotFoundError";
+  }
+}
+
+export interface AssembleVariantTripPlanOptions {
+  /**
+   * Reserved. The variant adapter needs no viewer input: it authorizes nothing (the share-token gate
+   * is the caller's, as with the trip producer) and its output does not vary by viewer.
+   */
+  viewerId?: string | null;
+}
+
+export async function assembleTripPlanFromVariant(
+  variantId: string,
+  level: "full",
+  options?: AssembleVariantTripPlanOptions,
+): Promise<VariantFullTripPlan>;
+export async function assembleTripPlanFromVariant(
+  variantId: string,
+  level: "teaser",
+  options?: AssembleVariantTripPlanOptions,
+): Promise<TeaserTripPlan>;
+export async function assembleTripPlanFromVariant(
+  variantId: string,
+  level: "preview",
+  options?: AssembleVariantTripPlanOptions,
+): Promise<PreviewTripPlan>;
+export async function assembleTripPlanFromVariant(
+  variantId: string,
+  level: RedactionLevel,
+  _options: AssembleVariantTripPlanOptions = {},
+): Promise<VariantFullTripPlan | TeaserTripPlan | PreviewTripPlan> {
+  if (level === "social") throw new TripPlanLevelUnsupportedError(level);
+
+  const variant = await storage.getItineraryVariantById(variantId);
+  if (!variant) throw new TripPlanVariantNotFoundError(variantId);
+
+  // The comparison is the variant's own parent row (NOT the live trip): it carries the snapshot's
+  // destination, date range, budget and — nullably — the trip it was applied to.
+  const comparison = await storage.getItineraryComparison(variant.comparisonId);
+  const startDate = comparison?.startDate ? new Date(comparison.startDate) : null;
+
+  const baseMeta = (dayCount: number): TripPlanMeta => ({
+    tripPlanVersion: TRIP_PLAN_VERSION,
+    sourceRef: { kind: "variant", id: variant.id },
+    // Nullable by design — an optimizer comparison need never have been applied to a trip.
+    tripId: comparison?.tripId ?? null,
+    title: variant.name ?? null,
+    description: variant.description ?? null,
+    destination: comparison?.destination ?? null,
+    dates: {
+      start: comparison?.startDate != null ? String(comparison.startDate) : null,
+      end: comparison?.endDate != null ? String(comparison.endDate) : null,
+    },
+    // The VARIANT's own status (pending/selected/…), not a trip status.
+    status: variant.status ?? null,
+    // A generated itinerary variant is platform-originated content, same as a trip.
+    origin: contentOriginFor("itinerary_variant"),
+    // See the capability-gap note above: never the sharer.
+    deliveredBy: null,
+    dayCount,
+    // No hero-image column on a variant; emitted null rather than invented (§13).
+    heroImageUrl: null,
+  });
+
+  // ── preview: meta ONLY. Reads the item rows solely to COUNT days (a real figure meta emits);
+  //    no activity, leg, booking or comparison-budget work happens. ──────────────────────────────
+  if (level === "preview") {
+    const items = await storage.getItineraryVariantItemsByVariantId(variantId);
+    const dayCount = Array.from(new Set(items.map((i: any) => i.dayNumber))).length;
+    return { redactionLevel: "preview", meta: baseMeta(dayCount) };
+  }
+
+  const items = await storage.getItineraryVariantItemsByVariantId(variantId);
+
+  // ── teaser: day + title ONLY (the §10 redactTemplateContent posture). Items are read solely to
+  //    derive the day list + headline; NO activity is emitted, and legs are never loaded. ─────────
+  if (level === "teaser") {
+    const dayNumbers = Array.from(new Set(items.map((i: any) => i.dayNumber))).sort(
+      (a: number, b: number) => a - b,
+    );
+    const days = dayNumbers.map((dayNum: number) => {
+      const dayItems = items
+        .filter((i: any) => i.dayNumber === dayNum)
+        .sort((a: any, b: any) => (a.sortOrder || 0) - (b.sortOrder || 0));
+      // `generateDayLabel` reads `.title`; variant items name the column `name`.
+      const titled = dayItems.map((i: any) => ({ title: i.name }));
+      return {
+        dayNumber: dayNum,
+        title: generateDayLabel(
+          dayItems.map((i: any) => i.serviceType || "activity"),
+          titled,
+        ),
+      };
+    });
+    return { redactionLevel: "teaser", meta: baseMeta(days.length), days };
+  }
+
+  // ── full ──────────────────────────────────────────────────────────────────────────────────
+  // Ordered by (dayNumber, legOrder) so both the flat `legs` list and each day's `transports` are
+  // deterministic.
+  const legRows = await storage.getOrderedTransportLegsByVariantId(variantId);
+  const legBookingMap = await resolveLegBookings(legRows);
+
+  /** Shared core + the raw snapshot columns the variant home carries (see TripPlanLeg docs). */
+  const buildLeg = (leg: any): TripPlanLeg => ({
+    ...buildTripPlanLegCore(leg, legBookingMap[leg.id]),
+    distanceMeters: leg.distanceMeters ?? null,
+    energyCost: leg.energyCost ?? null,
+    // RAW: preserves NULL (never computed) vs [] (computed none) — see TripPlanLeg.alternativeModes.
+    alternativeModes: leg.alternativeModes ?? null,
+  });
+
+  const buildActivity = (item: any): TripPlanActivity => {
+    const title = item.name;
+    return {
+      id: item.id,
+      title,
+      name: title,
+      startTime: item.startTime || null,
+      endTime: item.endTime || null,
+      time: item.startTime || "",
+      // RAW: null stays null (the row genuinely has no location) — see TripPlanActivity.location.
+      location: item.location ?? null,
+      lat: item.latitude ? parseFloat(item.latitude.toString()) : null,
+      lng: item.longitude ? parseFloat(item.longitude.toString()) : null,
+      // Capability gaps — see the block comment above this adapter. Never placeholders.
+      mapsUrl: null,
+      meetingPoint: null,
+      confirmationNumber: null,
+      vendorPhone: null,
+      expertNote: null,
+      visited: false,
+      // Variant items are optimizer output; the platform authored them.
+      source: "platform",
+
+      type: mapItemType(item.serviceType),
+      // A variant item is a PROPOSAL — the snapshot has no status column, so no "confirmed" claim is
+      // made (§13). `mapItemStatus(null)` would say "confirmed", which would be a fabrication here.
+      status: "suggested",
+      cost: item.price ? parseFloat(item.price.toString()) : 0,
+      // Comments and the change log are trip-scoped live state; a snapshot has neither.
+      comments: 0,
+      suggestedBy: null,
+      changes: [],
+
+      // Producer-native extras this home really does carry.
+      description: item.description ?? null,
+      durationMinutes: item.duration ?? null,
+      category: item.serviceType ?? null,
+    };
+  };
+
+  const dayNumbers = Array.from(new Set(items.map((i: any) => i.dayNumber))).sort(
+    (a: number, b: number) => a - b,
+  );
+
+  const days: TripPlanDay[] = dayNumbers.map((dayNum: number) => {
+    const dayItems = items
+      .filter((i: any) => i.dayNumber === dayNum)
+      .sort((a: any, b: any) => (a.sortOrder || 0) - (b.sortOrder || 0));
+    const dayLegs = legRows.filter((l: any) => l.dayNumber === dayNum);
+    return {
+      dayNumber: dayNum,
+      dayNum,
+      // Empty when the snapshot has no start date — never today's date (§13).
+      date: startDate ? dayDateLabel(startDate, dayNum) : "",
+      dateIso: dayDateIso(startDate, dayNum),
+      label: generateDayLabel(
+        dayItems.map((i: any) => i.serviceType || "activity"),
+        dayItems.map((i: any) => ({ title: i.name })),
+      ),
+      activities: dayItems.map(buildActivity),
+      transports: dayLegs.map(buildLeg),
+    };
+  });
+
+  // EVERY leg of the snapshot, not just the day-placed ones: a leg whose day carries no items is
+  // still part of the plan's transport totals (and dropping it would change what the share surface
+  // has always reported). No "dismissed" filter either — that is a live-trip display rule; a
+  // snapshot renders what was shared.
+  const legs: TripPlanLeg[] = legRows.map(buildLeg);
+
+  const plannedBudget = comparison?.budget != null ? parseFloat(String(comparison.budget)) : null;
+
+  return {
+    redactionLevel: "full",
+    meta: baseMeta(days.length),
+    days,
+    legs,
+    // No expert-note column on a variant (and share-scoped notes stay out of the plan — see above).
+    tripNote: null,
+    budget:
+      plannedBudget != null && !isNaN(plannedBudget)
+        ? // `spentBreakdown` stays empty: real spend is trip-scoped live state, deliberately not
+          // read by a snapshot producer. Empty is honest; it is never an estimate (§13).
+          { currency: "USD", planned: plannedBudget, spentBreakdown: [] }
+        : null,
+    // Only when a trip actually backs this variant — otherwise there is no log to point at.
+    changeLogRef: comparison?.tripId
+      ? { tripId: comparison.tripId, endpoint: `/api/trips/${comparison.tripId}/changes` }
+      : null,
+    // RAW pass-through of the variant's own optimizer figures (see TripPlanSourceFigures).
+    sourceFigures: {
+      totalCost: variant.totalCost ?? null,
+      optimizationScore: variant.optimizationScore ?? null,
     },
   };
 }
