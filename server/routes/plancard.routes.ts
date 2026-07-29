@@ -220,9 +220,9 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
     // Mobile-lens audit §5: surface real vendor phone (vendor_contracts) + confirmation
     // number (itinerary_items, already stored) on the activity row. Bulk-fetch once per
     // request; render only when present (§13 — no placeholders for items with neither).
-    const vendorContractIds = [...new Set(
+    const vendorContractIds = Array.from(new Set(
       items.map(i => (i as any).vendorContractId).filter((id): id is string => !!id)
-    )];
+    ));
     const vendorContractRows = vendorContractIds.length
       ? await storage.getVendorContractsByIds(vendorContractIds)
       : [];
