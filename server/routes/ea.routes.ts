@@ -256,7 +256,16 @@ router.get("/api/ea/events", isAuthenticated, async (req, res) => {
 router.post("/api/ea/events", isAuthenticated, async (req, res) => {
     try {
       const eaUserId = getEaUserId(req);
-      const body = insertEaEventSchema.parse({ ...req.body, eaUserId });
+      // `date` is a real `timestamp` column (dataType "date"): drizzle-zod's
+      // generated schema requires an actual Date instance, but JSON transport
+      // only ever carries a string — coerce here rather than relaxing the
+      // schema, so an invalid date is still rejected by z.date()'s NaN check.
+      const rawDate = req.body?.date;
+      const body = insertEaEventSchema.parse({
+        ...req.body,
+        eaUserId,
+        date: rawDate ? new Date(rawDate) : undefined,
+      });
       res.status(201).json(await createEaEvent(body));
     } catch (err) {
       console.error("[EA] createEvent error:", err);
@@ -537,6 +546,106 @@ router.delete("/api/ea/ai-tasks/:id", isAuthenticated, async (req, res) => {
     } catch (err) {
       console.error("[EA] deleteAiTask error:", err);
       res.status(500).json({ message: "Failed to delete AI task" });
+    }
+  });
+
+  // ============================================================
+  // EA PREFERENCES (Profile + Settings pages)
+  // ============================================================
+  // No schema change: `users.preferences` is an existing generic jsonb column
+  // (migration 150). Stored under a dedicated `ea` sub-key so this never collides
+  // with the unrelated `.settings` namespace the generic /api/me/preferences
+  // endpoint (storefront.routes.ts) reads/writes for traveler-facing Settings.
+  // §14: acting user from session only. PATCH is a strict zod allow-list of
+  // exactly the fields the Profile/Settings pages render — never raw req.body —
+  // and shallow-merges into `preferences.ea` so unrelated jsonb keys survive.
+
+const eaPreferencesPatchSchema = z.object({
+  contact: z.object({
+    phone: z.string().max(50).optional(),
+    jobTitle: z.string().max(150).optional(),
+    timezone: z.string().max(100).optional(),
+  }).strict().optional(),
+  notifications: z.object({
+    urgentEventAlerts: z.boolean().optional(),
+    aiTaskCompletions: z.boolean().optional(),
+    calendarReminders: z.boolean().optional(),
+    executiveUpdates: z.boolean().optional(),
+    weeklySummaryEmails: z.boolean().optional(),
+  }).strict().optional(),
+  ai: z.object({
+    autoDelegateRoutineTasks: z.boolean().optional(),
+    aiDraftCommunications: z.boolean().optional(),
+    smartCalendarSuggestions: z.boolean().optional(),
+    proactiveTravelRecommendations: z.boolean().optional(),
+    giftReminders: z.boolean().optional(),
+  }).strict().optional(),
+  display: z.object({
+    showExecutivePhotos: z.boolean().optional(),
+    compactViewMode: z.boolean().optional(),
+    showCalendarWeekNumbers: z.boolean().optional(),
+    twentyFourHourTime: z.boolean().optional(),
+  }).strict().optional(),
+  calendar: z.object({
+    weekStartsOn: z.enum(["sunday", "monday"]).optional(),
+    workingHoursStart: z.number().int().min(0).max(23).optional(),
+    workingHoursEnd: z.number().int().min(1).max(24).optional(),
+  }).strict().optional(),
+}).strict();
+
+router.get("/api/ea/preferences", isAuthenticated, async (req, res) => {
+    try {
+      const eaUserId = getEaUserId(req);
+      const [row] = await db
+        .select({ preferences: users.preferences })
+        .from(users)
+        .where(eq(users.id, eaUserId))
+        .limit(1);
+      const ea = ((row?.preferences as any) ?? {}).ea ?? {};
+      res.json(ea);
+    } catch (err) {
+      console.error("[EA] getPreferences error:", err);
+      res.status(500).json({ message: "Failed to fetch preferences" });
+    }
+  });
+
+
+router.patch("/api/ea/preferences", isAuthenticated, async (req, res) => {
+    try {
+      const eaUserId = getEaUserId(req);
+      const parsed = eaPreferencesPatchSchema.safeParse(req.body ?? {});
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid preferences", errors: parsed.error.flatten() });
+      }
+
+      const [row] = await db
+        .select({ preferences: users.preferences })
+        .from(users)
+        .where(eq(users.id, eaUserId))
+        .limit(1);
+      if (!row) return res.status(404).json({ message: "User not found" });
+
+      const current = (row.preferences as any) ?? {};
+      const currentEa = current.ea ?? {};
+      const patch = parsed.data;
+      const nextEa = {
+        ...currentEa,
+        ...(patch.contact ? { contact: { ...currentEa.contact, ...patch.contact } } : {}),
+        ...(patch.notifications ? { notifications: { ...currentEa.notifications, ...patch.notifications } } : {}),
+        ...(patch.ai ? { ai: { ...currentEa.ai, ...patch.ai } } : {}),
+        ...(patch.display ? { display: { ...currentEa.display, ...patch.display } } : {}),
+        ...(patch.calendar ? { calendar: { ...currentEa.calendar, ...patch.calendar } } : {}),
+      };
+
+      await db
+        .update(users)
+        .set({ preferences: { ...current, ea: nextEa } })
+        .where(eq(users.id, eaUserId));
+
+      res.json(nextEa);
+    } catch (err) {
+      console.error("[EA] updatePreferences error:", err);
+      res.status(500).json({ message: "Failed to update preferences" });
     }
   });
 

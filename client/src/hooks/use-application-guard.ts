@@ -10,20 +10,35 @@ interface ServiceTemplatesResponse {
   templates: unknown[];
 }
 
-export function useApplicationGuard() {
+interface UseApplicationGuardOptions {
+  /**
+   * Skip the wizard-eligibility check entirely — audit A3 / CLAUDE.md §5 Phase 3
+   * "role is the gate" (ratified Jul 29, 2026): a session that already holds an
+   * expert-family `users.role` (the same source `ProtectedRoute`'s
+   * `requiredRole="expert"` reads, via `isExpertRole`) must never be bounced into the
+   * application wizard — only a user who does NOT yet hold the role goes through this
+   * `local_expert_forms`-presence check. Callers on role-gated routes (where
+   * ProtectedRoute already guarantees the role) pass `skip: true`.
+   */
+  skip?: boolean;
+}
+
+export function useApplicationGuard(options: UseApplicationGuardOptions = {}) {
+  const { skip = false } = options;
   const [, navigate] = useLocation();
   const { toast } = useToast();
 
   const { data, isLoading } = useQuery<ServiceTemplatesResponse>({
     queryKey: ["/api/expert/service-templates"],
+    enabled: !skip,
   });
 
-  const requiresApplication = data?.requiresApplication ?? false;
-  const applicationRejected = data?.applicationRejected ?? false;
-  const pendingApproval = data?.pendingApproval ?? false;
+  const requiresApplication = !skip && (data?.requiresApplication ?? false);
+  const applicationRejected = !skip && (data?.applicationRejected ?? false);
+  const pendingApproval = !skip && (data?.pendingApproval ?? false);
 
   useEffect(() => {
-    if (!isLoading && requiresApplication) {
+    if (!skip && !isLoading && requiresApplication) {
       toast({
         title: "Application required",
         description: "You need to submit an expert application before creating services.",
@@ -31,10 +46,10 @@ export function useApplicationGuard() {
       });
       navigate("/expert/apply");
     }
-  }, [isLoading, requiresApplication, toast, navigate]);
+  }, [skip, isLoading, requiresApplication, toast, navigate]);
 
   useEffect(() => {
-    if (!isLoading && applicationRejected) {
+    if (!skip && !isLoading && applicationRejected) {
       toast({
         title: "Application rejected",
         description: "Your expert application was not approved. Please reapply or contact support.",
@@ -42,10 +57,10 @@ export function useApplicationGuard() {
       });
       navigate("/expert/apply");
     }
-  }, [isLoading, applicationRejected, toast, navigate]);
+  }, [skip, isLoading, applicationRejected, toast, navigate]);
 
   useEffect(() => {
-    if (!isLoading && pendingApproval) {
+    if (!skip && !isLoading && pendingApproval) {
       toast({
         title: "Application under review",
         description: "Your application is under review. You can create services once it has been approved.",
@@ -53,7 +68,13 @@ export function useApplicationGuard() {
       });
       navigate("/expert/apply");
     }
-  }, [isLoading, pendingApproval, toast, navigate]);
+  }, [skip, isLoading, pendingApproval, toast, navigate]);
 
-  return { isLoading, requiresApplication, applicationRejected, pendingApproval, templates: data?.templates ?? [] };
+  return {
+    isLoading: skip ? false : isLoading,
+    requiresApplication,
+    applicationRejected,
+    pendingApproval,
+    templates: data?.templates ?? [],
+  };
 }
