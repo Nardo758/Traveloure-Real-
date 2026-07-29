@@ -25,6 +25,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { Layers, Save, Trash2, Plus, Sparkles, GraduationCap } from "lucide-react";
+import { AdminErrorBanner } from "@/components/admin/AdminErrorBanner";
 
 interface ServiceOfferingType {
   id: string;
@@ -295,8 +296,8 @@ function ExpertCreate() {
 }
 
 export default function OfferingTypesAdminPage() {
-  const { data: services, isLoading: sLoading } = useQuery<ServiceOfferingType[]>({ queryKey: SERVICE_KEY });
-  const { data: experts, isLoading: eLoading } = useQuery<ExpertOfferingType[]>({ queryKey: EXPERT_KEY });
+  const { data: services, isLoading: sLoading, isError: sError, refetch: refetchServices } = useQuery<ServiceOfferingType[]>({ queryKey: SERVICE_KEY });
+  const { data: experts, isLoading: eLoading, isError: eError, refetch: refetchExperts } = useQuery<ExpertOfferingType[]>({ queryKey: EXPERT_KEY });
 
   return (
     <AdminLayout title="Offering Types">
@@ -316,12 +317,20 @@ export default function OfferingTypesAdminPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <Sparkles className="w-4 h-4" />
-            Service offering types ({services?.length ?? 0})
+            {/* L4 fix: a failed fetch used to leave `services` undefined, so `?? 0` quietly
+                rendered "(0)" — indistinguishable from a real empty catalog. */}
+            Service offering types ({sError ? "—" : services?.length ?? 0})
           </CardTitle>
           <p className="text-xs text-gray-500">Provider-side catalog. Each maps to a <code>service_categories.categoryKey</code>.</p>
         </CardHeader>
         <CardContent className="space-y-3">
-          {sLoading ? (
+          {sError ? (
+            <AdminErrorBanner
+              label="Couldn't load service offering types — server error."
+              onRetry={() => refetchServices()}
+              testId="banner-service-offering-types-error"
+            />
+          ) : sLoading ? (
             <p className="text-sm text-gray-500">Loading…</p>
           ) : (
             <>
@@ -344,12 +353,18 @@ export default function OfferingTypesAdminPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <GraduationCap className="w-4 h-4" />
-            Expert offering types ({experts?.length ?? 0})
+            Expert offering types ({eError ? "—" : experts?.length ?? 0})
           </CardTitle>
           <p className="text-xs text-gray-500">Expert-side catalog. <code>serviceTier</code> + <code>deliveryFormats</code> are DB-constrained enums.</p>
         </CardHeader>
         <CardContent className="space-y-3">
-          {eLoading ? (
+          {eError ? (
+            <AdminErrorBanner
+              label="Couldn't load expert offering types — server error."
+              onRetry={() => refetchExperts()}
+              testId="banner-expert-offering-types-error"
+            />
+          ) : eLoading ? (
             <p className="text-sm text-gray-500">Loading…</p>
           ) : (
             <>

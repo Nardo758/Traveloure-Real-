@@ -86,6 +86,13 @@ interface CustomerRow {
   displayName: string;
   relationship: Relationship;
   bookings: number;
+  /** L10c: of `bookings`, how many are still at status "payment_pending" (checkout created the
+   * row before the Stripe charge settled — see payments.routes.ts). Counted honestly in `bookings`
+   * (a real interaction, matching this file's existing cancelled-bookings posture) but surfaced
+   * separately so a client can label "2 bookings (1 pending payment)" instead of implying 2
+   * completed transactions when other surfaces (Today/Inbox) that count confirmed bookings only
+   * would show fewer. */
+  pendingPaymentBookings: number;
   purchases: number;
   trips: number;
   hasActiveTrip: boolean;
@@ -197,6 +204,7 @@ router.get("/api/me/customers", isAuthenticated, async (req, res) => {
           displayName,
           relationship: "one_time",
           bookings: 0,
+          pendingPaymentBookings: 0,
           purchases: 0,
           trips: 0,
           hasActiveTrip: false,
@@ -225,6 +233,7 @@ router.get("/api/me/customers", isAuthenticated, async (req, res) => {
         b.travelerId ? realName(b.firstName, b.lastName, b.email, "Traveler") : "Guest",
       );
       row.bookings += 1;
+      if (b.status === "payment_pending") row.pendingPaymentBookings += 1;
       const amount = Number(b.totalAmount ?? 0);
       // Real interaction either way; only money that actually transacted counts as value.
       if (b.status !== "cancelled" && Number.isFinite(amount)) row.bookedValue += amount;

@@ -416,7 +416,35 @@ interface MyAssignment { id: string; tripId: string; localExpertId: string; stat
 
 interface AnchorImpact { type: string; message: string; severity: 'warning' | 'critical'; }
 interface AnchorConflict { anchorId: string; anchorType: string; description: string; impacts: AnchorImpact[]; }
-interface EnergyRecord { dayNumber: number; startingEnergy: number; activityDepletion: number; endingEnergy: number; recoveryNeeded: boolean; recoveryReason?: string | null; }
+interface EnergyRecord { id?: string; dayNumber: number; startingEnergy: number; activityDepletion: number; endingEnergy: number; recoveryNeeded: boolean; recoveryReason?: string | null; createdAt?: string | null; }
+
+// calculate-energy INSERTS a fresh energy_tracking row per day on every recalculation
+// (triggered on every itinerary edit) rather than upserting — so a trip edited N times
+// accumulates N rows per day, all returned by the API. Collapse to the latest row per
+// dayNumber before rendering so "Day 1" renders once (was the AI Gaps tab's duplicate-key
+// warning / repeated "Day 1 — 80%" rows). Root fix belongs server-side in
+// storage.saveEnergyTracking (upsert on tripId+dayNumber); this is the display-side guard.
+function latestEnergyPerDay(records: EnergyRecord[]): EnergyRecord[] {
+  // `Map` here must be the JS built-in — the module scope also imports a React `Map`
+  // component from @vis.gl/react-google-maps (line 17), which shadows the global.
+  const byDay = new globalThis.Map<number, EnergyRecord>();
+  for (const record of records) {
+    const existing = byDay.get(record.dayNumber);
+    if (!existing) {
+      byDay.set(record.dayNumber, record);
+      continue;
+    }
+    const existingTime = existing.createdAt ? new Date(existing.createdAt).getTime() : NaN;
+    const recordTime = record.createdAt ? new Date(record.createdAt).getTime() : NaN;
+    if (!isNaN(recordTime) && (isNaN(existingTime) || recordTime >= existingTime)) {
+      byDay.set(record.dayNumber, record);
+    } else if (isNaN(existingTime) && isNaN(recordTime)) {
+      // Neither row carries a timestamp — fall back to array order (later = more recent).
+      byDay.set(record.dayNumber, record);
+    }
+  }
+  return Array.from(byDay.values());
+}
 interface DayBoundaryRecord { id: string; dayNumber: number; latestActivityEnd?: string | null; earliestActivityStart?: string | null; mustReturnToHotel: boolean; reasonForConstraint?: string | null; }
 interface BoundaryViolation { dayNumber: number; violation: string; severity: 'warning' | 'critical'; }
 interface WorkspaceConstraints {
@@ -463,6 +491,20 @@ interface SuggestionPayload {
   description?: string;
   estimatedCost?: number;
 }
+
+// Add-panel source pills (§17 Central Content network). D1/D5 (UX audit Jul 29): every
+// pill now carries a plain-language caption so a first-time expert can tell what each
+// source actually is without hovering a tooltip; `comingSoon` sources stay honestly
+// labeled but are clickable (§13 "coming soon" pattern) instead of dead/disabled.
+const ADD_SOURCES: { k: string; l: string; caption: string; comingSoon?: boolean }[] = [
+  { k: "dmo", l: "DMO Library", caption: "Local research your admin has approved for Kyoto — refine it, then drop it into a day." },
+  { k: "content", l: "Platform content", caption: "The shared Traveloure content library. Not wired up yet — the read is on the way.", comingSoon: true },
+  { k: "platform", l: "Platform services", caption: "Traveloure's approved bookable services in this city, plus a map to browse them." },
+  { k: "partner", l: "Partner inventory", caption: "External booking networks Traveloure has integrated — book off-site, log it here." },
+  { k: "mine", l: "My services", caption: "Your own approved listings. Coming with the Catalog module.", comingSoon: true },
+  { k: "custom", l: "Custom", caption: "Add anything by hand — a place, a note, or a reservation with no catalog match." },
+  { k: "transport", l: "Transport", caption: "Ground-transport routes (train, taxi, transfer) between stops." },
+];
 
 const SUGGESTION_TYPES = [
   { value: "activity", label: "Activity" },
@@ -1226,7 +1268,7 @@ export default function ExpertWorkspace() {
 
   const anchorConflicts = workspaceConstraints?.anchorConflicts || [];
   const dayBoundaries = workspaceConstraints?.dayBoundaries || [];
-  const energyTracking = workspaceConstraints?.energyTracking || [];
+  const energyTracking = latestEnergyPerDay(workspaceConstraints?.energyTracking || []);
   const boundaryViolations = workspaceConstraints?.boundaryViolations || [];
   const optimizerScores = workspaceConstraints?.optimizerScores || null;
   const totalConstraintIssues = anchorConflicts.reduce((sum, c) => sum + c.impacts.length, 0) + energyTracking.filter(e => e.recoveryNeeded).length + boundaryViolations.length;
@@ -1552,8 +1594,16 @@ export default function ExpertWorkspace() {
             <StateChip tone="warn"><MapPin style={{ width: 9, height: 9 }} /> Set destination</StateChip>
           </button>
         ) : null}
+        {/* Day count — the itinerary day list (days.length) is the ONE source of truth once real
+            items exist (matches the store listing's Days field, the social caption, and the story
+            slide — was "3 days" here vs "2 items · 2 days" below, two sources disagreeing). Before
+            any items exist there's no itinerary to conflict with, so the authored pre-planning
+            duration is shown instead. The assignment (non-authoring) path shows the real date
+            RANGE, never a converted "N days" figure that could contradict the items chip. */}
         {isAuthoring ? (
-          (listing as any)?.durationDays ? <StateChip tone="mut" testId="chip-build-duration">{(listing as any).durationDays} days</StateChip> : null
+          totalItems === 0 && (listing as any)?.durationDays
+            ? <StateChip tone="mut" testId="chip-build-duration">{(listing as any).durationDays} days</StateChip>
+            : null
         ) : (
           trip?.start_date ? <StateChip tone="mut" testId="chip-build-dates">{formatDate(trip.start_date)} – {formatDate(trip.end_date)}</StateChip> : null
         )}
@@ -1676,36 +1726,37 @@ export default function ExpertWorkspace() {
             ))}
           </div>
 
-          {/* ── Add panel: seven source pills (§17 Central Content network; disabled = honest §13) ── */}
+          {/* ── Add panel: seven source pills (§17 Central Content network). D1 (UX audit Jul
+              29): the row used to sit in a horizontal-scroll container with no scroll
+              affordance — at 1440px only 3 of 7 pills were visible, so My services/Custom/
+              Transport were effectively undiscoverable. Fix: the row WRAPS instead of
+              scrolling (every pill always visible, no hidden overflow) and each pill carries
+              a one-line "what is this" caption below the row instead of a hover-only title
+              tooltip. Not-yet-built sources stay honestly labeled (§13 "coming soon", the
+              same pattern as the EA-console gate) but are now CLICKABLE — clicking shows the
+              real explanation inline instead of a disabled nub with no feedback. */}
           {rightTab === "add" && (
             <>
-              <div style={{ padding: "8px 10px 6px", display: "flex", gap: 5, overflowX: "auto", flexShrink: 0 }}>
-                {[
-                  { k: "dmo", l: "DMO Library" },
-                  { k: "content", l: "Platform content", disabled: true, why: "Coming with the content registry read" },
-                  { k: "platform", l: "Platform services" },
-                  { k: "partner", l: "Partner inventory" },
-                  { k: "mine", l: "My services", disabled: true, why: "Coming with the catalog module" },
-                  { k: "custom", l: "Custom" },
-                  { k: "transport", l: "Transport" },
-                ].map(s => (
+              <div style={{ padding: "8px 10px 4px", display: "flex", flexWrap: "wrap", gap: 5, flexShrink: 0 }}>
+                {ADD_SOURCES.map(s => (
                   <button
                     key={s.k}
-                    disabled={!!s.disabled}
-                    title={s.disabled ? s.why : undefined}
-                    onClick={() => !s.disabled && setAddSource(s.k)}
+                    onClick={() => setAddSource(s.k)}
                     data-testid={`pill-add-${s.k}`}
                     style={{
                       padding: "4px 11px", borderRadius: 99, fontSize: 11.5, fontWeight: 700, whiteSpace: "nowrap",
-                      cursor: s.disabled ? "not-allowed" : "pointer", opacity: s.disabled ? 0.45 : 1,
-                      border: addSource === s.k ? `1px solid ${BRAND}` : `1px solid ${LINE}`,
+                      cursor: "pointer", opacity: s.comingSoon && addSource !== s.k ? 0.6 : 1,
+                      border: addSource === s.k ? `1px solid ${BRAND}` : s.comingSoon ? `1px dashed ${LINE}` : `1px solid ${LINE}`,
                       background: addSource === s.k ? BRAND : CARD,
                       color: addSource === s.k ? CARD : MID,
                     }}
                   >
-                    {s.l}
+                    {s.l}{s.comingSoon ? " · Soon" : ""}
                   </button>
                 ))}
+              </div>
+              <div style={{ padding: "0 10px 8px", fontSize: 11, color: FAINT, flexShrink: 0 }}>
+                {ADD_SOURCES.find(s => s.k === addSource)?.caption}
               </div>
 
               {/* Day-focus control (P2-13): every add row below targets this day. */}
@@ -1741,6 +1792,19 @@ export default function ExpertWorkspace() {
                 </button>
               </div>
             </>
+          )}
+
+          {/* Add · Platform content / My services — D1 (UX audit Jul 29): these two pills used
+              to be `disabled` with only a hover tooltip explaining why, so clicking them did
+              nothing and left a first-time expert with no feedback. They're clickable now
+              (see ADD_SOURCES above) and land here on an honest "not built yet" panel — same
+              §13 posture as every other coming-soon state in the console. */}
+          {rightTab === "add" && (addSource === "content" || addSource === "mine") && (
+            <div style={{ flex: 1, padding: "24px 16px", textAlign: "center" }}>
+              <div style={{ padding: "18px 14px", background: GROUND, borderRadius: 10, color: MID, fontSize: 12.5 }}>
+                {ADD_SOURCES.find(s => s.k === addSource)?.caption}
+              </div>
+            </div>
           )}
 
           {/* Add · DMO Library — the picker's core, embedded (same fetch + same write). */}
@@ -2407,7 +2471,7 @@ export default function ExpertWorkspace() {
                 </div>
                 {isAuthoring ? (
                   listing ? (
-                    <ReadyMadeListingPanel listing={listing} tripId={tripId!} />
+                    <ReadyMadeListingPanel listing={listing} tripId={tripId!} days={days} />
                   ) : (
                     <div style={{ padding: "12px" }}>
                       <div style={{ fontSize: 12.5, color: MID, lineHeight: 1.55, marginBottom: 10 }}>

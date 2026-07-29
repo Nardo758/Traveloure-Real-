@@ -59,6 +59,11 @@ interface CustomerRow {
   displayName: string;
   relationship: "active_trip" | "repeat" | "one_time";
   bookings: number;
+  // L10c: bookings still at status "payment_pending" — real interactions the count above
+  // deliberately keeps, but a page that shows only confirmed bookings (Today/Inbox) will
+  // legitimately show a smaller number for the same customer. Labeled explicitly below
+  // instead of leaving the two pages looking like they disagree for no reason.
+  pendingPaymentBookings: number;
   purchases: number;
   trips: number;
   hasActiveTrip: boolean;
@@ -175,7 +180,12 @@ function CustomerDetail({ customer }: { customer: CustomerRow }) {
 
 function factsLine(c: CustomerRow): string {
   const parts: string[] = [];
-  if (c.bookings > 0) parts.push(`${c.bookings} booking${c.bookings === 1 ? "" : "s"}`);
+  if (c.bookings > 0) {
+    // L10c: explain the gap instead of leaving it to look like a data-consistency bug —
+    // this count includes bookings still awaiting Stripe confirmation.
+    const pendingNote = c.pendingPaymentBookings > 0 ? ` (${c.pendingPaymentBookings} pending payment)` : "";
+    parts.push(`${c.bookings} booking${c.bookings === 1 ? "" : "s"}${pendingNote}`);
+  }
   if (c.purchases > 0) parts.push(`${c.purchases} purchase${c.purchases === 1 ? "" : "s"}`);
   if (c.trips > 0) parts.push(`${c.trips} trip${c.trips === 1 ? "" : "s"}`);
   if (c.totalBookedValue > 0) parts.push(`${money(c.totalBookedValue)} booked value`);

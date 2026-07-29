@@ -131,17 +131,29 @@ export default function EADashboard() {
     queryKey: ["/api/ea/clients"],
   });
 
-  const { data: managedTrips } = useQuery<{ id: string; status: string }[]>({
-    queryKey: ["/api/ea/trips"],
+  // "Managed Trips" (/api/ea/trips) has no server endpoint yet (see ea/trips.tsx —
+  // that surface is honestly gated). Travel Coordination (/api/ea/travel) is the
+  // real, live source for "trips arranged on behalf of an executive" today.
+  const { data: travel } = useQuery<{ id: string; status: string }[]>({
+    queryKey: ["/api/ea/travel"],
   });
 
   const { data: executives } = useQuery<EaExecutive[]>({
     queryKey: ["/api/ea/executives"],
   });
 
+  const { data: aiTasks } = useQuery<{ id: string }[]>({
+    queryKey: ["/api/ea/ai-tasks"],
+  });
+
+  const { data: communications } = useQuery<{ id: string }[]>({
+    queryKey: ["/api/ea/communications"],
+  });
+
   const clientCount = clients?.length ?? 0;
-  const tripCount = managedTrips?.length ?? 0;
-  const activeTripCount = managedTrips?.filter((t) => t.status !== "completed" && t.status !== "cancelled").length ?? 0;
+  const activeTravelCount = travel?.filter((t) => !["completed", "cancelled"].includes(t.status)).length ?? 0;
+  const aiTaskCount = aiTasks?.length ?? 0;
+  const messagesCount = communications?.length ?? 0;
   const displayName = user ? `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() || "there" : "there";
 
   const upcomingDates = getUpcomingDates(executives ?? []);
@@ -175,8 +187,8 @@ export default function EADashboard() {
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-[#7A7A72]">Active Trips</p>
-                  <p className="text-2xl font-bold text-[#1A1A18]">{activeTripCount}</p>
+                  <p className="text-sm text-[#7A7A72]">Active Travel</p>
+                  <p className="text-2xl font-bold text-[#1A1A18]">{activeTravelCount}</p>
                 </div>
                 <div className="w-10 h-10 rounded-lg bg-green-100 text-green-600 flex items-center justify-center">
                   <Plane className="w-5 h-5" />
@@ -189,7 +201,7 @@ export default function EADashboard() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm text-[#7A7A72]">AI Tasks</p>
-                  <p className="text-2xl font-bold text-[#1A1A18]">0</p>
+                  <p className="text-2xl font-bold text-[#1A1A18]">{aiTaskCount}</p>
                 </div>
                 <div className="w-10 h-10 rounded-lg bg-purple-100 text-purple-600 flex items-center justify-center">
                   <Bot className="w-5 h-5" />
@@ -201,8 +213,8 @@ export default function EADashboard() {
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-[#7A7A72]">Messages</p>
-                  <p className="text-2xl font-bold text-[#1A1A18]">0</p>
+                  <p className="text-sm text-[#7A7A72]">Communications</p>
+                  <p className="text-2xl font-bold text-[#1A1A18]">{messagesCount}</p>
                 </div>
                 <div className="w-10 h-10 rounded-lg bg-amber-100 text-amber-600 flex items-center justify-center">
                   <MessageSquare className="w-5 h-5" />
