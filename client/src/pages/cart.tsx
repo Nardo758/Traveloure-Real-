@@ -98,6 +98,9 @@ interface CartItem {
     userId: string;
     serviceType: string | null;
     providerName: string | null;
+    // §17 property rooms (migration 153): 'per_night' marks a room-stay item —
+    // charge is nights × price, never quantity × price. NULL/undefined = flat price.
+    pricingUnit?: string | null;
   } | null;
 }
 
@@ -200,6 +203,22 @@ interface OptimizationPaymentState {
   paymentIntentId: string;
   feeCents: number;
   currency: string;
+}
+
+// L1: mirrors the server's getRoomNights (server/routes/payments.routes.ts) — a §17
+// property-room item carries its stay in contentMeta.{checkIn,checkOut} (the pricing
+// unit that gates it is item.service.pricingUnit === "per_night"). Client-side display
+// only; the server independently re-derives and re-validates this at checkout (§14).
+function getRoomStay(item: CartItem): { checkIn: string; checkOut: string; nights: number } | null {
+  if (item.service?.pricingUnit !== "per_night") return null;
+  const meta = (item.contentMeta ?? {}) as Record<string, unknown>;
+  const checkIn = typeof meta.checkIn === "string" ? meta.checkIn : null;
+  const checkOut = typeof meta.checkOut === "string" ? meta.checkOut : null;
+  if (!checkIn || !checkOut || !/^\d{4}-\d{2}-\d{2}$/.test(checkIn) || !/^\d{4}-\d{2}-\d{2}$/.test(checkOut)) return null;
+  if (checkOut <= checkIn) return null;
+  const nights = Math.round((Date.parse(checkOut) - Date.parse(checkIn)) / 86400000);
+  if (!Number.isFinite(nights) || nights < 1) return null;
+  return { checkIn, checkOut, nights };
 }
 
 export default function CartPage() {
@@ -435,6 +454,22 @@ export default function CartPage() {
     enabled: !authLoading,
   });
 
+  // L1: when the trip-level date range isn't set yet, a room-stay item's own dates
+  // are real trip dates too — falling back to them keeps the "Add your travel dates"
+  // banner/nudge from claiming no dates exist when one is plainly visible in the cart.
+  const roomStayFallbackDates = (() => {
+    if (tripStartDate && tripEndDate) return null;
+    const stays = (cart?.items || [])
+      .map((item) => getRoomStay(item))
+      .filter((s): s is { checkIn: string; checkOut: string; nights: number } => !!s);
+    if (stays.length === 0) return null;
+    const checkIns = stays.map((s) => s.checkIn).sort();
+    const checkOuts = stays.map((s) => s.checkOut).sort();
+    return { start: checkIns[0], end: checkOuts[checkOuts.length - 1] };
+  })();
+  const effectiveTripStartDate = tripStartDate || roomStayFallbackDates?.start || "";
+  const effectiveTripEndDate = tripEndDate || roomStayFallbackDates?.end || "";
+
   const { data: userTrips = [] } = useQuery<any[]>({
     queryKey: ["/api/trips"],
     enabled: !!user && showPlanningDialog,
@@ -579,31 +614,43 @@ export default function CartPage() {
       const msg = String(error?.message ?? "");
       if (msg === "No platform items to checkout") {
         toast({ variant: "destructive", title: "No bookable items", description: "External bookings must be completed on provider websites." });
-      } else if (msg.includes("slot_unavailable") || msg.includes("was just booked")) {
-        // C3: a picked availability slot filled between add-to-cart and checkout — nothing was
-        // charged and no booking was created; the traveler picks another time.
-        // FP-4: pull the affected serviceId out of the 409 body so the item itself can be
-        // flagged in the list, not just a toast that disappears — and make sure the
-        // traveler actually lands where that item (with its Remove button) is visible.
-        let affectedServiceId: string | undefined;
-        try {
-          const jsonStart = msg.indexOf(": ");
-          const parsed = JSON.parse(jsonStart >= 0 ? msg.slice(jsonStart + 2) : msg);
-          if (typeof parsed?.serviceId === "string") affectedServiceId = parsed.serviceId;
-        } catch { /* best-effort parse; toast still fires below */ }
-        if (affectedServiceId) {
-          setFlaggedSlotItemIds((prev) => new Set(prev).add(affectedServiceId!));
+        return;
+      }
+      // L1b: the server's error body is JSON shaped `{ error, message, serviceId? }` inside
+      // a `"<status>: <bodyText>"` message (see queryClient.ts throwIfResNotOk) — parse it so
+      // the toast can carry the server's own, specific explanation instead of hiding it.
+      let parsedBody: any = null;
+      try {
+        const jsonStart = msg.indexOf(": ");
+        parsedBody = JSON.parse(jsonStart >= 0 ? msg.slice(jsonStart + 2) : msg);
+      } catch { /* not JSON (network error, etc.) — falls through to the generic message below */ }
+
+      const errorCode = parsedBody?.error as string | undefined;
+      if (errorCode === "slot_unavailable" || errorCode === "nights_unavailable") {
+        // C3/§17: a picked availability slot or room-night filled between add-to-cart and
+        // checkout — nothing was charged and no booking was created. Flag the specific item
+        // (when the server told us which one) so the traveler sees WHICH item to fix instead
+        // of just a toast that disappears.
+        if (typeof parsedBody?.serviceId === "string") {
+          setFlaggedSlotItemIds((prev) => new Set(prev).add(parsedBody.serviceId));
         }
         setFlowStep("cart");
         toast({
           variant: "destructive",
-          title: "That time slot just booked",
-          description: "One of your items' time slots is no longer available. Please pick another time from the service page, or remove it.",
+          title: errorCode === "nights_unavailable" ? "Those dates just booked" : "That time slot just booked",
+          description: parsedBody?.message
+            || "One of your items is no longer available for the dates/time you picked. Please pick another, or remove it.",
         });
         queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
-      } else {
-        toast({ variant: "destructive", title: "Checkout failed" });
+        return;
       }
+
+      toast({
+        variant: "destructive",
+        title: "Checkout failed",
+        description: parsedBody?.message || parsedBody?.detail
+          || "Your payment could not be processed. You have not been charged — please try again.",
+      });
     },
   });
 
@@ -875,8 +922,10 @@ export default function CartPage() {
 
     // Every trip needs dates before it can be prepared. Dates live in the always-visible trip-date
     // header at the top of the cart (not a step, not a modal) — if unset, nudge the user there.
-    const effStart = tripStartDate;
-    const effEnd = tripEndDate;
+    // L1: fall back to a room-stay item's own dates first — the item already carries real
+    // dates, so re-asking for them here would be the same "UI lies about state" bug.
+    const effStart = effectiveTripStartDate;
+    const effEnd = effectiveTripEndDate;
     if (!effStart || !effEnd) {
       setEditTripOpen(true);
       toast({ title: "Add your travel dates", description: "Set your trip dates to continue." });
@@ -1218,11 +1267,13 @@ export default function CartPage() {
           >
             <Calendar className="w-4 h-4 text-primary shrink-0" />
             <span
-              className={`text-sm flex-1 ${tripStartDate && tripEndDate ? "font-medium" : "text-muted-foreground"}`}
+              className={`text-sm flex-1 ${effectiveTripStartDate && effectiveTripEndDate ? "font-medium" : "text-muted-foreground"}`}
               data-testid="text-header-trip-dates"
             >
-              {tripStartDate && tripEndDate
-                ? `${format(parseISO(tripStartDate), "MMM d")} → ${format(parseISO(tripEndDate), "MMM d")}`
+              {effectiveTripStartDate && effectiveTripEndDate
+                ? `${format(parseISO(effectiveTripStartDate), "MMM d")} → ${format(parseISO(effectiveTripEndDate), "MMM d")}${
+                    !tripStartDate || !tripEndDate ? " (from your room dates)" : ""
+                  }`
                 : "Add your travel dates"}
             </span>
             <Button
@@ -1396,6 +1447,12 @@ export default function CartPage() {
                     }
 
                     const slotFlagged = !!(item.serviceId && flaggedSlotItemIds.has(item.serviceId));
+                    // L1: a §17 property-room item is priced nights × rate, never
+                    // quantity × price — mirror the server's own math (payments.routes.ts
+                    // getRoomNights) so the display can never diverge from the charge.
+                    const roomStay = getRoomStay(item);
+                    const roomRate = parseFloat(item.service?.price || "0");
+                    const roomTotal = roomStay ? roomRate * roomStay.nights : null;
 
                     return (
                     <Card key={item.id} data-testid={`cart-item-${item.id}`} className={slotFlagged ? "border-destructive/60" : undefined}>
@@ -1428,14 +1485,23 @@ export default function CartPage() {
                                   {item.service.location}
                                 </span>
                               )}
-                              {item.scheduledDate && (
+                              {roomStay ? (
+                                <span className="flex items-center gap-1 font-medium text-foreground" data-testid={`text-room-dates-${item.id}`}>
+                                  <Calendar className="w-3 h-3" />
+                                  {format(parseISO(roomStay.checkIn), "MMM d")} → {format(parseISO(roomStay.checkOut), "MMM d")}
+                                </span>
+                              ) : item.scheduledDate ? (
                                 <span className="flex items-center gap-1">
                                   <Calendar className="w-3 h-3" />
                                   {format(new Date(item.scheduledDate), "PPP")}
                                 </span>
-                              )}
+                              ) : null}
                             </div>
-                            {item.slotId && item.scheduledDate && (
+                            {roomStay ? (
+                              <p className="text-sm text-muted-foreground mt-1.5" data-testid={`text-room-nights-${item.id}`}>
+                                {roomStay.nights} night{roomStay.nights !== 1 ? "s" : ""} × {formatPrice(roomRate)} = {formatPrice(roomTotal || 0)}
+                              </p>
+                            ) : item.slotId && item.scheduledDate && (
                               <div
                                 className="flex items-center gap-1 mt-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-400"
                                 data-testid={`text-slot-held-${item.id}`}
@@ -1456,33 +1522,42 @@ export default function CartPage() {
                           </div>
                           <div className="text-right">
                             <p className="font-bold text-lg" data-testid={`text-price-${item.id}`}>
-                              {formatPrice(parseFloat(item.service?.price || "0"))}
+                              {formatPrice(roomStay ? (roomTotal || 0) : parseFloat(item.service?.price || "0"))}
                             </p>
-                            <div className="flex items-center gap-2 mt-2">
-                              <Button
-                                variant="outline"
-                                size="icon"
-                                className="h-8 w-8"
-                                onClick={() => updateItemMutation.mutate({ id: item.id, quantity: Math.max(1, (item.quantity || 1) - 1) })}
-                                disabled={item.quantity <= 1 || updateItemMutation.isPending}
-                                data-testid={`button-decrease-${item.id}`}
-                              >
-                                <Minus className="w-3 h-3" />
-                              </Button>
-                              <span className="w-8 text-center" data-testid={`text-quantity-${item.id}`}>
-                                {item.quantity || 1}
-                              </span>
-                              <Button
-                                variant="outline"
-                                size="icon"
-                                className="h-8 w-8"
-                                onClick={() => updateItemMutation.mutate({ id: item.id, quantity: (item.quantity || 1) + 1 })}
-                                disabled={updateItemMutation.isPending}
-                                data-testid={`button-increase-${item.id}`}
-                              >
-                                <Plus className="w-3 h-3" />
-                              </Button>
-                            </div>
+                            {roomStay ? (
+                              // A room stay is one room for the whole date range — quantity
+                              // is meaningless here (the server ignores it, see resolveItemBaseAmount)
+                              // so no stepper is shown, just an honest "1 room" label.
+                              <p className="text-xs text-muted-foreground mt-2" data-testid={`text-room-unit-${item.id}`}>
+                                1 room
+                              </p>
+                            ) : (
+                              <div className="flex items-center gap-2 mt-2">
+                                <Button
+                                  variant="outline"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  onClick={() => updateItemMutation.mutate({ id: item.id, quantity: Math.max(1, (item.quantity || 1) - 1) })}
+                                  disabled={item.quantity <= 1 || updateItemMutation.isPending}
+                                  data-testid={`button-decrease-${item.id}`}
+                                >
+                                  <Minus className="w-3 h-3" />
+                                </Button>
+                                <span className="w-8 text-center" data-testid={`text-quantity-${item.id}`}>
+                                  {item.quantity || 1}
+                                </span>
+                                <Button
+                                  variant="outline"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                  onClick={() => updateItemMutation.mutate({ id: item.id, quantity: (item.quantity || 1) + 1 })}
+                                  disabled={updateItemMutation.isPending}
+                                  data-testid={`button-increase-${item.id}`}
+                                >
+                                  <Plus className="w-3 h-3" />
+                                </Button>
+                              </div>
+                            )}
                           </div>
                         </div>
                         <div className="flex justify-end mt-3">
@@ -2255,17 +2330,28 @@ export default function CartPage() {
                     </CardHeader>
                     <CardContent>
                       <div className="space-y-3">
-                        {(checkoutOrderSnapshot ? checkoutOrderSnapshot.items : (cart?.items || [])).map((item) => (
-                          <div key={item.id} className="flex justify-between items-center py-2 border-b last:border-0">
-                            <div>
-                              <div className="font-medium">{item.service?.serviceName}</div>
-                              <div className="text-sm text-muted-foreground">Qty: {item.quantity}</div>
+                        {(checkoutOrderSnapshot ? checkoutOrderSnapshot.items : (cart?.items || [])).map((item) => {
+                          // L1: same nights × rate math as the cart step — the Order Review
+                          // must not repeat the quantity-based lie for a room stay.
+                          const roomStay = getRoomStay(item);
+                          const rate = parseFloat(item.service?.price || "0");
+                          const lineTotal = roomStay ? rate * roomStay.nights : rate * item.quantity;
+                          return (
+                            <div key={item.id} className="flex justify-between items-center py-2 border-b last:border-0">
+                              <div>
+                                <div className="font-medium">{item.service?.serviceName}</div>
+                                <div className="text-sm text-muted-foreground">
+                                  {roomStay
+                                    ? `${format(parseISO(roomStay.checkIn), "MMM d")} → ${format(parseISO(roomStay.checkOut), "MMM d")} · ${roomStay.nights} night${roomStay.nights !== 1 ? "s" : ""}`
+                                    : `Qty: ${item.quantity}`}
+                                </div>
+                              </div>
+                              <div className="font-medium">
+                                {formatPrice(lineTotal)}
+                              </div>
                             </div>
-                            <div className="font-medium">
-                              {formatPrice(parseFloat(item.service?.price || "0") * item.quantity)}
-                            </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                         {externalItems.map((item) => (
                           <div key={item.id} className="flex justify-between items-center py-2 border-b last:border-0">
                             <div>

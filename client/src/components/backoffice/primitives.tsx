@@ -72,6 +72,9 @@ export const DEFAULT_STATUS_MAP: Record<string, StatusBadgeEntry> = {
   active: { label: "Active", className: "bg-green-100 text-green-700 border-green-200" },
   paused: { label: "Paused", className: "bg-amber-100 text-amber-700 border-amber-200" },
   pending: { label: "Pending", className: "bg-yellow-100 text-yellow-700 border-yellow-200" },
+  // L10c: service_bookings is born here at checkout, before the Stripe charge settles
+  // (payments.routes.ts) — a real, honest status, not to be confused with "Pending".
+  payment_pending: { label: "Payment pending", className: "bg-yellow-100 text-yellow-700 border-yellow-200" },
   confirmed: { label: "Confirmed", className: "bg-green-100 text-green-700 border-green-200" },
   completed: { label: "Completed", className: "bg-green-100 text-green-700 border-green-200" },
   cancelled: { label: "Cancelled", className: "bg-red-100 text-red-700 border-red-200" },

@@ -3791,6 +3791,12 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Admin Payouts
+  // NOTE: `users` has no `name` column (only firstName/lastName — see shared/models/auth.ts).
+  // Selecting `users.name` here previously handed drizzle's query builder an undefined
+  // field config, which threw inside orderSelectedFields ("Cannot convert undefined or
+  // null to object") and 500'd this endpoint on every call. Select the raw columns and
+  // compose the display name in JS, matching the join-filter(Boolean) convention used
+  // elsewhere in this file (e.g. getAllExpertPayouts' siblings around line 3859/4031).
   async getAllExpertPayouts(status?: string): Promise<(ExpertPayout & { requesterName?: string; requesterEmail?: string })[]> {
     const conditions = status ? [eq(expertPayouts.status, status)] : [];
     const payouts = await db.select({
@@ -3805,13 +3811,17 @@ export class DatabaseStorage implements IStorage {
       transactionId: expertPayouts.transactionId,
       metadata: expertPayouts.metadata,
       requestedAt: expertPayouts.requestedAt,
-      requesterName: users.name,
+      requesterFirstName: users.firstName,
+      requesterLastName: users.lastName,
       requesterEmail: users.email,
     }).from(expertPayouts)
       .leftJoin(users, eq(expertPayouts.expertId, users.id))
       .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(desc(expertPayouts.requestedAt));
-    return payouts;
+    return payouts.map(({ requesterFirstName, requesterLastName, ...rest }) => ({
+      ...rest,
+      requesterName: [requesterFirstName, requesterLastName].filter(Boolean).join(" ") || undefined,
+    }));
   }
 
   async getAllProviderPayouts(status?: string): Promise<(ProviderPayout & { requesterName?: string; requesterEmail?: string })[]> {
@@ -3828,13 +3838,17 @@ export class DatabaseStorage implements IStorage {
       requestedAt: providerPayouts.requestedAt,
       processedAt: providerPayouts.processedAt,
       completedAt: providerPayouts.completedAt,
-      requesterName: users.name,
+      requesterFirstName: users.firstName,
+      requesterLastName: users.lastName,
       requesterEmail: users.email,
     }).from(providerPayouts)
       .leftJoin(users, eq(providerPayouts.providerId, users.id))
       .where(conditions.length > 0 ? and(...conditions) : undefined)
       .orderBy(desc(providerPayouts.requestedAt));
-    return payouts;
+    return payouts.map(({ requesterFirstName, requesterLastName, ...rest }) => ({
+      ...rest,
+      requesterName: [requesterFirstName, requesterLastName].filter(Boolean).join(" ") || undefined,
+    }));
   }
 
   async updateExpertPayoutStatus(id: string, status: string, notes?: string, transactionId?: string): Promise<ExpertPayout> {

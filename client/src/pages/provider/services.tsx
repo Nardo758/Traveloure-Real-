@@ -767,6 +767,14 @@ export default function ProviderServices() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <h3 className="font-semibold text-console-darkest truncate">{displayName}</h3>
+                          {/* L10a: the real approval + active/paused state is the primary badge on
+                              every card (same StatusBadge vocabulary as the Workstation list) —
+                              previously only a category chip showed here, so a draft/submitted/
+                              rejected listing looked identical to an approved one. */}
+                          {service.approvalStatus && (
+                            <StatusBadge status={service.approvalStatus} />
+                          )}
+                          <StatusBadge status={isActive ? "active" : "paused"} />
                           {isBundle && (
                             <Badge variant="outline" className="text-[10px]" data-testid={`badge-bundle-${service.id}`}>
                               Bundle

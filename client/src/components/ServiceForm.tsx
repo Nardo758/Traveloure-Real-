@@ -344,6 +344,11 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   const { user } = useAuth();
   const isEditMode = !!id;
   const [creationSuccess, setCreationSuccess] = useState(false);
+  // L2: the post-create success copy must reflect what actually happened server-side
+  // (the row's real status/approvalStatus), never just which button was pressed — a
+  // create is clamped server-side to a non-approved born state (D1a), so "Publish"
+  // does not mean "live" the way the old hardcoded copy claimed.
+  const [creationOutcome, setCreationOutcome] = useState<{ status?: string | null; approvalStatus?: string | null }>({});
   const [newIncluded, setNewIncluded] = useState("");
   const [newRequirement, setNewRequirement] = useState("");
   const [newGalleryUrl, setNewGalleryUrl] = useState("");
@@ -621,6 +626,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
 
   const handleAddAnother = () => {
     setCreationSuccess(false);
+    setCreationOutcome({});
     setFormData(buildEmptyForm(role));
     setNewIncluded("");
     setNewRequirement("");
@@ -721,12 +727,16 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
       // revisionsIncluded is shared (expert + provider)
       payload.revisionsIncluded = formData.revisionsIncluded;
 
-      if (isEditMode) {
-        return apiRequest("PATCH", `/api/provider/services/${id}`, payload);
-      }
-      return apiRequest("POST", "/api/provider/services", payload);
+      // L2: read back the actual created/updated row (status + approvalStatus) rather
+      // than assuming from submitAction — the server clamps the born approval state
+      // (D1a), so what the client asked for and what actually landed can diverge.
+      const res = isEditMode
+        ? await apiRequest("PATCH", `/api/provider/services/${id}`, payload)
+        : await apiRequest("POST", "/api/provider/services", payload);
+      const service = await res.json().catch(() => null);
+      return { submitAction, service };
     },
-    onSuccess: (data) => {
+    onSuccess: ({ submitAction, service }) => {
       queryClient.invalidateQueries({ queryKey: ["/api/provider/services"] });
       if (role === "expert") {
         queryClient.invalidateQueries({ queryKey: ["/api/expert/service-listings"] });
@@ -734,14 +744,28 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
       if (isEditMode) {
         toast({ title: "Service updated" });
         navigate(`/${role}/services`);
-      } else if (role === "expert") {
-        toast({ title: "Service submitted for review!" });
+        return;
+      }
+      // Real outcome, not the button label: draft stays draft even if the client tried
+      // to send something else; anything else lands "submitted" unless the row somehow
+      // came back "approved" (grandfathered/edge case — never true for a fresh create).
+      const approvalStatus: string = service?.approvalStatus ?? (submitAction === "draft" ? "draft" : "submitted");
+      const isLive = approvalStatus === "approved" && service?.status !== "draft";
+      if (role === "expert") {
+        if (approvalStatus === "draft") {
+          toast({ title: "Draft saved", description: "Not yet visible to travelers — submit it for review when ready." });
+        } else if (isLive) {
+          toast({ title: "Service published!", description: "Your service is now live." });
+        } else {
+          toast({ title: "Submitted for review", description: "It goes live once approved." });
+        }
         queryClient.invalidateQueries({ queryKey: ["/api/expert/services"] });
         navigate("/expert/services");
-      } else {
-        setCreationSuccess(true);
-        if (onSuccess) onSuccess(data.id);
+        return;
       }
+      setCreationOutcome({ status: service?.status ?? null, approvalStatus });
+      setCreationSuccess(true);
+      if (onSuccess && service?.id) onSuccess(service.id);
     },
     onError: (error: any) => {
       toast({
@@ -772,6 +796,21 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   }
 
   if (creationSuccess) {
+    // L2: copy reflects the actual returned row (creationOutcome), never a
+    // hardcoded "published/live" claim regardless of what really happened.
+    const { status: outcomeStatus, approvalStatus: outcomeApproval } = creationOutcome;
+    const isDraftOutcome = outcomeStatus === "draft" || outcomeApproval === "draft";
+    const isLiveOutcome = outcomeApproval === "approved" && outcomeStatus !== "draft";
+    const successTitle = isDraftOutcome
+      ? "Draft saved"
+      : isLiveOutcome
+        ? "Service published!"
+        : "Submitted for review";
+    const successBody = isDraftOutcome
+      ? "Not yet visible to travelers — submit it for review when ready."
+      : isLiveOutcome
+        ? "Your service is now live. You can add more services to build out your full catalog."
+        : "It goes live once approved. You'll be notified when it's reviewed.";
     return (
       <div className="p-6 max-w-lg mx-auto">
         <Card>
@@ -780,12 +819,10 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               <CheckCircle className="w-16 h-16 text-green-500" />
             </div>
             <h2 className="text-2xl font-bold text-gray-900">
-              {role === "expert" ? "Service submitted for review!" : "Service published!"}
+              {successTitle}
             </h2>
             <p className="text-gray-500 text-sm">
-              {role === "expert"
-                ? "Your service has been submitted for approval. You'll be notified when it's reviewed."
-                : "Your service is now live. You can add more services to build out your full catalog."}
+              {successBody}
             </p>
             <div className="flex flex-col sm:flex-row gap-3 justify-center pt-2">
               <Button variant="outline" onClick={() => navigate(`/${role}/services`)}>
