@@ -902,6 +902,15 @@ circulating plan object. Two ratifications:
   `redactTemplateContent` posture) · `preview` (Direct/OG link cards; no itinerary body) · `social` (§17 story
   pack; real content only). Amendments to this contract are decision-maker calls. Model-tiered execution
   protocol + lane queue also live in `docs/EXECUTION_MAP.md` (Fable plans/reviews; Opus/Sonnet/Haiku execute).
+- **Transport legs for expert-built trips — RATIFIED "BOTH" (Jul 30, 2026, decision-maker option 3):** the
+  engine PROPOSES legs (reusing the existing variant leg-computation over the trip's itinerary coordinates,
+  expert-triggered — never auto-published), the expert CONFIRMS/EDITS (mode, pickup point/time for chauffeured)
+  in the Workstation, and **only confirmed legs reach traveler surfaces** (the D1a born-approved lesson applied
+  to machine transport: a machine-guessed mode never renders on an expert-branded plan unconfirmed, §13).
+  Mechanism: `transport_legs` gains trip scope — additive nullable `trip_id` FK (+ `variant_id` drops NOT NULL;
+  app-level exactly-one-of, NO cross-column CHECK), additive nullable `pickup_point`/`pickup_time`, and
+  `proposal_status` (`proposed|confirmed`, NULL = legacy variant legs grandfathered; if a CHECK is added it must
+  allow NULL and be registered in the preflight `CONSTRAINT_MANIFEST`). Full spec: `docs/briefs/L4-transport-legs.md`.
 
 The earning ledger is an escrow state machine: **`held → releasable → paid_out`**, plus **`reversed`**, with a
 `dispute_state`. All phases are **landed on `main`** (Jul 14, 2026):
