@@ -17,22 +17,44 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { isExpertRole, isProviderRole } from "@shared/roles";
 
-const roleColors: Record<string, string> = {
-  user: "bg-blue-100 text-blue-700 border-blue-200",
-  expert: "bg-purple-100 text-purple-700 border-purple-200",
-  ea: "bg-amber-100 text-amber-700 border-amber-200",
-  provider: "bg-green-100 text-green-700 border-green-200",
-  admin: "bg-gray-900 text-white",
+// Audit A6: the previous maps/filter used client-only routing tokens ("provider", "ea") that
+// never match a real stored `users.role` value (shared/roles.ts documents this exact
+// always-false-comparison class) — badges rendered blank and the Provider/EA filter tabs
+// always matched 0 rows. Per-row display now covers every canonical stored role
+// (shared/roles.ts EXPERT_ROLES/PROVIDER_ROLES + user/executive_assistant/admin); the filter
+// tabs match by ROLE FAMILY (isExpertRole/isProviderRole) client-side, since a single-value
+// server `eq()` can't express "any of the 4 expert-family roles" — the same reason `role` is
+// no longer sent to the server as a query param (search still is).
+const ROLE_DISPLAY: Record<string, { label: string; className: string }> = {
+  user: { label: "Traveler", className: "bg-blue-100 text-blue-700 border-blue-200" },
+  expert: { label: "Expert", className: "bg-purple-100 text-purple-700 border-purple-200" },
+  local_expert: { label: "Local Expert", className: "bg-purple-100 text-purple-700 border-purple-200" },
+  travel_expert: { label: "Trip Planner", className: "bg-purple-100 text-purple-700 border-purple-200" },
+  event_planner: { label: "Event Planner", className: "bg-purple-100 text-purple-700 border-purple-200" },
+  service_provider: { label: "Provider", className: "bg-green-100 text-green-700 border-green-200" },
+  executive_assistant: { label: "EA", className: "bg-amber-100 text-amber-700 border-amber-200" },
+  admin: { label: "Admin", className: "bg-gray-900 text-white" },
 };
 
-const roleLabels: Record<string, string> = {
-  user: "User",
-  expert: "Expert",
-  ea: "EA",
-  provider: "Provider",
-  admin: "Admin",
-};
+function getRoleDisplay(role: string) {
+  return ROLE_DISPLAY[role] ?? { label: role || "Unknown", className: "bg-gray-100 text-gray-700 border-gray-200" };
+}
+
+interface RoleFilterOption {
+  key: string;
+  label: string;
+  match: (role: string) => boolean;
+}
+
+const ROLE_FILTER_OPTIONS: RoleFilterOption[] = [
+  { key: "user", label: "Traveler", match: (r) => r === "user" },
+  { key: "expert", label: "Expert", match: (r) => isExpertRole(r) },
+  { key: "provider", label: "Provider", match: (r) => isProviderRole(r) },
+  { key: "ea", label: "EA", match: (r) => r === "executive_assistant" },
+  { key: "admin", label: "Admin", match: (r) => r === "admin" },
+];
 
 export default function AdminUsers() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -41,7 +63,7 @@ export default function AdminUsers() {
   const { data: usersData, isLoading } = useQuery<{
     users: Array<{ id: string; name: string; email: string; role: string; status: string; joined: string; trips: number; spent: string }>;
     total: number;
-  }>({ queryKey: ["/api/admin/users", { search: searchQuery, role: roleFilter }] });
+  }>({ queryKey: ["/api/admin/users", { search: searchQuery }] });
 
   if (isLoading) {
     return (
@@ -55,10 +77,12 @@ export default function AdminUsers() {
 
   const users = usersData?.users ?? [];
 
+  const activeRoleFilter = ROLE_FILTER_OPTIONS.find((o) => o.key === roleFilter) ?? null;
+
   const filteredUsers = users.filter((user) => {
     const matchesSearch = user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           user.email.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesRole = !roleFilter || user.role === roleFilter;
+    const matchesRole = !activeRoleFilter || activeRoleFilter.match(user.role);
     return matchesSearch && matchesRole;
   });
 
@@ -128,7 +152,7 @@ export default function AdminUsers() {
                 >
                   All
                 </Button>
-                {Object.entries(roleLabels).map(([key, label]) => (
+                {ROLE_FILTER_OPTIONS.map(({ key, label }) => (
                   <Button
                     key={key}
                     variant={roleFilter === key ? "default" : "outline"}
@@ -186,8 +210,8 @@ export default function AdminUsers() {
                         </div>
                       </td>
                       <td className="py-3 px-2">
-                        <Badge className={roleColors[user.role]}>
-                          {roleLabels[user.role]}
+                        <Badge className={getRoleDisplay(user.role).className}>
+                          {getRoleDisplay(user.role).label}
                         </Badge>
                       </td>
                       <td className="py-3 px-2">

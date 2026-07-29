@@ -1,5 +1,7 @@
 import { useChats, useSendMessage } from "@/hooks/use-chat";
 import { useAuth } from "@/hooks/use-auth";
+import { isEarnerRole } from "@shared/roles";
+import { getRoleHomePath } from "@/lib/role-utils";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,6 +36,12 @@ interface DisplayExpert {
   specialties: string[];
   languages: string[];
   responseTime: string;
+  /** Set only for earner-mode conversation partners (audit A4) — the last real message in the
+   *  thread, shown in the list card instead of a fabricated rating/location for a client. */
+  lastMessage?: string;
+  /** True for earner-mode conversation partners — swaps the "browse an expert" card layout
+   *  (rating/location/specialties) for a real thread-preview layout. */
+  isConversationPartner?: boolean;
 }
 
 /** Map a raw /api/experts row to the chat display shape. Ratings stay honest —
@@ -75,7 +83,14 @@ export default function Chat() {
   // about: forwarded from "Ask expert" buttons on gem/activity cards — pre-fills the message
   const aboutFromUrl = urlParams.get("about");
 
-  // Real experts for the browse sidebar (replaces the old hardcoded sample list).
+  // Audit A4: an earner (provider or expert-family) landing on /chat needs THEIR client
+  // threads, not the traveler-facing "browse a directory of experts to hire" surface — the
+  // wrong product surface for someone seeking conversations with the people who booked them.
+  // Same role source ProtectedRoute/role-routes-config reads (`users.role` via `isEarnerRole`).
+  const isEarner = isEarnerRole(user?.role);
+
+  // Real experts for the browse sidebar (replaces the old hardcoded sample list). Skipped for
+  // earners — they get their real conversation partners instead (below).
   const { data: expertList = [] } = useQuery<DisplayExpert[]>({
     queryKey: ["/api/experts"],
     queryFn: async () => {
@@ -84,6 +99,7 @@ export default function Chat() {
       const rows = await res.json();
       return Array.isArray(rows) ? rows.map(mapExpertToDisplay) : [];
     },
+    enabled: !isEarner,
   });
 
   const { data: linkedExpert } = useQuery<DisplayExpert | null>({
@@ -107,13 +123,72 @@ export default function Chat() {
     enabled: !!clientIdFromUrl,
   });
 
+  // Real conversation partners for earners, grouped from the same /api/chats rows the
+  // provider/expert Inbox "Recent conversations" list already reads (server enriches each row
+  // with `participant.displayName`, role-agnostic — no new endpoint). Mapped onto the existing
+  // DisplayExpert shape so the rest of the thread UI (selection, header, messages) is unchanged.
+  const conversationPartners = useMemo<DisplayExpert[]>(() => {
+    if (!isEarner) return [];
+    const byCounterpart = new Map<string, { row: any; latest: number }>();
+    for (const c of (chats as any[] | null | undefined) ?? []) {
+      const counterpartId = c.senderId === user?.id ? c.receiverId : c.senderId;
+      if (!counterpartId) continue;
+      const ts = c.createdAt ? +new Date(c.createdAt) : 0;
+      const existing = byCounterpart.get(counterpartId);
+      if (!existing || ts > existing.latest) {
+        byCounterpart.set(counterpartId, { row: c, latest: ts });
+      }
+    }
+    return Array.from(byCounterpart.entries())
+      .sort((a, b) => b[1].latest - a[1].latest)
+      .map(([counterpartId, { row }]) => ({
+        id: counterpartId,
+        name: row.participant?.displayName || "Client",
+        location: "Client",
+        avatar: row.participant?.profileImageUrl || row.participant?.profileImage || "",
+        rating: null,
+        reviews: 0,
+        specialties: [],
+        languages: [],
+        responseTime: "",
+        lastMessage: row.message ?? undefined,
+        isConversationPartner: true,
+      }));
+  }, [isEarner, chats, user?.id]);
+
   const allExperts = useMemo(() => {
+    if (isEarner) {
+      if (linkedClient) {
+        const exists = conversationPartners.some(p => String(p.id) === String(linkedClient.id));
+        if (!exists) {
+          return [
+            {
+              id: linkedClient.id,
+              name:
+                linkedClient.firstName || linkedClient.lastName
+                  ? `${linkedClient.firstName ?? ""} ${linkedClient.lastName ?? ""}`.trim()
+                  : linkedClient.username || linkedClient.email || "Client",
+              location: "Client",
+              avatar: linkedClient.profileImageUrl || linkedClient.profileImage || "",
+              rating: null,
+              reviews: 0,
+              specialties: [],
+              languages: [],
+              responseTime: "",
+              isConversationPartner: true,
+            } as DisplayExpert,
+            ...conversationPartners,
+          ];
+        }
+      }
+      return conversationPartners;
+    }
     if (linkedExpert) {
       const exists = expertList.some(e => String(e.id) === String(linkedExpert.id));
       if (!exists) return [linkedExpert, ...expertList];
     }
     return expertList;
-  }, [linkedExpert, expertList]);
+  }, [isEarner, conversationPartners, linkedClient, linkedExpert, expertList]);
 
   // F3 (workstation-flows audit): for expert users, cross-reference the conversation partner
   // against assigned trips so the thread header can offer "Open trip workspace". Client-side
@@ -272,14 +347,18 @@ export default function Chat() {
       <div className="bg-white dark:bg-slate-900 border-b border-border sticky top-16 z-40">
         <div className="container mx-auto px-4 py-4">
           <div className="flex items-center gap-4">
-            <Link href="/dashboard">
+            <Link href={isEarner ? getRoleHomePath(user?.role ?? "user") : "/dashboard"}>
               <Button variant="ghost" size="icon" data-testid="button-back">
                 <ArrowLeft className="w-5 h-5" />
               </Button>
             </Link>
             <div>
-              <h1 className="text-xl font-bold font-display text-slate-900 dark:text-white">Expert Chat</h1>
-              <p className="text-sm text-muted-foreground">Connect with local experts for your trips</p>
+              <h1 className="text-xl font-bold font-display text-slate-900 dark:text-white">
+                {isEarner ? "Messages" : "Expert Chat"}
+              </h1>
+              <p className="text-sm text-muted-foreground">
+                {isEarner ? "Conversations with your clients" : "Connect with local experts for your trips"}
+              </p>
             </div>
           </div>
         </div>
@@ -291,7 +370,7 @@ export default function Chat() {
           <div className="md:col-span-1 space-y-4">
             <div className="relative">
               <Input
-                placeholder="Search experts..."
+                placeholder={isEarner ? "Search conversations..." : "Search experts..."}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-10"
@@ -301,6 +380,15 @@ export default function Chat() {
             </div>
 
             <ScrollArea className="h-[calc(100vh-280px)]">
+              {isEarner && filteredExperts.length === 0 ? (
+                <div className="text-center py-12 px-2">
+                  <MessageSquare className="w-8 h-8 text-muted-foreground mx-auto mb-3" />
+                  <h3 className="font-semibold text-slate-900 dark:text-white mb-1">No conversations yet</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Messages clients send you will land here.
+                  </p>
+                </div>
+              ) : (
               <div className="space-y-3 pr-4">
                 {filteredExperts.map((expert, index) => (
                   <motion.div
@@ -321,30 +409,40 @@ export default function Chat() {
                             <AvatarFallback>{expert.name[0]}</AvatarFallback>
                           </Avatar>
                           <div className="flex-1 min-w-0">
-                            <div className="flex items-center justify-between gap-2">
-                              <h3 className="font-semibold text-slate-900 dark:text-white truncate">
-                                {expert.name}
-                              </h3>
-                              {expert.rating !== null ? (
-                                <div className="flex items-center gap-1 text-amber-500 text-sm shrink-0">
-                                  <Star className="w-3 h-3 fill-current" />
-                                  {expert.rating.toFixed(1)}
+                            <h3 className="font-semibold text-slate-900 dark:text-white truncate">
+                              {expert.name}
+                            </h3>
+                            {expert.isConversationPartner ? (
+                              expert.lastMessage && (
+                                <p className="text-sm text-muted-foreground truncate mt-1">
+                                  {expert.lastMessage}
+                                </p>
+                              )
+                            ) : (
+                              <>
+                                <div className="flex items-center justify-between gap-2">
+                                  {expert.rating !== null ? (
+                                    <div className="flex items-center gap-1 text-amber-500 text-sm shrink-0">
+                                      <Star className="w-3 h-3 fill-current" />
+                                      {expert.rating.toFixed(1)}
+                                    </div>
+                                  ) : (
+                                    <span className="text-xs text-muted-foreground shrink-0">New</span>
+                                  )}
                                 </div>
-                              ) : (
-                                <span className="text-xs text-muted-foreground shrink-0">New</span>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
-                              <MapPin className="w-3 h-3" />
-                              {expert.location}
-                            </div>
-                            <div className="flex flex-wrap gap-1 mt-2">
-                              {expert.specialties.slice(0, 2).map(spec => (
-                                <Badge key={spec} variant="secondary" className="text-xs">
-                                  {spec}
-                                </Badge>
-                              ))}
-                            </div>
+                                <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
+                                  <MapPin className="w-3 h-3" />
+                                  {expert.location}
+                                </div>
+                                <div className="flex flex-wrap gap-1 mt-2">
+                                  {expert.specialties.slice(0, 2).map(spec => (
+                                    <Badge key={spec} variant="secondary" className="text-xs">
+                                      {spec}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              </>
+                            )}
                           </div>
                         </div>
                       </CardContent>
@@ -352,6 +450,7 @@ export default function Chat() {
                   </motion.div>
                 ))}
               </div>
+              )}
             </ScrollArea>
           </div>
 
@@ -404,10 +503,12 @@ export default function Chat() {
                           </span>
                         ) : (
                           <>
-                            <span className="flex items-center gap-1">
-                              <Clock className="w-3 h-3" />
-                              Responds {selectedExpert.responseTime}
-                            </span>
+                            {selectedExpert.responseTime && (
+                              <span className="flex items-center gap-1">
+                                <Clock className="w-3 h-3" />
+                                Responds {selectedExpert.responseTime}
+                              </span>
+                            )}
                             {selectedExpert.reviews > 0 && (
                               <>
                                 <span>|</span>
@@ -461,7 +562,9 @@ export default function Chat() {
                         </div>
                         <h3 className="font-semibold text-slate-900 dark:text-white mb-2">Start a conversation</h3>
                         <p className="text-muted-foreground text-sm max-w-xs">
-                          Say hello to {selectedExpert.name} and get personalized travel advice!
+                          {isEarner
+                            ? `Send ${selectedExpert.name} a message to get the conversation started.`
+                            : `Say hello to ${selectedExpert.name} and get personalized travel advice!`}
                         </p>
                       </div>
                     )}
@@ -500,10 +603,12 @@ export default function Chat() {
                     <User className="w-10 h-10 text-muted-foreground" />
                   </div>
                   <h3 className="text-xl font-semibold text-slate-900 dark:text-white mb-2">
-                    Select an Expert
+                    {isEarner ? "Select a conversation" : "Select an Expert"}
                   </h3>
                   <p className="text-muted-foreground max-w-sm">
-                    Choose a local expert from the list to start chatting and get personalized travel advice.
+                    {isEarner
+                      ? "Choose a client conversation from the list to view and reply to messages."
+                      : "Choose a local expert from the list to start chatting and get personalized travel advice."}
                   </p>
                 </CardContent>
               )}

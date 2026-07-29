@@ -18,6 +18,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogTrigger,
 } from "@/components/ui/dialog";
 import { 
   Search, 
@@ -106,16 +107,39 @@ function buildFormState(exec: EaExecutive): EditFormState {
   };
 }
 
+const emptyNewExec = { name: "", title: "", email: "", phone: "", notes: "" };
+
 export default function EAExecutives() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [editingExec, setEditingExec] = useState<EaExecutive | null>(null);
   const [formState, setFormState] = useState<EditFormState | null>(null);
   const [importantDates, setImportantDates] = useState<ImportantDateEntry[]>([]);
+  const [addOpen, setAddOpen] = useState(false);
+  const [newExec, setNewExec] = useState(emptyNewExec);
+  const [search, setSearch] = useState("");
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
   const { data: executives = [] } = useQuery<EaExecutive[]>({
     queryKey: ["/api/ea/executives"],
+  });
+
+  const createMutation = useMutation({
+    mutationFn: () =>
+      apiRequest("POST", "/api/ea/executives", {
+        name: newExec.name,
+        title: newExec.title || undefined,
+        email: newExec.email || undefined,
+        phone: newExec.phone || undefined,
+        notes: newExec.notes || undefined,
+      }).then((r) => r.json()),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ea/executives"] });
+      toast({ title: "Executive added" });
+      setNewExec(emptyNewExec);
+      setAddOpen(false);
+    },
+    onError: (e: any) => toast({ title: "Could not add executive", description: e.message, variant: "destructive" }),
   });
 
   const updateMutation = useMutation({
@@ -199,24 +223,82 @@ export default function EAExecutives() {
             <p className="text-gray-600">Manage executive profiles and preferences</p>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" data-testid="button-import">
-              Import from Directory
-            </Button>
-            <Button variant="outline" data-testid="button-export-list">
+            <Button
+              variant="outline"
+              disabled={executives.length === 0}
+              onClick={() => {
+                const header = ["Name", "Title", "Status", "Email", "Phone", "Notes"];
+                const rows = executives.map((e) => [e.name, e.title ?? "", e.status ?? "", e.email ?? "", e.phone ?? "", e.notes ?? ""]);
+                const csv = [header, ...rows].map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
+                const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = "executives.csv";
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                URL.revokeObjectURL(url);
+              }}
+              data-testid="button-export-list"
+            >
               Export List
             </Button>
-            <Button className="bg-primary hover:bg-primary/90" data-testid="button-add-executive">
-              <Plus className="w-4 h-4 mr-2" /> Add New Executive
-            </Button>
+            <Dialog open={addOpen} onOpenChange={(open) => { setAddOpen(open); if (!open) setNewExec(emptyNewExec); }}>
+              <DialogTrigger asChild>
+                <Button className="bg-primary hover:bg-primary/90" data-testid="button-add-executive">
+                  <Plus className="w-4 h-4 mr-2" /> Add New Executive
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-md">
+                <DialogHeader>
+                  <DialogTitle>Add New Executive</DialogTitle>
+                </DialogHeader>
+                <div className="space-y-3 mt-2">
+                  <div>
+                    <Label>Name <span className="text-red-500">*</span></Label>
+                    <Input value={newExec.name} onChange={(e) => setNewExec({ ...newExec, name: e.target.value })} placeholder="e.g. James Anderson" data-testid="input-new-exec-name" />
+                  </div>
+                  <div>
+                    <Label>Title</Label>
+                    <Input value={newExec.title} onChange={(e) => setNewExec({ ...newExec, title: e.target.value })} placeholder="e.g. CEO" data-testid="input-new-exec-title" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label>Email</Label>
+                      <Input type="email" value={newExec.email} onChange={(e) => setNewExec({ ...newExec, email: e.target.value })} data-testid="input-new-exec-email" />
+                    </div>
+                    <div>
+                      <Label>Phone</Label>
+                      <Input value={newExec.phone} onChange={(e) => setNewExec({ ...newExec, phone: e.target.value })} data-testid="input-new-exec-phone" />
+                    </div>
+                  </div>
+                  <div>
+                    <Label>Notes</Label>
+                    <Textarea value={newExec.notes} onChange={(e) => setNewExec({ ...newExec, notes: e.target.value })} rows={2} data-testid="input-new-exec-notes" />
+                  </div>
+                  <Button
+                    className="w-full bg-primary hover:bg-primary/90"
+                    disabled={createMutation.isPending || !newExec.name}
+                    onClick={() => createMutation.mutate()}
+                    data-testid="button-submit-executive"
+                  >
+                    {createMutation.isPending ? "Adding…" : "Add Executive"}
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
           </div>
         </div>
 
         {/* Search */}
         <div className="relative max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <Input 
-            placeholder="Search executives..." 
+          <Input
+            placeholder="Search executives..."
             className="pl-9"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
             data-testid="input-search-executives"
           />
         </div>
@@ -232,7 +314,14 @@ export default function EAExecutives() {
               </CardContent>
             </Card>
           )}
-          {executives.map((exec) => (
+          {executives.length > 0 && executives.filter((e) => e.name.toLowerCase().includes(search.toLowerCase())).length === 0 && (
+            <Card className="border border-[#E8E8E2]">
+              <CardContent className="p-8 text-center">
+                <p className="text-sm text-[#7A7A72]">No executives match your search</p>
+              </CardContent>
+            </Card>
+          )}
+          {executives.filter((e) => e.name.toLowerCase().includes(search.toLowerCase())).map((exec) => (
             <Card key={exec.id} className="border border-gray-200" data-testid={`executive-${exec.id}`}>
               <CardHeader 
                 className="cursor-pointer"
