@@ -15,14 +15,20 @@
  *     sellable bundle; bundles stay flat). The picker OFFERS only eligible services;
  *     component prices are shown display-only — the platform never auto-sums the bundle
  *     price (the provider prices the bundle).
- *   - PROPERTY: the honest next rung — per §17 it is a LATER, separately-designed phase
- *     (per-night pricing, room availability, its own money brief). Rendered as a muted,
- *     non-interactive card that says exactly that; no dead button.
+ *   - PROPERTY (§17 Product Builder — PROPERTY rung, ratified Jul 29, 2026; migration 153):
+ *     a property IS a provider_services row (product_shape='property'); each room type is
+ *     its own child row (product_shape='property_room', parentServiceId → the property,
+ *     price = nightly rate, pricingUnit='per_night'). Multi-room in the first cut. Both the
+ *     property and each room are born `submitted` (D1a) and go through F2 review like any
+ *     listing. After create, each room needs its night availability published — the range
+ *     dialog below calls the EXISTING vendor_availability_slots rail
+ *     (POST /api/me/services/:roomId/slots/range), the same table any dated service uses.
  *
- * Money-path honesty: the bundle price entered here is the owner-set listing price like
- * any service create — the checkout charge is server-derived from the stored row (§14).
- * A3 material-change rule: the server drops an APPROVED bundle back to `submitted` when
- * its price or component set changes and returns `reenteredReview: true` — surfaced as a
+ * Money-path honesty: the bundle/property/room price entered here is the owner-set listing
+ * price like any service create — the checkout charge is server-derived from the stored row
+ * (§14; a room's charge is nights × its stored nightly rate). A3 material-change rule: the
+ * server drops an APPROVED bundle/property/room back to `submitted` when its price,
+ * component set, or room set changes and returns `reenteredReview: true` — surfaced as a
  * toast so the provider knows their change paused sales pending re-review.
  */
 import { useState } from "react";
@@ -65,6 +71,8 @@ import {
   Trash2,
   Pause,
   Play,
+  X,
+  CalendarRange,
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -99,6 +107,36 @@ interface Bundle {
   status: string;
   rejectionReason?: string | null;
   components: BundleComponent[];
+}
+
+// §17 Product Builder — PROPERTY rung (GET /api/provider/properties — session-scoped,
+// intentionally ungated on approval so the owner sees their own pipeline).
+interface Room {
+  id: string;
+  serviceName: string;
+  price?: string | number | null;
+  approvalStatus?: string | null;
+  status: string;
+  categoryAttributes?: { units?: number } | null;
+}
+
+interface Property {
+  id: string;
+  serviceName: string;
+  description?: string | null;
+  location?: string | null;
+  neighborhood?: string | null;
+  approvalStatus?: string | null;
+  status: string;
+  rejectionReason?: string | null;
+  rooms: Room[];
+}
+
+interface RoomDraft {
+  key: string;
+  roomName: string;
+  price: string;
+  units: string;
 }
 
 /** apiRequest throws `Error("<status>: <body>")` — surface the server's honest message
@@ -297,6 +335,238 @@ export default function ProviderWorkstation() {
   const mutationBusy = createMutation.isPending || updateMutation.isPending;
   const bundleList = Array.isArray(bundles) ? bundles : [];
 
+  // ── §17 Product Builder — PROPERTY rung ──────────────────────────────────────
+  const { data: properties, isLoading: propertiesLoading } = useQuery<Property[]>({
+    queryKey: ["/api/provider/properties"],
+  });
+  const propertyList = Array.isArray(properties) ? properties : [];
+
+  const invalidatePropertyQueries = () => {
+    queryClient.invalidateQueries({ queryKey: ["/api/provider/properties"] });
+    // A property/room IS a provider_services row — it also appears in the Catalog list.
+    queryClient.invalidateQueries({ queryKey: ["/api/provider/services"] });
+  };
+
+  const [propertyBuilderOpen, setPropertyBuilderOpen] = useState(false);
+  const [propName, setPropName] = useState("");
+  const [propDescription, setPropDescription] = useState("");
+  const [propLocation, setPropLocation] = useState("");
+  const [roomDrafts, setRoomDrafts] = useState<RoomDraft[]>([
+    { key: "r0", roomName: "", price: "", units: "" },
+  ]);
+  const [propertyDeleteTarget, setPropertyDeleteTarget] = useState<Property | null>(null);
+
+  function openPropertyCreate() {
+    setPropName("");
+    setPropDescription("");
+    setPropLocation("");
+    setRoomDrafts([{ key: `r${Date.now()}`, roomName: "", price: "", units: "" }]);
+    setPropertyBuilderOpen(true);
+  }
+  function addRoomDraft() {
+    setRoomDrafts((prev) => [...prev, { key: `r${Date.now()}-${prev.length}`, roomName: "", price: "", units: "" }]);
+  }
+  function removeRoomDraft(key: string) {
+    setRoomDrafts((prev) => (prev.length > 1 ? prev.filter((r) => r.key !== key) : prev));
+  }
+  function updateRoomDraft(key: string, patch: Partial<RoomDraft>) {
+    setRoomDrafts((prev) => prev.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+  }
+
+  const roomDraftsValid =
+    roomDrafts.length > 0 &&
+    roomDrafts.every((r) => {
+      const p = parseFloat(r.price);
+      return r.roomName.trim().length > 0 && Number.isFinite(p) && p > 0;
+    });
+  const propertyFormValid = propName.trim().length > 0 && roomDraftsValid;
+
+  const createPropertyMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/provider/properties", {
+        serviceName: propName.trim(),
+        description: propDescription.trim() || undefined,
+        location: propLocation.trim() || undefined,
+        rooms: roomDrafts.map((r) => ({
+          roomName: r.roomName.trim(),
+          price: r.price,
+          ...(r.units.trim() ? { units: parseInt(r.units, 10) } : {}),
+        })),
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      invalidatePropertyQueries();
+      setPropertyBuilderOpen(false);
+      // D1a honesty: born `submitted`, not live.
+      toast({
+        title: "Property submitted for review",
+        description:
+          "It appears in your Catalog and goes live once approved. Publish night availability on each room next.",
+      });
+    },
+    onError: (err) => {
+      toast({
+        title: "Could not create property",
+        description: parseApiErrorMessage(err, "Please check the fields and try again."),
+        variant: "destructive",
+      });
+    },
+  });
+
+  const propertyStatusMutation = useMutation({
+    mutationFn: async ({ id, status }: { id: string; status: "active" | "paused" }) => {
+      const res = await apiRequest("PATCH", `/api/provider/properties/${id}`, { status });
+      return res.json();
+    },
+    onSuccess: (data: Property) => {
+      invalidatePropertyQueries();
+      toast({ title: data.status === "paused" ? "Property paused" : "Property activated" });
+    },
+    onError: (err) => {
+      toast({
+        title: "Could not update property",
+        description: parseApiErrorMessage(err, "Please try again."),
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deletePropertyMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("DELETE", `/api/provider/properties/${id}`);
+    },
+    onSuccess: () => {
+      invalidatePropertyQueries();
+      setPropertyDeleteTarget(null);
+      toast({ title: "Property deleted" });
+    },
+    onError: (err) => {
+      setPropertyDeleteTarget(null);
+      toast({
+        title: "Could not delete property",
+        description: parseApiErrorMessage(
+          err,
+          // Mirrors the server's 409 (parent_service_id ON DELETE RESTRICT) — the common case
+          // when this fails is "rooms still exist", so give that as the fallback guess too.
+          "Remove its room types first, then delete the property.",
+        ),
+        variant: "destructive",
+      });
+    },
+  });
+
+  // ── Add a room to an existing (already-created) property ────────────────────
+  const [addRoomTarget, setAddRoomTarget] = useState<Property | null>(null);
+  const [newRoomName, setNewRoomName] = useState("");
+  const [newRoomPrice, setNewRoomPrice] = useState("");
+  const [newRoomUnits, setNewRoomUnits] = useState("");
+  const newRoomValid = newRoomName.trim().length > 0 && Number.isFinite(parseFloat(newRoomPrice)) && parseFloat(newRoomPrice) > 0;
+
+  const addRoomMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/provider/properties/${addRoomTarget!.id}/rooms`, {
+        roomName: newRoomName.trim(),
+        price: newRoomPrice,
+        ...(newRoomUnits.trim() ? { units: parseInt(newRoomUnits, 10) } : {}),
+      });
+      return res.json();
+    },
+    onSuccess: (data: { propertyReenteredReview?: boolean }) => {
+      invalidatePropertyQueries();
+      setAddRoomTarget(null);
+      toast({
+        title: "Room type added — submitted for review",
+        description: data.propertyReenteredReview
+          ? "Adding a room to an approved property sends it back for review. It won't sell until re-approved."
+          : "Publish night availability for this room next.",
+      });
+    },
+    onError: (err) => {
+      toast({
+        title: "Could not add room",
+        description: parseApiErrorMessage(err, "Please check the fields and try again."),
+        variant: "destructive",
+      });
+    },
+  });
+
+  const roomStatusMutation = useMutation({
+    mutationFn: async ({ id, status }: { id: string; status: "active" | "paused" }) => {
+      const res = await apiRequest("PATCH", `/api/provider/rooms/${id}`, { status });
+      return res.json();
+    },
+    onSuccess: () => {
+      invalidatePropertyQueries();
+      toast({ title: "Room updated" });
+    },
+    onError: (err) => {
+      toast({
+        title: "Could not update room",
+        description: parseApiErrorMessage(err, "Please try again."),
+        variant: "destructive",
+      });
+    },
+  });
+
+  const [roomDeleteTarget, setRoomDeleteTarget] = useState<Room | null>(null);
+  const deleteRoomMutation = useMutation({
+    mutationFn: async (id: string): Promise<{ propertyReenteredReview?: boolean }> => {
+      const res = await apiRequest("DELETE", `/api/provider/rooms/${id}`);
+      return res.json();
+    },
+    onSuccess: (data: { propertyReenteredReview?: boolean }) => {
+      invalidatePropertyQueries();
+      setRoomDeleteTarget(null);
+      toast({
+        title: "Room deleted",
+        description: data?.propertyReenteredReview
+          ? "Removing a room from an approved property sends it back for review."
+          : undefined,
+      });
+    },
+    onError: (err) => {
+      setRoomDeleteTarget(null);
+      toast({
+        title: "Could not delete room",
+        description: parseApiErrorMessage(err, "Please try again."),
+        variant: "destructive",
+      });
+    },
+  });
+
+  // ── Night-availability range setup for one room (existing vendor_availability_slots rail) ──
+  const [availabilityTarget, setAvailabilityTarget] = useState<Room | null>(null);
+  const [rangeStart, setRangeStart] = useState("");
+  const [rangeEnd, setRangeEnd] = useState("");
+  const [rangeCapacity, setRangeCapacity] = useState("1");
+  const rangeValid = !!rangeStart && !!rangeEnd && rangeEnd > rangeStart;
+
+  const publishRangeMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/me/services/${availabilityTarget!.id}/slots/range`, {
+        startDate: rangeStart,
+        endDate: rangeEnd,
+        ...(rangeCapacity.trim() ? { capacity: parseInt(rangeCapacity, 10) } : {}),
+      });
+      return res.json();
+    },
+    onSuccess: (data: { created: number; skipped: number }) => {
+      setAvailabilityTarget(null);
+      toast({
+        title: "Availability published",
+        description: `${data.created} night${data.created === 1 ? "" : "s"} added${data.skipped > 0 ? `, ${data.skipped} already existed` : ""}.`,
+      });
+    },
+    onError: (err) => {
+      toast({
+        title: "Could not publish availability",
+        description: parseApiErrorMessage(err, "Please try again."),
+        variant: "destructive",
+      });
+    },
+  });
+
   return (
     <ProviderLayout title="Workstation">
       <div className="p-6 space-y-6">
@@ -372,29 +642,23 @@ export default function ProviderWorkstation() {
             </CardContent>
           </Card>
 
-          {/* Rung 3 — property: the honest next rung. NOT a dead button — per §17 the
-              property shape (per-night pricing, room availability) is a later,
-              separately-designed phase with its own money brief. */}
-          <Card
-            className="border border-dashed border-console-light bg-console-bg/50 opacity-70"
-            aria-disabled="true"
-            data-testid="card-ladder-property"
-          >
+          {/* Rung 3 — property (§17 Product Builder, PROPERTY rung): an accommodation
+              listing with one or more room types, each priced per night. */}
+          <Card className="border border-console-light" data-testid="card-ladder-property">
             <CardContent className="p-5 flex flex-col h-full">
-              <div className="w-10 h-10 rounded-lg bg-console-bg text-console-mid flex items-center justify-center mb-3">
+              <div className="w-10 h-10 rounded-lg bg-primary/10 text-primary flex items-center justify-center mb-3">
                 <BedDouble className="w-5 h-5" />
               </div>
-              <div className="flex items-center gap-2">
-                <h3 className="font-semibold text-console-mid">Property</h3>
-                <Badge variant="outline" className="text-[10px] text-console-mid">
-                  Not yet available
-                </Badge>
-              </div>
+              <h3 className="font-semibold text-console-darkest">Property</h3>
               <p className="text-sm text-console-mid mt-1 flex-1">
-                The next rung of the ladder — accommodation with photos, per-night pricing,
-                and room availability. It's a later phase and isn't built yet; nothing to
-                click here today.
+                Accommodation with one or more room types, each priced per night. Properties
+                and rooms are reviewed before they sell, like any listing.
               </p>
+              <div className="mt-4">
+                <Button size="sm" onClick={openPropertyCreate} data-testid="button-ladder-new-property">
+                  <Plus className="w-4 h-4 mr-1.5" /> New property
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </div>
@@ -541,6 +805,528 @@ export default function ProviderWorkstation() {
             </div>
           )}
         </section>
+
+        {/* ── Your properties ───────────────────────────────────────────────────── */}
+        <section data-testid="section-workstation-properties">
+          <h2 className="text-sm font-semibold text-console-mid uppercase tracking-wide mb-2">
+            Your properties
+          </h2>
+          {propertiesLoading ? (
+            <div className="space-y-3">
+              <Skeleton className="h-28 w-full rounded-lg" />
+            </div>
+          ) : propertyList.length === 0 ? (
+            <EmptyState
+              icon={BedDouble}
+              title="No properties yet"
+              body="Add an accommodation with one or more room types, each priced per night — it goes through review before it sells."
+              cta={
+                <Button size="sm" onClick={openPropertyCreate} data-testid="button-empty-new-property">
+                  <Plus className="w-4 h-4 mr-1.5" /> New property
+                </Button>
+              }
+              testId="empty-workstation-properties"
+            />
+          ) : (
+            <div className="space-y-3">
+              {propertyList.map((property) => {
+                const isActive = property.status === "active";
+                return (
+                  <Card
+                    key={property.id}
+                    className={`border border-console-light ${!isActive ? "opacity-60" : ""}`}
+                    data-testid={`card-property-${property.id}`}
+                  >
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between gap-4 flex-wrap">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h3 className="font-semibold text-console-darkest truncate">
+                              {property.serviceName}
+                            </h3>
+                            <Badge variant="outline" className="text-[10px]">
+                              Property
+                            </Badge>
+                            {property.approvalStatus && <StatusBadge status={property.approvalStatus} />}
+                            <StatusBadge status={isActive ? "active" : "paused"} />
+                          </div>
+                          {property.location && (
+                            <p className="text-xs text-console-mid mt-1">{property.location}</p>
+                          )}
+                          {property.approvalStatus === "rejected" && property.rejectionReason && (
+                            <p
+                              className="text-xs text-red-600 mt-1"
+                              data-testid={`text-property-rejection-${property.id}`}
+                            >
+                              Rejected: {property.rejectionReason}
+                            </p>
+                          )}
+
+                          <div className="mt-3 space-y-2">
+                            <div className="flex items-center justify-between">
+                              <p className="text-[10px] font-medium text-console-mid uppercase tracking-wide">
+                                Room types
+                              </p>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-6 text-xs"
+                                onClick={() => {
+                                  setAddRoomTarget(property);
+                                  setNewRoomName("");
+                                  setNewRoomPrice("");
+                                  setNewRoomUnits("");
+                                }}
+                                data-testid={`button-add-room-${property.id}`}
+                              >
+                                <Plus className="w-3 h-3 mr-1" /> Add room
+                              </Button>
+                            </div>
+                            {property.rooms.length === 0 ? (
+                              <p className="text-xs text-console-mid">No room types yet.</p>
+                            ) : (
+                              <div className="space-y-1.5">
+                                {property.rooms.map((room) => (
+                                  <div
+                                    key={room.id}
+                                    className="flex items-center justify-between gap-2 rounded-md border border-console-light px-2.5 py-1.5"
+                                    data-testid={`row-room-${room.id}`}
+                                  >
+                                    <div className="min-w-0 flex items-center gap-1.5 flex-wrap">
+                                      <span className="text-sm text-console-darkest truncate">
+                                        {room.serviceName}
+                                      </span>
+                                      <span className="text-xs text-console-mid">
+                                        {formatPrice(room.price)} / night
+                                      </span>
+                                      {room.approvalStatus && <StatusBadge status={room.approvalStatus} />}
+                                      <StatusBadge status={room.status === "active" ? "active" : "paused"} />
+                                    </div>
+                                    <div className="flex items-center gap-1 flex-shrink-0">
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-7 text-xs"
+                                        onClick={() => {
+                                          setAvailabilityTarget(room);
+                                          setRangeStart("");
+                                          setRangeEnd("");
+                                          setRangeCapacity(
+                                            room.categoryAttributes?.units
+                                              ? String(room.categoryAttributes.units)
+                                              : "1",
+                                          );
+                                        }}
+                                        data-testid={`button-room-availability-${room.id}`}
+                                      >
+                                        <CalendarRange className="w-3.5 h-3.5 mr-1" /> Availability
+                                      </Button>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-7 w-7 p-0"
+                                        disabled={roomStatusMutation.isPending}
+                                        onClick={() =>
+                                          roomStatusMutation.mutate({
+                                            id: room.id,
+                                            status: room.status === "active" ? "paused" : "active",
+                                          })
+                                        }
+                                        data-testid={`button-toggle-room-${room.id}`}
+                                      >
+                                        {room.status === "active" ? (
+                                          <Pause className="w-3.5 h-3.5" />
+                                        ) : (
+                                          <Play className="w-3.5 h-3.5" />
+                                        )}
+                                      </Button>
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-7 w-7 p-0 text-red-500 hover:text-red-600"
+                                        onClick={() => setRoomDeleteTarget(room)}
+                                        data-testid={`button-delete-room-${room.id}`}
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </Button>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex gap-2 flex-shrink-0 flex-wrap">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={propertyStatusMutation.isPending}
+                            onClick={() =>
+                              propertyStatusMutation.mutate({
+                                id: property.id,
+                                status: isActive ? "paused" : "active",
+                              })
+                            }
+                            data-testid={`button-toggle-property-${property.id}`}
+                          >
+                            {isActive ? (
+                              <>
+                                <Pause className="w-4 h-4 mr-1" /> Pause
+                              </>
+                            ) : (
+                              <>
+                                <Play className="w-4 h-4 mr-1" /> Activate
+                              </>
+                            )}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-red-500 hover:text-red-600"
+                            disabled={deletePropertyMutation.isPending}
+                            onClick={() => setPropertyDeleteTarget(property)}
+                            data-testid={`button-delete-property-${property.id}`}
+                          >
+                            <Trash2 className="w-4 h-4 mr-1" /> Delete
+                          </Button>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </section>
+
+        {/* ── Property builder dialog (create) ──────────────────────────────────── */}
+        <Dialog open={propertyBuilderOpen} onOpenChange={(open) => !open && setPropertyBuilderOpen(false)}>
+          <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto" data-testid="dialog-property-builder">
+            <DialogHeader>
+              <DialogTitle>New property</DialogTitle>
+              <DialogDescription>
+                Add the property and at least one room type. Both are reviewed before they sell;
+                night availability is set up separately once the property is created.
+              </DialogDescription>
+            </DialogHeader>
+
+            <form
+              className="space-y-4"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!propertyFormValid || createPropertyMutation.isPending) return;
+                createPropertyMutation.mutate();
+              }}
+            >
+              <div>
+                <Label htmlFor="property-name" className="text-sm">
+                  Property name
+                </Label>
+                <Input
+                  id="property-name"
+                  value={propName}
+                  onChange={(e) => setPropName(e.target.value)}
+                  maxLength={255}
+                  required
+                  placeholder="e.g. Machiya Guesthouse Kyoto"
+                  data-testid="input-property-name"
+                />
+              </div>
+              <div>
+                <Label htmlFor="property-location" className="text-sm">
+                  Location (optional)
+                </Label>
+                <Input
+                  id="property-location"
+                  value={propLocation}
+                  onChange={(e) => setPropLocation(e.target.value)}
+                  maxLength={255}
+                  placeholder="e.g. Higashiyama, Kyoto"
+                  data-testid="input-property-location"
+                />
+              </div>
+              <div>
+                <Label htmlFor="property-description" className="text-sm">
+                  Description (optional)
+                </Label>
+                <Textarea
+                  id="property-description"
+                  value={propDescription}
+                  onChange={(e) => setPropDescription(e.target.value)}
+                  rows={3}
+                  placeholder="What makes this property worth staying at."
+                  data-testid="input-property-description"
+                />
+              </div>
+
+              <div>
+                <Label className="text-sm">Room types (at least 1)</Label>
+                <div className="mt-2 space-y-3">
+                  {roomDrafts.map((draft, idx) => (
+                    <div
+                      key={draft.key}
+                      className="rounded-lg border border-console-light p-3 space-y-2"
+                      data-testid={`row-room-draft-${idx}`}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-medium text-console-mid">Room {idx + 1}</span>
+                        {roomDrafts.length > 1 && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 w-6 p-0"
+                            onClick={() => removeRoomDraft(draft.key)}
+                            data-testid={`button-remove-room-draft-${idx}`}
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </Button>
+                        )}
+                      </div>
+                      <Input
+                        value={draft.roomName}
+                        onChange={(e) => updateRoomDraft(draft.key, { roomName: e.target.value })}
+                        maxLength={255}
+                        placeholder="Room name, e.g. Garden View Double"
+                        data-testid={`input-room-draft-name-${idx}`}
+                      />
+                      <div className="grid grid-cols-2 gap-2">
+                        <Input
+                          type="number"
+                          min="0.01"
+                          step="0.01"
+                          value={draft.price}
+                          onChange={(e) => updateRoomDraft(draft.key, { price: e.target.value })}
+                          placeholder="Price / night"
+                          data-testid={`input-room-draft-price-${idx}`}
+                        />
+                        <Input
+                          type="number"
+                          min="1"
+                          step="1"
+                          value={draft.units}
+                          onChange={(e) => updateRoomDraft(draft.key, { units: e.target.value })}
+                          placeholder="Units (optional)"
+                          data-testid={`input-room-draft-units-${idx}`}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="mt-2"
+                  onClick={addRoomDraft}
+                  data-testid="button-add-room-draft"
+                >
+                  <Plus className="w-4 h-4 mr-1.5" /> Add another room type
+                </Button>
+                <p className="text-xs text-console-mid mt-1">
+                  Units is descriptive only — the real per-night capacity is set when you
+                  publish night availability after creating the property.
+                </p>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setPropertyBuilderOpen(false)}
+                  data-testid="button-property-cancel"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={!propertyFormValid || createPropertyMutation.isPending}
+                  data-testid="button-property-submit"
+                >
+                  {createPropertyMutation.isPending ? "Saving…" : "Submit for review"}
+                </Button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
+
+        {/* ── Add-room dialog (existing property) ───────────────────────────────── */}
+        <Dialog open={!!addRoomTarget} onOpenChange={(open) => !open && setAddRoomTarget(null)}>
+          <DialogContent className="max-w-md" data-testid="dialog-add-room">
+            <DialogHeader>
+              <DialogTitle>Add a room type</DialogTitle>
+              <DialogDescription>
+                {addRoomTarget?.serviceName} — the new room is reviewed before it sells. If the
+                property is already approved, adding a room sends it back for review too.
+              </DialogDescription>
+            </DialogHeader>
+            <form
+              className="space-y-3"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!newRoomValid || addRoomMutation.isPending) return;
+                addRoomMutation.mutate();
+              }}
+            >
+              <Input
+                value={newRoomName}
+                onChange={(e) => setNewRoomName(e.target.value)}
+                maxLength={255}
+                placeholder="Room name"
+                data-testid="input-new-room-name"
+              />
+              <div className="grid grid-cols-2 gap-2">
+                <Input
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  value={newRoomPrice}
+                  onChange={(e) => setNewRoomPrice(e.target.value)}
+                  placeholder="Price / night"
+                  data-testid="input-new-room-price"
+                />
+                <Input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={newRoomUnits}
+                  onChange={(e) => setNewRoomUnits(e.target.value)}
+                  placeholder="Units (optional)"
+                  data-testid="input-new-room-units"
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <Button type="button" variant="outline" onClick={() => setAddRoomTarget(null)}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={!newRoomValid || addRoomMutation.isPending} data-testid="button-add-room-submit">
+                  {addRoomMutation.isPending ? "Saving…" : "Add room"}
+                </Button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
+
+        {/* ── Night-availability range dialog (one room) ────────────────────────── */}
+        <Dialog open={!!availabilityTarget} onOpenChange={(open) => !open && setAvailabilityTarget(null)}>
+          <DialogContent className="max-w-md" data-testid="dialog-room-availability">
+            <DialogHeader>
+              <DialogTitle>Publish night availability</DialogTitle>
+              <DialogDescription>
+                {availabilityTarget?.serviceName} — every night in this range becomes bookable
+                with the capacity below. Dates already published are left untouched.
+              </DialogDescription>
+            </DialogHeader>
+            <form
+              className="space-y-3"
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!rangeValid || publishRangeMutation.isPending) return;
+                publishRangeMutation.mutate();
+              }}
+            >
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <Label htmlFor="range-start" className="text-xs">
+                    Check-in from
+                  </Label>
+                  <Input
+                    id="range-start"
+                    type="date"
+                    value={rangeStart}
+                    min={new Date().toISOString().slice(0, 10)}
+                    onChange={(e) => setRangeStart(e.target.value)}
+                    data-testid="input-range-start"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="range-end" className="text-xs">
+                    Through
+                  </Label>
+                  <Input
+                    id="range-end"
+                    type="date"
+                    value={rangeEnd}
+                    min={rangeStart || new Date().toISOString().slice(0, 10)}
+                    onChange={(e) => setRangeEnd(e.target.value)}
+                    data-testid="input-range-end"
+                  />
+                </div>
+              </div>
+              <div>
+                <Label htmlFor="range-capacity" className="text-xs">
+                  Units available each night
+                </Label>
+                <Input
+                  id="range-capacity"
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={rangeCapacity}
+                  onChange={(e) => setRangeCapacity(e.target.value)}
+                  data-testid="input-range-capacity"
+                />
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <Button type="button" variant="outline" onClick={() => setAvailabilityTarget(null)}>
+                  Cancel
+                </Button>
+                <Button
+                  type="submit"
+                  disabled={!rangeValid || publishRangeMutation.isPending}
+                  data-testid="button-publish-range"
+                >
+                  {publishRangeMutation.isPending ? "Publishing…" : "Publish"}
+                </Button>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
+
+        {/* ── Property delete confirm ────────────────────────────────────────────── */}
+        <AlertDialog open={!!propertyDeleteTarget} onOpenChange={(open) => !open && setPropertyDeleteTarget(null)}>
+          <AlertDialogContent data-testid="dialog-delete-property">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete this property?</AlertDialogTitle>
+              <AlertDialogDescription>
+                "{propertyDeleteTarget?.serviceName}" will be removed from your catalog. You
+                must remove its room types first — a property with rooms can't be deleted.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-red-600 hover:bg-red-700"
+                onClick={() => propertyDeleteTarget && deletePropertyMutation.mutate(propertyDeleteTarget.id)}
+                data-testid="button-delete-property-confirm"
+              >
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* ── Room delete confirm ────────────────────────────────────────────────── */}
+        <AlertDialog open={!!roomDeleteTarget} onOpenChange={(open) => !open && setRoomDeleteTarget(null)}>
+          <AlertDialogContent data-testid="dialog-delete-room">
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete this room type?</AlertDialogTitle>
+              <AlertDialogDescription>
+                "{roomDeleteTarget?.serviceName}" and its published availability will be removed.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-red-600 hover:bg-red-700"
+                onClick={() => roomDeleteTarget && deleteRoomMutation.mutate(roomDeleteTarget.id)}
+                data-testid="button-delete-room-confirm"
+              >
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         {/* ── Bundle builder dialog (create + edit) ─────────────────────────────── */}
         <Dialog open={builderOpen} onOpenChange={(open) => !open && setBuilderOpen(false)}>

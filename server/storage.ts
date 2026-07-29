@@ -1999,11 +1999,18 @@ export class DatabaseStorage implements IStorage {
     const [existing] = await db.select().from(cartItems).where(itemCondition);
 
     if (existing) {
+      // §17 property rooms: contentMeta.checkIn signals a room-stay re-add — the traveler is
+      // changing their dates on the SAME room, not adding another unit (quantity is meaningless
+      // for a room). Replace the stay instead of incrementing quantity; every other item keeps
+      // the additive-quantity behavior unchanged.
+      const isRoomStayUpdate =
+        item.contentMeta && typeof (item.contentMeta as Record<string, unknown>).checkIn === "string";
       const [updated] = await db.update(cartItems)
         .set({
-          quantity: (existing.quantity || 1) + (item.quantity || 1),
+          quantity: isRoomStayUpdate ? (existing.quantity || 1) : (existing.quantity || 1) + (item.quantity || 1),
           // C3: re-adding with a picked slot attaches (or replaces) the slot + its derived date.
           ...(item.slotId ? { slotId: item.slotId, scheduledDate: item.scheduledDate } : {}),
+          ...(isRoomStayUpdate ? { contentMeta: item.contentMeta } : {}),
         })
         .where(eq(cartItems.id, existing.id))
         .returning();

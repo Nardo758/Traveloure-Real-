@@ -582,4 +582,8 @@ export const MIGRATION_FILES = [
   // 152: itinerary_items.expert_note (Workstation audit C-1) — additive nullable TEXT,
   // no CHECK/DEFAULT → no push trap. PlanCard already renders it; the builder gains authoring.
   "152_itinerary_items_expert_note.sql",
+  // 153: property shape (§17 property rung, ratified Jul 29 2026) — provider_services gains
+  // additive nullable pricing_unit ('per_night' marker) + parent_service_id self-FK
+  // (RESTRICT; room-child → parent property). No CHECK/DEFAULT → no push trap.
+  "153_property_shape.sql",
 ] as const;
