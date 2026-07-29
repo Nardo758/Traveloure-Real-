@@ -15,10 +15,14 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { SEOHead } from "@/components/seo-head";
-import { Star, MapPin, Share2, Sparkles, Map, Briefcase } from "lucide-react";
+import { useAuth } from "@/hooks/use-auth";
+import { useAskExpert } from "@/lib/use-ask-expert";
+import { Star, MapPin, Share2, Sparkles, Map, Briefcase, MessageCircle } from "lucide-react";
 
 interface StorefrontData {
   earner: {
+    // Not sensitive — user ids are already public on /experts/:id and similar surfaces.
+    id: string;
     name: string;
     bio: string | null;
     profileImageUrl: string | null;
@@ -67,6 +71,8 @@ export default function StorefrontPage() {
   const [, params] = useRoute("/p/:handle");
   const handle = params?.handle ?? "";
   const { toast } = useToast();
+  const { user } = useAuth();
+  const askExpert = useAskExpert();
 
   const { data, isLoading, isError } = useQuery<StorefrontData>({
     queryKey: [`/api/storefront/${handle}`],
@@ -109,6 +115,17 @@ export default function StorefrontPage() {
   }
 
   const { earner, services, templates, readyMade } = data;
+  // Hide the CTA when the signed-in visitor IS the earner — no message-myself button.
+  const isOwnStorefront = !!user && String(user.id) === String(earner.id);
+
+  function messageEarner() {
+    askExpert({
+      expertId: earner.id,
+      returnTo: `/p/${handle}`,
+      fallbackName: earner.name,
+      fallbackAvatar: earner.profileImageUrl ?? undefined,
+    });
+  }
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-10 space-y-10" data-testid="storefront-page">
@@ -143,10 +160,18 @@ export default function StorefrontPage() {
           </div>
           {earner.bio && <p className="mt-2 text-sm text-foreground max-w-xl">{earner.bio}</p>}
         </div>
-        <Button variant="outline" size="sm" onClick={copyLink} data-testid="button-share-storefront">
-          <Share2 className="w-4 h-4 mr-1.5" />
-          Share
-        </Button>
+        <div className="flex flex-col gap-2 shrink-0">
+          {!isOwnStorefront && (
+            <Button size="sm" onClick={messageEarner} data-testid="button-message-storefront">
+              <MessageCircle className="w-4 h-4 mr-1.5" />
+              Message @{earner.handle}
+            </Button>
+          )}
+          <Button variant="outline" size="sm" onClick={copyLink} data-testid="button-share-storefront">
+            <Share2 className="w-4 h-4 mr-1.5" />
+            Share
+          </Button>
+        </div>
       </div>
 
       {/* Lane 1: services */}

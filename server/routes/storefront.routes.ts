@@ -430,6 +430,11 @@ async function loadStorefront(handle: string) {
 
   return {
     earner: {
+      // Not sensitive — user ids are already public on /experts/:id and similar surfaces.
+      // Lets the client (the "Message" CTA) open/create a chat thread with this earner and
+      // detect the earner-viewing-their-own-storefront case (§14: only used for CTA gating,
+      // never trusted as an identity/ownership decision on the server).
+      id: owner.id,
       name: [owner.firstName, owner.lastName].filter(Boolean).join(" ") || "Traveloure earner",
       bio: owner.bio ?? null,
       profileImageUrl: owner.profileImageUrl ?? null,

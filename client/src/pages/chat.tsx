@@ -82,6 +82,12 @@ export default function Chat() {
   const clientIdFromUrl = urlParams.get("clientId");
   // about: forwarded from "Ask expert" buttons on gem/activity cards — pre-fills the message
   const aboutFromUrl = urlParams.get("about");
+  // name/avatar: optional display fallback for expertIdFromUrl (see fallbackExpert below) —
+  // forwarded by callers (e.g. the storefront "Message" CTA, via useAskExpert) that already
+  // know the target's display info and can't rely on /api/experts/:id resolving it (that
+  // lookup is expert-family-only; a provider-role target 404s there).
+  const nameFromUrl = urlParams.get("name");
+  const avatarFromUrl = urlParams.get("avatar");
 
   // Audit A4: an earner (provider or expert-family) landing on /chat needs THEIR client
   // threads, not the traveler-facing "browse a directory of experts to hire" surface — the
@@ -102,7 +108,7 @@ export default function Chat() {
     enabled: !isEarner,
   });
 
-  const { data: linkedExpert } = useQuery<DisplayExpert | null>({
+  const { data: linkedExpert, isSuccess: linkedExpertQueried } = useQuery<DisplayExpert | null>({
     queryKey: ["/api/experts", expertIdFromUrl],
     queryFn: async () => {
       const res = await fetch(`/api/experts/${expertIdFromUrl}`);
@@ -111,6 +117,28 @@ export default function Chat() {
     },
     enabled: !!expertIdFromUrl,
   });
+
+  // Fallback for an expertIdFromUrl that /api/experts/:id can't resolve (it's expert-family
+  // role only — a provider-role storefront owner 404s there). When the query has settled
+  // without a result AND the caller passed name/avatar (see nameFromUrl above), build a
+  // minimal DisplayExpert directly from the URL — no second endpoint, same self-contained
+  // param pattern the `about` prefill already uses.
+  const fallbackExpert = useMemo<DisplayExpert | null>(() => {
+    if (!expertIdFromUrl || linkedExpert || !linkedExpertQueried || !nameFromUrl) return null;
+    return {
+      id: expertIdFromUrl,
+      name: nameFromUrl,
+      location: "",
+      avatar: avatarFromUrl || "",
+      rating: null,
+      reviews: 0,
+      specialties: [],
+      languages: [],
+      responseTime: "",
+    };
+  }, [expertIdFromUrl, linkedExpert, linkedExpertQueried, nameFromUrl, avatarFromUrl]);
+
+  const effectiveLinkedExpert = linkedExpert ?? fallbackExpert;
 
   // Fetch client info when arriving from /expert/messages/:clientId deep-link
   const { data: linkedClient } = useQuery<any>({
@@ -183,12 +211,12 @@ export default function Chat() {
       }
       return conversationPartners;
     }
-    if (linkedExpert) {
-      const exists = expertList.some(e => String(e.id) === String(linkedExpert.id));
-      if (!exists) return [linkedExpert, ...expertList];
+    if (effectiveLinkedExpert) {
+      const exists = expertList.some(e => String(e.id) === String(effectiveLinkedExpert.id));
+      if (!exists) return [effectiveLinkedExpert, ...expertList];
     }
     return expertList;
-  }, [isEarner, conversationPartners, linkedClient, linkedExpert, expertList]);
+  }, [isEarner, conversationPartners, linkedClient, effectiveLinkedExpert, expertList]);
 
   // F3 (workstation-flows audit): for expert users, cross-reference the conversation partner
   // against assigned trips so the thread header can offer "Open trip workspace". Client-side
@@ -222,10 +250,10 @@ export default function Chat() {
   }, [aboutFromUrl]);
 
   useEffect(() => {
-    if (linkedExpert && !selectedExpert) {
-      setSelectedExpert(linkedExpert);
+    if (effectiveLinkedExpert && !selectedExpert) {
+      setSelectedExpert(effectiveLinkedExpert);
     }
-  }, [linkedExpert]);
+  }, [effectiveLinkedExpert]);
 
   // When arriving from /expert/messages/:clientId deep-link, pre-populate search with the
   // client's name so the relevant conversation thread is surfaced immediately.
@@ -302,7 +330,7 @@ export default function Chat() {
     } else {
       // Demo mode or WebSocket failed - use HTTP mutation
       sendMessageMutation.mutate(
-        { message: currentMessage, senderId: user?.id },
+        { message: currentMessage, senderId: user?.id, receiverId: recipientId },
         { 
           onSuccess: () => {
             setMessage("");
