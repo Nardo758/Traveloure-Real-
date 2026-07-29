@@ -836,6 +836,30 @@ Governing spec: `docs/backoffice/mockups/mockup-unified-workspace.html` (v9). Lo
     (D1a), requires ≥2 components, all owned by the session user and `approved`+`active`;
     price/component-set changes to an approved bundle re-enter review (the A3 material-change
     rule). Bundle create UI unlocks at 2+ approved services (the §17 creation ladder).
+  - **Product Builder — PROPERTY rung RATIFIED (Jul 29, 2026, decision-maker; the "later phase with
+    its own money brief" above, now briefed + locked, four calls):** ① **availability = per-night
+    slots on the EXISTING `vendor_availability_slots` rail** — date-only slots (no times),
+    `capacity` = units available that night, double-booking prevented by the proven §15 atomic
+    `bookSlot` claim (migration 145's slot-aware checkout); a multi-night stay claims **all nights
+    atomically, all-or-nothing** (any night full → 409, already-claimed nights released); the night
+    range is SNAPSHOT into `bookingDetails` (the bundle/ready-made posture) and the first-night
+    `slot_id` stamped on the booking. NO new availability table, no new overlap machinery.
+    ② **nightly rate = the existing `price` column + additive nullable `pricing_unit` marker**
+    (`'per_night'`; NULL = flat — every existing row untouched). Charge = nights × rate, **§14
+    fully server-derived** from the stored row + requested dates; seasonal per-date overrides are a
+    LATER phase riding the slot row's existing `pricing` jsonb (no new tables). ③ **multi-room
+    inventory in the first cut** (decision-maker overrode the single-unit recommendation), via
+    ④ **child service rows**: each room type IS a `provider_services` row
+    (`product_shape='property_room'`) with an additive nullable **`parent_service_id` self-FK**
+    (migration 153, `ON DELETE RESTRICT` — a property can't be deleted while rooms exist, the
+    bundle-RESTRICT posture) to the property row (`product_shape='property'`). Rooms inherit
+    night-slots through the existing `serviceId` slot rail and rates through `price`/`pricing_unit`
+    — F2 approval, checkout, §15 claim, and earnings all work per-room with NO parallel plumbing;
+    the property row is the storefront listing, rooms are its bookable children. NOT ratified /
+    do not build without a new brief: deposits/partial capture (full charge at booking through the
+    existing rail; cancellation = existing `cancellation_policy` free-text + migration-144
+    `cancellation_policy_type` badge; escrow unchanged), seasonal rates, room-level photos beyond
+    the existing images field.
   - **Workstation audit fixes (Jul 28, 2026, decision-maker-reported gaps ground-truthed then built):**
     ① day management — the Add panel's day-focus control already existed; added the "+ Day"
     affordance and a move-item-between-days action (existing item PATCH, no new endpoint).

@@ -400,4 +400,387 @@ router.delete("/api/provider/bundles/:id", isAuthenticated, async (req, res) => 
   }
 });
 
+// ─── Properties (§17 Product Builder — PROPERTY rung, migration 153) ──────────────────────
+//
+// A property IS a provider_services row (product_shape='property', the storefront listing).
+// Each room type IS its own provider_services row (product_shape='property_room',
+// parent_service_id → the property, ON DELETE RESTRICT — a property can't be deleted while
+// rooms exist, the bundle-components posture). Rooms carry their own nightly rate on the
+// EXISTING price column + pricing_unit='per_night'; night availability rides the EXISTING
+// vendor_availability_slots rail (server/routes/expert-console.routes.ts .../slots + the new
+// .../slots/range bulk endpoint below it) — no new tables, no new money machinery. F2/D1a/A3
+// apply per-row: a room is its own listing with its own approval lifecycle, same as a bundle
+// row is both container and itself approval-tracked.
+
+const roomPriceField = z
+  .union([z.string(), z.number()])
+  .transform((v) => String(v))
+  .refine((v) => Number.isFinite(parseFloat(v)) && parseFloat(v) > 0, {
+    message: "price must be a positive number",
+  });
+
+// `units` is DESCRIPTIVE capacity metadata only (stored in categoryAttributes — no schema
+// column for it), not an enforced limit. The number that actually blocks a double-booking is
+// vendor_availability_slots.capacity, set per-night via the .../slots/range endpoint (which
+// defaults to this value when the caller omits capacity).
+const roomInputSchema = z.object({
+  roomName: z.string().trim().min(1).max(255),
+  description: z.string().max(2000).optional(),
+  price: roomPriceField,
+  units: z.number().int().min(1).max(100).optional(),
+});
+
+const propertyCreateSchema = z.object({
+  serviceName: z.string().trim().min(1).max(255),
+  description: z.string().max(10000).optional(),
+  location: z.string().max(255).optional(),
+  neighborhood: z.string().max(100).optional(),
+  categoryId: z.string().optional(),
+  serviceImage: z.string().max(2000).optional(),
+  galleryImages: z.array(z.string().max(2000)).max(20).optional(),
+  rooms: z.array(roomInputSchema).min(1, "A property needs at least one room type"),
+});
+
+const propertyPatchSchema = z.object({
+  serviceName: z.string().trim().min(1).max(255).optional(),
+  description: z.string().max(10000).optional(),
+  location: z.string().max(255).optional(),
+  neighborhood: z.string().max(100).optional(),
+  serviceImage: z.string().max(2000).optional(),
+  galleryImages: z.array(z.string().max(2000)).max(20).optional(),
+  status: z.enum(["active", "paused"]).optional(),
+});
+
+const roomPatchSchema = z.object({
+  roomName: z.string().trim().min(1).max(255).optional(),
+  description: z.string().max(2000).optional(),
+  price: roomPriceField.optional(),
+  units: z.number().int().min(1).max(100).optional(),
+  status: z.enum(["active", "paused"]).optional(),
+});
+
+type ProviderServiceRow2 = typeof providerServices.$inferSelect;
+
+/**
+ * Migration 153: property_room.parent_service_id is ON DELETE RESTRICT — a property cannot be
+ * deleted while any room still references it. Postgres surfaces that as FK violation 23503;
+ * translate it into an honest 409 naming the rooms, mirroring routes.ts's
+ * respondIfServiceInBundle for the identical bundle-RESTRICT case.
+ */
+async function respondIfPropertyHasRooms(err: any, propertyId: string, res: any): Promise<boolean> {
+  const code = err?.code ?? err?.cause?.code;
+  if (code !== "23503") return false;
+  const rooms = await db
+    .select({ serviceName: providerServices.serviceName })
+    .from(providerServices)
+    .where(eq(providerServices.parentServiceId, propertyId));
+  if (rooms.length === 0) return false;
+  res.status(409).json({
+    message: "This property still has room types — remove them before deleting the property.",
+    rooms: rooms.map((r) => r.serviceName),
+  });
+  return true;
+}
+
+router.post("/api/provider/properties", isAuthenticated, async (req, res) => {
+  try {
+    const userId = await requireProviderRole(req, res);
+    if (!userId) return;
+    const body = propertyCreateSchema.parse(req.body);
+
+    const { property, rooms } = await db.transaction(async (tx) => {
+      const [createdProperty] = await tx
+        .insert(providerServices)
+        .values({
+          userId,
+          serviceName: body.serviceName,
+          description: body.description ?? null,
+          ...(body.location !== undefined ? { location: body.location } : {}),
+          ...(body.neighborhood !== undefined ? { neighborhood: body.neighborhood } : {}),
+          ...(body.categoryId !== undefined ? { categoryId: body.categoryId } : {}),
+          serviceImage: body.serviceImage ?? null,
+          galleryImages: body.galleryImages ?? [],
+          productShape: "property",
+          // D1a: born-submitted, server-clamped — approvalStatus is never read from the body.
+          approvalStatus: "submitted",
+          submittedAt: new Date(),
+          status: "active",
+        })
+        .returning();
+
+      // Rooms inherit category/location from the parent property (§17 contract).
+      const createdRooms = await tx
+        .insert(providerServices)
+        .values(
+          body.rooms.map((r) => ({
+            userId,
+            serviceName: r.roomName,
+            description: r.description ?? null,
+            price: r.price,
+            pricingUnit: "per_night" as const,
+            productShape: "property_room" as const,
+            parentServiceId: createdProperty.id,
+            categoryId: createdProperty.categoryId,
+            location: createdProperty.location,
+            neighborhood: createdProperty.neighborhood,
+            ...(r.units != null ? { categoryAttributes: { units: r.units } } : {}),
+            approvalStatus: "submitted",
+            submittedAt: new Date(),
+            status: "active",
+          })),
+        )
+        .returning();
+
+      return { property: createdProperty, rooms: createdRooms };
+    });
+
+    res.status(201).json({ ...property, rooms });
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      return res.status(400).json({ message: "Invalid property", errors: err.errors });
+    }
+    console.error("[Provider] createProperty error:", err);
+    res.status(500).json({ message: "Failed to create property" });
+  }
+});
+
+router.get("/api/provider/properties", isAuthenticated, async (req, res) => {
+  try {
+    const userId = await requireProviderRole(req, res);
+    if (!userId) return;
+    // Owner console — session-scoped, intentionally ungated on approval (F2 owner-read posture).
+    const properties = await db
+      .select()
+      .from(providerServices)
+      .where(and(eq(providerServices.userId, userId), eq(providerServices.productShape, "property")))
+      .orderBy(desc(providerServices.createdAt));
+    if (properties.length === 0) return res.json([]);
+
+    const rooms = await db
+      .select()
+      .from(providerServices)
+      .where(inArray(providerServices.parentServiceId, properties.map((p) => p.id)))
+      .orderBy(asc(providerServices.price));
+    const grouped = new Map<string, ProviderServiceRow2[]>();
+    for (const r of rooms) {
+      const key = r.parentServiceId!;
+      const list = grouped.get(key) ?? [];
+      list.push(r);
+      grouped.set(key, list);
+    }
+
+    res.json(properties.map((p) => ({ ...p, rooms: grouped.get(p.id) ?? [] })));
+  } catch (err) {
+    console.error("[Provider] listProperties error:", err);
+    res.status(500).json({ message: "Failed to list properties" });
+  }
+});
+
+router.patch("/api/provider/properties/:id", isAuthenticated, async (req, res) => {
+  try {
+    const userId = await requireProviderRole(req, res);
+    if (!userId) return;
+    const [existing] = await db
+      .select()
+      .from(providerServices)
+      .where(eq(providerServices.id, req.params.id));
+    if (!existing || existing.userId !== userId || existing.productShape !== "property") {
+      return res.status(404).json({ message: "Property not found or not owned by you" });
+    }
+    const body = propertyPatchSchema.parse(req.body);
+    // Listing-detail fields only — no price lives on the property row itself and room-set
+    // changes go through the dedicated room endpoints below (each with its own A3 trigger).
+    const patch: Record<string, any> = { updatedAt: new Date() };
+    if (body.serviceName !== undefined) patch.serviceName = body.serviceName;
+    if (body.description !== undefined) patch.description = body.description;
+    if (body.location !== undefined) patch.location = body.location;
+    if (body.neighborhood !== undefined) patch.neighborhood = body.neighborhood;
+    if (body.serviceImage !== undefined) patch.serviceImage = body.serviceImage;
+    if (body.galleryImages !== undefined) patch.galleryImages = body.galleryImages;
+    if (body.status !== undefined) patch.status = body.status;
+
+    const [updated] = await db
+      .update(providerServices)
+      .set(patch)
+      .where(eq(providerServices.id, existing.id))
+      .returning();
+    res.json(updated);
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      return res.status(400).json({ message: "Invalid property update", errors: err.errors });
+    }
+    console.error("[Provider] updateProperty error:", err);
+    res.status(500).json({ message: "Failed to update property" });
+  }
+});
+
+router.delete("/api/provider/properties/:id", isAuthenticated, async (req, res) => {
+  try {
+    const userId = await requireProviderRole(req, res);
+    if (!userId) return;
+    const [existing] = await db
+      .select()
+      .from(providerServices)
+      .where(eq(providerServices.id, req.params.id));
+    if (!existing || existing.userId !== userId || existing.productShape !== "property") {
+      return res.status(404).json({ message: "Property not found or not owned by you" });
+    }
+    await db.delete(providerServices).where(eq(providerServices.id, existing.id));
+    res.status(204).send();
+  } catch (err) {
+    if (await respondIfPropertyHasRooms(err, req.params.id, res)) return;
+    console.error("[Provider] deleteProperty error:", err);
+    res.status(500).json({ message: "Failed to delete property" });
+  }
+});
+
+// ── Rooms (children of a property) ─────────────────────────────────────────────────────────
+
+router.post("/api/provider/properties/:id/rooms", isAuthenticated, async (req, res) => {
+  try {
+    const userId = await requireProviderRole(req, res);
+    if (!userId) return;
+    const [property] = await db
+      .select()
+      .from(providerServices)
+      .where(eq(providerServices.id, req.params.id));
+    if (!property || property.userId !== userId || property.productShape !== "property") {
+      return res.status(404).json({ message: "Property not found or not owned by you" });
+    }
+    const body = roomInputSchema.parse(req.body);
+
+    // A3: adding a room type to an APPROVED property changes what the admin vetted (the room
+    // roster) — re-enter review, mirroring the bundle component-set-changed rule.
+    const propertyReenteredReview = property.approvalStatus === "approved";
+
+    const { room, updatedProperty } = await db.transaction(async (tx) => {
+      const [createdRoom] = await tx
+        .insert(providerServices)
+        .values({
+          userId,
+          serviceName: body.roomName,
+          description: body.description ?? null,
+          price: body.price,
+          pricingUnit: "per_night" as const,
+          productShape: "property_room" as const,
+          parentServiceId: property.id,
+          categoryId: property.categoryId,
+          location: property.location,
+          neighborhood: property.neighborhood,
+          ...(body.units != null ? { categoryAttributes: { units: body.units } } : {}),
+          // D1a: born-submitted, server-clamped.
+          approvalStatus: "submitted",
+          submittedAt: new Date(),
+          status: "active",
+        })
+        .returning();
+
+      let updatedPropertyRow = property;
+      if (propertyReenteredReview) {
+        const [row] = await tx
+          .update(providerServices)
+          .set({ approvalStatus: "submitted", submittedAt: new Date(), updatedAt: new Date() })
+          .where(eq(providerServices.id, property.id))
+          .returning();
+        updatedPropertyRow = row;
+      }
+      return { room: createdRoom, updatedProperty: updatedPropertyRow };
+    });
+
+    res.status(201).json({ ...room, propertyReenteredReview, property: updatedProperty });
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      return res.status(400).json({ message: "Invalid room", errors: err.errors });
+    }
+    console.error("[Provider] addRoom error:", err);
+    res.status(500).json({ message: "Failed to add room" });
+  }
+});
+
+router.patch("/api/provider/rooms/:id", isAuthenticated, async (req, res) => {
+  try {
+    const userId = await requireProviderRole(req, res);
+    if (!userId) return;
+    const [existing] = await db
+      .select()
+      .from(providerServices)
+      .where(eq(providerServices.id, req.params.id));
+    if (!existing || existing.userId !== userId || existing.productShape !== "property_room") {
+      return res.status(404).json({ message: "Room not found or not owned by you" });
+    }
+    const body = roomPatchSchema.parse(req.body);
+
+    const patch: Record<string, any> = { updatedAt: new Date() };
+    if (body.roomName !== undefined) patch.serviceName = body.roomName;
+    if (body.description !== undefined) patch.description = body.description;
+    if (body.price !== undefined) patch.price = body.price;
+    if (body.units !== undefined) {
+      patch.categoryAttributes = { ...(existing.categoryAttributes as any), units: body.units };
+    }
+    if (body.status !== undefined) patch.status = body.status;
+
+    // A3 material-change rule: a price change on an APPROVED room re-enters review — the room
+    // is itself a provider_services row with its own approval lifecycle (D1a per-row).
+    const priceChanged =
+      body.price !== undefined && parseFloat(body.price) !== parseFloat(existing.price ?? "0");
+    const reenteredReview = existing.approvalStatus === "approved" && priceChanged;
+    if (reenteredReview) {
+      patch.approvalStatus = "submitted";
+      patch.submittedAt = new Date();
+    }
+
+    const [updated] = await db
+      .update(providerServices)
+      .set(patch)
+      .where(eq(providerServices.id, existing.id))
+      .returning();
+    res.json({ ...updated, reenteredReview });
+  } catch (err) {
+    if (err instanceof z.ZodError) {
+      return res.status(400).json({ message: "Invalid room update", errors: err.errors });
+    }
+    console.error("[Provider] updateRoom error:", err);
+    res.status(500).json({ message: "Failed to update room" });
+  }
+});
+
+router.delete("/api/provider/rooms/:id", isAuthenticated, async (req, res) => {
+  try {
+    const userId = await requireProviderRole(req, res);
+    if (!userId) return;
+    const [existing] = await db
+      .select()
+      .from(providerServices)
+      .where(eq(providerServices.id, req.params.id));
+    if (!existing || existing.userId !== userId || existing.productShape !== "property_room") {
+      return res.status(404).json({ message: "Room not found or not owned by you" });
+    }
+
+    // A3: removing a room type from an APPROVED property is also a room-set change —
+    // re-enter the property's review, symmetric with the add-room trigger above.
+    let propertyReenteredReview = false;
+    await db.transaction(async (tx) => {
+      await tx.delete(providerServices).where(eq(providerServices.id, existing.id));
+      if (existing.parentServiceId) {
+        const [property] = await tx
+          .select()
+          .from(providerServices)
+          .where(eq(providerServices.id, existing.parentServiceId));
+        if (property && property.approvalStatus === "approved") {
+          propertyReenteredReview = true;
+          await tx
+            .update(providerServices)
+            .set({ approvalStatus: "submitted", submittedAt: new Date(), updatedAt: new Date() })
+            .where(eq(providerServices.id, property.id));
+        }
+      }
+    });
+
+    res.json({ success: true, propertyReenteredReview });
+  } catch (err) {
+    console.error("[Provider] deleteRoom error:", err);
+    res.status(500).json({ message: "Failed to delete room" });
+  }
+});
+
 export default router;

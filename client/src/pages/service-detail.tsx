@@ -39,6 +39,7 @@ import {
   Car,
   Handshake,
   Package,
+  BedDouble,
 } from "lucide-react";
 import {
   Dialog,
@@ -95,12 +96,29 @@ interface Service {
   // is a bundle (productShape === 'bundle'). F2-gated server-side — only still-approved+
   // active components are ever included.
   bundleComponents?: BundleComponent[];
+  // §17 Product Builder — PROPERTY rung (migration 153). productShape 'property' carries a
+  // server-gated `rooms` list (approved+active children only); 'property_room' carries
+  // `pricingUnit` ('per_night' — nights × price is the real charge, §14) and a gated `property`
+  // back-link. Both additive; absent/null for every non-property service (every pre-153 row).
+  productShape?: string | null;
+  pricingUnit?: string | null;
+  parentServiceId?: string | null;
+  rooms?: RoomSummary[];
+  property?: { id: string; serviceName: string } | null;
 }
 
 interface BundleComponent {
   id: string;
   serviceName: string;
   shortDescription: string;
+}
+
+interface RoomSummary {
+  id: string;
+  serviceName: string;
+  shortDescription: string | null;
+  price: string | number;
+  categoryAttributes?: { units?: number } | null;
 }
 
 // X1: display labels for cancellationPolicyType — mirrors shared/schema.ts
@@ -266,6 +284,83 @@ export default function ServiceDetailPage() {
     },
   });
 
+  // §17 Product Builder — PROPERTY rung: a room ('property_room' + pricingUnit='per_night')
+  // books a NIGHT RANGE, not a single slot — a wholly different booking widget from the
+  // single-day availability calendar above. Charge = nights × the stored rate, §14
+  // server-derived at checkout; this UI only picks dates and does a real (non-authoritative)
+  // pre-check against the room's published night slots so the traveler isn't surprised.
+  const isRoom = service?.pricingUnit === "per_night";
+  const todayIsoForRoom = format(new Date(), "yyyy-MM-dd");
+  const [roomCheckIn, setRoomCheckIn] = useState("");
+  const [roomCheckOut, setRoomCheckOut] = useState("");
+  const roomNights =
+    roomCheckIn && roomCheckOut && roomCheckOut > roomCheckIn
+      ? Math.round(
+          (new Date(`${roomCheckOut}T00:00:00Z`).getTime() - new Date(`${roomCheckIn}T00:00:00Z`).getTime()) /
+            86400000,
+        )
+      : 0;
+  const roomNightDates =
+    roomNights > 0
+      ? Array.from({ length: roomNights }, (_, i) => {
+          const d = new Date(`${roomCheckIn}T00:00:00Z`);
+          d.setUTCDate(d.getUTCDate() + i);
+          return d.toISOString().slice(0, 10);
+        })
+      : [];
+  // Distinct calendar months the picked range touches — fetched via the SAME public
+  // month-availability endpoint the single-day calendar above uses (C2, F2-gated).
+  const roomMonths = roomNights > 0 ? Array.from(new Set(roomNightDates.map((d) => d.slice(0, 7)))) : [];
+  const { data: roomAvailabilityDays, isLoading: roomAvailabilityLoading } = useQuery<AvailabilityDay[]>({
+    queryKey: ["/api/services", id, "room-nights", roomMonths.join(",")],
+    queryFn: async () => {
+      const perMonth = await Promise.all(
+        roomMonths.map(async (m) => {
+          const res = await fetch(`/api/services/${id}/availability?month=${m}`, { credentials: "include" });
+          if (!res.ok) return [] as AvailabilityDay[];
+          const data = (await res.json()) as AvailabilityResponse;
+          return data.days || [];
+        }),
+      );
+      return perMonth.flat();
+    },
+    enabled: isRoom && roomMonths.length > 0,
+  });
+  const roomUnavailableDates = roomNightDates.filter((date) => {
+    const day = roomAvailabilityDays?.find((d) => d.date === date);
+    return !day || day.remaining <= 0;
+  });
+  const roomStayReady = roomNights > 0 && roomNights <= 30;
+  const roomStayAvailable = roomStayReady && !roomAvailabilityLoading && roomUnavailableDates.length === 0;
+
+  const addRoomToCartMutation = useMutation({
+    mutationFn: async (_vars: { proceed: boolean }) => {
+      return apiRequest("POST", "/api/cart", {
+        serviceId: id,
+        checkIn: roomCheckIn,
+        checkOut: roomCheckOut,
+      });
+    },
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
+      if (vars.proceed) {
+        navigate("/cart");
+      } else {
+        toast({
+          title: "Added to cart",
+          description: `${roomNights} night${roomNights === 1 ? "" : "s"} — ${format(new Date(`${roomCheckIn}T00:00:00`), "MMM d")} to ${format(new Date(`${roomCheckOut}T00:00:00`), "MMM d, yyyy")}`,
+        });
+      }
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Couldn't add this stay to your cart. The dates may no longer be available.",
+        variant: "destructive",
+      });
+    },
+  });
+
   if (serviceLoading) {
     return (
       <Layout>
@@ -407,6 +502,18 @@ export default function ServiceDetailPage() {
                 )}
               </div>
             </div>
+            {/* §17 Product Builder — PROPERTY rung: a room links back to its property, only
+                when the property is still approved+active (F2-gated server-side). */}
+            {isRoom && service.property && (
+              <Link
+                href={`/services/${service.property.id}`}
+                className="inline-flex items-center gap-1 text-sm text-primary hover:underline mt-1"
+                data-testid="link-room-property"
+              >
+                <BedDouble className="w-3.5 h-3.5" />
+                Part of {service.property.serviceName}
+              </Link>
+            )}
           </div>
         </div>
 
@@ -511,6 +618,40 @@ export default function ServiceDetailPage() {
                         {component.shortDescription && (
                           <p className="text-sm text-muted-foreground mt-0.5">{component.shortDescription}</p>
                         )}
+                      </Link>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* §17 Product Builder — PROPERTY rung: this property's room types, server-gated
+                to only still-approved+active rooms (same F2 posture as bundle components). */}
+            {service.productShape === "property" && Array.isArray(service.rooms) && service.rooms.length > 0 && (
+              <Card data-testid="card-property-rooms">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <BedDouble className="w-5 h-5 text-primary" /> Rooms
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="divide-y">
+                    {service.rooms.map((room) => (
+                      <Link
+                        key={room.id}
+                        href={`/services/${room.id}`}
+                        data-testid={`property-room-${room.id}`}
+                        className="flex items-center justify-between gap-3 py-3 hover-elevate rounded-md px-2 -mx-2"
+                      >
+                        <div className="min-w-0">
+                          <p className="font-medium truncate">{room.serviceName}</p>
+                          {room.shortDescription && (
+                            <p className="text-sm text-muted-foreground mt-0.5 truncate">{room.shortDescription}</p>
+                          )}
+                        </div>
+                        <p className="font-semibold shrink-0 whitespace-nowrap">
+                          From {fmtPrice(Number(room.price))} <span className="font-normal text-muted-foreground text-sm">/ night</span>
+                        </p>
                       </Link>
                     ))}
                   </div>
@@ -658,163 +799,279 @@ export default function ServiceDetailPage() {
 
                 <Separator className="my-4" />
 
-                {/* C2/C3: read-only availability calendar with slot selection. */}
-                <div className="mb-4" data-testid="card-availability">
-                  <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
-                    <div className="flex items-center gap-2 text-sm font-semibold">
-                      <CalendarCheck className="w-4 h-4 text-primary" />
-                      Availability
+                {isRoom ? (
+                  /* §17 Product Builder — PROPERTY rung: a room books a NIGHT RANGE, not a
+                     single slot. The pre-check below reads the room's real published night
+                     slots (same C2 endpoint the single-day calendar uses) — it's informational;
+                     checkout's atomic all-or-nothing claim (§15) is the real authority. */
+                  <div className="mb-4" data-testid="card-room-stay">
+                    <div className="flex items-center gap-2 text-sm font-semibold mb-2">
+                      <BedDouble className="w-4 h-4 text-primary" />
+                      Pick your dates
                     </div>
-                    <div className="flex items-center gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6"
-                        onClick={() =>
-                          setAvailabilityMonth((m) => format(subMonths(new Date(`${m}-01T00:00:00`), 1), "yyyy-MM"))
-                        }
-                        data-testid="button-availability-prev-month"
-                        aria-label="Previous month"
-                      >
-                        <ChevronLeft className="w-3.5 h-3.5" />
-                      </Button>
-                      <span className="text-xs font-medium w-24 text-center" data-testid="text-availability-month">
-                        {format(new Date(`${availabilityMonth}-01T00:00:00`), "MMMM yyyy")}
-                      </span>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6"
-                        onClick={() =>
-                          setAvailabilityMonth((m) => format(addMonths(new Date(`${m}-01T00:00:00`), 1), "yyyy-MM"))
-                        }
-                        data-testid="button-availability-next-month"
-                        aria-label="Next month"
-                      >
-                        <ChevronRight className="w-3.5 h-3.5" />
-                      </Button>
+                    <div className="grid grid-cols-2 gap-2 mb-2">
+                      <div>
+                        <label className="text-xs text-muted-foreground" htmlFor="input-room-checkin">
+                          Check-in
+                        </label>
+                        <input
+                          id="input-room-checkin"
+                          type="date"
+                          min={todayIsoForRoom}
+                          value={roomCheckIn}
+                          onChange={(e) => {
+                            setRoomCheckIn(e.target.value);
+                            if (roomCheckOut && roomCheckOut <= e.target.value) setRoomCheckOut("");
+                          }}
+                          className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                          data-testid="input-room-checkin"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs text-muted-foreground" htmlFor="input-room-checkout">
+                          Check-out
+                        </label>
+                        <input
+                          id="input-room-checkout"
+                          type="date"
+                          min={roomCheckIn || todayIsoForRoom}
+                          value={roomCheckOut}
+                          onChange={(e) => setRoomCheckOut(e.target.value)}
+                          disabled={!roomCheckIn}
+                          className="w-full rounded-md border bg-background px-3 py-2 text-sm disabled:opacity-50"
+                          data-testid="input-room-checkout"
+                        />
+                      </div>
                     </div>
+                    {roomNights > 0 && (
+                      <p className="text-sm" data-testid="text-room-nights">
+                        {roomNights} night{roomNights === 1 ? "" : "s"} · {fmtPrice(priceNum * roomNights)} total
+                      </p>
+                    )}
+                    {roomNights > 30 && (
+                      <p className="text-xs text-destructive mt-1" data-testid="text-room-too-long">
+                        Stays longer than 30 nights aren't supported yet.
+                      </p>
+                    )}
+                    {roomStayReady && roomAvailabilityLoading && (
+                      <Skeleton className="h-4 w-40 mt-1" />
+                    )}
+                    {roomStayReady && !roomAvailabilityLoading && roomUnavailableDates.length > 0 && (
+                      <p className="text-xs text-destructive mt-1" data-testid="text-room-unavailable">
+                        Not available for {roomUnavailableDates.length} of your selected night
+                        {roomUnavailableDates.length === 1 ? "" : "s"}. Try different dates.
+                      </p>
+                    )}
                   </div>
-
-                  {availabilityLoading ? (
-                    <Skeleton className="h-16 w-full" />
-                  ) : upcomingAvailability.length > 0 ? (
-                    <div className="space-y-1.5 max-h-56 overflow-y-auto">
-                      {upcomingAvailability.map((day) => {
-                        const fullyBooked = day.status === "fully_booked" || day.remaining <= 0;
-                        const isSelected = selectedSlot?.id === day.id;
-                        return (
-                          <button
-                            type="button"
-                            key={`${day.date}-${day.startTime}`}
-                            // C3: an open slot is selectable — the pick rides add-to-cart as slotId
-                            // and checkout claims it atomically ("this slot just booked" on a race).
-                            disabled={fullyBooked}
-                            onClick={() => setSelectedSlot(isSelected ? null : day)}
-                            className={`flex w-full items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-xs text-left transition-colors ${
-                              fullyBooked
-                                ? "opacity-60 cursor-not-allowed"
-                                : isSelected
-                                  ? "border-primary bg-primary/5"
-                                  : "hover:bg-muted/50"
-                            }`}
-                            data-testid={`availability-day-${day.date}`}
+                ) : (
+                  <>
+                    {/* C2/C3: read-only availability calendar with slot selection. */}
+                    <div className="mb-4" data-testid="card-availability">
+                      <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
+                        <div className="flex items-center gap-2 text-sm font-semibold">
+                          <CalendarCheck className="w-4 h-4 text-primary" />
+                          Availability
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            onClick={() =>
+                              setAvailabilityMonth((m) => format(subMonths(new Date(`${m}-01T00:00:00`), 1), "yyyy-MM"))
+                            }
+                            data-testid="button-availability-prev-month"
+                            aria-label="Previous month"
                           >
-                            <span className="font-medium">
-                              {format(new Date(`${day.date}T00:00:00`), "EEE, MMM d")}
-                              {day.startTime && (
-                                <span className="text-muted-foreground font-normal ml-1.5">
-                                  {day.startTime}
-                                  {day.endTime ? `–${day.endTime}` : ""}
-                                </span>
-                              )}
-                            </span>
-                            <span className="flex items-center gap-1.5">
-                              {isSelected && <Badge className="text-[10px] px-1.5 py-0" data-testid={`badge-slot-selected-${day.date}`}>Selected</Badge>}
-                              <Badge variant={fullyBooked ? "outline" : "secondary"} className="text-[10px] px-1.5 py-0">
-                                {fullyBooked ? "Fully booked" : `${day.remaining} spot${day.remaining === 1 ? "" : "s"} open`}
-                              </Badge>
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <p className="text-muted-foreground text-xs" data-testid="text-no-availability">
-                      No availability published yet for this month. Contact the provider to check dates.
-                    </p>
-                  )}
-                </div>
+                            <ChevronLeft className="w-3.5 h-3.5" />
+                          </Button>
+                          <span className="text-xs font-medium w-24 text-center" data-testid="text-availability-month">
+                            {format(new Date(`${availabilityMonth}-01T00:00:00`), "MMMM yyyy")}
+                          </span>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-6 w-6"
+                            onClick={() =>
+                              setAvailabilityMonth((m) => format(addMonths(new Date(`${m}-01T00:00:00`), 1), "yyyy-MM"))
+                            }
+                            data-testid="button-availability-next-month"
+                            aria-label="Next month"
+                          >
+                            <ChevronRight className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
+                      </div>
 
-                {/* Preferred date/time — optional fallback for services without a published
-                    slot the traveler wants. Carried into the cart + booking. */}
-                <div className="grid grid-cols-2 gap-2 mb-3">
-                  <div className="col-span-2 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                    <Calendar className="w-3.5 h-3.5" />
-                    Or request a date & time <span className="font-normal">(optional)</span>
-                  </div>
-                  <input
-                    type="date"
-                    min={todayStr}
-                    value={bookingDate}
-                    onChange={(e) => setBookingDate(e.target.value)}
-                    className="rounded-md border bg-background px-3 py-2 text-sm"
-                    data-testid="input-booking-date"
-                    aria-label="Preferred date"
-                  />
-                  <input
-                    type="time"
-                    value={bookingTime}
-                    onChange={(e) => setBookingTime(e.target.value)}
-                    disabled={!bookingDate}
-                    className="rounded-md border bg-background px-3 py-2 text-sm disabled:opacity-50"
-                    data-testid="input-booking-time"
-                    aria-label="Preferred time"
-                  />
-                </div>
+                      {availabilityLoading ? (
+                        <Skeleton className="h-16 w-full" />
+                      ) : upcomingAvailability.length > 0 ? (
+                        <div className="space-y-1.5 max-h-56 overflow-y-auto">
+                          {upcomingAvailability.map((day) => {
+                            const fullyBooked = day.status === "fully_booked" || day.remaining <= 0;
+                            const isSelected = selectedSlot?.id === day.id;
+                            return (
+                              <button
+                                type="button"
+                                key={`${day.date}-${day.startTime}`}
+                                // C3: an open slot is selectable — the pick rides add-to-cart as slotId
+                                // and checkout claims it atomically ("this slot just booked" on a race).
+                                disabled={fullyBooked}
+                                onClick={() => setSelectedSlot(isSelected ? null : day)}
+                                className={`flex w-full items-center justify-between gap-2 rounded-md border px-2.5 py-1.5 text-xs text-left transition-colors ${
+                                  fullyBooked
+                                    ? "opacity-60 cursor-not-allowed"
+                                    : isSelected
+                                      ? "border-primary bg-primary/5"
+                                      : "hover:bg-muted/50"
+                                }`}
+                                data-testid={`availability-day-${day.date}`}
+                              >
+                                <span className="font-medium">
+                                  {format(new Date(`${day.date}T00:00:00`), "EEE, MMM d")}
+                                  {day.startTime && (
+                                    <span className="text-muted-foreground font-normal ml-1.5">
+                                      {day.startTime}
+                                      {day.endTime ? `–${day.endTime}` : ""}
+                                    </span>
+                                  )}
+                                </span>
+                                <span className="flex items-center gap-1.5">
+                                  {isSelected && <Badge className="text-[10px] px-1.5 py-0" data-testid={`badge-slot-selected-${day.date}`}>Selected</Badge>}
+                                  <Badge variant={fullyBooked ? "outline" : "secondary"} className="text-[10px] px-1.5 py-0">
+                                    {fullyBooked ? "Fully booked" : `${day.remaining} spot${day.remaining === 1 ? "" : "s"} open`}
+                                  </Badge>
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <p className="text-muted-foreground text-xs" data-testid="text-no-availability">
+                          No availability published yet for this month. Contact the provider to check dates.
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Preferred date/time — optional fallback for services without a published
+                        slot the traveler wants. Carried into the cart + booking. */}
+                    <div className="grid grid-cols-2 gap-2 mb-3">
+                      <div className="col-span-2 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                        <Calendar className="w-3.5 h-3.5" />
+                        Or request a date & time <span className="font-normal">(optional)</span>
+                      </div>
+                      <input
+                        type="date"
+                        min={todayStr}
+                        value={bookingDate}
+                        onChange={(e) => setBookingDate(e.target.value)}
+                        className="rounded-md border bg-background px-3 py-2 text-sm"
+                        data-testid="input-booking-date"
+                        aria-label="Preferred date"
+                      />
+                      <input
+                        type="time"
+                        value={bookingTime}
+                        onChange={(e) => setBookingTime(e.target.value)}
+                        disabled={!bookingDate}
+                        className="rounded-md border bg-background px-3 py-2 text-sm disabled:opacity-50"
+                        data-testid="input-booking-time"
+                        aria-label="Preferred time"
+                      />
+                    </div>
+                  </>
+                )}
 
                 <div className="space-y-3">
-                  <Button
-                    className="w-full"
-                    onClick={() => {
-                      if (!user) {
-                        openSignInModal();
-                        return;
-                      }
-                      addToCartMutation.mutate({ proceed: true });
-                    }}
-                    disabled={addToCartMutation.isPending}
-                    data-testid="button-book-now"
-                  >
-                    {addToCartMutation.isPending ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Booking...
-                      </>
-                    ) : (
-                      <>
-                        <BookOpen className="w-4 h-4 mr-2" />
-                        Book on Traveloure
-                      </>
-                    )}
-                  </Button>
+                  {isRoom ? (
+                    <>
+                      <Button
+                        className="w-full"
+                        onClick={() => {
+                          if (!user) {
+                            openSignInModal();
+                            return;
+                          }
+                          addRoomToCartMutation.mutate({ proceed: true });
+                        }}
+                        disabled={!roomStayAvailable || addRoomToCartMutation.isPending}
+                        data-testid="button-book-now"
+                      >
+                        {addRoomToCartMutation.isPending ? (
+                          <>
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            Booking...
+                          </>
+                        ) : (
+                          <>
+                            <BookOpen className="w-4 h-4 mr-2" />
+                            Book on Traveloure
+                          </>
+                        )}
+                      </Button>
 
-                  <Button
-                    variant="outline"
-                    className="w-full"
-                    onClick={() => {
-                      if (!user) {
-                        openSignInModal();
-                        return;
-                      }
-                      addToCartMutation.mutate({ proceed: false });
-                    }}
-                    disabled={addToCartMutation.isPending}
-                    data-testid="button-add-to-cart"
-                  >
-                    <ShoppingCart className="w-4 h-4 mr-2" />
-                    Add to Cart
-                  </Button>
+                      <Button
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => {
+                          if (!user) {
+                            openSignInModal();
+                            return;
+                          }
+                          addRoomToCartMutation.mutate({ proceed: false });
+                        }}
+                        disabled={!roomStayAvailable || addRoomToCartMutation.isPending}
+                        data-testid="button-add-to-cart"
+                      >
+                        <ShoppingCart className="w-4 h-4 mr-2" />
+                        Add to Cart
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <Button
+                        className="w-full"
+                        onClick={() => {
+                          if (!user) {
+                            openSignInModal();
+                            return;
+                          }
+                          addToCartMutation.mutate({ proceed: true });
+                        }}
+                        disabled={addToCartMutation.isPending}
+                        data-testid="button-book-now"
+                      >
+                        {addToCartMutation.isPending ? (
+                          <>
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            Booking...
+                          </>
+                        ) : (
+                          <>
+                            <BookOpen className="w-4 h-4 mr-2" />
+                            Book on Traveloure
+                          </>
+                        )}
+                      </Button>
+
+                      <Button
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => {
+                          if (!user) {
+                            openSignInModal();
+                            return;
+                          }
+                          addToCartMutation.mutate({ proceed: false });
+                        }}
+                        disabled={addToCartMutation.isPending}
+                        data-testid="button-add-to-cart"
+                      >
+                        <ShoppingCart className="w-4 h-4 mr-2" />
+                        Add to Cart
+                      </Button>
+                    </>
+                  )}
 
                   <Button
                     variant="ghost"
