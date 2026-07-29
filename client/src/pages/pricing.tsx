@@ -224,8 +224,7 @@ export default function PricingPage() {
               <motion.div
                 key={tier.name}
                 initial={{ opacity: 0, scale: 0.95 }}
-                whileInView={{ opacity: 1, scale: 1 }}
-                viewport={{ once: true }}
+                animate={{ opacity: 1, scale: 1 }}
                 transition={{ delay: i * 0.05 }}
               >
                 <Card className="text-center relative hover-elevate">

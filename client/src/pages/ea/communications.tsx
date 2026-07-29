@@ -3,35 +3,83 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { 
-  Search, 
-  Send, 
+import {
+  Search,
+  Send,
   Bot,
   Mail,
   Phone,
   MessageSquare,
-  Clock,
-  User
 } from "lucide-react";
-
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { useDelegateToAi } from "./use-ea-ai-delegate";
 
 interface EaCommunication {
-  id: string; type: string; executiveName?: string; subject: string;
+  id: string; type: string; executiveId?: string | null; executiveName?: string; subject: string;
   recipient?: string; sentAt?: string; status: string; body?: string;
 }
 
+interface EaExecutive {
+  id: string;
+  name: string;
+}
+
+const TEMPLATES: Record<string, { subject: string; body: string }> = {
+  "Thank You Note": { subject: "Thank you", body: "Thank you so much for your time and hospitality — it meant a great deal.\n\nWarm regards," },
+  "Booking Confirmation": { subject: "Your booking is confirmed", body: "This confirms your booking is all set. Details below:\n\n" },
+  "Event Reminder": { subject: "Reminder: upcoming event", body: "A quick reminder about the upcoming event. Details below:\n\n" },
+  "Travel Itinerary": { subject: "Your travel itinerary", body: "Here is your finalized travel itinerary:\n\n" },
+  "Status Update": { subject: "Status update", body: "Quick status update on where things stand:\n\n" },
+};
+
 export default function EACommunications() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [search, setSearch] = useState("");
+  const [type, setType] = useState("email");
+  const [executiveId, setExecutiveId] = useState<string>("");
+  const [recipient, setRecipient] = useState("");
+  const [subject, setSubject] = useState("");
+  const [message, setMessage] = useState("");
+
   const { data: recentComms = [] } = useQuery<EaCommunication[]>({
     queryKey: ["/api/ea/communications"],
   });
+  const { data: executives = [] } = useQuery<EaExecutive[]>({
+    queryKey: ["/api/ea/executives"],
+  });
 
-  const drafts: Array<{
-    id: number; executive: string; type: string; content: string; aiGenerated: boolean;
-  }> = [];
+  const sendMutation = useMutation({
+    mutationFn: () => {
+      const exec = executives.find((e) => e.id === executiveId);
+      return apiRequest("POST", "/api/ea/communications", {
+        type,
+        executiveId: executiveId || undefined,
+        executiveName: exec?.name || undefined,
+        subject,
+        recipient: recipient || undefined,
+        body: message || undefined,
+        status: "sent",
+      }).then((r) => r.json());
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ea/communications"] });
+      toast({ title: "Logged", description: "Communication recorded." });
+      setRecipient("");
+      setSubject("");
+      setMessage("");
+    },
+    onError: (e: any) => toast({ title: "Could not send", description: e.message, variant: "destructive" }),
+  });
+
+  const delegate = useDelegateToAi();
 
   // Derive the "This Week" stats from the real communications list (were hardcoded
   // 24/38/12/15 — §13). Counts sent items of each type in the last 7 days.
@@ -41,7 +89,19 @@ export default function EACommunications() {
   const emailsSent = recentComms.filter((c) => c.type === "email" && inThisWeek(c)).length;
   const messagesCount = recentComms.filter((c) => c.type === "message" && inThisWeek(c)).length;
   const callsLogged = recentComms.filter((c) => c.type === "call" && inThisWeek(c)).length;
-  const aiDrafted = drafts.length;
+
+  const filteredComms = recentComms.filter((c) => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return c.subject.toLowerCase().includes(q) || (c.recipient ?? "").toLowerCase().includes(q) || (c.executiveName ?? "").toLowerCase().includes(q);
+  });
+
+  function applyTemplate(name: string) {
+    const t = TEMPLATES[name];
+    if (!t) return;
+    setSubject(t.subject);
+    setMessage(t.body);
+  }
 
   return (
     <EALayout title="Communications">
@@ -51,17 +111,32 @@ export default function EACommunications() {
             <h1 className="text-2xl font-bold text-gray-900" data-testid="text-comms-title">
               Communications Center
             </h1>
-            <p className="text-gray-600">Manage all executive communications</p>
+            <p className="text-gray-600">Log and track all executive communications</p>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" data-testid="button-new-email">
-              <Mail className="w-4 h-4 mr-2" /> New Email
+            <Button
+              variant={type === "email" ? "default" : "outline"}
+              className={type === "email" ? "bg-primary hover:bg-primary/90" : ""}
+              onClick={() => setType("email")}
+              data-testid="button-new-email"
+            >
+              <Mail className="w-4 h-4 mr-2" /> Email
             </Button>
-            <Button variant="outline" data-testid="button-new-message">
-              <MessageSquare className="w-4 h-4 mr-2" /> New Message
+            <Button
+              variant={type === "message" ? "default" : "outline"}
+              className={type === "message" ? "bg-primary hover:bg-primary/90" : ""}
+              onClick={() => setType("message")}
+              data-testid="button-new-message"
+            >
+              <MessageSquare className="w-4 h-4 mr-2" /> Message
             </Button>
-            <Button className="bg-primary hover:bg-primary/90" data-testid="button-ai-draft">
-              <Bot className="w-4 h-4 mr-2" /> AI Draft
+            <Button
+              variant={type === "call" ? "default" : "outline"}
+              className={type === "call" ? "bg-primary hover:bg-primary/90" : ""}
+              onClick={() => setType("call")}
+              data-testid="button-new-call"
+            >
+              <Phone className="w-4 h-4 mr-2" /> Call
             </Button>
           </div>
         </div>
@@ -75,9 +150,11 @@ export default function EACommunications() {
                   <CardTitle className="text-lg">Recent Communications</CardTitle>
                   <div className="relative w-64">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                    <Input 
-                      placeholder="Search..." 
+                    <Input
+                      placeholder="Search..."
                       className="pl-9"
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
                       data-testid="input-search-comms"
                     />
                   </div>
@@ -92,9 +169,12 @@ export default function EACommunications() {
                         <p className="text-[#7A7A72] text-sm">No communications yet</p>
                       </div>
                     )}
-                    {recentComms.map((comm) => (
-                      <div 
-                        key={comm.id} 
+                    {recentComms.length > 0 && filteredComms.length === 0 && (
+                      <p className="text-center text-sm text-[#7A7A72] py-8">No communications match your search</p>
+                    )}
+                    {filteredComms.map((comm) => (
+                      <div
+                        key={comm.id}
                         className="p-3 rounded-lg border border-gray-200 hover:bg-gray-50"
                         data-testid={`comm-${comm.id}`}
                       >
@@ -127,24 +207,49 @@ export default function EACommunications() {
             {/* Compose */}
             <Card className="border border-gray-200">
               <CardHeader>
-                <CardTitle className="text-lg">Quick Compose</CardTitle>
+                <CardTitle className="text-lg">Quick Compose — {type[0].toUpperCase() + type.slice(1)}</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
-                  <Input placeholder="Recipient" data-testid="input-recipient" />
-                  <Input placeholder="Subject" data-testid="input-subject" />
+                  <Select value={executiveId || undefined} onValueChange={setExecutiveId}>
+                    <SelectTrigger data-testid="select-comm-executive">
+                      <SelectValue placeholder="Executive (optional)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {executives.map((exec) => (
+                        <SelectItem key={exec.id} value={exec.id}>{exec.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Input placeholder="Recipient" value={recipient} onChange={(e) => setRecipient(e.target.value)} data-testid="input-recipient" />
                 </div>
-                <Textarea 
-                  placeholder="Type your message..." 
+                <Input placeholder="Subject" value={subject} onChange={(e) => setSubject(e.target.value)} data-testid="input-subject" />
+                <Textarea
+                  placeholder="Type your message..."
                   className="min-h-32"
+                  value={message}
+                  onChange={(e) => setMessage(e.target.value)}
                   data-testid="input-message"
                 />
                 <div className="flex justify-between">
-                  <Button variant="outline" data-testid="button-ai-assist">
+                  <Button
+                    variant="outline"
+                    disabled={delegate.isPending || !subject}
+                    onClick={() => delegate.mutate({
+                      type: "communication_draft",
+                      task: `Draft a ${type}${subject ? ` about "${subject}"` : ""}${recipient ? ` to ${recipient}` : ""}`,
+                    })}
+                    data-testid="button-ai-assist"
+                  >
                     <Bot className="w-4 h-4 mr-2" /> AI Assist
                   </Button>
-                  <Button className="bg-primary hover:bg-primary/90" data-testid="button-send">
-                    <Send className="w-4 h-4 mr-2" /> Send
+                  <Button
+                    className="bg-primary hover:bg-primary/90"
+                    disabled={sendMutation.isPending || !subject}
+                    onClick={() => sendMutation.mutate()}
+                    data-testid="button-send"
+                  >
+                    <Send className="w-4 h-4 mr-2" /> {sendMutation.isPending ? "Sending…" : "Send"}
                   </Button>
                 </div>
               </CardContent>
@@ -153,66 +258,23 @@ export default function EACommunications() {
 
           {/* Right Column */}
           <div className="space-y-4">
-            {/* AI Drafts */}
-            <Card className="border border-gray-200">
-              <CardHeader>
-                <div className="flex items-center gap-2">
-                  <Bot className="w-5 h-5 text-green-600" />
-                  <CardTitle className="text-lg">AI Drafts Pending</CardTitle>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                {drafts.length === 0 && (
-                  <div className="text-center py-6">
-                    <p className="text-[#7A7A72] text-sm">No AI drafts pending</p>
-                  </div>
-                )}
-                {drafts.map((draft) => (
-                  <div 
-                    key={draft.id} 
-                    className="p-3 rounded-lg border border-gray-200"
-                    data-testid={`draft-${draft.id}`}
-                  >
-                    <div className="flex items-center gap-2 mb-2">
-                      <Badge className="bg-green-100 text-green-700 text-xs">AI Generated</Badge>
-                      <span className="text-sm font-medium text-gray-900">{draft.type}</span>
-                    </div>
-                    <p className="text-sm text-gray-600 mb-2">For: {draft.executive}</p>
-                    <p className="text-sm text-gray-500 truncate">{draft.content}</p>
-                    <div className="flex gap-2 mt-3">
-                      <Button size="sm" variant="outline" data-testid={`button-review-${draft.id}`}>
-                        Review
-                      </Button>
-                      <Button size="sm" variant="outline" data-testid={`button-approve-${draft.id}`}>
-                        Approve & Send
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-
             {/* Templates */}
             <Card className="border border-gray-200">
               <CardHeader>
                 <CardTitle className="text-lg">Quick Templates</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
-                <Button variant="outline" className="w-full justify-start text-sm" data-testid="template-thank-you">
-                  Thank You Note
-                </Button>
-                <Button variant="outline" className="w-full justify-start text-sm" data-testid="template-confirmation">
-                  Booking Confirmation
-                </Button>
-                <Button variant="outline" className="w-full justify-start text-sm" data-testid="template-reminder">
-                  Event Reminder
-                </Button>
-                <Button variant="outline" className="w-full justify-start text-sm" data-testid="template-itinerary">
-                  Travel Itinerary
-                </Button>
-                <Button variant="outline" className="w-full justify-start text-sm" data-testid="template-update">
-                  Status Update
-                </Button>
+                {Object.keys(TEMPLATES).map((name) => (
+                  <Button
+                    key={name}
+                    variant="outline"
+                    className="w-full justify-start text-sm"
+                    onClick={() => applyTemplate(name)}
+                    data-testid={`template-${name.toLowerCase().replace(/\s+/g, "-")}`}
+                  >
+                    {name}
+                  </Button>
+                ))}
               </CardContent>
             </Card>
 
@@ -233,10 +295,6 @@ export default function EACommunications() {
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-gray-600">Calls Logged</span>
                   <span className="font-medium">{callsLogged}</span>
-                </div>
-                <div className="flex items-center justify-between text-sm">
-                  <span className="text-gray-600">AI Drafted</span>
-                  <span className="font-medium text-green-600">{aiDrafted}</span>
                 </div>
               </CardContent>
             </Card>

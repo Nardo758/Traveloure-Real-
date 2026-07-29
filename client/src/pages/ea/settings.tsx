@@ -8,8 +8,8 @@ import { Label } from "@/components/ui/label";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { 
-  Bot, 
+import {
+  Bot,
   Palette,
   Calendar,
   Mail,
@@ -22,6 +22,43 @@ import {
   CheckCircle,
   Loader2,
 } from "lucide-react";
+import { useEffect, useState } from "react";
+
+interface EaPreferences {
+  ai?: {
+    autoDelegateRoutineTasks?: boolean;
+    aiDraftCommunications?: boolean;
+    smartCalendarSuggestions?: boolean;
+    proactiveTravelRecommendations?: boolean;
+    giftReminders?: boolean;
+  };
+  display?: {
+    showExecutivePhotos?: boolean;
+    compactViewMode?: boolean;
+    showCalendarWeekNumbers?: boolean;
+    twentyFourHourTime?: boolean;
+  };
+  calendar?: {
+    weekStartsOn?: "sunday" | "monday";
+    workingHoursStart?: number;
+    workingHoursEnd?: number;
+  };
+}
+
+const DEFAULT_AI = {
+  autoDelegateRoutineTasks: true,
+  aiDraftCommunications: true,
+  smartCalendarSuggestions: true,
+  proactiveTravelRecommendations: false,
+  giftReminders: true,
+};
+
+const DEFAULT_DISPLAY = {
+  showExecutivePhotos: true,
+  compactViewMode: false,
+  showCalendarWeekNumbers: false,
+  twentyFourHourTime: false,
+};
 
 function VerificationPayoutsSection() {
   const { toast } = useToast();
@@ -191,21 +228,58 @@ function VerificationPayoutsSection() {
   );
 }
 
-export default function EASettings() {
-  const aiSettings = [
-    { id: 1, label: "Auto-delegate routine tasks", enabled: true },
-    { id: 2, label: "AI draft communications", enabled: true },
-    { id: 3, label: "Smart calendar suggestions", enabled: true },
-    { id: 4, label: "Proactive travel recommendations", enabled: false },
-    { id: 5, label: "Gift reminders", enabled: true },
-  ];
+const AI_ROWS: { key: keyof typeof DEFAULT_AI; label: string }[] = [
+  { key: "autoDelegateRoutineTasks", label: "Auto-delegate routine tasks" },
+  { key: "aiDraftCommunications", label: "AI draft communications" },
+  { key: "smartCalendarSuggestions", label: "Smart calendar suggestions" },
+  { key: "proactiveTravelRecommendations", label: "Proactive travel recommendations" },
+  { key: "giftReminders", label: "Gift reminders" },
+];
 
-  const generalSettings = [
-    { id: 1, label: "Show executive photos", enabled: true },
-    { id: 2, label: "Compact view mode", enabled: false },
-    { id: 3, label: "Show calendar week numbers", enabled: false },
-    { id: 4, label: "24-hour time format", enabled: false },
-  ];
+const DISPLAY_ROWS: { key: keyof typeof DEFAULT_DISPLAY; label: string }[] = [
+  { key: "showExecutivePhotos", label: "Show executive photos" },
+  { key: "compactViewMode", label: "Compact view mode" },
+  { key: "showCalendarWeekNumbers", label: "Show calendar week numbers" },
+  { key: "twentyFourHourTime", label: "24-hour time format (Calendar)" },
+];
+
+export default function EASettings() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const { data: prefs } = useQuery<EaPreferences>({ queryKey: ["/api/ea/preferences"] });
+
+  const [ai, setAi] = useState(DEFAULT_AI);
+  const [display, setDisplay] = useState(DEFAULT_DISPLAY);
+  const [weekStartsOn, setWeekStartsOn] = useState<"sunday" | "monday">("monday");
+  const [workingHoursStart, setWorkingHoursStart] = useState("9");
+  const [workingHoursEnd, setWorkingHoursEnd] = useState("17");
+
+  useEffect(() => {
+    if (!prefs) return;
+    setAi({ ...DEFAULT_AI, ...(prefs.ai ?? {}) });
+    setDisplay({ ...DEFAULT_DISPLAY, ...(prefs.display ?? {}) });
+    setWeekStartsOn(prefs.calendar?.weekStartsOn ?? "monday");
+    if (prefs.calendar?.workingHoursStart != null) setWorkingHoursStart(String(prefs.calendar.workingHoursStart));
+    if (prefs.calendar?.workingHoursEnd != null) setWorkingHoursEnd(String(prefs.calendar.workingHoursEnd));
+  }, [prefs]);
+
+  const saveMutation = useMutation({
+    mutationFn: () =>
+      apiRequest("PATCH", "/api/ea/preferences", {
+        ai,
+        display,
+        calendar: {
+          weekStartsOn,
+          workingHoursStart: Number(workingHoursStart),
+          workingHoursEnd: Number(workingHoursEnd),
+        },
+      }).then((r) => r.json()),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ea/preferences"] });
+      toast({ title: "Settings saved" });
+    },
+    onError: (e: any) => toast({ title: "Could not save settings", description: e.message, variant: "destructive" }),
+  });
 
   return (
     <EALayout title="Settings">
@@ -236,22 +310,22 @@ export default function EASettings() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {aiSettings.map((setting) => (
-                <div 
-                  key={setting.id} 
+              {AI_ROWS.map((row) => (
+                <div
+                  key={row.key}
                   className="flex items-center justify-between"
-                  data-testid={`ai-setting-${setting.id}`}
+                  data-testid={`ai-setting-${row.key}`}
                 >
-                  <span className="text-gray-700">{setting.label}</span>
-                  <Switch 
-                    defaultChecked={setting.enabled} 
-                    data-testid={`switch-ai-${setting.id}`}
+                  <span className="text-gray-700">{row.label}</span>
+                  <Switch
+                    checked={!!ai[row.key]}
+                    onCheckedChange={(v) => setAi((prev) => ({ ...prev, [row.key]: v }))}
+                    data-testid={`switch-ai-${row.key}`}
                   />
                 </div>
               ))}
-              <Button variant="outline" className="w-full mt-4" data-testid="button-ai-training">
-                AI Training Preferences
-              </Button>
+              {/* "AI Training Preferences" removed — no training/fine-tuning
+                  surface exists to configure (§13). */}
             </CardContent>
           </Card>
 
@@ -264,32 +338,24 @@ export default function EASettings() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {generalSettings.map((setting) => (
-                <div 
-                  key={setting.id} 
+              {DISPLAY_ROWS.map((row) => (
+                <div
+                  key={row.key}
                   className="flex items-center justify-between"
-                  data-testid={`display-setting-${setting.id}`}
+                  data-testid={`display-setting-${row.key}`}
                 >
-                  <span className="text-gray-700">{setting.label}</span>
-                  <Switch 
-                    defaultChecked={setting.enabled} 
-                    data-testid={`switch-display-${setting.id}`}
+                  <span className="text-gray-700">{row.label}</span>
+                  <Switch
+                    checked={!!display[row.key]}
+                    onCheckedChange={(v) => setDisplay((prev) => ({ ...prev, [row.key]: v }))}
+                    data-testid={`switch-display-${row.key}`}
                   />
                 </div>
               ))}
-              <div className="pt-4 border-t border-gray-100">
-                <Label className="mb-2 block">Theme</Label>
-                <Select defaultValue="light" data-testid="select-theme">
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select theme" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="light">Light</SelectItem>
-                    <SelectItem value="dark">Dark</SelectItem>
-                    <SelectItem value="system">System</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+              {/* Theme (Light/Dark/System) removed — the console has no dark-mode
+                  rendering to switch to yet; a selector that visibly does nothing
+                  is exactly the "UI lies about state" class this pass exists to
+                  close (§13). Filed: build app-wide theming before re-adding. */}
             </CardContent>
           </Card>
 
@@ -302,23 +368,14 @@ export default function EASettings() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div>
-                <Label className="mb-2 block">Default Calendar View</Label>
-                <Select defaultValue="week" data-testid="select-calendar-view">
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select view" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="day">Day</SelectItem>
-                    <SelectItem value="week">Week</SelectItem>
-                    <SelectItem value="month">Month</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+              {/* "Default Calendar View" removed — only a week view is built on
+                  the Calendar page (no day/month view exists to switch to); a
+                  picker offering unbuilt views would be the same lying-UI class
+                  Theme was (§13). */}
               <div>
                 <Label className="mb-2 block">Week Starts On</Label>
-                <Select defaultValue="monday" data-testid="select-week-start">
-                  <SelectTrigger>
+                <Select value={weekStartsOn} onValueChange={(v) => setWeekStartsOn(v as "sunday" | "monday")}>
+                  <SelectTrigger data-testid="select-week-start">
                     <SelectValue placeholder="Select day" />
                   </SelectTrigger>
                   <SelectContent>
@@ -326,12 +383,13 @@ export default function EASettings() {
                     <SelectItem value="monday">Monday</SelectItem>
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-gray-400 mt-1">Drives the week grid on the Calendar page.</p>
               </div>
               <div>
                 <Label className="mb-2 block">Working Hours</Label>
-                <div className="flex gap-2">
-                  <Select defaultValue="9" data-testid="select-start-hour">
-                    <SelectTrigger className="w-24">
+                <div className="flex gap-2 items-center">
+                  <Select value={workingHoursStart} onValueChange={setWorkingHoursStart}>
+                    <SelectTrigger className="w-24" data-testid="select-start-hour">
                       <SelectValue placeholder="Start" />
                     </SelectTrigger>
                     <SelectContent>
@@ -341,13 +399,13 @@ export default function EASettings() {
                     </SelectContent>
                   </Select>
                   <span className="flex items-center text-gray-500">to</span>
-                  <Select defaultValue="17" data-testid="select-end-hour">
-                    <SelectTrigger className="w-24">
+                  <Select value={workingHoursEnd} onValueChange={setWorkingHoursEnd}>
+                    <SelectTrigger className="w-24" data-testid="select-end-hour">
                       <SelectValue placeholder="End" />
                     </SelectTrigger>
                     <SelectContent>
                       {[...Array(12)].map((_, i) => (
-                        <SelectItem key={i} value={String(i + 12)}>{i + 12}:00 PM</SelectItem>
+                        <SelectItem key={i} value={String(i + 12)}>{((i + 12 - 1) % 12) + 1}:00 PM</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -356,7 +414,9 @@ export default function EASettings() {
             </CardContent>
           </Card>
 
-          {/* Email Integration */}
+          {/* Email Integration — no OAuth/API integration exists for any of these
+              three providers (§13: honestly gated rather than a dead "Connect"
+              button that does nothing on click). */}
           <Card className="border border-gray-200">
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
@@ -370,35 +430,34 @@ export default function EASettings() {
                   <p className="font-medium text-gray-900">Outlook Integration</p>
                   <p className="text-sm text-gray-500">Sync calendars and contacts</p>
                 </div>
-                <Button variant="outline" size="sm" data-testid="button-connect-outlook">
-                  Connect
-                </Button>
+                <Badge variant="outline" className="text-gray-500" data-testid="button-connect-outlook">Coming soon</Badge>
               </div>
               <div className="flex items-center justify-between">
                 <div>
                   <p className="font-medium text-gray-900">Gmail Integration</p>
                   <p className="text-sm text-gray-500">Sync emails and calendar</p>
                 </div>
-                <Button variant="outline" size="sm" data-testid="button-connect-gmail">
-                  Connect
-                </Button>
+                <Badge variant="outline" className="text-gray-500" data-testid="button-connect-gmail">Coming soon</Badge>
               </div>
               <div className="flex items-center justify-between">
                 <div>
                   <p className="font-medium text-gray-900">Slack Integration</p>
                   <p className="text-sm text-gray-500">Receive notifications</p>
                 </div>
-                <Button variant="outline" size="sm" data-testid="button-connect-slack">
-                  Connect
-                </Button>
+                <Badge variant="outline" className="text-gray-500" data-testid="button-connect-slack">Coming soon</Badge>
               </div>
             </CardContent>
           </Card>
         </div>
 
         <div className="flex justify-end">
-          <Button className="bg-primary hover:bg-primary/90" data-testid="button-save-settings">
-            Save All Settings
+          <Button
+            className="bg-primary hover:bg-primary/90"
+            disabled={saveMutation.isPending}
+            onClick={() => saveMutation.mutate()}
+            data-testid="button-save-settings"
+          >
+            {saveMutation.isPending ? "Saving…" : "Save All Settings"}
           </Button>
         </div>
       </div>

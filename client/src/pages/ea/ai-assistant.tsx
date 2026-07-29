@@ -12,8 +12,10 @@ import {
   Star
 } from "lucide-react";
 
+import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 interface EaAiTask {
   id: string; type: string; executiveName?: string; task: string;
@@ -23,8 +25,22 @@ interface EaAiTask {
 }
 
 export default function EAAIAssistant() {
+  const { toast } = useToast();
+  const [delegateText, setDelegateText] = useState("");
+
   const { data: allTasks = [] } = useQuery<EaAiTask[]>({
     queryKey: ["/api/ea/ai-tasks"],
+  });
+
+  const delegateMutation = useMutation({
+    mutationFn: (task: string) =>
+      apiRequest("POST", "/api/ea/ai-tasks", { type: "general", task }).then((r) => r.json()),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/ea/ai-tasks"] });
+      toast({ title: "Task delegated", description: "Added to Pending Your Review below." });
+      setDelegateText("");
+    },
+    onError: (e: any) => toast({ title: "Could not delegate task", description: e.message, variant: "destructive" }),
   });
 
   const pendingTasks = allTasks.filter(t => t.status === "pending");
@@ -69,17 +85,25 @@ export default function EAAIAssistant() {
           </CardHeader>
           <CardContent>
             <div className="flex gap-3">
-              <Input 
-                placeholder="Describe the task... (e.g., 'Research venues for Sarah's Tokyo dinner meeting')" 
+              <Input
+                placeholder="Describe the task... (e.g., 'Research venues for Sarah's Tokyo dinner meeting')"
                 className="flex-1"
+                value={delegateText}
+                onChange={(e) => setDelegateText(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter" && delegateText.trim()) delegateMutation.mutate(delegateText.trim()); }}
                 data-testid="input-delegate-task"
               />
-              <Button className="bg-primary hover:bg-primary/90" data-testid="button-delegate">
-                <Send className="w-4 h-4 mr-2" /> Delegate
+              <Button
+                className="bg-primary hover:bg-primary/90"
+                disabled={delegateMutation.isPending || !delegateText.trim()}
+                onClick={() => delegateMutation.mutate(delegateText.trim())}
+                data-testid="button-delegate"
+              >
+                <Send className="w-4 h-4 mr-2" /> {delegateMutation.isPending ? "Sending…" : "Delegate"}
               </Button>
             </div>
             <div className="mt-4">
-              <p className="text-sm font-medium text-gray-700 mb-2">Quick Templates:</p>
+              <p className="text-sm font-medium text-gray-700 mb-2">Quick Templates (click to fill in):</p>
               <div className="flex flex-wrap gap-2">
                 {[
                   "Research hotels in [city] for [executive]",
@@ -88,11 +112,12 @@ export default function EAAIAssistant() {
                   "Coordinate travel for [executive]'s [trip]",
                   "Research restaurants in [city]",
                 ].map((template, index) => (
-                  <Button 
-                    key={index} 
-                    variant="outline" 
+                  <Button
+                    key={index}
+                    variant="outline"
                     size="sm"
                     className="text-xs"
+                    onClick={() => setDelegateText(template)}
                     data-testid={`button-template-${index}`}
                   >
                     {template}
