@@ -53,7 +53,8 @@ semantics, anything CLAUDE.md marks "ratify first."
 | L9 | **Variant-metrics latent bug** (assembler reads `metricValue`, column is `value` → live `metrics` always `{}`) | Sonnet | Fable confirms intended display first | Found by L3a; preserved verbatim — fixing changes live displayed totals |
 | L10 | **Plancard owner-access gap** (`getTripRole` needs a `trip_collaborators` row; a trip's own `trips.userId` doesn't qualify — pre-collaborator-era trips may 403 without the author fallback) | Opus | Fable brief (auth-model call) | Found by L3a; known pre-launch bypass note already in code |
 
-| L11 | **`TransportSection.tsx:323` raw `window.open(opt.externalUrl)`** — pre-existing §16 stray on the transport booking-option button | Sonnet | none | Route through the agent rail like the TP cards; found during L1+L2 review |
+| L11 | **§16 transport-outbound strays**: `TransportSection.tsx:323` raw `window.open(opt.externalUrl)` + the share response's `linkedProductUrl` key (raw outbound "Book transport" link) | Sonnet | none | Route both through the agent rail, then delete the share key + its read together (L3b′ left it to honor 0-removed-keys) |
+| L12 | **KML/GPX exports onto the variant producer** — deferred by L3b′: raw-DB leg order vs deterministic sort, `lat: 0` fallback vs honest null, `maps_export_cache` keyed to the old shape | Sonnet | Fable decides ordering + fallback | Not provably output-identical today; needs the explicit call, not a forced migration |
 
 *L3a LANDED (commit 4b3686b4, Jul 30): DTO + assembler + full/teaser/preview proven; response backward-compatible
 (0 removed / 0 changed keys); gate byte-identical. L3b is unblocked.*
@@ -62,6 +63,11 @@ checks incl. all four mode-aware CTA states + desktop regression; sticky-context
 (DashboardLayout overflow frame no-ops position:sticky — day list got its own scroll container, `sm:contents`
 keeps desktop DOM unchanged). L4 (transport legs for expert trips + the leg pickup/booking field mapping) is now
 the unlock for the pickup/book-ride CTA states firing on real trips.*
+*L3b′ LANDED (commit ed19b0eb, Jul 30): variant producer built (snapshot-only reads, sourceRef, nullable tripId);
+share endpoint + OG migrated with an EMPTY before/after response diff (0 removed / 0 changed) and byte-identical
+token/expiry/redaction behavior; 69 lines of bespoke assembly deleted; /navigate stays (single-row lookup —
+migration would regress); KML/GPX deferred → L12. Circulation state: plancard, share view, and OG all flow
+through the ONE assembler with level-appropriate redaction.*
 *L3b GROUND-TRUTH OUTCOME (Jul 30, zero code changed — correct escalation): the itinerary-share/OG family serves
 `shared_itineraries → itinerary_variants` (variant snapshots, `tripId` nullable via comparison), NOT trips —
 cross-data-home; storefront OG is offerings-only (skip); ready-made teasers read the frozen listing snapshot by
