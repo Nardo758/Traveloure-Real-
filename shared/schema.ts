@@ -1,4 +1,4 @@
-import { pgTable, text, varchar, timestamp, boolean, integer, jsonb, decimal, date, pgEnum, unique, uniqueIndex, index, doublePrecision, uuid, serial, time, primaryKey } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, boolean, integer, jsonb, decimal, date, pgEnum, unique, uniqueIndex, index, doublePrecision, uuid, serial, time, primaryKey, type AnyPgColumn } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations, sql } from "drizzle-orm";
@@ -585,10 +585,19 @@ export const providerServices = pgTable("provider_services", {
   // Neighborhood tag (v2 spec §5.1) — soft reference into city_neighborhoods.slug.
   neighborhood: varchar("neighborhood", { length: 100 }),
 
-  // Product Builder shape (§17, migration 151) — NULL = single service (every pre-151 row),
-  // 'bundle' = a bundle row whose components live in bundle_components. Additive nullable,
-  // app-layer values, no DB CHECK (the migration-129 posture).
+  // Product Builder shape (§17, migrations 151+153) — NULL = single service (every pre-151
+  // row), 'bundle' = a bundle row whose components live in bundle_components, 'property' = an
+  // accommodation listing, 'property_room' = a bookable room-type child of a property.
+  // Additive nullable, app-layer values, no DB CHECK (the migration-129 posture).
   productShape: varchar("product_shape", { length: 20 }),
+
+  // Property rung (§17, migration 153). pricingUnit: NULL = flat price (every existing row),
+  // 'per_night' = price is a nightly rate — charge = nights × rate, server-derived (§14).
+  // parentServiceId: room-child → parent property self-FK, ON DELETE RESTRICT (a property
+  // can't be deleted while rooms exist — the bundle-components posture). Both additive
+  // nullable, no DB CHECK.
+  pricingUnit: varchar("pricing_unit", { length: 20 }),
+  parentServiceId: varchar("parent_service_id").references((): AnyPgColumn => providerServices.id, { onDelete: "restrict" }),
 
   // Content location normalization (Lane A Phase 1, migration 129) — additive nullable coordinate
   // columns. Backfilled from city_neighborhoods centroids where the neighborhood slug resolves;
