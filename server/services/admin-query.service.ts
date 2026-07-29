@@ -1125,6 +1125,67 @@ export async function updateNeighborhoodAdjacencyTx(
   });
 }
 
+// L4 fix (docs/audits/ux-walkthrough-5-roles-jul29.md): the admin Neighborhood Backfill
+// page (client/src/pages/admin/neighborhood-backfill.tsx) called GET
+// /api/admin/neighborhoods/untagged + POST /api/admin/neighborhoods/backfill — neither
+// route existed server-side. /untagged fell through to the GET /:id route (id="untagged")
+// and 404'd on "Neighborhood not found"; the client silently rendered the 404 as the
+// honest-looking empty state "All services have neighborhoods assigned". These two
+// functions back the now-real routes.
+//
+// Untagged services have no lat/lng of their own (migration 129 only backfills
+// latitude/longitude/city FROM a resolved neighborhood's centroid — circular for a row
+// that has no neighborhood yet), so true Haversine nearest-centroid matching isn't
+// possible here. Matching is by city name instead: the free-text `location` column
+// (e.g. "Kyoto", "Rome, Italy") against `city_neighborhoods.city`. Ambiguity (a city
+// with several neighborhoods) is broken by preferring the featured neighborhood, else
+// alphabetical by name — deterministic, never fabricated (§13): no match, no write.
+export async function getUntaggedProviderServices() {
+  const result = await db.execute(sql`
+    SELECT
+      ps.id, ps.service_name, ps.location, ps.city,
+      u.first_name AS provider_first_name, u.last_name AS provider_last_name, u.email AS provider_email
+    FROM provider_services ps
+    LEFT JOIN users u ON u.id = ps.user_id
+    WHERE ps.neighborhood IS NULL OR ps.neighborhood = ''
+    ORDER BY ps.service_name
+  `);
+  return result.rows ?? [];
+}
+
+async function matchNeighborhoodSlugForLocation(location: string | null): Promise<string | null> {
+  if (!location || location.trim() === "" || location.trim().toLowerCase() === "unknown") return null;
+  const result = await db.execute(sql`
+    SELECT slug FROM city_neighborhoods
+    WHERE ${location} ILIKE '%' || city || '%'
+    ORDER BY is_featured DESC, name ASC
+    LIMIT 1
+  `);
+  return (result.rows?.[0] as any)?.slug ?? null;
+}
+
+export async function backfillProviderServiceNeighborhoods(serviceId?: string) {
+  const targets = await db.execute(sql`
+    SELECT id, location FROM provider_services
+    WHERE (neighborhood IS NULL OR neighborhood = '')
+    ${serviceId ? sql`AND id = ${serviceId}` : sql``}
+  `);
+  const rows = (targets.rows ?? []) as { id: string; location: string | null }[];
+
+  let updated = 0;
+  let unmatched = 0;
+  for (const row of rows) {
+    const slug = await matchNeighborhoodSlugForLocation(row.location);
+    if (!slug) {
+      unmatched++;
+      continue;
+    }
+    await db.update(providerServices).set({ neighborhood: slug }).where(eq(providerServices.id, row.id));
+    updated++;
+  }
+  return { updated, unmatched, total: rows.length };
+}
+
 // ─── Trip Analytics ───────────────────────────────────────────────────────────
 
 export async function getItineraryForTrip(tripId: string) {

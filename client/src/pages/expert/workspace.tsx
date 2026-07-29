@@ -416,7 +416,35 @@ interface MyAssignment { id: string; tripId: string; localExpertId: string; stat
 
 interface AnchorImpact { type: string; message: string; severity: 'warning' | 'critical'; }
 interface AnchorConflict { anchorId: string; anchorType: string; description: string; impacts: AnchorImpact[]; }
-interface EnergyRecord { dayNumber: number; startingEnergy: number; activityDepletion: number; endingEnergy: number; recoveryNeeded: boolean; recoveryReason?: string | null; }
+interface EnergyRecord { id?: string; dayNumber: number; startingEnergy: number; activityDepletion: number; endingEnergy: number; recoveryNeeded: boolean; recoveryReason?: string | null; createdAt?: string | null; }
+
+// calculate-energy INSERTS a fresh energy_tracking row per day on every recalculation
+// (triggered on every itinerary edit) rather than upserting — so a trip edited N times
+// accumulates N rows per day, all returned by the API. Collapse to the latest row per
+// dayNumber before rendering so "Day 1" renders once (was the AI Gaps tab's duplicate-key
+// warning / repeated "Day 1 — 80%" rows). Root fix belongs server-side in
+// storage.saveEnergyTracking (upsert on tripId+dayNumber); this is the display-side guard.
+function latestEnergyPerDay(records: EnergyRecord[]): EnergyRecord[] {
+  // `Map` here must be the JS built-in — the module scope also imports a React `Map`
+  // component from @vis.gl/react-google-maps (line 17), which shadows the global.
+  const byDay = new globalThis.Map<number, EnergyRecord>();
+  for (const record of records) {
+    const existing = byDay.get(record.dayNumber);
+    if (!existing) {
+      byDay.set(record.dayNumber, record);
+      continue;
+    }
+    const existingTime = existing.createdAt ? new Date(existing.createdAt).getTime() : NaN;
+    const recordTime = record.createdAt ? new Date(record.createdAt).getTime() : NaN;
+    if (!isNaN(recordTime) && (isNaN(existingTime) || recordTime >= existingTime)) {
+      byDay.set(record.dayNumber, record);
+    } else if (isNaN(existingTime) && isNaN(recordTime)) {
+      // Neither row carries a timestamp — fall back to array order (later = more recent).
+      byDay.set(record.dayNumber, record);
+    }
+  }
+  return Array.from(byDay.values());
+}
 interface DayBoundaryRecord { id: string; dayNumber: number; latestActivityEnd?: string | null; earliestActivityStart?: string | null; mustReturnToHotel: boolean; reasonForConstraint?: string | null; }
 interface BoundaryViolation { dayNumber: number; violation: string; severity: 'warning' | 'critical'; }
 interface WorkspaceConstraints {
@@ -1226,7 +1254,7 @@ export default function ExpertWorkspace() {
 
   const anchorConflicts = workspaceConstraints?.anchorConflicts || [];
   const dayBoundaries = workspaceConstraints?.dayBoundaries || [];
-  const energyTracking = workspaceConstraints?.energyTracking || [];
+  const energyTracking = latestEnergyPerDay(workspaceConstraints?.energyTracking || []);
   const boundaryViolations = workspaceConstraints?.boundaryViolations || [];
   const optimizerScores = workspaceConstraints?.optimizerScores || null;
   const totalConstraintIssues = anchorConflicts.reduce((sum, c) => sum + c.impacts.length, 0) + energyTracking.filter(e => e.recoveryNeeded).length + boundaryViolations.length;
@@ -1552,8 +1580,16 @@ export default function ExpertWorkspace() {
             <StateChip tone="warn"><MapPin style={{ width: 9, height: 9 }} /> Set destination</StateChip>
           </button>
         ) : null}
+        {/* Day count — the itinerary day list (days.length) is the ONE source of truth once real
+            items exist (matches the store listing's Days field, the social caption, and the story
+            slide — was "3 days" here vs "2 items · 2 days" below, two sources disagreeing). Before
+            any items exist there's no itinerary to conflict with, so the authored pre-planning
+            duration is shown instead. The assignment (non-authoring) path shows the real date
+            RANGE, never a converted "N days" figure that could contradict the items chip. */}
         {isAuthoring ? (
-          (listing as any)?.durationDays ? <StateChip tone="mut" testId="chip-build-duration">{(listing as any).durationDays} days</StateChip> : null
+          totalItems === 0 && (listing as any)?.durationDays
+            ? <StateChip tone="mut" testId="chip-build-duration">{(listing as any).durationDays} days</StateChip>
+            : null
         ) : (
           trip?.start_date ? <StateChip tone="mut" testId="chip-build-dates">{formatDate(trip.start_date)} – {formatDate(trip.end_date)}</StateChip> : null
         )}
@@ -2407,7 +2443,7 @@ export default function ExpertWorkspace() {
                 </div>
                 {isAuthoring ? (
                   listing ? (
-                    <ReadyMadeListingPanel listing={listing} tripId={tripId!} />
+                    <ReadyMadeListingPanel listing={listing} tripId={tripId!} days={days} />
                   ) : (
                     <div style={{ padding: "12px" }}>
                       <div style={{ fontSize: 12.5, color: MID, lineHeight: 1.55, marginBottom: 10 }}>

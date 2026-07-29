@@ -7,6 +7,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { MapPin, Loader2, CheckCircle, RefreshCw, Zap } from "lucide-react";
+import { AdminErrorBanner } from "@/components/admin/AdminErrorBanner";
 
 interface UntaggedService {
   id: string;
@@ -34,7 +35,7 @@ export default function AdminNeighborhoodBackfill() {
   const queryClient = useQueryClient();
   const [assigningId, setAssigningId] = useState<string | null>(null);
 
-  const { data, isLoading } = useQuery<UntaggedResponse>({
+  const { data, isLoading, isError, refetch } = useQuery<UntaggedResponse>({
     queryKey: ["/api/admin/neighborhoods/untagged"],
   });
 
@@ -97,15 +98,19 @@ export default function AdminNeighborhoodBackfill() {
           </div>
           <div className="flex items-center gap-3">
             <Badge
-              variant={count > 0 ? "destructive" : "secondary"}
+              variant={isError ? "outline" : count > 0 ? "destructive" : "secondary"}
               className="text-sm px-3 py-1"
               data-testid="badge-untagged-count"
             >
-              {isLoading ? "…" : `${count} service${count !== 1 ? "s" : ""} need${count === 1 ? "s" : ""} assignment`}
+              {isError
+                ? "Couldn't load"
+                : isLoading
+                ? "…"
+                : `${count} service${count !== 1 ? "s" : ""} need${count === 1 ? "s" : ""} assignment`}
             </Badge>
             <Button
               onClick={handleBulkAssign}
-              disabled={backfillMutation.isPending || count === 0}
+              disabled={backfillMutation.isPending || isError || count === 0}
               data-testid="button-bulk-auto-assign"
               className="bg-[#E85D55] hover:bg-[#d04e47] text-white"
             >
@@ -127,7 +132,18 @@ export default function AdminNeighborhoodBackfill() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {isLoading ? (
+            {/* L4 fix: GET /api/admin/neighborhoods/untagged used to 404 (the route didn't
+                exist — see server/routes/admin.routes.ts), and `services.length === 0` from
+                the resulting empty `data` rendered the identical honest-looking "All services
+                have neighborhoods assigned" checkmark. Check isError first so a broken fetch
+                can never pass as a clean state. */}
+            {isError ? (
+              <AdminErrorBanner
+                label="Couldn't load untagged services — server error."
+                onRetry={() => refetch()}
+                testId="banner-untagged-error"
+              />
+            ) : isLoading ? (
               <div className="flex items-center justify-center py-12">
                 <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
               </div>
@@ -206,8 +222,10 @@ export default function AdminNeighborhoodBackfill() {
           <CardContent className="py-4 px-5">
             <p className="text-sm text-blue-700 dark:text-blue-300 font-medium mb-1">How it works</p>
             <p className="text-sm text-blue-600 dark:text-blue-400">
-              Auto-assign uses Haversine proximity to find the nearest seeded neighborhood centroid
-              matching the service's city. The neighborhood slug (not name) is written to preserve
+              Auto-assign matches the service's free-text location against seeded neighborhood
+              cities (untagged services have no coordinates of their own, so this is a city-name
+              match, not a proximity calculation). When a city has several neighborhoods, the
+              featured one is preferred. The neighborhood slug (not name) is written to preserve
               stability across renames. If no neighborhood is seeded for the service's city, the
               service is left unmatched.
             </p>

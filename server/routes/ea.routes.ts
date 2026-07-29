@@ -35,9 +35,15 @@ const router = Router();
 // ── EA RBAC: every /api/ea/* route requires executive_assistant or admin role ──
 router.use("/api/ea", isEA);
 
+// Email/password sessions only carry `claims.sub` (no top-level `.id`) — every
+// handler in this file must resolve the acting EA user the same way.
+function getEaUserId(req: any): string {
+  return (req.user as any).id || (req.user as any).claims?.sub;
+}
+
 router.get("/api/ea/clients", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id;
+      const eaUserId = getEaUserId(req);
       const rows = await db
         .select({
           id: eaClientRelationships.id,
@@ -71,7 +77,7 @@ router.get("/api/ea/clients", isAuthenticated, async (req, res) => {
 
 router.post("/api/ea/clients", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id;
+      const eaUserId = getEaUserId(req);
       const { email, displayName, notes } = z.object({
         email: z.string().email(),
         displayName: z.string().optional(),
@@ -106,7 +112,7 @@ router.post("/api/ea/clients", isAuthenticated, async (req, res) => {
 
 router.patch("/api/ea/clients/:id", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id;
+      const eaUserId = getEaUserId(req);
       const { id } = req.params;
       const updates = z.object({
         displayName: z.string().optional(),
@@ -133,7 +139,7 @@ router.patch("/api/ea/clients/:id", isAuthenticated, async (req, res) => {
 
 router.delete("/api/ea/clients/:id", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id;
+      const eaUserId = getEaUserId(req);
       const { id } = req.params;
       const row = await getEaClientRelationshipById(id, eaUserId);
       if (!row) return res.status(404).json({ message: "Client not found" });
@@ -149,7 +155,7 @@ router.delete("/api/ea/clients/:id", isAuthenticated, async (req, res) => {
 
 router.post("/api/ea/clients/:id/push", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id;
+      const eaUserId = getEaUserId(req);
       const { id } = req.params;
       const { title, message } = z.object({
         title: z.string().min(1).max(255),
@@ -184,7 +190,7 @@ router.post("/api/ea/clients/:id/push", isAuthenticated, async (req, res) => {
 
 router.get("/api/ea/executives", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const eaUserId = getEaUserId(req);
       res.json(await getEaExecutives(eaUserId));
     } catch (err) {
       console.error("[EA] getExecutives error:", err);
@@ -195,7 +201,7 @@ router.get("/api/ea/executives", isAuthenticated, async (req, res) => {
 
 router.post("/api/ea/executives", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const eaUserId = getEaUserId(req);
       const body = insertEaExecutiveSchema.parse({ ...req.body, eaUserId });
       res.status(201).json(await createEaExecutive(body));
     } catch (err) {
@@ -207,7 +213,7 @@ router.post("/api/ea/executives", isAuthenticated, async (req, res) => {
 
 router.patch("/api/ea/executives/:id", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const eaUserId = getEaUserId(req);
       const row = await getEaExecutiveById(req.params.id, eaUserId);
       if (!row) return res.status(404).json({ message: "Executive not found" });
       res.json(await updateEaExecutive(req.params.id, req.body));
@@ -220,7 +226,7 @@ router.patch("/api/ea/executives/:id", isAuthenticated, async (req, res) => {
 
 router.delete("/api/ea/executives/:id", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const eaUserId = getEaUserId(req);
       const row = await getEaExecutiveById(req.params.id, eaUserId);
       if (!row) return res.status(404).json({ message: "Executive not found" });
       await deleteEaExecutive(req.params.id);
@@ -238,7 +244,7 @@ router.delete("/api/ea/executives/:id", isAuthenticated, async (req, res) => {
 
 router.get("/api/ea/events", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const eaUserId = getEaUserId(req);
       res.json(await getEaEvents(eaUserId));
     } catch (err) {
       console.error("[EA] getEvents error:", err);
@@ -249,7 +255,7 @@ router.get("/api/ea/events", isAuthenticated, async (req, res) => {
 
 router.post("/api/ea/events", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const eaUserId = getEaUserId(req);
       const body = insertEaEventSchema.parse({ ...req.body, eaUserId });
       res.status(201).json(await createEaEvent(body));
     } catch (err) {
@@ -261,7 +267,7 @@ router.post("/api/ea/events", isAuthenticated, async (req, res) => {
 
 router.patch("/api/ea/events/:id", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const eaUserId = getEaUserId(req);
       const row = await getEaEventById(req.params.id, eaUserId);
       if (!row) return res.status(404).json({ message: "Event not found" });
       res.json(await updateEaEvent(req.params.id, req.body));
@@ -274,7 +280,7 @@ router.patch("/api/ea/events/:id", isAuthenticated, async (req, res) => {
 
 router.delete("/api/ea/events/:id", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const eaUserId = getEaUserId(req);
       await deleteEaEvent(req.params.id, eaUserId);
       res.json({ ok: true });
     } catch (err) {
@@ -290,7 +296,7 @@ router.delete("/api/ea/events/:id", isAuthenticated, async (req, res) => {
 
 router.get("/api/ea/travel", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const eaUserId = getEaUserId(req);
       res.json(await getEaTravelArrangements(eaUserId));
     } catch (err) {
       console.error("[EA] getTravel error:", err);
@@ -301,7 +307,7 @@ router.get("/api/ea/travel", isAuthenticated, async (req, res) => {
 
 router.post("/api/ea/travel", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const eaUserId = getEaUserId(req);
       const body = insertEaTravelArrangementSchema.parse({ ...req.body, eaUserId });
       res.status(201).json(await createEaTravelArrangement(body));
     } catch (err) {
@@ -313,7 +319,7 @@ router.post("/api/ea/travel", isAuthenticated, async (req, res) => {
 
 router.patch("/api/ea/travel/:id", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const eaUserId = getEaUserId(req);
       const row = await getEaTravelArrangementById(req.params.id, eaUserId);
       if (!row) return res.status(404).json({ message: "Travel arrangement not found" });
       res.json(await updateEaTravelArrangement(req.params.id, req.body));
@@ -326,7 +332,7 @@ router.patch("/api/ea/travel/:id", isAuthenticated, async (req, res) => {
 
 router.delete("/api/ea/travel/:id", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const eaUserId = getEaUserId(req);
       await deleteEaTravelArrangement(req.params.id, eaUserId);
       res.json({ ok: true });
     } catch (err) {
@@ -342,7 +348,7 @@ router.delete("/api/ea/travel/:id", isAuthenticated, async (req, res) => {
 
 router.get("/api/ea/gifts", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const eaUserId = getEaUserId(req);
       res.json(await getEaGifts(eaUserId));
     } catch (err) {
       console.error("[EA] getGifts error:", err);
@@ -353,7 +359,7 @@ router.get("/api/ea/gifts", isAuthenticated, async (req, res) => {
 
 router.post("/api/ea/gifts", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const eaUserId = getEaUserId(req);
       const body = insertEaGiftSchema.parse({ ...req.body, eaUserId });
       res.status(201).json(await createEaGift(body));
     } catch (err) {
@@ -365,7 +371,7 @@ router.post("/api/ea/gifts", isAuthenticated, async (req, res) => {
 
 router.patch("/api/ea/gifts/:id", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const eaUserId = getEaUserId(req);
       const row = await getEaGiftById(req.params.id, eaUserId);
       if (!row) return res.status(404).json({ message: "Gift not found" });
       res.json(await updateEaGift(req.params.id, req.body));
@@ -378,7 +384,7 @@ router.patch("/api/ea/gifts/:id", isAuthenticated, async (req, res) => {
 
 router.delete("/api/ea/gifts/:id", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const eaUserId = getEaUserId(req);
       await deleteEaGift(req.params.id, eaUserId);
       res.json({ ok: true });
     } catch (err) {
@@ -394,7 +400,7 @@ router.delete("/api/ea/gifts/:id", isAuthenticated, async (req, res) => {
 
 router.get("/api/ea/venues", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const eaUserId = getEaUserId(req);
       res.json(await getEaSavedVenues(eaUserId));
     } catch (err) {
       console.error("[EA] getVenues error:", err);
@@ -405,7 +411,7 @@ router.get("/api/ea/venues", isAuthenticated, async (req, res) => {
 
 router.post("/api/ea/venues", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const eaUserId = getEaUserId(req);
       const body = insertEaSavedVenueSchema.parse({ ...req.body, eaUserId });
       res.status(201).json(await createEaSavedVenue(body));
     } catch (err) {
@@ -417,7 +423,7 @@ router.post("/api/ea/venues", isAuthenticated, async (req, res) => {
 
 router.patch("/api/ea/venues/:id", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const eaUserId = getEaUserId(req);
       const row = await getEaSavedVenueById(req.params.id, eaUserId);
       if (!row) return res.status(404).json({ message: "Venue not found" });
       res.json(await updateEaSavedVenue(req.params.id, req.body));
@@ -430,7 +436,7 @@ router.patch("/api/ea/venues/:id", isAuthenticated, async (req, res) => {
 
 router.delete("/api/ea/venues/:id", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const eaUserId = getEaUserId(req);
       await deleteEaSavedVenue(req.params.id, eaUserId);
       res.json({ ok: true });
     } catch (err) {
@@ -446,7 +452,7 @@ router.delete("/api/ea/venues/:id", isAuthenticated, async (req, res) => {
 
 router.get("/api/ea/communications", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const eaUserId = getEaUserId(req);
       res.json(await getEaCommunications(eaUserId));
     } catch (err) {
       console.error("[EA] getCommunications error:", err);
@@ -457,7 +463,7 @@ router.get("/api/ea/communications", isAuthenticated, async (req, res) => {
 
 router.post("/api/ea/communications", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const eaUserId = getEaUserId(req);
       const body = insertEaCommunicationSchema.parse({ ...req.body, eaUserId });
       res.status(201).json(await createEaCommunication(body));
     } catch (err) {
@@ -469,7 +475,7 @@ router.post("/api/ea/communications", isAuthenticated, async (req, res) => {
 
 router.delete("/api/ea/communications/:id", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const eaUserId = getEaUserId(req);
       await deleteEaCommunication(req.params.id, eaUserId);
       res.json({ ok: true });
     } catch (err) {
@@ -485,7 +491,7 @@ router.delete("/api/ea/communications/:id", isAuthenticated, async (req, res) =>
 
 router.get("/api/ea/ai-tasks", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const eaUserId = getEaUserId(req);
       const { status } = req.query;
       res.json(await getEaAiTasks(eaUserId, status as string | undefined));
     } catch (err) {
@@ -497,7 +503,7 @@ router.get("/api/ea/ai-tasks", isAuthenticated, async (req, res) => {
 
 router.post("/api/ea/ai-tasks", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const eaUserId = getEaUserId(req);
       const body = insertEaAiTaskSchema.parse({ ...req.body, eaUserId });
       res.status(201).json(await createEaAiTask(body));
     } catch (err) {
@@ -509,7 +515,7 @@ router.post("/api/ea/ai-tasks", isAuthenticated, async (req, res) => {
 
 router.patch("/api/ea/ai-tasks/:id", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const eaUserId = getEaUserId(req);
       const row = await getEaAiTaskById(req.params.id, eaUserId);
       if (!row) return res.status(404).json({ message: "AI task not found" });
       const updates: Record<string, any> = { ...req.body };
@@ -525,7 +531,7 @@ router.patch("/api/ea/ai-tasks/:id", isAuthenticated, async (req, res) => {
 
 router.delete("/api/ea/ai-tasks/:id", isAuthenticated, async (req, res) => {
     try {
-      const eaUserId = (req.user as any).id || (req.user as any).claims?.sub;
+      const eaUserId = getEaUserId(req);
       await deleteEaAiTask(req.params.id, eaUserId);
       res.json({ ok: true });
     } catch (err) {

@@ -221,7 +221,10 @@ router.get("/api/revenue-splits", async (req, res) => {
 // Reads + validates the stay a room's cart row is carrying. Returns null for every non-room
 // item AND for a room item whose dates are missing/malformed/out-of-range (>30 nights) — the
 // caller decides what null means (checkout 400s; the fee preview simply prices it as 0).
-function getRoomNights(item: any): { checkIn: string; checkOut: string; nights: number } | null {
+// Exported so other totals surfaces (GET /api/cart in routes.ts) can reuse the exact same
+// math instead of re-deriving/duplicating it — the residual "price × quantity" bug this
+// closed was precisely two independent, silently-diverging implementations of this math.
+export function getRoomNights(item: any): { checkIn: string; checkOut: string; nights: number } | null {
   if (item?.service?.pricingUnit !== "per_night") return null;
   const meta = (item?.contentMeta ?? {}) as Record<string, unknown>;
   const checkIn = typeof meta.checkIn === "string" ? meta.checkIn : null;
@@ -238,7 +241,7 @@ function getRoomNights(item: any): { checkIn: string; checkOut: string; nights: 
 // existing price × quantity math untouched, so this can replace that line everywhere it
 // appears (checkout totals, checkout booking-creation, the cart fee-preview) with no behavior
 // change for the rest of the catalog.
-function resolveItemBaseAmount(item: any): number {
+export function resolveItemBaseAmount(item: any): number {
   const stay = getRoomNights(item);
   const rate = parseFloat(item?.service?.price || "0");
   if (stay) return rate * stay.nights;
