@@ -29,7 +29,6 @@ import {
   AlertCircle,
   Info,
   Briefcase,
-  ChevronRight,
 } from "lucide-react";
 import React, { useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
@@ -136,13 +135,6 @@ function ExpertOfferingTypesCard() {
                     </p>
                   )}
                 </div>
-                <a
-                  href={`/expert/services?offeringTypeKey=${encodeURIComponent(offering.offering_type_key)}`}
-                  className="flex items-center gap-0.5 text-[11px] text-primary font-semibold whitespace-nowrap"
-                  data-testid={`link-manage-offering-${offering.offering_type_key}`}
-                >
-                  Manage <ChevronRight className="w-3 h-3" />
-                </a>
               </div>
             );
           })
