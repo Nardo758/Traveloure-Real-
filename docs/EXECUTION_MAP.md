@@ -384,7 +384,22 @@ carrying forward to any future index declaration: **drizzle's bare `.desc()` emi
 Postgres defaults `DESC` to `NULLS FIRST`** — so declaring a `created_at DESC` index without `.nullsFirst()`
 makes the push DROP + CREATE it on *every* publish. Measured, not theorized.
 
-**`service_demand_requests` — DECISION-MAKER GATED, and the clock is the next publish.** Deliberately NOT
+**BOTH CLOSED (3bb1f291), premises confirmed against prod AND dev by the decision-maker.**
+- **Idempotency index DECLARED.** 0 duplicate non-NULL keys in either environment (prod: 0 of 7 rows even
+  carry a key; dev: 2, both distinct), and the live `indexdef` matches what the declaration emits — so the
+  publish cannot fail on it and the destructive copy-over prompt cannot be triggered.
+  **Method warning worth carrying forward: `drizzle-kit push --strict` gave a FALSE PASS here** — it reported
+  zero idempotency statements for the correct declaration AND for a deliberately wrong one (the plan renders
+  the FK phase and aborts at the TTY prompt before index diffing). Do not use push-plan silence as index
+  evidence. `drizzle-kit export` IS sensitive (it distinguished correct / missing-predicate / non-unique), and
+  the decisive check is that Postgres normalizes drizzle's emitted DDL and the live `pg_indexes.indexdef` to
+  byte-identical text — same object, no churn.
+- **`service_demand_requests` RETIRED** by migration 158 rather than left for the push to drop silently: 0 rows
+  + 0 FK dependents in both environments. Guarded — it REFUSES to drop a non-empty table and raises the row
+  count instead, so the retirement can't destroy data if the premise changes before it applies. All three
+  branches proven (drop / already-absent / refuse).
+
+**(historical) `service_demand_requests` — DECISION-MAKER GATED, and the clock is the next publish.** Deliberately NOT
 declared: zero code references either way (so a drop loses no data), and it is redundant against the live
 `service_demand_signals` and migration-123 `service_requests`. Declaring it would pin dead weight into the
 canonical schema and quietly ratify keeping it forever. But the drop is one-way — migration 080 is stamped, so
