@@ -103,7 +103,7 @@ export default function ContactPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[#F9FAFB]">
+    <div className="min-h-screen bg-muted/30">
       <SEOHead 
         title="Contact Us"
         description="Get in touch with the Traveloure team. We're here to help with inquiries, support, partnerships, and feedback. Send us a message or email us directly."
@@ -170,7 +170,7 @@ export default function ContactPage() {
                   <form onSubmit={handleSubmit} className="space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
-                        <Label htmlFor="name" className="text-[#374151]">
+                        <Label htmlFor="name" className="text-foreground">
                           Your Name
                         </Label>
                         <Input
@@ -184,7 +184,7 @@ export default function ContactPage() {
                         />
                       </div>
                       <div>
-                        <Label htmlFor="email" className="text-[#374151]">
+                        <Label htmlFor="email" className="text-foreground">
                           Email Address
                         </Label>
                         <Input
@@ -202,7 +202,7 @@ export default function ContactPage() {
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
-                        <Label htmlFor="reason" className="text-[#374151]">
+                        <Label htmlFor="reason" className="text-foreground">
                           Reason for Contact
                         </Label>
                         <Select
@@ -225,7 +225,7 @@ export default function ContactPage() {
                         </Select>
                       </div>
                       <div>
-                        <Label htmlFor="subject" className="text-[#374151]">
+                        <Label htmlFor="subject" className="text-foreground">
                           Subject
                         </Label>
                         <Input
@@ -241,7 +241,7 @@ export default function ContactPage() {
                     </div>
 
                     <div>
-                      <Label htmlFor="message" className="text-[#374151]">
+                      <Label htmlFor="message" className="text-foreground">
                         Message
                       </Label>
                       <Textarea
@@ -288,7 +288,7 @@ export default function ContactPage() {
                 <CardContent className="space-y-3">
                   <a
                     href="/faq"
-                    className="flex items-center gap-3 p-3 rounded-lg hover:bg-[#F3F4F6] transition-colors"
+                    className="flex items-center gap-3 p-3 rounded-lg hover:bg-muted transition-colors"
                     data-testid="link-faq"
                   >
                     <HelpCircle className="w-5 h-5 text-primary" />
@@ -301,7 +301,7 @@ export default function ContactPage() {
                   </a>
                   <a
                     href="/earn"
-                    className="flex items-center gap-3 p-3 rounded-lg hover:bg-[#F3F4F6] transition-colors"
+                    className="flex items-center gap-3 p-3 rounded-lg hover:bg-muted transition-colors"
                     data-testid="link-partner"
                   >
                     <Users className="w-5 h-5 text-primary" />
@@ -316,7 +316,7 @@ export default function ContactPage() {
                   </a>
                   <a
                     href="/about"
-                    className="flex items-center gap-3 p-3 rounded-lg hover:bg-[#F3F4F6] transition-colors"
+                    className="flex items-center gap-3 p-3 rounded-lg hover:bg-muted transition-colors"
                     data-testid="link-about"
                   >
                     <Briefcase className="w-5 h-5 text-primary" />
