@@ -300,6 +300,15 @@ async function resolveMissingItemCoordinates(
   for (const item of items) {
     if (resolved >= MAX_PER_REQUEST) break;
     if (item.latitude != null && item.longitude != null) continue;
+    // §13: an item with NO location of its own must never geocode to the bare city centre and
+    // persist that as if it were the item's location. Require at least one item-level component
+    // (locationName OR locationAddress) before geocoding at all; `destination` is only a
+    // disambiguation SUFFIX on top of a real item-level address, never the sole address. An item
+    // with no location stays un-pinned — the honest state.
+    const hasItemLocation =
+      (item.locationName && String(item.locationName).trim().length > 0) ||
+      (item.locationAddress && String(item.locationAddress).trim().length > 0);
+    if (!hasItemLocation) continue;
     const address = [item.locationName, item.locationAddress, destination]
       .filter((p) => p && String(p).trim().length > 0)
       .join(", ");

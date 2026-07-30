@@ -34,6 +34,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { authorizeTripLogistics } from "../utils/trip-logistics-auth";
+import { storage } from "../storage";
 import {
   LEG_PROPOSAL_STATUSES,
   SELECTABLE_TRANSPORT_MODES,
@@ -47,6 +48,46 @@ const router = Router();
 
 function sessionUserId(req: any): string | undefined {
   return req.user?.claims?.sub ?? req.user?.id;
+}
+
+/**
+ * Fire-and-forget change-log entry, mirroring `trips.routes.ts` `logItineraryChange` and
+ * `plancard.routes.ts` `logChange` — same underlying write (`storage.createItineraryChange`:
+ * tripId, who, action, changeType, role, activityId, metadata). Deliberately NOT awaited into the
+ * response: a logging failure must never fail the mutation it is describing (ITEM 2 requirement;
+ * the `.catch` here is the whole point).
+ *
+ * `who` is the session user id (this router has no display-name lookup today, unlike the
+ * plancard/trips routers which read `req.user.claims.name`).
+ *
+ * `role`: `authorizeTripLogistics` returns `null` on success for EVERY passing branch (owner ‖
+ * assigned-expert ‖ author ‖ audit-logged admin) — it does not report which one authorized the
+ * caller. Claiming e.g. `'expert'` here would be a guess the util cannot back (§13 applies to logs,
+ * not just to itinerary content). `'editor'` is the honest neutral label for "a party
+ * `authorizeTripLogistics` approved to mutate this trip's logistics", used until that util is
+ * extended to expose its branch.
+ */
+function logLegChange(
+  tripId: string,
+  who: string,
+  action: string,
+  changeType: string,
+  activityId?: string,
+  metadata?: Record<string, unknown>,
+): void {
+  storage
+    .createItineraryChange({
+      tripId,
+      activityId: activityId ?? null,
+      who,
+      action,
+      changeType,
+      role: "editor",
+      metadata: metadata ?? {},
+    })
+    .catch((err) => {
+      console.error("[TransportLegs] change-log write failed (non-fatal):", err);
+    });
 }
 
 /**
@@ -65,6 +106,24 @@ router.post("/api/trips/:tripId/transport-legs/generate", isAuthenticated, async
     if (denied) return res.status(denied.status).json({ message: denied.message });
 
     const result = await generateTripTransportLegs(tripId);
+
+    logLegChange(
+      tripId,
+      sessionUserId(req) || "unknown",
+      `Generated ${result.created} proposed transport leg(s)` +
+        (result.replacedProposed > 0 ? `, replaced ${result.replacedProposed} stale proposal(s)` : "") +
+        (result.keptConfirmed > 0 ? `, kept ${result.keptConfirmed} confirmed leg(s) untouched` : "") +
+        (result.skipped.length > 0 ? `, skipped ${result.skipped.length} pair(s) (no coordinates)` : ""),
+      "add",
+      undefined,
+      {
+        created: result.created,
+        replacedProposed: result.replacedProposed,
+        keptConfirmed: result.keptConfirmed,
+        skipped: result.skipped.length,
+      },
+    );
+
     res.json({
       tripId,
       // Everything written by this call is 'proposed' — stated in the response so no consumer has
@@ -123,6 +182,30 @@ router.patch("/api/trips/:tripId/transport-legs/:legId", isAuthenticated, async 
 
     const leg = await updateTripTransportLeg(tripId, legId, parsed.data);
     if (!leg) return res.status(404).json({ message: "Transport leg not found for this trip" });
+
+    // State the actual change(s) in the action text (§13 — never a generic "updated leg").
+    const changed: string[] = [];
+    if (parsed.data.userSelectedMode !== undefined) {
+      changed.push(`mode → ${parsed.data.userSelectedMode}`);
+    }
+    if (parsed.data.pickupPoint !== undefined) {
+      changed.push(parsed.data.pickupPoint ? `pickup point set` : `pickup point cleared`);
+    }
+    if (parsed.data.pickupTime !== undefined) {
+      changed.push(parsed.data.pickupTime ? `pickup time set` : `pickup time cleared`);
+    }
+    if (parsed.data.proposalStatus !== undefined) {
+      changed.push(`status → ${parsed.data.proposalStatus}`);
+    }
+    logLegChange(
+      tripId,
+      sessionUserId(req) || "unknown",
+      `Updated transport leg (${existing.fromName} → ${existing.toName}): ${changed.join(", ") || "no-op"}`,
+      "edit",
+      undefined,
+      { legId, patch: parsed.data },
+    );
+
     res.json({ leg });
   } catch (err) {
     console.error("[TransportLegs] patch error:", err);
@@ -146,6 +229,16 @@ router.delete("/api/trips/:tripId/transport-legs/:legId", isAuthenticated, async
 
     const ok = await deleteTripTransportLeg(tripId, legId);
     if (!ok) return res.status(404).json({ message: "Transport leg not found for this trip" });
+
+    logLegChange(
+      tripId,
+      sessionUserId(req) || "unknown",
+      `Removed transport leg (${existing.fromName} → ${existing.toName})`,
+      "remove",
+      undefined,
+      { legId },
+    );
+
     res.json({ success: true, legId });
   } catch (err) {
     console.error("[TransportLegs] delete error:", err);
