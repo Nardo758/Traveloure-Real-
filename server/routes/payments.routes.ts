@@ -625,11 +625,16 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         const netExpertEarningsAmt = baseExpertEarningsAmt - insuranceFeeAmt;
         
         // Create contract for this booking
+        // Migration 157: stamp both principals. Both were already in scope here — the contract
+        // row simply never recorded them, which is what left the two contract readers ungatable.
+        // Same values the booking row below gets, so the two stay consistent by construction.
         const contract = await storage.createContract({
           title: `Booking: ${item.service.serviceName}`,
           tripTo: item.service.location || "N/A",
           description: `Service booking for ${item.service.serviceName}. ${notes || ""}`,
           amount: price.toFixed(2),
+          travelerId: userId,
+          earnerId: item.service.userId ?? null,
         });
         
         // ── Step A: Create booking as payment_pending BEFORE charging Stripe ──

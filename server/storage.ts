@@ -281,7 +281,8 @@ export interface IStorage {
 
   // Contracts
   getContract(id: string): Promise<any | undefined>;
-  createContract(contract: { title: string; tripTo: string; description: string; amount: string; attachment?: string }): Promise<any>;
+  // travelerId/earnerId REQUIRED (migration 157) — see the implementation note.
+  createContract(contract: { title: string; tripTo: string; description: string; amount: string; attachment?: string; travelerId: string; earnerId: string | null }): Promise<any>;
   updateContractStatus(id: string, status: string, paymentUrl?: string): Promise<any | undefined>;
 
   // Notifications
@@ -2124,13 +2125,31 @@ export class DatabaseStorage implements IStorage {
     return contract;
   }
 
-  async createContract(contract: { title: string; tripTo: string; description: string; amount: string; attachment?: string }): Promise<any> {
+  /**
+   * `travelerId` and `earnerId` are REQUIRED keys (migration 157), not optional extras — the
+   * L28 pattern: put the principal in the signature so the compiler refuses a caller that
+   * would mint another unattributable row. `earnerId` may be explicitly `null` (a service with
+   * no owner on record — the same fallback branch checkout already handles for commission), but
+   * it cannot be silently omitted. Every contract created without a principal is a row the read
+   * gate can only ever show to an admin.
+   */
+  async createContract(contract: {
+    title: string;
+    tripTo: string;
+    description: string;
+    amount: string;
+    attachment?: string;
+    travelerId: string;
+    earnerId: string | null;
+  }): Promise<any> {
     const [newContract] = await db.insert(userAndExpertContracts).values({
       title: contract.title,
       tripTo: contract.tripTo,
       description: contract.description,
       amount: contract.amount,
       attachment: contract.attachment,
+      travelerId: contract.travelerId,
+      earnerId: contract.earnerId,
       status: "pending",
       isPaid: false
     }).returning();

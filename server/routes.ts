@@ -5715,11 +5715,34 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   // === Checkout & Auto-Contract Generation ===
 
-  // Get contract details
+  // Get contract details.
+  //
+  // SECURITY (migration 157): this had NO ownership check — any authenticated caller who had a
+  // contract id got the whole row (service name, trip destination, the traveler's free-text
+  // notes, the amount, the payment URL). Until 157 there was no principal on the table to check
+  // against, which is why the gate could not be written before now.
+  //
+  // Access = the traveler who bought ‖ the earner who sold ‖ admin. A row whose attribution
+  // is NULL (157 could not link it to a booking) is ADMIN-ONLY by construction: an
+  // unattributable financial artifact should not be shown to a caller who merely guessed an id.
+  // 404, not 403, so the endpoint does not confirm that an id exists to someone probing.
   app.get("/api/contracts/:id", isAuthenticated, async (req, res) => {
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
     const contract = await storage.getContract(req.params.id);
     if (!contract) {
       return res.status(404).json({ message: "Contract not found" });
+    }
+
+    const isParty =
+      (contract.travelerId && contract.travelerId === userId) ||
+      (contract.earnerId && contract.earnerId === userId);
+    if (!isParty) {
+      const actor = await storage.getUser(userId);
+      if (actor?.role !== "admin") {
+        return res.status(404).json({ message: "Contract not found" });
+      }
     }
     res.json(contract);
   });

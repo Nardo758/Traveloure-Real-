@@ -607,4 +607,13 @@ export const MIGRATION_FILES = [
   // and deliberately NO status CHECK / NOT NULL (Stripe's refund.status is an external
   // `string | null`) → no publish-push trap and nothing to add to the preflight manifest.
   "156_refunds_audit_table.sql",
+  // 157: give `user_and_expert_contracts` an owner (`traveler_id`/`earner_id`) so its two
+  // LIVE ungated readers can be gated — `GET /api/expert/contracts/recent` read `expertId`
+  // off the session and never used it (20 most recent contracts platform-wide to any
+  // authenticated caller), and `GET /api/contracts/:id` had no check at all. The writer
+  // (/api/checkout) creates a row per cart item, so the exposure grows with volume. Backfill
+  // is a deterministic join, not a heuristic: `service_bookings.contract_id` already links
+  // each contract to the booking carrying both principals. Additive nullable, no CHECK/
+  // NOT NULL/DEFAULT → no publish-push trap, nothing for the preflight manifest.
+  "157_contract_ownership.sql",
 ] as const;
