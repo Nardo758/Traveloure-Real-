@@ -97,6 +97,13 @@ const CONSTRAINT_MANIFEST = [
     fallback: null, // launch-scope field — never guess-map; a non-Kyoto row needs a decision, not a rewrite
     note: "migration 149 F8 launch-market scope (§12 one-wedge-Kyoto); widen alongside shared/launch-markets.ts",
   },
+  {
+    table: "transport_legs", column: "proposal_status", nullable: true,
+    allowed: ["proposed", "confirmed"],
+    remap: {},
+    fallback: null, // NULL is the grandfathered legacy-variant-leg state — never guess-map a leg
+    note: "migration 154 trip-scoped leg proposal lifecycle (§18 L4); NULL = legacy variant leg",
+  },
 ];
 
 const url = process.argv[2] || process.env.PREFLIGHT_DATABASE_URL || process.env.DATABASE_URL;

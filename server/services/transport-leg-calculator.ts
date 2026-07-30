@@ -107,6 +107,34 @@ export async function calculateTransportLegs(
   return allLegs;
 }
 
+/**
+ * THE leg-computation entry point for callers that persist legs themselves (§18 L4 trip-scoped
+ * legs). It is the SAME engine `calculateTransportLegs` uses — `computeSingleLeg` below, with the
+ * same destination profile resolution and the same preference defaults — deliberately exposed
+ * rather than forked, so trip-scoped and variant-scoped legs can never diverge in how
+ * distance/mode/duration/alternatives are derived.
+ *
+ * Pure: no DB write, no maps cache, no booking-option population. Callers own persistence (the
+ * trip path writes trip-scoped rows born 'proposed'; the variant path keeps its own pipeline).
+ */
+export function computeTransportLeg(
+  from: ActivityLocation,
+  to: ActivityLocation,
+  dayNumber: number,
+  legOrder: number,
+  destination: string,
+  userPrefs: Partial<UserTransportPrefs> = {}
+): TransportLegResult {
+  return computeSingleLeg(
+    from,
+    to,
+    dayNumber,
+    legOrder,
+    getDestinationProfile(destination),
+    { ...DEFAULT_PREFS, ...userPrefs }
+  );
+}
+
 function computeSingleLeg(
   from: ActivityLocation,
   to: ActivityLocation,

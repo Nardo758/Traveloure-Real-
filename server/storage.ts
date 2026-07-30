@@ -109,6 +109,7 @@ import {
   aiGeneratedItineraries,
   tripAnalyticsEnhanced,
   bundleComponents,
+  vendorContracts,
 } from "@shared/schema";
 import { eq, ilike, and, desc, or, count, gt, gte, lte, avg, inArray, asc, isNotNull, isNull, ne, sql as sqlOp } from "drizzle-orm";
 import { authStorage } from "./replit_integrations/auth/storage";
@@ -720,6 +721,7 @@ export interface IStorage {
   getBookingOptionsByLegIds(legIds: string[]): Promise<any[]>;
   updateItineraryItemCoordinates(id: string, lat: string, lng: string): Promise<void>;
   updateTransportLegUserSelectedMode(legId: string, mode: string): Promise<void>;
+  getVendorContractsByIds(ids: string[]): Promise<Array<{ id: string; vendorPhone: string | null }>>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -5555,6 +5557,15 @@ export class DatabaseStorage implements IStorage {
     if (!legIds.length) return [];
     return await db.select().from(transportBookingOptions)
       .where(inArray(transportBookingOptions.transportLegId, legIds));
+  }
+
+  // Plancard row-level vendor phone (§5 of the mobile-lens audit): bulk fetch just the
+  // phone column for the vendor contracts an itinerary day's items reference, keyed by id.
+  async getVendorContractsByIds(ids: string[]): Promise<Array<{ id: string; vendorPhone: string | null }>> {
+    if (!ids.length) return [];
+    return await db.select({ id: vendorContracts.id, vendorPhone: vendorContracts.vendorPhone })
+      .from(vendorContracts)
+      .where(inArray(vendorContracts.id, ids));
   }
 
   async updateItineraryItemCoordinates(id: string, lat: string, lng: string): Promise<void> {
