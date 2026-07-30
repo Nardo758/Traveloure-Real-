@@ -14,10 +14,6 @@ import {
 import { motion } from "framer-motion";
 import {
   Mail,
-  Phone,
-  MapPin,
-  MessageSquare,
-  Clock,
   Send,
   HelpCircle,
   Users,
@@ -25,6 +21,20 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { SEOHead } from "@/components/seo-head";
+
+/**
+ * §13 (fabrication removal): this page previously listed THREE invented office
+ * addresses (New York / London / Singapore street addresses that are not ours),
+ * a fictitious 555-prefix phone number (twice), a "Live Chat" card with staffed
+ * hours behind it when no chat vendor is integrated anywhere in the codebase,
+ * and an unbacked same-day response SLA (in the cards, the sidebar, and the
+ * success toast).
+ *
+ * The FORM ITSELF IS REAL and is kept untouched: it posts to the live
+ * POST /api/contact, which persists the submission and notifies every admin.
+ * So the honest page is the working form plus the one contact fact we can
+ * stand behind — the email address. No address, no phone, no chat, no SLA.
+ */
 
 const contactReasons = [
   { id: "general", label: "General Inquiry" },
@@ -34,44 +44,7 @@ const contactReasons = [
   { id: "feedback", label: "Feedback" },
 ];
 
-const contactMethods = [
-  {
-    icon: Mail,
-    title: "Email Us",
-    description: "hello@traveloure.com",
-    detail: "We'll respond within 24 hours",
-  },
-  {
-    icon: MessageSquare,
-    title: "Live Chat",
-    description: "Chat with our team",
-    detail: "Available 9am-6pm EST",
-  },
-  {
-    icon: Phone,
-    title: "Call Us",
-    description: "+1 (555) 123-4567",
-    detail: "Mon-Fri 9am-6pm EST",
-  },
-];
-
-const offices = [
-  {
-    city: "New York",
-    address: "123 Travel Lane, NYC 10001",
-    phone: "+1 (555) 123-4567",
-  },
-  {
-    city: "London",
-    address: "456 Explorer St, London W1 2AB",
-    phone: "+44 20 1234 5678",
-  },
-  {
-    city: "Singapore",
-    address: "789 Journey Rd, Singapore 018956",
-    phone: "+65 6123 4567",
-  },
-];
+const CONTACT_EMAIL = "hello@traveloure.com";
 
 export default function ContactPage() {
   const { toast } = useToast();
@@ -110,7 +83,7 @@ export default function ContactPage() {
 
       toast({
         title: "Message sent!",
-        description: "We'll get back to you within 24 hours.",
+        description: "Thanks — your message reached the team.",
       });
 
       setFormData({ name: "", email: "", reason: "", subject: "", message: "" });
@@ -133,7 +106,7 @@ export default function ContactPage() {
     <div className="min-h-screen bg-[#F9FAFB]">
       <SEOHead 
         title="Contact Us"
-        description="Get in touch with the Traveloure team. We're here to help with inquiries, support, partnerships, and feedback. Contact us by email, phone, or live chat."
+        description="Get in touch with the Traveloure team. We're here to help with inquiries, support, partnerships, and feedback. Send us a message or email us directly."
         keywords={["contact traveloure", "customer support", "travel help", "partnership inquiry"]}
         url="/contact"
       />
@@ -145,7 +118,7 @@ export default function ContactPage() {
             animate={{ opacity: 1, y: 0 }}
             className="text-center"
           >
-            <h1 className="text-4xl md:text-5xl font-bold mb-4">Get in Touch</h1>
+            <h1 className="text-4xl md:text-5xl font-bold mb-4 text-white">Get in Touch</h1>
             <p className="text-lg text-gray-300 max-w-2xl mx-auto">
               Have a question, feedback, or want to partner with us? We'd love to
               hear from you. Our team is here to help.
@@ -154,34 +127,30 @@ export default function ContactPage() {
         </div>
       </section>
 
-      {/* Contact Methods */}
+      {/* Email us — the one contact fact we can stand behind */}
       <section className="py-12 -mt-8">
         <div className="container mx-auto px-4 max-w-6xl">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {contactMethods.map((method, idx) => (
-              <motion.div
-                key={method.title}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: idx * 0.1 }}
-              >
-                <Card className="bg-white border-border hover:shadow-lg transition-shadow h-full">
-                  <CardContent className="p-6 text-center">
-                    <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-[#FFE3E8] flex items-center justify-center">
-                      <method.icon className="w-6 h-6 text-primary" />
-                    </div>
-                    <h3 className="font-semibold text-foreground mb-1">
-                      {method.title}
-                    </h3>
-                    <p className="text-primary font-medium mb-1">
-                      {method.description}
-                    </p>
-                    <p className="text-sm text-muted-foreground">{method.detail}</p>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            ))}
-          </div>
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="max-w-md mx-auto"
+          >
+            <Card className="border-border hover:shadow-lg transition-shadow">
+              <CardContent className="p-6 text-center">
+                <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-primary/10 flex items-center justify-center">
+                  <Mail className="w-6 h-6 text-primary" />
+                </div>
+                <h3 className="font-semibold text-foreground mb-1">Email Us</h3>
+                <a
+                  href={`mailto:${CONTACT_EMAIL}`}
+                  className="text-primary font-medium break-words hover:underline"
+                  data-testid="link-contact-email"
+                >
+                  {CONTACT_EMAIL}
+                </a>
+              </CardContent>
+            </Card>
+          </motion.div>
         </div>
       </section>
 
@@ -361,48 +330,6 @@ export default function ContactPage() {
                 </CardContent>
               </Card>
 
-              {/* Office Locations */}
-              <Card className="border-border">
-                <CardHeader>
-                  <CardTitle className="text-lg text-foreground">
-                    Our Offices
-                  </CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {offices.map((office) => (
-                    <div
-                      key={office.city}
-                      className="flex items-start gap-3 p-3 bg-[#F9FAFB] rounded-lg"
-                    >
-                      <MapPin className="w-5 h-5 text-primary mt-0.5" />
-                      <div>
-                        <div className="font-medium text-foreground">
-                          {office.city}
-                        </div>
-                        <div className="text-sm text-muted-foreground">
-                          {office.address}
-                        </div>
-                        <div className="text-sm text-muted-foreground">
-                          {office.phone}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-
-              {/* Response Time */}
-              <Card className="border-border bg-[#FFE3E8]">
-                <CardContent className="p-6 text-center">
-                  <Clock className="w-8 h-8 text-primary mx-auto mb-3" />
-                  <h3 className="font-semibold text-foreground mb-1">
-                    Quick Response
-                  </h3>
-                  <p className="text-sm text-muted-foreground">
-                    We typically respond within 24 hours during business days.
-                  </p>
-                </CardContent>
-              </Card>
             </div>
           </div>
         </div>
