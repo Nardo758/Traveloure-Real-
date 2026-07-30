@@ -583,6 +583,32 @@ This document captures architectural decisions to maintain consistency across co
   (converge model A onto `authorizeTripLogistics`) would inherit the status-blind over-grant and must not ship
   before that is fixed.
 
+- **Shared-trip access (L20) — APPROVED Jul 30, 2026 by the decision-maker ("Yes, this would be a good feature"), with
+  the ratified tier design below.** Phase-0 ground truth corrected the scope in three important ways: ① the ungated
+  logistics surface is **22 endpoints**, not the 10 first reported (all `isAuthenticated`-only in `routes.ts`: contracts
+  ×5, transactions/budget ×7, emergency/alerts ×7, the 3 AI reads, bulk-invite); ② **a "friend"/"participant" principal
+  is NOT EXPRESSIBLE today** — no code path ever writes a `role='expert'|'friend'` `trip_collaborators` row, and
+  `trip_participants.userId` is left NULL by the only automated writer (`bulkInvite`), with no email→account
+  reconciliation, so participants are email-only RSVP records with no session; real participant access needs a
+  **Phase 2 invite→accept flow that mints collaborator rows** (a genuine feature build, deliberately NOT bundled into
+  the hole-closing); ③ **there is NO correct "is assigned expert?" predicate in the codebase** — `storage.isExpertAssignedToTrip`
+  is status-blind (a **rejected** advisor passes, and `authorizeTripLogistics` uses it), while the two filtered
+  implementations exclude `'assigned'`, which `admin-query.service.ts` writes when an admin confirms a lead. **Ratified
+  canonical predicate: `pending|accepted|assigned` PASS, `rejected` DENIES, unknown status DENIES (fail closed)** — this
+  is a PREREQUISITE, since widening expert reach on a predicate that admits rejected advisors is the biggest hazard here.
+  **Ratified tier table** (only owner / assigned expert / author / admin are expressible): money-between-people
+  (transactions, splits, budget summary/categories/settle-up) = **owner-only** (the settle-up graph decides who owes whom;
+  the expert has their own commission view); vendor contracts = **read owner ‖ expert, write owner-only** (coordination is
+  their job, creating a financial/legal artifact is not); emergency = **read owner ‖ expert, write owner-only EXCEPT
+  `POST alerts` which the expert may raise** (the local fixer must reach your people in a crisis without being able to
+  rewrite who they are); participant PII (dietary/accessibility/phone/amount-owed) = **owner-only, never expert** (a
+  materially larger disclosure than any existing expert surface); the 3 AI reads = owner ‖ expert ‖ author ‖ admin **and
+  rate-limited** (`itinerary/recommendations` makes a real OpenAI call behind no limiter). Also filed-and-fixed in the same
+  lane: `bulk-invite` array/cap validation, `emergency/initialize` idempotency (it appends duplicate embassy rows every
+  call), the caller-supplied `userId` on `POST participants` (a future self-service authorization grant), the zero-participant
+  NaN in `calculate-split`, and cross-trip participant ids in `transactions/split`. **Correction worth recording:**
+  `trips.managedByEaId` has **zero production writers** (only a CI seed), so the read-gates honouring it — including the
+  P0-b stopgap — gate on a column that is always NULL in prod; that branch is inert, not load-bearing.
 - **Trust-claims cluster** (on `/experts`, `/experts/:id`, `/services/:id`), awaiting the dedicated brief. **Two arms
   FIXED:** ① the `verified || true` bug (every expert rendered "Verified") is closed by Replit commit `139d3f71` —
   `expert-detail.tsx` now uses `verified === true`. ② **fabricated `4.9`/`4.5` ratings on LIVE surfaces — closed (PR #177).**
