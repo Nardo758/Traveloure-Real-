@@ -3,6 +3,7 @@ import type { Server } from "http";
 import { adminRateLimit, aiRateLimit, leadRoutingRateLimit, heavyReadRateLimit } from "./middleware/rateLimiter";
 import { getSlowQueryLog, clearSlowQueryLog } from "./utils/queryTimer";
 import { redactTemplateContent } from "./utils/template-content-gate";
+import { extractServiceLocation, ServiceLocationError } from "./utils/service-location";
 import { trackFunnelEvent } from "./utils/funnelTracker";
 import fs from "fs";
 import path from "path";
@@ -1875,7 +1876,12 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       // Extract neighborhoods before schema parse (not a DB column)
       const { neighborhoods: neighborhoodSlugs, ...bodyWithoutNeighborhoods } = req.body;
-      const input = insertProviderServiceSchema.parse(bodyWithoutNeighborhoods);
+      // L27-P3: pull the confirmed map point out and STRIP any client-sent
+      // latitude/longitude/locationPrecision — precision is derived server-side and
+      // is 'exact' only for a point the earner actually confirmed (§13; see
+      // utils/service-location.ts for the full rule set).
+      const { body: bodyWithoutLocation, patch: locationPatch } = extractServiceLocation(bodyWithoutNeighborhoods);
+      const input = insertProviderServiceSchema.parse(bodyWithoutLocation);
 
       // Meeting-point completeness gate: an in-person/hybrid service can't go live (status:"active")
       // without telling the traveler where to meet. Draft saves are exempt. Grandfathers existing
@@ -1923,7 +1929,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
 
-      const service = await storage.createProviderService({ ...input, userId });
+      const service = await storage.createProviderService({ ...input, ...locationPatch, userId });
 
       // Write (or clear) neighborhood coverage rows whenever the neighborhoods
       // field is present in the payload — including empty arrays, which must
@@ -1940,6 +1946,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     } catch (err) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });
+      }
+      if (err instanceof ServiceLocationError) {
+        return res.status(400).json({ message: err.message, code: "INVALID_LOCATION_POINT" });
       }
       console.error("Error creating provider service:", err);
       res.status(500).json({ message: "Failed to create service" });
@@ -2018,7 +2027,12 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       }
       // Extract neighborhoods before schema parse (not a DB column)
       const { neighborhoods: neighborhoodSlugs, ...bodyWithoutNeighborhoods } = req.body;
-      const input = insertProviderServiceSchema.partial().parse(bodyWithoutNeighborhoods);
+      // L27-P3: same server-derived location handling as create. A PATCH that carries
+      // no `locationPoint` leaves latitude/longitude/location_precision untouched — so a
+      // migration-129 'neighborhood_centroid' row is never upgraded to 'exact' by an
+      // unrelated edit (§13). `locationPoint: null` is an explicit pin removal.
+      const { body: bodyWithoutLocation, patch: locationPatch } = extractServiceLocation(bodyWithoutNeighborhoods);
+      const input = insertProviderServiceSchema.partial().parse(bodyWithoutLocation);
 
       // Meeting-point completeness gate on publish — resolve from the patch or the existing row.
       if (input.status === "active") {
@@ -2068,7 +2082,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       }
 
       // Remove userId from input to prevent ownership transfer
-      const { userId: _, ...safeInput } = input as any;
+      const { userId: _, ...safeInputWithoutLocation } = input as any;
+      const safeInput = { ...safeInputWithoutLocation, ...locationPatch };
       // A neighborhoods-only PATCH leaves no listing columns to update —
       // drizzle's .set({}) throws, which 500'd the pure "edit coverage areas"
       // save before the coverage writer below could run. Skip the row update
@@ -2109,6 +2124,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     } catch (err) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });
+      }
+      if (err instanceof ServiceLocationError) {
+        return res.status(400).json({ message: err.message, code: "INVALID_LOCATION_POINT" });
       }
       res.status(500).json({ message: "Failed to update service" });
     }

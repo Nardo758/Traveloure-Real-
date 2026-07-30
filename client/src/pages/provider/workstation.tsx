@@ -36,6 +36,7 @@ import { Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { ProviderLayout } from "@/components/provider/provider-layout";
 import { PageHeader, EmptyState, StatusBadge } from "@/components/backoffice/primitives";
+import { LocationPointPicker, type LocationPoint } from "@/components/backoffice/location-point-picker";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -351,6 +352,10 @@ export default function ProviderWorkstation() {
   const [propName, setPropName] = useState("");
   const [propDescription, setPropDescription] = useState("");
   const [propLocation, setPropLocation] = useState("");
+  // L27-P3: the confirmed map point for the property (null = no pin placed). Sent only
+  // when set; the server derives `location_precision='exact'` from a confirmed point and
+  // never from a typed address (§13).
+  const [propPoint, setPropPoint] = useState<LocationPoint | null>(null);
   const [roomDrafts, setRoomDrafts] = useState<RoomDraft[]>([
     { key: "r0", roomName: "", price: "", units: "" },
   ]);
@@ -360,6 +365,7 @@ export default function ProviderWorkstation() {
     setPropName("");
     setPropDescription("");
     setPropLocation("");
+    setPropPoint(null);
     setRoomDrafts([{ key: `r${Date.now()}`, roomName: "", price: "", units: "" }]);
     setPropertyBuilderOpen(true);
   }
@@ -387,6 +393,8 @@ export default function ProviderWorkstation() {
         serviceName: propName.trim(),
         description: propDescription.trim() || undefined,
         location: propLocation.trim() || undefined,
+        // Only a confirmed pin travels; omitted otherwise (no coordinates written).
+        ...(propPoint ? { locationPoint: propPoint } : {}),
         rooms: roomDrafts.map((r) => ({
           roomName: r.roomName.trim(),
           price: r.price,
@@ -1045,6 +1053,22 @@ export default function ProviderWorkstation() {
                   data-testid="input-property-location"
                 />
               </div>
+
+              {/* L27-P3: optional precise pin for the property. Rooms inherit it (they sit
+                  at the same address). Renders nothing when no Maps key is configured. */}
+              <LocationPointPicker
+                value={propPoint}
+                // Create dialog: nothing is stored yet, so there is no row precision to
+                // report — the picker labels a fresh confirm as "Pin placed", not
+                // "confirmed on the listing" (§13: don't claim saved state before saving).
+                precision={null}
+                addressHint={propLocation}
+                onChange={setPropPoint}
+                label="Pin the property on the map (optional)"
+                helpText="Confirming a pin places this property — and its rooms — accurately on planning maps."
+                idPrefix="property-location"
+              />
+
               <div>
                 <Label htmlFor="property-description" className="text-sm">
                   Description (optional)
