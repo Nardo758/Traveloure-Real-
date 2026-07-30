@@ -754,7 +754,19 @@ router.get("/api/ready-made", async (_req, res) => {
       .from(readyMadeTrips)
       .innerJoin(users, eq(users.id, readyMadeTrips.authorId))
       .where(and(eq(readyMadeTrips.status, "approved"), eq(readyMadeTrips.active, true)))
-      .orderBy(desc(readyMadeTrips.reviewedAt));
+      // CURATION ORDER (MP-3): badged listings lead, then most-recently-approved.
+      //
+      // Note this lane does NOT use the featured-sort bounded-boost primitive that the
+      // services feed uses. That guardrail exists to stop editorial featuring from burying
+      // a better-QUALITY native result — and `ready_made_trips` has no quality axis at all
+      // (no rating column, no review table, no salesCount). With nothing measured there is
+      // nothing to bury, so a straight badge tier is honest here. If a real quality signal
+      // is ever added to this lane, move it onto featuredAdjustedScore rather than deepening
+      // this ORDER BY.
+      .orderBy(
+        sql`CASE WHEN ${readyMadeTrips.badge} IS NULL THEN 1 ELSE 0 END`,
+        desc(readyMadeTrips.reviewedAt),
+      );
 
     res.json({
       listings: rows.map((r) => ({

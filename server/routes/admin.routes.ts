@@ -69,6 +69,7 @@ import { ingestKyotoHeritage, ingestKyotoContentGaps, isDmoIngestReady } from ".
 import { analyzeKyotoContentGaps, listOpenKyotoGaps } from "../services/content-gap.service";
 import { cityNeighborhoods, expertNeighborhoods, dmoRawContent } from "@shared/schema";
 import { isExpertRole, isProviderRole } from "@shared/roles";
+import { isReadyMadeBadge, READY_MADE_BADGE_VALUES } from "@shared/ready-made-badges";
 import { coordinationService } from "../services/coordination.service";
 import { vendorManagementService } from "../services/vendor-management.service";
 import { budgetService } from "../services/budget.service";
@@ -769,6 +770,48 @@ router.post("/api/admin/ready-made/:id/approve", isAuthenticated, async (req, re
   } catch (err: any) {
     console.error("Admin ready-made approve error:", err);
     res.status(500).json({ message: "Failed to approve listing" });
+  }
+});
+
+// PATCH /api/admin/ready-made/:id/badge — set or clear the store's editorial badge (MP-3).
+//
+// Why this endpoint exists: `ready_made_trips.badge` was READ on all four public DTOs and
+// RENDERED on the store card + detail page, but NOTHING in the repo ever wrote it — a
+// decorative column that could only ever be empty, so the store had no curation lever at all.
+//
+// The value is validated against the CLOSED shared vocabulary (shared/ready-made-badges.ts),
+// never free text: the string is rendered verbatim to travelers, so an open field would let an
+// unbacked trust claim ("Most popular") reach a buyer — the §13 class. `null` clears the badge.
+// Admin-only, and it rides the blanket /api/admin adminApiGuard (§2) as well as this explicit
+// role check, matching the sibling ready-made handlers.
+router.patch("/api/admin/ready-made/:id/badge", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const raw = (req.body ?? {}).badge;
+    const badge = raw === null || raw === undefined || raw === "" ? null : raw;
+    if (badge !== null && !isReadyMadeBadge(badge)) {
+      return res.status(400).json({
+        message: "Unknown badge",
+        allowed: READY_MADE_BADGE_VALUES,
+      });
+    }
+    // Only an APPROVED listing can carry a badge — badging a draft/submitted build would
+    // put an editorial claim on something the store has not accepted yet (D1a in spirit).
+    const [updated] = await db
+      .update(readyMadeTrips)
+      .set({ badge, updatedAt: new Date() } as any)
+      .where(and(eq(readyMadeTrips.id, req.params.id), eq(readyMadeTrips.status, "approved")))
+      .returning();
+    if (!updated) {
+      return res.status(409).json({ message: "Listing is not approved" });
+    }
+    res.json({ success: true, listing: updated });
+  } catch (err: any) {
+    console.error("Admin ready-made badge error:", err);
+    res.status(500).json({ message: "Failed to update badge" });
   }
 });
 
