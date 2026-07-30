@@ -511,6 +511,59 @@ purchases in the lane and ≥5 distinct sellers**, so it cannot be one seller's 
 editorial shelf holds. Revisit after beta (ties to the L16 real-testimonials deferral — same "wait for real
 volume" posture).
 
+### Status (Jul 30, 2026)
+
+**MP-1 + MP-2 LANDED** (`1573e18e`). Nav lists all four tabs under "Marketplace" (decision-maker
+confirmed the page name); the shared `StorefrontLink` return path is on ready-made + service detail.
+Two scope calls recorded there: the expert-template detail page was skipped (§10 forbids new features
+on that sunsetting lane) and Discover cards were skipped (already `<Link>`-wrapped — nesting would emit
+invalid anchors). The planned "By Date"→"By Event" rename was DROPPED: nav and tab already agree, and
+only the internal `?tab=events` token differs, which is the URL contract, not a label.
+
+**MP-3 LANDED** (`c56036c8`) — and it was bigger than "sort by featured", because the one query it
+touched carried two live defects:
+- **F2 read-gate leak (P1).** `GET /api/discover/location/:city` is public + unauthenticated +
+  `Cache-Control: public`, and filtered only `status='active'` — so born-`submitted` listings were
+  being served on the public city page (2 rows, proven on a real DB). `status` is the owner's on/off
+  switch, never an approval. Gated on `approval_status='approved'`.
+- **Inverted featured sort.** `.orderBy(isFeatured)` is ASC, and Postgres orders `false < true`, so
+  admin-featured services sank to the BOTTOM. Replaced with the existing bounded-boost primitive
+  rather than `desc()` (which is the naive ranking that primitive exists to prevent).
+- **featured-sort itself had a young-marketplace bug:** it treated UNMEASURED (no reviews) the same as
+  measured-below-floor, so every item scored 0 and the editorial boost could never land. Unmeasured now
+  takes the boost; measured-but-low still forfeits it.
+- **Ready-made curation lever was dead:** `badge` was read on all four public DTOs and rendered, with
+  **zero writers** anywhere in the repo. Added an admin-only, approved-only PATCH validated against a
+  new CLOSED vocabulary (`shared/ready-made-badges.ts`) that deliberately excludes "Most popular"/
+  "Best selling" (§13 — the lane has no rating/review/sales aggregate to back a demand claim), plus a
+  Store-curation section on the admin approvals page. Feed orders badged-first, then recency.
+
+**MP-4 — BLOCKED, needs a decision-maker call (see below).**
+
+### MP-4 — why it stopped, and the decision it needs
+
+MP-4 (credit the providers whose services sit inside a ready-made trip) is buildable — the data path is
+real: `ready_made_trips.sourceTripId` → `itinerary_items.providerServiceId` (a live FK, written by the
+Workstation's service picker) → `provider_services` → the owner's storefront. But **both** ways to
+surface it cross a ratified boundary, so neither is mine to choose:
+
+- **Public credit on the store detail page** (the version that drives the most traffic) would list the
+  vendors inside a trip to anyone, unpaid. That is a partial disclosure of the paid product (§10's
+  content-gate — the itinerary is what the buyer is buying) and it is a **disintermediation vector**:
+  a visitor could read off the vendor list and book each one directly, which is exactly what the §16
+  agent-booking rail exists to prevent. The public DTO currently exposes only `insideCounts` (counts by
+  type) — deliberately, and that restraint looks correct.
+- **Buyer-side credit** (link each provider-backed item in the buyer's own trip to its service page,
+  which then reaches the storefront via MP-2) leaks nothing — the buyer already owns the content. But
+  `providerServiceId` is **not in the TripPlan DTO**, and §18 makes TripPlan a ratified contract whose
+  **amendments are decision-maker calls**. Adding a field is an amendment.
+
+**Recommendation: build the buyer-side version**, i.e. amend TripPlan to carry `providerServiceId` at
+the `full` redaction level only. It keeps the content-gate and the anti-disintermediation posture
+intact, it composes with MP-2 instead of duplicating it, and it credits providers on a real
+relationship (this trip actually contains their service) rather than a popularity heuristic. The public
+version should stay unbuilt unless you decide the marketing value outweighs the disintermediation risk.
+
 ### Explicitly NOT in this program
 Provider-authored ready-made trips (structurally correct as-is, ②) · any change to routing tokens · the
 `AUTHOR_ROLES` role-list question (filed separately below) · multi-market expansion (§12 paused).
