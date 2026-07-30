@@ -898,6 +898,46 @@ export async function registerRoutes(
       const trip = await storage.getTrip(req.params.id);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
 
+      // SECURITY (P0-b, Jul 30 2026): this endpoint carried `isAuthenticated` ONLY — no trip
+      // authorization at all — while it wipes and rebuilds the trip's itinerary
+      // (`db.delete(itineraryItems)` below) and burns AI spend. Any authenticated user could
+      // destroy any other user's plan by guessing a trip UUID: the same wipe-and-overwrite
+      // primitive as the apply-to-trip IDOR closed in 4d26971b.
+      //
+      // SCOPED STOPGAP, deliberately conservative: the mutation is authorized against the SAME
+      // access set that can already READ the page hosting the Generate/Regenerate button, i.e.
+      // `GET /api/trips/:id` above (`isOwner || isExpert || isManagingEa || isGuestWithToken`,
+      // where `isExpert` is the `trips.expertId` COLUMN and `isManagingEa` is
+      // `trips.managedByEaId`). So: allow when the canonical `authorizeTripLogistics` passes
+      // (owner ‖ trip-assigned expert via trip_expert_advisors ‖ trip author ‖ audit-logged
+      // admin) OR when the caller matches one of those two trip columns, which that helper does
+      // not read. Because the endpoint is open to EVERYONE today, narrowing it to its host
+      // page's existing read-access set is a strict improvement that regresses nobody
+      // (EA-managed and expertId-linked trips keep working) while closing it to strangers.
+      // The read gate's fourth branch (guest with `shareToken`) is deliberately NOT mirrored:
+      // `isAuthenticated` already excludes unauthenticated guests here and the client hook
+      // (`useGenerateItinerary`) sends no token, so mirroring it would WIDEN today's reachable
+      // set rather than preserve it.
+      //
+      // This is explicitly NOT a new platform policy. Whether `authorizeTripLogistics` itself
+      // should admit `trips.expertId` + `trips.managedByEaId` (and the owner/status-blind
+      // divergences around it) is the trip-role lane's call — see CLAUDE.md §13 "Trip-access
+      // model divergence + owner under-grant (L10)". Do not generalise from this local predicate.
+      //
+      // Placed after the trip fetch (it needs the two columns) but BEFORE the AI call and BEFORE
+      // the destructive delete, so a denied caller costs zero AI tokens and destroys nothing.
+      const callerUserId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const isTripColumnExpert = callerUserId != null && (trip as any).expertId === callerUserId;
+      const isManagingEa = callerUserId != null && (trip as any).managedByEaId === callerUserId;
+      if (!isTripColumnExpert && !isManagingEa) {
+        const denied = await authorizeTripLogistics(
+          req.params.id,
+          callerUserId,
+          "POST /api/trips/:id/generate-itinerary",
+        );
+        if (denied) return res.status(denied.status).json({ message: denied.message });
+      }
+
       const start = new Date(trip.startDate);
       const end = new Date(trip.endDate);
       const duration = Math.max(1, Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1);
