@@ -8,6 +8,7 @@ import { db } from "../db";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
+import { createRateLimiter } from "../infrastructure/rate-limiter";
 import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, isNull, asc } from "drizzle-orm";
 import {
   getLocalExpertFormByUserId, getServiceProviderFormByUserId, getProviderVerificationStatus,
@@ -653,12 +654,26 @@ router.get("/api/expert/assigned-trips", isAuthenticated, async (req, res) => {
 
   // GET /api/admin/local-experts/nugget-counts — nugget count per local expert
 
-router.post("/api/visa/requirements", async (req, res) => {
+// Rate limit for the visa lookup below. This replaces a reference to an undefined
+// `visaRateLimit(ip)` — the name existed nowhere in the codebase, so every call to this
+// PUBLIC, UNAUTHENTICATED endpoint threw a ReferenceError before it did anything (the same
+// shape as the undefined `requireProviderRole` §9 records). The throttle was clearly
+// intended — the handler falls through to a cache-miss AI/external lookup, i.e. real spend
+// on an unauthenticated route — so it is implemented with the real primitive rather than
+// deleted. Middleware, because that is what createRateLimiter returns; the hand-rolled
+// `if (limiter(ip))` shape it was written against does not exist.
+const visaRequirementsLimiter = createRateLimiter({
+  windowMs: 60 * 1000,
+  maxRequests: 10,
+  keyGenerator: (req) =>
+    `visa-requirements:${(req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.socket.remoteAddress || "unknown"}`,
+  handler: (_req, res) => {
+    res.status(429).json({ message: "Too many requests. Please wait a minute before trying again." });
+  },
+});
+
+router.post("/api/visa/requirements", visaRequirementsLimiter, async (req, res) => {
     try {
-      const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.socket.remoteAddress || "unknown";
-      if (visaRateLimit(ip)) {
-        return res.status(429).json({ message: "Too many requests. Please wait a minute before trying again." });
-      }
       const { passportCountry, destinationCountry } = req.body;
       if (!passportCountry || !destinationCountry) {
         return res.status(400).json({ message: "passportCountry and destinationCountry are required" });
@@ -781,9 +796,14 @@ router.get("/api/visa/experts", async (req, res) => {
 
 router.get("/api/expert/contracts/recent", isAuthenticated, async (req, res) => {
     try {
+      // SECURITY (migration 157): `expertId` was computed here and then never passed, so this
+      // returned the 20 most recent contracts PLATFORM-WIDE — other earners' service names,
+      // client destinations and amounts — to any authenticated caller. It is now the required
+      // first argument, so the scope is visible at the call site and the compiler enforces it.
       const expertId = (req.user as any).id || (req.user as any).claims?.sub;
+      if (!expertId) return res.status(401).json({ message: "Not authenticated" });
       const limit = Math.min(parseInt(req.query.limit as string || "20"), 100);
-      res.json(await getRecentExpertContracts(limit));
+      res.json(await getRecentExpertContracts(expertId, limit));
     } catch (err) {
       console.error("[Expert] getContracts error:", err);
       res.status(500).json({ message: "Failed to fetch contracts" });

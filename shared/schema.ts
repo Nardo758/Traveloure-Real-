@@ -1003,6 +1003,15 @@ export const aiBlueprints = pgTable("ai_blueprints", {
 
 export const userAndExpertContracts = pgTable("user_and_expert_contracts", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  // Ownership (migration 157). Until this landed the table had NO principal at all, which is
+  // why its two live readers could not be gated — there was nothing to filter on.
+  // `earner_id`, not `expert_id`: the counterparty is the owner of the booked service, who may
+  // be an `expert` OR a `service_provider`, so the table-name-matching `expert_id` would be
+  // false for every provider-owned booking (the role-vocabulary-audit class of error).
+  // Nullable by design — a row we cannot attribute stays NULL, and the read gate treats NULL
+  // as admin-only rather than showing an unattributable financial artifact to a guessing caller.
+  travelerId: varchar("traveler_id").references(() => users.id, { onDelete: "set null" }),
+  earnerId: varchar("earner_id").references(() => users.id, { onDelete: "set null" }),
   title: varchar("title", { length: 255 }).notNull(),
   tripTo: varchar("trip_to", { length: 255 }).notNull(),
   description: text("description").notNull(),
