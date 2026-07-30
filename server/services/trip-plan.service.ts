@@ -647,11 +647,10 @@ export async function assembleTripPlan(
 
   const rawMetrics: Record<string, string> = {};
   for (const m of variantMetrics) {
-    // PRESERVED VERBATIM from the pre-refactor route, including the key name. NOTE (reported, not
-    // changed by this lane): `itinerary_variant_metrics` has no `metricValue` column — the value
-    // column is `value` — so every entry is `undefined` today and `metrics` serializes as `{}`.
-    // Correcting it would change the live response outside this refactor's scope.
-    rawMetrics[m.metricKey] = m.metricValue;
+    // L6 fix: `itinerary_variant_metrics`'s value column is `value` (shared/schema.ts:1136), not
+    // `metricValue` — that field doesn't exist on the row, so every entry was `undefined` and
+    // `metrics` silently serialized as `{}` on the live endpoint. Read the real column.
+    rawMetrics[m.metricKey] = m.value;
   }
 
   const metricsMap: TripPlanMetrics = {
