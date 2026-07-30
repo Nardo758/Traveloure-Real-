@@ -20,6 +20,20 @@ interface DmoItem {
   neighborhood?: string | null;
   contentType: string;
   tags?: string[] | null;
+  // L27-P1: dmo_raw_content.latitude/longitude are real decimal columns, returned by
+  // GET /api/expert-workspace/library as-is (full row spread). No ingestion path writes
+  // them today, so they are typically null — but when present they are the item's OWN
+  // coordinate, not a neighborhood substitute, so they're safe to carry through.
+  latitude?: string | number | null;
+  longitude?: string | number | null;
+}
+
+// Mirrors workspace.tsx's isLocatedItem: decimal columns arrive as strings over JSON;
+// reject null/NaN so an absent coordinate is never coerced into a fabricated one.
+function hasRealCoords(item: { latitude?: string | number | null; longitude?: string | number | null }): boolean {
+  const lat = item.latitude == null ? NaN : typeof item.latitude === "number" ? item.latitude : parseFloat(item.latitude);
+  const lng = item.longitude == null ? NaN : typeof item.longitude === "number" ? item.longitude : parseFloat(item.longitude);
+  return Number.isFinite(lat) && Number.isFinite(lng);
 }
 interface LibraryResponse { items: DmoItem[] }
 
@@ -118,11 +132,15 @@ export function DmoPickerCore({
 
   const addMutation = useMutation({
     mutationFn: async (item: DmoItem) => {
+      // L27-P1: never geocode client-side and never substitute a neighborhood centroid —
+      // only carry the item's OWN latitude/longitude, and only when it's a real value.
+      const withCoords = hasRealCoords(item);
       const res = await apiRequest("POST", `/api/trips/${tripId}/itinerary-items`, {
         title: item.name,
         description: item.description || undefined,
         itemType: TYPE_TO_ITEM[item.contentType] ?? "activity",
         locationName: item.neighborhood || item.name,
+        ...(withCoords ? { latitude: String(item.latitude), longitude: String(item.longitude) } : {}),
         dayNumber,
       });
       return res.json();

@@ -20,6 +20,16 @@ interface PlatformService {
   serviceType?: string | null;
   averageRating?: string | null;
   reviewCount?: number | null;
+  // L27-P1: migration 129's additive coordinate columns, returned by GET /api/services
+  // (full row select). Only wired through when locationPrecision === 'exact' — today
+  // every populated row is 'neighborhood_centroid' (the migration's one-time backfill;
+  // no 'exact' writer exists yet, filed as Phase 3), and passing a shared centroid
+  // through here would recreate the exact multi-stop-collapse hazard this lane exists
+  // to close for DMO. Gating on 'exact' makes this correct once Phase 3 ships a real
+  // per-listing picker, without doing anything today.
+  latitude?: string | number | null;
+  longitude?: string | number | null;
+  locationPrecision?: string | null;
 }
 
 // Map a service's delivery/type to the workspace itinerary itemType set.
@@ -69,11 +79,18 @@ export function ServicePickerModal({
 
   const addMutation = useMutation({
     mutationFn: async (s: PlatformService) => {
+      // L27-P1: only carry the listing's own coordinate through when it's marked 'exact'
+      // — a 'neighborhood_centroid' value is shared by every other listing in the same
+      // neighborhood and would misrepresent this specific stop's location (§13).
+      const lat = s.latitude == null ? NaN : typeof s.latitude === "number" ? s.latitude : parseFloat(s.latitude);
+      const lng = s.longitude == null ? NaN : typeof s.longitude === "number" ? s.longitude : parseFloat(s.longitude);
+      const withCoords = s.locationPrecision === "exact" && Number.isFinite(lat) && Number.isFinite(lng);
       const res = await apiRequest("POST", `/api/trips/${tripId}/itinerary-items`, {
         title: s.serviceName,
         description: s.description || undefined,
         itemType: itemTypeFor(s),
         locationName: s.meetingPoint || s.location || s.serviceName,
+        ...(withCoords ? { latitude: String(s.latitude), longitude: String(s.longitude) } : {}),
         estimatedCost: s.price ? String(s.price) : undefined,
         providerServiceId: s.id,
         dayNumber,
