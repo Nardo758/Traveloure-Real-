@@ -49,6 +49,15 @@ import {
   SURFACE_DEFAULT_AFFILIATE_CATEGORIES,
   SURFACE_SLUGS,
 } from "@shared/content-surface-map";
+// L3b′: the itinerary-share / OG family renders from the ONE TripPlan service's VARIANT producer
+// (docs/EXECUTION_MAP.md §3, CLAUDE.md §18) instead of its own hand-rolled variant shape.
+import {
+  assembleTripPlanFromVariant,
+  TripPlanVariantNotFoundError,
+} from "../services/trip-plan.service";
+import type { PreviewTripPlan, VariantFullTripPlan } from "@shared/trip-plan";
+// §18 L4 (migration 154): trip-scoped legs live in the same table behind their own service.
+import { getTripTransportLegs, isTripScopedLeg } from "../services/trip-transport-legs.service";
 import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant, type TripPreferences } from "../itinerary-optimizer";
 import { complexityTier } from "../services/smart-sequencing.service";
 import { getFee } from "../services/optimization-fee.service";
@@ -2105,70 +2114,83 @@ router.get("/api/itinerary-share/:token", async (req, res) => {
 
       await storage.incrementSharedItineraryViewCount(shared.id, shared.viewCount);
 
-      const [variant, items, legs, exportCache, sharer] = await Promise.all([
-        storage.getItineraryVariantById(shared.variantId),
-        storage.getItineraryVariantItemsByVariantId(shared.variantId),
-        storage.getTransportLegsByVariantId(shared.variantId),
+      // ── Thin caller (L3b′): the plan assembly lives in the ONE TripPlan service, VARIANT
+      // producer. The share token is keyed on `variantId`, so the plan is assembled from the
+      // variant's own snapshot rows and NEVER from the live trip — a share link keeps rendering
+      // exactly what was shared. The token gate above is authoritative; the assembler authorizes
+      // nothing (redaction level = channel contract). This surface has always rendered the full
+      // body to a token holder, so it asks for 'full' — and then emits ONLY the pre-existing
+      // response keys below, so nothing the envelope newly carries (vendorPhone,
+      // confirmationNumber, meetingPoint, expertNote, booked/bookVia, …) leaks onto this surface.
+      let plan: VariantFullTripPlan;
+      try {
+        plan = await assembleTripPlanFromVariant(shared.variantId, "full");
+      } catch (e) {
+        if (e instanceof TripPlanVariantNotFoundError) {
+          return res.status(404).json({ error: "Variant not found" });
+        }
+        throw e;
+      }
+
+      const [exportCache, sharer, rawLegs] = await Promise.all([
         storage.getMapsExportCacheByVariantId(shared.variantId),
         storage.getUserPublicProfile(shared.sharedByUserId),
+        // PRE-EXISTING §16 stray, preserved verbatim: this response has always carried each leg's
+        // `linked_product_url` (the client renders it as a raw outbound "Book transport" link).
+        // TripPlan deliberately NEVER carries an affiliate/deep-link URL — the URL stays
+        // server-side and unbooked chauffeured legs are marked `bookVia: 'agent-rail'` — so this
+        // ONE field is read outside the envelope rather than smuggled into it. FILED: route the
+        // client's "Book transport" action through the booking-agent rail (§16), then delete this
+        // read and the key with it.
+        storage.getTransportLegsByVariantId(shared.variantId),
       ]);
 
-      if (!variant) return res.status(404).json({ error: "Variant not found" });
-      const comparison = await storage.getItineraryComparison(variant.comparisonId);
+      const affiliateUrlByLegId: Record<string, string | null> = {};
+      for (const l of rawLegs) affiliateUrlByLegId[l.id] = l.linkedProductUrl ?? null;
 
-      const dayNumbers = Array.from(new Set(items.map(i => i.dayNumber))).sort((a, b) => a - b);
-      const days = dayNumbers.map(dayNum => {
-        const dayItems = items.filter(i => i.dayNumber === dayNum).sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
-        const dayLegs = legs.filter(l => l.dayNumber === dayNum).sort((a, b) => a.legOrder - b.legOrder);
+      const days = plan.days.map(day => ({
+        dayNumber: day.dayNumber,
+        // `dateIso` is the machine YYYY-MM-DD the envelope carries; "" when the snapshot has no
+        // start date (the pre-existing behaviour — never a guessed date).
+        date: day.dateIso ?? "",
+        activities: day.activities.map(a => ({
+          id: a.id,
+          name: a.name,
+          startTime: a.startTime,
+          endTime: a.endTime,
+          lat: a.lat,
+          lng: a.lng,
+          category: a.category ?? null,
+          cost: a.cost,
+          description: a.description ?? null,
+          location: a.location,
+          duration: a.durationMinutes ?? null,
+        })),
+        transportLegs: day.transports.map(leg => ({
+          id: leg.id,
+          legOrder: leg.legOrder,
+          fromName: leg.fromName,
+          toName: leg.toName,
+          recommendedMode: leg.recommendedMode,
+          userSelectedMode: leg.userSelectedMode,
+          distanceDisplay: leg.distanceDisplay,
+          distanceMeters: leg.distanceMeters ?? null,
+          estimatedDurationMinutes: leg.estimatedDurationMinutes,
+          estimatedCostUsd: leg.estimatedCostUsd,
+          energyCost: leg.energyCost ?? null,
+          alternativeModes: leg.alternativeModes,
+          linkedProductUrl: affiliateUrlByLegId[leg.id] ?? null,
+          fromLat: leg.fromLat,
+          fromLng: leg.fromLng,
+          toLat: leg.toLat,
+          toLng: leg.toLng,
+        })),
+      }));
 
-        const startDate = comparison?.startDate ? new Date(comparison.startDate) : null;
-        let dateStr = "";
-        if (startDate) {
-          const d = new Date(startDate);
-          d.setDate(d.getDate() + dayNum - 1);
-          dateStr = d.toISOString().split("T")[0];
-        }
-
-        return {
-          dayNumber: dayNum,
-          date: dateStr,
-          activities: dayItems.map(item => ({
-            id: item.id,
-            name: item.name,
-            startTime: item.startTime,
-            endTime: item.endTime,
-            lat: item.latitude ? parseFloat(item.latitude as any) : null,
-            lng: item.longitude ? parseFloat(item.longitude as any) : null,
-            category: item.serviceType,
-            cost: item.price ? parseFloat(item.price as any) : 0,
-            description: item.description,
-            location: item.location,
-            duration: item.duration,
-          })),
-          transportLegs: dayLegs.map(leg => ({
-            id: leg.id,
-            legOrder: leg.legOrder,
-            fromName: leg.fromName,
-            toName: leg.toName,
-            recommendedMode: leg.recommendedMode,
-            userSelectedMode: leg.userSelectedMode,
-            distanceDisplay: leg.distanceDisplay,
-            distanceMeters: leg.distanceMeters,
-            estimatedDurationMinutes: leg.estimatedDurationMinutes,
-            estimatedCostUsd: leg.estimatedCostUsd,
-            energyCost: leg.energyCost,
-            alternativeModes: leg.alternativeModes,
-            linkedProductUrl: leg.linkedProductUrl,
-            fromLat: leg.fromLat,
-            fromLng: leg.fromLng,
-            toLat: leg.toLat,
-            toLng: leg.toLng,
-          })),
-        };
-      });
-
-      const totalTransportCost = legs.reduce((sum, l) => sum + (l.estimatedCostUsd || 0), 0);
-      const totalTransportMinutes = legs.reduce((sum, l) => sum + (l.estimatedDurationMinutes || 0), 0);
+      // Totals run over the plan's FULL leg list (`plan.legs`), which — like the read this
+      // replaced — includes legs whose day carries no items.
+      const totalTransportCost = plan.legs.reduce((sum, l) => sum + (l.estimatedCostUsd || 0), 0);
+      const totalTransportMinutes = plan.legs.reduce((sum, l) => sum + (l.estimatedDurationMinutes || 0), 0);
 
       // This endpoint is PUBLIC (no auth required) — any token holder can reach it, including
       // an anonymous "view"-only link passed to a friend/family member. expertNotes/expertDiff
@@ -2184,19 +2206,20 @@ router.get("/api/itinerary-share/:token", async (req, res) => {
 
       res.json({
         variant: {
-          id: variant.id,
-          name: variant.name,
-          description: variant.description,
-          destination: comparison?.destination,
+          id: plan.meta.sourceRef.id,
+          name: plan.meta.title,
+          description: plan.meta.description,
+          destination: plan.meta.destination,
           dateRange: {
-            start: comparison?.startDate,
-            end: comparison?.endDate,
+            start: plan.meta.dates.start,
+            end: plan.meta.dates.end,
           },
-          totalCost: variant.totalCost,
-          optimizationScore: variant.optimizationScore,
+          // RAW producer figures (decimal string / int) — see TripPlanSourceFigures.
+          totalCost: plan.sourceFigures?.totalCost ?? null,
+          optimizationScore: plan.sourceFigures?.optimizationScore ?? null,
           days,
           transportSummary: {
-            totalLegs: legs.length,
+            totalLegs: plan.legs.length,
             totalMinutes: totalTransportMinutes,
             totalCostUsd: Math.round(totalTransportCost * 100) / 100,
           },
@@ -2233,27 +2256,55 @@ router.get("/api/itinerary-share/:token", async (req, res) => {
   });
 
   // GET /api/trips/:tripId/transport-legs
-  // Returns transport legs for the most recent selected variant associated with a trip
+  // Returns the trip's transport legs: the most recent selected VARIANT's legs (the original
+  // behavior, unchanged for its live consumer client/src/pages/itinerary.tsx) PLUS the trip's own
+  // trip-scoped legs (§18 L4 / migration 154).
+  //
+  // §9 NO-SHADOW NOTE: L4a needed exactly this path for its Workstation read
+  // (`?includeProposed=1`). This handler is the LIVE copy of the path, so it was EXTENDED here
+  // rather than re-registered in the new (earlier-mounted) transport-legs.routes.ts — a second
+  // registration would have silently shadowed this one and changed what /itinerary receives.
+  //
+  // Trip-scoped visibility: CONFIRMED only by default (a traveler-safe read — a machine `proposed`
+  // leg is never returned without the explicit editor flag). `?includeProposed=1` adds proposals
+  // for the Workstation editor, whose caller is authorized identically.
 
 router.get("/api/trips/:tripId/transport-legs", isAuthenticated, async (req, res) => {
     try {
       const { tripId } = req.params;
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
 
+      // Owner keeps the original fast path; the assigned expert / author / (audit-logged) admin
+      // branch is ADDITIVE — the canonical trip-logistics model, which the Workstation editor
+      // needs (an assigned expert does not own the trip). Nobody who passed before is refused now.
       const tripOwned = await verifyTripOwnership(tripId, userId);
       if (!tripOwned) {
-        return res.status(404).json({ error: "Trip not found" });
+        const denied = await authorizeTripLogistics(
+          tripId,
+          userId,
+          "GET /api/trips/:tripId/transport-legs",
+        );
+        // 404 preserved (not 403) — the original response for a caller with no access to the trip.
+        if (denied) return res.status(404).json({ error: "Trip not found" });
       }
+
+      const includeProposed = req.query.includeProposed === "1" || req.query.includeProposed === "true";
+      const tripScopedLegs = await getTripTransportLegs(tripId, { includeProposed });
 
       const selectedVariant = await storage.getSelectedVariantByTrip(tripId);
       if (!selectedVariant?.selectedVariantId) {
-        return res.json({ legs: [], variantId: null });
+        // Expert-built trips have no comparison at all — variantId stays null, exactly as before,
+        // and the trip's own legs (if any) are what this trip has.
+        return res.json({ legs: tripScopedLegs, variantId: null });
       }
 
-      const legs = (await storage.getTransportLegsByVariantId(selectedVariant.selectedVariantId))
+      const variantLegs = (await storage.getTransportLegsByVariantId(selectedVariant.selectedVariantId))
         .sort((a: any, b: any) => a.legOrder - b.legOrder);
 
-      res.json({ legs, variantId: selectedVariant.selectedVariantId });
+      res.json({
+        legs: [...variantLegs, ...tripScopedLegs],
+        variantId: selectedVariant.selectedVariantId,
+      });
     } catch (err: any) {
       console.error("Get trip transport legs error:", err);
       res.status(500).json({ error: "Failed to load transport legs" });
@@ -2275,8 +2326,24 @@ router.patch("/api/transport-legs/:legId/mode", async (req, res) => {
       const leg = await storage.getTransportLegById(legId);
       if (!leg) return res.status(404).json({ error: "Transport leg not found" });
 
+      // §18 L4 (migration 154): a TRIP-scoped leg has no variant, so the variant→comparison→owner
+      // lookup below cannot authorize it — and a missing `variantOwner` used to skip the ownership
+      // block entirely. Trip-scoped legs are therefore authorized on the TRIP (owner ‖ assigned
+      // expert ‖ author ‖ audit-logged admin); the share-token branch does not apply (share tokens
+      // are variant-scoped), so a token-only caller is refused.
+      if (isTripScopedLeg(leg)) {
+        const denied = await authorizeTripLogistics(
+          leg.tripId,
+          userId,
+          "PATCH /api/transport-legs/:legId/mode (trip-scoped)",
+        );
+        if (denied) return res.status(denied.status).json({ error: denied.message });
+      }
+
       // Ownership check: verify via the variant's comparison owner OR valid suggest share token
-      const variantOwner = await storage.getVariantWithComparisonOwner(leg.variantId);
+      const variantOwner = leg.variantId
+        ? await storage.getVariantWithComparisonOwner(leg.variantId)
+        : null;
       if (variantOwner) {
         const isOwner = userId && variantOwner.userId === userId;
 
@@ -2319,12 +2386,16 @@ router.patch("/api/transport-legs/:legId/mode", async (req, res) => {
         energyCost: newEnergy ?? 0,
       });
 
-      // Regenerate maps URLs for all days (reflects new mode selection, replaces stale KML/GPX cache)
+      // Regenerate maps URLs for all days (reflects new mode selection, replaces stale KML/GPX cache).
+      // `maps_export_cache` is keyed on variant_id (NOT NULL), so a trip-scoped leg has no cache row
+      // to regenerate — skipped rather than attempted-and-swallowed.
       let updatedMapsUrls: { googleMapsUrls: Record<number, string>; appleMapsUrls: Record<number, string>; appleMapsWebUrls: Record<number, string> } | null = null;
-      try {
-        updatedMapsUrls = await regenerateMapsUrlsFromLegs(leg.variantId, leg.dayNumber);
-      } catch (mapsErr) {
-        console.error("Maps URL regeneration error (non-critical):", mapsErr);
+      if (leg.variantId) {
+        try {
+          updatedMapsUrls = await regenerateMapsUrlsFromLegs(leg.variantId, leg.dayNumber);
+        } catch (mapsErr) {
+          console.error("Maps URL regeneration error (non-critical):", mapsErr);
+        }
       }
 
       let downstreamMessage = "";
@@ -2811,6 +2882,14 @@ router.post("/api/expert-review/:shareToken/submit", async (req, res) => {
         const diffSummary = hasDiffs
           ? ` (${Object.keys(expertDiff.activityDiffs).length} activity edits, ${Object.keys(expertDiff.transportDiffs).length} transport changes)`
           : "";
+        // GAP 4 fix (expert-loop object-flow audit, Jul 30 2026): this notification previously
+        // carried no `data` at all, so the notifications-page renderer (which only shows an
+        // action button when `n.data?.tripId` is truthy — client/src/pages/notifications.tsx)
+        // fell through to nothing clickable. The real review/accept UI lives at the token-scoped
+        // `/itinerary-view/:token` route (NOT `/trip/:id` — this is a variant/share-token flow,
+        // not always trip-backed), so `workspacePath` points there; `tripId` is set to the real
+        // trip id when the comparison has one, else the variant id (still a truthy identifier —
+        // the renderer only gates visibility on it, the actual link comes from `workspacePath`).
         await storage.createNotification({
           userId: comparison.userId,
           type: "expert_suggestion",
@@ -2818,7 +2897,11 @@ router.post("/api/expert-review/:shareToken/submit", async (req, res) => {
           message: `An expert reviewed your "${variant.name}" itinerary for ${comparison.destination || "your trip"} and sent suggestions${diffSummary}: ${notes.substring(0, 150)}${notes.length > 150 ? "..." : ""}`,
           relatedId: shared.variantId,
           relatedType: "itinerary_variant",
-        });
+          data: {
+            tripId: comparison.tripId || shared.variantId,
+            workspacePath: `/itinerary-view/${shareToken}`,
+          },
+        } as any);
       }
 
       res.json({ success: true, message: "Edits submitted and traveler notified" });
@@ -2890,11 +2973,20 @@ router.get("/itinerary-view/:token", async (req, res, next) => {
       const shared = await storage.getSharedItineraryByToken(token);
       if (!shared) return next(); // Let SPA handle 404
 
-      const variant = await storage.getItineraryVariantById(shared.variantId);
-      const comparison = variant ? await storage.getItineraryComparison(variant.comparisonId) : null;
+      // ── Thin caller (L3b′): 'preview' is the OG/link-card channel — meta ONLY, no itinerary body
+      // of any kind is loaded or rendered (§3). Assembled from the VARIANT snapshot the token is
+      // keyed on, so an existing link's card text never changes because the trip moved on.
+      let preview: PreviewTripPlan | null = null;
+      try {
+        preview = await assembleTripPlanFromVariant(shared.variantId, "preview");
+      } catch (e) {
+        // A share row whose variant is gone: fall through to the same generic copy this route has
+        // always used rather than 404 the SPA route.
+        if (!(e instanceof TripPlanVariantNotFoundError)) throw e;
+      }
 
-      const destination = comparison?.destination || "an amazing destination";
-      const variantName = variant?.name || "Travel Itinerary";
+      const destination = preview?.meta.destination || "an amazing destination";
+      const variantName = preview?.meta.title || "Travel Itinerary";
       const title = `${variantName} – ${destination} | Traveloure`;
       const description = `Explore this AI-powered itinerary for ${destination}. View day-by-day activities, transport options, and more — shared via Traveloure.`;
       const shareUrl = `${req.protocol}://${req.get("host")}/itinerary-view/${token}`;

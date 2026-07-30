@@ -49,7 +49,15 @@ export function HeroSection({
   const startDate = safeDate(trip.startDate);
   const endDate = safeDate(trip.endDate);
   const daysUntil = startDate ? differenceInDays(startDate, new Date()) : null;
-  const statusLabel = daysUntil != null && daysUntil > 0
+  // Mobile-lens audit #2: mid-flight trips fell through to the generic "Planning" label
+  // because daysUntil <= 0 was never handled. Ports PlanCard's own getSummaryStatusLabel
+  // logic (`now >= start && now <= end → "Active"`) — same dashboard-card rule, not new
+  // date math — so the hero agrees with the summary card once a trip is underway.
+  const now = new Date();
+  const isActiveNow = !!(startDate && endDate && now >= startDate && now <= endDate);
+  const statusLabel = isActiveNow
+    ? "Active"
+    : daysUntil != null && daysUntil > 0
     ? (daysUntil <= 30 ? `${daysUntil}d away` : "Upcoming")
     : "Planning";
 

@@ -586,4 +586,10 @@ export const MIGRATION_FILES = [
   // additive nullable pricing_unit ('per_night' marker) + parent_service_id self-FK
   // (RESTRICT; room-child → parent property). No CHECK/DEFAULT → no push trap.
   "153_property_shape.sql",
+  // 154: trip-scoped transport legs (§18 L4 "BOTH" — engine proposes, expert confirms, only
+  // confirmed legs reach travelers). transport_legs.variant_id DROPs NOT NULL + additive nullable
+  // trip_id FK (CASCADE), pickup_point, pickup_time, proposal_status. No cross-column CHECK (app
+  // level); the proposal_status CHECK allows NULL so every grandfathered variant leg passes →
+  // no publish-push trap. Column registered in the preflight CONSTRAINT_MANIFEST.
+  "154_transport_legs_trip_scope.sql",
 ] as const;

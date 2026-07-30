@@ -8,12 +8,12 @@ import { SiGoogle, SiApple } from "react-icons/si";
 import {
   Layers, MapPin, Check, CalendarPlus, MessageSquare,
 } from "lucide-react";
-import { openInMaps } from "@/lib/navigate";
 import {
   TYPE_COLORS, ModeIcon,
   type PlanCardDay, type PlanCardActivity, type PlanCardTransport,
 } from "./plancard-types";
 import { getModePolylineStyle, getModeColor } from "@/lib/transport-modes";
+import { openDayInMaps, addDayToCalendar } from "./day-map-actions";
 
 interface MapControlCenterProps {
   tripId: string;
@@ -283,87 +283,18 @@ export function MapControlCenter({
     setLayers((prev) => ({ ...prev, [key]: !prev[key] }));
   }, []);
 
-  function getActivityLoc(a: PlanCardActivity): string {
-    if (a.lat != null && a.lng != null) return `${a.lat},${a.lng}`;
-    return a.location || a.name || tripDestination;
-  }
-
-  function getDominantRawMode(transports: PlanCardTransport[] | undefined): string {
-    if (!transports || transports.length === 0) return "walk";
-    const counts: Record<string, number> = {};
-    transports.forEach(t => { counts[t.mode] = (counts[t.mode] || 0) + 1; });
-    return Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0];
-  }
-
-  function buildWaypoints(acts: PlanCardActivity[]) {
-    return acts.map(a => {
-      if (a.lat != null && a.lng != null) return { lat: a.lat, lng: a.lng, name: a.name };
-      return { name: getActivityLoc(a) };
-    });
-  }
-
+  // Handlers extracted to ./day-map-actions.ts (shared with the collapsed "Map preview"
+  // section) — thin wrappers here just bind the current day/destination.
   function handleGoogleMaps() {
-    const acts = (day?.activities || []).filter(a => a.location || a.name || (a.lat != null && a.lng != null));
-    const mode = getDominantRawMode(day?.transports);
-    if (acts.length === 0) {
-      openInMaps({ destination: { name: tripDestination }, app: "google" });
-      return;
-    }
-    openInMaps({ waypoints: buildWaypoints(acts), mode, app: "google" });
+    openDayInMaps(day, tripDestination, "google");
   }
 
   function handleAppleMaps() {
-    const acts = (day?.activities || []).filter(a => a.location || a.name || (a.lat != null && a.lng != null));
-    const mode = getDominantRawMode(day?.transports);
-    if (acts.length === 0) {
-      openInMaps({ destination: { name: tripDestination }, app: "apple" });
-      return;
-    }
-    openInMaps({ waypoints: buildWaypoints(acts), mode, app: "apple" });
+    openDayInMaps(day, tripDestination, "apple");
   }
 
   function handleAddToCalendar() {
-    if (!day) return;
-    const activities = day.activities || [];
-    if (activities.length === 0) return;
-
-    const dateStr = day.date?.replace(/-/g, "") || new Date().toISOString().slice(0, 10).replace(/-/g, "");
-    const lines = [
-      "BEGIN:VCALENDAR",
-      "VERSION:2.0",
-      "PRODID:-//Traveloure//PlanCard//EN",
-    ];
-
-    activities.forEach((act) => {
-      const timeMatch = act.time?.match(/(\d{1,2}):(\d{2})/);
-      const startHour = timeMatch ? timeMatch[1].padStart(2, "0") : "09";
-      const startMin = timeMatch ? timeMatch[2] : "00";
-      const startTime = `${dateStr}T${startHour}${startMin}00`;
-      const endHourNum = Math.min(23, parseInt(startHour) + 1);
-      const endTime = `${dateStr}T${endHourNum.toString().padStart(2, "0")}${startMin}00`;
-
-      lines.push(
-        "BEGIN:VEVENT",
-        `DTSTART:${startTime}`,
-        `DTEND:${endTime}`,
-        `SUMMARY:${act.name}`,
-        `LOCATION:${act.location}`,
-        `DESCRIPTION:${act.type} - ${tripDestination}`,
-        "END:VEVENT"
-      );
-    });
-
-    lines.push("END:VCALENDAR");
-
-    const blob = new Blob([lines.join("\r\n")], { type: "text/calendar;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `traveloure-day${day.dayNum}-${tripDestination.toLowerCase().replace(/\s+/g, "-")}.ics`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    addDayToCalendar(day, tripDestination);
   }
 
   const routeSummary = useMemo(() => {

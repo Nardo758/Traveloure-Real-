@@ -5026,7 +5026,13 @@ export type InsertDestinationMetricsHistory = z.infer<typeof insertDestinationMe
 
 export const transportLegs = pgTable("transport_legs", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
-  variantId: varchar("variant_id").notNull().references(() => itineraryVariants.id, { onDelete: "cascade" }),
+  // SCOPE (migration 154, §18 L4): a leg is EITHER variant-scoped (the legacy AI-optimizer home)
+  // OR trip-scoped (expert-built Workstation trips). Both columns are nullable and the
+  // exactly-one-of rule is enforced in the app layer (server/services/trip-transport-legs.service.ts)
+  // — deliberately NOT a cross-column DB CHECK, which is the shape that fails Replit's
+  // publish-time drizzle-push.
+  variantId: varchar("variant_id").references(() => itineraryVariants.id, { onDelete: "cascade" }),
+  tripId: varchar("trip_id").references(() => trips.id, { onDelete: "cascade" }),
   dayNumber: integer("day_number").notNull(),
   legOrder: integer("leg_order").notNull(),
   fromActivityId: varchar("from_activity_id"),
@@ -5055,6 +5061,16 @@ export const transportLegs = pgTable("transport_legs", {
   linkedProductUrl: text("linked_product_url"),
   calculatedAt: timestamp("calculated_at").defaultNow(),
   destinationProfile: text("destination_profile"),
+  // Expert-stated arrangement facts for a chauffeured leg (migration 154). Only ever what the
+  // expert actually wrote (§13); pickupTime is a DISPLAY STRING in v1 — no tz math, never derived
+  // from an activity start time. NOT a booking record: booked-ride state still derives from
+  // transport_booking_options.
+  pickupPoint: text("pickup_point"),
+  pickupTime: text("pickup_time"),
+  // Proposal lifecycle for trip-scoped legs: 'proposed' (engine-computed, expert-only) →
+  // 'confirmed' (expert-confirmed; the ONLY state traveler surfaces render). NULL = legacy
+  // variant leg, grandfathered. DB CHECK (migration 154) allows NULL.
+  proposalStatus: varchar("proposal_status", { length: 20 }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
