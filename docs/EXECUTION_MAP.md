@@ -55,6 +55,7 @@ semantics, anything CLAUDE.md marks "ratify first."
 
 | L11 | **§16 transport-outbound strays**: `TransportSection.tsx:323` raw `window.open(opt.externalUrl)` + the share response's `linkedProductUrl` key (raw outbound "Book transport" link) | Sonnet | none | Route both through the agent rail, then delete the share key + its read together (L3b′ left it to honor 0-removed-keys) |
 | L12 | **KML/GPX exports onto the variant producer** — deferred by L3b′: raw-DB leg order vs deterministic sort, `lat: 0` fallback vs honest null, `maps_export_cache` keyed to the old shape | Sonnet | Fable decides ordering + fallback | Not provably output-identical today; needs the explicit call, not a forced migration |
+| L13 | **L4a filed follow-ups**: itinerary-item delete orphans legs (`from_activity_id` plain varchar, no FK); trip-leg mutations write no `itinerary_changes`; `/status` (traveler dismiss) 404s on trip legs; **L3a geocode city-centre fallback** (item with no location geocodes to `destination` alone and persists — §13 smell) | Sonnet | Fable brief (change-log role decision; geocode fix is ratification-free) | The geocode fix is the priority item |
 
 *L3a LANDED (commit 4b3686b4, Jul 30): DTO + assembler + full/teaser/preview proven; response backward-compatible
 (0 removed / 0 changed keys); gate byte-identical. L3b is unblocked.*
@@ -63,6 +64,11 @@ checks incl. all four mode-aware CTA states + desktop regression; sticky-context
 (DashboardLayout overflow frame no-ops position:sticky — day list got its own scroll container, `sm:contents`
 keeps desktop DOM unchanged). L4 (transport legs for expert trips + the leg pickup/booking field mapping) is now
 the unlock for the pickup/book-ride CTA states firing on real trips.*
+*L4a LANDED (commit d0ba3e5b, migration 154, Jul 30): trip-scoped legs live — generate (born-proposed) /
+confirm / edit / delete on `authorizeTripLogistics`; assembler emits confirmed legs only (proposals invisible to
+every traveler surface, proven); §9 collision resolved by extending the live GET in place; SECURITY FIX: the
+`/mode` endpoint's variantOwner-skip hole closed (any-authed-user mutation → 403). L4b (Workstation transport
+editor, Sonnet) is the remaining piece of the loop.*
 *L3b′ LANDED (commit ed19b0eb, Jul 30): variant producer built (snapshot-only reads, sourceRef, nullable tripId);
 share endpoint + OG migrated with an EMPTY before/after response diff (0 removed / 0 changed) and byte-identical
 token/expiry/redaction behavior; 69 lines of bespoke assembly deleted; /navigate stays (single-row lookup —
