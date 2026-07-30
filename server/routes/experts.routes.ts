@@ -1,4 +1,5 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
+import { authorizeTripLogistics } from '../utils/trip-logistics-auth';
 import { checkProviderPublishGate } from '../services/provider-publish.service';
 import { withQueryTimer } from '../utils/queryTimer';
 import { Router } from "express";
@@ -22,7 +23,7 @@ import {
 import Anthropic from "@anthropic-ai/sdk";
 import { 
   users, helpGuideTrips, touristPlaceResults, touristPlacesSearches, 
-  aiBlueprints, vendors, insertVendorSchema,
+  aiBlueprints, vendors, insertVendorSchema, expertVendorCoordination,
   insertLocalExpertFormSchema, insertServiceProviderFormSchema,
   insertProviderServiceSchema, insertServiceCategorySchema,
   insertServiceSubcategorySchema, insertFaqSchema,
@@ -168,6 +169,24 @@ function resolveSlug(slug: string): string {
   return slugAliases[slug] || slug;
 }
 
+/**
+ * Resolves an `expert_vendor_coordination` row to the trip it belongs to, so the
+ * `:vendorId`-scoped handlers (PUT/DELETE) can run the SAME per-trip authorization as their
+ * `:tripId`-scoped siblings. `expert_vendor_coordination.trip_id` is NOT NULL with an
+ * `ON DELETE CASCADE` FK to `trips` (shared/schema.ts), so every vendor row has exactly one
+ * authoritative trip — no linkage had to be invented.
+ *
+ * Returns null when no such vendor row exists; callers must NOT treat that as authorized.
+ */
+async function getVendorCoordinationTripId(vendorId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ tripId: expertVendorCoordination.tripId })
+    .from(expertVendorCoordination)
+    .where(eq(expertVendorCoordination.id, vendorId))
+    .limit(1);
+  return row?.tripId ?? null;
+}
+
 
 
 
@@ -240,6 +259,13 @@ router.get("/api/expert/trips/:tripId/constraints", isAuthenticated, async (req,
       if (!user || (user.role !== "expert" && user.role !== "admin")) {
         return res.status(403).json({ message: "Expert access required" });
       }
+      // SECURITY (§13 trip-data IDOR class): the platform-role check above is NOT authorization —
+      // it only proves the caller is *an* expert, not an expert on THIS trip. Without the canonical
+      // per-trip gate any expert account could read any traveler's anchors/energy/vendor set.
+      const authError = await authorizeTripLogistics(
+        req.params.tripId, userId, "GET /api/expert/trips/:tripId/constraints",
+      );
+      if (authError) return res.status(authError.status).json({ message: authError.message });
       const trip = await storage.getTrip(req.params.tripId);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
 
@@ -289,6 +315,11 @@ router.get("/api/expert/trips/:tripId/vendors", isAuthenticated, async (req, res
       if (!user || (user.role !== "expert" && user.role !== "admin")) {
         return res.status(403).json({ message: "Expert access required" });
       }
+      // SECURITY (§13 trip-data IDOR class): per-trip authorization, not just "is an expert".
+      const authError = await authorizeTripLogistics(
+        req.params.tripId, userId, "GET /api/expert/trips/:tripId/vendors",
+      );
+      if (authError) return res.status(authError.status).json({ message: authError.message });
       const vendors = await storage.getVendorCoordination(req.params.tripId);
       const confirmed = vendors.filter(v => v.status === 'confirmed' || v.status === 'contract_signed');
       const pending = vendors.filter(v => v.status === 'pending' || v.status === 'contacted');
@@ -307,6 +338,12 @@ router.post("/api/expert/trips/:tripId/vendors", isAuthenticated, async (req, re
       if (!user || (user.role !== "expert" && user.role !== "admin")) {
         return res.status(403).json({ message: "Expert access required" });
       }
+      // SECURITY (§13 trip-data IDOR class): per-trip authorization BEFORE the write, so an
+      // unassigned expert cannot plant vendor records on another traveler's trip.
+      const authError = await authorizeTripLogistics(
+        req.params.tripId, userId, "POST /api/expert/trips/:tripId/vendors",
+      );
+      if (authError) return res.status(authError.status).json({ message: authError.message });
       const vendorInput = z.object({
         vendorName: z.string().min(1).max(255),
         serviceType: z.string().min(1).max(100),
@@ -340,6 +377,15 @@ router.put("/api/expert/vendors/:vendorId", isAuthenticated, async (req, res) =>
       if (!user || (user.role !== "expert" && user.role !== "admin")) {
         return res.status(403).json({ message: "Expert access required" });
       }
+      // SECURITY (§13 trip-data IDOR class): there is no :tripId in this path, so resolve the
+      // vendor row to its OWNING trip and authorize THAT trip. A vendor id that does not exist is
+      // never authorized (404 below, matching this handler's existing not-found convention).
+      const vendorTripId = await getVendorCoordinationTripId(req.params.vendorId);
+      if (!vendorTripId) return res.status(404).json({ message: "Vendor not found" });
+      const authError = await authorizeTripLogistics(
+        vendorTripId, userId, "PUT /api/expert/vendors/:vendorId",
+      );
+      if (authError) return res.status(authError.status).json({ message: authError.message });
       const vendorUpdateInput = z.object({
         vendorName: z.string().min(1).max(255).optional(),
         serviceType: z.string().min(1).max(100).optional(),
@@ -369,7 +415,18 @@ router.delete("/api/expert/vendors/:vendorId", isAuthenticated, async (req, res)
       if (!user || (user.role !== "expert" && user.role !== "admin")) {
         return res.status(403).json({ message: "Expert access required" });
       }
-      await storage.deleteVendorCoordination(req.params.vendorId);
+      // SECURITY (§13 trip-data IDOR class): resolve the vendor row to its OWNING trip and
+      // authorize THAT trip before the destructive delete. An unknown vendor id keeps this
+      // handler's existing idempotent-delete response (200 {success:true}) — nothing is deleted
+      // and no existence oracle is introduced — but it is NEVER treated as authorization.
+      const vendorTripId = await getVendorCoordinationTripId(req.params.vendorId);
+      if (vendorTripId) {
+        const authError = await authorizeTripLogistics(
+          vendorTripId, userId, "DELETE /api/expert/vendors/:vendorId",
+        );
+        if (authError) return res.status(authError.status).json({ message: authError.message });
+        await storage.deleteVendorCoordination(req.params.vendorId);
+      }
       res.json({ success: true });
     } catch (error: any) {
       res.status(500).json({ message: "Failed to delete vendor", error: error.message });
