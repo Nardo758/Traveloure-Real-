@@ -57,6 +57,9 @@ semantics, anything CLAUDE.md marks "ratify first."
 | L12 | **KML/GPX exports onto the variant producer** — Fable calls RATIFIED (Jul 30): deterministic `(dayNumber, legOrder)` ordering (raw DB order was an accident, not a contract); un-located placemarks SKIPPED, never `lat: 0` null-island (§13); cache-key versioned so stale old-shape exports don't serve | Sonnet | calls made — dispatchable | Dispatched with L11 (same files) |
 | ~~**P0-b**~~ | **CLOSED (a564887a, Jul 30)** — gated to the host page's read set (expertId ‖ managedByEaId ‖ canonical helper); baseline proved a stranger destroyed 5 items + burned AI spend, after = 403 with items intact and ZERO AI calls; all 4 legitimate roles still 201. Guest-shareToken branch deliberately NOT mirrored (would widen a destructive mutation). Add to L21's carry-list: `trips.routes.ts:447` dead twin is guarded but NARROWER (promoting it re-opens an under-grant, not a hole) | — | — | Was: 5th same-primitive IDOR on generate-itinerary |
 | ~~P0-b-old~~ | **5th same-primitive IDOR: `POST /api/trips/:id/generate-itinerary`** (routes.ts:~896) — `isAuthenticated` only, then wipes + re-inserts itinerary items (also burns AI spend). NOT fixable with the bare canonical helper: its hosting page's read gate admits `trips.expertId` + `managedByEaId`, which `authorizeTripLogistics` excludes → would 403 EA-managed trips | Opus | Fable-ratified stopgap: gate to the hosting page's EXISTING read-access set (helper ‖ expertId ‖ managedByEaId) — strict improvement, regresses nobody; durable convergence belongs to the trip-role lane | **IN FLIGHT** |
+| **P0-c** | **Share token grants WRITE** — `PATCH /api/trips/:id` (routes.ts:820) runs `requireAuthOrShareToken` and accepts `isGuestWithToken`, so anyone holding a read-only share URL can edit the trip (title/destination/dates/budget via `api.trips.update.input`). Orchestrator-verified firsthand | Opus | none — security fix. **Ratified: a share token is READ-ONLY**; PATCH must require owner (+ the author/admin branches), never a token | **QUEUED behind L20 P1** (both own routes.ts) |
+| **P0-d** | **Expert cross-trip IDOR** — 6 handlers in `experts.routes.ts` gate on the platform-role STRING only (`role === 'expert'\|'admin'`), no per-trip check: any expert account reads/mutates ANY trip's constraints, anchors, energy and vendor records (incl. PUT/DELETE by vendorId) | Opus | none — security fix | **IN FLIGHT** |
+| L22 | **L13 cascade gap**: the duplicate `DELETE /api/itinerary-items/:id` path goes through `itineraryIntelligenceService.deleteItem`, NOT `storage.deleteItineraryItem`, so the orphan-leg cascade landed in 5b8c7726 does not cover it | Sonnet | none | **QUEUED behind L20 P1** (routes.ts) |
 | L20 | **APPROVED (decision-maker, Jul 30): build real shared-trip access** — "Yes, this would be a good feature," with the open question "how will it function once the Experts get involved?" **Fable's answer = a TIERED model, not one policy for all 10 endpoints** (recorded in CLAUDE.md §13): shared-ledger APPEND (transactions) = owner ‖ participant ‖ assigned expert; ledger-DEFINING acts (split ratios, deletions) = owner only; emergency data = owner ‖ participant write, assigned expert READ + raise-alert (safety, their real job); social graph (`participants/bulk-invite`) = owner ‖ managing EA only; contracts = owner-only accept; the 3 ungated AI reads = anyone with trip access (must be gated at all — AI spend). Phase 0 ground-truth IN FLIGHT (does a participant even have a `users` row? no code creates collaborator rows today — the model may need plumbing before policy) | Opus | phase 0 first, then Fable ratifies the tier table against the facts | Was: decision-gated |
 | L20-old | **(superseded) 7 ungated trip-mutation endpoints, no client callers** (`transactions`, `transactions/split`, `participants/bulk-invite`, `contracts`, `emergency-contacts`, `emergency/initialize`, `alerts`) + 3 ungated reads (`itinerary/schedules|analyze|recommendations` — info disclosure + AI spend) | Opus | **DECISION-MAKER**: trip *participants* legitimately share budget/emergency ledgers, but `authorizeTripLogistics` excludes the collaborator/`friend` role — the correct policy is a real design call, not a mechanical stamp | Found by the P0 lane; backends without surfaces, so no live exposure via the UI |
 | L21 | **Dead §9 twins carry the P0 holes**: `trips.routes.ts:544` (comparison-create, no tripId check) and `:1500` (optimize-order, no auth) are born-dead today but would RE-OPEN both holes if the filed 57-duplicate reconciliation ever promotes them | Sonnet | none | Must be carried in the same change as that sweep — note added here so it can't be lost |
@@ -185,3 +188,32 @@ migration required for v1 (snapshot columns exist; `expert_note`, vendor phone, 
   Fable-read, checkpoint pushed.
 - This file is the routing table for future sessions: pick the top unblocked lane, honor the tier column.
 - Amendments to §3's contract are decision-maker calls (it defines the product's core object).
+
+## Hole-closing sweep — status board (Jul 30, 2026)
+
+Decision-maker directive: **"lets fix all the holes you have found."** Every known hole is either landed, in
+flight, or queued below. Nothing found is being left unaddressed; the queue exists only because lanes that
+share a file must serialize (the concurrent-edit clobber earlier today is why).
+
+**LANDED:** P0 (4 trip-data IDOR holes, 4d26971b) · P0-b (generate-itinerary, a564887a) · L5 money hardening
+incl. the never-working multi-item checkout + migration 155 (c3a0be03) · L6 metrics (dcde45fb) · L8 landing-page
+fabrications (cfecf26a) · L11+L12 §16 strays + exports (22d3c2cb) · L13 geocode/change-log/orphan-cascade
+(5b8c7726) · L17 verified-clean-no-change · L19 dead toggle (12468855) · the whole §18 Trip Card program.
+
+**IN FLIGHT:** L14 refunds audit table (migration 156) · L20 Phase 1 (canonical advisor predicate + 22 ungated
+logistics endpoints + 5 hardening items) · P0-d expert cross-trip IDOR · L21 dead-twin holes · L18 orphaned
+fabricated pages.
+
+**QUEUED (serialized behind L20 Phase 1, which owns `routes.ts`):**
+1. **P0-c** share-token write hole — ratified: a share token is READ-ONLY.
+2. **L10 owner-access** — the paying-customer bug: `getTripRole` never reads `trips`, so a bare owner 403s on
+   4 live gates, and 3 live paths still mint owner-less trips (a traveler who BUYS a ready-made trip gets
+   "Access denied" on the itinerary they paid for). Design = owner row-value branch + harden the 3 write paths
+   + the advisor unification L20 P1 is already doing. Must land AFTER L20 P1 so it builds on the fixed predicate.
+3. **L22** itinerary-item delete cascade gap.
+4. **L15** L5 residue (claim-race orphan contract row; per-mount checkout key).
+
+**DECISION-GATED (not holes — genuine calls):** L16 real testimonials (deferred to beta by the decision-maker) ·
+L20 Phase 2 participant invite→accept plumbing (the feature half of the approved shared-trip access) ·
+the remaining trust-claims arms (the `90/10` commission literal, hardcoded cancellation/support copy,
+the 2-character-neighbourhood empty-result trap).
