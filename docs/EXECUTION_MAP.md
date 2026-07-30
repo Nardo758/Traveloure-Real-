@@ -211,7 +211,25 @@ share a file must serialize (the concurrent-edit clobber earlier today is why).
 **LANDED:** P0 (4 trip-data IDOR holes, 4d26971b) · P0-b (generate-itinerary, a564887a) · L5 money hardening
 incl. the never-working multi-item checkout + migration 155 (c3a0be03) · L6 metrics (dcde45fb) · L8 landing-page
 fabrications (cfecf26a) · L11+L12 §16 strays + exports (22d3c2cb) · L13 geocode/change-log/orphan-cascade
-(5b8c7726) · L17 verified-clean-no-change · L19 dead toggle (12468855) · the whole §18 Trip Card program.
+(5b8c7726) · L17 verified-clean-no-change · L19 dead toggle (12468855) · the whole §18 Trip Card program ·
+the supply-funnel 401 that lost every guest application (a8d59b27) · **L27-P3** provider location write path +
+the `/api/search/experiences` platform-arm reader (346f1139) · **`ai_cost_tracking` declared in `schema.ts`**
+before a publish drops it (bacce659).
+
+**L27-P3 out-of-scope findings (filed, NOT fixed in that lane):**
+1. **`city` is still client-settable on `provider_services`** — proven: a PATCH persisted `"Fabricated City"`.
+   Migration 129 sets `city` only from a real `city_neighborhoods` match precisely so it can't be invented;
+   the write path doesn't enforce that. Small fix, own lane (derive from `neighborhood` or drop from the
+   editable allow-set).
+2. **`duplicateService` copies `location_precision='exact'`** onto the copy along with the coordinates. If the
+   duplicate is then re-addressed by free text, it carries a confirmed-pin claim for a point nobody confirmed
+   (§13). Either carry both columns or neither — deciding which is a one-line call in that function.
+3. **Stale comment in `expert/workspace.tsx`** about platform inventory having no coordinates — true when
+   written, false now that the platform arm emits them. Leaving it means the next auditor re-litigates this
+   (the `PlanCard.tsx:943` lesson).
+4. **`.dark .console-scope` renders dark-on-dark text** — platform-wide, not L27-specific: the warm console
+   palette's `--console-fg` isn't inverted under the dark class, so console pages in dark mode lose contrast.
+   Affects every back-office page, so it wants its own token lane rather than a per-page patch.
 
 **IN FLIGHT:** L14 refunds audit table (migration 156) · L20 Phase 1 (canonical advisor predicate + 22 ungated
 logistics endpoints + 5 hardening items) · P0-d expert cross-trip IDOR · L21 dead-twin holes · L18 orphaned
@@ -318,6 +336,23 @@ is on a real hot path — ~7 writers plus an admin reader — and would be silen
 that drops it, because the migration is already stamped. **Action: declare `ai_cost_tracking` (and
 `service_demand_requests`) in `shared/schema.ts`**, same fix pattern as the migration-155 index. This is the
 cheapest high-value item on the board.
+
+**LANDED (bacce659) — and the mechanism is now proven, not inferred.** With `service_demand_requests` present
+in the DB but undeclared, the push plan emitted exactly `ALTER TABLE … DISABLE ROW LEVEL SECURITY;` +
+`DROP TABLE "service_demand_requests" CASCADE;` — the loss mechanism verbatim, for a TABLE. `ai_cost_tracking`
+is declared to match `025b`'s DDL exactly; the residual push plan now mentions it zero times, verified both in
+isolation and with the full schema materialized then the table re-created from the migration. One trap worth
+carrying forward to any future index declaration: **drizzle's bare `.desc()` emits `DESC NULLS LAST`, but
+Postgres defaults `DESC` to `NULLS FIRST`** — so declaring a `created_at DESC` index without `.nullsFirst()`
+makes the push DROP + CREATE it on *every* publish. Measured, not theorized.
+
+**`service_demand_requests` — DECISION-MAKER GATED, and the clock is the next publish.** Deliberately NOT
+declared: zero code references either way (so a drop loses no data), and it is redundant against the live
+`service_demand_signals` and migration-123 `service_requests`. Declaring it would pin dead weight into the
+canonical schema and quietly ratify keeping it forever. But the drop is one-way — migration 080 is stamped, so
+`runMigrations()` will never recreate it. **If the intent is to keep it for a future demand-request feature it
+must be declared before the next publish; otherwise the deploy tool makes the retirement decision by default.**
+Recommendation: let it go, and retire migration 080 to a no-op with a note.
 
 ### Housekeeping
 - ~31 tables exist with zero code references (INFERRED, not hand-verified per table): `board_items` (migration 133's
