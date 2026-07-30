@@ -416,3 +416,101 @@ Recommendation: let it go, and retire migration 080 to a no-op with a note.
 - Top-level `migrations/` dir: **no live gap remains** (all 4 tables it creates are in the baseline). 5 files sit
   in `server/migrations/` unregistered; **none create tables** (verified) — the documented duplicate plus 3
   superseded seed/restore files plus a not-yet-due future DROP.
+
+---
+
+## MP — Marketplace bridge program (proposed Jul 30, 2026; awaiting decision-maker sign-off)
+
+**Origin:** the decision-maker's design question — *"Discover becomes the bridge connecting both stores; push the
+most popular product to Ready Made Trips and the most popular services to Browse Services, leading users to each
+store."* The bridge instinct is right and half-built. Two corrections came out of ground-truthing it, and they
+change the shape of the work.
+
+### Ground truth that reshaped the proposal
+
+**① The two lanes are NOT role-separated.** `provider_services` is role-agnostic (CLAUDE.md "one builder" —
+`ServiceForm` serves both roles), and the storefront services lane filters on `userId`. So an **expert's** service
+listings appear in Browse Services alongside providers'. The real split is: expert = services + ready-made trips;
+provider = services only. Consequence: "popular services → routes users to providers" is false — it routes to
+whoever owns the listing, often an expert. The nav's "Service Providers" label for `?tab=services` is therefore
+already wrong.
+
+**② Ready-made authorship is expert-only, by construction.** `AUTHOR_ROLES = {local_expert, travel_expert, admin}`
+(`ready-made.routes.ts:33`, DB role lookup). A ready-made trip is born from a Workstation `trips` row
+(`sourceTripId NOT NULL`), and §17 gives the provider console no Workstation — so a provider has nothing to ship.
+Their storefront runs the ready-made lane, finds zero rows for their `authorId`, and the section doesn't render.
+Empty by construction, not hidden by a flag. **Nothing to build here; this is correct as-is.**
+
+**③ The bridge's RETURN PATH is the actual gap.** Discover already renders the ready-made shelf from
+`/api/ready-made` in the packages tab, sectioned by author type, hidden when empty. But there are only **two**
+inbound links to `/p/:handle` in the entire client — the service-detail breadcrumb and an expert-detail redirect.
+**No Discover card links to a storefront.** A traveler can find an item and has no path from "I like this" to
+"show me everything this person offers." That is the compounding piece and it is missing.
+
+**④ "Most popular" is a §13 hazard at current volume — RECOMMEND DEFERRING.** Prod holds **7 `service_bookings`
+total, 0 with an idempotency key** (verified by the decision-maker Jul 30) — effectively no completed purchase
+history. `/api/ready-made` orders by `desc(reviewedAt)` (approval recency) and has no sales signal at all. Ranking
+by popularity over n≈0 produces an arbitrary order wearing a credibility label: real data, false impression — the
+same class as the sparse plan map (L27) and the fabricated ratings (§13, PR #177). There is also a marketplace
+dynamics problem: popularity ranking is rich-get-richer, so in a supply-constrained one-market wedge (§12) the
+first seller to land a sale locks the top slot and sellers 2..n never get impressions. Editorial curation is both
+more honest and better for liquidity at Kyoto scale.
+
+### Phases
+
+| # | Phase | Tier | Depends on | Ships |
+|---|---|---|---|---|
+| MP-1 | Nav + vocabulary honesty | Haiku | — | all four tabs listed, store lane findable |
+| MP-2 | Storefront return path | Sonnet | — | item → `/p/:handle` from every card/detail |
+| MP-3 | Honest curation (Featured, not "Popular") | Sonnet | MP-1 | admin-curated shelves, honest labels |
+| MP-4 | Providers credited inside ready-made trips | Sonnet | MP-2 | expert lane → provider storefronts |
+| MP-5 | Real popularity ranking | Sonnet | **GATED on volume** | deferred, see threshold |
+
+**MP-1 — nav + vocabulary (cheapest, unblocks everything).** `client/src/lib/nav-config.ts` is the single source
+of truth for every navbar href. Changes: (a) add **Ready Made Trips** → `/discover?tab=packages` to the Discover
+BROWSE section — today the entire expert store lane has NO nav entry anywhere; (b) move the services entry into
+the Discover group and rename it off "Service Providers" (per ①, experts sell there too) — proposed **"Browse
+Services"**, matching the decision-maker's own vocabulary; (c) align **"By Date"** with the tab it opens.
+*Recommended:* nav → **"By Event"**, since the tab, the content (`destination_events`), and the `?tab=events`
+routing token all already say events — a label-only change with nothing else to move. Renaming the tab to
+"By Date" instead would re-open the label/token gap §10 hit with `packages`. **Routing tokens do NOT change**
+(`?tab=packages`/`?tab=services`/`?tab=events` are the URL contract, §10 label-standard precedent).
+
+**MP-1b — the page name (DECISION-MAKER CALL, blocks nothing else).** "Discover" says nothing about two of the
+four tabs being purchases. *Recommendation:* **Marketplace** — it pairs with the already-ratified seller-side
+vocabulary (store / storefront / "ship to store", §17) and covers all four tabs. Alternatives: **Explore**
+(warmer, same weakness as Discover), **Book** (strongest commerce signal but reads as an action while two tabs are
+browsing), or keep "Discover" and treat the nav gap alone as the defect. **Route stays `/discover`** whatever is
+chosen — label only, no redirect, no URL contract change.
+
+**MP-2 — the storefront return path (the compounding piece).** Add "More from this expert/provider" →
+`/p/:handle` on: ready-made detail, expert-template detail, service detail (breadcrumb exists — make it a real
+section), and the Discover cards for all three lanes. **`users.handle` is nullable** — an earner who hasn't
+claimed one has no page, so the link must be conditional and absent (never a dead link); `service-detail.tsx`
+already carries that guard as the precedent to copy. Storefront reads are already approval-gated per lane, so no
+new read-gate work. §13: no "12 other offerings" count unless it is a real count.
+
+**MP-3 — honest curation.** `isFeatured` already exists on the services/templates tables (real admin-set flag) and
+`ready_made_trips` has `badge`. Order shelves `featured → recency` and label them **"Featured in Kyoto"** — an
+editorial choice the platform stands behind — NOT "Most popular," a demand claim the data cannot support. Show a
+real rating only when `reviewCount > 0`, else "New" (the PR #177 pattern). Needs an admin toggle for
+`ready_made_trips` if we want it curated (it has `badge` but no `isFeatured`) — additive nullable if so.
+
+**MP-4 — providers credited inside ready-made trips (the stronger bridge).** The lanes are not economically
+independent: a ready-made trip is built from the Workstation Add panel, which sources **platform services**, so a
+trip can literally contain provider inventory. Crediting those providers on the trip detail page ("services inside
+this trip, by …" → their storefront) drives expert-lane traffic into provider storefronts on a **real
+relationship**, not a popularity heuristic — and it is the direction §17's one-content-network model already
+points. Scope check first: `insideCounts` is a count snapshot, so per-provider attribution may need the itinerary
+join rather than the snapshot.
+
+**MP-5 — real popularity ranking, GATED.** Not a build, a threshold. The infrastructure already exists
+(`salesCount`, `reviewCount`, `averageRating`, `content_impressions` for click-through). Turn it on when a lane
+has enough completed purchases that an ordering is a *finding* rather than noise — proposed floor: **≥25 completed
+purchases in the lane and ≥5 distinct sellers**, so it cannot be one seller's three sales. Until then MP-3's
+editorial shelf holds. Revisit after beta (ties to the L16 real-testimonials deferral — same "wait for real
+volume" posture).
+
+### Explicitly NOT in this program
+Provider-authored ready-made trips (structurally correct as-is, ②) · any change to routing tokens · the
+`AUTHOR_ROLES` role-list question (filed separately below) · multi-market expansion (§12 paused).
