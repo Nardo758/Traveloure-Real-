@@ -296,3 +296,35 @@ P0 lanes are already touching; grep callers before each signature change.
 Enumerate and classify endpoints whose resource id arrives by **query param or request body** (`?tripId=`,
 `body.tripId`, `body.contractIds`). The sweep explicitly did not cover these, and finding #2's `contractIds`
 proves the class is live.
+
+## Table-existence sweep — results (Jul 30, 2026)
+
+Method disclosed by the sweep as necessarily approximate (ORM-variable scan has false negatives — e.g.
+`trip_contexts` shows 0 hits because its router uses raw SQL), **but every MISSING claim was hand-verified by
+reading the file/line.** No dynamically-constructed table names found. ~250 EXISTS-IN-BOTH.
+
+### MISSING-FROM-BOTH — 8 tables, all in three legacy service files parallel to the canonical booking system
+The valuable part is the **reachability tracing**, which downgrades most of these:
+| Tables | Where | Live-reachable in prod? |
+|---|---|---|
+| `affiliate_links`, `affiliate_conversions` | `affiliate.service.ts:312,344,362,369,393,405` | **YES — the only genuinely live one.** `trackLinkGeneration` runs from `processCart` for any `bookingType:'external'` item, and `ItineraryComparisonWithBooking.tsx:63-66` sets that for transport/accommodation items. **Failure is fully silent** (internal try/catch → `console.error`; the caller still returns a valid link), so **every affiliate link generated this way is never persisted — no row, no click/conversion attribution.** Real invisible data loss, low severity, no crash |
+| `service_providers`, `dynamic_pricing` | `pricing.service.ts:62,92`; `availability.service.ts:30,76` | Route live + money-adjacent (`POST /api/bookings/process-cart`) but **no traced prod UI feeds it a real `providerId`** — the live caller always sends `undefined`; the one that doesn't is dev-only-gated. `checkAvailability` FAILS OPEN. `getAvailabilityCalendar` returns a real 500 |
+| `promo_codes`, `promo_code_usage` | `pricing.service.ts:152,167,208,215` | **Doubly dead** — broken AND unreachable: the only client caller is `client/src/lib/bookingAPI.ts`, which has ZERO importers. Raw Postgres error text leaks to the client as JSON when reached. **Downgrades L26** — it is not a live 500 for users |
+| `capacity_reservations`, `blocked_dates` | `availability.service.ts:146,172,192,195,244,262` | No — all six methods have zero callers anywhere |
+
+### 🔴 The important structural finding — now recorded in CLAUDE.md
+The drizzle-push trap **applies to TABLES too**. `ai_cost_tracking` (migration `025b`, absent from `schema.ts`)
+is on a real hot path — ~7 writers plus an admin reader — and would be silently, permanently lost on a publish
+that drops it, because the migration is already stamped. **Action: declare `ai_cost_tracking` (and
+`service_demand_requests`) in `shared/schema.ts`**, same fix pattern as the migration-155 index. This is the
+cheapest high-value item on the board.
+
+### Housekeeping
+- ~31 tables exist with zero code references (INFERRED, not hand-verified per table): `board_items` (migration 133's
+  ready-made "boards" feature has no reader/writer at all), `activity_bookings`, `affiliate_platforms`,
+  `expert_handoffs`, `platform_fees`, `trip_selected_*`, etc.
+- `sessions` being schema-only is **correct, not a gap** — deliberately excluded from the baseline dump because
+  `connect-pg-simple` self-creates it.
+- Top-level `migrations/` dir: **no live gap remains** (all 4 tables it creates are in the baseline). 5 files sit
+  in `server/migrations/` unregistered; **none create tables** (verified) — the documented duplicate plus 3
+  superseded seed/restore files plus a not-yet-due future DROP.
