@@ -146,6 +146,9 @@ import {
 import { calculateCommission, BookingType } from "./utils/commissionCalculator";
 // Ready-made authoring mode (brief §2): explicit present-value author check. Never getTripRole.
 import { isTripAuthor } from "./utils/trip-authorship";
+// Canonical per-trip mutation authorization: owner ‖ trip-assigned expert ‖ trip author ‖
+// audit-logged admin. Returns null when authorized, else the {status, message} to send.
+import { authorizeTripLogistics } from "./utils/trip-logistics-auth";
 
 // ─── Service-category → booking_fee_configs category mapping ─────────────────
 // serviceCategories.slug values are detailed provider-category slugs (e.g.
@@ -5629,6 +5632,17 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { userExperienceId, tripId, title, destination, startDate, endDate, budget, travelers, baselineItems: inlineBaselineItems, experienceTypeSlug } = req.body;
 
+      // SECURITY: `tripId` is caller-supplied and is persisted onto the comparison row, which
+      // downstream handlers (notably POST /api/itinerary-comparisons/:id/apply-to-trip, which
+      // DELETES the trip's itinerary items) treat as the trip to mutate. Without a check here an
+      // attacker could point their own comparison at someone else's trip and then apply it.
+      // A comparison with NO trip is legitimate (cart / experience-template flows create one before
+      // any trip exists), so only authorize when a tripId is actually supplied.
+      if (tripId) {
+        const denied = await authorizeTripLogistics(tripId, userId, "POST /api/itinerary-comparisons");
+        if (denied) return res.status(denied.status).json({ message: denied.message });
+      }
+
       const [comparison] = await db
         .insert(itineraryComparisons)
         .values({
@@ -8163,10 +8177,22 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.post("/api/trips/:tripId/itinerary/reorder", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const userName = (req.user as any).claims.name || "User";
+      // SECURITY: this mutates another user's itinerary ordering; `isAuthenticated` alone was the
+      // only gate. Canonical authorization, matching the sibling itinerary-item handlers above.
+      const denied = await authorizeTripLogistics(req.params.tripId, userId, "POST /api/trips/:tripId/itinerary/reorder");
+      if (denied) return res.status(denied.status).json({ message: denied.message });
       const { dayNumber, itemIds } = req.body;
       const items = await itineraryIntelligenceService.reorderItems(req.params.tripId, dayNumber, itemIds);
-      logItineraryChange(req.params.tripId, userName, `Reordered Day ${dayNumber} activities`, "reorder", "owner");
+      // Change-log role, derived honestly (§13 applies to logs): this used to hardcode "owner",
+      // which was a lie for every non-owner caller. `authorizeTripLogistics` returns null for EVERY
+      // passing branch (owner ‖ assigned expert ‖ author ‖ admin) and does not report which one, so
+      // ownership is the only branch we can state as fact; every other authorized party gets the
+      // neutral "editor" label rather than a guess (the `logLegChange` precedent in
+      // transport-legs.routes.ts).
+      const role = (await verifyTripOwnership(req.params.tripId, userId)) ? "owner" : "editor";
+      logItineraryChange(req.params.tripId, userName, `Reordered Day ${dayNumber} activities`, "reorder", role);
       res.json(items);
     } catch (error) {
       res.status(500).json({ message: "Failed to reorder items" });
@@ -8175,6 +8201,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.post("/api/trips/:tripId/itinerary/optimize-order", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      // SECURITY: same omission as the reorder handler above — `isAuthenticated` only, no trip
+      // authorization, so any authenticated user could compute an optimized order for any trip.
+      const denied = await authorizeTripLogistics(req.params.tripId, userId, "POST /api/trips/:tripId/itinerary/optimize-order");
+      if (denied) return res.status(denied.status).json({ message: denied.message });
       const { dayNumber } = req.body;
       const optimizedOrder = await itineraryIntelligenceService.optimizeOrder(req.params.tripId, dayNumber);
       res.json({ optimizedOrder });
