@@ -337,6 +337,22 @@ router.delete(api.trips.delete.path, isAuthenticated, async (req, res) => {
 // producers; real generation is the Claude/Grok AI paths. Deleted with its inline twin.
 
 
+// §9 mount-order-dead twin (this handler always loses to the identically-routed
+// POST /api/trips/:id/generate-itinerary in routes.ts — see registerRoutes' tripsRoutes
+// mount comment). Kept in sync for safety only.
+//
+// NOT widened to match the live copy's gate (deliberate, per this lane's brief). The live
+// copy now authorizes via a composite predicate — `authorizeTripLogistics` (owner ‖
+// trip_expert_advisors-assigned expert ‖ trip author ‖ audit-logged admin) OR the two trip
+// columns `trip.expertId`/`trip.managedByEaId` — while THIS handler still only checks
+// `trip.userId === callerUserId || admin`. That is an UNDER-grant relative to the live
+// copy (it would 403 an assigned advisor, a `trips.expertId`-linked expert, or a managing
+// EA), not a hole — the narrower check never admits anyone the live copy would deny. Do
+// NOT copy the live composite predicate over here mechanically: which principals
+// `authorizeTripLogistics` itself should admit is the trip-role lane's call (see CLAUDE.md
+// §13 "Trip-access model divergence + owner under-grant (L10)"), and the reconciliation
+// sweep (§9) must resolve this pair's auth model deliberately, not have it inherited
+// silently from a dead-twin sync pass.
 router.post(api.trips.generateItinerary.path, isAuthenticated, async (req, res) => {
     try {
       const trip = await storage.getTrip(req.params.id);
@@ -541,10 +557,27 @@ router.get(api.helpGuideTrips.get.path, async (req, res) => {
 
   // AI Blueprint Generation API
 
+// §9 mount-order-dead twin (this handler always loses to the identically-routed
+// POST /api/itinerary-comparisons in routes.ts — see registerRoutes' tripsRoutes mount
+// comment). Kept in sync for safety only: the reconciliation sweep filed in CLAUDE.md §9
+// still needs to resolve the two copies' broader divergence (this one additionally
+// supports the paid-optimization-run gate the live copy does not).
 router.post("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { userExperienceId, tripId, title, destination, startDate, endDate, budget, travelers, baselineItems: inlineBaselineItems, experienceTypeSlug, optimizationPaymentId } = req.body;
+
+      // SECURITY (P0-a IDOR twin, kept in sync with the live fix in routes.ts): `tripId` is
+      // caller-supplied and is persisted onto the comparison row, which downstream handlers
+      // (notably apply-to-trip, which DELETES the trip's itinerary items) treat as the trip to
+      // mutate. Without a check here an attacker could point their own comparison at someone
+      // else's trip and then apply it. A comparison with NO trip is legitimate (cart /
+      // experience-template flows create one before any trip exists), so only authorize when a
+      // tripId is actually supplied.
+      if (tripId) {
+        const denied = await authorizeTripLogistics(tripId, userId, "POST /api/itinerary-comparisons");
+        if (denied) return res.status(denied.status).json({ message: denied.message });
+      }
 
       // ── Optimization authorization gate ──────────────────────────────────────
       // Comparison records are ALWAYS created (never blocked).
@@ -1130,6 +1163,18 @@ router.post("/api/trips/:tripId/participants", isAuthenticated, async (req, res)
   });
 
 
+// §9 mount-order-dead twin (this handler always loses to the identically-routed
+// POST /api/trips/:tripId/participants/bulk-invite in routes.ts). ESCALATED, not fixed:
+// the live copy gates on `authorizeTripOwnerTier` (owner ‖ trip author ‖ audit-logged
+// admin — deliberately WITHOUT the assigned-expert branch, "L20 tier 4 — participant PII
+// is OWNER-only, never an assigned expert" per the live copy's comment). That helper is a
+// private, unexported function local to routes.ts (a hard-excluded file for this lane) —
+// it is not reachable from here, and `authorizeTripLogistics` is NOT an equivalent
+// substitute (it WOULD admit the assigned expert, reopening exactly the disclosure the
+// live gate exists to prevent). Left unauthorized rather than mis-gated; the fix belongs
+// to whoever owns routes.ts / the reconciliation sweep — either export/hoist
+// `authorizeTripOwnerTier` into the shared trip-logistics-auth module, or apply it here
+// once it is reachable.
 router.post("/api/trips/:tripId/participants/bulk-invite", isAuthenticated, async (req, res) => {
     try {
       const { emails } = req.body;
@@ -1183,6 +1228,17 @@ router.get("/api/trips/:tripId/contracts/overdue", isAuthenticated, async (req, 
   });
 
 
+// §9 mount-order-dead twin (this handler always loses to the identically-routed
+// POST /api/trips/:tripId/contracts in routes.ts). ESCALATED, not fixed: the live copy
+// gates vendor-CONTRACT CREATION on `authorizeTripOwnerTier` (owner ‖ author ‖
+// audit-logged admin, no assigned-expert branch — "creating a financial/legal artifact on
+// the traveler's trip is owner-only", per the live copy's block comment), while contract
+// READS there use the broader `authorizeTripLogistics`. That owner-tier helper is a
+// private, unexported function local to routes.ts (hard-excluded for this lane) and is not
+// reachable here; substituting `authorizeTripLogistics` would wrongly admit the assigned
+// expert into creating financial/legal artifacts, which the live gate exists to prevent.
+// Left unauthorized rather than mis-gated — see the participants/bulk-invite twin above
+// for the same reasoning; fix belongs to routes.ts's owner / the reconciliation sweep.
 router.post("/api/trips/:tripId/contracts", isAuthenticated, async (req, res) => {
     try {
       const contract = await vendorManagementService.createContract({
@@ -1317,6 +1373,18 @@ router.get("/api/trips/:tripId/budget/settle-up", isAuthenticated, async (req, r
   });
 
 
+// §9 mount-order-dead twins (this handler and the two below always lose to their
+// identically-routed POST /api/trips/:tripId/transactions[/split] and
+// /budget/calculate-split in routes.ts). ESCALATED, not fixed: the live block ("L20 tier
+// 1 — money-between-people is OWNER-only (+ author/admin)") gates EVERY handler in this
+// budget/transactions block — reads included — on `authorizeTripOwnerTier`, explicitly
+// NOT `authorizeTripLogistics`, because "an assigned expert has their own commission view
+// and never needs it" per the live copy's comment. That owner-tier helper is a private,
+// unexported function local to routes.ts (hard-excluded for this lane); substituting
+// `authorizeTripLogistics` here would wrongly admit the assigned expert into another
+// party's money-between-people ledger. Left unauthorized rather than mis-gated — same
+// reasoning as the participants/bulk-invite and contracts twins above; fix belongs to
+// routes.ts's owner / the reconciliation sweep.
 router.post("/api/trips/:tripId/transactions", isAuthenticated, async (req, res) => {
     try {
       const transaction = await budgetService.createTransaction({
@@ -1497,8 +1565,24 @@ router.post("/api/trips/:tripId/itinerary/reorder", isAuthenticated, async (req,
   });
 
 
+// §9 mount-order-dead twin (this handler always loses to the identically-routed
+// POST /api/trips/:tripId/itinerary/optimize-order in routes.ts — see registerRoutes'
+// tripsRoutes mount comment). Kept in sync for safety only.
+// SECURITY (P0-b IDOR, kept safe for the reconciliation sweep): this endpoint carried
+// `isAuthenticated` ONLY — no trip authorization at all — despite reordering the trip's own
+// itinerary. Its sibling `reorder` handler above uses `getTripRole`/`canMutateTrip`; that
+// model is left untouched here (not this lane's call to unify) and `authorizeTripLogistics`
+// is used instead, matching the fix the live copy already carries.
 router.post("/api/trips/:tripId/itinerary/optimize-order", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const denied = await authorizeTripLogistics(
+        req.params.tripId,
+        userId,
+        "POST /api/trips/:tripId/itinerary/optimize-order",
+      );
+      if (denied) return res.status(denied.status).json({ message: denied.message });
+
       const { dayNumber } = req.body;
       const optimizedOrder = await itineraryIntelligenceService.optimizeOrder(req.params.tripId, dayNumber);
       res.json({ optimizedOrder });
@@ -1655,6 +1739,16 @@ router.get("/api/trips/:tripId/emergency-contacts/by-type", isAuthenticated, asy
   });
 
 
+// §9 mount-order-dead twins (this handler and the one below always lose to their
+// identically-routed POST /api/trips/:tripId/emergency-contacts and /emergency/initialize
+// in routes.ts). ESCALATED, not fixed: the live copies gate on `authorizeTripOwnerTier`
+// (owner-only, no assigned-expert branch — note the GET reads in this same block DO use
+// the broader `authorizeTripLogistics`, so this is a deliberate read/write split, not an
+// oversight). That owner-tier helper is a private, unexported function local to routes.ts
+// (hard-excluded for this lane); substituting `authorizeTripLogistics` would wrongly admit
+// the assigned expert into owner-only writes. Left unauthorized rather than mis-gated —
+// same reasoning as the other owner-tier twins above; fix belongs to routes.ts's owner /
+// the reconciliation sweep.
 router.post("/api/trips/:tripId/emergency-contacts", isAuthenticated, async (req, res) => {
     try {
       const contact = await emergencyService.createContact({
@@ -1699,8 +1793,24 @@ router.get("/api/trips/:tripId/alerts/summary", isAuthenticated, async (req, res
   });
 
 
+// §9 mount-order-dead twin (this handler always loses to the identically-routed
+// POST /api/trips/:tripId/alerts in routes.ts — see registerRoutes' tripsRoutes mount
+// comment). Kept in sync for safety only.
+// SECURITY (found during the L21 sweep, kept safe for the reconciliation sweep): this
+// endpoint carried `isAuthenticated` ONLY — no trip authorization — despite writing a
+// safety alert onto the trip. The live copy gates on `authorizeTripLogistics` (owner ‖
+// assigned expert ‖ author ‖ audit-logged admin — the ONE tier-3 write an assigned expert
+// may perform, per the live copy's comment), so that is mirrored here.
 router.post("/api/trips/:tripId/alerts", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const denied = await authorizeTripLogistics(
+        req.params.tripId,
+        userId,
+        "POST /api/trips/:tripId/alerts",
+      );
+      if (denied) return res.status(denied.status).json({ message: denied.message });
+
       const alert = await emergencyService.createAlert({
         ...req.body,
         tripId: req.params.tripId,
