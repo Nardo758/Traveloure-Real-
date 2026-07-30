@@ -217,11 +217,15 @@ export interface TripPlanActivity {
 
 /** Real booking data for a chauffeured leg. Emitted only when a booked/confirmed option exists. */
 export interface TripPlanLegBooking {
-  /** The leg's real origin point. */
+  /**
+   * The leg's real origin point: the expert-written `transport_legs.pickup_point` when they stated
+   * one (§18 L4), else the leg's own origin name. Never invented.
+   */
   pickupPoint: string | null;
   /**
-   * v1 CAPABILITY GAP: no pickup-time column exists on `transport_booking_options`, so this is
-   * always `null`. §13 — a pickup time is never invented from the activity's start time.
+   * The expert-written `transport_legs.pickup_time` (a DISPLAY STRING — no tz math), or `null`.
+   * `transport_booking_options` still has no pickup-time column, so a booked leg whose expert never
+   * stated a time stays `null`. §13 — a pickup time is never invented from the activity's start time.
    */
   pickupTime: string | null;
   /** `transport_booking_options.confirmationRef`. */
@@ -297,6 +301,15 @@ export interface TripPlanLeg {
   distanceMeters?: number | null;
   /** Optimizer energy cost for the chosen mode (`transport_legs.energy_cost`). */
   energyCost?: number | null;
+  /**
+   * §18 L4 (migration 154) — the expert's stated pickup arrangement for a chauffeured leg. PRESENT
+   * ONLY when the expert actually wrote one of the two fields, so a leg with no arrangement (every
+   * legacy variant leg) carries neither key rather than a pair of nulls. These are arrangement
+   * facts, NOT a booking record: `booked` still reflects real `transport_booking_options` state.
+   */
+  pickupPoint?: string | null;
+  /** Display string (no timezone math in v1) — see `pickupPoint`. */
+  pickupTime?: string | null;
 }
 
 export interface TripPlanDay {

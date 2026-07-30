@@ -90,6 +90,7 @@ import bookingsRoutes from "./routes/bookings";
 import bookingActionsRoutes from "./routes/booking-actions";
 import myItineraryRoutes from "./routes/my-itinerary.routes";
 import transportHubRoutes from "./routes/transport-hub.routes";
+import transportLegsRoutes from "./routes/transport-legs.routes";
 import plancardRoutes from "./routes/plancard.routes";
 import optimizationRoutes from "./routes/optimization.routes";
 import conciergeRoutes from "./routes/concierge.routes";
@@ -578,6 +579,12 @@ export async function registerRoutes(
 
   // Transport Hub routes - booking interface for transport legs
   app.use(transportHubRoutes);
+
+  // Trip-scoped transport legs (§18 L4 "BOTH", migration 154): the engine PROPOSES legs for an
+  // expert-built trip, the expert CONFIRMS/EDITS, and only confirmed legs reach traveler surfaces.
+  // POST …/generate + PATCH/DELETE …/:legId only — the GET on the same base path is served by the
+  // pre-existing live handler in trips.routes.ts (extended in place; §9 no-shadow rule).
+  app.use(transportLegsRoutes);
 
   // PlanCard routes - change tracking, comments, structured day data
   app.use(plancardRoutes);

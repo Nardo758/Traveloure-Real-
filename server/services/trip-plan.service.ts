@@ -3,7 +3,8 @@
  * PRODUCER (§3 "producers normalize INTO TripPlan"):
  *
  *   • `assembleTripPlan(tripId, level)`            — `trips` + `itinerary_items` (+ the selected
- *     variant's legs, + the `generated_itineraries` JSON fallback). LIVE by reference. Consumed by
+ *     variant's legs, + the trip's own expert-CONFIRMED `transport_legs` (§18 L4), + the
+ *     `generated_itineraries` JSON fallback). LIVE by reference. Consumed by
  *     `GET /api/trips/:tripId/plancard` (L3a).
  *   • `assembleTripPlanFromVariant(variantId, …)`  — `itinerary_variants` +
  *     `itinerary_variant_items` + `transport_legs`. A SNAPSHOT: it never reads the live trip.
@@ -23,6 +24,9 @@
  * the full body". Never call with `'full'` from an unauthenticated surface.
  *
  * ── INVARIANTS ────────────────────────────────────────────────────────────────────────────────
+ * §18 L4 — a trip-scoped transport leg reaches this object ONLY in `proposal_status='confirmed'`.
+ *        Engine `proposed` legs are never read here, so no traveler surface can render a machine
+ *        proposal (the D1a born-approved lesson). Variant-scoped legs are unaffected.
  * §13 — never fabricate. Absent vendor phone / confirmation number / meeting point / expert note /
  *        transport leg / booking stays `null` (or the array stays empty). The
  *        `generated_itineraries` adapter has no vendor linkage at all, so it emits those fields
@@ -60,6 +64,7 @@ import {
   type VariantFullTripPlan,
 } from "@shared/trip-plan";
 import { geocodeAddress } from "../utils/geocode";
+import { getTripTransportLegs } from "./trip-transport-legs.service";
 
 /** Raised when a level is requested that v1 cannot honestly produce (`social`). */
 export class TripPlanLevelUnsupportedError extends Error {
@@ -217,6 +222,11 @@ async function resolveLegBookings(legs: any[]): Promise<Record<string, LegBookin
 function buildTripPlanLegCore(leg: any, booking?: LegBookingInfo | null): TripPlanLeg {
   const mode = leg.userSelectedMode || leg.recommendedMode || "walk";
   const isBooked = !!booking?.isBooked;
+  // §18 L4: a TRIP-scoped leg the expert CONFIRMED is settled even when they kept the engine's
+  // recommended mode (confirming never required touching `userSelectedMode`) — so it must not
+  // render as an open "AI suggested" proposal on the traveler's plan. `proposalStatus` is NULL on
+  // every legacy variant leg, so this is a no-op for the variant producer.
+  const settled = !!leg.userSelectedMode || leg.proposalStatus === "confirmed";
   return {
     id: leg.id,
     dayNumber: leg.dayNumber,
@@ -225,9 +235,15 @@ function buildTripPlanLegCore(leg: any, booking?: LegBookingInfo | null): TripPl
     mode,
     durationMin: leg.estimatedDurationMinutes || 0,
     distance: leg.distanceDisplay ?? null,
-    // Real booking data only. pickupTime has no column → null, never derived from a guess (§13).
+    // Real booking data only — `booked` still means a REAL booked/confirmed booking option. The
+    // expert's stated arrangement (migration 154) refines the pickup fields when they wrote one;
+    // absent that, the leg's own origin name and a null time, never a guess (§13).
     booked: isBooked
-      ? { pickupPoint: leg.fromName ?? null, pickupTime: null, rideRef: booking?.confirmationRef ?? null }
+      ? {
+          pickupPoint: leg.pickupPoint ?? leg.fromName ?? null,
+          pickupTime: leg.pickupTime ?? null,
+          rideRef: booking?.confirmationRef ?? null,
+        }
       : null,
     // §16: a chauffeured ride that is not really booked must be booked through the in-platform
     // booking-agent rail. No affiliate/deep-link URL is ever carried on this object.
@@ -241,8 +257,8 @@ function buildTripPlanLegCore(leg: any, booking?: LegBookingInfo | null): TripPl
     duration: leg.estimatedDurationMinutes || 0,
     cost: leg.estimatedCostUsd || 0,
     line: null,
-    status: leg.userSelectedMode ? "confirmed" : "suggested",
-    suggestedBy: leg.userSelectedMode ? null : "ai",
+    status: settled ? "confirmed" : "suggested",
+    suggestedBy: settled ? null : "ai",
     bookingSource: booking?.bookingSource ?? null,
     partnerName: booking?.partnerName ?? null,
     legOrder: leg.legOrder,
@@ -256,6 +272,13 @@ function buildTripPlanLegCore(leg: any, booking?: LegBookingInfo | null): TripPl
     distanceDisplay: leg.distanceDisplay,
     estimatedDurationMinutes: leg.estimatedDurationMinutes,
     estimatedCostUsd: leg.estimatedCostUsd ?? null,
+
+    // ADDITIVE, PRESENT-ONLY-WHEN-REAL (§13): the expert's stated pickup arrangement. A leg with
+    // neither field written — which is EVERY legacy variant leg — carries neither key, so existing
+    // producers' output is unchanged key-for-key.
+    ...(leg.pickupPoint || leg.pickupTime
+      ? { pickupPoint: leg.pickupPoint ?? null, pickupTime: leg.pickupTime ?? null }
+      : {}),
   };
 }
 
@@ -512,8 +535,16 @@ export async function assembleTripPlan(
     }
   }
 
-  // transportLegId → primary booking option (badge display + the §3 `booked` block).
-  const legBookingMap = await resolveLegBookings(variantLegs);
+  // ── §18 L4: trip-scoped legs — CONFIRMED ONLY ─────────────────────────────────────────────
+  // The engine's `proposed` legs are machine output the expert has not approved, so this producer
+  // does not read them AT ALL: a traveler surface can never receive one, whatever it renders (the
+  // D1a born-approved lesson applied to machine transport). The Workstation editor reads proposals
+  // through its own endpoint, never through the plan object.
+  const tripLegs = await getTripTransportLegs(tripId, { includeProposed: false });
+
+  // transportLegId → primary booking option (badge display + the §3 `booked` block). Booking rows
+  // hang off `transport_legs.id`, so trip-scoped legs resolve through the same shared helper.
+  const legBookingMap = await resolveLegBookings([...variantLegs, ...tripLegs]);
 
   const changes = await storage.getItineraryChanges(tripId, 20);
   const commentCounts = await storage.getActivityCommentCounts(tripId);
@@ -587,9 +618,13 @@ export async function assembleTripPlan(
 
   let days: TripPlanDay[] = dayNumbers.map((dayNum) => {
     const dayItems = items.filter((i) => i.dayNumber === dayNum);
-    const dayLegs = variantLegs.filter(
-      (l) => l.dayNumber === dayNum && l.userSelectedMode !== "dismissed",
-    );
+    const dayLegs = [
+      ...variantLegs.filter((l) => l.dayNumber === dayNum && l.userSelectedMode !== "dismissed"),
+      // Expert-confirmed trip legs for the same day (already ordered by legOrder). A trip with no
+      // optimizer comparison — the expert-built Workstation case L4 exists for — gets its legs
+      // from here alone; a legacy variant-only trip gets nothing extra, so its output is unchanged.
+      ...tripLegs.filter((l: any) => l.dayNumber === dayNum),
+    ];
     const types = dayItems.map((i) => i.itemType || "activity");
     return {
       dayNumber: dayNum,
@@ -734,7 +769,12 @@ export async function assembleTripPlan(
     role: c.role,
   }));
 
-  const activeLegs = variantLegs.filter((l) => l.userSelectedMode !== "dismissed");
+  // Transport totals count every leg really on the plan: undismissed variant legs plus the
+  // expert-CONFIRMED trip legs (proposals are not on the plan, so they are not counted).
+  const activeLegs = [
+    ...variantLegs.filter((l) => l.userSelectedMode !== "dismissed"),
+    ...tripLegs,
+  ];
   const budget = await resolveBudget(tripId, trip.budget);
 
   const legs: TripPlanLeg[] = [];
