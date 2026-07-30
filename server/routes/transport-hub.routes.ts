@@ -15,8 +15,43 @@ import { transportBookingOptions } from "@shared/schema";
 import { createTransportBookingCheckout } from "../services/stripe.service";
 import { populateBookingOptionsForVariant, populateBookingOptionsForLeg } from "../services/transport-booking-options.service";
 import { isAuthenticated } from "../replit_integrations/auth";
+import { authorizeTripLogistics } from "../utils/trip-logistics-auth";
 
 const router = Router();
+
+/**
+ * Authorization for the transport surfaces below (P0 fix, Jul 30 2026).
+ *
+ * These routes were `isAuthenticated`-only — any signed-in user could read (or,
+ * for `seed`, WRITE) another traveller's transport plan. The `:tripId` param is
+ * overloaded: it is EITHER an `itinerary_comparisons.id` OR a `trips.id` (the
+ * handler falls back from one to the other), so both id paths have to resolve to
+ * the same authorization decision.
+ *
+ * Principal set = the canonical `authorizeTripLogistics`
+ * (owner ‖ assigned expert ‖ author ‖ audit-logged admin) — the right set for a
+ * trip's transport view, matching the rest of the per-trip logistics surface.
+ *
+ * A comparison legitimately may have NO trip (`itinerary_comparisons.trip_id` is
+ * nullable — cart / experience-template flows create one before any trip exists);
+ * in that case the comparison's own `user_id` is the only owner there is, so it
+ * is honoured explicitly. Nothing here trusts a caller-supplied identity.
+ */
+async function authorizeTransportScope(
+  comparison: { userId?: string | null; tripId?: string | null } | null | undefined,
+  fallbackTripId: string,
+  userId: string | undefined | null,
+  route: string,
+): Promise<{ status: number; message: string } | null> {
+  if (!userId) return { status: 401, message: "Not authenticated" };
+
+  // Owner of the comparison itself (covers trip-less comparisons).
+  if (comparison?.userId && comparison.userId === userId) return null;
+
+  // Otherwise authorize the trip this transport plan belongs to. When no
+  // comparison resolved, the param can only have been meant as a trip id.
+  return authorizeTripLogistics(comparison?.tripId ?? fallbackTripId, userId, route);
+}
 
 /**
  * GET /api/itinerary/:tripId/transport-hub
@@ -49,6 +84,18 @@ router.get("/api/itinerary/:tripId/transport-hub", isAuthenticated, async (req, 
     if (!comparison) {
       comparison = await storage.getFullComparisonByTripId(tripId);
     }
+
+    // Authorize BEFORE returning any of the plan (or the empty-hub existence
+    // signal). Runs after resolution because BOTH id paths must land on the same
+    // decision — see authorizeTransportScope.
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const denied = await authorizeTransportScope(
+      comparison as any,
+      tripId,
+      userId,
+      "GET /api/itinerary/:tripId/transport-hub",
+    );
+    if (denied) return res.status(denied.status).json({ message: denied.message });
 
     // No comparison at all — return empty hub (not an error)
     if (!comparison) {
@@ -431,7 +478,16 @@ router.post("/api/transport-booking-options/seed/test-variant", isAuthenticated,
 /**
  * POST /api/transport-booking-options/seed/:variantId
  *
- * Dev/test endpoint: populates booking options for all legs of a variant
+ * Populates booking options for all legs of a variant.
+ *
+ * Self-described as dev/test, but it is mounted and live, and it WRITES rows onto
+ * the variant's legs — so it is authorized like any other per-trip logistics
+ * write (owner ‖ assigned expert ‖ author ‖ audit-logged admin) rather than
+ * env-gated: the same lazy population already happens on the live read path
+ * (`GET /api/transport-legs/:legId/options`), so gating this one to non-production
+ * would remove a legitimate capability without removing the behaviour, while
+ * leaving the real defect (no authorization) unaddressed. Environment is not an
+ * authorization boundary; the variant's owning trip is.
  */
 router.post("/api/transport-booking-options/seed/:variantId", isAuthenticated, async (req, res) => {
   try {
@@ -441,6 +497,16 @@ router.post("/api/transport-booking-options/seed/:variantId", isAuthenticated, a
       return res.status(404).json({ error: "Variant not found" });
     }
     const comparison = await storage.getItineraryComparison(variant.comparisonId);
+
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const denied = await authorizeTransportScope(
+      comparison as any,
+      variant.comparisonId,
+      userId,
+      "POST /api/transport-booking-options/seed/:variantId",
+    );
+    if (denied) return res.status(denied.status).json({ message: denied.message });
+
     const destination = comparison?.destination || "Unknown";
     await populateBookingOptionsForVariant(variantId, destination);
     res.json({ success: true, message: `Booking options seeded for variant ${variantId}` });

@@ -5731,6 +5731,21 @@ router.get("/api/search/experiences", async (req, res) => {
         const dest = (destination || "").toLowerCase();
         const qLower = (q || "").toLowerCase();
         const catLower = (category || "").toLowerCase();
+        // L27-P3: emit the row's REAL coordinates (migration 129 columns) instead of the
+        // hardcoded `location: null` this arm used to return — which is why platform
+        // inventory never pinned on the expert Workstation browse map even when it had
+        // coordinates. Shape matches what the map consumer reads (`r.location?.lat` →
+        // numbers). §13: a row without coordinates still returns null — no centroid
+        // guess, no city-centre fallback — and `locationPrecision` travels with the
+        // point so a consumer can say "approximate" when it is a neighborhood centroid
+        // rather than a confirmed pin.
+        const emitLocation = (row: any): { lat: number; lng: number } | null => {
+          const lat = parseFloat(String(row.latitude ?? ""));
+          const lng = parseFloat(String(row.longitude ?? ""));
+          if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+          if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+          return { lat, lng };
+        };
         for (const p of platformProviders) {
           const nameMatch = p.serviceName?.toLowerCase().includes(qLower);
           const catMatch = !catLower || catLower === "all" || p.serviceType?.toLowerCase().includes(catLower) || (p as any).category?.toLowerCase().includes(catLower);
@@ -5746,7 +5761,8 @@ router.get("/api/search/experiences", async (req, res) => {
               reviewCount: null,
               priceLevel: null,
               priceLabel: p.price ? `$${p.price}` : null,
-              location: null,
+              location: emitLocation(p),
+              locationPrecision: (p as any).locationPrecision ?? null,
               photoUrl: null,
               mapsUrl: null,
               // W-3 task 1: the stable provider_services linkage — the client passes this

@@ -10,8 +10,9 @@
  *  • It must NEVER be routed through getTripRole/canMutateTrip (known pre-launch bypass — separate
  *    fix). Where authoring must coexist with getTripRole-gated handlers (plancard read, the two
  *    per-item edit/delete routes), this check is added as a PARALLEL branch beside it.
- *  • It must not copy `isExpertAssignedToTrip`'s status-blind advisor lookup — authorship has no
- *    status; it is a direct column equality.
+ *  • It must not copy the advisor lookup's status handling — authorship has no status; it is a
+ *    direct column equality. (The advisor side's status-blind bug is fixed: the canonical
+ *    allow-list predicate now lives in `server/utils/trip-advisor.ts`.)
  */
 import { db } from "../db";
 import { trips } from "@shared/schema";

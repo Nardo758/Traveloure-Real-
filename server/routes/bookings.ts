@@ -333,11 +333,26 @@ router.post('/apply-promo', isAuthenticated, async (req, res) => {
  * POST /api/bookings/webhooks/stripe
  * Stripe webhook endpoint
  */
-router.post('/webhooks/stripe', async (req, res) => {
+//
+// SIGNATURE VERIFICATION USES req.rawBody, NOT req.body (L14 money-path P0).
+// This handler used to pass `req.body` to constructEvent. By the time any route runs, the global
+// express.json() in server/index.ts has already PARSED the body, so `req.body` is a plain object
+// and the exact bytes Stripe signed are gone — constructEvent could therefore NEVER verify a real
+// Stripe delivery, which made the `charge.refunded` handler unreachable over HTTP.
+// The raw bytes ARE available: that same express.json() supplies a `verify` callback that stashes
+// the Buffer on `req.rawBody`. This is exactly how the two working Stripe webhooks
+// (POST /api/webhooks/stripe and /api/webhooks/stripe-identity in webhooks.routes.ts) verify, so
+// this route now mirrors that established pattern — no new middleware, no change to body parsing
+// for any other route.
+router.post('/webhooks/stripe', async (req: any, res) => {
   const sig = req.headers['stripe-signature'];
 
   if (!sig) {
     return res.status(400).json({ error: 'Missing signature' });
+  }
+
+  if (!req.rawBody) {
+    return res.status(500).json({ error: 'Raw body unavailable for signature verification' });
   }
 
   try {
@@ -346,7 +361,7 @@ router.post('/webhooks/stripe', async (req, res) => {
     });
 
     const event = stripe.webhooks.constructEvent(
-      req.body,
+      req.rawBody,
       sig,
       process.env.STRIPE_WEBHOOK_SECRET || ''
     );
@@ -396,22 +411,36 @@ router.post('/refund', isAuthenticated, async (req, res) => {
       }
     }
 
-    // Amount server-derived from service_bookings.total_amount; idempotent (atomic status
-    // claim + deterministic Stripe idempotencyKey).
-    const result = await stripePaymentService.refundServiceBooking(bookingId, reason);
-
-    // Escrow Phase 4 (closes §14 A2): a refund now also reverses the linked earnings ledger + the
-    // recognised platform revenue, so a refunded booking doesn't leave the provider/expert credited.
-    // Both are idempotent no-ops when the booking has no in-escrow earnings, so this is safe on any
-    // refund. paid_out earnings are left for manual clawback (surfaced via skippedPaidOut).
+    // Escrow Phase 4 (closes §14 A2): a refund also reverses the linked earnings ledger + the
+    // recognised platform revenue, so a refunded booking doesn't leave the provider/expert
+    // credited. Both are idempotent no-ops when the booking has no in-escrow earnings, so this
+    // is safe on any refund. paid_out earnings are never auto-clawed-back (ratified "reversal
+    // only while in escrow") — they are surfaced via skippedPaidOut for manual handling.
+    //
+    // ORDER: ledger-first, Stripe-second — matching the admin dispute-uphold path
+    // (admin.routes.ts POST /api/admin/disputes/:bookingId/uphold) and the §18 Phase 4
+    // rationale. The reversals are idempotent atomic flips, so a Stripe failure leaves a
+    // fully-reversed ledger that a retry simply re-confirms as a no-op. The previous
+    // Stripe-first order had the opposite failure mode: money out the door with the ledger
+    // still crediting the earner if the reversal then threw.
     const reversal = await storage.reverseEarningsForBooking(bookingId);
-    await storage.reversePlatformRevenueForBooking(bookingId);
+    const reversedRevenueRows = await storage.reversePlatformRevenueForBooking(bookingId);
+
+    // Amount server-derived from service_bookings.total_amount; idempotent (atomic status
+    // claim + deterministic Stripe idempotencyKey `refund-sb-<bookingId>`).
+    const result = await stripePaymentService.refundServiceBooking(bookingId, reason);
 
     res.json({
       success: true,
       ...result,
       reversedEarnings: reversal.reversed,
       skippedPaidOut: reversal.skippedPaidOut,
+      reversedRevenueRows,
+      ...(reversal.skippedPaidOut > 0
+        ? {
+            note: `${reversal.skippedPaidOut} earning(s) were already paid out and were NOT auto-reversed — a post-payout clawback must be handled manually.`,
+          }
+        : {}),
     });
   } catch (error: any) {
     console.error('Refund error:', error);

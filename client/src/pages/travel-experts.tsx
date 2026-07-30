@@ -33,12 +33,24 @@ import {
   XCircle,
   AlertTriangle,
   RefreshCw,
+  LogIn,
 } from "lucide-react";
 import { SiFacebook, SiInstagram } from "react-icons/si";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { useAuth } from "@/hooks/use-auth";
+import { useSignInModal } from "@/contexts/SignInModalContext";
+import {
+  saveApplicationDraft,
+  loadApplicationDraft,
+  clearApplicationDraft,
+  describeSubmitError,
+} from "@/lib/application-draft";
+
+// Namespaced so the expert and provider funnels' drafts never collide.
+const DRAFT_KEY = "traveloure_expert_application_draft";
 
 const defaultSteps = [
   { id: 1, title: "Basic Info" },
@@ -154,7 +166,13 @@ export default function TravelExpertsPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
-  const [currentStep, setCurrentStep] = useState(1);
+  const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
+  const { openSignInModal } = useSignInModal();
+  // Restored below (with formData) from a saved draft, if a guest sign-in
+  // redirect (or an expired-session retry) brought them back mid-wizard.
+  const [currentStep, setCurrentStep] = useState(
+    () => loadApplicationDraft<unknown>(DRAFT_KEY)?.currentStep || 1
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [socialAuthConnected, setSocialAuthConnected] = useState(false);
   const [neighborhoodInput, setNeighborhoodInput] = useState("");
@@ -182,7 +200,7 @@ export default function TravelExpertsPage() {
   };
   const expertTypeTitle = expertTypeTitles[expertTypeFromUrl] || "Trip Planner";
   
-  const [formData, setFormData] = useState({
+  const defaultFormData = {
     firstName: "",
     lastName: "",
     email: "",
@@ -217,7 +235,16 @@ export default function TravelExpertsPage() {
     instagramFollowers: "",
     tiktokFollowers: "",
     youtubeFollowers: "",
-  });
+  };
+
+  // Restore a guest's in-progress draft (saved right before we sent them to sign
+  // in, or right before an unexpected 401 on submit) so a sign-in redirect or an
+  // expired session never destroys their work. An already-signed-in user with no
+  // draft gets the untouched defaults — no behavior change for them.
+  const [savedDraft] = useState(() => loadApplicationDraft<typeof defaultFormData>(DRAFT_KEY));
+  const [formData, setFormData] = useState(() =>
+    savedDraft ? { ...defaultFormData, ...savedDraft.formData } : defaultFormData
+  );
 
   // Fetch user data if authenticated via social login
   const { data: userData } = useQuery<any>({
@@ -268,12 +295,15 @@ export default function TravelExpertsPage() {
     }
   }, [instagramData, toast]);
 
-  // Fetch existing application status (to show rejection reason if applicable)
+  // Fetch existing application status (to show rejection reason if applicable).
+  // Guest-gated: the endpoint is isAuthenticated, and a guest has no prior
+  // application to show a rejection for.
   const { data: applicationStatus } = useQuery<{
     overallStatus: string;
     rejectionMessage: string | null;
   }>({
     queryKey: ["/api/expert/application-status"],
+    enabled: isAuthenticated,
     retry: false,
   });
 
@@ -429,22 +459,56 @@ export default function TravelExpertsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/expert/service-templates"] });
+      // Gating the status query on isAuthenticated (below) means it can fetch and
+      // cache a "no form yet" result right after sign-in but before submit; without
+      // this invalidation, /expert-status's client-side nav (same QueryClient, no
+      // reload) would serve that stale cache instead of the just-submitted form.
+      queryClient.invalidateQueries({ queryKey: ["/api/expert/application-status"] });
+      clearApplicationDraft(DRAFT_KEY);
       toast({
         title: "Application submitted!",
-        description: "We'll review your application and get back to you within 48 hours.",
+        description: "We'll review your application and follow up by email.",
       });
-      setLocation("/dashboard");
+      // /expert-status is auth-only (no role required), so a fresh applicant
+      // with no role yet can view it — unlike /dashboard, it acknowledges the
+      // application that was just submitted instead of ignoring it.
+      setLocation("/expert-status");
     },
     onError: (error: any) => {
-      toast({
-        title: "Submission failed",
-        description: error.message || "There was an error submitting your application. Please try again.",
-        variant: "destructive",
-      });
+      const { title, description, isAuthError } = describeSubmitError(error);
+      // Covers the race where a previously-signed-in applicant's session expired
+      // mid-form: the draft is saved here (not just on the guest path below) so
+      // the retry-after-sign-in still has everything they typed.
+      if (isAuthError) {
+        saveApplicationDraft(DRAFT_KEY, formData, currentStep);
+      }
+      toast({ title, description, variant: "destructive" });
+      if (isAuthError) {
+        openSignInModal({
+          title: "Sign in to submit your application",
+          description: "We've saved everything you entered — sign in and submit will pick up right where you left off.",
+          returnTo: window.location.pathname + window.location.search,
+        });
+      }
     },
   });
 
+  const promptSignInToSubmit = () => {
+    saveApplicationDraft(DRAFT_KEY, formData, currentStep);
+    openSignInModal({
+      title: "Sign in to submit your application",
+      description: "Create a free account or sign in — everything you've entered so far will still be here.",
+      returnTo: window.location.pathname + window.location.search,
+    });
+  };
+
   const handleSubmit = async () => {
+    // Ask up front rather than letting the request 401: a guest (or a signed-out
+    // tab) never even reaches the server on submit.
+    if (!isAuthenticated) {
+      promptSignInToSubmit();
+      return;
+    }
     setIsSubmitting(true);
     try {
       await submitMutation.mutateAsync();
@@ -514,6 +578,32 @@ export default function TravelExpertsPage() {
       </div>
 
       <main className="container mx-auto px-4 max-w-2xl py-8">
+        {/* Ask up front, not after the work: a guest sees this the moment they
+            land, before filling anything in. Non-blocking — they can still fill
+            out the form as a guest, but submit routes through sign-in either way. */}
+        {!isAuthLoading && !isAuthenticated && (
+          <div
+            className="mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-xl border-2 border-primary/30 bg-primary/5 p-5"
+            data-testid="banner-guest-sign-in"
+          >
+            <div className="flex items-start gap-3">
+              <LogIn className="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="font-semibold text-foreground">You'll need an account to submit this application</p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Sign in or create a free account any time — everything you enter is saved, so you won't lose your progress.
+                </p>
+              </div>
+            </div>
+            <Button
+              onClick={promptSignInToSubmit}
+              className="bg-primary hover:bg-primary/90 text-white flex-shrink-0"
+              data-testid="button-guest-sign-in"
+            >
+              Sign in
+            </Button>
+          </div>
+        )}
         {isRejected && (
           <div
             className="mb-6 rounded-xl border-2 border-red-300 bg-red-50 dark:bg-red-900/20 p-5"

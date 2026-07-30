@@ -27,8 +27,9 @@ import { HeroSection } from "@/components/plancard/HeroSection";
 import { StatsRow, CostIcon, type ExtraStat } from "@/components/plancard/StatsRow";
 import { DaySelector } from "@/components/plancard/DaySelector";
 import { SectionTabs } from "@/components/plancard/SectionTabs";
-import { TransportSection } from "@/components/plancard/TransportSection";
+import { TransportSection, LegBookingPanel } from "@/components/plancard/TransportSection";
 import { MapControlCenter } from "@/components/plancard/MapControlCenter";
+import { useAuth } from "@/hooks/use-auth";
 
 interface SharedItineraryResponse {
   variant: {
@@ -1153,6 +1154,14 @@ interface ExpertTransportSectionProps {
 function ExpertTransportSection({
   tripId, tripDestination, day, rawTransportLegs, transportDiffs, onModeChange,
 }: ExpertTransportSectionProps) {
+  // This view is reachable anonymously (a plain "view"-only share link) — the booking-agent
+  // rail requires auth (POST /api/affiliate-booking-requests), so a signed-out viewer gets NO
+  // booking affordance at all rather than one that would 401 (§13/§16). §16: the server never
+  // sends this page a raw affiliate URL (the old `linkedProductUrl` key was deleted with its
+  // read in trips.routes.ts); the affordance below reuses the SAME LegBookingPanel /
+  // booking-agent rail as the live plancard TransportSection — options are fetched per-leg
+  // (GET /api/transport-legs/:legId/options) only once a signed-in viewer expands "Book this leg".
+  const { isAuthenticated } = useAuth();
   return (
     <div className="p-5" data-testid={`expert-transport-section-${tripId}`}>
       {day.transports?.length > 0 && (
@@ -1252,6 +1261,9 @@ function ExpertTransportSection({
                     undo
                   </button>
                 </div>
+              )}
+              {isAuthenticated && (
+                <LegBookingPanel legId={tr.id} fromName={tr.fromName} toName={tr.toName} />
               )}
             </div>
           </div>
