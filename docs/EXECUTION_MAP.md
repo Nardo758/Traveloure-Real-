@@ -230,3 +230,69 @@ fabricated pages.
 L20 Phase 2 participant invite→accept plumbing (the feature half of the approved shared-trip access) ·
 the remaining trust-claims arms (the `90/10` commission literal, hardcoded cancellation/support copy,
 the 2-character-neighbourhood empty-result trap).
+
+## Systematic IDOR sweep — full findings (Jul 30, 2026)
+
+Coverage stated honestly by the sweep: **988 route registrations enumerated**, 58 shadowed/born-dead (56 in
+`trips.routes.ts`, matching §9's ~57) → **930 live**; 438 live param-taking endpoints; 174 excluded as
+`/api/admin` blanket-guarded (guard verified live); ~207 hand-read; ~162 inferred class-A with ~15 spot-checked.
+**NOT covered (a real gap, and it holds bugs — see #13):** resources identified by QUERY PARAM or BODY rather
+than a path param. Classes: **A** resource-scoped · **B** role-string only · **C** session-only · **D** no auth
+at all · **E** authorizes a DIFFERENT resource than it mutates (the most dangerous shape).
+
+**Confirmed landed today:** `apply-to-trip` authorizes before the delete; inline comparison-create guarded; the
+whole L20 22-endpoint logistics cluster on the canonical helpers.
+
+### P0 — destructive / money / reachable
+| # | Endpoint | Class | Scenario | State |
+|---|---|---|---|---|
+| 1 | `PATCH /api/concierge/requests/:id` (`concierge.routes.ts:123`) | **D** | **Unauthenticated.** Anyone flips any user's tier to `full` and **creates a billable `coordination_states` engagement** in their name (§7 $499/8% path). Sibling `/claim` requires an HMAC token — proof of oversight | **IN FLIGHT** |
+| 2 | `POST /api/trips/:tripId/vendors/bulk-email` (`trips.routes.ts:1279`) | **E** | Sends attacker-authored mail to another user's real vendors; `contractIds` also caller-supplied and untied to the trip (2nd IDOR) | **IN FLIGHT** |
+| 3 | `POST /api/trips/:tripId/contracts/:contractId/documents` (`:1255`) | **E** | `tripId` never read; forged file attached to ANY vendor contract | **IN FLIGHT** |
+| 4 | `POST /api/vendor-availability/:id/book` (`routes.ts:6255`) | C | Exhausts a provider's sellable inventory free — no booking row, no payment | QUEUED (routes.ts busy) |
+| 5 | `DELETE /api/provider/blackout-dates/:id` (`experts.routes.ts:473`) | **B** | Provider deletes another provider's blackout row | **IN FLIGHT** |
+| 6 | `PUT /api/provider/booking-requests/:requestId/respond` (`:507`) | **B** | **Provider ACCEPTS another provider's booking request** (live client consumer) | **IN FLIGHT** |
+| 7 | `PATCH /api/affiliate-booking-requests/:id` (`content.routes.ts:6803`) | **B** | **Any expert self-assigns another's request and rewrites `price`** — §16 commission rail. Body was hardened against mass-assign; no ownership check added | QUEUED (content.routes.ts busy) |
+| 8 | `PATCH\|DELETE\|POST /api/affiliate/partners/:id[/scrape]` (`content.routes.ts:7297,7314,7328,7340`) | C | **Any authenticated traveler deletes platform affiliate partners** / triggers billable crawls. Admin-page-only intent | QUEUED |
+
+### P1
+| # | Endpoint | Class | Note |
+|---|---|---|---|
+| 9 | `DELETE /api/notifications/:id` (`content.routes.ts:2365`) | C | Destructive; **sibling `/read` DOES check ownership** |
+| 10-12 | `DELETE\|PATCH /api/user-experience-items/:id`, `GET /api/user-experiences/:id` | C | **Every other sibling checks `experience.userId`**; PATCH also raw-body mass-assign |
+| 13 | `GET /api/trips/:tripId/vendors/contact-sheet` (`trips.routes.ts:1309`) | C | Bulk vendor PII (JSON/CSV/PDF) — **IN FLIGHT** |
+| 14 | `GET /api/itinerary/:tripId/transport-hub` (`transport-hub.routes.ts:29`) | C | Either comparison-id or trip-id works; 3 live callers — **IN FLIGHT** |
+| 15 | `POST /api/transport-booking-options/seed/:variantId` (`:436`) | C | "dev/test" but mounted live — **IN FLIGHT** |
+| 16 | `PATCH /api/notifications/:id/read` (`content.routes.ts:2346`) | — | **Check-AFTER-mutate**: write executes, then 403; no rollback. The `apply-to-trip` lesson in miniature |
+
+### P2 (data exposure / integrity)
+17 `GET /api/trips/:tripId/expert-request-status` · 18 `GET /api/analytics/expert-match-trends/:expertId` ·
+19 `POST /api/recommendations/:id/convert` (client-supplied `revenueGenerated` → analytics poisoning) ·
+20 `POST /api/recommendations/:id/dismiss` · 21 `GET /api/custom-venues/:id` (class D; PATCH/DELETE are gated) ·
+22 `POST /api/recommendations/refresh/:city` (compute abuse).
+
+### DECISION-MAKER GATED — no ownership column exists
+**`user_and_expert_contracts`** (`shared/schema.ts:1004-1015`) has **no `userId`/`expertId`/`tripId`**. So
+`GET /api/contracts/:id` (`routes.ts:5719`) returns any contract's title, **amount**, `paymentUrl` and
+`attachment`, and **cannot be fixed at the route** (live caller `contract-view.tsx:53`). Same root cause as
+`GET /api/expert/contracts/recent`. **Either add an owner FK + backfill, or retire both endpoints.** Do not
+invent a linkage.
+
+### L28 — THE SYSTEMIC ROOT CAUSE (the highest-leverage item on this board)
+**75 `server/storage.ts` functions fetch/mutate by bare id with no owner predicate** (39 mutating, 36 reading).
+Most are safe *today* only because callers fetch-then-check — and every provider hole above is a case where that
+discipline lapsed. Already load-bearing in live holes: `deleteProviderBlackoutDate:4607`, `updateBookingRequest:4647`,
+`bookSlot:2449`, `getContract:2117`, `deleteNotification:2184`, `markAsRead:2170`, `getUserExperience:2283`,
+`updateUserExperienceItem:2330`, `removeUserExperienceItem:2338`. Highest-risk currently-safe destructive mutators:
+`deleteTrip:784`, `deleteItineraryItem:4842`, `deleteProviderService:1223`, `deleteCoordinationState:2557`,
+`deleteCoordinationBooking:2600`, `deleteVendorAvailabilitySlot:2439`, `deleteExpertTemplate:3250`,
+`deleteActivityComment:4796`, and the two payout claims `:3882`/`:3890` (money).
+**Ratified direction: require the actor id in destructive storage signatures** so the gate is a COMPILE ERROR
+rather than a review item — the EA subsystem already does this (`getEaClientRelationshipById(id, eaUserId)`) and
+is the only subsystem the sweep found clean throughout. Roll out incrementally, starting with the functions the
+P0 lanes are already touching; grep callers before each signature change.
+
+### L29 — the uncovered surface
+Enumerate and classify endpoints whose resource id arrives by **query param or request body** (`?tripId=`,
+`body.tripId`, `body.contractIds`). The sweep explicitly did not cover these, and finding #2's `contractIds`
+proves the class is live.
