@@ -8,6 +8,7 @@ import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { getTripRole, canMutateTrip } from "../utils/trip-role";
 import { isTripAuthor } from "../utils/trip-authorship";
+import { authorizeTripLogistics } from "../utils/trip-logistics-auth";
 import { assembleTripPlan, TripPlanNotFoundError } from "../services/trip-plan.service";
 
 const router = Router();
@@ -37,6 +38,21 @@ router.post("/api/itinerary-comparisons/:id/apply-to-trip", isAuthenticated, asy
     if (!comparison.tripId) {
       return res.status(400).json({ error: "Comparison has no associated trip" });
     }
+
+    // SECURITY (destructive cross-trip IDOR): owning the COMPARISON is not the same as being
+    // allowed to mutate the TRIP it points at — `itinerary_comparisons.tripId` is caller-supplied,
+    // so a comparison can name someone else's trip. This handler then wipes that trip
+    // (`deleteItineraryItemsByTrip`) and re-inserts the variant, so without a trip-side check any
+    // authenticated user could destroy and overwrite any other user's itinerary. BOTH checks must
+    // hold: the comparison-ownership check above AND the canonical trip authorization here
+    // (owner ‖ trip-assigned expert ‖ trip author ‖ audit-logged admin), performed BEFORE the delete.
+    const denied = await authorizeTripLogistics(
+      comparison.tripId,
+      userId,
+      "POST /api/itinerary-comparisons/:id/apply-to-trip",
+    );
+    // Local convention in this router: `{ error }` bodies, 403 for an authorized-user-wrong-trip.
+    if (denied) return res.status(denied.status).json({ error: denied.message });
 
     // Find best variant: prefer selectedVariantId, else top AI variant by optimizationScore
     let variant: any = null;
