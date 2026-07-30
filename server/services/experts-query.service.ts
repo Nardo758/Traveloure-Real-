@@ -469,7 +469,18 @@ export async function getVisaAssistanceServices(limit = 6): Promise<any[]> {
 
 // ─── Expert Contracts ─────────────────────────────────────────────────────────
 
-export async function getRecentExpertContracts(limit = 20): Promise<any[]> {
+/**
+ * The earner's OWN contracts. `earnerId` is a required leading parameter, not an optional
+ * filter (the L28 pattern) — the previous signature took only `limit`, and the route computed
+ * `expertId` from the session and then never passed it, so this returned the 20 most recent
+ * contracts PLATFORM-WIDE to any authenticated caller: service names, trip destinations, and
+ * amounts belonging to other earners' clients.
+ *
+ * Rows with a NULL `earner_id` (migration 157 could not attribute them — no linked booking) are
+ * excluded by the equality filter, which is the intended behavior: an unattributable financial
+ * artifact belongs in an admin surface, not in someone's console on a guess.
+ */
+export async function getRecentExpertContracts(earnerId: string, limit = 20): Promise<any[]> {
   return db.select({
     id: userAndExpertContracts.id,
     title: userAndExpertContracts.title,
@@ -480,6 +491,7 @@ export async function getRecentExpertContracts(limit = 20): Promise<any[]> {
     createdAt: userAndExpertContracts.createdAt,
   })
     .from(userAndExpertContracts)
+    .where(eq(userAndExpertContracts.earnerId, earnerId))
     .orderBy(desc(userAndExpertContracts.createdAt))
     .limit(limit);
 }

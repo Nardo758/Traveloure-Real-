@@ -1003,6 +1003,15 @@ export const aiBlueprints = pgTable("ai_blueprints", {
 
 export const userAndExpertContracts = pgTable("user_and_expert_contracts", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  // Ownership (migration 157). Until this landed the table had NO principal at all, which is
+  // why its two live readers could not be gated — there was nothing to filter on.
+  // `earner_id`, not `expert_id`: the counterparty is the owner of the booked service, who may
+  // be an `expert` OR a `service_provider`, so the table-name-matching `expert_id` would be
+  // false for every provider-owned booking (the role-vocabulary-audit class of error).
+  // Nullable by design — a row we cannot attribute stays NULL, and the read gate treats NULL
+  // as admin-only rather than showing an unattributable financial artifact to a guessing caller.
+  travelerId: varchar("traveler_id").references(() => users.id, { onDelete: "set null" }),
+  earnerId: varchar("earner_id").references(() => users.id, { onDelete: "set null" }),
   title: varchar("title", { length: 255 }).notNull(),
   tripTo: varchar("trip_to", { length: 255 }).notNull(),
   description: text("description").notNull(),
@@ -5651,6 +5660,77 @@ export const paymentIntents = pgTable("payment_intents", {
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
+
+// Refund audit log (migration 156). MUST stay byte-for-byte equivalent to
+// server/migrations/156_refunds_audit_table.sql — the deploy runs an automatic drizzle-kit
+// push from this file, so any disagreement makes the push ALTER the table under a live
+// money path. Written by exactly two sites in server/services/stripe-payment.service.ts:
+//   handleRefund()          — the `charge.refunded` webhook: charge id + PI + amount +
+//                             currency + status ('completed'); no booking_id / refund id / reason.
+//   refundServiceBooking()  — the escrow refund terminal (§14 server-derived amount, §15 atomic
+//                             status claim + deterministic Stripe idempotencyKey): booking_id +
+//                             refund id + PI + amount + currency + Stripe status + reason.
+// Nothing reads this table yet (the admin "Refunds" tab reads reversed platform_revenue rows) —
+// it is an append-only audit log, so every column a writer omits is nullable.
+// `status` is deliberately NULLABLE with NO CHECK: refundServiceBooking stores Stripe's
+// refund.status, an external value typed `string | null` — a CHECK/NOT NULL here would
+// reproduce the exact bug 156 fixes (money refunded in Stripe, audit insert throws).
+export const refunds = pgTable("refunds", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  // ON DELETE SET NULL, never CASCADE: a financial audit row must outlive its booking.
+  bookingId: varchar("booking_id").references(() => serviceBookings.id, { onDelete: "set null" }),
+  stripeRefundId: varchar("stripe_refund_id", { length: 255 }),
+  stripeChargeId: varchar("stripe_charge_id", { length: 255 }),
+  stripePaymentIntentId: varchar("stripe_payment_intent_id", { length: 255 }),
+  // DOLLARS — same precision/scale as service_bookings.total_amount, the value it reverses.
+  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  currency: varchar("currency", { length: 10 }).notNull().default("usd"),
+  status: varchar("status", { length: 50 }),
+  reason: text("reason"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  bookingIdx: index("idx_refunds_booking_id").on(table.bookingId),
+  paymentIntentIdx: index("idx_refunds_payment_intent").on(table.stripePaymentIntentId),
+}));
+
+// AI cost tracking (migration 025b). MUST stay byte-for-byte equivalent to
+// server/migrations/025b_ai_cost_tracking.sql — the deploy runs an automatic drizzle-kit push
+// from this file, and the push is authoritative over BOTH tables and indexes it does not find
+// declared here (proven Jul 30, 2026: the push emitted a bare `DROP INDEX` for the undeclared
+// sb_idempotency_key_idx). 025b is already stamped, so a publish that drops this table would
+// mean runMigrations() NEVER recreates it → permanent silent loss of AI-cost observability.
+// Written (raw SQL) by server/services/ai-cost-tracker.ts, called from claude.service.ts,
+// itinerary-optimizer.ts, the chat routes and the content/experts/trips routers; read by
+// lead-routing.service.ts for the admin dead-end-lead cost breakdown.
+// Exact-match notes — these are the DDL, not preferences:
+//   • id: DB-side DEFAULT gen_random_uuid() is REQUIRED (the writer never supplies id), hence
+//     uuid().primaryKey().defaultRandom() — NOT the house varchar().$defaultFn(crypto.randomUUID)
+//     pattern, which is client-side and emits no DB default.
+//   • userId is uuid with NO foreign key, matching the DDL. users.id is varchar in this codebase,
+//     so a .references() here would make the push try to create a constraint that cannot exist.
+//   • cost is NUMERIC(10, 6) — six decimal places (per-request AI cost in USD), not the usual (10, 2).
+//   • both indexes carry their exact existing names and DESC direction on created_at.
+//     `.nullsFirst()` is LOAD-BEARING, do not "simplify" it away: Postgres defaults DESC to
+//     NULLS FIRST, but drizzle's bare `.desc()` emits `DESC NULLS LAST` — proven to make the
+//     push plan `DROP INDEX` + `CREATE INDEX` for BOTH indexes on every single publish.
+//     With `.desc().nullsFirst()` the push plan contains zero ai_cost_tracking statements.
+export const aiCostTracking = pgTable("ai_cost_tracking", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  sourceType: varchar("source_type", { length: 50 }).notNull(),
+  modelUsed: varchar("model_used", { length: 100 }),
+  requestId: varchar("request_id", { length: 255 }),
+  userId: uuid("user_id"),
+  cost: decimal("cost", { precision: 10, scale: 6 }).notNull(),
+  tokensIn: integer("tokens_in"),
+  tokensOut: integer("tokens_out"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  sourceTypeCreatedIdx: index("idx_ai_cost_tracking_source_type_created")
+    .on(table.sourceType, table.createdAt.desc().nullsFirst()),
+  userIdCreatedIdx: index("idx_ai_cost_tracking_user_id_created")
+    .on(table.userId, table.createdAt.desc().nullsFirst()),
+}));
 
 // DEPRECATED: 2026-06-27
 // Renamed to _deprecated_expert_city_queues

@@ -60,11 +60,21 @@ export function DeliveryOptions({
   const isEvent = branch === "event";
 
   async function patchTier(tier: "ai" | "expert" | "full") {
+    // The PATCH is possession-gated server-side (P0 fix): normally the browser
+    // session that created the request IS the proof, which is why `credentials`
+    // must stay "include" for guests as well as signed-in travelers. If this
+    // browser already holds the HMAC claim token for THIS request (set below on a
+    // previous guest full-pick), send it too — that keeps a retry working even if
+    // the guest session was lost in between.
+    const storedRequestId = sessionStorage.getItem("guestConciergeRequestId");
+    const storedToken = sessionStorage.getItem("guestConciergeClaimToken");
+    const claimToken = storedRequestId === requestId && storedToken ? storedToken : undefined;
+
     return fetch(`/api/concierge/requests/${requestId}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
-      body: JSON.stringify({ chosenTier: tier }),
+      body: JSON.stringify({ chosenTier: tier, ...(claimToken ? { claimToken } : {}) }),
     });
   }
 

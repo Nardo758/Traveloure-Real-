@@ -7,7 +7,6 @@ import { motion } from "framer-motion";
 import { CityTickerTape } from "@/components/CityTickerTape";
 import { TrendingCities } from "@/components/TrendingCities";
 import { ExperienceCard } from "@/components/ui/experience-card";
-import { TestimonialCard } from "@/components/ui/testimonial-card";
 import { StatCard } from "@/components/ui/stat-card";
 import {
   ArrowRight,
@@ -37,24 +36,12 @@ import {
   HeartHandshake,
   Zap,
   ChevronRight,
-  Quote,
   MapPin,
   Calendar,
-  Shield,
-  TrendingUp,
   Activity,
-  CheckCircle2,
-  Clock,
-  Award
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import lakeImage from "@assets/stock_images/turquoise_lake_with__22a4624c.jpg";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
 import { SEOHead } from "@/components/seo-head";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import { useQuery } from "@tanstack/react-query";
@@ -95,25 +82,12 @@ const keyFeatures = [
   { icon: Globe, label: "Discover", description: "Browse curated experiences from around the world", href: "/discover", gradient: "from-ocean-500 to-ocean-600" },
 ];
 
-// Horizontal features bar data
-const platformBenefits = [
-  { icon: Bot, label: "AI-Powered Planning", value: "Smart" },
-  { icon: Users, label: "Local Experts", value: "160+" },
-  { icon: Zap, label: "Real-Time Intel", value: "Live" },
-  { icon: Shield, label: "Money-Back Guarantee", value: "100%" },
-  { icon: Globe, label: "Global Markets", value: "8" },
-];
-
 // Experience Categories data
 const experienceCategories = [
   {
     icon: Plane,
     label: "Travel",
     description: "Plan your next adventure",
-    image: "https://picsum.photos/seed/land-travel/600/400",
-    trending: 89,
-    expertRates: "$75-120/hr",
-    hiddenGems: 247,
     slug: "travel",
     color: "text-blue-500",
     bgColor: "bg-blue-500",
@@ -122,19 +96,12 @@ const experienceCategories = [
       { label: 'Cultural', color: 'text-purple-600 dark:text-purple-400', bgColor: 'bg-purple-100 dark:bg-purple-900/30' },
       { label: 'Foodie', color: 'text-orange-600 dark:text-orange-400', bgColor: 'bg-orange-100 dark:bg-orange-900/30' },
     ],
-    status: "Busy" as const,
-    tip: "AI-powered itineraries save 15+ hours of planning and find 30% more hidden gems than manual research.",
-    activeCount: 247,
-    isHot: true,
+    tip: "AI-powered itineraries help you plan faster and surface hidden gems that manual research often misses.",
   },
   {
     icon: Heart,
     label: "Weddings",
     description: "Plan the perfect day",
-    image: "https://picsum.photos/seed/land-wedding/600/400",
-    trending: 74,
-    expertRates: "$85-150/hr",
-    hiddenGems: 67,
     slug: "wedding",
     color: "text-pink-500",
     bgColor: "bg-pink-500",
@@ -143,19 +110,12 @@ const experienceCategories = [
       { label: 'Luxury', color: 'text-purple-600 dark:text-purple-400', bgColor: 'bg-purple-100 dark:bg-purple-900/30' },
       { label: 'Planning', color: 'text-blue-600 dark:text-blue-400', bgColor: 'bg-blue-100 dark:bg-blue-900/30' },
     ],
-    status: "Busy" as const,
-    tip: "Expert wedding planners negotiate vendor rates, saving couples $3,200 on average vs. booking directly.",
-    activeCount: 156,
-    isHot: true,
+    tip: "Expert wedding planners negotiate vendor rates and handle the details so you don't have to.",
   },
   {
     icon: Gem,
     label: "Proposals",
     description: "Make it unforgettable",
-    image: "https://picsum.photos/seed/land-proposal/600/400",
-    trending: 68,
-    expertRates: "$500-2,500",
-    hiddenGems: 89,
     slug: "proposal",
     color: "text-purple-500",
     bgColor: "bg-purple-500",
@@ -164,19 +124,12 @@ const experienceCategories = [
       { label: 'Surprise', color: 'text-fuchsia-600 dark:text-fuchsia-400', bgColor: 'bg-fuchsia-100 dark:bg-fuchsia-900/30' },
       { label: 'Luxury', color: 'text-purple-600 dark:text-purple-400', bgColor: 'bg-purple-100 dark:bg-purple-900/30' },
     ],
-    status: "Moderate" as const,
     tip: "Local experts coordinate photographers, venues, and backups ensuring every detail is perfect on your big moment.",
-    activeCount: 45,
-    isHot: true,
   },
   {
     icon: PartyPopper,
     label: "Celebrations",
     description: "Mark special moments",
-    image: "https://picsum.photos/seed/land-celebrations/600/400",
-    trending: 62,
-    expertRates: "$200-1,500",
-    hiddenGems: 134,
     slug: "celebrations",
     color: "text-orange-500",
     bgColor: "bg-orange-500",
@@ -185,19 +138,12 @@ const experienceCategories = [
       { label: 'Fun', color: 'text-amber-600 dark:text-amber-400', bgColor: 'bg-amber-100 dark:bg-amber-900/30' },
       { label: 'Social', color: 'text-indigo-600 dark:text-indigo-400', bgColor: 'bg-indigo-100 dark:bg-indigo-900/30' },
     ],
-    status: "Busy" as const,
     tip: "Group celebration experts know the best private venues, activities, and packages for milestone events.",
-    activeCount: 189,
-    isHot: true,
   },
   {
     icon: Sparkles,
     label: "Date Nights",
     description: "Plan something special",
-    image: "https://picsum.photos/seed/land-date/600/400",
-    trending: 81,
-    expertRates: "$50-300",
-    hiddenGems: 289,
     slug: "date-night",
     color: "text-red-500",
     bgColor: "bg-red-500",
@@ -206,19 +152,12 @@ const experienceCategories = [
       { label: 'Foodie', color: 'text-orange-600 dark:text-orange-400', bgColor: 'bg-orange-100 dark:bg-orange-900/30' },
       { label: 'Fun', color: 'text-amber-600 dark:text-amber-400', bgColor: 'bg-amber-100 dark:bg-amber-900/30' },
     ],
-    status: "Moderate" as const,
     tip: "Get insider access to reservation-only spots and surprise experiences that make dates unforgettable.",
-    activeCount: 312,
-    isHot: true,
   },
   {
     icon: Building2,
     label: "Corporate",
     description: "Team building & events",
-    image: "https://picsum.photos/seed/land-corporate/600/400",
-    trending: 52,
-    expertRates: "Custom quote",
-    hiddenGems: 45,
     slug: "corporate-events",
     color: "text-slate-600 dark:text-slate-400",
     bgColor: "bg-slate-600",
@@ -227,9 +166,7 @@ const experienceCategories = [
       { label: 'Team Building', color: 'text-blue-600 dark:text-blue-400', bgColor: 'bg-blue-100 dark:bg-blue-900/30' },
       { label: 'Networking', color: 'text-indigo-600 dark:text-indigo-400', bgColor: 'bg-indigo-100 dark:bg-indigo-900/30' },
     ],
-    status: "Moderate" as const,
     tip: "Corporate event specialists handle venue sourcing, catering coordination, and team activities from start to finish.",
-    activeCount: 78,
   },
 ];
 
@@ -265,149 +202,6 @@ const howItWorksSteps = [
   },
 ];
 
-const faqItems = [
-  {
-    id: "ai-plan",
-    title: "Let Our AI Plan Your Trip",
-    content: (
-      <div className="space-y-3">
-        <p>Our advanced AI analyzes your preferences, budget, and travel style to create personalized itineraries tailored just for you.</p>
-        <ul className="list-disc list-inside space-y-1.5 text-sm">
-          <li><strong>Smart Itinerary Building:</strong> Tell us your dates, interests, and budget—our AI crafts day-by-day plans in seconds</li>
-          <li><strong>Hidden Gem Discovery:</strong> Powered by real traveler data and local insights to find spots tourists often miss</li>
-          <li><strong>Schedule Optimization:</strong> Routes are automatically optimized to save you time and reduce transit hassles</li>
-          <li><strong>Real-time Adjustments:</strong> Plans adapt to weather, closures, and your changing preferences</li>
-        </ul>
-      </div>
-    ),
-    icon: Bot,
-  },
-  {
-    id: "experts",
-    title: "Local Experts & Trip Planners",
-    content: (
-      <div className="space-y-3">
-        <p>Connect with verified local experts who know their destinations inside out, or work with a dedicated trip planner to craft your perfect itinerary.</p>
-        <ul className="list-disc list-inside space-y-1.5 text-sm">
-          <li><strong>Local Experts:</strong> Destination insiders vetted for deep local knowledge — restaurants, hidden spots, culture</li>
-          <li><strong>Trip Planners:</strong> Itinerary specialists who handle logistics end-to-end and refine AI-generated plans</li>
-          <li><strong>Direct Chat:</strong> Message your expert anytime for tips, bookings, or last-minute changes</li>
-          <li><strong>On-Trip Support:</strong> Your expert is available throughout your journey for real-time assistance</li>
-        </ul>
-      </div>
-    ),
-    icon: UserCheck,
-  },
-  {
-    id: "ai-optimization",
-    title: "AI Optimization - Perfectly Tailored For You",
-    content: (
-      <div className="space-y-3">
-        <p>Our AI continuously learns from your preferences and feedback to refine recommendations and optimize every aspect of your trip.</p>
-        <ul className="list-disc list-inside space-y-1.5 text-sm">
-          <li><strong>Route Intelligence:</strong> Multi-stop journeys are optimized for the shortest travel time and best connections</li>
-          <li><strong>Budget Tracking:</strong> AI monitors your spending and suggests alternatives to stay within budget</li>
-          <li><strong>Activity Matching:</strong> Recommendations improve as you rate and interact with suggestions</li>
-          <li><strong>Transportation Analysis:</strong> Compare flights, trains, and drives with real-time pricing and duration</li>
-        </ul>
-      </div>
-    ),
-    icon: Sparkles,
-  },
-  {
-    id: "destinations",
-    title: "Discover New Destinations",
-    content: (
-      <div className="space-y-3">
-        <p>Explore curated destinations handpicked by our experts and AI. From trending hotspots to off-the-beaten-path adventures, find your next perfect getaway.</p>
-        <ul className="list-disc list-inside space-y-1.5 text-sm">
-          <li><strong>Trending Cities:</strong> See where other travelers are heading with live crowd and pricing data</li>
-          <li><strong>Hidden Gems:</strong> Discover authentic local secrets powered by our AI discovery system</li>
-          <li><strong>Experience Templates:</strong> Browse 20+ experience types—from romantic getaways to corporate retreats</li>
-          <li><strong>Seasonal Insights:</strong> Know the best time to visit with weather, festival, and price trend data</li>
-        </ul>
-      </div>
-    ),
-    icon: Globe,
-  },
-  {
-    id: "partner",
-    title: "Partner With Us",
-    content: (
-      <div className="space-y-3">
-        <p>Join our network of local experts, trip planners, and service providers. Grow your business while helping travelers create unforgettable experiences.</p>
-        <ul className="list-disc list-inside space-y-1.5 text-sm">
-          <li><strong>Trip Planners & Local Experts:</strong> Share your destination expertise and earn by helping travelers plan their trips</li>
-          <li><strong>Service Providers:</strong> List your hotels, tours, restaurants, and activities to reach global travelers</li>
-          <li><strong>AI-Powered Tools:</strong> Access our suite of expert tools including AI assistants and revenue optimization</li>
-          <li><strong>Flexible Earnings:</strong> Set your own rates and work on your schedule with full earnings transparency</li>
-        </ul>
-      </div>
-    ),
-    icon: Users,
-  },
-];
-
-const testimonials = [
-  {
-    text: "Sofia helped us navigate Porto wine country and saved us $2,400 on venue negotiations. Her local connections got us exclusive tastings we never could have found ourselves!",
-    author: "Sarah Johnson",
-    location: "New York, USA",
-    rating: 5,
-    avatar: "SJ",
-    destination: "Porto, Portugal",
-    tripType: "Anniversary Trip",
-    expertName: "Sofia Costa",
-    expertHeatScore: 92,
-    valueSaved: "$2,400",
-    expertRate: "$65/hr",
-    tripImage: "https://picsum.photos/seed/land-trip-1/400/300"
-  },
-  {
-    text: "Hiroshi's insider knowledge of Kyoto transformed our cherry blossom trip. We visited secret gardens at sunrise before any tourists arrived. Truly magical!",
-    author: "David Chen",
-    location: "Toronto, Canada",
-    rating: 5,
-    avatar: "DC",
-    destination: "Kyoto, Japan",
-    tripType: "Cultural Travel",
-    expertName: "Hiroshi Tanaka",
-    expertHeatScore: 94,
-    valueSaved: "$1,800",
-    expertRate: "$120/hr",
-    tripImage: "https://picsum.photos/seed/land-trip-2/400/300"
-  },
-  {
-    text: "Priya made our Mumbai wedding seamless. She coordinated 12 vendors, saved us 3 weeks of planning, and the ceremony was absolutely perfect. Worth every penny!",
-    author: "Maria Rodriguez",
-    location: "Madrid, Spain",
-    rating: 5,
-    avatar: "MR",
-    destination: "Mumbai, India",
-    tripType: "Wedding Planning",
-    expertName: "Priya Sharma",
-    expertHeatScore: 96,
-    valueSaved: "$3,200",
-    expertRate: "$85/hr",
-    tripImage: "https://picsum.photos/seed/land-trip-3/400/300"
-  },
-];
-
-const containerVariants = {
-  hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.1
-    }
-  }
-};
-
-const itemVariants = {
-  hidden: { opacity: 0, y: 20 },
-  visible: { opacity: 1, y: 0 }
-};
-
 export default function LandingPage() {
   const { openSignInModal } = useSignInModal();
   const [planningOpen, setPlanningOpen] = useState(false);
@@ -422,28 +216,28 @@ export default function LandingPage() {
     {
       value: platformStats ? formatStat(platformStats.totalTrips) : "0+",
       label: "Trips Planned",
-      description: "Join the millions who've seamlessly planned their journeys--from weekend getaways to month-long adventures.",
+      description: "Itineraries planned on Traveloure so far — from weekend getaways to month-long adventures.",
       icon: MapPin,
       color: "text-primary"
     },
     {
       value: platformStats ? formatStat(platformStats.totalReviews) : "0+",
       label: "Reviews",
-      description: "Unique, tailored itineraries built using real-time preferences--no two plans are the same.",
+      description: "Reviews left by travelers after a completed booking — the only way a review can be written here.",
       icon: Calendar,
       color: "text-emerald-500"
     },
     {
       value: platformStats ? formatStat(platformStats.totalExperts) : "0+",
       label: "Local Experts",
-      description: "Verified local experts across the globe ready to help you plan unforgettable experiences.",
+      description: "Local experts reviewed and approved to advise travelers on the platform.",
       icon: Zap,
       color: "text-violet-500"
     },
     {
       value: platformStats ? formatStat(platformStats.totalCountries) : "0+",
       label: "Countries",
-      description: "Our platform spans destinations worldwide, connecting you with experts in every corner of the globe.",
+      description: "Countries where our experts and providers are currently active.",
       icon: Star,
       color: "text-amber-500"
     },
@@ -783,7 +577,7 @@ export default function LandingPage() {
               </span>
             </div>
             <p className="text-muted-foreground max-w-xl">
-              Real-time collective intelligence from travelers worldwide
+              Live numbers from the platform, updated as travelers and experts join
             </p>
           </motion.div>
 
@@ -796,65 +590,6 @@ export default function LandingPage() {
               />
             ))}
           </div>
-        </div>
-      </section>
-
-      <section className="py-16 lg:py-20 bg-card dark:bg-card">
-        <div className="container mx-auto px-4 max-w-6xl">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            className="mb-12"
-          >
-            <div className="flex items-center gap-2 mb-2">
-              <div className="w-10 h-10 rounded-full bg-emerald-500 flex items-center justify-center">
-                <Award className="w-5 h-5 text-white" />
-              </div>
-              <h2 className="text-3xl md:text-4xl font-bold text-foreground">
-                Success <span className="text-emerald-500">Stories</span>
-              </h2>
-            </div>
-            <p className="text-muted-foreground">
-              Real results from <span className="font-semibold text-foreground">{platformStats ? formatStat(platformStats.totalUsers) : "0+"}</span> travelers worldwide
-            </p>
-          </motion.div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {testimonials.map((testimonial, idx) => (
-              <TestimonialCard
-                key={testimonial.author}
-                {...testimonial}
-                delay={idx * 0.1}
-              />
-            ))}
-          </div>
-
-          {/* Platform Stats Bar */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            className="mt-10 grid grid-cols-2 md:grid-cols-4 gap-4 p-6 bg-muted dark:bg-muted/50 rounded-2xl"
-            data-testid="platform-stats-bar"
-          >
-            <div className="text-center" data-testid="stat-avg-rating">
-              <p className="text-2xl font-bold text-primary">{platformStats?.avgRating != null ? `${platformStats.avgRating}/5` : "New"}</p>
-              <p className="text-xs text-muted-foreground">Average Rating</p>
-            </div>
-            <div className="text-center" data-testid="stat-reviews">
-              <p className="text-2xl font-bold text-foreground">{platformStats ? formatStat(platformStats.totalReviews) : "0+"}</p>
-              <p className="text-xs text-muted-foreground">Reviews</p>
-            </div>
-            <div className="text-center" data-testid="stat-recommend">
-              <p className="text-2xl font-bold text-emerald-500 dark:text-emerald-400">98%</p>
-              <p className="text-xs text-muted-foreground">Would Recommend</p>
-            </div>
-            <div className="text-center" data-testid="stat-travelers">
-              <p className="text-2xl font-bold text-foreground">{platformStats ? formatStat(platformStats.totalUsers) : "0+"}</p>
-              <p className="text-xs text-muted-foreground">Happy Travelers</p>
-            </div>
-          </motion.div>
         </div>
       </section>
 
@@ -871,7 +606,7 @@ export default function LandingPage() {
               Know a city well? <span className="text-teal-200">Get paid for it.</span>
             </h2>
             <p className="text-teal-100 max-w-xl mx-auto">
-              Join hundreds of local experts and service providers earning on Traveloure.
+              Turn what you know about your city into income on Traveloure.
               Two paths — pick the one that fits.
             </p>
           </motion.div>
@@ -946,7 +681,7 @@ export default function LandingPage() {
               Ready To Plan Your Experience?
             </h2>
             <p className="text-lg md:text-xl text-white/90 mb-8 max-w-xl mx-auto">
-              Join thousands who've planned unforgettable trips with local experts and AI
+              Plan your next trip with local experts and AI
             </p>
             <div className="flex flex-wrap justify-center gap-4">
               <Button

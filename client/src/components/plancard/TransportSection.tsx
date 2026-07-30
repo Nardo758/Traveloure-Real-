@@ -1,4 +1,4 @@
-import { Clock, Route, ExternalLink, ChevronDown, ChevronUp, ShoppingCart, Star } from "lucide-react";
+import { Clock, Route, ExternalLink, ChevronDown, ChevronUp, ShoppingCart, Star, Send } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { SiGoogle, SiApple } from "react-icons/si";
@@ -6,6 +6,8 @@ import { openInMaps } from "@/lib/navigate";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
+import { useSignInModal } from "@/contexts/SignInModalContext";
 import { MODE_COLORS, STATUS_STYLES, ModeIcon, type PlanCardDay, type PlanCardTransport } from "./plancard-types";
 
 interface TransportSectionProps {
@@ -170,7 +172,75 @@ const PARTNER_STYLES: Record<string, { bg: string; text: string; badge: string }
   traveloure:    { bg: "bg-green-50 dark:bg-green-950/20 border-green-200/50 dark:border-green-800/30",    text: "text-green-700 dark:text-green-400",      badge: "Traveloure" },
 };
 
-function LegBookingPanel({ legId }: { legId: string }) {
+// §16: an affiliate/deep-link transport option is never opened directly (window.open) —
+// the "book" action routes through the in-platform booking-agent rail
+// (POST /api/affiliate-booking-requests, the same rail Discover's unified-result-card and
+// UpNextHero's BookRideButton use). The server auto-assigns a booking agent and keeps the
+// affiliate URL server-side; the traveler-facing affordance is "Book via your travel agent",
+// never an outbound tab.
+function BookViaAgentButton({
+  option,
+  fromName,
+  toName,
+}: {
+  option: { id: string; title: string; description?: string; priceDisplay?: string; source: string; externalUrl?: string };
+  fromName?: string;
+  toName?: string;
+}) {
+  const { user } = useAuth();
+  const { openSignInModal } = useSignInModal();
+  const { toast } = useToast();
+
+  const mutation = useMutation({
+    mutationFn: () =>
+      apiRequest("POST", "/api/affiliate-booking-requests", {
+        itemName: option.title,
+        itemDescription:
+          [option.description, fromName && toName ? `${fromName} → ${toName}` : null, option.priceDisplay]
+            .filter(Boolean)
+            .join(" · ") || null,
+        partnerName: PARTNER_STYLES[option.source]?.badge ?? option.source,
+        partnerCategory: "transport",
+        // §16: forwarded to the server only, never opened client-side.
+        affiliateUrl: option.externalUrl,
+        travelers: 1,
+      }),
+    onSuccess: () => {
+      toast({ title: "Booking request sent", description: "Our booking agent will handle this and add it to your trip." });
+    },
+    onError: (err: any) => {
+      toast({ variant: "destructive", title: "Couldn't send request", description: err?.message ?? "Please try again." });
+    },
+  });
+
+  const handleClick = () => {
+    if (!option.externalUrl) return;
+    if (!user) {
+      openSignInModal();
+      return;
+    }
+    if (mutation.isPending || mutation.isSuccess) return;
+    mutation.mutate();
+  };
+
+  return (
+    <Button
+      size="sm"
+      variant="outline"
+      className="text-[11px] h-7 px-3 shrink-0 gap-1 whitespace-normal text-center leading-tight"
+      onClick={handleClick}
+      disabled={mutation.isPending || mutation.isSuccess}
+      data-testid={`button-book-affiliate-${option.id}`}
+    >
+      <Send className="w-2.5 h-2.5 shrink-0" />
+      {mutation.isSuccess ? "Requested ✓" : mutation.isPending ? "Sending…" : "Book via your travel agent"}
+    </Button>
+  );
+}
+
+// Exported so the shared-itinerary view (itinerary-view.tsx) can reuse the exact same
+// agent-rail booking affordance for its own per-leg display — same component, no forked logic.
+export function LegBookingPanel({ legId, fromName, toName }: { legId: string; fromName?: string; toName?: string }) {
   const [open, setOpen] = useState(false);
   const { toast } = useToast();
 
@@ -316,16 +386,7 @@ function LegBookingPanel({ legId }: { legId: string }) {
                       </div>
                     </div>
                     {opt.externalUrl && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="text-[11px] h-7 px-3 shrink-0 gap-1"
-                        onClick={() => window.open(opt.externalUrl, "_blank", "noopener")}
-                        data-testid={`button-book-affiliate-${opt.id}`}
-                      >
-                        View
-                        <ExternalLink className="w-2.5 h-2.5" />
-                      </Button>
+                      <BookViaAgentButton option={opt} fromName={fromName} toName={toName} />
                     )}
                   </div>
                 );
@@ -469,7 +530,7 @@ export function TransportSection({ tripId, tripDestination, day, allowActions = 
                 <BookingSourceBadge transport={tr} />
               </div>
               {/* Phase 3: per-leg booking panel (platform-first, then affiliates) */}
-              <LegBookingPanel legId={tr.id} />
+              <LegBookingPanel legId={tr.id} fromName={tr.fromName || tr.from} toName={tr.toName || tr.to} />
             </div>
             {tr.status === "suggested" && allowActions && (
               <div className="flex flex-col gap-1.5 flex-shrink-0">
