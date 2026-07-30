@@ -599,4 +599,12 @@ export const MIGRATION_FILES = [
   // pre-existing duplicates (NOTICE + plain index, never a failed boot), idempotent. No
   // column/CHECK/DEFAULT change → no publish-push trap.
   "155_checkout_idempotency_key_unique.sql",
+  // 156: create the `refunds` audit table — BOTH refund writers (the charge.refunded webhook
+  // and refundServiceBooking, the escrow refund terminal) already INSERT into it, but the
+  // table has never existed in ANY environment (to_regclass NULL in prod AND dev), so every
+  // real refund moved money in Stripe and then threw on the audit insert. Shape derived from
+  // the two writers (readers: none). NEW table → constraints have no legacy rows to violate;
+  // and deliberately NO status CHECK / NOT NULL (Stripe's refund.status is an external
+  // `string | null`) → no publish-push trap and nothing to add to the preflight manifest.
+  "156_refunds_audit_table.sql",
 ] as const;

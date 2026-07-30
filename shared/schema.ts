@@ -5652,6 +5652,38 @@ export const paymentIntents = pgTable("payment_intents", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// Refund audit log (migration 156). MUST stay byte-for-byte equivalent to
+// server/migrations/156_refunds_audit_table.sql — the deploy runs an automatic drizzle-kit
+// push from this file, so any disagreement makes the push ALTER the table under a live
+// money path. Written by exactly two sites in server/services/stripe-payment.service.ts:
+//   handleRefund()          — the `charge.refunded` webhook: charge id + PI + amount +
+//                             currency + status ('completed'); no booking_id / refund id / reason.
+//   refundServiceBooking()  — the escrow refund terminal (§14 server-derived amount, §15 atomic
+//                             status claim + deterministic Stripe idempotencyKey): booking_id +
+//                             refund id + PI + amount + currency + Stripe status + reason.
+// Nothing reads this table yet (the admin "Refunds" tab reads reversed platform_revenue rows) —
+// it is an append-only audit log, so every column a writer omits is nullable.
+// `status` is deliberately NULLABLE with NO CHECK: refundServiceBooking stores Stripe's
+// refund.status, an external value typed `string | null` — a CHECK/NOT NULL here would
+// reproduce the exact bug 156 fixes (money refunded in Stripe, audit insert throws).
+export const refunds = pgTable("refunds", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  // ON DELETE SET NULL, never CASCADE: a financial audit row must outlive its booking.
+  bookingId: varchar("booking_id").references(() => serviceBookings.id, { onDelete: "set null" }),
+  stripeRefundId: varchar("stripe_refund_id", { length: 255 }),
+  stripeChargeId: varchar("stripe_charge_id", { length: 255 }),
+  stripePaymentIntentId: varchar("stripe_payment_intent_id", { length: 255 }),
+  // DOLLARS — same precision/scale as service_bookings.total_amount, the value it reverses.
+  amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
+  currency: varchar("currency", { length: 10 }).notNull().default("usd"),
+  status: varchar("status", { length: 50 }),
+  reason: text("reason"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  bookingIdx: index("idx_refunds_booking_id").on(table.bookingId),
+  paymentIntentIdx: index("idx_refunds_payment_intent").on(table.stripePaymentIntentId),
+}));
+
 // DEPRECATED: 2026-06-27
 // Renamed to _deprecated_expert_city_queues
 // Scheduled DROP: after 2026-09-01
