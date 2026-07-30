@@ -1153,6 +1153,17 @@ If you see `categoryId IS NULL` rows on provider_services, it's likely a categor
   (`check constraint … violated by some row`) and offers the **DESTRUCTIVE** "copy dev database over production"
   option. **Never accept that option** — it overwrites prod with dev. This bit us twice on the Jul 15 publish
   (`expert_earnings.status='pending'`, `service_templates.delivery_method='document'`).
+- **SECOND VARIANT OF THE SAME TRAP — the deploy push also DROPS INDEXES that `shared/schema.ts` does not
+  declare (found Jul 30, 2026; proven in isolation: a single `DROP INDEX "sb_idempotency_key_idx"` statement).**
+  This makes an index-only migration **non-durable across publishes**: publish 1 → push drops it → the migration
+  runs for the first time → recreated; **publish 2+ → push drops it → the migration is already stamped → it is
+  NEVER recreated → the index is silently gone.** Live instance: migration 155's UNIQUE partial index on
+  `service_bookings.idempotency_key`, deliberately left out of `schema.ts` to avoid a duplicate-key push failure —
+  which is measurably **load-bearing** (without it, 3 concurrent same-key checkouts produced **3 real Stripe
+  charges**; with it, 1). **Rule: an index the code depends on must be DECLARED in `shared/schema.ts`, not only
+  created in a migration** — otherwise the deploy push is authoritative and will remove it. Before declaring a
+  UNIQUE index, check prod for existing duplicates (`SELECT <col>, count(*) … GROUP BY 1 HAVING count(*) > 1`),
+  since a violated UNIQUE fails the publish and offers the destructive "copy dev over production" option.
 - Guard: **before publishing any migration that adds/changes a CHECK**, run
   `node scripts/preflight-prod-constraints.cjs "<PROD_DATABASE_URL>"` — it reports every row that will violate a
   declared CHECK and prints the remap to apply on prod first (see `docs/RELEASE.md`). When you add a new CHECK
