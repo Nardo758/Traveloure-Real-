@@ -4838,7 +4838,39 @@ export class DatabaseStorage implements IStorage {
   }
 
   async deleteItineraryItem(id: string): Promise<void> {
+    // ITEM 3 (L13, CLAUDE.md §18 L4): `transport_legs.from_activity_id`/`to_activity_id` are plain
+    // varchars with no FK (the columns serve two scopes — variant-snapshot and trip-live — so an
+    // FK is deliberately not added here; app-level is the right layer per the lane brief). Deleting
+    // an item without also deleting legs that reference it would silently orphan those legs.
+    // Look up the item's tripId FIRST (cheap single-row read) so the cascade can be scoped: only
+    // TRIP-scoped legs (variantId IS NULL, same tripId) referencing this item as either endpoint.
+    // Variant-scoped legs are NEVER touched here — a variant is a frozen snapshot (§18), and a
+    // live-trip item deletion must not mutate it even if a variant leg happens to carry the same
+    // id string as a from/to endpoint.
+    const [item] = await db
+      .select({ tripId: itineraryItems.tripId })
+      .from(itineraryItems)
+      .where(eq(itineraryItems.id, id));
+
     await db.delete(itineraryItems).where(eq(itineraryItems.id, id));
+
+    if (item?.tripId) {
+      const cascaded = await db
+        .delete(transportLegs)
+        .where(
+          and(
+            eq(transportLegs.tripId, item.tripId),
+            isNull(transportLegs.variantId),
+            or(eq(transportLegs.fromActivityId, id), eq(transportLegs.toActivityId, id)),
+          ),
+        )
+        .returning({ id: transportLegs.id });
+      if (cascaded.length > 0) {
+        console.log(
+          `[ItineraryItems] cascade-deleted ${cascaded.length} trip-scoped transport leg(s) referencing deleted item ${id} (trip ${item.tripId})`,
+        );
+      }
+    }
   }
 
   // Expert Workspace Status
