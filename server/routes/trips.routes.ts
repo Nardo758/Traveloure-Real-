@@ -2132,22 +2132,19 @@ router.get("/api/itinerary-share/:token", async (req, res) => {
         throw e;
       }
 
-      const [exportCache, sharer, rawLegs] = await Promise.all([
+      const [exportCache, sharer] = await Promise.all([
         storage.getMapsExportCacheByVariantId(shared.variantId),
         storage.getUserPublicProfile(shared.sharedByUserId),
-        // PRE-EXISTING §16 stray, preserved verbatim: this response has always carried each leg's
-        // `linked_product_url` (the client renders it as a raw outbound "Book transport" link).
-        // TripPlan deliberately NEVER carries an affiliate/deep-link URL — the URL stays
-        // server-side and unbooked chauffeured legs are marked `bookVia: 'agent-rail'` — so this
-        // ONE field is read outside the envelope rather than smuggled into it. FILED: route the
-        // client's "Book transport" action through the booking-agent rail (§16), then delete this
-        // read and the key with it.
-        storage.getTransportLegsByVariantId(shared.variantId),
       ]);
 
-      const affiliateUrlByLegId: Record<string, string | null> = {};
-      for (const l of rawLegs) affiliateUrlByLegId[l.id] = l.linkedProductUrl ?? null;
-
+      // §16 (L11): the `linkedProductUrl` key + the raw-leg read that fed it are REMOVED —
+      // this was the one deliberate response-key deletion for this lane. TripPlan already never
+      // carries an affiliate/deep-link URL (the URL stays server-side, §16); the client no longer
+      // has any use for it either — the shared-itinerary view now offers its own booking-agent-rail
+      // affordance per leg (LegBookingPanel, itinerary-view.tsx), which fetches booking options
+      // live via the existing authenticated GET /api/transport-legs/:legId/options instead of
+      // reading a raw URL out of this payload. A signed-out token holder gets no booking
+      // affordance at all (the rail requires auth) rather than a broken one (§13).
       const days = plan.days.map(day => ({
         dayNumber: day.dayNumber,
         // `dateIso` is the machine YYYY-MM-DD the envelope carries; "" when the snapshot has no
@@ -2179,7 +2176,6 @@ router.get("/api/itinerary-share/:token", async (req, res) => {
           estimatedCostUsd: leg.estimatedCostUsd,
           energyCost: leg.energyCost ?? null,
           alternativeModes: leg.alternativeModes,
-          linkedProductUrl: affiliateUrlByLegId[leg.id] ?? null,
           fromLat: leg.fromLat,
           fromLng: leg.fromLng,
           toLat: leg.toLat,
@@ -2435,6 +2431,76 @@ router.patch("/api/transport-legs/:legId/mode", async (req, res) => {
     }
   });
 
+  // ── L12: KML/GPX export, built from the ONE variant producer (assembleTripPlanFromVariant),
+  // not bespoke raw-DB reads. Ratified calls implemented below (see the two helpers + the
+  // version marker just above the handlers):
+  //   ① legs ordered deterministically by (dayNumber, legOrder) — the producer's
+  //      `getOrderedTransportLegsByVariantId` already does this at the SQL level, and
+  //      `buildExportDays` re-asserts it locally so the export's own ordering is not merely
+  //      inherited-and-hoped-for.
+  //   ② a placemark/waypoint whose coordinates are not real (null/NaN/out-of-range/(0,0)) is
+  //      skipped entirely — `isRealCoordinate` — never emitted at lat 0 (§13, null island).
+  //   ③ the cache is versioned so a stale pre-migration (old-shape) cached export can never be
+  //      served post-deploy — see EXPORT_FORMAT_MARKER below.
+
+  /** RATIFIED CALL ②: never a fabricated/impossible point. */
+  function isRealCoordinate(lat: number | null | undefined, lng: number | null | undefined): lat is number {
+    if (lat == null || lng == null) return false;
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+    if (lat === 0 && lng === 0) return false; // null island — never a real trip location
+    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return false;
+    return true;
+  }
+
+  function buildExportDays(plan: VariantFullTripPlan) {
+    return [...plan.days]
+      .sort((a, b) => a.dayNumber - b.dayNumber)
+      .map(day => ({
+        dayNumber: day.dayNumber,
+        date: day.dateIso ?? "",
+        activities: day.activities
+          .filter(a => isRealCoordinate(a.lat, a.lng))
+          .map(a => ({
+            lat: a.lat as number,
+            lng: a.lng as number,
+            name: a.name,
+            scheduledTime: a.startTime || "",
+          })),
+        // RATIFIED CALL ①: re-sorted here (not just inherited from the producer) so the
+        // export's own ordering contract holds independently of upstream assumptions.
+        transportLegs: [...day.transports]
+          .sort((a, b) => a.legOrder - b.legOrder)
+          .map(l => ({
+            legOrder: l.legOrder,
+            fromName: l.fromName,
+            toName: l.toName,
+            recommendedMode: l.recommendedMode,
+            estimatedDurationMinutes: l.estimatedDurationMinutes,
+            estimatedCostUsd: l.estimatedCostUsd,
+            distanceDisplay: l.distanceDisplay,
+          })),
+      }));
+  }
+
+  // RATIFIED CALL ③: `maps_export_cache` is keyed only on `variant_id` (FK'd to
+  // `itineraryVariants`, so a suffixed/fake key would violate the FK — no schema change is in
+  // scope here anyway). Least-invasive fix: version the CONTENT itself with a marker comment.
+  // A cached blob missing or mismatching the marker (i.e. anything written before this change)
+  // is treated as a miss — regenerated and overwritten — so the old raw-DB-order /
+  // null-island-emitting shape can never be served again post-deploy, with no migration.
+  const EXPORT_FORMAT_MARKER = "<!-- traveloure-export-format:v2-variant-producer -->";
+
+  function withExportVersionMarker(xml: string): string {
+    const declEnd = xml.indexOf("?>");
+    if (declEnd === -1) return `${EXPORT_FORMAT_MARKER}\n${xml}`;
+    const insertAt = declEnd + 2;
+    return `${xml.slice(0, insertAt)}\n${EXPORT_FORMAT_MARKER}${xml.slice(insertAt)}`;
+  }
+
+  function isCurrentExport(content: string | null | undefined): content is string {
+    return !!content && content.includes(EXPORT_FORMAT_MARKER);
+  }
+
   // GET /api/itinerary-share/:token/export/kml
 
 router.get("/api/itinerary-share/:token/export/kml", async (req, res) => {
@@ -2444,53 +2510,26 @@ router.get("/api/itinerary-share/:token/export/kml", async (req, res) => {
       const shared = await storage.getSharedItineraryByToken(token);
       if (!shared) return res.status(404).json({ error: "Not found" });
 
-      const variant = await storage.getItineraryVariantById(shared.variantId);
-      const comparison = await storage.getItineraryComparison(variant.comparisonId);
-      const items = await storage.getItineraryVariantItemsByVariantId(shared.variantId);
-      const legs = await storage.getTransportLegsByVariantId(shared.variantId);
-      const cached = await storage.getMapsExportCacheByVariantId(shared.variantId);
+      let plan: VariantFullTripPlan;
+      try {
+        plan = await assembleTripPlanFromVariant(shared.variantId, "full");
+      } catch (e) {
+        if (e instanceof TripPlanVariantNotFoundError) {
+          return res.status(404).json({ error: "Variant not found" });
+        }
+        throw e;
+      }
 
-      let kmlContent = cached?.kmlContent;
+      const cached = await storage.getMapsExportCacheByVariantId(shared.variantId);
+      const cachedKml: string | undefined = cached?.kmlContent;
+      let kmlContent: string | null = isCurrentExport(cachedKml) ? cachedKml : null;
 
       if (!kmlContent) {
-        const dayNumbers = Array.from(new Set(items.map(i => i.dayNumber))).sort((a, b) => a - b);
-        const startDate = comparison?.startDate ? new Date(comparison.startDate) : null;
-
-        const days = dayNumbers.map(dayNum => {
-          const dayItems = items.filter(i => i.dayNumber === dayNum).sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
-          const dayLegs = legs.filter(l => l.dayNumber === dayNum);
-          let dateStr = "";
-          if (startDate) {
-            const d = new Date(startDate);
-            d.setDate(d.getDate() + dayNum - 1);
-            dateStr = d.toISOString().split("T")[0];
-          }
-          return {
-            dayNumber: dayNum,
-            date: dateStr,
-            activities: dayItems.map(item => ({
-              lat: item.latitude ? parseFloat(item.latitude as any) : 0,
-              lng: item.longitude ? parseFloat(item.longitude as any) : 0,
-              name: item.name,
-              scheduledTime: item.startTime || "",
-            })),
-            transportLegs: dayLegs.map(l => ({
-              legOrder: l.legOrder,
-              fromName: l.fromName,
-              toName: l.toName,
-              recommendedMode: l.recommendedMode,
-              estimatedDurationMinutes: l.estimatedDurationMinutes,
-              estimatedCostUsd: l.estimatedCostUsd,
-              distanceDisplay: l.distanceDisplay,
-            })),
-          };
-        });
-
-        kmlContent = generateKml({
-          tripName: variant.name,
-          destination: comparison?.destination || "Trip",
-          days,
-        });
+        kmlContent = withExportVersionMarker(generateKml({
+          tripName: plan.meta.title ?? "Trip",
+          destination: plan.meta.destination ?? "Trip",
+          days: buildExportDays(plan),
+        }));
 
         await storage.updateMapsExportCache(shared.variantId, { kmlContent });
       }
@@ -2513,53 +2552,26 @@ router.get("/api/itinerary-share/:token/export/gpx", async (req, res) => {
       const shared = await storage.getSharedItineraryByToken(token);
       if (!shared) return res.status(404).json({ error: "Not found" });
 
-      const variant = await storage.getItineraryVariantById(shared.variantId);
-      const comparison = await storage.getItineraryComparison(variant.comparisonId);
-      const items = await storage.getItineraryVariantItemsByVariantId(shared.variantId);
-      const legs = await storage.getTransportLegsByVariantId(shared.variantId);
-      const cached = await storage.getMapsExportCacheByVariantId(shared.variantId);
+      let plan: VariantFullTripPlan;
+      try {
+        plan = await assembleTripPlanFromVariant(shared.variantId, "full");
+      } catch (e) {
+        if (e instanceof TripPlanVariantNotFoundError) {
+          return res.status(404).json({ error: "Variant not found" });
+        }
+        throw e;
+      }
 
-      let gpxContent = cached?.gpxContent;
+      const cached = await storage.getMapsExportCacheByVariantId(shared.variantId);
+      const cachedGpx: string | undefined = cached?.gpxContent;
+      let gpxContent: string | null = isCurrentExport(cachedGpx) ? cachedGpx : null;
 
       if (!gpxContent) {
-        const dayNumbers = Array.from(new Set(items.map(i => i.dayNumber))).sort((a, b) => a - b);
-        const startDate = comparison?.startDate ? new Date(comparison.startDate) : null;
-
-        const days = dayNumbers.map(dayNum => {
-          const dayItems = items.filter(i => i.dayNumber === dayNum).sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
-          const dayLegs = legs.filter(l => l.dayNumber === dayNum);
-          let dateStr = "";
-          if (startDate) {
-            const d = new Date(startDate);
-            d.setDate(d.getDate() + dayNum - 1);
-            dateStr = d.toISOString().split("T")[0];
-          }
-          return {
-            dayNumber: dayNum,
-            date: dateStr,
-            activities: dayItems.map(item => ({
-              lat: item.latitude ? parseFloat(item.latitude as any) : 0,
-              lng: item.longitude ? parseFloat(item.longitude as any) : 0,
-              name: item.name,
-              scheduledTime: item.startTime || "",
-            })),
-            transportLegs: dayLegs.map(l => ({
-              legOrder: l.legOrder,
-              fromName: l.fromName,
-              toName: l.toName,
-              recommendedMode: l.recommendedMode,
-              estimatedDurationMinutes: l.estimatedDurationMinutes,
-              estimatedCostUsd: l.estimatedCostUsd,
-              distanceDisplay: l.distanceDisplay,
-            })),
-          };
-        });
-
-        gpxContent = generateGpx({
-          tripName: variant.name,
-          destination: comparison?.destination || "Trip",
-          days,
-        });
+        gpxContent = withExportVersionMarker(generateGpx({
+          tripName: plan.meta.title ?? "Trip",
+          destination: plan.meta.destination ?? "Trip",
+          days: buildExportDays(plan),
+        }));
 
         await storage.updateMapsExportCache(shared.variantId, { gpxContent });
       }
