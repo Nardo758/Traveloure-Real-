@@ -23,6 +23,11 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { LOCAL_EXPERT_TIERS, TRIP_PLANNER_TIERS, isAffiliateCategory } from "@/lib/earn-roles";
+import {
+  LocationPointPicker,
+  parseStoredPoint,
+  type LocationPoint,
+} from "@/components/backoffice/location-point-picker";
 
 interface ServiceCategory {
   id: string;
@@ -117,6 +122,13 @@ interface ServiceFormData {
   neighborhood: string;
   neighborhoods: string[];
   meetingPoint: string;
+  // L27-P3: the CONFIRMED map point for this listing (migration-129 latitude/longitude).
+  // Null = no pin. `locationPrecision` is the row's server-derived precision, carried
+  // read-only so the picker can label a migration-129 centroid honestly as approximate —
+  // the client never sends it (§13: the server derives precision, see
+  // server/utils/service-location.ts).
+  locationPoint: LocationPoint | null;
+  locationPrecision: string | null;
   pickupAvailable: boolean;
   pickupAddress: string;
   serviceRadius: number;
@@ -187,6 +199,8 @@ function buildEmptyForm(role: "expert" | "provider"): ServiceFormData {
     neighborhood: "",
     neighborhoods: [],
     meetingPoint: "",
+    locationPoint: null,
+    locationPrecision: null,
     pickupAvailable: false,
     pickupAddress: "",
     serviceRadius: 0,
@@ -267,6 +281,9 @@ function mapServiceToForm(s: any, role: "expert" | "provider"): ServiceFormData 
     neighborhood: s.neighborhood || "",
     neighborhoods: Array.isArray(s.neighborhoods) ? s.neighborhoods : (s.neighborhood ? [s.neighborhood] : []),
     meetingPoint: s.meetingPoint || "",
+    // Existing coordinates + their precision, exactly as stored (decimal → string).
+    locationPoint: parseStoredPoint(s.latitude, s.longitude),
+    locationPrecision: s.locationPrecision ?? null,
     pickupAvailable: Boolean(s.pickupAvailable),
     pickupAddress: s.pickupAddress || "",
     serviceRadius: Number(s.serviceRadius || 0),
@@ -352,6 +369,11 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   const [newIncluded, setNewIncluded] = useState("");
   const [newRequirement, setNewRequirement] = useState("");
   const [newGalleryUrl, setNewGalleryUrl] = useState("");
+  // L27-P3 (§13): only an explicit Confirm/Remove in the picker sends `locationPoint`.
+  // Untouched ⇒ the key is omitted entirely ⇒ the server leaves latitude/longitude/
+  // location_precision exactly as they are, so an unrelated edit can never turn a
+  // migration-129 neighborhood centroid into an `'exact'` claim.
+  const [locationPointTouched, setLocationPointTouched] = useState(false);
 
   // Single category taxonomy
   const { data: categories = [] } = useQuery<ServiceCategory[]>({
@@ -628,6 +650,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     setCreationSuccess(false);
     setCreationOutcome({});
     setFormData(buildEmptyForm(role));
+    setLocationPointTouched(false);
     setNewIncluded("");
     setNewRequirement("");
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -702,6 +725,15 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         galleryImages: formData.galleryImages,
         categoryAttributes: formData.categoryAttributes,
       };
+
+      // L27-P3: the confirmed map point. Sent ONLY when the earner actually used the
+      // picker in this session — an object for a confirmed pin, explicit `null` to remove
+      // one. Omitted otherwise so the server leaves the stored coordinates/precision
+      // untouched (§13). The client never sends latitude/longitude/locationPrecision
+      // directly: the server strips those and derives `'exact'` from this field alone.
+      if (locationPointTouched) {
+        payload.locationPoint = formData.locationPoint;
+      }
 
       // Role-specific fields
       if (role === "provider") {
@@ -1534,6 +1566,23 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                 className="mt-2"
               />
             </div>
+
+            {/* L27-P3: place/confirm the precise point behind the free-text meeting point.
+                Additive — the text above stays the required field and is unchanged; a pin
+                is optional, and the picker renders nothing at all when no Maps key is
+                configured (the form then behaves exactly as it did before). */}
+            <LocationPointPicker
+              value={formData.locationPoint}
+              precision={formData.locationPrecision}
+              addressHint={formData.meetingPoint || formData.serviceArea}
+              onChange={(point) => {
+                setLocationPointTouched(true);
+                set("locationPoint", point);
+              }}
+              label="Pin this location on the map (optional)"
+              helpText="Confirming a pin shows travelers exactly where to meet and lets this listing appear on planning maps. Without one, only your typed meeting point is shown."
+              idPrefix="service-location"
+            />
 
             {/* Transport disclosure — travelers need to know if they must arrange their own transport */}
             <div>
