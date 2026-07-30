@@ -63,7 +63,7 @@ import { grokService } from "./services/grok.service";
 import { aiGeneratedItineraries, localExpertForms, expertAiTasks, aiInteractions, travelPulseTrending, travelPulseCities, travelPulseHappeningNow, serviceCategories, visaRequirementsCache, expertServiceOfferings, expertServiceCategories, cityNeighborhoods, travelPulseHiddenGems, providerNeighborhoodCoverage, expertTemplates } from "@shared/schema";
 import { coordinationService } from "./services/coordination.service";
 import { vendorManagementService } from "./services/vendor-management.service";
-import { budgetService } from "./services/budget.service";
+import { budgetService, BudgetValidationError } from "./services/budget.service";
 import { itineraryIntelligenceService } from "./services/itinerary-intelligence.service";
 import { emergencyService } from "./services/emergency.service";
 import { aiUsageService } from "./services/ai-usage.service";
@@ -171,6 +171,47 @@ async function verifyTripOwnership(tripId: string, userId: string): Promise<bool
   if (userId == null) return false;
   const trip = await storage.getTrip(tripId);
   return trip?.userId != null && trip.userId === userId;
+}
+
+/**
+ * OWNER-tier gate for per-trip data an assigned expert must NEVER see or write
+ * (L20 ratified tier table): money-between-people (transactions / budget / settle-up /
+ * split), participant PII (bulk-invite), vendor-contract CREATION, and emergency-contact
+ * WRITES. Same principal set as the canonical `authorizeTripLogistics` **minus the
+ * assigned-expert branch** — it is deliberately composed from the same three branches the
+ * neighbouring owner-gated handlers in this file use, not a new bespoke check:
+ *
+ *   owner (`verifyTripOwnership`) ‖ trip author (`isTripAuthor`) ‖ admin (audit-logged)
+ *
+ * A "friend"/participant principal is intentionally absent: no code path mints a
+ * `trip_collaborators` friend row and `trip_participants.userId` is left NULL by the only
+ * automated writer, so a participant is not an expressible principal today (L20 Part C).
+ *
+ * Returns `null` when authorized; otherwise the `{status, message}` the route should send.
+ */
+async function authorizeTripOwnerTier(
+  tripId: string,
+  userId: string | undefined | null,
+  route: string,
+): Promise<{ status: number; message: string } | null> {
+  if (!userId) return { status: 401, message: "Not authenticated" };
+
+  if (await verifyTripOwnership(tripId, userId)) return null;
+
+  // Authoring mode (ready-made brief §2): the expert who AUTHORS this trip. Explicit named
+  // check — deliberately NOT routed through getTripRole (known pre-launch bypass).
+  if (await isTripAuthor(tripId, userId)) return null;
+
+  // Admin: allowed, but audit-logged (interim, mirroring authorizeTripLogistics).
+  const user = await storage.getUser(userId);
+  if (user?.role === "admin") {
+    console.log(
+      `[audit] admin cross-trip owner-tier access actor=${userId} route=${route} tripId=${tripId}`,
+    );
+    return null;
+  }
+
+  return { status: 403, message: "Not authorized to access this trip" };
 }
 
 // Guards /api/trips/:id GET and PATCH: requires either an authenticated session
@@ -7828,7 +7869,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (!await verifyTripOwnership(req.params.tripId, userId)) {
         return res.status(403).json({ message: "Access denied" });
       }
-      const validatedData = insertTripParticipantSchema.parse({
+      // L20 hardening: `userId` is STRIPPED from the accepted input. A caller must never be
+      // able to assert which user ACCOUNT a participant row points at — that becomes a
+      // self-service authorization grant the moment any gate reads `trip_participants.userId`.
+      // The column is populated only by a real invite→accept flow (L20 Part C), never from body.
+      const validatedData = insertTripParticipantSchema.omit({ userId: true }).parse({
         ...req.body,
         tripId: req.params.tripId,
       });
@@ -7842,10 +7887,37 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     }
   });
 
+  // L20 tier 4 — participant PII is OWNER-only, never an assigned expert: the participant
+  // record carries dietary/accessibility/phone/amount-owed/per-person emergency contacts, a
+  // materially larger disclosure than anything an expert surface has ever shown.
   app.post("/api/trips/:tripId/participants/bulk-invite", isAuthenticated, async (req, res) => {
     try {
-      const { emails } = req.body;
-      const participants = await coordinationService.bulkInvite(req.params.tripId, emails);
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const denied = await authorizeTripOwnerTier(
+        req.params.tripId, userId, "POST /api/trips/:tripId/participants/bulk-invite",
+      );
+      if (denied) return res.status(denied.status).json({ message: denied.message });
+
+      // L20 hardening: a non-array body used to reach `for (const email of emails)` and throw
+      // (→ 500). Validate shape, cap the batch, and drop non-string/blank entries.
+      const { emails } = req.body ?? {};
+      if (!Array.isArray(emails)) {
+        return res.status(400).json({ message: "`emails` must be an array of email addresses" });
+      }
+      const MAX_BULK_INVITES = 50;
+      if (emails.length > MAX_BULK_INVITES) {
+        return res.status(400).json({
+          message: `Too many invites in one request (max ${MAX_BULK_INVITES})`,
+        });
+      }
+      const cleaned = emails
+        .filter((e: unknown): e is string => typeof e === "string" && e.trim().length > 0)
+        .map((e: string) => e.trim());
+
+      // Dedup within the request too (the service already dedups against existing rows).
+      const participants = await coordinationService.bulkInvite(
+        req.params.tripId, Array.from(new Set(cleaned)),
+      );
       res.status(201).json(participants);
     } catch (error) {
       res.status(500).json({ message: "Failed to send invites" });
@@ -7853,8 +7925,16 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   });
 
   // --- Vendor Contracts Routes ---
+  // L20 tier 2 — vendor coordination is the assigned expert's real job, so the READS are
+  // owner ‖ assigned expert ‖ author ‖ admin (`authorizeTripLogistics`); but CREATING a
+  // financial/legal artifact on the traveler's trip is owner-only.
   app.get("/api/trips/:tripId/contracts", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const denied = await authorizeTripLogistics(
+        req.params.tripId, userId, "GET /api/trips/:tripId/contracts",
+      );
+      if (denied) return res.status(denied.status).json({ message: denied.message });
       const contracts = await vendorManagementService.getContracts(req.params.tripId);
       res.json(contracts);
     } catch (error) {
@@ -7864,6 +7944,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.get("/api/trips/:tripId/contracts/stats", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const denied = await authorizeTripLogistics(
+        req.params.tripId, userId, "GET /api/trips/:tripId/contracts/stats",
+      );
+      if (denied) return res.status(denied.status).json({ message: denied.message });
       const stats = await vendorManagementService.getContractStats(req.params.tripId);
       res.json(stats);
     } catch (error) {
@@ -7873,6 +7958,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.get("/api/trips/:tripId/contracts/upcoming-payments", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const denied = await authorizeTripLogistics(
+        req.params.tripId, userId, "GET /api/trips/:tripId/contracts/upcoming-payments",
+      );
+      if (denied) return res.status(denied.status).json({ message: denied.message });
       const days = parseInt(req.query.days as string) || 30;
       const payments = await vendorManagementService.getUpcomingPayments(req.params.tripId, days);
       res.json(payments);
@@ -7883,6 +7973,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.get("/api/trips/:tripId/contracts/overdue", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const denied = await authorizeTripLogistics(
+        req.params.tripId, userId, "GET /api/trips/:tripId/contracts/overdue",
+      );
+      if (denied) return res.status(denied.status).json({ message: denied.message });
       const overdue = await vendorManagementService.getOverduePayments(req.params.tripId);
       res.json(overdue);
     } catch (error) {
@@ -7892,6 +7987,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.post("/api/trips/:tripId/contracts", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const denied = await authorizeTripOwnerTier(
+        req.params.tripId, userId, "POST /api/trips/:tripId/contracts",
+      );
+      if (denied) return res.status(denied.status).json({ message: denied.message });
       const contract = await vendorManagementService.createContract({
         ...req.body,
         tripId: req.params.tripId,
@@ -7989,8 +8089,17 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   });
 
   // --- Budget / Transactions Routes ---
+  // L20 tier 1 — money-between-people is OWNER-only (+ author/admin). The settle-up graph
+  // decides who owes whom inside the traveler's own party; an assigned expert has their own
+  // commission view and never needs it, so `authorizeTripOwnerTier` (no expert branch) is used
+  // throughout this block, NOT `authorizeTripLogistics`.
   app.get("/api/trips/:tripId/transactions", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const denied = await authorizeTripOwnerTier(
+        req.params.tripId, userId, "GET /api/trips/:tripId/transactions",
+      );
+      if (denied) return res.status(denied.status).json({ message: denied.message });
       const transactions = await budgetService.getTransactions(req.params.tripId);
       res.json(transactions);
     } catch (error) {
@@ -8000,6 +8109,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.get("/api/trips/:tripId/budget/summary", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const denied = await authorizeTripOwnerTier(
+        req.params.tripId, userId, "GET /api/trips/:tripId/budget/summary",
+      );
+      if (denied) return res.status(denied.status).json({ message: denied.message });
       const budget = parseFloat(req.query.budget as string) || 0;
       const summary = await budgetService.getBudgetSummary(req.params.tripId, budget);
       res.json(summary);
@@ -8010,6 +8124,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.get("/api/trips/:tripId/budget/categories", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const denied = await authorizeTripOwnerTier(
+        req.params.tripId, userId, "GET /api/trips/:tripId/budget/categories",
+      );
+      if (denied) return res.status(denied.status).json({ message: denied.message });
       const breakdown = await budgetService.getCategoryBreakdown(req.params.tripId);
       res.json(breakdown);
     } catch (error) {
@@ -8019,6 +8138,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.get("/api/trips/:tripId/budget/settle-up", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const denied = await authorizeTripOwnerTier(
+        req.params.tripId, userId, "GET /api/trips/:tripId/budget/settle-up",
+      );
+      if (denied) return res.status(denied.status).json({ message: denied.message });
       const settleUp = await budgetService.getSettleUpSummary(req.params.tripId);
       res.json(settleUp);
     } catch (error) {
@@ -8028,6 +8152,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.post("/api/trips/:tripId/transactions", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const denied = await authorizeTripOwnerTier(
+        req.params.tripId, userId, "POST /api/trips/:tripId/transactions",
+      );
+      if (denied) return res.status(denied.status).json({ message: denied.message });
       const transaction = await budgetService.createTransaction({
         ...req.body,
         tripId: req.params.tripId,
@@ -8040,7 +8169,12 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.post("/api/trips/:tripId/transactions/split", isAuthenticated, async (req, res) => {
     try {
-      const { totalAmount, category, description, paidByParticipantId, splits } = req.body;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const denied = await authorizeTripOwnerTier(
+        req.params.tripId, userId, "POST /api/trips/:tripId/transactions/split",
+      );
+      if (denied) return res.status(denied.status).json({ message: denied.message });
+      const { totalAmount, category, description, paidByParticipantId, splits } = req.body ?? {};
       const transactions = await budgetService.createSplitTransaction(
         req.params.tripId,
         totalAmount,
@@ -8051,16 +8185,29 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       );
       res.status(201).json(transactions);
     } catch (error) {
+      // Caller-input failures (foreign participant id, non-array splits) are 400, not 500.
+      if (error instanceof BudgetValidationError) {
+        return res.status(400).json({ message: error.message });
+      }
       res.status(500).json({ message: "Failed to create split transaction" });
     }
   });
 
   app.post("/api/trips/:tripId/budget/calculate-split", isAuthenticated, async (req, res) => {
     try {
-      const { totalAmount, method, customSplits } = req.body;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const denied = await authorizeTripOwnerTier(
+        req.params.tripId, userId, "POST /api/trips/:tripId/budget/calculate-split",
+      );
+      if (denied) return res.status(denied.status).json({ message: denied.message });
+      const { totalAmount, method, customSplits } = req.body ?? {};
       const splits = await budgetService.calculateSplit(req.params.tripId, totalAmount, method, customSplits);
       res.json(splits);
     } catch (error) {
+      // Zero-participant equal split → honest 400 instead of NaN money numbers.
+      if (error instanceof BudgetValidationError) {
+        return res.status(400).json({ message: error.message });
+      }
       res.status(500).json({ message: "Failed to calculate split" });
     }
   });
@@ -8093,8 +8240,15 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     }
   });
 
+  // L20 tier 5 — the three itinerary-intelligence reads are owner ‖ assigned expert ‖ author ‖
+  // admin (`authorizeTripLogistics`): reasoning over the plan is squarely the expert's job.
   app.get("/api/trips/:tripId/itinerary/schedules", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const denied = await authorizeTripLogistics(
+        req.params.tripId, userId, "GET /api/trips/:tripId/itinerary/schedules",
+      );
+      if (denied) return res.status(denied.status).json({ message: denied.message });
       const schedules = await itineraryIntelligenceService.getDaySchedules(req.params.tripId);
       res.json(schedules);
     } catch (error) {
@@ -8104,6 +8258,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.get("/api/trips/:tripId/itinerary/analyze", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const denied = await authorizeTripLogistics(
+        req.params.tripId, userId, "GET /api/trips/:tripId/itinerary/analyze",
+      );
+      if (denied) return res.status(denied.status).json({ message: denied.message });
       const analysis = await itineraryIntelligenceService.analyzeItinerary(req.params.tripId);
       res.json(analysis);
     } catch (error) {
@@ -8111,8 +8270,19 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     }
   });
 
-  app.get("/api/trips/:tripId/itinerary/recommendations", isAuthenticated, async (req, res) => {
+  // `aiRateLimit` (the existing shared AI limiter, applied limiter-before-auth exactly as
+  // `heavyReadRateLimit` is on /api/itinerary-comparisons): this handler is the only one of the
+  // three that makes a REAL outbound LLM call (itinerary-intelligence.service.ts
+  // getAIRecommendations), and it was behind no limiter at all — an authorized caller could
+  // burn tokens in a loop. `schedules`/`analyze` are pure DB reads and are deliberately NOT
+  // added to the shared `ai:<ip>` bucket, so they cannot starve it.
+  app.get("/api/trips/:tripId/itinerary/recommendations", aiRateLimit, isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const denied = await authorizeTripLogistics(
+        req.params.tripId, userId, "GET /api/trips/:tripId/itinerary/recommendations",
+      );
+      if (denied) return res.status(denied.status).json({ message: denied.message });
       const destination = req.query.destination as string || "destination";
       const recommendations = await itineraryIntelligenceService.getAIRecommendations(req.params.tripId, destination);
       res.json(recommendations);
@@ -8401,8 +8571,16 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   });
 
   // --- Emergency Routes ---
+  // L20 tier 3 — READS are owner ‖ assigned expert ‖ author ‖ admin (the local fixer needs to
+  // reach your people in a crisis); WRITES that redefine WHO those people are stay owner-only;
+  // RAISING an alert is the one write the assigned expert may perform (see POST /alerts below).
   app.get("/api/trips/:tripId/emergency-contacts", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const denied = await authorizeTripLogistics(
+        req.params.tripId, userId, "GET /api/trips/:tripId/emergency-contacts",
+      );
+      if (denied) return res.status(denied.status).json({ message: denied.message });
       const contacts = await emergencyService.getContacts(req.params.tripId);
       res.json(contacts);
     } catch (error) {
@@ -8412,6 +8590,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.get("/api/trips/:tripId/emergency-contacts/by-type", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const denied = await authorizeTripLogistics(
+        req.params.tripId, userId, "GET /api/trips/:tripId/emergency-contacts/by-type",
+      );
+      if (denied) return res.status(denied.status).json({ message: denied.message });
       const contacts = await emergencyService.getContactsByType(req.params.tripId);
       res.json(contacts);
     } catch (error) {
@@ -8421,6 +8604,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.post("/api/trips/:tripId/emergency-contacts", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const denied = await authorizeTripOwnerTier(
+        req.params.tripId, userId, "POST /api/trips/:tripId/emergency-contacts",
+      );
+      if (denied) return res.status(denied.status).json({ message: denied.message });
       const contact = await emergencyService.createContact({
         ...req.body,
         tripId: req.params.tripId,
@@ -8433,7 +8621,14 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.post("/api/trips/:tripId/emergency/initialize", isAuthenticated, async (req, res) => {
     try {
-      const { countryCode } = req.body;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const denied = await authorizeTripOwnerTier(
+        req.params.tripId, userId, "POST /api/trips/:tripId/emergency/initialize",
+      );
+      if (denied) return res.status(denied.status).json({ message: denied.message });
+      const { countryCode } = req.body ?? {};
+      // Idempotent (L20 hardening): repeat calls reuse the already-seeded police/ambulance/
+      // embassy contacts and welcome alert instead of appending duplicates.
       const result = await emergencyService.initializeTripEmergencyInfo(req.params.tripId, countryCode);
       res.status(201).json(result);
     } catch (error) {
@@ -8443,6 +8638,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.get("/api/trips/:tripId/alerts", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const denied = await authorizeTripLogistics(
+        req.params.tripId, userId, "GET /api/trips/:tripId/alerts",
+      );
+      if (denied) return res.status(denied.status).json({ message: denied.message });
       const alerts = await emergencyService.getActiveAlerts(req.params.tripId);
       res.json(alerts);
     } catch (error) {
@@ -8452,6 +8652,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.get("/api/trips/:tripId/alerts/summary", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const denied = await authorizeTripLogistics(
+        req.params.tripId, userId, "GET /api/trips/:tripId/alerts/summary",
+      );
+      if (denied) return res.status(denied.status).json({ message: denied.message });
       const summary = await emergencyService.getAlertSummary(req.params.tripId);
       res.json(summary);
     } catch (error) {
@@ -8459,8 +8664,16 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     }
   });
 
+  // The ONE tier-3 write the assigned expert may perform: raising a safety alert. The local
+  // fixer on the ground is often the first to know, so `authorizeTripLogistics` (owner ‖
+  // assigned expert ‖ author ‖ admin) — NOT the owner-only tier.
   app.post("/api/trips/:tripId/alerts", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const denied = await authorizeTripLogistics(
+        req.params.tripId, userId, "POST /api/trips/:tripId/alerts",
+      );
+      if (denied) return res.status(denied.status).json({ message: denied.message });
       const alert = await emergencyService.createAlert({
         ...req.body,
         tripId: req.params.tripId,

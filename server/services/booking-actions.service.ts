@@ -7,6 +7,7 @@
 import { db } from "../db";
 import { sql } from "drizzle-orm";
 import crypto from "crypto";
+import { isTripAdvisor } from "../utils/trip-advisor";
 
 // ─── Expert Requests ──────────────────────────────────────────────────────────
 
@@ -617,13 +618,12 @@ export async function isTripOwner(tripId: string, userId: string): Promise<boole
   return !!(result.rows && result.rows.length > 0);
 }
 
+// Delegates to the CANONICAL advisor predicate (server/utils/trip-advisor.ts). This used to
+// filter `status IN ('pending','accepted')`, which wrongly EXCLUDED `'assigned'` — the status
+// an admin lead-confirm writes — so admin-confirmed experts failed every gate built on it.
+// L20 Part A.
 export async function isExpertAssignedToTrip(tripId: string, userId: string): Promise<boolean> {
-  const result = await db.execute(sql`
-    SELECT id FROM trip_expert_advisors
-    WHERE trip_id = ${tripId} AND local_expert_id = ${userId} AND status IN ('pending', 'accepted')
-    LIMIT 1
-  `);
-  return !!(result.rows && result.rows.length > 0);
+  return isTripAdvisor(tripId, userId);
 }
 
 export async function tripExistsById(tripId: string): Promise<boolean> {

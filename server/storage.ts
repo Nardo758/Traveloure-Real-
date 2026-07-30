@@ -1,6 +1,7 @@
 import { db } from "./db";
 import { sql } from "drizzle-orm";
 import { availableAtFor } from "./config/earnings-hold.config";
+import { isTripAdvisor } from "./utils/trip-advisor";
 import { PROCESSING_FEE_RATE, resolveCommissionRates } from "./services/commission";
 import { 
   trips, generatedItineraries, touristPlaceResults, touristPlacesSearches,
@@ -4607,11 +4608,12 @@ export class DatabaseStorage implements IStorage {
     await db.delete(providerBlackoutDates).where(eq(providerBlackoutDates.id, id));
   }
 
+  // Delegates to the CANONICAL advisor predicate (server/utils/trip-advisor.ts).
+  // This method used to be STATUS-BLIND — it matched any trip_expert_advisors row, so a
+  // *rejected* advisor still passed, and `authorizeTripLogistics` (which consumes this)
+  // propagated that over-grant to every trip-logistics endpoint. L20 Part A.
   async isExpertAssignedToTrip(tripId: string, expertId: string): Promise<boolean> {
-    const [row] = await db.select({ id: tripExpertAdvisors.id }).from(tripExpertAdvisors)
-      .where(and(eq(tripExpertAdvisors.tripId, tripId), eq(tripExpertAdvisors.localExpertId, expertId)))
-      .limit(1);
-    return !!row;
+    return isTripAdvisor(tripId, expertId);
   }
 
   async createTripExpertAdvisor(data: { tripId: string; localExpertId: string; message?: string; status?: string }): Promise<any> {
