@@ -516,70 +516,20 @@ class StripePaymentService {
     // TODO: Return inventory
   }
 
-  /**
-   * Create refund for a booking
-   */
-  async createRefund(bookingId: string, amount?: number, reason?: string) {
-    try {
-      // Get booking and payment intent
-      const booking = await db.execute(sql`
-        SELECT b.*, pi.stripe_payment_intent_id
-        FROM bookings b
-        JOIN payment_intents pi ON pi.user_id = b.user_id
-        WHERE b.id = ${bookingId}
-        LIMIT 1
-      `);
-
-      if (!booking.rows || booking.rows.length === 0) {
-        throw new Error('Booking not found');
-      }
-
-      const bookingRow = booking.rows[0] as any;
-      const paymentIntentId = bookingRow.stripe_payment_intent_id;
-      const refundAmount = amount || bookingRow.total_amount;
-
-      // Create Stripe refund
-      const refund = await stripe.refunds.create({
-        payment_intent: paymentIntentId,
-        amount: Math.round(refundAmount * 100),
-        reason: reason as Stripe.RefundCreateParams.Reason || 'requested_by_customer',
-        metadata: {
-          bookingId,
-        },
-      });
-
-      // Store refund in database
-      const refundReason = reason || 'requested_by_customer';
-      await db.execute(sql`
-        INSERT INTO refunds (
-          booking_id, stripe_refund_id, stripe_payment_intent_id,
-          amount, currency, status, reason, created_at
-        ) VALUES (${bookingId}, ${refund.id}, ${paymentIntentId}, ${refundAmount}, 'usd', ${refund.status}, ${refundReason}, NOW())
-      `);
-
-      // Update booking status
-      await db.execute(sql`
-        UPDATE bookings SET
-          status = 'refunded',
-          refunded_at = NOW()
-        WHERE id = ${bookingId}
-      `);
-
-      return {
-        refundId: refund.id,
-        amount: refundAmount,
-        status: refund.status,
-      };
-    } catch (error: any) {
-      console.error('Refund creation error:', error);
-      throw new Error(`Refund failed: ${error.message}`);
-    }
-  }
+  // NOTE: the legacy `createRefund(bookingId, amount, reason)` was DELETED here (L5 money
+  // hardening). It read the legacy `bookings` table — real bookings live in `service_bookings`
+  // (CLAUDE.md "Service Model") — accepted a CLIENT-SUPPLIED `amount` (§14), and resolved the
+  // payment intent with `JOIN payment_intents pi ON pi.user_id = b.user_id`, which matches ANY
+  // payment intent belonging to that user rather than the booking's own (the "wrong-PI bug"
+  // recorded in docs/audits/booking-custody-map.md). Its only caller,
+  // POST /api/bookings/refund, was re-pointed onto refundServiceBooking below, leaving it dead.
+  // Use refundServiceBooking — it is service-booking-native, server-derives the amount, and is
+  // idempotent on both layers (§15).
 
   /**
    * Refund a SERVICE booking (escrow Phase 4 / docs/design/escrow-spine.md).
    *
-   * Unlike createRefund (which reads the legacy `bookings` table), this refunds against
+   * Unlike the deleted legacy createRefund (which read the legacy `bookings` table), this refunds against
    * service_bookings' OWN stripe_payment_intent_id + total_amount — the real booking rail where
    * disputes live. Amount is server-derived from the row (never client-supplied — §14).
    *

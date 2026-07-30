@@ -396,22 +396,36 @@ router.post('/refund', isAuthenticated, async (req, res) => {
       }
     }
 
-    // Amount server-derived from service_bookings.total_amount; idempotent (atomic status
-    // claim + deterministic Stripe idempotencyKey).
-    const result = await stripePaymentService.refundServiceBooking(bookingId, reason);
-
-    // Escrow Phase 4 (closes §14 A2): a refund now also reverses the linked earnings ledger + the
-    // recognised platform revenue, so a refunded booking doesn't leave the provider/expert credited.
-    // Both are idempotent no-ops when the booking has no in-escrow earnings, so this is safe on any
-    // refund. paid_out earnings are left for manual clawback (surfaced via skippedPaidOut).
+    // Escrow Phase 4 (closes §14 A2): a refund also reverses the linked earnings ledger + the
+    // recognised platform revenue, so a refunded booking doesn't leave the provider/expert
+    // credited. Both are idempotent no-ops when the booking has no in-escrow earnings, so this
+    // is safe on any refund. paid_out earnings are never auto-clawed-back (ratified "reversal
+    // only while in escrow") — they are surfaced via skippedPaidOut for manual handling.
+    //
+    // ORDER: ledger-first, Stripe-second — matching the admin dispute-uphold path
+    // (admin.routes.ts POST /api/admin/disputes/:bookingId/uphold) and the §18 Phase 4
+    // rationale. The reversals are idempotent atomic flips, so a Stripe failure leaves a
+    // fully-reversed ledger that a retry simply re-confirms as a no-op. The previous
+    // Stripe-first order had the opposite failure mode: money out the door with the ledger
+    // still crediting the earner if the reversal then threw.
     const reversal = await storage.reverseEarningsForBooking(bookingId);
-    await storage.reversePlatformRevenueForBooking(bookingId);
+    const reversedRevenueRows = await storage.reversePlatformRevenueForBooking(bookingId);
+
+    // Amount server-derived from service_bookings.total_amount; idempotent (atomic status
+    // claim + deterministic Stripe idempotencyKey `refund-sb-<bookingId>`).
+    const result = await stripePaymentService.refundServiceBooking(bookingId, reason);
 
     res.json({
       success: true,
       ...result,
       reversedEarnings: reversal.reversed,
       skippedPaidOut: reversal.skippedPaidOut,
+      reversedRevenueRows,
+      ...(reversal.skippedPaidOut > 0
+        ? {
+            note: `${reversal.skippedPaidOut} earning(s) were already paid out and were NOT auto-reversed — a post-payout clawback must be handled manually.`,
+          }
+        : {}),
     });
   } catch (error: any) {
     console.error('Refund error:', error);

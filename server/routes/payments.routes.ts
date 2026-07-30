@@ -248,6 +248,12 @@ export function resolveItemBaseAmount(item: any): number {
   return rate * (item?.quantity || 1);
 }
 
+// Postgres unique-violation (SQLSTATE 23505). Drizzle re-wraps driver errors, so the pg code
+// can sit on the error itself or on its `cause` — check both rather than string-matching.
+function isUniqueViolation(err: any): boolean {
+  return err?.code === "23505" || (err as any)?.cause?.code === "23505";
+}
+
 // The calendar-date sequence [checkIn, checkOut) — one entry per night stayed, checkout day
 // itself excluded (standard hotel semantics: a checkOut-day slot is not consumed).
 function nightDatesBetween(checkIn: string, checkOut: string): string[] {
@@ -267,26 +273,34 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
       const { tripId, notes, idempotencyKey } = req.body;
 
       // ── Idempotency guard (DB level) ────────────────────────────────────────
-      // §15: the key is now REQUIRED. Previously the dedup only ran `if (idempotencyKey)`,
+      // §15: the key is REQUIRED. Previously the dedup only ran `if (idempotencyKey)`,
       // so a client that omitted it bypassed dedup entirely — a retry/double-click could
       // create duplicate bookings + Stripe charges. The real client always sends a UUID
-      // (cart.tsx), so requiring it only blocks the replay-bypass path.
-      if (!idempotencyKey || typeof idempotencyKey !== "string") {
+      // (cart.tsx, generated once per mount so it is stable across retries), so requiring
+      // it only blocks the replay-bypass path. Trimmed + length-capped: a whitespace-only
+      // key is as good as no key, and an unbounded string would be stamped onto every row.
+      const checkoutKey =
+        typeof idempotencyKey === "string" ? idempotencyKey.trim() : "";
+      if (!checkoutKey || checkoutKey.length > 200) {
         return res.status(400).json({
           success: false,
           error: "idempotencyKey is required",
         });
       }
-      // If this exact checkout request was already processed, return the original
-      // result without creating duplicate bookings or Stripe charges.
+      // Fast path: if this exact checkout request was already processed, return without
+      // creating duplicate bookings or Stripe charges. This SELECT is only a cheap
+      // short-circuit — it is NOT the concurrency guard (two simultaneous requests both
+      // read "not found"). The real guard is the atomic claim at the first booking insert
+      // below, which is protected by the unique partial index on
+      // service_bookings.idempotency_key (migration 096, re-asserted by migration 155).
       {
         const existing = await db.execute(sql`
           SELECT id FROM service_bookings
-          WHERE idempotency_key = ${idempotencyKey}
+          WHERE idempotency_key = ${checkoutKey}
           LIMIT 1
         `);
         if (existing.rows.length > 0) {
-          console.info(`[checkout] duplicate request detected, idempotencyKey=${idempotencyKey} — returning early`);
+          console.info(`[checkout] duplicate request detected, idempotencyKey=${checkoutKey} — returning early`);
           return res.status(200).json({
             success: true,
             duplicate: true,
@@ -621,53 +635,91 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         // ── Step A: Create booking as payment_pending BEFORE charging Stripe ──
         // If the server crashes after the Stripe charge but before this line,
         // the PaymentIntent webhook will recover it via stripe_payment_intent_id.
-        const booking = await storage.createServiceBooking({
-          serviceId: item.serviceId,
-          travelerId: userId,
-          providerId: item.service.userId,
-          contractId: contract.id,
-          tripId: tripId || item.tripId,
-          bookingDetails: {
-            scheduledDate: item.scheduledDate,
-            notes: item.notes || notes,
-            quantity: item.quantity || 1,
-            // §17: component snapshot verified above — bundle contents locked at purchase.
-            ...(bundleSnapshots.has(item.serviceId)
-              ? { bundleComponents: bundleSnapshots.get(item.serviceId) }
-              : {}),
-            // §17 property rooms: the night range + rate SNAPSHOT into the booking (locked at
-            // purchase — the same ready-made snapshot posture as bundle contents above).
-            ...(stay
-              ? {
-                  propertyId: stay.propertyId,
-                  propertyName: stay.propertyName,
-                  roomName: stay.roomName,
-                  checkIn: stay.checkIn,
-                  checkOut: stay.checkOut,
-                  nights: stay.nights,
-                  nightlyRate: stay.nightlyRate,
-                }
-              : {}),
-          },
-          totalAmount: price.toFixed(2),
-          platformFee: totalPlatformFeeAmt.toFixed(2),
-          insuranceFee: insuranceFeeAmt.toFixed(2),
-          providerEarnings: netExpertEarningsAmt.toFixed(2),
-          status: "payment_pending",
-          // S4: first real writer of the attribution columns (source existed unwritten).
-          source: acquisitionSource,
-          ...(acquisitionRef ? { acquisitionRef } : {}),
-          // C3: stamped only because the atomic bookSlot claim above already succeeded for
-          // this item — the booking row records WHICH slot's capacity it holds. A room stamps
-          // its FIRST night's slot id (the stay claimed all of them; one representative id).
-          ...(stay?.firstNightSlotId
-            ? { slotId: stay.firstNightSlotId }
-            : (item as any).slotId
-              ? { slotId: (item as any).slotId }
-              : {}),
-          ...(idempotencyKey ? { idempotencyKey } : {}),
-        } as any);
-        
+        //
+        // §15 ATOMIC CLAIM + per-row key uniqueness. `service_bookings.idempotency_key`
+        // carries a UNIQUE partial index (migration 096, re-asserted by 155), so:
+        //  (a) the FIRST item's insert — which carries the BARE request key — IS the atomic
+        //      claim for this whole checkout. Two concurrent same-key requests both pass the
+        //      SELECT fast-path above, but only one can land this row; the loser gets a 23505
+        //      and is handled as a duplicate BELOW, before any Stripe call. So a double-click
+        //      can never produce two booking sets or two charges.
+        //  (b) every SUBSEQUENT item is suffixed `#<n>`. This was a live P0: the bare key was
+        //      stamped on EVERY row of a multi-item cart, so item 2 collided with item 1 on
+        //      that same unique index and the whole checkout 500'd (leaving item 1 as an
+        //      orphan payment_pending booking + leaked slot claims). Suffixing keeps each row
+        //      unique while the bare key on item 1 keeps the equality dedup above working.
+        const isClaimRow = bookings.length === 0;
+        const rowIdempotencyKey = isClaimRow
+          ? checkoutKey
+          : `${checkoutKey}#${bookings.length}`;
+        let booking: any;
+        try {
+          booking = await storage.createServiceBooking({
+            serviceId: item.serviceId,
+            travelerId: userId,
+            providerId: item.service.userId,
+            contractId: contract.id,
+            tripId: tripId || item.tripId,
+            bookingDetails: {
+              scheduledDate: item.scheduledDate,
+              notes: item.notes || notes,
+              quantity: item.quantity || 1,
+              // §17: component snapshot verified above — bundle contents locked at purchase.
+              ...(bundleSnapshots.has(item.serviceId)
+                ? { bundleComponents: bundleSnapshots.get(item.serviceId) }
+                : {}),
+              // §17 property rooms: the night range + rate SNAPSHOT into the booking (locked at
+              // purchase — the same ready-made snapshot posture as bundle contents above).
+              ...(stay
+                ? {
+                    propertyId: stay.propertyId,
+                    propertyName: stay.propertyName,
+                    roomName: stay.roomName,
+                    checkIn: stay.checkIn,
+                    checkOut: stay.checkOut,
+                    nights: stay.nights,
+                    nightlyRate: stay.nightlyRate,
+                  }
+                : {}),
+            },
+            totalAmount: price.toFixed(2),
+            platformFee: totalPlatformFeeAmt.toFixed(2),
+            insuranceFee: insuranceFeeAmt.toFixed(2),
+            providerEarnings: netExpertEarningsAmt.toFixed(2),
+            status: "payment_pending",
+            // S4: first real writer of the attribution columns (source existed unwritten).
+            source: acquisitionSource,
+            ...(acquisitionRef ? { acquisitionRef } : {}),
+            // C3: stamped only because the atomic bookSlot claim above already succeeded for
+            // this item — the booking row records WHICH slot's capacity it holds. A room stamps
+            // its FIRST night's slot id (the stay claimed all of them; one representative id).
+            ...(stay?.firstNightSlotId
+              ? { slotId: stay.firstNightSlotId }
+              : (item as any).slotId
+                ? { slotId: (item as any).slotId }
+                : {}),
+            idempotencyKey: rowIdempotencyKey,
+          } as any);
+        } catch (insertErr: any) {
+          // Lost the atomic claim (a concurrent request with the same key already inserted
+          // the claim row). NO booking row of THIS request exists yet — bookings.length is 0 —
+          // so the slot capacity claimed above is ours alone to give back, and nothing has been
+          // charged. Return the same shape as the SELECT fast-path.
+          if (isClaimRow && isUniqueViolation(insertErr)) {
+            await releaseClaimed(claimedSlotIds);
+            console.info(`[checkout] lost idempotency claim race, idempotencyKey=${checkoutKey} — returning duplicate`);
+            return res.status(200).json({
+              success: true,
+              duplicate: true,
+              note: "Booking already exists for this request",
+            });
+          }
+          // Any other failure (or a failure after item 1 already has a booking row) bubbles to
+          // the handler's 500. Slots are deliberately NOT released here: a booking row already
+          // holds them, so releasing would desynchronise capacity from a live booking.
+          throw insertErr;
+        }
+
         // Increment bookings count for the service
         await storage.incrementServiceBookings(item.serviceId, 1);
         
@@ -726,7 +778,10 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         total,
         false,
         'usd',
-        idempotencyKey
+        // §15 layer (a): the deterministic Stripe idempotency key. Uses the SAME normalised
+        // key the DB claim used (`checkoutKey`, not the raw body value) so the two layers can
+        // never disagree about what "this request" is.
+        checkoutKey
       );
 
       // ── Step C: Stamp the PI ID on every service_booking so the webhook can ──

@@ -592,4 +592,11 @@ export const MIGRATION_FILES = [
   // level); the proposal_status CHECK allows NULL so every grandfathered variant leg passes →
   // no publish-push trap. Column registered in the preflight CONSTRAINT_MANIFEST.
   "154_transport_legs_trip_scope.sql",
+  // 155: re-assert the UNIQUE partial index on service_bookings.idempotency_key — the DB half
+  // of the §15 checkout claim. 096 created it, but it lives only in migration SQL (not in
+  // shared/schema.ts), so a push-canonical environment can be missing it while 096 stays
+  // stamped — degrading /api/checkout dedup to check-then-insert. Index-only, guarded on
+  // pre-existing duplicates (NOTICE + plain index, never a failed boot), idempotent. No
+  // column/CHECK/DEFAULT change → no publish-push trap.
+  "155_checkout_idempotency_key_unique.sql",
 ] as const;
