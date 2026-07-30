@@ -747,6 +747,9 @@ router.get("/api/ready-made", async (_req, res) => {
         reviewedAt: readyMadeTrips.reviewedAt,
         authorFirstName: users.firstName,
         authorRole: users.role,
+        // MP-2: the storefront return path. Nullable (migration 136) — an author who
+        // has not claimed a handle has no /p/ page, and the client renders no link.
+        authorHandle: users.handle,
       })
       .from(readyMadeTrips)
       .innerJoin(users, eq(users.id, readyMadeTrips.authorId))
@@ -768,6 +771,7 @@ router.get("/api/ready-made", async (_req, res) => {
         badge: r.badge,
         insideCounts: r.insideCounts,
         authorName: r.authorFirstName ?? "Expert",
+        authorHandle: r.authorHandle ?? null,
         // The consumer shelf section (ratified store model): by author TYPE.
         section: r.authorRole === "local_expert" ? "trips_by_locals" : "advisor",
       })),
@@ -805,6 +809,7 @@ router.get("/api/ready-made/:id", async (req, res) => {
         authorId: readyMadeTrips.authorId,
         authorFirstName: users.firstName,
         authorRole: users.role,
+        authorHandle: users.handle, // MP-2 storefront return path (nullable)
       })
       .from(readyMadeTrips)
       .innerJoin(users, eq(users.id, readyMadeTrips.authorId))
@@ -835,6 +840,7 @@ router.get("/api/ready-made/:id", async (req, res) => {
         badge: row.badge,
         insideCounts: row.insideCounts,
         authorName: row.authorFirstName ?? "Expert",
+        authorHandle: row.authorHandle ?? null,
         section: row.authorRole === "local_expert" ? "trips_by_locals" : "advisor",
       },
       preview: isAuthorPreview,

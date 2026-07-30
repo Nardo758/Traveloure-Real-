@@ -36,13 +36,28 @@ export interface AuthNavConfig {
 
 export const navGroupsConfig: NavGroupConfig[] = [
   {
-    name: "Discover",
+    // MP-1 (Jul 30, 2026): this group lists ALL FOUR /discover tabs. It previously
+    // listed only two — "Ready Made Trips" had NO nav entry anywhere on the site
+    // (the entire expert store lane was nav-invisible), and the services tab was
+    // filed under "Experts & Services" as "Service Providers".
+    //
+    // Two naming facts this encodes:
+    //  - "Browse Services", NOT "Service Providers". `provider_services` is
+    //    role-agnostic (CLAUDE.md "one builder" — ServiceForm serves both roles),
+    //    so EXPERTS list services in that tab too. Naming it after one role was
+    //    wrong about who sells there.
+    //  - "By Date" is deliberate and pairs with "By Location" as the two browse
+    //    AXES. Do not "align" it to the ?tab=events routing token — the token is
+    //    the URL contract (§10 label-standard precedent), not a user-facing label.
+    name: "Marketplace",
     sections: [
       {
         title: "BROWSE",
         items: [
           { name: "By Location", href: "/discover", description: "Explore destinations & trending cities" },
           { name: "By Date", href: "/discover?tab=events", description: "Upcoming events & activities" },
+          { name: "Ready Made Trips", href: "/discover?tab=packages", description: "Expert-built trips, ready to buy" },
+          { name: "Browse Services", href: "/discover?tab=services", description: "Book tours, photography, transport & more" },
         ],
       },
     ],
@@ -55,7 +70,6 @@ export const navGroupsConfig: NavGroupConfig[] = [
         items: [
           { name: "Local Experts", href: "/experts?role=local_expert", description: "City guides & neighbourhood specialists" },
           { name: "Trip Planners", href: "/experts?role=travel_expert", description: "Trip planners who handle every detail" },
-          { name: "Service Providers", href: "/discover?tab=services", description: "Book tours, photography, transport & more" },
         ],
       },
     ],
@@ -124,7 +138,8 @@ export const navGroupsConfig: NavGroupConfig[] = [
 
 export const authNavConfig: AuthNavConfig[] = [
   { href: "/dashboard", label: "My Plans" },
-  { href: "/discover", label: "Discover" },
+  // MP-1: label only — the route stays /discover (URL contract unchanged).
+  { href: "/discover", label: "Marketplace" },
   { href: "/concierge", label: "Concierge" },
   { href: "/chat", label: "Expert Chat" },
 ];
@@ -157,7 +172,7 @@ export const footerSectionsConfig: FooterSectionConfig[] = [
     title: 'Product',
     links: [
       { label: 'Plan an Experience',     href: '/experiences' },
-      { label: 'Discover Services',      href: '/discover' },
+      { label: 'Marketplace',            href: '/discover' },
       { label: 'Talk to Experts',        href: '/chat' },
       { label: 'How It Works',           href: '/how-it-works' },
       { label: 'Pricing',                href: '/pricing' },
