@@ -554,13 +554,18 @@ export interface IStorage {
   getProviderBlackoutDates(providerId: string): Promise<ProviderBlackoutDate[]>;
   getProviderBlackoutDateById(id: string): Promise<ProviderBlackoutDate | undefined>;
   addProviderBlackoutDate(blackout: InsertProviderBlackoutDate): Promise<ProviderBlackoutDate>;
-  deleteProviderBlackoutDate(id: string): Promise<void>;
+  // SECURITY (§13 cross-provider IDOR): `providerId` is a REQUIRED owner scope, enforced in
+  // the WHERE clause. Returns true iff a row owned by that provider was deleted.
+  deleteProviderBlackoutDate(id: string, providerId: string): Promise<boolean>;
   isExpertAssignedToTrip(tripId: string, expertId: string): Promise<boolean>;
   createTripExpertAdvisor(data: { tripId: string; localExpertId: string; message?: string; status?: string }): Promise<any>;
   getBookingRequests(providerId: string): Promise<ProviderBookingRequest[]>;
   getBookingRequestsByTrip(tripId: string): Promise<ProviderBookingRequest[]>;
   createBookingRequest(request: InsertProviderBookingRequest): Promise<ProviderBookingRequest>;
-  updateBookingRequest(id: string, updates: Partial<InsertProviderBookingRequest>): Promise<ProviderBookingRequest | undefined>;
+  // SECURITY (§13 cross-provider IDOR): `providerId` is a REQUIRED owner scope, enforced in
+  // the WHERE clause (mirrors `updateProviderAvailabilityRule`). Undefined when no row owned
+  // by that provider matches.
+  updateBookingRequest(id: string, providerId: string, updates: Partial<InsertProviderBookingRequest>): Promise<ProviderBookingRequest | undefined>;
   getVendorCoordination(tripId: string): Promise<ExpertVendorCoordination[]>;
   createVendorCoordination(vendor: InsertExpertVendorCoordination): Promise<ExpertVendorCoordination>;
   updateVendorCoordination(id: string, updates: Partial<InsertExpertVendorCoordination>): Promise<ExpertVendorCoordination | undefined>;
@@ -4604,8 +4609,19 @@ export class DatabaseStorage implements IStorage {
     return created;
   }
 
-  async deleteProviderBlackoutDate(id: string): Promise<void> {
-    await db.delete(providerBlackoutDates).where(eq(providerBlackoutDates.id, id));
+  // SECURITY (§13 cross-provider IDOR): this used to filter on `id` ALONE, so the only thing
+  // standing between provider-2 and provider-1's blackout row was a caller-side check that
+  // DELETE /api/provider/blackout-dates/:id never made (it gated on the provider ROLE string
+  // only — class B). The owner predicate now lives in the WHERE clause, so the guarantee is at
+  // the data layer and cannot be lost by a future caller. `providerId` is REQUIRED (no default,
+  // no nullable escape hatch); an admin override must resolve the row's real owner and pass it
+  // explicitly. Mirrors `updateProviderAvailabilityRule`'s (id, providerId, …) shape.
+  async deleteProviderBlackoutDate(id: string, providerId: string): Promise<boolean> {
+    if (!id || !providerId) return false;
+    const deleted = await db.delete(providerBlackoutDates)
+      .where(and(eq(providerBlackoutDates.id, id), eq(providerBlackoutDates.providerId, providerId)))
+      .returning({ id: providerBlackoutDates.id });
+    return deleted.length > 0;
   }
 
   // Delegates to the CANONICAL advisor predicate (server/utils/trip-advisor.ts).
@@ -4644,10 +4660,17 @@ export class DatabaseStorage implements IStorage {
     return created;
   }
 
-  async updateBookingRequest(id: string, updates: Partial<InsertProviderBookingRequest>): Promise<ProviderBookingRequest | undefined> {
+  // SECURITY (§13 cross-provider IDOR): this used to filter on `id` ALONE, and its only caller
+  // (PUT /api/provider/booking-requests/:requestId/respond) gated on the provider ROLE string
+  // only — so provider-2 could ACCEPT provider-1's booking request, i.e. take a real business
+  // decision on another merchant's behalf. The owner predicate now lives in the WHERE clause so
+  // the guarantee is at the data layer, not in the caller. `providerId` is REQUIRED; an admin
+  // override must resolve the row's real owner and pass it explicitly.
+  async updateBookingRequest(id: string, providerId: string, updates: Partial<InsertProviderBookingRequest>): Promise<ProviderBookingRequest | undefined> {
+    if (!id || !providerId) return undefined;
     const [updated] = await db.update(providerBookingRequests)
       .set({ ...updates, updatedAt: new Date() })
-      .where(eq(providerBookingRequests.id, id))
+      .where(and(eq(providerBookingRequests.id, id), eq(providerBookingRequests.providerId, providerId)))
       .returning();
     return updated;
   }
