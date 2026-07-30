@@ -22,7 +22,12 @@ import {
   CreditCard, CalendarDays, Loader2, ArrowLeft, Users,
   Search, Star, MapPinned, Shield, BatteryLow,
   ShoppingBag, Store, Copy, Megaphone, AlertTriangle, Lightbulb, XCircle,
+  Trash2, RefreshCw, Route,
 } from "lucide-react";
+// L4b: the mode picker's chauffeured-field gate mirrors the SAME shared constant/predicate the
+// server uses (CLAUDE.md §18's chauffeured set) — never a hand-typed duplicate list.
+import { CHAUFFEURED_MODES, isChauffeuredMode } from "@shared/trip-plan";
+import { TRANSPORT_MODE_ICONS, TRANSPORT_MODE_LABELS } from "@/lib/maps-platform";
 
 const MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
 
@@ -397,6 +402,408 @@ function ItemsEditorPanel({
   );
 }
 
+// ── L4b: the between-stops transport-leg editor (docs/briefs/L4-transport-legs.md) ──────────────
+// Server contracts (L4a, migration 154 — final, do not adjust to fit the client):
+//   POST   /api/trips/:tripId/transport-legs/generate           → born 'proposed', replaces the
+//          trip's OWN proposed rows, never touches confirmed ones; response carries created/
+//          keptConfirmed/replacedProposed/skipped[] (reason: 'missing_coordinates' only).
+//   GET    /api/trips/:tripId/transport-legs?includeProposed=1  → { legs, variantId }; legs mixes
+//          this trip's rows (proposalStatus set) with any legacy variant rows (proposalStatus
+//          NULL) — filtered out below, they are a separate mechanism.
+//   PATCH  /api/trips/:tripId/transport-legs/:legId             → allow-list ONLY: userSelectedMode,
+//          pickupPoint, pickupTime, proposalStatus ('proposed'|'confirmed'). Never a body spread.
+//   DELETE /api/trips/:tripId/transport-legs/:legId
+
+/** Mirrors the server's own pair identity (`pairKey` in trip-transport-legs.service.ts) so a leg
+ *  from the fetched list is matched to the exact same-day gap it was computed for. */
+function legPairKey(dayNumber: number, fromId: string | null | undefined, toId: string | null | undefined): string {
+  return `${dayNumber}|${fromId ?? ""}|${toId ?? ""}`;
+}
+
+/** Mirrors the server's own `realCoord` guard (trip-transport-legs.service.ts): rejects null/NaN,
+ *  out-of-range, and the (0,0) "Null Island" sentinel. Deciding "located" client-side with the
+ *  SAME rule the engine uses is what makes the "add a location to route this leg" state honest —
+ *  it is never a guess, and it never depends on a stale generate response to be accurate. */
+function isLocatedItem(item: { latitude?: unknown; longitude?: unknown }): boolean {
+  const lat = item.latitude == null ? NaN : typeof item.latitude === "number" ? item.latitude : parseFloat(String(item.latitude));
+  const lng = item.longitude == null ? NaN : typeof item.longitude === "number" ? item.longitude : parseFloat(String(item.longitude));
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+  if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return false;
+  if (lat === 0 && lng === 0) return false;
+  return true;
+}
+
+interface TransportLegAlternative { mode: string; durationMinutes: number; costUsd: number | null; energyCost: number; reason: string; }
+interface TripTransportLeg {
+  id: string;
+  tripId?: string | null;
+  variantId?: string | null;
+  dayNumber: number;
+  legOrder: number;
+  fromActivityId: string | null;
+  fromName: string;
+  toActivityId: string | null;
+  toName: string;
+  distanceMeters: number;
+  distanceDisplay: string;
+  recommendedMode: string;
+  userSelectedMode: string | null;
+  estimatedDurationMinutes: number;
+  estimatedCostUsd: number | null;
+  alternativeModes?: TransportLegAlternative[] | null;
+  pickupPoint: string | null;
+  pickupTime: string | null;
+  proposalStatus: "proposed" | "confirmed" | null;
+}
+interface TripTransportLegsResponse { legs: TripTransportLeg[]; variantId: string | null; }
+interface GenerateLegsSkip { dayNumber: number; fromItemId: string; fromTitle: string; toItemId: string; toTitle: string; reason: "missing_coordinates"; }
+interface GenerateLegsResult { tripId: string; proposalStatus: "proposed"; created: number; keptConfirmed: number; replacedProposed: number; skipped: GenerateLegsSkip[]; }
+
+/** The mode picker's option set for ONE leg — never a hand-typed full vocabulary. It unions this
+ *  leg's own engine-computed recommendation + alternatives (guaranteed valid against the server's
+ *  SELECTABLE_TRANSPORT_MODES enum, since both are derived from the same destination-profile
+ *  data the server reads) with the exact shared CHAUFFEURED_MODES constant (imported from
+ *  @shared/trip-plan, not retyped) so a chauffeured option is always offered even on a leg the
+ *  engine didn't recommend one for — matching the brief's "taxi/rideshare/private_driver/…" ask
+ *  without drifting from what PATCH actually accepts. */
+function legModeOptions(leg: TripTransportLeg): string[] {
+  const set = new Set<string>();
+  set.add(leg.recommendedMode);
+  (leg.alternativeModes ?? []).forEach((a) => set.add(a.mode));
+  CHAUFFEURED_MODES.forEach((m) => set.add(m));
+  if (leg.userSelectedMode) set.add(leg.userSelectedMode);
+  return Array.from(set).sort();
+}
+
+function transportModeLabel(mode: string): string {
+  return TRANSPORT_MODE_LABELS[mode] || mode.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+function transportModeIcon(mode: string): string {
+  return TRANSPORT_MODE_ICONS[mode] || "🚌";
+}
+
+/** One leg's row: mode icon/duration/distance/status, the mode picker, chauffeured-only pickup
+ *  fields, Confirm, and Remove. Pickup fields save via an explicit button (mirrors the Edit
+ *  items expert-note pattern above) so a half-typed pickup note is never PATCHed on every
+ *  keystroke; the mode select PATCHes immediately (mirrors the Edit items "Move to day" select). */
+function TransportLegRow({
+  leg, draft, onDraftChange, onModeChange, onSavePickup, onConfirm, onDelete, pending,
+}: {
+  leg: TripTransportLeg;
+  draft: { pickupPoint: string; pickupTime: string };
+  onDraftChange: (d: { pickupPoint: string; pickupTime: string }) => void;
+  onModeChange: (mode: string) => void;
+  onSavePickup: (d: { pickupPoint: string; pickupTime: string }) => void;
+  onConfirm: () => void;
+  onDelete: () => void;
+  pending: boolean;
+}) {
+  const currentMode = leg.userSelectedMode || leg.recommendedMode;
+  const chauffeured = isChauffeuredMode(currentMode);
+  const options = legModeOptions(leg);
+  const pickupDirty = draft.pickupPoint !== (leg.pickupPoint ?? "") || draft.pickupTime !== (leg.pickupTime ?? "");
+
+  const labelStyle: React.CSSProperties = { fontSize: 11, fontWeight: 600, color: MID, display: "block", marginBottom: 3 };
+  const fieldStyle: React.CSSProperties = { width: "100%", padding: "6px 8px", borderRadius: 7, border: `1.5px solid ${LINE}`, fontSize: 12.5, outline: "none", boxSizing: "border-box" as any, background: CARD, color: INK, minHeight: 44 };
+
+  return (
+    <div data-testid={`transport-leg-row-${leg.id}`} style={{ border: `1px solid ${LINE}`, borderRadius: 8, padding: "9px 10px", display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 15, lineHeight: 1 }}>{transportModeIcon(currentMode)}</span>
+        <span style={{ fontSize: 12.5, fontWeight: 600, color: INK, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {leg.fromName} → {leg.toName}
+        </span>
+        <StateChip tone={leg.proposalStatus === "confirmed" ? "ok" : "warn"} testId={`chip-leg-status-${leg.id}`}>
+          {leg.proposalStatus === "confirmed" ? "Confirmed" : "Proposed"}
+        </StateChip>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 11.5, color: MID }}>
+        <span style={{ display: "flex", alignItems: "center", gap: 3 }}><Clock style={{ width: 11, height: 11 }} /> {leg.estimatedDurationMinutes} min</span>
+        <span>{leg.distanceDisplay}</span>
+      </div>
+
+      <div>
+        <label style={labelStyle}>Mode</label>
+        <select
+          value={currentMode}
+          onChange={(e) => onModeChange(e.target.value)}
+          disabled={pending}
+          data-testid={`select-transport-mode-${leg.id}`}
+          style={fieldStyle}
+        >
+          {options.map((m) => <option key={m} value={m}>{transportModeLabel(m)}</option>)}
+        </select>
+      </div>
+
+      {/* Chauffeured-only: an expert-stated arrangement fact, not a booking record (§18/L4a). */}
+      {chauffeured && (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+          <div>
+            <label style={labelStyle}>Pickup point</label>
+            <input
+              value={draft.pickupPoint}
+              onChange={(e) => onDraftChange({ ...draft, pickupPoint: e.target.value })}
+              placeholder="e.g. Hotel lobby"
+              data-testid={`input-pickup-point-${leg.id}`}
+              style={fieldStyle}
+            />
+          </div>
+          <div>
+            <label style={labelStyle}>Pickup time</label>
+            <input
+              value={draft.pickupTime}
+              onChange={(e) => onDraftChange({ ...draft, pickupTime: e.target.value })}
+              placeholder="e.g. 9:15 AM"
+              data-testid={`input-pickup-time-${leg.id}`}
+              style={fieldStyle}
+            />
+          </div>
+          {pickupDirty && (
+            <button
+              onClick={() => onSavePickup(draft)}
+              disabled={pending}
+              data-testid={`button-save-pickup-${leg.id}`}
+              style={{ ...btnQuietStyle, gridColumn: "1 / -1", padding: "6px", fontSize: 11.5, minHeight: 44 }}
+            >
+              Save pickup details
+            </button>
+          )}
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 8 }}>
+        {leg.proposalStatus === "proposed" && (
+          <button
+            onClick={onConfirm}
+            disabled={pending}
+            data-testid={`button-confirm-leg-${leg.id}`}
+            style={{ ...btnPrimaryStyle, flex: 1, padding: "7px", fontSize: 11.5, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, minHeight: 44, opacity: pending ? 0.6 : 1 }}
+          >
+            <CheckCircle style={{ width: 12, height: 12 }} /> Confirm
+          </button>
+        )}
+        <button
+          onClick={onDelete}
+          disabled={pending}
+          data-testid={`button-delete-leg-${leg.id}`}
+          style={{ ...btnQuietStyle, flex: leg.proposalStatus === "proposed" ? undefined : 1, padding: "7px 10px", fontSize: 11.5, color: DANGER, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, minHeight: 44, opacity: pending ? 0.6 : 1 }}
+        >
+          <Trash2 style={{ width: 12, height: 12 }} /> Remove
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** The panel itself: collapsible (closed by default, mirrors Edit items), a "Generate transport"
+ *  action with a replace-warning dialog when proposed legs already exist, an honest summary of
+ *  the last generate response, and per-day gap rows. A day with fewer than two located stops
+ *  renders ONE honest line instead of gap rows that could never route (§13); a located pair with
+ *  no leg yet renders a neutral "not routed yet" placeholder — never a fabricated leg. */
+function TransportLegsPanel({ tripId, days }: { tripId: string; days: { dayNumber: number; items: ItineraryItem[] }[] }) {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [confirmGenerateOpen, setConfirmGenerateOpen] = useState(false);
+  const [lastResult, setLastResult] = useState<GenerateLegsResult | null>(null);
+  const [pickupDrafts, setPickupDrafts] = useState<Record<string, { pickupPoint: string; pickupTime: string }>>({});
+
+  const totalItems = days.reduce((n, d) => n + d.items.length, 0);
+
+  const { data, isLoading } = useQuery<TripTransportLegsResponse>({
+    queryKey: [`/api/trips/${tripId}/transport-legs`, { includeProposed: 1 }],
+    enabled: !!tripId && open,
+  });
+
+  // Trip-scoped legs only. `proposalStatus` is NULL on legacy variant-scoped legs (migration 154
+  // grandfather) — those ride a separate mechanism this editor does not touch, so they're
+  // filtered out here rather than rendered as an unexplained third state.
+  const tripLegs = (data?.legs ?? []).filter(
+    (l) => l.proposalStatus === "proposed" || l.proposalStatus === "confirmed",
+  );
+  // globalThis.Map: the `Map` component from @vis.gl/react-google-maps (imported above) shadows
+  // the global constructor within this file — same workaround as the energy-tracking dedup above.
+  const legByPair = new globalThis.Map<string, TripTransportLeg>();
+  for (const leg of tripLegs) legByPair.set(legPairKey(leg.dayNumber, leg.fromActivityId, leg.toActivityId), leg);
+  const proposedCount = tripLegs.filter((l) => l.proposalStatus === "proposed").length;
+  const confirmedCount = tripLegs.filter((l) => l.proposalStatus === "confirmed").length;
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/transport-legs`] });
+    // Confirming/removing a leg can change what a traveler-facing surface renders (only
+    // 'confirmed' legs are ever traveler-visible) — keep the embedded PlanCard in sync.
+    queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+  };
+
+  const generateMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/trips/${tripId}/transport-legs/generate`, {});
+      return (await res.json()) as GenerateLegsResult;
+    },
+    onSuccess: (result) => {
+      setLastResult(result);
+      invalidate();
+      toast({
+        title: "Transport legs generated",
+        description: `${result.created} proposed · ${result.keptConfirmed} confirmed kept · ${result.replacedProposed} replaced${result.skipped.length ? ` · ${result.skipped.length} skipped` : ""}`,
+      });
+    },
+    onError: (e: any) => toast({ title: "Couldn't generate transport legs", description: e?.message, variant: "destructive" }),
+  });
+
+  const patchMutation = useMutation({
+    mutationFn: async ({ legId, data }: { legId: string; data: Record<string, any> }) => {
+      const res = await apiRequest("PATCH", `/api/trips/${tripId}/transport-legs/${legId}`, data);
+      return res.json();
+    },
+    onSuccess: (_res, vars) => {
+      invalidate();
+      if ("proposalStatus" in vars.data) toast({ title: "Leg confirmed" });
+      else if ("pickupPoint" in vars.data || "pickupTime" in vars.data) toast({ title: "Pickup details saved" });
+    },
+    onError: (e: any) => toast({ title: "Couldn't update leg", description: e?.message, variant: "destructive" }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (legId: string) => { await apiRequest("DELETE", `/api/trips/${tripId}/transport-legs/${legId}`); },
+    onSuccess: () => { invalidate(); toast({ title: "Leg removed" }); },
+    onError: (e: any) => toast({ title: "Couldn't remove leg", description: e?.message, variant: "destructive" }),
+  });
+
+  if (totalItems === 0) return null;
+
+  const runGenerate = () => { setConfirmGenerateOpen(false); generateMutation.mutate(); };
+  const onGenerateClick = () => { if (proposedCount > 0) setConfirmGenerateOpen(true); else runGenerate(); };
+  const rowPending = patchMutation.isPending || deleteMutation.isPending;
+
+  return (
+    <div style={{ background: CARD, borderRadius: 10, border: `1px solid ${LINE}`, marginTop: 12 }}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        data-testid="button-toggle-transport-legs"
+        style={{ width: "100%", padding: "10px 14px", background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, minHeight: 44 }}
+      >
+        <Route style={{ width: 12, height: 12, color: MID }} />
+        <span style={{ fontSize: 12.5, fontWeight: 700, color: INK }}>Transport legs</span>
+        {(proposedCount + confirmedCount) > 0 && (
+          <span style={{ fontSize: 11, color: FAINT }}>({confirmedCount} confirmed, {proposedCount} proposed)</span>
+        )}
+        <span style={{ marginLeft: "auto", color: FAINT, display: "flex" }}>
+          {open ? <ChevronUp style={{ width: 13, height: 13 }} /> : <ChevronDown style={{ width: 13, height: 13 }} />}
+        </span>
+      </button>
+
+      {open && (
+        <div style={{ padding: "0 14px 12px", display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 11, color: MID }}>Run the routing engine across this trip's same-day stops.</span>
+            <button
+              onClick={onGenerateClick}
+              disabled={generateMutation.isPending}
+              data-testid="button-generate-transport"
+              style={{ ...btnPrimaryStyle, padding: "7px 14px", fontSize: 12, display: "flex", alignItems: "center", gap: 6, minHeight: 44, opacity: generateMutation.isPending ? 0.6 : 1 }}
+            >
+              {generateMutation.isPending ? <Loader2 style={{ width: 13, height: 13 }} className="animate-spin" /> : <RefreshCw style={{ width: 13, height: 13 }} />}
+              Generate transport
+            </button>
+          </div>
+
+          {lastResult && (
+            <div style={{ background: GROUND, border: `1px solid ${LINE}`, borderRadius: 8, padding: "8px 10px" }} data-testid="panel-generate-result">
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                <span style={{ fontSize: 12, fontWeight: 600, color: INK }}>
+                  {lastResult.created} proposed · {lastResult.keptConfirmed} confirmed kept · {lastResult.replacedProposed} replaced
+                </span>
+                <button onClick={() => setLastResult(null)} data-testid="button-dismiss-generate-result" style={{ background: "none", border: "none", cursor: "pointer", color: FAINT, padding: 4, display: "flex" }}>
+                  <X style={{ width: 13, height: 13 }} />
+                </button>
+              </div>
+              {lastResult.skipped.length > 0 && (
+                <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 3 }}>
+                  {lastResult.skipped.map((s, i) => (
+                    <div key={i} data-testid={`generate-skip-${s.fromItemId}-${s.toItemId}`} style={{ fontSize: 11, color: WARN, display: "flex", alignItems: "center", gap: 5 }}>
+                      <AlertTriangle style={{ width: 11, height: 11, flexShrink: 0 }} />
+                      Day {s.dayNumber}: {s.fromTitle} → {s.toTitle} — add a location to route this leg
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {isLoading ? (
+            <div style={{ fontSize: 12, color: MID, padding: "8px 0" }}>Loading transport legs…</div>
+          ) : (
+            days.map((day) => {
+              const locatedCount = day.items.filter(isLocatedItem).length;
+              if (day.items.length < 2 || locatedCount < 2) {
+                return (
+                  <div key={day.dayNumber} data-testid={`transport-day-empty-${day.dayNumber}`} style={{ fontSize: 11.5, color: FAINT, padding: "4px 0" }}>
+                    Day {day.dayNumber} — add locations to at least two stops to route transport between them.
+                  </div>
+                );
+              }
+              return (
+                <div key={day.dayNumber} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: FAINT, textTransform: "uppercase", letterSpacing: "0.06em" }}>Day {day.dayNumber}</span>
+                  {day.items.slice(0, -1).map((from, i) => {
+                    const to = day.items[i + 1];
+                    const bothLocated = isLocatedItem(from) && isLocatedItem(to);
+                    const leg = legByPair.get(legPairKey(day.dayNumber, from.id, to.id));
+                    if (!bothLocated) {
+                      return (
+                        <div key={`${from.id}-${to.id}`} data-testid={`transport-gap-coordless-${from.id}-${to.id}`} style={{ border: `1px dashed ${LINE}`, borderRadius: 8, padding: "7px 10px", fontSize: 11.5, color: FAINT, display: "flex", alignItems: "center", gap: 6 }}>
+                          <AlertTriangle style={{ width: 12, height: 12, flexShrink: 0 }} />
+                          {from.title} → {to.title}: add a location to route this leg
+                        </div>
+                      );
+                    }
+                    if (!leg) {
+                      return (
+                        <div key={`${from.id}-${to.id}`} data-testid={`transport-gap-pending-${from.id}-${to.id}`} style={{ border: `1px dashed ${LINE}`, borderRadius: 8, padding: "7px 10px", fontSize: 11.5, color: MID }}>
+                          {from.title} → {to.title}: not routed yet — use Generate transport above.
+                        </div>
+                      );
+                    }
+                    return (
+                      <TransportLegRow
+                        key={leg.id}
+                        leg={leg}
+                        draft={pickupDrafts[leg.id] ?? { pickupPoint: leg.pickupPoint ?? "", pickupTime: leg.pickupTime ?? "" }}
+                        onDraftChange={(d) => setPickupDrafts((prev) => ({ ...prev, [leg.id]: d }))}
+                        onModeChange={(mode) => patchMutation.mutate({ legId: leg.id, data: { userSelectedMode: mode } })}
+                        onSavePickup={(d) => patchMutation.mutate({ legId: leg.id, data: { pickupPoint: d.pickupPoint.trim() || null, pickupTime: d.pickupTime.trim() || null } })}
+                        onConfirm={() => patchMutation.mutate({ legId: leg.id, data: { proposalStatus: "confirmed" } })}
+                        onDelete={() => deleteMutation.mutate(leg.id)}
+                        pending={rowPending}
+                      />
+                    );
+                  })}
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
+
+      {confirmGenerateOpen && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
+          <div style={{ background: CARD, borderRadius: 14, width: "100%", maxWidth: 400, padding: 18 }} data-testid="dialog-confirm-generate-transport">
+            <div style={{ fontSize: 14, fontWeight: 700, color: INK, marginBottom: 6 }}>Regenerate transport legs?</div>
+            <div style={{ fontSize: 12.5, color: MID, lineHeight: 1.5, marginBottom: 14 }}>
+              This trip already has {proposedCount} proposed leg{proposedCount === 1 ? "" : "s"}. Generating again replaces
+              every proposed leg with a fresh route — but any leg you've already confirmed is never touched or replaced.
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={() => setConfirmGenerateOpen(false)} data-testid="button-cancel-generate-transport" style={{ ...btnQuietStyle, flex: 1, padding: "8px", fontSize: 13, minHeight: 44 }}>Cancel</button>
+              <button onClick={runGenerate} data-testid="button-confirm-generate-transport" style={{ ...btnPrimaryStyle, flex: 1, padding: "8px", fontSize: 13, minHeight: 44 }}>Regenerate</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface AssignedTrip {
   trip_id: string; trip_title: string; destination: string;
   start_date: string; end_date: string; traveler_name: string;
@@ -410,6 +817,11 @@ interface ItineraryItem {
   // Durable per-item expert note (migration 152, Workstation audit C-1) — the traveler-visible
   // tip PlanCard renders per activity. Distinct from `notes` above.
   expertNote?: string | null;
+  // Real DB columns on itinerary_items (server/routes.ts returns the full storage row; this
+  // interface simply hadn't declared them before). L4b's transport-leg editor uses these to
+  // decide, per same-day gap, whether a leg is even routable — never invented client-side.
+  latitude?: string | number | null;
+  longitude?: string | number | null;
 }
 interface ItineraryData { days: { dayNumber: number; items: ItineraryItem[] }[]; total: number; }
 interface MyAssignment { id: string; tripId: string; localExpertId: string; status: string; workspaceStatus: string | null; message?: string | null; }
@@ -1710,6 +2122,9 @@ export default function ExpertWorkspace() {
 
               {/* A-2 / C-1b (Workstation audit): day-move + expert-note editor for existing items. */}
               {tripId && <ItemsEditorPanel tripId={tripId} days={days} maxDay={maxDay} onDayMoved={triggerEnergyRecalc} />}
+
+              {/* L4b (docs/briefs/L4-transport-legs.md): the between-stops transport editor. */}
+              {tripId && <TransportLegsPanel tripId={tripId} days={days} />}
             </>
           )}
         </main>
