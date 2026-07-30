@@ -7,7 +7,6 @@ import { motion } from "framer-motion";
 import { CityTickerTape } from "@/components/CityTickerTape";
 import { TrendingCities } from "@/components/TrendingCities";
 import { ExperienceCard } from "@/components/ui/experience-card";
-import { TestimonialCard } from "@/components/ui/testimonial-card";
 import { StatCard } from "@/components/ui/stat-card";
 import {
   ArrowRight,
@@ -37,15 +36,9 @@ import {
   HeartHandshake,
   Zap,
   ChevronRight,
-  Quote,
   MapPin,
   Calendar,
-  Shield,
-  TrendingUp,
   Activity,
-  CheckCircle2,
-  Clock,
-  Award
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import lakeImage from "@assets/stock_images/turquoise_lake_with__22a4624c.jpg";
@@ -95,15 +88,6 @@ const keyFeatures = [
   { icon: Globe, label: "Discover", description: "Browse curated experiences from around the world", href: "/discover", gradient: "from-ocean-500 to-ocean-600" },
 ];
 
-// Horizontal features bar data
-const platformBenefits = [
-  { icon: Bot, label: "AI-Powered Planning", value: "Smart" },
-  { icon: Users, label: "Local Experts", value: "160+" },
-  { icon: Zap, label: "Real-Time Intel", value: "Live" },
-  { icon: Shield, label: "Money-Back Guarantee", value: "100%" },
-  { icon: Globe, label: "Global Markets", value: "8" },
-];
-
 // Experience Categories data
 const experienceCategories = [
   {
@@ -111,9 +95,6 @@ const experienceCategories = [
     label: "Travel",
     description: "Plan your next adventure",
     image: "https://picsum.photos/seed/land-travel/600/400",
-    trending: 89,
-    expertRates: "$75-120/hr",
-    hiddenGems: 247,
     slug: "travel",
     color: "text-blue-500",
     bgColor: "bg-blue-500",
@@ -122,19 +103,13 @@ const experienceCategories = [
       { label: 'Cultural', color: 'text-purple-600 dark:text-purple-400', bgColor: 'bg-purple-100 dark:bg-purple-900/30' },
       { label: 'Foodie', color: 'text-orange-600 dark:text-orange-400', bgColor: 'bg-orange-100 dark:bg-orange-900/30' },
     ],
-    status: "Busy" as const,
-    tip: "AI-powered itineraries save 15+ hours of planning and find 30% more hidden gems than manual research.",
-    activeCount: 247,
-    isHot: true,
+    tip: "AI-powered itineraries help you plan faster and surface hidden gems that manual research often misses.",
   },
   {
     icon: Heart,
     label: "Weddings",
     description: "Plan the perfect day",
     image: "https://picsum.photos/seed/land-wedding/600/400",
-    trending: 74,
-    expertRates: "$85-150/hr",
-    hiddenGems: 67,
     slug: "wedding",
     color: "text-pink-500",
     bgColor: "bg-pink-500",
@@ -143,19 +118,13 @@ const experienceCategories = [
       { label: 'Luxury', color: 'text-purple-600 dark:text-purple-400', bgColor: 'bg-purple-100 dark:bg-purple-900/30' },
       { label: 'Planning', color: 'text-blue-600 dark:text-blue-400', bgColor: 'bg-blue-100 dark:bg-blue-900/30' },
     ],
-    status: "Busy" as const,
-    tip: "Expert wedding planners negotiate vendor rates, saving couples $3,200 on average vs. booking directly.",
-    activeCount: 156,
-    isHot: true,
+    tip: "Expert wedding planners negotiate vendor rates and handle the details so you don't have to.",
   },
   {
     icon: Gem,
     label: "Proposals",
     description: "Make it unforgettable",
     image: "https://picsum.photos/seed/land-proposal/600/400",
-    trending: 68,
-    expertRates: "$500-2,500",
-    hiddenGems: 89,
     slug: "proposal",
     color: "text-purple-500",
     bgColor: "bg-purple-500",
@@ -164,19 +133,13 @@ const experienceCategories = [
       { label: 'Surprise', color: 'text-fuchsia-600 dark:text-fuchsia-400', bgColor: 'bg-fuchsia-100 dark:bg-fuchsia-900/30' },
       { label: 'Luxury', color: 'text-purple-600 dark:text-purple-400', bgColor: 'bg-purple-100 dark:bg-purple-900/30' },
     ],
-    status: "Moderate" as const,
     tip: "Local experts coordinate photographers, venues, and backups ensuring every detail is perfect on your big moment.",
-    activeCount: 45,
-    isHot: true,
   },
   {
     icon: PartyPopper,
     label: "Celebrations",
     description: "Mark special moments",
     image: "https://picsum.photos/seed/land-celebrations/600/400",
-    trending: 62,
-    expertRates: "$200-1,500",
-    hiddenGems: 134,
     slug: "celebrations",
     color: "text-orange-500",
     bgColor: "bg-orange-500",
@@ -185,19 +148,13 @@ const experienceCategories = [
       { label: 'Fun', color: 'text-amber-600 dark:text-amber-400', bgColor: 'bg-amber-100 dark:bg-amber-900/30' },
       { label: 'Social', color: 'text-indigo-600 dark:text-indigo-400', bgColor: 'bg-indigo-100 dark:bg-indigo-900/30' },
     ],
-    status: "Busy" as const,
     tip: "Group celebration experts know the best private venues, activities, and packages for milestone events.",
-    activeCount: 189,
-    isHot: true,
   },
   {
     icon: Sparkles,
     label: "Date Nights",
     description: "Plan something special",
     image: "https://picsum.photos/seed/land-date/600/400",
-    trending: 81,
-    expertRates: "$50-300",
-    hiddenGems: 289,
     slug: "date-night",
     color: "text-red-500",
     bgColor: "bg-red-500",
@@ -206,19 +163,13 @@ const experienceCategories = [
       { label: 'Foodie', color: 'text-orange-600 dark:text-orange-400', bgColor: 'bg-orange-100 dark:bg-orange-900/30' },
       { label: 'Fun', color: 'text-amber-600 dark:text-amber-400', bgColor: 'bg-amber-100 dark:bg-amber-900/30' },
     ],
-    status: "Moderate" as const,
     tip: "Get insider access to reservation-only spots and surprise experiences that make dates unforgettable.",
-    activeCount: 312,
-    isHot: true,
   },
   {
     icon: Building2,
     label: "Corporate",
     description: "Team building & events",
     image: "https://picsum.photos/seed/land-corporate/600/400",
-    trending: 52,
-    expertRates: "Custom quote",
-    hiddenGems: 45,
     slug: "corporate-events",
     color: "text-slate-600 dark:text-slate-400",
     bgColor: "bg-slate-600",
@@ -227,9 +178,7 @@ const experienceCategories = [
       { label: 'Team Building', color: 'text-blue-600 dark:text-blue-400', bgColor: 'bg-blue-100 dark:bg-blue-900/30' },
       { label: 'Networking', color: 'text-indigo-600 dark:text-indigo-400', bgColor: 'bg-indigo-100 dark:bg-indigo-900/30' },
     ],
-    status: "Moderate" as const,
     tip: "Corporate event specialists handle venue sourcing, catering coordination, and team activities from start to finish.",
-    activeCount: 78,
   },
 ];
 
@@ -345,51 +294,6 @@ const faqItems = [
       </div>
     ),
     icon: Users,
-  },
-];
-
-const testimonials = [
-  {
-    text: "Sofia helped us navigate Porto wine country and saved us $2,400 on venue negotiations. Her local connections got us exclusive tastings we never could have found ourselves!",
-    author: "Sarah Johnson",
-    location: "New York, USA",
-    rating: 5,
-    avatar: "SJ",
-    destination: "Porto, Portugal",
-    tripType: "Anniversary Trip",
-    expertName: "Sofia Costa",
-    expertHeatScore: 92,
-    valueSaved: "$2,400",
-    expertRate: "$65/hr",
-    tripImage: "https://picsum.photos/seed/land-trip-1/400/300"
-  },
-  {
-    text: "Hiroshi's insider knowledge of Kyoto transformed our cherry blossom trip. We visited secret gardens at sunrise before any tourists arrived. Truly magical!",
-    author: "David Chen",
-    location: "Toronto, Canada",
-    rating: 5,
-    avatar: "DC",
-    destination: "Kyoto, Japan",
-    tripType: "Cultural Travel",
-    expertName: "Hiroshi Tanaka",
-    expertHeatScore: 94,
-    valueSaved: "$1,800",
-    expertRate: "$120/hr",
-    tripImage: "https://picsum.photos/seed/land-trip-2/400/300"
-  },
-  {
-    text: "Priya made our Mumbai wedding seamless. She coordinated 12 vendors, saved us 3 weeks of planning, and the ceremony was absolutely perfect. Worth every penny!",
-    author: "Maria Rodriguez",
-    location: "Madrid, Spain",
-    rating: 5,
-    avatar: "MR",
-    destination: "Mumbai, India",
-    tripType: "Wedding Planning",
-    expertName: "Priya Sharma",
-    expertHeatScore: 96,
-    valueSaved: "$3,200",
-    expertRate: "$85/hr",
-    tripImage: "https://picsum.photos/seed/land-trip-3/400/300"
   },
 ];
 
@@ -796,65 +700,6 @@ export default function LandingPage() {
               />
             ))}
           </div>
-        </div>
-      </section>
-
-      <section className="py-16 lg:py-20 bg-card dark:bg-card">
-        <div className="container mx-auto px-4 max-w-6xl">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            className="mb-12"
-          >
-            <div className="flex items-center gap-2 mb-2">
-              <div className="w-10 h-10 rounded-full bg-emerald-500 flex items-center justify-center">
-                <Award className="w-5 h-5 text-white" />
-              </div>
-              <h2 className="text-3xl md:text-4xl font-bold text-foreground">
-                Success <span className="text-emerald-500">Stories</span>
-              </h2>
-            </div>
-            <p className="text-muted-foreground">
-              Real results from <span className="font-semibold text-foreground">{platformStats ? formatStat(platformStats.totalUsers) : "0+"}</span> travelers worldwide
-            </p>
-          </motion.div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {testimonials.map((testimonial, idx) => (
-              <TestimonialCard
-                key={testimonial.author}
-                {...testimonial}
-                delay={idx * 0.1}
-              />
-            ))}
-          </div>
-
-          {/* Platform Stats Bar */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            className="mt-10 grid grid-cols-2 md:grid-cols-4 gap-4 p-6 bg-muted dark:bg-muted/50 rounded-2xl"
-            data-testid="platform-stats-bar"
-          >
-            <div className="text-center" data-testid="stat-avg-rating">
-              <p className="text-2xl font-bold text-primary">{platformStats?.avgRating != null ? `${platformStats.avgRating}/5` : "New"}</p>
-              <p className="text-xs text-muted-foreground">Average Rating</p>
-            </div>
-            <div className="text-center" data-testid="stat-reviews">
-              <p className="text-2xl font-bold text-foreground">{platformStats ? formatStat(platformStats.totalReviews) : "0+"}</p>
-              <p className="text-xs text-muted-foreground">Reviews</p>
-            </div>
-            <div className="text-center" data-testid="stat-recommend">
-              <p className="text-2xl font-bold text-emerald-500 dark:text-emerald-400">98%</p>
-              <p className="text-xs text-muted-foreground">Would Recommend</p>
-            </div>
-            <div className="text-center" data-testid="stat-travelers">
-              <p className="text-2xl font-bold text-foreground">{platformStats ? formatStat(platformStats.totalUsers) : "0+"}</p>
-              <p className="text-xs text-muted-foreground">Happy Travelers</p>
-            </div>
-          </motion.div>
         </div>
       </section>
 
