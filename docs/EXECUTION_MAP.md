@@ -244,6 +244,30 @@ fabricated pages.
 3. **L22** itinerary-item delete cascade gap.
 4. **L15** L5 residue (claim-race orphan contract row; per-mount checkout key).
 
+**§13 round 2 — what it found beyond `/careers` (landed e11dfe30 where actionable, filed where not):**
+- **FIXED:** `provider/resources.tsx` "support team available 24/7" behind two handler-less buttons, one offering
+  a non-existent community · the "expert will contact you within 24 hours" SLA on `itinerary-comparison.tsx` +
+  `itinerary.tsx` (traced first: the endpoint notifies matching experts and creates a `pending` row — no
+  assignment, no timer, nobody on a 24h hook; the accurate no-charge-now half was kept, not stripped with it).
+- **🔴 `/terms` claims an insurance tier that has not shipped** (`terms.tsx:170`, "Tier 3 … $1,000,000+
+  comprehensive coverage"). §6 says the admin-validated `insurance_tier` is FEE-2 Phase 1, unbuilt — today
+  insurance is a self-attested boolean. A legal document asserting coverage bands the platform cannot verify is
+  the §13 class with legal weight attached, and I will not edit a legal document unilaterally. **Decision-maker
+  call.** Same file also carries §8-adjacent rate literals outside `fee_bands` (`:204` 5-15% referral, `:248`
+  15-20%, `:300` 75-85%/15-25% expert split, `:303` 4-12% provider) — those are policy statements, not code, so
+  they are a separate question from the §8 grep gate.
+- **🔴 Seed fixtures would publish as real listing copy if a seed ever runs in prod:** `server/seeds/` holds demo
+  provider services claiming "Available 24/7 with flight tracking" / "24/7 WhatsApp support", plus ~16 fictional
+  `<surname>@traveloure.com` expert accounts. Harmless as dev fixtures; indistinguishable from real inventory if
+  seeded. Worth a "never in prod" guard rather than a copy edit.
+- **Judgment calls left alone:** `how-it-works.tsx:65` "24/7 AI assistance" (defensible for always-on software,
+  but support-hours-shaped) · GDPR/CCPA boilerplate in `privacy.tsx`.
+- **§16, not §13:** `/transportation`'s 12Go deep link sends the traveller off-site for a booking and tracking
+  could not be confirmed (the sibling iVisa CTA IS tracked via `/api/affiliates/track`). §16 prohibits untracked
+  raw outbound booking CTAs — needs a look.
+- **Verified clean** (so nobody re-audits them): `/deals`, `/hidden-gems`, `/transportation`, `/visa-help`,
+  `/features`. All data-backed, no mock arrays, no fabricated stats.
+
 **DECISION-GATED (not holes — genuine calls):** L16 real testimonials (deferred to beta by the decision-maker) ·
 L20 Phase 2 participant invite→accept plumbing (the feature half of the approved shared-trip access) ·
 the remaining trust-claims arms (the `90/10` commission literal, hardcoded cancellation/support copy,
