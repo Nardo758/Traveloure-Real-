@@ -163,7 +163,7 @@ export default function FAQPage() {
   });
 
   return (
-    <div className="min-h-screen bg-[#F9FAFB]">
+    <div className="min-h-screen bg-muted/30">
       {/* Hero Section */}
       <section className="bg-gradient-to-br from-[#111827] to-[#1F2937] text-white py-16">
         <div className="container mx-auto px-4 max-w-4xl">
@@ -243,7 +243,7 @@ export default function FAQPage() {
                 </Accordion>
               ) : (
                 <div className="text-center py-12">
-                  <HelpCircle className="w-12 h-12 text-[#9CA3AF] mx-auto mb-4" />
+                  <HelpCircle className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
                   <h3 className="text-lg font-semibold text-foreground mb-2">
                     No results found
                   </h3>
@@ -268,7 +268,7 @@ export default function FAQPage() {
       </section>
 
       {/* Still Need Help */}
-      <section className="py-16 bg-white border-t border-border">
+      <section className="py-16 bg-background border-t border-border">
         <div className="container mx-auto px-4 max-w-4xl text-center">
           <h2 className="text-2xl font-bold text-foreground mb-4">
             Still Have Questions?
