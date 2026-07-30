@@ -63,10 +63,12 @@ Reuse `ItineraryMapView`, do not write a third renderer. Required corrections wh
 ## RATIFIED (decision-maker, Jul 30 2026): the BUILD map draws proposed legs too
 
 Traveler surfaces show **confirmed legs only** (ratified §18 L4). At build time the expert is exactly the
-person who should see and confirm machine proposals. **Fable recommends: draw `proposed` legs too, visually
-distinct (dashed/muted) and labelled, with confirmed legs solid** — so the map doubles as the confirm surface.
-This deliberately differs from the traveler rule; it needs a yes/no because it is a §13-shaped choice about
-showing machine guesses.
+person who should see and confirm machine proposals — so **the build map DRAWS `proposed` legs, visually
+distinct (dashed/muted) and explicitly LABELLED as proposed, with confirmed legs solid**, making the map double
+as the confirm surface. This deliberately differs from the traveler rule, so the §13 requirement is strict: the
+proposed-vs-confirmed distinction must be unmissable at a glance — a machine guess must never read as an expert
+decision. Confirming from the map writes through the SAME
+`PATCH /api/trips/:tripId/transport-legs/:legId` the Transport-legs panel uses — no second write path.
 
 ## Provider console — a DIFFERENT problem, smaller
 
