@@ -333,11 +333,26 @@ router.post('/apply-promo', isAuthenticated, async (req, res) => {
  * POST /api/bookings/webhooks/stripe
  * Stripe webhook endpoint
  */
-router.post('/webhooks/stripe', async (req, res) => {
+//
+// SIGNATURE VERIFICATION USES req.rawBody, NOT req.body (L14 money-path P0).
+// This handler used to pass `req.body` to constructEvent. By the time any route runs, the global
+// express.json() in server/index.ts has already PARSED the body, so `req.body` is a plain object
+// and the exact bytes Stripe signed are gone — constructEvent could therefore NEVER verify a real
+// Stripe delivery, which made the `charge.refunded` handler unreachable over HTTP.
+// The raw bytes ARE available: that same express.json() supplies a `verify` callback that stashes
+// the Buffer on `req.rawBody`. This is exactly how the two working Stripe webhooks
+// (POST /api/webhooks/stripe and /api/webhooks/stripe-identity in webhooks.routes.ts) verify, so
+// this route now mirrors that established pattern — no new middleware, no change to body parsing
+// for any other route.
+router.post('/webhooks/stripe', async (req: any, res) => {
   const sig = req.headers['stripe-signature'];
 
   if (!sig) {
     return res.status(400).json({ error: 'Missing signature' });
+  }
+
+  if (!req.rawBody) {
+    return res.status(500).json({ error: 'Raw body unavailable for signature verification' });
   }
 
   try {
@@ -346,7 +361,7 @@ router.post('/webhooks/stripe', async (req, res) => {
     });
 
     const event = stripe.webhooks.constructEvent(
-      req.body,
+      req.rawBody,
       sig,
       process.env.STRIPE_WEBHOOK_SECRET || ''
     );

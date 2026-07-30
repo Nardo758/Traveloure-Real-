@@ -852,6 +852,10 @@ router.post("/api/admin/disputes/:bookingId/uphold", isAuthenticated, async (req
     const revenueRows = await storage.reversePlatformRevenueForBooking(bookingId);
 
     // 3: refund the traveler (idempotency-keyed; also sets service_bookings.status='refunded').
+    // `reason` here is an INTERNAL/free-text reason (it originates as the traveler's own dispute
+    // text) and is stored verbatim in the `refunds.reason` audit column. refundServiceBooking maps
+    // it to Stripe's 3-value refund-reason enum before the API call — it used to forward it
+    // unmapped, which 400'd at Stripe AFTER the ledger reversal above had already run.
     const refund = await stripePaymentService.refundServiceBooking(bookingId, reason || "dispute_upheld");
 
     res.json({
