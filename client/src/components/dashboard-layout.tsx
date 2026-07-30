@@ -1,9 +1,8 @@
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { DashboardSidebar } from "@/components/dashboard-sidebar";
-import { Bell } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
 import { UserMenu } from "@/components/user-menu";
+import { NotificationBell } from "@/components/notification-bell";
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -35,18 +34,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
               </Link>
             </div>
             <div className="flex items-center gap-2">
-              <Link href="/notifications">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="relative h-[34px] w-[34px] rounded-lg text-[#7A7A72] hover:bg-[#F3F3EE]"
-                  style={{ border: "1px solid #E8E8E2" }}
-                  data-testid="button-notifications"
-                >
-                  <Bell className="w-4 h-4" />
-                  <span className="absolute top-1.5 right-1.5 w-[7px] h-[7px] bg-[#E85D55] rounded-full" />
-                </Button>
-              </Link>
+              <NotificationBell />
               <UserMenu />
             </div>
           </header>

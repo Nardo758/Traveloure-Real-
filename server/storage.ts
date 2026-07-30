@@ -90,7 +90,7 @@ import {
   itineraryChanges, activityComments,
   type ItineraryChange, type InsertItineraryChange,
   type ActivityComment, type InsertActivityComment,
-  itineraryItems, tripExpertAdvisors, providerSettings,
+  itineraryItems, tripExpertAdvisors, providerSettings, tripCollaborators,
   type ItineraryItem, type InsertItineraryItem,
   type ProviderSettings, type InsertProviderSettings,
   affiliateBookingRequests,
@@ -741,7 +741,20 @@ export class DatabaseStorage implements IStorage {
   async createTrip(trip: InsertTrip & { userId: string }): Promise<Trip> {
     const trackingNumber = await this.generateTrackingNumber('TRV');
     const [newTrip] = await db.insert(trips).values({ ...trip, trackingNumber }).returning();
-    
+
+    // Write the owner's trip_collaborators row in the same operation that creates the
+    // trip — getTripRole()/canMutateTrip() resolve access by assignment only (never
+    // trips.userId), so without this row the trip's own creator is 403'd from
+    // GET /api/trips/:id/plancard until the next startup backfill (server/seeds/trip-ownership.seed.ts)
+    // happens to run. That seed remains as a defensive one-time repair for pre-existing
+    // data, not the mechanism of record. ON CONFLICT DO NOTHING mirrors the seed's guard.
+    if (newTrip.userId) {
+      await db
+        .insert(tripCollaborators)
+        .values({ tripId: newTrip.id, userId: newTrip.userId, role: "owner" })
+        .onConflictDoNothing();
+    }
+
     // Auto-register in content tracking system
     await this.registerContent({
       trackingNumber,

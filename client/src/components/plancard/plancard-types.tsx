@@ -1,6 +1,7 @@
 import {
   Calendar, Star, TrainFront, Clock,
 } from "lucide-react";
+import { differenceInDays, isValid } from "date-fns";
 import { MODE_COLORS, MODE_ICON_MAP, getModeIcon } from "@/lib/transport-modes";
 
 // Re-exported for back-compat; the single source is @/lib/transport-modes.
@@ -221,6 +222,27 @@ export interface PlanCardDay {
   energyProfile?: string;
   activities: PlanCardActivity[];
   transports: PlanCardTransport[];
+}
+
+/**
+ * Single source of truth for "how many days is this trip" across every PlanCard
+ * surface (PlanCardSummary, HeroSection, StatsRow). Prefers the real day list;
+ * only falls back to a date-range computation for a cold (zero-item) trip.
+ * Inclusive count (Oct 1 - Oct 5 = 5 days) — the mathematically correct reading,
+ * matching how a traveler counts nights/days on a trip. Floors at 1 day so a
+ * same-day or malformed range never reads as 0.
+ */
+export function computeDayCount(
+  days: Pick<PlanCardDay, "dayNum">[] | null | undefined,
+  startDate?: string | null,
+  endDate?: string | null,
+): number {
+  if (days && days.length > 0) return days.length;
+  if (!startDate || !endDate) return 0;
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  if (!isValid(start) || !isValid(end)) return 0;
+  return Math.max(1, differenceInDays(end, start) + 1);
 }
 
 export interface PlanCardChange {
