@@ -6,6 +6,7 @@ import { useSignInModal } from "@/contexts/SignInModalContext";
 import { Button } from "@/components/ui/button";
 import { 
   Map, 
+  Award,
   Compass, 
   MessageSquare, 
   LogOut, 
@@ -69,7 +70,11 @@ const NAV_LEAF_ICONS: Record<string, React.ComponentType<{ className?: string }>
   "By Date":           Calendar,
   "Local Experts":     MapPin,
   "Trip Planners":     User,
-  "Service Providers": Building2,
+  // MP-1: the services tab is role-agnostic (experts sell there too), so the
+  // leaf is "Browse Services", not "Service Providers". "Ready Made Trips" uses
+  // Award to match the tab trigger's own icon in discover.tsx.
+  "Browse Services":   Building2,
+  "Ready Made Trips":  Award,
   "Travel Planning":   Plane,
   "Romantic Getaways": Sparkles,
   "Date Night":        Wine,
@@ -93,7 +98,7 @@ const NAV_LEAF_ICONS: Record<string, React.ComponentType<{ className?: string }>
 
 const AUTH_NAV_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
   "My Plans":    Map,
-  "Discover":    Compass,
+  "Marketplace": Compass,
   "Concierge":   Sparkles,
   "Expert Chat": MessageSquare,
 };

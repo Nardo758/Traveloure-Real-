@@ -54,6 +54,7 @@ import { Calendar as DatePickerCalendar } from "@/components/ui/calendar";
 import { format, addMonths, subMonths, subDays } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { StorefrontLink } from "@/components/marketplace/storefront-link";
 import { useAuth } from "@/hooks/use-auth";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 
@@ -745,6 +746,18 @@ export default function ServiceDetailPage() {
                 </CardContent>
               </Card>
             )}
+
+            {/* MP-2 return path — "show me everything this seller offers".
+                The breadcrumb above links the same place, but it is a small crumb at the
+                top of the page; this is the affordance at the point where a traveler has
+                actually decided they like the listing. Renders nothing without a claimed
+                handle. Deliberately NOT role-labelled "provider": provider_services is
+                role-agnostic, so this owner may well be an expert. */}
+            <StorefrontLink
+              handle={providerVerification?.handle}
+              sellerNoun="seller"
+              data-testid="link-service-storefront"
+            />
 
             <Card>
               <CardHeader>
