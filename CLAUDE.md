@@ -606,6 +606,10 @@ world-writable fee-config, then the four below); the rule closes the class so th
   rows (`expert_review_flat`/`expert_review_book_flat`+`_percent`/`full_concierge_flat`+`_percent`); the code constants
   survive only as the documented safe-failure fallback (§8 coordination-floor posture). Same change ledgered the fee:
   `expert_review_fee` platform_revenue recorded idempotently at both completion paths (was collected, never recorded).
+  **Split now actually credited (ratified Jul 30, 2026):** the R6 split logic existed but had zero real trigger
+  (`PATCH /api/expert-requests/:id/complete` had no callers); the expert's share of a PAID request is now credited as
+  a **held** escrow earning (7-day clearance window, `expert_review_fee` surface key) at the `trip_expert_advisors`
+  `workspaceStatus → 'delivered'` transition, reusing `completeExpertRequest`/`creditExpertReviewSplit` verbatim.
 - **A2 🔴 `POST /api/bookings/refund`** — was auth-only (any user could refund any booking for any amount). Now:
   **owner-or-admin gate**; amount **server-derived** from the booking's `total_amount` (client `amount` ignored).
   **Earnings-reversal fast-follow — CLOSED by escrow Phase 4 (PR #170):** the refund now also calls
@@ -874,6 +878,39 @@ Governing spec: `docs/backoffice/mockups/mockup-unified-workspace.html` (v9). Lo
     (PATCH /api/trips/:tripId/expert-notes). ④ the Platform-services pill's Google-Maps block is
     error-bounded (a Maps billing/key failure collapses to list-only results instead of blanking
     the whole workspace — the audit's only P1).
+
+### §18 — Trip Card command center + TripPlan circulation object (ratified Jul 30, 2026)
+
+**The Trip Card is the FINAL PRODUCT** (decision-maker directive): every platform flow converges on one
+circulating plan object. Two ratifications:
+- **Mobile command-center structure (mockup-ratified):** ① sticky day switcher (today highlighted); ② "Up Next"
+  hero at top of screen (countdown, meeting point, expert note, primary action); ③ sticky bottom action bar
+  (Map · Message expert · Share; "Message" → "Get help" when no accepted advisor); ④ Map/Transport/Budget/
+  Change-history demoted to collapsed peers below the day list, plus a trip-level "Note from your expert"
+  section; ⑤ **mode-aware primary action** — the next activity's inbound `transport_legs` mode decides the CTA:
+  self-directed (walk/transit/bicycle/rental) → Navigate deep-linked with that mode; **booked** chauffeured
+  (taxi/rideshare/private driver) → pickup card (point, time, ride details, call driver) from REAL booking data
+  only; recommended-but-unbooked chauffeured → destination address + Book-via-agent CTA (**§16: never a raw
+  Uber/affiliate link**); no leg → destination-only Navigate (honest fallback, §13 — never fabricate a mode or
+  a booking). Expert notes (per-item `expert_note` migration 152 + trip-level) are REAL data restyled, not new.
+- **TripPlan circulation object v1 (contract in `docs/EXECUTION_MAP.md` §3 — the governing doc):** ONE
+  versioned interchange DTO (`shared/trip-plan.ts`) assembled server-side by ONE assembler (formalizing the
+  `/api/trips/:tripId/plancard` assembly); every renderer/channel consumes TripPlan. **Circulate by REFERENCE**
+  (tripId / share token), never by JSON copy; **snapshot only at money events** (ready-made purchase, bundle
+  booking — the ratified snapshot posture). **Channel = redaction level applied by the assembler**: `full`
+  (owner / delivered traveler / assigned expert / admin) · `teaser` (store; day+title, the §10
+  `redactTemplateContent` posture) · `preview` (Direct/OG link cards; no itinerary body) · `social` (§17 story
+  pack; real content only). Amendments to this contract are decision-maker calls. Model-tiered execution
+  protocol + lane queue also live in `docs/EXECUTION_MAP.md` (Fable plans/reviews; Opus/Sonnet/Haiku execute).
+- **Transport legs for expert-built trips — RATIFIED "BOTH" (Jul 30, 2026, decision-maker option 3):** the
+  engine PROPOSES legs (reusing the existing variant leg-computation over the trip's itinerary coordinates,
+  expert-triggered — never auto-published), the expert CONFIRMS/EDITS (mode, pickup point/time for chauffeured)
+  in the Workstation, and **only confirmed legs reach traveler surfaces** (the D1a born-approved lesson applied
+  to machine transport: a machine-guessed mode never renders on an expert-branded plan unconfirmed, §13).
+  Mechanism: `transport_legs` gains trip scope — additive nullable `trip_id` FK (+ `variant_id` drops NOT NULL;
+  app-level exactly-one-of, NO cross-column CHECK), additive nullable `pickup_point`/`pickup_time`, and
+  `proposal_status` (`proposed|confirmed`, NULL = legacy variant legs grandfathered; if a CHECK is added it must
+  allow NULL and be registered in the preflight `CONSTRAINT_MANIFEST`). Full spec: `docs/briefs/L4-transport-legs.md`.
 
 The earning ledger is an escrow state machine: **`held → releasable → paid_out`**, plus **`reversed`**, with a
 `dispute_state`. All phases are **landed on `main`** (Jul 14, 2026):

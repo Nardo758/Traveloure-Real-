@@ -11,21 +11,22 @@ import { useDeleteTrip } from "@/hooks/use-trips";
 import { openInMaps } from "@/lib/navigate";
 import { openMapsDeepLink } from "@/lib/maps";
 import {
-  getTemplateConfig, computeDayCount, type PlanCardProps, type PlanCardData, type PlanCardDay, type PlanCardChange, type PlanCardRole,
+  getTemplateConfig, computeDayCount, type PlanCardProps, type PlanCardData, type PlanCardDay, type PlanCardChange, type PlanCardRole, type PlanCardLegData,
 } from "./plancard-types";
 import { HeroSection } from "./HeroSection";
 import { OptimizerMetrics } from "./StatsRow";
 import { DaySelector } from "./DaySelector";
 import { SectionTabs } from "./SectionTabs";
-import { ChangeLogPanel } from "./ChangeLogPanel";
 import { ActivitiesSection } from "./ActivitiesSection";
-import type { InlineTransportLegData } from "@/components/itinerary/InlineTransportSelector";
 import { TransportSection } from "./TransportSection";
 import { EscalationCTA } from "./EscalationCTA";
 import { PlanCardUpsellSlot } from "./PlanCardUpsellSlot";
 import { PlanCardHeader } from "./PlanCardHeader";
 import { ConciergeModule } from "./ConciergeModule";
 import { MapControlCenter } from "./MapControlCenter";
+import { UpNextHero } from "./UpNextHero";
+import { CollapsedSections } from "./CollapsedSections";
+import { BottomActionBar } from "./BottomActionBar";
 import {
   Dialog,
   DialogContent,
@@ -701,10 +702,14 @@ function PlanCardSummary({
 
 // ── Main PlanCard component ────────────────────────────────────────────────
 
-export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full", days: daysProp, embedded = false }: PlanCardProps) {
-  const [selectedDay, setSelectedDay] = useState(0);
+export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full", days: daysProp, embedded = false, initialSelectedDay }: PlanCardProps) {
+  // Mobile-lens audit #1: seed from the page's already-computed "today" index (when given)
+  // so a mid-flight trip opens on today's day, not always Day 1 — the temporal engine
+  // (Up Next / now-line / Live today) is already correct once the right day is showing.
+  const [selectedDay, setSelectedDay] = useState(
+    initialSelectedDay != null && initialSelectedDay >= 0 ? initialSelectedDay : 0
+  );
   const [section, setSection] = useState<"activities" | "transport">("activities");
-  const [showChanges, setShowChanges] = useState(true);
   const [viewMode, setViewMode] = useState<"card" | "map">("card");
   const [confirming, setConfirming] = useState(false);
   const { toast } = useToast();
@@ -733,6 +738,16 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
     enabled: !daysProp,
   });
 
+  // CLAUDE.md §18, item 3: the bottom action bar's "Message [expert]" slot needs to know
+  // whether an ACCEPTED advisor exists (most trips today don't — audit §3). Same query key
+  // trip-details.tsx already fetches, so React Query dedups this into one network call.
+  const { data: advisorData } = useQuery<{ advisor: { status: "pending" | "accepted" | "rejected"; first_name?: string | null } | null }>({
+    queryKey: [`/api/trips/${trip.id}/expert-advisor`],
+    enabled: stage === "full" && !embedded,
+    staleTime: 60000,
+  });
+  const advisor = advisorData?.advisor ?? null;
+
   // Render summary stage (compact dashboard card)
   if (stage === "summary") {
     return (
@@ -756,7 +771,11 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
 
   // Map the day's transports into the leg shape the activities-view picker reads.
   // Ordered by legOrder so legs[i] is the connector after activity i.
-  const dayLegs: InlineTransportLegData[] = (day?.transports ?? [])
+  // Typed as PlanCardLegData (superset of InlineTransportLegData) so the mode-aware
+  // primary action's forward-compat booking fields (§18 item 5) survive this mapping
+  // instead of being silently dropped — presence-guarded, currently always undefined
+  // (known gap, see plancard-mobile-lens-jul30.md §2 / primary-action.ts).
+  const dayLegs: PlanCardLegData[] = (day?.transports ?? [])
     .map((tr, i) => ({
       id: tr.id,
       legOrder: tr.legOrder ?? i,
@@ -767,12 +786,28 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
       distanceDisplay: tr.distanceDisplay ?? "",
       estimatedDurationMinutes: tr.estimatedDurationMinutes ?? tr.duration ?? 0,
       estimatedCostUsd: tr.estimatedCostUsd ?? tr.cost ?? null,
-      alternativeModes: tr.alternativeModes,
+      // Pre-existing type gap (present before this change too, not introduced here):
+      // PlanCardTransport.alternativeModes' energyCost/reason are optional, but
+      // TransportAlternative declares them required — default them so the object
+      // literal actually satisfies the target type instead of merely widening past it.
+      alternativeModes: tr.alternativeModes?.map((m) => ({
+        mode: m.mode,
+        durationMinutes: m.durationMinutes,
+        costUsd: m.costUsd,
+        energyCost: m.energyCost ?? 0,
+        reason: m.reason ?? "",
+      })),
       fromLat: tr.fromLat ?? null,
       fromLng: tr.fromLng ?? null,
       toLat: tr.toLat ?? null,
       toLng: tr.toLng ?? null,
       mapsUrl: tr.mapsUrl ?? null,
+      mode: tr.mode,
+      pickupPoint: tr.pickupPoint ?? null,
+      pickupTime: tr.pickupTime ?? null,
+      driverPhone: tr.driverPhone ?? null,
+      rideDetails: tr.rideDetails ?? null,
+      bookingAffiliateUrl: tr.bookingAffiliateUrl ?? null,
     }))
     .sort((a, b) => a.legOrder - b.legOrder);
 
@@ -843,7 +878,11 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
         </button>
       )}
 
-      <Card className="overflow-hidden border border-border hover:shadow-xl transition-all duration-300 group bg-card">
+      {/* CLAUDE.md §18 item 1: overflow-clip (not overflow-hidden) — clips rounded corners
+          identically but does NOT establish a scroll container for sticky-positioning
+          purposes, so the sticky day switcher below sticks relative to the page's real
+          scrolling ancestor (DashboardLayout's <main>) instead of silently no-opping. */}
+      <Card className="overflow-clip border border-border hover:shadow-xl transition-all duration-300 group bg-card">
         <HeroSection
           trip={trip}
           traveloureScore={traveloureScore}
@@ -908,7 +947,7 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
             onClick={() => setViewMode("card")}
             variant={viewMode === "card" ? "default" : "secondary"}
             size="sm"
-            className="flex-1 text-xs"
+            className="flex-1 text-xs min-h-11"
             data-testid={`btn-card-view-${trip.id}`}
           >
             <LayoutList className="w-3.5 h-3.5 sm:mr-1.5" />
@@ -918,7 +957,7 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
             onClick={() => setViewMode("map")}
             variant={viewMode === "map" ? "default" : "secondary"}
             size="sm"
-            className="flex-1 text-xs"
+            className="flex-1 text-xs min-h-11"
             data-testid={`btn-map-view-${trip.id}`}
           >
             <MapIcon className="w-3.5 h-3.5 sm:mr-1.5" />
@@ -945,56 +984,89 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
               />
             )}
 
-            <DaySelector
-              tripId={trip.id}
-              days={days}
-              selectedDay={selectedDay}
-              onSelectDay={setSelectedDay}
-            />
+            {/* CLAUDE.md §18 item 1 — sticky day switcher: "day chips pinned while the
+                day's list scrolls." The page's real scrolling ancestor at mobile widths
+                turns out to be the DashboardLayout <main> (outside this component's
+                scope) — but per the CSS spec ANY ancestor whose `overflow` isn't
+                `visible` becomes the sticky reference frame, and `main` never actually
+                develops internal scrollable overflow (its flex parent uses
+                `min-h-screen`, not `h-screen`, so `main` just grows with content instead
+                of clipping it) — so a plain `position: sticky` there silently never
+                "sticks" against real window scroll. Fix, entirely within this component:
+                give the day list ITS OWN bounded, genuinely-scrolling box at mobile
+                (`overflow-y-auto` + `max-h`) so the sticky header has a real local
+                scroll container to pin against, sidestepping the ancestor issue without
+                touching dashboard-layout.tsx (out of scope). At sm+ this wrapper is
+                `display: contents` — it disappears from the box model entirely, so
+                desktop's existing DOM/layout (non-sticky DaySelector + the separate
+                360px activities box below) is pixel-identical to before. */}
+            <div
+              className="flex flex-col overflow-y-auto max-h-[64vh] sm:contents"
+              data-testid={`mobile-day-scroll-${trip.id}`}
+            >
+              <div className="sticky top-0 z-20 bg-card sm:static sm:z-auto sm:bg-transparent">
+                <DaySelector
+                  tripId={trip.id}
+                  days={days}
+                  selectedDay={selectedDay}
+                  onSelectDay={setSelectedDay}
+                />
+              </div>
 
-            <SectionTabs
-              tripId={trip.id}
-              section={section}
-              onSetSection={setSection}
-              showChanges={showChanges}
-              onToggleChanges={() => setShowChanges(!showChanges)}
-              templateConfig={templateConfig}
-              dayActivityCount={day?.activities?.length || 0}
-              dayTransportCount={day?.transports?.length || 0}
-              confirmedActivities={confirmedActivities}
-              totalActivities={totalActivities}
-              transportLocked={transportLocked}
-              changeLogCount={isViewer ? 0 : changeLog.length}
-              expertChanges={expertChanges}
-            />
+              {/* CLAUDE.md §18 item 2 — "Up Next" hero, mobile-only (component self-hides
+                  at sm+ and also renders nothing when the selected day isn't
+                  live/upcoming — §13). */}
+              {!embedded && <UpNextHero tripId={trip.id} day={day} legs={dayLegs} />}
 
-            {!isViewer && (
-              <ChangeLogPanel
+              <SectionTabs
                 tripId={trip.id}
-                showChanges={showChanges}
-                changeLog={changeLog}
+                section={section}
+                onSetSection={setSection}
+                templateConfig={templateConfig}
+                dayActivityCount={day?.activities?.length || 0}
+                dayTransportCount={day?.transports?.length || 0}
+                confirmedActivities={confirmedActivities}
+                totalActivities={totalActivities}
+                transportLocked={transportLocked}
               />
-            )}
 
-            <div className="max-h-[360px] overflow-y-auto scrollbar-hide">
-              {section === "activities" && (
-                <ActivitiesSection
-                  tripId={trip.id}
-                  day={day}
-                  templateConfig={templateConfig}
-                  legs={dayLegs}
-                />
-              )}
+              {/* CLAUDE.md §18 item 1 (cont.): capped/scrollable box only at sm+ (desktop's
+                  existing compact card view, unchanged); at mobile this div is plain flow
+                  — the OUTER wrapper above is what scrolls now. */}
+              <div className="overflow-visible sm:max-h-[360px] sm:overflow-y-auto scrollbar-hide">
+                {section === "activities" && (
+                  <ActivitiesSection
+                    tripId={trip.id}
+                    day={day}
+                    templateConfig={templateConfig}
+                    legs={dayLegs}
+                  />
+                )}
 
-              {section === "transport" && !transportLocked && (
-                <TransportSection
-                  tripId={trip.id}
-                  tripDestination={trip.destination}
-                  day={day}
-                  allowActions={!isViewer}
-                />
-              )}
+                {section === "transport" && !transportLocked && (
+                  <TransportSection
+                    tripId={trip.id}
+                    tripDestination={trip.destination}
+                    day={day}
+                    allowActions={!isViewer}
+                  />
+                )}
+              </div>
             </div>
+
+            {/* CLAUDE.md §18 item 4 — Map preview / Transport / Budget / Change history /
+                trip-level expert note, collapsed-by-default, below the day list. */}
+            <CollapsedSections
+              tripId={trip.id}
+              tripDestination={trip.destination}
+              day={day}
+              changeLog={changeLog}
+              isViewer={isViewer}
+              allowTransportActions={!isViewer}
+              totalCostNum={metrics.totalCost}
+              budgetNum={trip.budget != null ? Number(trip.budget) : null}
+              perPersonDisplay={perPersonDisplay}
+            />
 
             {/* Upsell ontrip slot — live "near you" nudge, after content per mockup v3. Self-guards to in-trip window.
                 Suppressed in the Workstation embed — traveler upsells don't belong in the builder. */}
@@ -1052,11 +1124,17 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
         )}
 
         {!isViewer && (
-          <div className="px-3 sm:px-5 pb-4 pt-2 flex gap-2">
+          // Desktop-only now — CLAUDE.md §18 item 3's BottomActionBar below covers the
+          // same Maps action (plus Message/Get-help + Share) at mobile widths.
+          <div className="hidden sm:flex px-3 sm:px-5 pb-4 pt-2 gap-2">
+            {/* Mobile-lens audit #9: the "View Itinerary" button that used to sit here linked to
+                /itinerary/:id, which redirects straight back to this same /trip/:id?tab=itinerary
+                page — a no-op button. Removed rather than repointed: this full-stage card IS the
+                itinerary view, so there's nothing additive to send the traveler to from here. */}
             <Button
               variant="outline"
               size="sm"
-              className="flex-shrink-0"
+              className="flex-shrink-0 min-h-11"
               onClick={handleOpenInMaps}
               data-testid={`button-open-maps-${trip.id}`}
             >
@@ -1064,18 +1142,22 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
               Maps
             </Button>
             {/* Concierge promoted to the front-and-center ConciergeModule above (redesign Phase 2) */}
-            <Link href={`/itinerary/${trip.id}`} className="flex-1">
-              <Button
-                size="sm"
-                className="w-full text-xs font-semibold text-white"
-                data-testid={`button-view-itinerary-${trip.id}`}
-              >
-                <Calendar className="w-3.5 h-3.5 mr-1" />
-                View Itinerary
-                <ChevronRight className="w-3.5 h-3.5 ml-0.5" />
-              </Button>
-            </Link>
           </div>
+        )}
+
+        {/* Fixed-position spacer: BottomActionBar below is `position: fixed`, so it
+            overlays whatever's at the bottom of the viewport — this keeps the card's own
+            last section (upsells/escalation CTA) from being hidden under it. */}
+        {!embedded && <div className="sm:hidden h-16" aria-hidden="true" />}
+
+        {/* CLAUDE.md §18 item 3 — sticky bottom action bar, mobile viewports only. */}
+        {!embedded && (
+          <BottomActionBar
+            tripId={trip.id}
+            destination={trip.destination}
+            shareToken={shareToken}
+            advisor={advisor}
+          />
         )}
       </Card>
     </motion.div>

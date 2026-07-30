@@ -37,6 +37,28 @@ function getBookingType(actType: string): BookingType {
   return 'inApp';
 }
 
+/**
+ * Mobile-lens audit #1 fix (found in behavioral verification): the pre-existing
+ * `selectedDay` state below is set via a `useEffect` that fires AFTER first render —
+ * so when it fed `initialSelectedDay` directly, PlanCard (whose `useState` initializer
+ * only reads its prop once, on mount) could mount before the effect ran and get stuck
+ * on the stale value. This is a pure, synchronous version of that exact same "day N of
+ * the trip is today" math (not new date logic — mirrors the effect below verbatim) that
+ * the itinerary render computes directly at render time from `trip`, which is already
+ * guaranteed loaded by the point PlanCard mounts (the page bails out above if !trip) —
+ * so there is no effect/state round-trip to race against.
+ */
+function computeLiveDayNumber(startDate: string | undefined, endDate: string | undefined): number | null {
+  if (!startDate || !endDate) return null;
+  const now = new Date();
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  if (now < start || now > end) return null;
+  const daysInto = Math.floor((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+  const totalDays = Math.floor((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+  return Math.min(Math.max(daysInto, 1), totalDays);
+}
+
 function getActivityIcon(type: string) {
   switch (type?.toLowerCase()) {
     case "food": return Utensils;
@@ -108,18 +130,17 @@ export default function TripDetails() {
   const initialTab = searchParams.get("tab") || "itinerary";
   const deepSection = searchParams.get("section");
   const justOptimized = searchParams.get("optimized") === "1";
-  const { data: trip, isLoading, isError: tripError } = useTrip(id || "");
+  const { data: trip, isLoading, isError: tripError, refetch: refetchTrip } = useTrip(id || "");
   // The Generate/Regenerate buttons previously called useOptimizeTrip → the
   // nonexistent POST /api/trips/:id/optimize (Vite catch-all → error). Repointed at
   // the live generate-itinerary endpoint so a trip with no plan can actually self-generate.
   const generatePlan = useGenerateItinerary();
-  const { data: generatedItinerary, isLoading: itineraryLoading } = useGeneratedItinerary(id || "");
+  const { data: generatedItinerary, isLoading: itineraryLoading, isError: itineraryError, refetch: refetchItinerary } = useGeneratedItinerary(id || "");
   const { toast } = useToast();
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState(initialTab);
   const initialSection = deepSection === 'transport' ? 'transport' : 'activities';
   const [section, setSection] = useState<Section>(initialSection);
-  const [selectedDay, setSelectedDay] = useState(1);
   const [showFullItinerary, setShowFullItinerary] = useState(false);
   const [showAnchorCapture, setShowAnchorCapture] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
@@ -147,17 +168,13 @@ export default function TripDetails() {
     }
   }, [initialTab, deepSection]);
 
-  // Auto‑select today's day when trip is live (same logic as itinerary.tsx)
-  useEffect(() => {
-    if (!trip) return;
-    const now = new Date();
-    const start = new Date(trip.startDate);
-    const end = new Date(trip.endDate);
-    if (now >= start && now <= end) {
-      const daysInto = Math.floor((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
-      setSelectedDay(Math.min(Math.max(daysInto, 1), Math.floor((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1));
-    }
-  }, [trip]);
+  // Mobile-lens audit #1: this effect used to compute "today's day" into a page-level
+  // `selectedDay` state that nothing read (the original audit finding) — then, once wired
+  // to PlanCard, turned out to race PlanCard's mount (effects run after first paint, but
+  // PlanCard's day-index `useState` initializer only reads its prop once, on mount).
+  // Replaced by the synchronous `computeLiveDayNumber` helper above, called directly where
+  // `initialSelectedDay` is computed for `<PlanCard>` below — same math, no effect/state
+  // round-trip to race.
 
   const shareMutation = useMutation({
     mutationFn: async (tripId: string) => {
@@ -360,7 +377,26 @@ export default function TripDetails() {
     );
   }
 
-  if (tripError || !trip) {
+  // Mobile-lens audit #6: useTrip resolves a real 404 as `data: null` (no error) — only a
+  // genuine fetch/network/server failure sets isError. So this branch is reached ONLY on a
+  // failed request, and stays inside this page (never the app's auth-gate fall-through to
+  // the marketing homepage + "Sign in to continue" modal the audit reproduced). "Trip not
+  // found" below is unchanged for the real 404 case.
+  if (tripError) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center gap-4 px-6 text-center" data-testid="trip-network-error">
+        <h2 className="text-2xl font-bold">Can't reach Traveloure</h2>
+        <p className="text-muted-foreground max-w-sm">
+          We couldn't load this trip. Check your connection and try again.
+        </p>
+        <Button onClick={() => refetchTrip()} data-testid="button-retry-trip-fetch">
+          Retry
+        </Button>
+      </div>
+    );
+  }
+
+  if (!trip) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center">
         <h2 className="text-2xl font-bold mb-4">Trip not found</h2>
@@ -420,6 +456,28 @@ export default function TripDetails() {
               <Badge className="bg-accent/80 backdrop-blur-md text-white border-0">
                 {trip.status}
               </Badge>
+              {/* Mobile-lens audit #9: read-only badge for the additive `expertWorkspaceStatus`
+                  field a sibling change adds to GET /api/trips/:id (nullable — coded
+                  defensively in case this lands before that field does). Honest: renders
+                  nothing when there's no assigned expert / no workspace activity yet. */}
+              {(() => {
+                const status = (trip as any).expertWorkspaceStatus as string | null | undefined;
+                if (status === "draft" || status === "in_review") {
+                  return (
+                    <Badge className="bg-amber-500/80 backdrop-blur-md text-white border-0" data-testid="badge-expert-workspace-status">
+                      Expert draft in progress
+                    </Badge>
+                  );
+                }
+                if (status === "delivered") {
+                  return (
+                    <Badge className="bg-emerald-600/80 backdrop-blur-md text-white border-0" data-testid="badge-expert-workspace-status">
+                      Delivered by your expert
+                    </Badge>
+                  );
+                }
+                return null;
+              })()}
             </div>
             <h1 className="text-4xl md:text-5xl font-display font-bold text-white mb-4">{trip.title}</h1>
             <div className="flex flex-wrap gap-6 text-white/90">
@@ -494,16 +552,18 @@ export default function TripDetails() {
             <Tabs value={activeTab} onValueChange={setActiveTab}>
               <div className="border-b border-border px-6 pt-4">
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-4">
+                  {/* Mobile-lens audit #7: min-h-11 keeps each trigger's touch target at the
+                      ~44px guideline via padding growth only — labels/icons unchanged. */}
                   <TabsList className="bg-muted/50">
-                    <TabsTrigger value="itinerary" data-testid="tab-itinerary">Itinerary</TabsTrigger>
-                    <TabsTrigger value="bookings" data-testid="tab-bookings">Bookings</TabsTrigger>
-                    <TabsTrigger value="expert" data-testid="tab-expert">Ask an Expert</TabsTrigger>
-                    <TabsTrigger value="logistics" data-testid="tab-logistics" className="gap-1">
+                    <TabsTrigger value="itinerary" data-testid="tab-itinerary" className="min-h-11">Itinerary</TabsTrigger>
+                    <TabsTrigger value="bookings" data-testid="tab-bookings" className="min-h-11">Bookings</TabsTrigger>
+                    <TabsTrigger value="expert" data-testid="tab-expert" className="min-h-11">Ask an Expert</TabsTrigger>
+                    <TabsTrigger value="logistics" data-testid="tab-logistics" className="gap-1 min-h-11">
                       <Package className="w-3.5 h-3.5" />
                       Logistics
                     </TabsTrigger>
                     {isEventTrip && (
-                      <TabsTrigger value="guests" data-testid="tab-guests" className="gap-1">
+                      <TabsTrigger value="guests" data-testid="tab-guests" className="gap-1 min-h-11">
                         <UserPlus className="w-3.5 h-3.5" />
                         Guests
                       </TabsTrigger>
@@ -600,6 +660,20 @@ export default function TripDetails() {
                         </div>
                       ))}
                     </div>
+                  ) : itineraryError ? (
+                    /* Mobile-lens audit #6: a failed itinerary fetch previously fell into the
+                       "No Itinerary Yet" branch below, wrongly inviting the traveler to
+                       generate a fresh (destructive) plan during a network blip. Distinct
+                       honest error + retry instead. */
+                    <div className="text-center py-16" data-testid="itinerary-network-error">
+                      <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-2">Can't reach Traveloure</h3>
+                      <p className="text-muted-foreground max-w-md mx-auto mb-6">
+                        We couldn't load your itinerary. Check your connection and try again.
+                      </p>
+                      <Button onClick={() => refetchItinerary()} data-testid="button-retry-itinerary-fetch">
+                        Retry
+                      </Button>
+                    </div>
                   ) : !generatedItinerary ? (
                     <div className="text-center py-16">
                       <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-primary/10 flex items-center justify-center">
@@ -689,6 +763,15 @@ export default function TripDetails() {
                               status: "active",
                               bookingSource: undefined,
                               partnerName: undefined,
+                              // Mode-aware primary action (CLAUDE.md §18 item 5): forward these
+                              // IF the stored itineraryData already carries them — never invented
+                              // here. No server change; itineraryData is a free-shape jsonb blob,
+                              // this just stops silently dropping fields that may already be on it.
+                              pickupPoint: l.pickupPoint ?? null,
+                              pickupTime: l.pickupTime ?? null,
+                              driverPhone: l.driverPhone ?? null,
+                              rideDetails: l.rideDetails ?? null,
+                              bookingAffiliateUrl: l.bookingAffiliateUrl ?? null,
                             }));
                           })(),
                         }));
@@ -702,12 +785,24 @@ export default function TripDetails() {
                         const totalCost = planCardDays.reduce((sum, d) => sum + (d.activities?.reduce((c: number, a: any) => c + (a.cost || 0), 0) || 0), 0);
                         const efficiencyScore = totalBooked > 0 ? Math.round((totalBooked / totalActivities) * 100) : 0;
 
+                        // Mobile-lens audit #1: thread "today's" day-of-trip number into the
+                        // card's initial day index. Computed synchronously (see
+                        // computeLiveDayNumber above) rather than read from the page's
+                        // effect-driven `selectedDay` state, which races PlanCard's mount.
+                        // findIndex on the real dayNum rather than assuming a gap-free 1-based
+                        // array, falling back to Day 1 (index 0) pre/post-trip.
+                        const liveDayNumber = computeLiveDayNumber(trip.startDate, trip.endDate);
+                        const initialDayIndex = liveDayNumber != null
+                          ? planCardDays.findIndex(d => d.dayNum === liveDayNumber)
+                          : -1;
+
                         return (
                           <PlanCard
                             role="owner"
                             stage="full"
                             trip={planCardTrip}
                             days={planCardDays}
+                            initialSelectedDay={initialDayIndex >= 0 ? initialDayIndex : 0}
                           />
                         );
                       })()}
