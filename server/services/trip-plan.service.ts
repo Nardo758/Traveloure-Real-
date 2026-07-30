@@ -300,6 +300,15 @@ async function resolveMissingItemCoordinates(
   for (const item of items) {
     if (resolved >= MAX_PER_REQUEST) break;
     if (item.latitude != null && item.longitude != null) continue;
+    // §13: an item with NO location of its own must never geocode to the bare city centre and
+    // persist that as if it were the item's location. Require at least one item-level component
+    // (locationName OR locationAddress) before geocoding at all; `destination` is only a
+    // disambiguation SUFFIX on top of a real item-level address, never the sole address. An item
+    // with no location stays un-pinned — the honest state.
+    const hasItemLocation =
+      (item.locationName && String(item.locationName).trim().length > 0) ||
+      (item.locationAddress && String(item.locationAddress).trim().length > 0);
+    if (!hasItemLocation) continue;
     const address = [item.locationName, item.locationAddress, destination]
       .filter((p) => p && String(p).trim().length > 0)
       .join(", ");
@@ -638,11 +647,10 @@ export async function assembleTripPlan(
 
   const rawMetrics: Record<string, string> = {};
   for (const m of variantMetrics) {
-    // PRESERVED VERBATIM from the pre-refactor route, including the key name. NOTE (reported, not
-    // changed by this lane): `itinerary_variant_metrics` has no `metricValue` column — the value
-    // column is `value` — so every entry is `undefined` today and `metrics` serializes as `{}`.
-    // Correcting it would change the live response outside this refactor's scope.
-    rawMetrics[m.metricKey] = m.metricValue;
+    // L6 fix: `itinerary_variant_metrics`'s value column is `value` (shared/schema.ts:1136), not
+    // `metricValue` — that field doesn't exist on the row, so every entry was `undefined` and
+    // `metrics` silently serialized as `{}` on the live endpoint. Read the real column.
+    rawMetrics[m.metricKey] = m.value;
   }
 
   const metricsMap: TripPlanMetrics = {

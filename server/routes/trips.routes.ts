@@ -1,5 +1,6 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
-import { authorizeTripLogistics } from '../utils/trip-logistics-auth';
+import { authorizeTripLogistics, authorizeTripOwnerTier } from '../utils/trip-logistics-auth';
+import { createRateLimiter } from "../infrastructure/rate-limiter";
 import { withQueryTimer } from '../utils/queryTimer';
 import path from "path";
 import fs from "fs";
@@ -129,6 +130,20 @@ const anthropic = new Anthropic({
 function getReqUserId(req: any): string | undefined {
   return req.user?.claims?.sub ?? req.user?.id;
 }
+
+// SECURITY (§13 trip-data IDOR class): POST /api/trips/:tripId/vendors/bulk-email is an
+// OUTBOUND-MAIL primitive — it fans caller-authored subject/body out to real vendor
+// addresses under the platform's sending identity. Authorization alone does not bound
+// abuse (a legitimate owner can still be used to blast their own vendor list), so the
+// endpoint is throttled per acting user, mirroring the service-requests limiter pattern
+// (server/routes/service-requests.routes.ts) rather than inventing a new mechanism.
+// Keyed by the session user (isAuthenticated runs first), IP as fallback. Deliberately NO
+// loopback skip: the throttle is part of the endpoint's contract and must be provable.
+const vendorBulkEmailLimiter = createRateLimiter({
+  windowMs: 10 * 60 * 1000, // 10 minutes
+  maxRequests: 5,
+  keyGenerator: (req: any) => `vendor-bulk-email:${getReqUserId(req) ?? req.ip ?? "unknown"}`,
+});
 
 function sanitizeInput(input: string): string {
   if (typeof input !== 'string') return input;
@@ -337,6 +352,22 @@ router.delete(api.trips.delete.path, isAuthenticated, async (req, res) => {
 // producers; real generation is the Claude/Grok AI paths. Deleted with its inline twin.
 
 
+// §9 mount-order-dead twin (this handler always loses to the identically-routed
+// POST /api/trips/:id/generate-itinerary in routes.ts — see registerRoutes' tripsRoutes
+// mount comment). Kept in sync for safety only.
+//
+// NOT widened to match the live copy's gate (deliberate, per this lane's brief). The live
+// copy now authorizes via a composite predicate — `authorizeTripLogistics` (owner ‖
+// trip_expert_advisors-assigned expert ‖ trip author ‖ audit-logged admin) OR the two trip
+// columns `trip.expertId`/`trip.managedByEaId` — while THIS handler still only checks
+// `trip.userId === callerUserId || admin`. That is an UNDER-grant relative to the live
+// copy (it would 403 an assigned advisor, a `trips.expertId`-linked expert, or a managing
+// EA), not a hole — the narrower check never admits anyone the live copy would deny. Do
+// NOT copy the live composite predicate over here mechanically: which principals
+// `authorizeTripLogistics` itself should admit is the trip-role lane's call (see CLAUDE.md
+// §13 "Trip-access model divergence + owner under-grant (L10)"), and the reconciliation
+// sweep (§9) must resolve this pair's auth model deliberately, not have it inherited
+// silently from a dead-twin sync pass.
 router.post(api.trips.generateItinerary.path, isAuthenticated, async (req, res) => {
     try {
       const trip = await storage.getTrip(req.params.id);
@@ -541,10 +572,27 @@ router.get(api.helpGuideTrips.get.path, async (req, res) => {
 
   // AI Blueprint Generation API
 
+// §9 mount-order-dead twin (this handler always loses to the identically-routed
+// POST /api/itinerary-comparisons in routes.ts — see registerRoutes' tripsRoutes mount
+// comment). Kept in sync for safety only: the reconciliation sweep filed in CLAUDE.md §9
+// still needs to resolve the two copies' broader divergence (this one additionally
+// supports the paid-optimization-run gate the live copy does not).
 router.post("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const { userExperienceId, tripId, title, destination, startDate, endDate, budget, travelers, baselineItems: inlineBaselineItems, experienceTypeSlug, optimizationPaymentId } = req.body;
+
+      // SECURITY (P0-a IDOR twin, kept in sync with the live fix in routes.ts): `tripId` is
+      // caller-supplied and is persisted onto the comparison row, which downstream handlers
+      // (notably apply-to-trip, which DELETES the trip's itinerary items) treat as the trip to
+      // mutate. Without a check here an attacker could point their own comparison at someone
+      // else's trip and then apply it. A comparison with NO trip is legitimate (cart /
+      // experience-template flows create one before any trip exists), so only authorize when a
+      // tripId is actually supplied.
+      if (tripId) {
+        const denied = await authorizeTripLogistics(tripId, userId, "POST /api/itinerary-comparisons");
+        if (denied) return res.status(denied.status).json({ message: denied.message });
+      }
 
       // ── Optimization authorization gate ──────────────────────────────────────
       // Comparison records are ALWAYS created (never blocked).
@@ -1130,6 +1178,18 @@ router.post("/api/trips/:tripId/participants", isAuthenticated, async (req, res)
   });
 
 
+// §9 mount-order-dead twin (this handler always loses to the identically-routed
+// POST /api/trips/:tripId/participants/bulk-invite in routes.ts). ESCALATED, not fixed:
+// the live copy gates on `authorizeTripOwnerTier` (owner ‖ trip author ‖ audit-logged
+// admin — deliberately WITHOUT the assigned-expert branch, "L20 tier 4 — participant PII
+// is OWNER-only, never an assigned expert" per the live copy's comment). That helper is a
+// private, unexported function local to routes.ts (a hard-excluded file for this lane) —
+// it is not reachable from here, and `authorizeTripLogistics` is NOT an equivalent
+// substitute (it WOULD admit the assigned expert, reopening exactly the disclosure the
+// live gate exists to prevent). Left unauthorized rather than mis-gated; the fix belongs
+// to whoever owns routes.ts / the reconciliation sweep — either export/hoist
+// `authorizeTripOwnerTier` into the shared trip-logistics-auth module, or apply it here
+// once it is reachable.
 router.post("/api/trips/:tripId/participants/bulk-invite", isAuthenticated, async (req, res) => {
     try {
       const { emails } = req.body;
@@ -1183,6 +1243,17 @@ router.get("/api/trips/:tripId/contracts/overdue", isAuthenticated, async (req, 
   });
 
 
+// §9 mount-order-dead twin (this handler always loses to the identically-routed
+// POST /api/trips/:tripId/contracts in routes.ts). ESCALATED, not fixed: the live copy
+// gates vendor-CONTRACT CREATION on `authorizeTripOwnerTier` (owner ‖ author ‖
+// audit-logged admin, no assigned-expert branch — "creating a financial/legal artifact on
+// the traveler's trip is owner-only", per the live copy's block comment), while contract
+// READS there use the broader `authorizeTripLogistics`. That owner-tier helper is a
+// private, unexported function local to routes.ts (hard-excluded for this lane) and is not
+// reachable here; substituting `authorizeTripLogistics` would wrongly admit the assigned
+// expert into creating financial/legal artifacts, which the live gate exists to prevent.
+// Left unauthorized rather than mis-gated — see the participants/bulk-invite twin above
+// for the same reasoning; fix belongs to routes.ts's owner / the reconciliation sweep.
 router.post("/api/trips/:tripId/contracts", isAuthenticated, async (req, res) => {
     try {
       const contract = await vendorManagementService.createContract({
@@ -1195,18 +1266,52 @@ router.post("/api/trips/:tripId/contracts", isAuthenticated, async (req, res) =>
     }
   });
 
-// Document upload for vendor contracts
+// Document upload for vendor contracts.
+//
+// SECURITY (§13 P0 trip-data IDOR cluster, "class E" — the path only LOOKED trip-scoped):
+// this handler previously ran on `isAuthenticated` alone and used ONLY
+// `req.params.contractId`; `:tripId` was never validated and never even read, so any
+// authenticated user could attach an arbitrary base64 file to ANY vendor contract on ANY
+// trip by naming their own tripId (or a garbage one) in the path. Two independent checks
+// are required and both are applied here, in this order:
+//   1. AUTHORIZE THE TRIP IN THE PATH — L20 tier: vendor-contract WRITES are OWNER-only
+//      (creating/altering a financial/legal artifact on the traveler's trip is not the
+//      assigned expert's job), so this uses `authorizeTripOwnerTier` (owner ‖ trip author ‖
+//      audit-logged admin), NOT the broader `authorizeTripLogistics`. Matches the live
+//      `POST /api/trips/:tripId/contracts` create gate in routes.ts.
+//   2. TIE THE CONTRACT TO THAT TRIP — authorization on `:tripId` is worthless if
+//      `:contractId` may belong to a different trip. The contract is resolved and its
+//      `tripId` compared to the authorized path trip.
+// Order matters: the trip gate runs BEFORE the contract is resolved, so an unauthorized
+// caller learns nothing about which contract ids exist (no existence oracle), and a
+// foreign contract is reported with the same 404 as a non-existent one.
 router.post("/api/trips/:tripId/contracts/:contractId/documents", isAuthenticated, async (req, res) => {
     try {
+      const userId = getReqUserId(req);
+      const { tripId, contractId } = req.params;
+
+      const denied = await authorizeTripOwnerTier(
+        tripId, userId, "POST /api/trips/:tripId/contracts/:contractId/documents",
+      );
+      if (denied) return res.status(denied.status).json({ message: denied.message });
+
+      const contract = await vendorManagementService.getContract(contractId);
+      if (!contract || contract.tripId !== tripId) {
+        return res.status(404).json({ message: "Contract not found on this trip" });
+      }
+
       const { documentType, fileName, fileBase64, mimeType } = req.body;
 
       if (!fileBase64 || !fileName || !documentType) {
         return res.status(400).json({ message: "Missing required fields: fileBase64, fileName, documentType" });
       }
+      if (!["contract", "signed", "attachment"].includes(documentType)) {
+        return res.status(400).json({ message: "documentType must be contract, signed, or attachment" });
+      }
 
       const fileBuffer = Buffer.from(fileBase64, "base64");
       const result = await vendorManagementService.uploadContractDocument(
-        req.params.contractId,
+        contractId,
         documentType,
         fileName,
         fileBuffer,
@@ -1219,17 +1324,63 @@ router.post("/api/trips/:tripId/contracts/:contractId/documents", isAuthenticate
     }
   });
 
-// Bulk email to vendors
-router.post("/api/trips/:tripId/vendors/bulk-email", isAuthenticated, async (req, res) => {
+// Bulk email to vendors.
+//
+// SECURITY (§13 P0 trip-data IDOR cluster, "class E" + outbound mail): this handler
+// previously ran on `isAuthenticated` alone, so any authenticated user could aim
+// attacker-authored `subject`/`body` at another traveler's vendor list, sent under the
+// platform's own sending identity ("Traveloure Coordination"). Three controls:
+//   1. TRIP AUTHORIZATION — L20 tier: vendor COORDINATION is the assigned expert's job, so
+//      the tier is owner ‖ assigned expert (‖ author ‖ audit-logged admin) =
+//      `authorizeTripLogistics`. The canonical advisor predicate landed today, so a
+//      *rejected* advisor is denied here.
+//   2. EVERY `contractId` MUST BELONG TO THIS TRIP — `contractIds` is caller-supplied and
+//      was an independent second IDOR. The service layer already dropped foreign contracts
+//      (`c.tripId === tripId` in sendBulkVendorEmail), but it did so SILENTLY — a caller
+//      could not tell a foreign id from a vendor with no email on file. The route now
+//      resolves the trip's own contract ids and REJECTS the request (400) if any requested
+//      id is not among them, so the trip-scoping is explicit and honest rather than an
+//      accident of a downstream filter.
+//   3. RATE LIMIT — `vendorBulkEmailLimiter` (5 / 10 min per acting user), because
+//      authorization alone does not bound an outbound-mail primitive.
+router.post("/api/trips/:tripId/vendors/bulk-email", isAuthenticated, vendorBulkEmailLimiter, async (req, res) => {
     try {
+      const userId = getReqUserId(req);
+      const denied = await authorizeTripLogistics(
+        req.params.tripId, userId, "POST /api/trips/:tripId/vendors/bulk-email",
+      );
+      if (denied) return res.status(denied.status).json({ message: denied.message });
+
       const { contractIds, subject, body, includeCalendarInvite, eventDate } = req.body;
 
       if (!contractIds || !Array.isArray(contractIds) || contractIds.length === 0) {
         return res.status(400).json({ message: "contractIds must be a non-empty array" });
       }
+      // Bound the fan-out (an unbounded array is a mail-amplification lever even for the owner).
+      if (contractIds.length > 100) {
+        return res.status(400).json({ message: "contractIds may not exceed 100 entries" });
+      }
+      if (!contractIds.every((id: unknown) => typeof id === "string" && id.length > 0)) {
+        return res.status(400).json({ message: "contractIds must be non-empty strings" });
+      }
 
       if (!subject || !body) {
         return res.status(400).json({ message: "subject and body are required" });
+      }
+      if (typeof subject !== "string" || typeof body !== "string") {
+        return res.status(400).json({ message: "subject and body must be strings" });
+      }
+
+      // Second IDOR: tie every requested contract to the authorized trip.
+      const tripContractIds = new Set(
+        (await vendorManagementService.getContracts(req.params.tripId)).map((c) => c.id),
+      );
+      const foreign = (contractIds as string[]).filter((id) => !tripContractIds.has(id));
+      if (foreign.length > 0) {
+        return res.status(400).json({
+          message: "One or more contractIds do not belong to this trip",
+          count: foreign.length,
+        });
       }
 
       const result = await vendorManagementService.sendBulkVendorEmail(
@@ -1249,9 +1400,22 @@ router.post("/api/trips/:tripId/vendors/bulk-email", isAuthenticated, async (req
     }
   });
 
-// Generate vendor contact sheet
+// Generate vendor contact sheet.
+//
+// SECURITY (§13 P0 trip-data IDOR cluster): this handler previously ran on
+// `isAuthenticated` alone and returned every vendor's name, email, phone, postal address,
+// contact person and private notes for ANY trip id — bulk third-party PII egress in JSON,
+// CSV or PDF to any logged-in account. L20 tier: vendor coordination is the assigned
+// expert's job, so reads are owner ‖ assigned expert (‖ author ‖ audit-logged admin) =
+// `authorizeTripLogistics`; a *rejected* advisor is denied by the canonical predicate.
 router.get("/api/trips/:tripId/vendors/contact-sheet", isAuthenticated, async (req, res) => {
     try {
+      const userId = getReqUserId(req);
+      const denied = await authorizeTripLogistics(
+        req.params.tripId, userId, "GET /api/trips/:tripId/vendors/contact-sheet",
+      );
+      if (denied) return res.status(denied.status).json({ message: denied.message });
+
       const format = (req.query.format as string) || "json";
 
       if (!["json", "csv", "pdf"].includes(format)) {
@@ -1317,6 +1481,18 @@ router.get("/api/trips/:tripId/budget/settle-up", isAuthenticated, async (req, r
   });
 
 
+// §9 mount-order-dead twins (this handler and the two below always lose to their
+// identically-routed POST /api/trips/:tripId/transactions[/split] and
+// /budget/calculate-split in routes.ts). ESCALATED, not fixed: the live block ("L20 tier
+// 1 — money-between-people is OWNER-only (+ author/admin)") gates EVERY handler in this
+// budget/transactions block — reads included — on `authorizeTripOwnerTier`, explicitly
+// NOT `authorizeTripLogistics`, because "an assigned expert has their own commission view
+// and never needs it" per the live copy's comment. That owner-tier helper is a private,
+// unexported function local to routes.ts (hard-excluded for this lane); substituting
+// `authorizeTripLogistics` here would wrongly admit the assigned expert into another
+// party's money-between-people ledger. Left unauthorized rather than mis-gated — same
+// reasoning as the participants/bulk-invite and contracts twins above; fix belongs to
+// routes.ts's owner / the reconciliation sweep.
 router.post("/api/trips/:tripId/transactions", isAuthenticated, async (req, res) => {
     try {
       const transaction = await budgetService.createTransaction({
@@ -1497,8 +1673,24 @@ router.post("/api/trips/:tripId/itinerary/reorder", isAuthenticated, async (req,
   });
 
 
+// §9 mount-order-dead twin (this handler always loses to the identically-routed
+// POST /api/trips/:tripId/itinerary/optimize-order in routes.ts — see registerRoutes'
+// tripsRoutes mount comment). Kept in sync for safety only.
+// SECURITY (P0-b IDOR, kept safe for the reconciliation sweep): this endpoint carried
+// `isAuthenticated` ONLY — no trip authorization at all — despite reordering the trip's own
+// itinerary. Its sibling `reorder` handler above uses `getTripRole`/`canMutateTrip`; that
+// model is left untouched here (not this lane's call to unify) and `authorizeTripLogistics`
+// is used instead, matching the fix the live copy already carries.
 router.post("/api/trips/:tripId/itinerary/optimize-order", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const denied = await authorizeTripLogistics(
+        req.params.tripId,
+        userId,
+        "POST /api/trips/:tripId/itinerary/optimize-order",
+      );
+      if (denied) return res.status(denied.status).json({ message: denied.message });
+
       const { dayNumber } = req.body;
       const optimizedOrder = await itineraryIntelligenceService.optimizeOrder(req.params.tripId, dayNumber);
       res.json({ optimizedOrder });
@@ -1655,6 +1847,16 @@ router.get("/api/trips/:tripId/emergency-contacts/by-type", isAuthenticated, asy
   });
 
 
+// §9 mount-order-dead twins (this handler and the one below always lose to their
+// identically-routed POST /api/trips/:tripId/emergency-contacts and /emergency/initialize
+// in routes.ts). ESCALATED, not fixed: the live copies gate on `authorizeTripOwnerTier`
+// (owner-only, no assigned-expert branch — note the GET reads in this same block DO use
+// the broader `authorizeTripLogistics`, so this is a deliberate read/write split, not an
+// oversight). That owner-tier helper is a private, unexported function local to routes.ts
+// (hard-excluded for this lane); substituting `authorizeTripLogistics` would wrongly admit
+// the assigned expert into owner-only writes. Left unauthorized rather than mis-gated —
+// same reasoning as the other owner-tier twins above; fix belongs to routes.ts's owner /
+// the reconciliation sweep.
 router.post("/api/trips/:tripId/emergency-contacts", isAuthenticated, async (req, res) => {
     try {
       const contact = await emergencyService.createContact({
@@ -1699,8 +1901,24 @@ router.get("/api/trips/:tripId/alerts/summary", isAuthenticated, async (req, res
   });
 
 
+// §9 mount-order-dead twin (this handler always loses to the identically-routed
+// POST /api/trips/:tripId/alerts in routes.ts — see registerRoutes' tripsRoutes mount
+// comment). Kept in sync for safety only.
+// SECURITY (found during the L21 sweep, kept safe for the reconciliation sweep): this
+// endpoint carried `isAuthenticated` ONLY — no trip authorization — despite writing a
+// safety alert onto the trip. The live copy gates on `authorizeTripLogistics` (owner ‖
+// assigned expert ‖ author ‖ audit-logged admin — the ONE tier-3 write an assigned expert
+// may perform, per the live copy's comment), so that is mirrored here.
 router.post("/api/trips/:tripId/alerts", isAuthenticated, async (req, res) => {
     try {
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const denied = await authorizeTripLogistics(
+        req.params.tripId,
+        userId,
+        "POST /api/trips/:tripId/alerts",
+      );
+      if (denied) return res.status(denied.status).json({ message: denied.message });
+
       const alert = await emergencyService.createAlert({
         ...req.body,
         tripId: req.params.tripId,
@@ -2132,22 +2350,19 @@ router.get("/api/itinerary-share/:token", async (req, res) => {
         throw e;
       }
 
-      const [exportCache, sharer, rawLegs] = await Promise.all([
+      const [exportCache, sharer] = await Promise.all([
         storage.getMapsExportCacheByVariantId(shared.variantId),
         storage.getUserPublicProfile(shared.sharedByUserId),
-        // PRE-EXISTING §16 stray, preserved verbatim: this response has always carried each leg's
-        // `linked_product_url` (the client renders it as a raw outbound "Book transport" link).
-        // TripPlan deliberately NEVER carries an affiliate/deep-link URL — the URL stays
-        // server-side and unbooked chauffeured legs are marked `bookVia: 'agent-rail'` — so this
-        // ONE field is read outside the envelope rather than smuggled into it. FILED: route the
-        // client's "Book transport" action through the booking-agent rail (§16), then delete this
-        // read and the key with it.
-        storage.getTransportLegsByVariantId(shared.variantId),
       ]);
 
-      const affiliateUrlByLegId: Record<string, string | null> = {};
-      for (const l of rawLegs) affiliateUrlByLegId[l.id] = l.linkedProductUrl ?? null;
-
+      // §16 (L11): the `linkedProductUrl` key + the raw-leg read that fed it are REMOVED —
+      // this was the one deliberate response-key deletion for this lane. TripPlan already never
+      // carries an affiliate/deep-link URL (the URL stays server-side, §16); the client no longer
+      // has any use for it either — the shared-itinerary view now offers its own booking-agent-rail
+      // affordance per leg (LegBookingPanel, itinerary-view.tsx), which fetches booking options
+      // live via the existing authenticated GET /api/transport-legs/:legId/options instead of
+      // reading a raw URL out of this payload. A signed-out token holder gets no booking
+      // affordance at all (the rail requires auth) rather than a broken one (§13).
       const days = plan.days.map(day => ({
         dayNumber: day.dayNumber,
         // `dateIso` is the machine YYYY-MM-DD the envelope carries; "" when the snapshot has no
@@ -2179,7 +2394,6 @@ router.get("/api/itinerary-share/:token", async (req, res) => {
           estimatedCostUsd: leg.estimatedCostUsd,
           energyCost: leg.energyCost ?? null,
           alternativeModes: leg.alternativeModes,
-          linkedProductUrl: affiliateUrlByLegId[leg.id] ?? null,
           fromLat: leg.fromLat,
           fromLng: leg.fromLng,
           toLat: leg.toLat,
@@ -2435,6 +2649,76 @@ router.patch("/api/transport-legs/:legId/mode", async (req, res) => {
     }
   });
 
+  // ── L12: KML/GPX export, built from the ONE variant producer (assembleTripPlanFromVariant),
+  // not bespoke raw-DB reads. Ratified calls implemented below (see the two helpers + the
+  // version marker just above the handlers):
+  //   ① legs ordered deterministically by (dayNumber, legOrder) — the producer's
+  //      `getOrderedTransportLegsByVariantId` already does this at the SQL level, and
+  //      `buildExportDays` re-asserts it locally so the export's own ordering is not merely
+  //      inherited-and-hoped-for.
+  //   ② a placemark/waypoint whose coordinates are not real (null/NaN/out-of-range/(0,0)) is
+  //      skipped entirely — `isRealCoordinate` — never emitted at lat 0 (§13, null island).
+  //   ③ the cache is versioned so a stale pre-migration (old-shape) cached export can never be
+  //      served post-deploy — see EXPORT_FORMAT_MARKER below.
+
+  /** RATIFIED CALL ②: never a fabricated/impossible point. */
+  function isRealCoordinate(lat: number | null | undefined, lng: number | null | undefined): lat is number {
+    if (lat == null || lng == null) return false;
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
+    if (lat === 0 && lng === 0) return false; // null island — never a real trip location
+    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return false;
+    return true;
+  }
+
+  function buildExportDays(plan: VariantFullTripPlan) {
+    return [...plan.days]
+      .sort((a, b) => a.dayNumber - b.dayNumber)
+      .map(day => ({
+        dayNumber: day.dayNumber,
+        date: day.dateIso ?? "",
+        activities: day.activities
+          .filter(a => isRealCoordinate(a.lat, a.lng))
+          .map(a => ({
+            lat: a.lat as number,
+            lng: a.lng as number,
+            name: a.name,
+            scheduledTime: a.startTime || "",
+          })),
+        // RATIFIED CALL ①: re-sorted here (not just inherited from the producer) so the
+        // export's own ordering contract holds independently of upstream assumptions.
+        transportLegs: [...day.transports]
+          .sort((a, b) => a.legOrder - b.legOrder)
+          .map(l => ({
+            legOrder: l.legOrder,
+            fromName: l.fromName,
+            toName: l.toName,
+            recommendedMode: l.recommendedMode,
+            estimatedDurationMinutes: l.estimatedDurationMinutes,
+            estimatedCostUsd: l.estimatedCostUsd,
+            distanceDisplay: l.distanceDisplay,
+          })),
+      }));
+  }
+
+  // RATIFIED CALL ③: `maps_export_cache` is keyed only on `variant_id` (FK'd to
+  // `itineraryVariants`, so a suffixed/fake key would violate the FK — no schema change is in
+  // scope here anyway). Least-invasive fix: version the CONTENT itself with a marker comment.
+  // A cached blob missing or mismatching the marker (i.e. anything written before this change)
+  // is treated as a miss — regenerated and overwritten — so the old raw-DB-order /
+  // null-island-emitting shape can never be served again post-deploy, with no migration.
+  const EXPORT_FORMAT_MARKER = "<!-- traveloure-export-format:v2-variant-producer -->";
+
+  function withExportVersionMarker(xml: string): string {
+    const declEnd = xml.indexOf("?>");
+    if (declEnd === -1) return `${EXPORT_FORMAT_MARKER}\n${xml}`;
+    const insertAt = declEnd + 2;
+    return `${xml.slice(0, insertAt)}\n${EXPORT_FORMAT_MARKER}${xml.slice(insertAt)}`;
+  }
+
+  function isCurrentExport(content: string | null | undefined): content is string {
+    return !!content && content.includes(EXPORT_FORMAT_MARKER);
+  }
+
   // GET /api/itinerary-share/:token/export/kml
 
 router.get("/api/itinerary-share/:token/export/kml", async (req, res) => {
@@ -2444,53 +2728,26 @@ router.get("/api/itinerary-share/:token/export/kml", async (req, res) => {
       const shared = await storage.getSharedItineraryByToken(token);
       if (!shared) return res.status(404).json({ error: "Not found" });
 
-      const variant = await storage.getItineraryVariantById(shared.variantId);
-      const comparison = await storage.getItineraryComparison(variant.comparisonId);
-      const items = await storage.getItineraryVariantItemsByVariantId(shared.variantId);
-      const legs = await storage.getTransportLegsByVariantId(shared.variantId);
-      const cached = await storage.getMapsExportCacheByVariantId(shared.variantId);
+      let plan: VariantFullTripPlan;
+      try {
+        plan = await assembleTripPlanFromVariant(shared.variantId, "full");
+      } catch (e) {
+        if (e instanceof TripPlanVariantNotFoundError) {
+          return res.status(404).json({ error: "Variant not found" });
+        }
+        throw e;
+      }
 
-      let kmlContent = cached?.kmlContent;
+      const cached = await storage.getMapsExportCacheByVariantId(shared.variantId);
+      const cachedKml: string | undefined = cached?.kmlContent;
+      let kmlContent: string | null = isCurrentExport(cachedKml) ? cachedKml : null;
 
       if (!kmlContent) {
-        const dayNumbers = Array.from(new Set(items.map(i => i.dayNumber))).sort((a, b) => a - b);
-        const startDate = comparison?.startDate ? new Date(comparison.startDate) : null;
-
-        const days = dayNumbers.map(dayNum => {
-          const dayItems = items.filter(i => i.dayNumber === dayNum).sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
-          const dayLegs = legs.filter(l => l.dayNumber === dayNum);
-          let dateStr = "";
-          if (startDate) {
-            const d = new Date(startDate);
-            d.setDate(d.getDate() + dayNum - 1);
-            dateStr = d.toISOString().split("T")[0];
-          }
-          return {
-            dayNumber: dayNum,
-            date: dateStr,
-            activities: dayItems.map(item => ({
-              lat: item.latitude ? parseFloat(item.latitude as any) : 0,
-              lng: item.longitude ? parseFloat(item.longitude as any) : 0,
-              name: item.name,
-              scheduledTime: item.startTime || "",
-            })),
-            transportLegs: dayLegs.map(l => ({
-              legOrder: l.legOrder,
-              fromName: l.fromName,
-              toName: l.toName,
-              recommendedMode: l.recommendedMode,
-              estimatedDurationMinutes: l.estimatedDurationMinutes,
-              estimatedCostUsd: l.estimatedCostUsd,
-              distanceDisplay: l.distanceDisplay,
-            })),
-          };
-        });
-
-        kmlContent = generateKml({
-          tripName: variant.name,
-          destination: comparison?.destination || "Trip",
-          days,
-        });
+        kmlContent = withExportVersionMarker(generateKml({
+          tripName: plan.meta.title ?? "Trip",
+          destination: plan.meta.destination ?? "Trip",
+          days: buildExportDays(plan),
+        }));
 
         await storage.updateMapsExportCache(shared.variantId, { kmlContent });
       }
@@ -2513,53 +2770,26 @@ router.get("/api/itinerary-share/:token/export/gpx", async (req, res) => {
       const shared = await storage.getSharedItineraryByToken(token);
       if (!shared) return res.status(404).json({ error: "Not found" });
 
-      const variant = await storage.getItineraryVariantById(shared.variantId);
-      const comparison = await storage.getItineraryComparison(variant.comparisonId);
-      const items = await storage.getItineraryVariantItemsByVariantId(shared.variantId);
-      const legs = await storage.getTransportLegsByVariantId(shared.variantId);
-      const cached = await storage.getMapsExportCacheByVariantId(shared.variantId);
+      let plan: VariantFullTripPlan;
+      try {
+        plan = await assembleTripPlanFromVariant(shared.variantId, "full");
+      } catch (e) {
+        if (e instanceof TripPlanVariantNotFoundError) {
+          return res.status(404).json({ error: "Variant not found" });
+        }
+        throw e;
+      }
 
-      let gpxContent = cached?.gpxContent;
+      const cached = await storage.getMapsExportCacheByVariantId(shared.variantId);
+      const cachedGpx: string | undefined = cached?.gpxContent;
+      let gpxContent: string | null = isCurrentExport(cachedGpx) ? cachedGpx : null;
 
       if (!gpxContent) {
-        const dayNumbers = Array.from(new Set(items.map(i => i.dayNumber))).sort((a, b) => a - b);
-        const startDate = comparison?.startDate ? new Date(comparison.startDate) : null;
-
-        const days = dayNumbers.map(dayNum => {
-          const dayItems = items.filter(i => i.dayNumber === dayNum).sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
-          const dayLegs = legs.filter(l => l.dayNumber === dayNum);
-          let dateStr = "";
-          if (startDate) {
-            const d = new Date(startDate);
-            d.setDate(d.getDate() + dayNum - 1);
-            dateStr = d.toISOString().split("T")[0];
-          }
-          return {
-            dayNumber: dayNum,
-            date: dateStr,
-            activities: dayItems.map(item => ({
-              lat: item.latitude ? parseFloat(item.latitude as any) : 0,
-              lng: item.longitude ? parseFloat(item.longitude as any) : 0,
-              name: item.name,
-              scheduledTime: item.startTime || "",
-            })),
-            transportLegs: dayLegs.map(l => ({
-              legOrder: l.legOrder,
-              fromName: l.fromName,
-              toName: l.toName,
-              recommendedMode: l.recommendedMode,
-              estimatedDurationMinutes: l.estimatedDurationMinutes,
-              estimatedCostUsd: l.estimatedCostUsd,
-              distanceDisplay: l.distanceDisplay,
-            })),
-          };
-        });
-
-        gpxContent = generateGpx({
-          tripName: variant.name,
-          destination: comparison?.destination || "Trip",
-          days,
-        });
+        gpxContent = withExportVersionMarker(generateGpx({
+          tripName: plan.meta.title ?? "Trip",
+          destination: plan.meta.destination ?? "Trip",
+          days: buildExportDays(plan),
+        }));
 
         await storage.updateMapsExportCache(shared.variantId, { gpxContent });
       }

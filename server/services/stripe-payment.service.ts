@@ -32,6 +32,69 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
   apiVersion: '2024-12-18.acacia' as any,
 });
 
+// ── Refund-reason mapping (L14 money-path P0) ──────────────────────────────────────────────
+//
+// THE BUG THIS CLOSES: `refundServiceBooking` used to forward its caller's reason straight to
+// Stripe behind a cast — `reason: (reason as Stripe.RefundCreateParams.Reason)`. The cast
+// silenced TypeScript, but Stripe's API accepts ONLY the three values below; anything else is a
+// 400 (`invalid_request_error`). Both callers pass values outside that set: the admin
+// dispute-uphold terminal passes `reason || "dispute_upheld"` where `reason` originates as the
+// traveler's FREE-TEXT dispute reason, and POST /api/bookings/refund passes a body-supplied
+// reason. Because both flows are deliberately LEDGER-FIRST (§18 Phase 4 — reverse the escrow
+// earnings + write the compensating platform_revenue row, THEN call Stripe, so a Stripe failure
+// leaves a fully-reversed ledger a retry re-confirms), the 400 landed after the ledger was
+// already reversed: the earner was debited, the traveler never refunded, and the caller got a 500.
+//
+// THE FIX: keep the rich internal reason for the audit trail (`refunds.reason`, TEXT — migration
+// 156), send a VALID enum to Stripe. Unknown/free-text MUST fall back to a valid enum and must
+// NEVER be forwarded — fail-safe, because the alternative is money stuck mid-flight.
+//
+// `fraudulent` is deliberately only reachable when a caller passes it VERBATIM. No internal
+// reason maps onto it: labelling a refund fraudulent in Stripe has real consequences for the
+// account's dispute/radar record, so it is never inferred (no invented fraud path).
+type StripeRefundReason = Stripe.RefundCreateParams.Reason;
+
+const STRIPE_REFUND_REASONS: readonly StripeRefundReason[] = [
+  'duplicate',
+  'fraudulent',
+  'requested_by_customer',
+];
+
+/** Internal reason vocabulary → the Stripe enum. Extend HERE, never at a call site. */
+const INTERNAL_REFUND_REASON_MAP: Readonly<Record<string, StripeRefundReason>> = {
+  // Admin upheld a traveler dispute (admin.routes.ts /api/admin/disputes/:bookingId/uphold).
+  // The traveler asked for their money back and an admin agreed — customer-requested.
+  dispute_upheld: 'requested_by_customer',
+  // Traveller/admin-initiated cancellation refunds (POST /api/bookings/refund).
+  cancelled: 'requested_by_customer',
+  canceled: 'requested_by_customer',
+  cancellation: 'requested_by_customer',
+  customer_request: 'requested_by_customer',
+  duplicate_booking: 'duplicate',
+};
+
+/**
+ * Map an internal/free-text refund reason to a reason Stripe will actually accept.
+ *
+ * - the three Stripe enum values pass through unchanged (case/whitespace-normalised);
+ * - a known internal reason maps via INTERNAL_REFUND_REASON_MAP;
+ * - anything else (free text, empty, null) → 'requested_by_customer'.
+ *
+ * The ORIGINAL string is what gets persisted to `refunds.reason` — nothing is lost by this
+ * mapping. Exported for the money-path tests.
+ */
+export function toStripeRefundReason(reason?: string | null): StripeRefundReason {
+  const normalized = (reason ?? '').trim().toLowerCase();
+  if (!normalized) return 'requested_by_customer';
+  if ((STRIPE_REFUND_REASONS as readonly string[]).includes(normalized)) {
+    return normalized as StripeRefundReason;
+  }
+  const mapped = INTERNAL_REFUND_REASON_MAP[normalized];
+  if (mapped) return mapped;
+  // Unrecognised (typically the traveler's free-text dispute reason). Fail SAFE.
+  return 'requested_by_customer';
+}
+
 class StripePaymentService {
   /**
    * Return the list of supported currency codes
@@ -516,70 +579,20 @@ class StripePaymentService {
     // TODO: Return inventory
   }
 
-  /**
-   * Create refund for a booking
-   */
-  async createRefund(bookingId: string, amount?: number, reason?: string) {
-    try {
-      // Get booking and payment intent
-      const booking = await db.execute(sql`
-        SELECT b.*, pi.stripe_payment_intent_id
-        FROM bookings b
-        JOIN payment_intents pi ON pi.user_id = b.user_id
-        WHERE b.id = ${bookingId}
-        LIMIT 1
-      `);
-
-      if (!booking.rows || booking.rows.length === 0) {
-        throw new Error('Booking not found');
-      }
-
-      const bookingRow = booking.rows[0] as any;
-      const paymentIntentId = bookingRow.stripe_payment_intent_id;
-      const refundAmount = amount || bookingRow.total_amount;
-
-      // Create Stripe refund
-      const refund = await stripe.refunds.create({
-        payment_intent: paymentIntentId,
-        amount: Math.round(refundAmount * 100),
-        reason: reason as Stripe.RefundCreateParams.Reason || 'requested_by_customer',
-        metadata: {
-          bookingId,
-        },
-      });
-
-      // Store refund in database
-      const refundReason = reason || 'requested_by_customer';
-      await db.execute(sql`
-        INSERT INTO refunds (
-          booking_id, stripe_refund_id, stripe_payment_intent_id,
-          amount, currency, status, reason, created_at
-        ) VALUES (${bookingId}, ${refund.id}, ${paymentIntentId}, ${refundAmount}, 'usd', ${refund.status}, ${refundReason}, NOW())
-      `);
-
-      // Update booking status
-      await db.execute(sql`
-        UPDATE bookings SET
-          status = 'refunded',
-          refunded_at = NOW()
-        WHERE id = ${bookingId}
-      `);
-
-      return {
-        refundId: refund.id,
-        amount: refundAmount,
-        status: refund.status,
-      };
-    } catch (error: any) {
-      console.error('Refund creation error:', error);
-      throw new Error(`Refund failed: ${error.message}`);
-    }
-  }
+  // NOTE: the legacy `createRefund(bookingId, amount, reason)` was DELETED here (L5 money
+  // hardening). It read the legacy `bookings` table — real bookings live in `service_bookings`
+  // (CLAUDE.md "Service Model") — accepted a CLIENT-SUPPLIED `amount` (§14), and resolved the
+  // payment intent with `JOIN payment_intents pi ON pi.user_id = b.user_id`, which matches ANY
+  // payment intent belonging to that user rather than the booking's own (the "wrong-PI bug"
+  // recorded in docs/audits/booking-custody-map.md). Its only caller,
+  // POST /api/bookings/refund, was re-pointed onto refundServiceBooking below, leaving it dead.
+  // Use refundServiceBooking — it is service-booking-native, server-derives the amount, and is
+  // idempotent on both layers (§15).
 
   /**
    * Refund a SERVICE booking (escrow Phase 4 / docs/design/escrow-spine.md).
    *
-   * Unlike createRefund (which reads the legacy `bookings` table), this refunds against
+   * Unlike the deleted legacy createRefund (which read the legacy `bookings` table), this refunds against
    * service_bookings' OWN stripe_payment_intent_id + total_amount — the real booking rail where
    * disputes live. Amount is server-derived from the row (never client-supplied — §14).
    *
@@ -614,13 +627,21 @@ class StripePaymentService {
     }
 
     const priorStatus = row.status;
+
+    // The internal reason is kept VERBATIM for the audit row below (`refunds.reason`, TEXT);
+    // Stripe gets a value from its 3-value enum. See toStripeRefundReason above for why:
+    // forwarding 'dispute_upheld' or the traveler's free text 400s at Stripe, and because this
+    // flow is ledger-first that 400 left the earner debited and the traveler un-refunded.
+    const internalReason = (reason ?? '').trim() || 'requested_by_customer';
+    const stripeReason = toStripeRefundReason(internalReason);
+
     let refund: Stripe.Refund;
     try {
       refund = await stripe.refunds.create(
         {
           payment_intent: paymentIntentId,
           amount: Math.round(amount * 100),
-          reason: (reason as Stripe.RefundCreateParams.Reason) || 'requested_by_customer',
+          reason: stripeReason,
           metadata: { bookingId, source: 'service_booking' },
         },
         { idempotencyKey: `refund-sb-${bookingId}` },
@@ -636,7 +657,7 @@ class StripePaymentService {
       INSERT INTO refunds (
         booking_id, stripe_refund_id, stripe_payment_intent_id,
         amount, currency, status, reason, created_at
-      ) VALUES (${bookingId}, ${refund.id}, ${paymentIntentId}, ${amount}, 'usd', ${refund.status}, ${reason || 'requested_by_customer'}, NOW())
+      ) VALUES (${bookingId}, ${refund.id}, ${paymentIntentId}, ${amount}, 'usd', ${refund.status}, ${internalReason}, NOW())
     `);
 
     // C3 filed follow-up: a refunded slot-bound booking gives its capacity back so another

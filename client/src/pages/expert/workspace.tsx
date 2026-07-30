@@ -1519,11 +1519,20 @@ export default function ExpertWorkspace() {
   const addFromSearchMutation = useMutation({
     mutationFn: async (result: any) => {
       const catToType: Record<string, string> = { dining: "dining", hotel: "hotel", culture: "culture", activity: "activity" };
+      // L27-P1: carry through the pin's own coordinates — this is the SAME result.location
+      // already used to render the AdvancedMarker above (:~2287), so it is real, not
+      // fabricated. `latitude`/`longitude` are decimal DB columns (drizzle-zod validates
+      // them as strings, not numbers), so they must be sent as strings. Honestly omitted
+      // when absent (today: the /api/search/experiences "platform" arm returns
+      // `location: null` — a server-side gap, out of this lane's scope — so only
+      // `google_places` results currently carry coordinates here).
+      const hasCoords = Number.isFinite(result.location?.lat) && Number.isFinite(result.location?.lng);
       const body = {
         title: result.name,
         itemType: catToType[result.category] || "activity",
         dayNumber: focusDay,
         locationName: result.address || result.name,
+        ...(hasCoords ? { latitude: String(result.location.lat), longitude: String(result.location.lng) } : {}),
         // Audit A-4 (§13): Google's priceLevel is a 0-4 band, not a dollar amount — never
         // convert it into an invented cost figure on the itinerary.
         notes: result.mapsUrl ? `Google Maps: ${result.mapsUrl}` : undefined,

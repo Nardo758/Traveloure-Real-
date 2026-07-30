@@ -1,4 +1,5 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
+import { authorizeTripLogistics } from '../utils/trip-logistics-auth';
 import { checkProviderPublishGate } from '../services/provider-publish.service';
 import { withQueryTimer } from '../utils/queryTimer';
 import { Router } from "express";
@@ -7,6 +8,7 @@ import { db } from "../db";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
+import { createRateLimiter } from "../infrastructure/rate-limiter";
 import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, isNull, asc } from "drizzle-orm";
 import {
   getLocalExpertFormByUserId, getServiceProviderFormByUserId, getProviderVerificationStatus,
@@ -22,7 +24,7 @@ import {
 import Anthropic from "@anthropic-ai/sdk";
 import { 
   users, helpGuideTrips, touristPlaceResults, touristPlacesSearches, 
-  aiBlueprints, vendors, insertVendorSchema,
+  aiBlueprints, vendors, insertVendorSchema, expertVendorCoordination,
   insertLocalExpertFormSchema, insertServiceProviderFormSchema,
   insertProviderServiceSchema, insertServiceCategorySchema,
   insertServiceSubcategorySchema, insertFaqSchema,
@@ -84,6 +86,9 @@ import {
   insertProviderAvailabilityScheduleSchema,
   insertProviderBlackoutDateSchema,
   tripExpertAdvisors,
+  // Read-only, for the audit-logged admin override on the booking-request respond gate
+  // (resolving the row's REAL owner so the storage-layer owner predicate still applies).
+  providerBookingRequests,
 } from "@shared/schema";
 import {
   EXPERT_SHARE_RATE,
@@ -168,6 +173,24 @@ function resolveSlug(slug: string): string {
   return slugAliases[slug] || slug;
 }
 
+/**
+ * Resolves an `expert_vendor_coordination` row to the trip it belongs to, so the
+ * `:vendorId`-scoped handlers (PUT/DELETE) can run the SAME per-trip authorization as their
+ * `:tripId`-scoped siblings. `expert_vendor_coordination.trip_id` is NOT NULL with an
+ * `ON DELETE CASCADE` FK to `trips` (shared/schema.ts), so every vendor row has exactly one
+ * authoritative trip — no linkage had to be invented.
+ *
+ * Returns null when no such vendor row exists; callers must NOT treat that as authorized.
+ */
+async function getVendorCoordinationTripId(vendorId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ tripId: expertVendorCoordination.tripId })
+    .from(expertVendorCoordination)
+    .where(eq(expertVendorCoordination.id, vendorId))
+    .limit(1);
+  return row?.tripId ?? null;
+}
+
 
 
 
@@ -240,6 +263,13 @@ router.get("/api/expert/trips/:tripId/constraints", isAuthenticated, async (req,
       if (!user || (user.role !== "expert" && user.role !== "admin")) {
         return res.status(403).json({ message: "Expert access required" });
       }
+      // SECURITY (§13 trip-data IDOR class): the platform-role check above is NOT authorization —
+      // it only proves the caller is *an* expert, not an expert on THIS trip. Without the canonical
+      // per-trip gate any expert account could read any traveler's anchors/energy/vendor set.
+      const authError = await authorizeTripLogistics(
+        req.params.tripId, userId, "GET /api/expert/trips/:tripId/constraints",
+      );
+      if (authError) return res.status(authError.status).json({ message: authError.message });
       const trip = await storage.getTrip(req.params.tripId);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
 
@@ -289,6 +319,11 @@ router.get("/api/expert/trips/:tripId/vendors", isAuthenticated, async (req, res
       if (!user || (user.role !== "expert" && user.role !== "admin")) {
         return res.status(403).json({ message: "Expert access required" });
       }
+      // SECURITY (§13 trip-data IDOR class): per-trip authorization, not just "is an expert".
+      const authError = await authorizeTripLogistics(
+        req.params.tripId, userId, "GET /api/expert/trips/:tripId/vendors",
+      );
+      if (authError) return res.status(authError.status).json({ message: authError.message });
       const vendors = await storage.getVendorCoordination(req.params.tripId);
       const confirmed = vendors.filter(v => v.status === 'confirmed' || v.status === 'contract_signed');
       const pending = vendors.filter(v => v.status === 'pending' || v.status === 'contacted');
@@ -307,6 +342,12 @@ router.post("/api/expert/trips/:tripId/vendors", isAuthenticated, async (req, re
       if (!user || (user.role !== "expert" && user.role !== "admin")) {
         return res.status(403).json({ message: "Expert access required" });
       }
+      // SECURITY (§13 trip-data IDOR class): per-trip authorization BEFORE the write, so an
+      // unassigned expert cannot plant vendor records on another traveler's trip.
+      const authError = await authorizeTripLogistics(
+        req.params.tripId, userId, "POST /api/expert/trips/:tripId/vendors",
+      );
+      if (authError) return res.status(authError.status).json({ message: authError.message });
       const vendorInput = z.object({
         vendorName: z.string().min(1).max(255),
         serviceType: z.string().min(1).max(100),
@@ -340,6 +381,15 @@ router.put("/api/expert/vendors/:vendorId", isAuthenticated, async (req, res) =>
       if (!user || (user.role !== "expert" && user.role !== "admin")) {
         return res.status(403).json({ message: "Expert access required" });
       }
+      // SECURITY (§13 trip-data IDOR class): there is no :tripId in this path, so resolve the
+      // vendor row to its OWNING trip and authorize THAT trip. A vendor id that does not exist is
+      // never authorized (404 below, matching this handler's existing not-found convention).
+      const vendorTripId = await getVendorCoordinationTripId(req.params.vendorId);
+      if (!vendorTripId) return res.status(404).json({ message: "Vendor not found" });
+      const authError = await authorizeTripLogistics(
+        vendorTripId, userId, "PUT /api/expert/vendors/:vendorId",
+      );
+      if (authError) return res.status(authError.status).json({ message: authError.message });
       const vendorUpdateInput = z.object({
         vendorName: z.string().min(1).max(255).optional(),
         serviceType: z.string().min(1).max(100).optional(),
@@ -369,7 +419,18 @@ router.delete("/api/expert/vendors/:vendorId", isAuthenticated, async (req, res)
       if (!user || (user.role !== "expert" && user.role !== "admin")) {
         return res.status(403).json({ message: "Expert access required" });
       }
-      await storage.deleteVendorCoordination(req.params.vendorId);
+      // SECURITY (§13 trip-data IDOR class): resolve the vendor row to its OWNING trip and
+      // authorize THAT trip before the destructive delete. An unknown vendor id keeps this
+      // handler's existing idempotent-delete response (200 {success:true}) — nothing is deleted
+      // and no existence oracle is introduced — but it is NEVER treated as authorization.
+      const vendorTripId = await getVendorCoordinationTripId(req.params.vendorId);
+      if (vendorTripId) {
+        const authError = await authorizeTripLogistics(
+          vendorTripId, userId, "DELETE /api/expert/vendors/:vendorId",
+        );
+        if (authError) return res.status(authError.status).json({ message: authError.message });
+        await storage.deleteVendorCoordination(req.params.vendorId);
+      }
       res.json({ success: true });
     } catch (error: any) {
       res.status(500).json({ message: "Failed to delete vendor", error: error.message });
@@ -421,7 +482,28 @@ router.delete("/api/provider/blackout-dates/:id", isAuthenticated, async (req, r
       if (!user || (user.role !== "provider" && user.role !== "service_provider" && user.role !== "admin")) {
         return res.status(403).json({ message: "Provider access required" });
       }
-      await storage.deleteProviderBlackoutDate(req.params.id);
+      // SECURITY (§13 cross-provider IDOR, class B): this handler used to gate on the provider
+      // ROLE STRING only and then call `storage.deleteProviderBlackoutDate(id)`, which filtered
+      // on the id alone — so ANY provider could delete ANY other provider's blackout row
+      // (proven: provider-2 deleted provider-1's row). The owner predicate now lives in the
+      // storage WHERE clause; here we only decide WHICH owner scope the caller may act in.
+      //
+      // Non-admin: the scope is the session user, full stop — a provider can only ever delete
+      // their own row. Admin: preserved as an explicit, audit-logged override that resolves the
+      // row's REAL owner and passes it through (so the data-layer predicate still applies rather
+      // than being bypassed). A row that does not exist and a row the caller does not own return
+      // the SAME 404 — no cross-provider existence oracle.
+      let ownerScope = userId as string;
+      if (user.role === "admin") {
+        const row = await storage.getProviderBlackoutDateById(req.params.id);
+        if (!row) return res.status(404).json({ message: "Blackout date not found" });
+        ownerScope = row.providerId;
+        console.log(
+          `[audit] admin cross-provider blackout delete actor=${userId} providerId=${ownerScope} blackoutId=${req.params.id}`,
+        );
+      }
+      const deleted = await storage.deleteProviderBlackoutDate(req.params.id, ownerScope);
+      if (!deleted) return res.status(404).json({ message: "Blackout date not found" });
       res.json({ success: true });
     } catch (error: any) {
       res.status(500).json({ message: "Failed to delete blackout date", error: error.message });
@@ -460,7 +542,32 @@ router.put("/api/provider/booking-requests/:requestId/respond", isAuthenticated,
         counterOffer: z.string().optional().nullable(),
         providerResponse: z.string().max(2000).optional(),
       }).parse(req.body);
-      const updated = await storage.updateBookingRequest(req.params.requestId, {
+      // SECURITY (§13 cross-provider IDOR, class B): this handler used to gate on the provider
+      // ROLE STRING only and then call `storage.updateBookingRequest(id, …)`, which filtered on
+      // the id alone — so provider-2 could ACCEPT provider-1's booking request, taking a real
+      // business decision on another merchant's behalf (proven). The owner predicate now lives
+      // in the storage WHERE clause; here we only decide WHICH owner scope the caller may act in.
+      //
+      // Non-admin: the scope is the session user, full stop — so the live consumer
+      // (client/src/components/logistics/provider-booking-context.tsx on /provider/dashboard)
+      // keeps working unchanged for the row's real owner. Admin: preserved as an explicit,
+      // audit-logged override that resolves the row's REAL owner and passes it through, so the
+      // data-layer predicate still applies rather than being bypassed. A request that does not
+      // exist and one the caller does not own both return the SAME 404 — no existence oracle.
+      let ownerScope = userId as string;
+      if (user.role === "admin") {
+        const [row] = await db
+          .select({ providerId: providerBookingRequests.providerId })
+          .from(providerBookingRequests)
+          .where(eq(providerBookingRequests.id, req.params.requestId))
+          .limit(1);
+        if (!row) return res.status(404).json({ message: "Request not found" });
+        ownerScope = row.providerId;
+        console.log(
+          `[audit] admin cross-provider booking-request respond actor=${userId} providerId=${ownerScope} requestId=${req.params.requestId}`,
+        );
+      }
+      const updated = await storage.updateBookingRequest(req.params.requestId, ownerScope, {
         status: responseInput.status,
         counterOffer: responseInput.counterOffer || null,
         providerResponse: responseInput.providerResponse,
@@ -547,12 +654,26 @@ router.get("/api/expert/assigned-trips", isAuthenticated, async (req, res) => {
 
   // GET /api/admin/local-experts/nugget-counts — nugget count per local expert
 
-router.post("/api/visa/requirements", async (req, res) => {
+// Rate limit for the visa lookup below. This replaces a reference to an undefined
+// `visaRateLimit(ip)` — the name existed nowhere in the codebase, so every call to this
+// PUBLIC, UNAUTHENTICATED endpoint threw a ReferenceError before it did anything (the same
+// shape as the undefined `requireProviderRole` §9 records). The throttle was clearly
+// intended — the handler falls through to a cache-miss AI/external lookup, i.e. real spend
+// on an unauthenticated route — so it is implemented with the real primitive rather than
+// deleted. Middleware, because that is what createRateLimiter returns; the hand-rolled
+// `if (limiter(ip))` shape it was written against does not exist.
+const visaRequirementsLimiter = createRateLimiter({
+  windowMs: 60 * 1000,
+  maxRequests: 10,
+  keyGenerator: (req) =>
+    `visa-requirements:${(req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.socket.remoteAddress || "unknown"}`,
+  handler: (_req, res) => {
+    res.status(429).json({ message: "Too many requests. Please wait a minute before trying again." });
+  },
+});
+
+router.post("/api/visa/requirements", visaRequirementsLimiter, async (req, res) => {
     try {
-      const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.socket.remoteAddress || "unknown";
-      if (visaRateLimit(ip)) {
-        return res.status(429).json({ message: "Too many requests. Please wait a minute before trying again." });
-      }
       const { passportCountry, destinationCountry } = req.body;
       if (!passportCountry || !destinationCountry) {
         return res.status(400).json({ message: "passportCountry and destinationCountry are required" });
@@ -675,9 +796,14 @@ router.get("/api/visa/experts", async (req, res) => {
 
 router.get("/api/expert/contracts/recent", isAuthenticated, async (req, res) => {
     try {
+      // SECURITY (migration 157): `expertId` was computed here and then never passed, so this
+      // returned the 20 most recent contracts PLATFORM-WIDE — other earners' service names,
+      // client destinations and amounts — to any authenticated caller. It is now the required
+      // first argument, so the scope is visible at the call site and the compiler enforces it.
       const expertId = (req.user as any).id || (req.user as any).claims?.sub;
+      if (!expertId) return res.status(401).json({ message: "Not authenticated" });
       const limit = Math.min(parseInt(req.query.limit as string || "20"), 100);
-      res.json(await getRecentExpertContracts(limit));
+      res.json(await getRecentExpertContracts(expertId, limit));
     } catch (err) {
       console.error("[Expert] getContracts error:", err);
       res.status(500).json({ message: "Failed to fetch contracts" });
