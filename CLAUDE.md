@@ -559,9 +559,16 @@ This document captures architectural decisions to maintain consistency across co
   honest null. All live sites now show the **real** rating when `reviewCount > 0`, else an honest **"New"** (never a fake
   number). **Still filed (separate, NOT the same as fabrication):** (a) a real **expert-level rating aggregate** doesn't
   exist yet (experts have no rating source — service reviews are service-scoped), so expert cards honestly show "New";
-  (b) **mock-data demo arrays** (`chat.tsx`, `explore.tsx`, `help-me-decide` sample packages, `provider/profile`) still
-  carry placeholder `rating: 4.x` — those are fake sample *content*, a "wire real data" task, not the display-fabrication
-  bug. **Still open (other cluster arms):** the `90/10` commission **literal**, hardcoded "free cancellation / instant
+  (b) **mock-data demo arrays — REGISTRY CORRECTED (Jul 30, 2026; the old list was STALE).** Ground-truthed: `chat.tsx`
+  and `provider/profile.tsx` are **already honest** (explicit §13 comments; real review-backed rating or `null`, never a
+  fabricated number), and `explore.tsx` / a `help-me-decide` page **no longer exist**. The real remaining offender the old
+  list MISSED is the **public landing page** (`client/src/pages/landing.tsx`): fabricated `testimonials` (invented expert
+  names + "$2,400 saved" / "$65-120/hr" earnings claims, no `service_reviews` aggregate behind them) and invented
+  per-category stats (`trending` / `expertRates` / `hiddenGems` / `activeCount`, while `/api/experience-types` returns
+  metadata only). Its `impactStats` block is **already correctly wired** to the live `/api/platform/stats` — that one is
+  the right pattern, leave it. Fabrication removal is §13-mandated (not a taste call); **building a curated real
+  testimonial feed + per-experience-type stat aggregates is a separate DECISION-MAKER call** (which reviews get featured
+  is editorial), filed — do not invent either source. **Still open (other cluster arms):** the `90/10` commission **literal**, hardcoded "free cancellation / instant
   confirmation / 24-7 support" copy, and a 2-character-neighbourhood empty-result trap. Do not mark §13 resolved — the
   `verified` + live-ratings arms are done. **New arm found by the data-capture audit (Jul 15, 2026), CLOSED same day
   (migration 115 + guard):** the unconfigured Fever integration **fabricated calendar events** — without
