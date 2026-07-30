@@ -1164,6 +1164,15 @@ If you see `categoryId IS NULL` rows on provider_services, it's likely a categor
   created in a migration** — otherwise the deploy push is authoritative and will remove it. Before declaring a
   UNIQUE index, check prod for existing duplicates (`SELECT <col>, count(*) … GROUP BY 1 HAVING count(*) > 1`),
   since a violated UNIQUE fails the publish and offers the destructive "copy dev over production" option.
+  **THE SAME MECHANISM APPLIES TO TABLES, not just indexes (found Jul 30, 2026 by the table-existence sweep).**
+  A table created by a registered migration but **absent from `shared/schema.ts`** is the same shape of object the
+  push targets. Live instance: **`ai_cost_tracking`** (created by `025b_ai_cost_tracking.sql`, missing from
+  `schema.ts`) is written from ~7 call sites (`claude.service.ts`, `itinerary-optimizer.ts`, chat routes,
+  content/experts/trips routers, `routes.ts`) and read by `lead-routing.service.ts` for the admin cost breakdown.
+  If a publish drops it, the migration is already stamped so `runMigrations()` will **never recreate it** — silent,
+  permanent loss of AI-cost observability. Same for `service_demand_requests` (dead, low priority). **Rule
+  generalized: any DB object the code depends on — index OR table — must be declared in `shared/schema.ts`, or the
+  deploy push is authoritative and will remove it.**
 - Guard: **before publishing any migration that adds/changes a CHECK**, run
   `node scripts/preflight-prod-constraints.cjs "<PROD_DATABASE_URL>"` — it reports every row that will violate a
   declared CHECK and prints the remap to apply on prod first (see `docs/RELEASE.md`). When you add a new CHECK
