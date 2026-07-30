@@ -66,6 +66,15 @@ checks incl. all four mode-aware CTA states + desktop regression; sticky-context
 (DashboardLayout overflow frame no-ops position:sticky — day list got its own scroll container, `sm:contents`
 keeps desktop DOM unchanged). L4 (transport legs for expert trips + the leg pickup/booking field mapping) is now
 the unlock for the pickup/book-ride CTA states firing on real trips.*
+*BATCH 2 LANDED (Jul 30): L13 (5b8c7726 — geocode honesty, trip-leg change-log, orphan-leg cascade),
+L5 (c3a0be03 — checkout key required + atomic claim + P0 multi-item fix + migration 155 load-bearing index;
+refund ledger-first; legacy createRefund deleted), L11+L12 (22d3c2cb — last §16 transport strays gone,
+KML/GPX on the variant producer with deterministic order/no-null-island/versioned cache). Queue now:
+**L14 (DECISION-GATED: refunds-table DDL — needs prod existence check)**, L6 (variant-metrics fix, needs
+Fable display call), L7 (owner-access auth brief), L8 (mock-data sweep), L15 (minor residue).
+Ops note: the mid-run `git stash`/`reset` clobber was traced to the L11+L12 agent's baseline-diff attempt —
+both affected lanes recovered surgically and re-verified; standing lane-brief text now forbids git tree
+mutations in the shared sandbox.*
 *L4b LANDED (commit f48c73c1, Jul 30): Workstation TransportLegsPanel — the L4 loop is COMPLETE end-to-end
 (expert builds → generate proposes → expert confirms modes/pickups → traveler Trip Card renders the mode-aware
 command center from real confirmed legs). §18's Trip-Card-as-final-product program: L1+L2, L3a, L3b′, L4a, L4b
