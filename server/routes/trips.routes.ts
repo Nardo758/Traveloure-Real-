@@ -1,5 +1,6 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
-import { authorizeTripLogistics } from '../utils/trip-logistics-auth';
+import { authorizeTripLogistics, authorizeTripOwnerTier } from '../utils/trip-logistics-auth';
+import { createRateLimiter } from "../infrastructure/rate-limiter";
 import { withQueryTimer } from '../utils/queryTimer';
 import path from "path";
 import fs from "fs";
@@ -129,6 +130,20 @@ const anthropic = new Anthropic({
 function getReqUserId(req: any): string | undefined {
   return req.user?.claims?.sub ?? req.user?.id;
 }
+
+// SECURITY (§13 trip-data IDOR class): POST /api/trips/:tripId/vendors/bulk-email is an
+// OUTBOUND-MAIL primitive — it fans caller-authored subject/body out to real vendor
+// addresses under the platform's sending identity. Authorization alone does not bound
+// abuse (a legitimate owner can still be used to blast their own vendor list), so the
+// endpoint is throttled per acting user, mirroring the service-requests limiter pattern
+// (server/routes/service-requests.routes.ts) rather than inventing a new mechanism.
+// Keyed by the session user (isAuthenticated runs first), IP as fallback. Deliberately NO
+// loopback skip: the throttle is part of the endpoint's contract and must be provable.
+const vendorBulkEmailLimiter = createRateLimiter({
+  windowMs: 10 * 60 * 1000, // 10 minutes
+  maxRequests: 5,
+  keyGenerator: (req: any) => `vendor-bulk-email:${getReqUserId(req) ?? req.ip ?? "unknown"}`,
+});
 
 function sanitizeInput(input: string): string {
   if (typeof input !== 'string') return input;
@@ -1251,18 +1266,52 @@ router.post("/api/trips/:tripId/contracts", isAuthenticated, async (req, res) =>
     }
   });
 
-// Document upload for vendor contracts
+// Document upload for vendor contracts.
+//
+// SECURITY (§13 P0 trip-data IDOR cluster, "class E" — the path only LOOKED trip-scoped):
+// this handler previously ran on `isAuthenticated` alone and used ONLY
+// `req.params.contractId`; `:tripId` was never validated and never even read, so any
+// authenticated user could attach an arbitrary base64 file to ANY vendor contract on ANY
+// trip by naming their own tripId (or a garbage one) in the path. Two independent checks
+// are required and both are applied here, in this order:
+//   1. AUTHORIZE THE TRIP IN THE PATH — L20 tier: vendor-contract WRITES are OWNER-only
+//      (creating/altering a financial/legal artifact on the traveler's trip is not the
+//      assigned expert's job), so this uses `authorizeTripOwnerTier` (owner ‖ trip author ‖
+//      audit-logged admin), NOT the broader `authorizeTripLogistics`. Matches the live
+//      `POST /api/trips/:tripId/contracts` create gate in routes.ts.
+//   2. TIE THE CONTRACT TO THAT TRIP — authorization on `:tripId` is worthless if
+//      `:contractId` may belong to a different trip. The contract is resolved and its
+//      `tripId` compared to the authorized path trip.
+// Order matters: the trip gate runs BEFORE the contract is resolved, so an unauthorized
+// caller learns nothing about which contract ids exist (no existence oracle), and a
+// foreign contract is reported with the same 404 as a non-existent one.
 router.post("/api/trips/:tripId/contracts/:contractId/documents", isAuthenticated, async (req, res) => {
     try {
+      const userId = getReqUserId(req);
+      const { tripId, contractId } = req.params;
+
+      const denied = await authorizeTripOwnerTier(
+        tripId, userId, "POST /api/trips/:tripId/contracts/:contractId/documents",
+      );
+      if (denied) return res.status(denied.status).json({ message: denied.message });
+
+      const contract = await vendorManagementService.getContract(contractId);
+      if (!contract || contract.tripId !== tripId) {
+        return res.status(404).json({ message: "Contract not found on this trip" });
+      }
+
       const { documentType, fileName, fileBase64, mimeType } = req.body;
 
       if (!fileBase64 || !fileName || !documentType) {
         return res.status(400).json({ message: "Missing required fields: fileBase64, fileName, documentType" });
       }
+      if (!["contract", "signed", "attachment"].includes(documentType)) {
+        return res.status(400).json({ message: "documentType must be contract, signed, or attachment" });
+      }
 
       const fileBuffer = Buffer.from(fileBase64, "base64");
       const result = await vendorManagementService.uploadContractDocument(
-        req.params.contractId,
+        contractId,
         documentType,
         fileName,
         fileBuffer,
@@ -1275,17 +1324,63 @@ router.post("/api/trips/:tripId/contracts/:contractId/documents", isAuthenticate
     }
   });
 
-// Bulk email to vendors
-router.post("/api/trips/:tripId/vendors/bulk-email", isAuthenticated, async (req, res) => {
+// Bulk email to vendors.
+//
+// SECURITY (§13 P0 trip-data IDOR cluster, "class E" + outbound mail): this handler
+// previously ran on `isAuthenticated` alone, so any authenticated user could aim
+// attacker-authored `subject`/`body` at another traveler's vendor list, sent under the
+// platform's own sending identity ("Traveloure Coordination"). Three controls:
+//   1. TRIP AUTHORIZATION — L20 tier: vendor COORDINATION is the assigned expert's job, so
+//      the tier is owner ‖ assigned expert (‖ author ‖ audit-logged admin) =
+//      `authorizeTripLogistics`. The canonical advisor predicate landed today, so a
+//      *rejected* advisor is denied here.
+//   2. EVERY `contractId` MUST BELONG TO THIS TRIP — `contractIds` is caller-supplied and
+//      was an independent second IDOR. The service layer already dropped foreign contracts
+//      (`c.tripId === tripId` in sendBulkVendorEmail), but it did so SILENTLY — a caller
+//      could not tell a foreign id from a vendor with no email on file. The route now
+//      resolves the trip's own contract ids and REJECTS the request (400) if any requested
+//      id is not among them, so the trip-scoping is explicit and honest rather than an
+//      accident of a downstream filter.
+//   3. RATE LIMIT — `vendorBulkEmailLimiter` (5 / 10 min per acting user), because
+//      authorization alone does not bound an outbound-mail primitive.
+router.post("/api/trips/:tripId/vendors/bulk-email", isAuthenticated, vendorBulkEmailLimiter, async (req, res) => {
     try {
+      const userId = getReqUserId(req);
+      const denied = await authorizeTripLogistics(
+        req.params.tripId, userId, "POST /api/trips/:tripId/vendors/bulk-email",
+      );
+      if (denied) return res.status(denied.status).json({ message: denied.message });
+
       const { contractIds, subject, body, includeCalendarInvite, eventDate } = req.body;
 
       if (!contractIds || !Array.isArray(contractIds) || contractIds.length === 0) {
         return res.status(400).json({ message: "contractIds must be a non-empty array" });
       }
+      // Bound the fan-out (an unbounded array is a mail-amplification lever even for the owner).
+      if (contractIds.length > 100) {
+        return res.status(400).json({ message: "contractIds may not exceed 100 entries" });
+      }
+      if (!contractIds.every((id: unknown) => typeof id === "string" && id.length > 0)) {
+        return res.status(400).json({ message: "contractIds must be non-empty strings" });
+      }
 
       if (!subject || !body) {
         return res.status(400).json({ message: "subject and body are required" });
+      }
+      if (typeof subject !== "string" || typeof body !== "string") {
+        return res.status(400).json({ message: "subject and body must be strings" });
+      }
+
+      // Second IDOR: tie every requested contract to the authorized trip.
+      const tripContractIds = new Set(
+        (await vendorManagementService.getContracts(req.params.tripId)).map((c) => c.id),
+      );
+      const foreign = (contractIds as string[]).filter((id) => !tripContractIds.has(id));
+      if (foreign.length > 0) {
+        return res.status(400).json({
+          message: "One or more contractIds do not belong to this trip",
+          count: foreign.length,
+        });
       }
 
       const result = await vendorManagementService.sendBulkVendorEmail(
@@ -1305,9 +1400,22 @@ router.post("/api/trips/:tripId/vendors/bulk-email", isAuthenticated, async (req
     }
   });
 
-// Generate vendor contact sheet
+// Generate vendor contact sheet.
+//
+// SECURITY (§13 P0 trip-data IDOR cluster): this handler previously ran on
+// `isAuthenticated` alone and returned every vendor's name, email, phone, postal address,
+// contact person and private notes for ANY trip id — bulk third-party PII egress in JSON,
+// CSV or PDF to any logged-in account. L20 tier: vendor coordination is the assigned
+// expert's job, so reads are owner ‖ assigned expert (‖ author ‖ audit-logged admin) =
+// `authorizeTripLogistics`; a *rejected* advisor is denied by the canonical predicate.
 router.get("/api/trips/:tripId/vendors/contact-sheet", isAuthenticated, async (req, res) => {
     try {
+      const userId = getReqUserId(req);
+      const denied = await authorizeTripLogistics(
+        req.params.tripId, userId, "GET /api/trips/:tripId/vendors/contact-sheet",
+      );
+      if (denied) return res.status(denied.status).json({ message: denied.message });
+
       const format = (req.query.format as string) || "json";
 
       if (!["json", "csv", "pdf"].includes(format)) {

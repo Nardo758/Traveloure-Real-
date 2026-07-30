@@ -85,6 +85,9 @@ import {
   insertProviderAvailabilityScheduleSchema,
   insertProviderBlackoutDateSchema,
   tripExpertAdvisors,
+  // Read-only, for the audit-logged admin override on the booking-request respond gate
+  // (resolving the row's REAL owner so the storage-layer owner predicate still applies).
+  providerBookingRequests,
 } from "@shared/schema";
 import {
   EXPERT_SHARE_RATE,
@@ -478,7 +481,28 @@ router.delete("/api/provider/blackout-dates/:id", isAuthenticated, async (req, r
       if (!user || (user.role !== "provider" && user.role !== "service_provider" && user.role !== "admin")) {
         return res.status(403).json({ message: "Provider access required" });
       }
-      await storage.deleteProviderBlackoutDate(req.params.id);
+      // SECURITY (§13 cross-provider IDOR, class B): this handler used to gate on the provider
+      // ROLE STRING only and then call `storage.deleteProviderBlackoutDate(id)`, which filtered
+      // on the id alone — so ANY provider could delete ANY other provider's blackout row
+      // (proven: provider-2 deleted provider-1's row). The owner predicate now lives in the
+      // storage WHERE clause; here we only decide WHICH owner scope the caller may act in.
+      //
+      // Non-admin: the scope is the session user, full stop — a provider can only ever delete
+      // their own row. Admin: preserved as an explicit, audit-logged override that resolves the
+      // row's REAL owner and passes it through (so the data-layer predicate still applies rather
+      // than being bypassed). A row that does not exist and a row the caller does not own return
+      // the SAME 404 — no cross-provider existence oracle.
+      let ownerScope = userId as string;
+      if (user.role === "admin") {
+        const row = await storage.getProviderBlackoutDateById(req.params.id);
+        if (!row) return res.status(404).json({ message: "Blackout date not found" });
+        ownerScope = row.providerId;
+        console.log(
+          `[audit] admin cross-provider blackout delete actor=${userId} providerId=${ownerScope} blackoutId=${req.params.id}`,
+        );
+      }
+      const deleted = await storage.deleteProviderBlackoutDate(req.params.id, ownerScope);
+      if (!deleted) return res.status(404).json({ message: "Blackout date not found" });
       res.json({ success: true });
     } catch (error: any) {
       res.status(500).json({ message: "Failed to delete blackout date", error: error.message });
@@ -517,7 +541,32 @@ router.put("/api/provider/booking-requests/:requestId/respond", isAuthenticated,
         counterOffer: z.string().optional().nullable(),
         providerResponse: z.string().max(2000).optional(),
       }).parse(req.body);
-      const updated = await storage.updateBookingRequest(req.params.requestId, {
+      // SECURITY (§13 cross-provider IDOR, class B): this handler used to gate on the provider
+      // ROLE STRING only and then call `storage.updateBookingRequest(id, …)`, which filtered on
+      // the id alone — so provider-2 could ACCEPT provider-1's booking request, taking a real
+      // business decision on another merchant's behalf (proven). The owner predicate now lives
+      // in the storage WHERE clause; here we only decide WHICH owner scope the caller may act in.
+      //
+      // Non-admin: the scope is the session user, full stop — so the live consumer
+      // (client/src/components/logistics/provider-booking-context.tsx on /provider/dashboard)
+      // keeps working unchanged for the row's real owner. Admin: preserved as an explicit,
+      // audit-logged override that resolves the row's REAL owner and passes it through, so the
+      // data-layer predicate still applies rather than being bypassed. A request that does not
+      // exist and one the caller does not own both return the SAME 404 — no existence oracle.
+      let ownerScope = userId as string;
+      if (user.role === "admin") {
+        const [row] = await db
+          .select({ providerId: providerBookingRequests.providerId })
+          .from(providerBookingRequests)
+          .where(eq(providerBookingRequests.id, req.params.requestId))
+          .limit(1);
+        if (!row) return res.status(404).json({ message: "Request not found" });
+        ownerScope = row.providerId;
+        console.log(
+          `[audit] admin cross-provider booking-request respond actor=${userId} providerId=${ownerScope} requestId=${req.params.requestId}`,
+        );
+      }
+      const updated = await storage.updateBookingRequest(req.params.requestId, ownerScope, {
         status: responseInput.status,
         counterOffer: responseInput.counterOffer || null,
         providerResponse: responseInput.providerResponse,
