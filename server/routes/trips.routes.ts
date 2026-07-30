@@ -56,6 +56,8 @@ import {
   TripPlanVariantNotFoundError,
 } from "../services/trip-plan.service";
 import type { PreviewTripPlan, VariantFullTripPlan } from "@shared/trip-plan";
+// §18 L4 (migration 154): trip-scoped legs live in the same table behind their own service.
+import { getTripTransportLegs, isTripScopedLeg } from "../services/trip-transport-legs.service";
 import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant, type TripPreferences } from "../itinerary-optimizer";
 import { complexityTier } from "../services/smart-sequencing.service";
 import { getFee } from "../services/optimization-fee.service";
@@ -2254,27 +2256,55 @@ router.get("/api/itinerary-share/:token", async (req, res) => {
   });
 
   // GET /api/trips/:tripId/transport-legs
-  // Returns transport legs for the most recent selected variant associated with a trip
+  // Returns the trip's transport legs: the most recent selected VARIANT's legs (the original
+  // behavior, unchanged for its live consumer client/src/pages/itinerary.tsx) PLUS the trip's own
+  // trip-scoped legs (§18 L4 / migration 154).
+  //
+  // §9 NO-SHADOW NOTE: L4a needed exactly this path for its Workstation read
+  // (`?includeProposed=1`). This handler is the LIVE copy of the path, so it was EXTENDED here
+  // rather than re-registered in the new (earlier-mounted) transport-legs.routes.ts — a second
+  // registration would have silently shadowed this one and changed what /itinerary receives.
+  //
+  // Trip-scoped visibility: CONFIRMED only by default (a traveler-safe read — a machine `proposed`
+  // leg is never returned without the explicit editor flag). `?includeProposed=1` adds proposals
+  // for the Workstation editor, whose caller is authorized identically.
 
 router.get("/api/trips/:tripId/transport-legs", isAuthenticated, async (req, res) => {
     try {
       const { tripId } = req.params;
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
 
+      // Owner keeps the original fast path; the assigned expert / author / (audit-logged) admin
+      // branch is ADDITIVE — the canonical trip-logistics model, which the Workstation editor
+      // needs (an assigned expert does not own the trip). Nobody who passed before is refused now.
       const tripOwned = await verifyTripOwnership(tripId, userId);
       if (!tripOwned) {
-        return res.status(404).json({ error: "Trip not found" });
+        const denied = await authorizeTripLogistics(
+          tripId,
+          userId,
+          "GET /api/trips/:tripId/transport-legs",
+        );
+        // 404 preserved (not 403) — the original response for a caller with no access to the trip.
+        if (denied) return res.status(404).json({ error: "Trip not found" });
       }
+
+      const includeProposed = req.query.includeProposed === "1" || req.query.includeProposed === "true";
+      const tripScopedLegs = await getTripTransportLegs(tripId, { includeProposed });
 
       const selectedVariant = await storage.getSelectedVariantByTrip(tripId);
       if (!selectedVariant?.selectedVariantId) {
-        return res.json({ legs: [], variantId: null });
+        // Expert-built trips have no comparison at all — variantId stays null, exactly as before,
+        // and the trip's own legs (if any) are what this trip has.
+        return res.json({ legs: tripScopedLegs, variantId: null });
       }
 
-      const legs = (await storage.getTransportLegsByVariantId(selectedVariant.selectedVariantId))
+      const variantLegs = (await storage.getTransportLegsByVariantId(selectedVariant.selectedVariantId))
         .sort((a: any, b: any) => a.legOrder - b.legOrder);
 
-      res.json({ legs, variantId: selectedVariant.selectedVariantId });
+      res.json({
+        legs: [...variantLegs, ...tripScopedLegs],
+        variantId: selectedVariant.selectedVariantId,
+      });
     } catch (err: any) {
       console.error("Get trip transport legs error:", err);
       res.status(500).json({ error: "Failed to load transport legs" });
@@ -2296,8 +2326,24 @@ router.patch("/api/transport-legs/:legId/mode", async (req, res) => {
       const leg = await storage.getTransportLegById(legId);
       if (!leg) return res.status(404).json({ error: "Transport leg not found" });
 
+      // §18 L4 (migration 154): a TRIP-scoped leg has no variant, so the variant→comparison→owner
+      // lookup below cannot authorize it — and a missing `variantOwner` used to skip the ownership
+      // block entirely. Trip-scoped legs are therefore authorized on the TRIP (owner ‖ assigned
+      // expert ‖ author ‖ audit-logged admin); the share-token branch does not apply (share tokens
+      // are variant-scoped), so a token-only caller is refused.
+      if (isTripScopedLeg(leg)) {
+        const denied = await authorizeTripLogistics(
+          leg.tripId,
+          userId,
+          "PATCH /api/transport-legs/:legId/mode (trip-scoped)",
+        );
+        if (denied) return res.status(denied.status).json({ error: denied.message });
+      }
+
       // Ownership check: verify via the variant's comparison owner OR valid suggest share token
-      const variantOwner = await storage.getVariantWithComparisonOwner(leg.variantId);
+      const variantOwner = leg.variantId
+        ? await storage.getVariantWithComparisonOwner(leg.variantId)
+        : null;
       if (variantOwner) {
         const isOwner = userId && variantOwner.userId === userId;
 
@@ -2340,12 +2386,16 @@ router.patch("/api/transport-legs/:legId/mode", async (req, res) => {
         energyCost: newEnergy ?? 0,
       });
 
-      // Regenerate maps URLs for all days (reflects new mode selection, replaces stale KML/GPX cache)
+      // Regenerate maps URLs for all days (reflects new mode selection, replaces stale KML/GPX cache).
+      // `maps_export_cache` is keyed on variant_id (NOT NULL), so a trip-scoped leg has no cache row
+      // to regenerate — skipped rather than attempted-and-swallowed.
       let updatedMapsUrls: { googleMapsUrls: Record<number, string>; appleMapsUrls: Record<number, string>; appleMapsWebUrls: Record<number, string> } | null = null;
-      try {
-        updatedMapsUrls = await regenerateMapsUrlsFromLegs(leg.variantId, leg.dayNumber);
-      } catch (mapsErr) {
-        console.error("Maps URL regeneration error (non-critical):", mapsErr);
+      if (leg.variantId) {
+        try {
+          updatedMapsUrls = await regenerateMapsUrlsFromLegs(leg.variantId, leg.dayNumber);
+        } catch (mapsErr) {
+          console.error("Maps URL regeneration error (non-critical):", mapsErr);
+        }
       }
 
       let downstreamMessage = "";
