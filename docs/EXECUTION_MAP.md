@@ -313,7 +313,21 @@ whole L20 22-endpoint logistics cluster on the canonical helpers.
 20 `POST /api/recommendations/:id/dismiss` · 21 `GET /api/custom-venues/:id` (class D; PATCH/DELETE are gated) ·
 22 `POST /api/recommendations/refresh/:city` (compute abuse).
 
-### DECISION-MAKER GATED — no ownership column exists
+### ~~DECISION-MAKER GATED — no ownership column exists~~ → CLOSED (migration 157, ebcdb452)
+Decision-maker ratified adding the column. Two corrections to the original filing, both material:
+① this was **not** unowned legacy — `/api/checkout` is a **live writer** creating one contract row per cart
+item, so the exposure grows with volume, and **both** readers are live (`experts.routes.ts` is mounted; §9's
+"imported-but-unmounted" note is stale for that file). Retiring the endpoints was therefore never viable —
+the rows accumulate whether or not anything reads them. ② the backfill is a **deterministic join, not a
+heuristic**: `service_bookings.contract_id` already links each contract to the booking carrying both
+principals, so historical attribution is recovered by foreign key. Rows with no booking stay NULL and both
+gates treat NULL as **admin-only**. `createContract` now takes both principals as required keys (L28) —
+proven by sensitivity (TS2345 when omitted). Full 4-actor × 2-row gate matrix proven on a throwaway DB.
+**Also fixed en route:** `POST /api/visa/requirements` called an undefined `visaRateLimit(ip)`, so every call
+to that public unauthenticated (billable) endpoint threw a ReferenceError — the undefined-`requireProviderRole`
+shape §9 records. Implemented with the real `createRateLimiter`.
+
+### DECISION-MAKER GATED (other) — no ownership column exists
 **`user_and_expert_contracts`** (`shared/schema.ts:1004-1015`) has **no `userId`/`expertId`/`tripId`**. So
 `GET /api/contracts/:id` (`routes.ts:5719`) returns any contract's title, **amount**, `paymentUrl` and
 `attachment`, and **cannot be fixed at the route** (live caller `contract-view.tsx:53`). Same root cause as
