@@ -64,6 +64,11 @@ checks incl. all four mode-aware CTA states + desktop regression; sticky-context
 (DashboardLayout overflow frame no-ops position:sticky — day list got its own scroll container, `sm:contents`
 keeps desktop DOM unchanged). L4 (transport legs for expert trips + the leg pickup/booking field mapping) is now
 the unlock for the pickup/book-ride CTA states firing on real trips.*
+*L4b LANDED (commit f48c73c1, Jul 30): Workstation TransportLegsPanel — the L4 loop is COMPLETE end-to-end
+(expert builds → generate proposes → expert confirms modes/pickups → traveler Trip Card renders the mode-aware
+command center from real confirmed legs). §18's Trip-Card-as-final-product program: L1+L2, L3a, L3b′, L4a, L4b
+all landed. Remaining queue: L4 traveler-side data now real → nothing gated; next unblocked lanes are L5 (money
+follow-ups, Opus + Fable review), L11 (§16 strays), L13 (geocode smell priority), L12 (needs Fable call), L6-L8.*
 *L4a LANDED (commit d0ba3e5b, migration 154, Jul 30): trip-scoped legs live — generate (born-proposed) /
 confirm / edit / delete on `authorizeTripLogistics`; assembler emits confirmed legs only (proposals invisible to
 every traveler surface, proven); §9 collision resolved by extending the live GET in place; SECURITY FIX: the
