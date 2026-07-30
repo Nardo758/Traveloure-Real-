@@ -550,6 +550,39 @@ This document captures architectural decisions to maintain consistency across co
 
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 
+- **🔴 P0 trip-data IDOR cluster — FOUND Jul 30, 2026 (L7 audit), fix in flight.** Three live holes, all
+  orchestrator-verified in code, none previously documented: ① **destructive cross-trip IDOR** —
+  `POST /api/itinerary-comparisons/:id/apply-to-trip` (`plancard.routes.ts:27`) gates ONLY on
+  `comparison.userId`, then `deleteItineraryItemsByTrip(comparison.tripId)` + bulk-inserts; **the trip is never
+  ownership-checked**, and ① b the live inline `POST /api/itinerary-comparisons` (`routes.ts:~5627`) writes a
+  **caller-supplied `tripId`** with no check on that trip — so any authenticated user can point a comparison at
+  someone else's trip and wipe/overwrite its entire itinerary. ② `POST /api/trips/:tripId/itinerary/reorder`
+  (`routes.ts:8164`) and ③ `.../itinerary/optimize-order` (`routes.ts:~8176`) have **`isAuthenticated` only — zero
+  trip authorization**; ② also hardcodes `"owner"` as the change-log role (a lie for a non-owner caller). Fix =
+  the canonical `authorizeTripLogistics` on all four, authorizing BEFORE the destructive delete. **Lesson (the
+  durable point): the risk surface was never `getTripRole` — it is the ~15 "model C" ad-hoc/omitted trip gates.
+  A new trip endpoint MUST use `authorizeTripLogistics` (or the inline owner→assigned→author chain), never a
+  bespoke `trip.userId !== userId` and never nothing.**
+- **Trip-access model divergence + owner under-grant (L10) — ground-truthed Jul 30, 2026.** `getTripRole`
+  (`utils/trip-role.ts`) reads ONLY `trip_collaborators` + `trip_expert_advisors` — it **never reads `trips`**, so a
+  trip's own owner (`trips.userId`) gets **no role** and 403s on the 4 live model-A gates (plancard read, transport-leg
+  `/status`, per-item PATCH/DELETE) while the SAME user succeeds on every `authorizeTripLogistics`/inline-chain
+  endpoint (add items, anchors, legs, budget). The `createTrip` owner-row fix (`storage.ts:747-758`, commit
+  `32787272`) closed the common path, but **three live paths still mint owner-less trips**:
+  `ready-made-purchase.service.ts:69-80` (**a traveler who just BOUGHT a ready-made trip 403s on their own Trip
+  Card** — the highest-probability real victim), `booking.service.ts:93-96` (cart-checkout auto-trip) and
+  `:993-1002` (saved-trip conversion) — all raw-SQL, all bypassing the helper; the `seedTripOwnership` backfill only
+  repairs them at the next boot. Also: **no `expert`/`friend` collaborator row is EVER created by any code path**
+  (the 3-tier model of migration 026 is schema-only; `canMutateTrip`'s `friend` branch is unreachable), and
+  `storage.isExpertAssignedToTrip` (`storage.ts:4610-4615`) is **status-blind** while the other two
+  implementations of the same concept filter `status IN ('pending','accepted')` — so a **rejected advisor still
+  passes model B**. `trips.managedByEaId` grants access in no model. The "known pre-launch bypass" comments
+  (4 sites) denote this **under-grant**, not an over-grant — the historical platform-role over-grant is already
+  fixed (`trip-role.ts:4-7`). Full map: the L7 phase-0 audit; remediation is Fable-designed (owner row-value
+  branch + write-side hardening + unify the advisor lookup), NOT a mechanical convergence — Option 3
+  (converge model A onto `authorizeTripLogistics`) would inherit the status-blind over-grant and must not ship
+  before that is fixed.
+
 - **Trust-claims cluster** (on `/experts`, `/experts/:id`, `/services/:id`), awaiting the dedicated brief. **Two arms
   FIXED:** ① the `verified || true` bug (every expert rendered "Verified") is closed by Replit commit `139d3f71` —
   `expert-detail.tsx` now uses `verified === true`. ② **fabricated `4.9`/`4.5` ratings on LIVE surfaces — closed (PR #177).**
