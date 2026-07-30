@@ -6,7 +6,8 @@
  * implementation in booking-actions.ts (`workspace-constraints`), which this
  * replaces the inline `user.role !== "expert"` bypass with. A platform role
  * string NEVER grants access on its own: an expert reaches a trip's logistics
- * only via a real `trip_expert_advisors` assignment (isExpertAssignedToTrip).
+ * only via a real access-granting `trip_expert_advisors` assignment, resolved by
+ * the canonical `isTripAdvisor` predicate (server/utils/trip-advisor.ts).
  *
  * Admin cross-trip access is allowed but AUDIT-LOGGED (interim: server logger
  * with actor/route/tripId, pending the dedicated audit-log lane).
@@ -17,6 +18,7 @@
 import { storage } from "../storage";
 import { verifyTripOwnership } from "./trip-ownership";
 import { isTripAuthor } from "./trip-authorship";
+import { isTripAdvisor } from "./trip-advisor";
 import { logger } from "../infrastructure/logger";
 
 export async function authorizeTripLogistics(
@@ -29,8 +31,11 @@ export async function authorizeTripLogistics(
   // Owner of the trip.
   if (await verifyTripOwnership(tripId, userId)) return null;
 
-  // Expert assigned to this specific trip (trip_expert_advisors) — role-agnostic.
-  if (await storage.isExpertAssignedToTrip(tripId, userId)) return null;
+  // Expert assigned to this specific trip (trip_expert_advisors) — role-agnostic, resolved by
+  // the CANONICAL predicate (server/utils/trip-advisor.ts). Called directly rather than through
+  // `storage.isExpertAssignedToTrip` so the status allow-list this gate depends on is explicit
+  // at the call site: pending/accepted/assigned PASS, rejected and any unknown status DENY.
+  if (await isTripAdvisor(tripId, userId)) return null;
 
   // Authoring mode (ready-made brief §2): the expert who AUTHORS this trip. Explicit named check —
   // deliberately NOT routed through getTripRole (known pre-launch bypass).
