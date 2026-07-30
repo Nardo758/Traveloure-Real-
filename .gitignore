@@ -16,3 +16,10 @@ test-results/
 e2e/auth/
 # Playwright per-role auth state files (written by globalSetup at runtime)
 playwright/.auth/
+
+# Agent/lane verification scratch (harness scripts written during behavioral proofs).
+# Never commit these — proofs live in commit messages, not in the tree.
+.scratch-lane/
+# Same rule, for the ad-hoc screenshot harnesses lanes drop at the repo root
+# (a running lane may still be using one, so ignore rather than delete).
+.shots-*.mjs

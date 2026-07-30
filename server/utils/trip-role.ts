@@ -8,21 +8,23 @@
  *
  * Assignment lives in exactly two stores, both keyed per-trip:
  *   - trip_collaborators   — explicit owner / expert / friend rows
- *   - trip_expert_advisors — assigned experts (the live assign workflow writes
- *                            this; status pending/accepted). Role-agnostic, so an
- *                            assigned travel_expert/local_expert is now correctly
- *                            granted (previously denied by the role-string mismatch).
+ *   - trip_expert_advisors — assigned experts, resolved by the CANONICAL predicate
+ *                            `isTripAdvisor` (server/utils/trip-advisor.ts): the
+ *                            allow-list is pending/accepted/assigned, rejected and any
+ *                            unknown status DENY. Role-agnostic, so an assigned
+ *                            travel_expert/local_expert is correctly granted.
  */
 import { db } from "../db";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { tripCollaborators } from "@shared/schema";
+import { isTripAdvisor } from "./trip-advisor";
 
 export type TripRole = "owner" | "expert" | "friend" | null;
 
 /**
  * Returns the caller's effective role for a trip, by assignment only:
  *  - "owner" / "expert" / "friend" — explicit trip_collaborators row
- *  - "expert" — an active trip_expert_advisors assignment (pending/accepted)
+ *  - "expert" — an access-granting trip_expert_advisors assignment (pending/accepted/assigned)
  *  - null     — no assignment ⇒ no access (platform role grants nothing)
  */
 export async function getTripRole(tripId: string, userId: string): Promise<TripRole> {
@@ -39,16 +41,13 @@ export async function getTripRole(tripId: string, userId: string): Promise<TripR
     return rows[0].role as TripRole;
   }
 
-  // 2. Assigned expert — a real per-trip assignment in trip_expert_advisors.
-  //    Platform role is NOT consulted; only an actual assignment grants access.
-  const assigned = await db.execute(sql`
-    SELECT 1 FROM trip_expert_advisors
-    WHERE trip_id = ${tripId}
-      AND local_expert_id = ${userId}
-      AND status IN ('pending', 'accepted')
-    LIMIT 1
-  `);
-  if (assigned.rows && assigned.rows.length > 0) {
+  // 2. Assigned expert — a real per-trip assignment in trip_expert_advisors, resolved by the
+  //    CANONICAL predicate (server/utils/trip-advisor.ts). Platform role is NOT consulted; only
+  //    an actual assignment grants access. This branch used to inline
+  //    `status IN ('pending','accepted')`, which wrongly EXCLUDED `'assigned'` (written by an
+  //    admin lead-confirm) — L20 Part A. Only the status predicate changed; the role-string
+  //    return semantics of this function are untouched.
+  if (await isTripAdvisor(tripId, userId)) {
     return "expert";
   }
 

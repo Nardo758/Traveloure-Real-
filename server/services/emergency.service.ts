@@ -180,9 +180,38 @@ export class EmergencyService {
     return EMBASSY_DATA[countryCode.toUpperCase()] || null;
   }
 
+  /**
+   * L20 hardening helper: find an already-seeded system contact for this trip so
+   * `initializeTripEmergencyInfo` is idempotent (it used to append a fresh police / ambulance /
+   * embassy row plus a fresh welcome alert on EVERY call). Matches on the natural key of a
+   * seeded row: (tripId, contactType, phone).
+   */
+  private async findExistingContact(
+    tripId: string,
+    contactType: string,
+    phone: string,
+  ): Promise<TripEmergencyContact | undefined> {
+    const [row] = await db
+      .select()
+      .from(tripEmergencyContacts)
+      .where(
+        and(
+          eq(tripEmergencyContacts.tripId, tripId),
+          eq(tripEmergencyContacts.contactType, contactType),
+          eq(tripEmergencyContacts.phone, phone),
+        ),
+      )
+      .limit(1);
+    return row;
+  }
+
   async addEmbassyContact(tripId: string, countryCode: string): Promise<TripEmergencyContact | null> {
     const embassy = this.getEmbassyInfo(countryCode);
     if (!embassy) return null;
+
+    // Idempotent: reuse the existing embassy row rather than appending a duplicate.
+    const existing = await this.findExistingContact(tripId, "embassy", embassy.phone);
+    if (existing) return existing;
 
     return this.createContact({
       tripId,
@@ -202,28 +231,34 @@ export class EmergencyService {
     const numbers = this.getEmergencyNumbers(countryCode);
     const results: TripEmergencyContact[] = [];
 
-    const policeContact = await this.createContact({
-      tripId,
-      contactType: "police",
-      name: "Local Police Emergency",
-      phone: numbers.police,
-      country: countryCode,
-      available24Hours: true,
-      priority: 100,
-      isVerified: true,
-    });
+    // Idempotent (L20 hardening): reuse an already-seeded row for the same
+    // (trip, contactType, phone) instead of appending a duplicate on every call.
+    const policeContact =
+      (await this.findExistingContact(tripId, "police", numbers.police)) ??
+      (await this.createContact({
+        tripId,
+        contactType: "police",
+        name: "Local Police Emergency",
+        phone: numbers.police,
+        country: countryCode,
+        available24Hours: true,
+        priority: 100,
+        isVerified: true,
+      }));
     results.push(policeContact);
 
-    const ambulanceContact = await this.createContact({
-      tripId,
-      contactType: "hospital",
-      name: "Emergency Medical Services",
-      phone: numbers.ambulance,
-      country: countryCode,
-      available24Hours: true,
-      priority: 100,
-      isVerified: true,
-    });
+    const ambulanceContact =
+      (await this.findExistingContact(tripId, "hospital", numbers.ambulance)) ??
+      (await this.createContact({
+        tripId,
+        contactType: "hospital",
+        name: "Emergency Medical Services",
+        phone: numbers.ambulance,
+        country: countryCode,
+        available24Hours: true,
+        priority: 100,
+        isVerified: true,
+      }));
     results.push(ambulanceContact);
 
     return results;
@@ -340,23 +375,36 @@ export class EmergencyService {
     contacts: TripEmergencyContact[];
     alerts: TripAlert[];
   }> {
+    // IDEMPOTENT (L20 hardening). This endpoint used to append a fresh police row, ambulance
+    // row, embassy row AND welcome alert on every single call, so re-clicking "initialize"
+    // silently multiplied the trip's emergency contacts. Each seeded row is now reused if it
+    // already exists (natural key: trip + contactType + phone / trip + alert title).
     const contacts = await this.addLocalEmergencyNumbers(tripId, destinationCountry);
-    
+
     const embassy = await this.addEmbassyContact(tripId, destinationCountry);
     if (embassy) contacts.push(embassy);
 
-    const welcomeAlert = await this.createAlert({
-      tripId,
-      alertType: "custom",
-      severity: "info",
-      title: "Emergency contacts added",
-      message: `Local emergency numbers and embassy information for ${destinationCountry} have been added to your trip.`,
-      source: "system",
-      suggestedActions: [
-        { action: "Review emergency contacts", priority: "low" },
-        { action: "Add travel insurance info", priority: "medium" },
-      ],
-    });
+    const WELCOME_ALERT_TITLE = "Emergency contacts added";
+    const [existingWelcome] = await db
+      .select()
+      .from(tripAlerts)
+      .where(and(eq(tripAlerts.tripId, tripId), eq(tripAlerts.title, WELCOME_ALERT_TITLE)))
+      .limit(1);
+
+    const welcomeAlert =
+      existingWelcome ??
+      (await this.createAlert({
+        tripId,
+        alertType: "custom",
+        severity: "info",
+        title: WELCOME_ALERT_TITLE,
+        message: `Local emergency numbers and embassy information for ${destinationCountry} have been added to your trip.`,
+        source: "system",
+        suggestedActions: [
+          { action: "Review emergency contacts", priority: "low" },
+          { action: "Add travel insurance info", priority: "medium" },
+        ],
+      }));
 
     return { contacts, alerts: [welcomeAlert] };
   }

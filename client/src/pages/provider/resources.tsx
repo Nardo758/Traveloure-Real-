@@ -1,3 +1,4 @@
+import { Link } from "wouter";
 import { ProviderLayout } from "@/components/provider/provider-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -273,21 +274,24 @@ export default function ProviderResources() {
           </CardContent>
         </Card>
 
-        {/* Need Help */}
+        {/* Need Help — §13: this card previously claimed "support team available 24/7"
+            (no such commitment exists) behind two buttons with no onClick at all, one of
+            them offering to join a community that does not exist. Now: an honest line and
+            one button that actually goes somewhere — /contact posts to the live
+            POST /api/contact, which persists the message and notifies admins. */}
         <Card className="bg-primary/5 border-primary/20">
           <CardContent className="p-6 text-center">
             <MessageSquare className="w-12 h-12 text-primary mx-auto mb-4" />
             <h3 className="text-lg font-semibold text-console-darkest">Need More Help?</h3>
             <p className="text-console-dark mt-1 mb-4">
-              Our support team is available 24/7 to assist you
+              Send us a message and we'll pick it up as soon as we can.
             </p>
-            <div className="flex justify-center gap-3">
-              <Button data-testid="button-contact-support">
-                Contact Support
-              </Button>
-              <Button variant="outline" data-testid="button-community">
-                Join Community
-              </Button>
+            <div className="flex justify-center">
+              <Link href="/contact">
+                <Button data-testid="button-contact-support">
+                  Contact Support
+                </Button>
+              </Link>
             </div>
           </CardContent>
         </Card>

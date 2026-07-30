@@ -550,6 +550,65 @@ This document captures architectural decisions to maintain consistency across co
 
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 
+- **🔴 P0 trip-data IDOR cluster — FOUND Jul 30, 2026 (L7 audit), fix in flight.** Three live holes, all
+  orchestrator-verified in code, none previously documented: ① **destructive cross-trip IDOR** —
+  `POST /api/itinerary-comparisons/:id/apply-to-trip` (`plancard.routes.ts:27`) gates ONLY on
+  `comparison.userId`, then `deleteItineraryItemsByTrip(comparison.tripId)` + bulk-inserts; **the trip is never
+  ownership-checked**, and ① b the live inline `POST /api/itinerary-comparisons` (`routes.ts:~5627`) writes a
+  **caller-supplied `tripId`** with no check on that trip — so any authenticated user can point a comparison at
+  someone else's trip and wipe/overwrite its entire itinerary. ② `POST /api/trips/:tripId/itinerary/reorder`
+  (`routes.ts:8164`) and ③ `.../itinerary/optimize-order` (`routes.ts:~8176`) have **`isAuthenticated` only — zero
+  trip authorization**; ② also hardcodes `"owner"` as the change-log role (a lie for a non-owner caller). Fix =
+  the canonical `authorizeTripLogistics` on all four, authorizing BEFORE the destructive delete. **Lesson (the
+  durable point): the risk surface was never `getTripRole` — it is the ~15 "model C" ad-hoc/omitted trip gates.
+  A new trip endpoint MUST use `authorizeTripLogistics` (or the inline owner→assigned→author chain), never a
+  bespoke `trip.userId !== userId` and never nothing.**
+- **Trip-access model divergence + owner under-grant (L10) — ground-truthed Jul 30, 2026.** `getTripRole`
+  (`utils/trip-role.ts`) reads ONLY `trip_collaborators` + `trip_expert_advisors` — it **never reads `trips`**, so a
+  trip's own owner (`trips.userId`) gets **no role** and 403s on the 4 live model-A gates (plancard read, transport-leg
+  `/status`, per-item PATCH/DELETE) while the SAME user succeeds on every `authorizeTripLogistics`/inline-chain
+  endpoint (add items, anchors, legs, budget). The `createTrip` owner-row fix (`storage.ts:747-758`, commit
+  `32787272`) closed the common path, but **three live paths still mint owner-less trips**:
+  `ready-made-purchase.service.ts:69-80` (**a traveler who just BOUGHT a ready-made trip 403s on their own Trip
+  Card** — the highest-probability real victim), `booking.service.ts:93-96` (cart-checkout auto-trip) and
+  `:993-1002` (saved-trip conversion) — all raw-SQL, all bypassing the helper; the `seedTripOwnership` backfill only
+  repairs them at the next boot. Also: **no `expert`/`friend` collaborator row is EVER created by any code path**
+  (the 3-tier model of migration 026 is schema-only; `canMutateTrip`'s `friend` branch is unreachable), and
+  `storage.isExpertAssignedToTrip` (`storage.ts:4610-4615`) is **status-blind** while the other two
+  implementations of the same concept filter `status IN ('pending','accepted')` — so a **rejected advisor still
+  passes model B**. `trips.managedByEaId` grants access in no model. The "known pre-launch bypass" comments
+  (4 sites) denote this **under-grant**, not an over-grant — the historical platform-role over-grant is already
+  fixed (`trip-role.ts:4-7`). Full map: the L7 phase-0 audit; remediation is Fable-designed (owner row-value
+  branch + write-side hardening + unify the advisor lookup), NOT a mechanical convergence — Option 3
+  (converge model A onto `authorizeTripLogistics`) would inherit the status-blind over-grant and must not ship
+  before that is fixed.
+
+- **Shared-trip access (L20) — APPROVED Jul 30, 2026 by the decision-maker ("Yes, this would be a good feature"), with
+  the ratified tier design below.** Phase-0 ground truth corrected the scope in three important ways: ① the ungated
+  logistics surface is **22 endpoints**, not the 10 first reported (all `isAuthenticated`-only in `routes.ts`: contracts
+  ×5, transactions/budget ×7, emergency/alerts ×7, the 3 AI reads, bulk-invite); ② **a "friend"/"participant" principal
+  is NOT EXPRESSIBLE today** — no code path ever writes a `role='expert'|'friend'` `trip_collaborators` row, and
+  `trip_participants.userId` is left NULL by the only automated writer (`bulkInvite`), with no email→account
+  reconciliation, so participants are email-only RSVP records with no session; real participant access needs a
+  **Phase 2 invite→accept flow that mints collaborator rows** (a genuine feature build, deliberately NOT bundled into
+  the hole-closing); ③ **there is NO correct "is assigned expert?" predicate in the codebase** — `storage.isExpertAssignedToTrip`
+  is status-blind (a **rejected** advisor passes, and `authorizeTripLogistics` uses it), while the two filtered
+  implementations exclude `'assigned'`, which `admin-query.service.ts` writes when an admin confirms a lead. **Ratified
+  canonical predicate: `pending|accepted|assigned` PASS, `rejected` DENIES, unknown status DENIES (fail closed)** — this
+  is a PREREQUISITE, since widening expert reach on a predicate that admits rejected advisors is the biggest hazard here.
+  **Ratified tier table** (only owner / assigned expert / author / admin are expressible): money-between-people
+  (transactions, splits, budget summary/categories/settle-up) = **owner-only** (the settle-up graph decides who owes whom;
+  the expert has their own commission view); vendor contracts = **read owner ‖ expert, write owner-only** (coordination is
+  their job, creating a financial/legal artifact is not); emergency = **read owner ‖ expert, write owner-only EXCEPT
+  `POST alerts` which the expert may raise** (the local fixer must reach your people in a crisis without being able to
+  rewrite who they are); participant PII (dietary/accessibility/phone/amount-owed) = **owner-only, never expert** (a
+  materially larger disclosure than any existing expert surface); the 3 AI reads = owner ‖ expert ‖ author ‖ admin **and
+  rate-limited** (`itinerary/recommendations` makes a real OpenAI call behind no limiter). Also filed-and-fixed in the same
+  lane: `bulk-invite` array/cap validation, `emergency/initialize` idempotency (it appends duplicate embassy rows every
+  call), the caller-supplied `userId` on `POST participants` (a future self-service authorization grant), the zero-participant
+  NaN in `calculate-split`, and cross-trip participant ids in `transactions/split`. **Correction worth recording:**
+  `trips.managedByEaId` has **zero production writers** (only a CI seed), so the read-gates honouring it — including the
+  P0-b stopgap — gate on a column that is always NULL in prod; that branch is inert, not load-bearing.
 - **Trust-claims cluster** (on `/experts`, `/experts/:id`, `/services/:id`), awaiting the dedicated brief. **Two arms
   FIXED:** ① the `verified || true` bug (every expert rendered "Verified") is closed by Replit commit `139d3f71` —
   `expert-detail.tsx` now uses `verified === true`. ② **fabricated `4.9`/`4.5` ratings on LIVE surfaces — closed (PR #177).**
@@ -559,9 +618,16 @@ This document captures architectural decisions to maintain consistency across co
   honest null. All live sites now show the **real** rating when `reviewCount > 0`, else an honest **"New"** (never a fake
   number). **Still filed (separate, NOT the same as fabrication):** (a) a real **expert-level rating aggregate** doesn't
   exist yet (experts have no rating source — service reviews are service-scoped), so expert cards honestly show "New";
-  (b) **mock-data demo arrays** (`chat.tsx`, `explore.tsx`, `help-me-decide` sample packages, `provider/profile`) still
-  carry placeholder `rating: 4.x` — those are fake sample *content*, a "wire real data" task, not the display-fabrication
-  bug. **Still open (other cluster arms):** the `90/10` commission **literal**, hardcoded "free cancellation / instant
+  (b) **mock-data demo arrays — REGISTRY CORRECTED (Jul 30, 2026; the old list was STALE).** Ground-truthed: `chat.tsx`
+  and `provider/profile.tsx` are **already honest** (explicit §13 comments; real review-backed rating or `null`, never a
+  fabricated number), and `explore.tsx` / a `help-me-decide` page **no longer exist**. The real remaining offender the old
+  list MISSED is the **public landing page** (`client/src/pages/landing.tsx`): fabricated `testimonials` (invented expert
+  names + "$2,400 saved" / "$65-120/hr" earnings claims, no `service_reviews` aggregate behind them) and invented
+  per-category stats (`trending` / `expertRates` / `hiddenGems` / `activeCount`, while `/api/experience-types` returns
+  metadata only). Its `impactStats` block is **already correctly wired** to the live `/api/platform/stats` — that one is
+  the right pattern, leave it. Fabrication removal is §13-mandated (not a taste call); **building a curated real
+  testimonial feed + per-experience-type stat aggregates is a separate DECISION-MAKER call** (which reviews get featured
+  is editorial), filed — do not invent either source. **Still open (other cluster arms):** the `90/10` commission **literal**, hardcoded "free cancellation / instant
   confirmation / 24-7 support" copy, and a 2-character-neighbourhood empty-result trap. Do not mark §13 resolved — the
   `verified` + live-ratings arms are done. **New arm found by the data-capture audit (Jul 15, 2026), CLOSED same day
   (migration 115 + guard):** the unconfigured Fever integration **fabricated calendar events** — without
@@ -1087,6 +1153,26 @@ If you see `categoryId IS NULL` rows on provider_services, it's likely a categor
   (`check constraint … violated by some row`) and offers the **DESTRUCTIVE** "copy dev database over production"
   option. **Never accept that option** — it overwrites prod with dev. This bit us twice on the Jul 15 publish
   (`expert_earnings.status='pending'`, `service_templates.delivery_method='document'`).
+- **SECOND VARIANT OF THE SAME TRAP — the deploy push also DROPS INDEXES that `shared/schema.ts` does not
+  declare (found Jul 30, 2026; proven in isolation: a single `DROP INDEX "sb_idempotency_key_idx"` statement).**
+  This makes an index-only migration **non-durable across publishes**: publish 1 → push drops it → the migration
+  runs for the first time → recreated; **publish 2+ → push drops it → the migration is already stamped → it is
+  NEVER recreated → the index is silently gone.** Live instance: migration 155's UNIQUE partial index on
+  `service_bookings.idempotency_key`, deliberately left out of `schema.ts` to avoid a duplicate-key push failure —
+  which is measurably **load-bearing** (without it, 3 concurrent same-key checkouts produced **3 real Stripe
+  charges**; with it, 1). **Rule: an index the code depends on must be DECLARED in `shared/schema.ts`, not only
+  created in a migration** — otherwise the deploy push is authoritative and will remove it. Before declaring a
+  UNIQUE index, check prod for existing duplicates (`SELECT <col>, count(*) … GROUP BY 1 HAVING count(*) > 1`),
+  since a violated UNIQUE fails the publish and offers the destructive "copy dev over production" option.
+  **THE SAME MECHANISM APPLIES TO TABLES, not just indexes (found Jul 30, 2026 by the table-existence sweep).**
+  A table created by a registered migration but **absent from `shared/schema.ts`** is the same shape of object the
+  push targets. Live instance: **`ai_cost_tracking`** (created by `025b_ai_cost_tracking.sql`, missing from
+  `schema.ts`) is written from ~7 call sites (`claude.service.ts`, `itinerary-optimizer.ts`, chat routes,
+  content/experts/trips routers, `routes.ts`) and read by `lead-routing.service.ts` for the admin cost breakdown.
+  If a publish drops it, the migration is already stamped so `runMigrations()` will **never recreate it** — silent,
+  permanent loss of AI-cost observability. Same for `service_demand_requests` (dead, low priority). **Rule
+  generalized: any DB object the code depends on — index OR table — must be declared in `shared/schema.ts`, or the
+  deploy push is authoritative and will remove it.**
 - Guard: **before publishing any migration that adds/changes a CHECK**, run
   `node scripts/preflight-prod-constraints.cjs "<PROD_DATABASE_URL>"` — it reports every row that will violate a
   declared CHECK and prints the remap to apply on prod first (see `docs/RELEASE.md`). When you add a new CHECK

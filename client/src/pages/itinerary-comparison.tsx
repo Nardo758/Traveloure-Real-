@@ -1954,9 +1954,16 @@ export default function ItineraryComparisonPage() {
                   data-testid="input-expert-notes"
                 />
               </div>
+              {/* §13: was "An expert will contact you within 24 hours." No such SLA
+                  exists — POST /api/expert-booking-requests notifies experts covering the
+                  destination (or the specific provider) and creates a `pending` row with no
+                  payment intent. Nobody is on a 24-hour clock, so we describe what the
+                  request actually does and what it does not charge. */}
               <p className="text-xs text-muted-foreground flex items-center gap-1">
                 <Clock className="h-3 w-3" />
-                An expert will contact you within 24 hours to confirm details and payment.
+                Your request goes to experts who cover this destination. You're not charged
+                anything now — payment comes later, once an expert has confirmed the details
+                with you.
               </p>
             </div>
             <DialogFooter>

@@ -6,7 +6,7 @@ import {
   type InsertTripTransaction,
   type TripParticipant 
 } from "@shared/schema";
-import { eq, and, desc, sql } from "drizzle-orm";
+import { eq, and, desc, sql, inArray } from "drizzle-orm";
 import { createChildLogger, databaseQueryDuration } from "../infrastructure";
 
 export interface BudgetSummary {
@@ -30,6 +30,17 @@ export interface SplitCalculation {
   totalOwed: number;
   totalPaid: number;
   balance: number;
+}
+
+/**
+ * Caller-input validation failure (L20 hardening). Distinct from an internal failure so a route
+ * can answer 400 instead of masking a bad request as a 500.
+ */
+export class BudgetValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "BudgetValidationError";
+  }
 }
 
 export interface CurrencyConversion {
@@ -167,12 +178,27 @@ export class BudgetService {
     method: "equal" | "percentage" | "custom" = "equal",
     customSplits?: { participantId: string; amount?: number; percentage?: number }[]
   ): Promise<SplitCalculation[]> {
+    // L20 hardening: a missing / non-numeric `totalAmount` used to propagate NaN through every
+    // computed amount (serialized as `null` money numbers in the response). Reject the input
+    // instead of emitting dishonest figures.
+    if (typeof totalAmount !== "number" || !Number.isFinite(totalAmount)) {
+      throw new BudgetValidationError("`totalAmount` must be a finite number");
+    }
+
     const participants = await db.select().from(tripParticipants)
       .where(eq(tripParticipants.tripId, tripId));
 
     const results: SplitCalculation[] = [];
 
     if (method === "equal") {
+      // L20 hardening: an equal split over ZERO participants used to divide by 0 and emit
+      // NaN/Infinity amounts (the common case — most trips have no participant rows). Fail
+      // honestly instead of returning nonsense money numbers.
+      if (participants.length === 0) {
+        throw new BudgetValidationError(
+          "Cannot calculate an equal split: this trip has no participants",
+        );
+      }
       const perPerson = totalAmount / participants.length;
       for (const p of participants) {
         results.push({
@@ -252,6 +278,38 @@ export class BudgetService {
     };
   }
 
+  /**
+   * L20 hardening: verify every supplied participant id is a real `trip_participants` row on
+   * THIS trip. Throws BudgetValidationError (→ 400) on the first id that isn't.
+   * Blank/undefined ids are ignored (the column is nullable and optional).
+   */
+  private async assertParticipantsBelongToTrip(
+    tripId: string,
+    participantIds: (string | null | undefined)[],
+  ): Promise<void> {
+    const ids = Array.from(
+      new Set(
+        participantIds.filter(
+          (id): id is string => typeof id === "string" && id.trim().length > 0,
+        ),
+      ),
+    );
+    if (ids.length === 0) return;
+
+    const rows = await db
+      .select({ id: tripParticipants.id })
+      .from(tripParticipants)
+      .where(and(eq(tripParticipants.tripId, tripId), inArray(tripParticipants.id, ids)));
+
+    const owned = new Set(rows.map((r) => r.id));
+    const foreign = ids.filter((id) => !owned.has(id));
+    if (foreign.length > 0) {
+      throw new BudgetValidationError(
+        `Participant(s) do not belong to this trip: ${foreign.join(", ")}`,
+      );
+    }
+  }
+
   async createSplitTransaction(
     tripId: string,
     totalAmount: number,
@@ -261,6 +319,19 @@ export class BudgetService {
     splits: { participantId: string; amount: number }[]
   ): Promise<TripTransaction[]> {
     const results: TripTransaction[] = [];
+
+    // L20 hardening (IDOR-shaped): `paidByParticipantId` and every `splits[].participantId`
+    // become `paid_by_participant_id` / `assigned_to_participant_id` on rows scoped to THIS
+    // trip. Unvalidated, a caller could point this trip's ledger at a participant row belonging
+    // to someone else's trip (cross-trip reference, and a participant-id oracle). Owner-gating
+    // the endpoint does not close that — the ids themselves must be verified against the trip.
+    if (!Array.isArray(splits)) {
+      throw new BudgetValidationError("`splits` must be an array");
+    }
+    await this.assertParticipantsBelongToTrip(tripId, [
+      paidByParticipantId,
+      ...splits.map((s) => s?.participantId),
+    ]);
 
     const mainTransaction = await this.createTransaction({
       tripId,
