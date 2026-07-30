@@ -60,7 +60,7 @@ Reuse `ItineraryMapView`, do not write a third renderer. Required corrections wh
 - **Reuse, don't rebuild:** `smart-sequencing.service.ts:870-905` already computes nearest-neighbour spatial
   clustering server-side — the numeric "is this a zigzag?" answer exists and its endpoint has zero callers.
 
-## DECISION-MAKER CALL (in the brief, not assumed): which legs does the BUILD map draw?
+## RATIFIED (decision-maker, Jul 30 2026): the BUILD map draws proposed legs too
 
 Traveler surfaces show **confirmed legs only** (ratified §18 L4). At build time the expert is exactly the
 person who should see and confirm machine proposals. **Fable recommends: draw `proposed` legs too, visually
