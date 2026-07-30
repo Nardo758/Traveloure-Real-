@@ -5684,6 +5684,45 @@ export const refunds = pgTable("refunds", {
   paymentIntentIdx: index("idx_refunds_payment_intent").on(table.stripePaymentIntentId),
 }));
 
+// AI cost tracking (migration 025b). MUST stay byte-for-byte equivalent to
+// server/migrations/025b_ai_cost_tracking.sql — the deploy runs an automatic drizzle-kit push
+// from this file, and the push is authoritative over BOTH tables and indexes it does not find
+// declared here (proven Jul 30, 2026: the push emitted a bare `DROP INDEX` for the undeclared
+// sb_idempotency_key_idx). 025b is already stamped, so a publish that drops this table would
+// mean runMigrations() NEVER recreates it → permanent silent loss of AI-cost observability.
+// Written (raw SQL) by server/services/ai-cost-tracker.ts, called from claude.service.ts,
+// itinerary-optimizer.ts, the chat routes and the content/experts/trips routers; read by
+// lead-routing.service.ts for the admin dead-end-lead cost breakdown.
+// Exact-match notes — these are the DDL, not preferences:
+//   • id: DB-side DEFAULT gen_random_uuid() is REQUIRED (the writer never supplies id), hence
+//     uuid().primaryKey().defaultRandom() — NOT the house varchar().$defaultFn(crypto.randomUUID)
+//     pattern, which is client-side and emits no DB default.
+//   • userId is uuid with NO foreign key, matching the DDL. users.id is varchar in this codebase,
+//     so a .references() here would make the push try to create a constraint that cannot exist.
+//   • cost is NUMERIC(10, 6) — six decimal places (per-request AI cost in USD), not the usual (10, 2).
+//   • both indexes carry their exact existing names and DESC direction on created_at.
+//     `.nullsFirst()` is LOAD-BEARING, do not "simplify" it away: Postgres defaults DESC to
+//     NULLS FIRST, but drizzle's bare `.desc()` emits `DESC NULLS LAST` — proven to make the
+//     push plan `DROP INDEX` + `CREATE INDEX` for BOTH indexes on every single publish.
+//     With `.desc().nullsFirst()` the push plan contains zero ai_cost_tracking statements.
+export const aiCostTracking = pgTable("ai_cost_tracking", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  sourceType: varchar("source_type", { length: 50 }).notNull(),
+  modelUsed: varchar("model_used", { length: 100 }),
+  requestId: varchar("request_id", { length: 255 }),
+  userId: uuid("user_id"),
+  cost: decimal("cost", { precision: 10, scale: 6 }).notNull(),
+  tokensIn: integer("tokens_in"),
+  tokensOut: integer("tokens_out"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  sourceTypeCreatedIdx: index("idx_ai_cost_tracking_source_type_created")
+    .on(table.sourceType, table.createdAt.desc().nullsFirst()),
+  userIdCreatedIdx: index("idx_ai_cost_tracking_user_id_created")
+    .on(table.userId, table.createdAt.desc().nullsFirst()),
+}));
+
 // DEPRECATED: 2026-06-27
 // Renamed to _deprecated_expert_city_queues
 // Scheduled DROP: after 2026-09-01
