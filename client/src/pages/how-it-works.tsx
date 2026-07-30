@@ -216,7 +216,7 @@ export default function HowItWorksPage() {
               Ready to Start Planning?
             </h2>
             <p className="text-lg text-white/80 max-w-2xl mx-auto mb-8">
-              Join thousands of travelers who have discovered the joy of effortless trip planning.
+              Create your first trip and see how much of the planning we can take off your hands.
             </p>
             <div className="flex flex-wrap justify-center gap-4">
               <Button size="lg" variant="secondary" onClick={() => openSignInModal()} data-testid="button-create-trip-cta">

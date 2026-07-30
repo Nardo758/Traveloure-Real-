@@ -2,7 +2,6 @@ import { motion } from "framer-motion";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   Target,
   Heart,
@@ -10,7 +9,6 @@ import {
   Users,
   ArrowRight,
   Sparkles,
-  MapPin,
   Award
 } from "lucide-react";
 import { SEOHead } from "@/components/seo-head";
@@ -32,7 +30,7 @@ const values = [
   {
     icon: Users,
     title: "Community First",
-    description: "Our global network of local experts and travelers creates authentic connections and shared experiences."
+    description: "Our network of local experts and travelers creates authentic connections and shared experiences."
   },
   {
     icon: Sparkles,
@@ -44,40 +42,6 @@ const values = [
     title: "Global Impact",
     description: "We support sustainable tourism and local communities, ensuring travel benefits everyone involved."
   }
-];
-
-const team = [
-  {
-    name: "Amara Patel",
-    role: "Co-Founder & CEO",
-    image: "https://picsum.photos/seed/team-1/200/200",
-    bio: "Former travel industry executive with 15+ years of experience building travel platforms."
-  },
-  {
-    name: "Marcus Chen",
-    role: "Co-Founder & CTO",
-    image: "https://picsum.photos/seed/team-2/200/200",
-    bio: "AI researcher turned entrepreneur, passionate about using technology to solve real problems."
-  },
-  {
-    name: "Sofia Rodriguez",
-    role: "Head of Expert Network",
-    image: "https://picsum.photos/seed/team-3/200/200",
-    bio: "Built our network of 500+ verified local experts across 8 countries."
-  },
-  {
-    name: "James Okonkwo",
-    role: "Head of Product",
-    image: "https://picsum.photos/seed/team-4/200/200",
-    bio: "Product leader focused on creating delightful user experiences for travelers."
-  }
-];
-
-const milestones = [
-  { year: "2022", title: "Founded", description: "Traveloure was born from a simple idea: make travel planning effortless." },
-  { year: "2023", title: "Beta Launch", description: "Launched beta in 8 cities with our first 100 local experts." },
-  { year: "2024", title: "AI Integration", description: "Introduced AI-powered itinerary generation, revolutionizing trip planning." },
-  { year: "2025", title: "Global Expansion", description: "Expanding to 25+ countries with 500+ verified experts." }
 ];
 
 export default function AboutPage() {
@@ -182,8 +146,9 @@ export default function AboutPage() {
               </h2>
               <p className="text-lg text-muted-foreground leading-relaxed">
                 We believe everyone deserves incredible travel experiences, regardless of how much time
-                they have to plan. By combining advanced AI technology with a curated network of local
-                experts, we're making personalized, authentic travel accessible to millions of people worldwide.
+                they have to plan. By combining AI planning tools with a reviewed network of local
+                experts, we want to make personalized, authentic travel planning something anyone can
+                reach — whatever their budget or timeline.
               </p>
             </motion.div>
           </div>
@@ -227,123 +192,6 @@ export default function AboutPage() {
               </motion.div>
             ))}
           </div>
-        </div>
-      </section>
-
-      {/* Story/Timeline Section */}
-      <section className="py-16 md:py-24">
-        <div className="container mx-auto px-4">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-bold text-foreground dark:text-white mb-4">
-              Our Story
-            </h2>
-            <p className="text-muted-foreground max-w-2xl mx-auto">
-              From a simple idea to a global platform
-            </p>
-          </div>
-
-          <div className="max-w-3xl mx-auto">
-            <div className="relative">
-              <div className="absolute left-4 md:left-1/2 top-0 bottom-0 w-0.5 bg-border md:-translate-x-1/2" />
-              {milestones.map((milestone, i) => (
-                <motion.div
-                  key={milestone.year}
-                  initial={{ opacity: 0, x: i % 2 === 0 ? -20 : 20 }}
-                  whileInView={{ opacity: 1, x: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: i * 0.1 }}
-                  className={`relative flex items-center gap-8 mb-8 ${
-                    i % 2 === 0 ? "md:flex-row" : "md:flex-row-reverse"
-                  }`}
-                  data-testid={`milestone-${milestone.year}`}
-                >
-                  <div className={`flex-1 ${i % 2 === 0 ? "md:text-right" : "md:text-left"} pl-12 md:pl-0`}>
-                    <div className="text-primary font-bold text-lg mb-1" data-testid={`text-milestone-year-${milestone.year}`}>{milestone.year}</div>
-                    <h3 className="text-xl font-semibold text-foreground dark:text-white mb-2" data-testid={`text-milestone-title-${milestone.year}`}>
-                      {milestone.title}
-                    </h3>
-                    <p className="text-muted-foreground text-sm">{milestone.description}</p>
-                  </div>
-                  <div className="absolute left-4 md:left-1/2 w-4 h-4 rounded-full bg-primary border-4 border-background md:-translate-x-1/2" />
-                  <div className="flex-1 hidden md:block" />
-                </motion.div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Team Section */}
-      <section className="py-16 md:py-24 bg-muted/30">
-        <div className="container mx-auto px-4">
-          <div className="text-center mb-12">
-            <h2 className="text-3xl md:text-4xl font-bold text-foreground dark:text-white mb-4">
-              Meet Our Team
-            </h2>
-            <p className="text-muted-foreground max-w-2xl mx-auto">
-              The passionate people behind Traveloure
-            </p>
-          </div>
-
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-6xl mx-auto">
-            {team.map((member, i) => (
-              <motion.div
-                key={member.name}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.1 }}
-              >
-                <Card className="h-full" data-testid={`card-team-${i}`}>
-                  <CardContent className="p-6 text-center">
-                    <Avatar className="w-24 h-24 mx-auto mb-4 border-4 border-white dark:border-gray-800 shadow-lg">
-                      <AvatarImage src={member.image} alt={member.name} />
-                      <AvatarFallback className="bg-primary text-white text-xl">
-                        {member.name.split(' ').map(n => n[0]).join('')}
-                      </AvatarFallback>
-                    </Avatar>
-                    <h3 className="text-lg font-semibold text-foreground dark:text-white mb-1">
-                      {member.name}
-                    </h3>
-                    <p className="text-sm text-primary font-medium mb-3">{member.role}</p>
-                    <p className="text-sm text-muted-foreground">{member.bio}</p>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* Locations Section */}
-      <section className="py-16 md:py-24">
-        <div className="container mx-auto px-4 text-center">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-          >
-            <div className="w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mx-auto mb-6">
-              <MapPin className="w-8 h-8 text-primary" />
-            </div>
-            <h2 className="text-3xl md:text-4xl font-bold text-foreground dark:text-white mb-4">
-              Where We Operate
-            </h2>
-            <p className="text-muted-foreground max-w-2xl mx-auto mb-8">
-              We're currently in beta across 8 cities, with plans to expand globally
-            </p>
-            <div className="flex flex-wrap justify-center gap-3">
-              {["Mumbai, India", "Bogota, Colombia", "Goa, India", "Kyoto, Japan", "Edinburgh, UK", "Barcelona, Spain", "Cape Town, SA", "Bali, Indonesia"].map((city, i) => (
-                <span
-                  key={city}
-                  className="px-4 py-2 bg-muted rounded-full text-sm font-medium text-foreground dark:text-white"
-                  data-testid={`badge-location-${i}`}
-                >
-                  {city}
-                </span>
-              ))}
-            </div>
-          </motion.div>
         </div>
       </section>
 

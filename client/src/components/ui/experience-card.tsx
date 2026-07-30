@@ -6,7 +6,9 @@ import { cn } from "@/lib/utils";
 interface ExperienceCardProps {
   label: string;
   description?: string;
-  image: string;
+  /** Optional. With no image the header falls back to the card's own colour +
+   *  icon — never a random remote stock photo (§13). */
+  image?: string;
   slug: string;
   icon: LucideIcon;
   color: string;
@@ -43,11 +45,23 @@ export function ExperienceCard({
         >
           {/* Image Header with Overlay */}
           <div className="relative h-48 overflow-hidden">
-            <img
-              src={image}
-              alt={label}
-              className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
-            />
+            {image ? (
+              <img
+                src={image}
+                alt={label}
+                className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+              />
+            ) : (
+              <div
+                className={cn(
+                  "w-full h-full transition-transform duration-700 group-hover:scale-110",
+                  bgColor
+                )}
+                aria-hidden="true"
+              >
+                <Icon className="w-28 h-28 text-white/15 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+              </div>
+            )}
             <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
 
             {/* Title & Icon */}
