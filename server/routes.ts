@@ -5688,6 +5688,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         const rawPrice = meta.price ? String(meta.price).replace(/[^0-9.]/g, "") : null;
         const estimatedCost = rawPrice && parseFloat(rawPrice) > 0 ? rawPrice : null;
 
+        // linkage-none-ok: KNOWN HOLE H1 — fix owned by Reconcile Phase 1c (W3); remove this annotation
+        // in that PR so the guard enforces the fix.
         await storage.createItineraryItem({
           tripId: targetTripId,
           title: meta.name || cartItem.contentId || "Discovered item",

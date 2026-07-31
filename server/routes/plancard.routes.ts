@@ -71,6 +71,8 @@ router.post("/api/itinerary-comparisons/:id/apply-to-trip", isAuthenticated, asy
     // Replace itinerary items for this trip
     await storage.deleteItineraryItemsByTrip(comparison.tripId);
 
+    // linkage-none-ok: KNOWN HOLE H5 — fix owned by Reconcile Phase 1c (W5); remove this annotation
+    // in that PR so the guard enforces the fix.
     await storage.bulkInsertItineraryItems(variantItems.map((item: any) => ({
       tripId: comparison.tripId,
       title: item.name,
