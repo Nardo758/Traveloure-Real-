@@ -892,8 +892,14 @@ export default function ItineraryPage() {
             </div>
             <div className="flex items-start gap-2 p-3 bg-muted rounded-lg">
               <AlertCircle className="w-5 h-5 text-muted-foreground flex-shrink-0 mt-0.5" />
+              {/* §13: was "within 24 hours" — see the sibling note in
+                  itinerary-comparison.tsx. The request notifies matching experts; no SLA
+                  and no assignment exist behind it. The no-charge-now half IS true (the
+                  booking row is created `pending` with no payment intent), so it stays. */}
               <p className="text-sm text-muted-foreground">
-                An expert will contact you within 24 hours to confirm your itinerary and payment details. You'll only be charged once all bookings are confirmed.
+                Your request goes to experts who cover this destination. You're not charged
+                anything now — an expert will confirm your itinerary and payment details with
+                you first.
               </p>
             </div>
           </div>

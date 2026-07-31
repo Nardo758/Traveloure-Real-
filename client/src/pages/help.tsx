@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import {
   Accordion,
   AccordionContent,
@@ -10,73 +9,38 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { Link } from "wouter";
-import { 
-  Search, 
-  MessageCircle, 
-  Mail, 
-  Phone,
-  Book,
-  CreditCard,
-  MapPin,
-  Users,
-  Shield,
+import {
+  Search,
+  MessageCircle,
+  Mail,
   HelpCircle,
-  ArrowRight,
-  ExternalLink
 } from "lucide-react";
 
-const helpCategories = [
-  {
-    title: "Getting Started",
-    icon: Book,
-    articles: [
-      "How to create an account",
-      "Planning your first trip",
-      "Understanding the platform",
-      "Setting up your profile"
-    ]
-  },
-  {
-    title: "Booking & Payments",
-    icon: CreditCard,
-    articles: [
-      "How to book services",
-      "Payment methods",
-      "Refund policy",
-      "Cancellation policy"
-    ]
-  },
-  {
-    title: "Working with Experts",
-    icon: Users,
-    articles: [
-      "Finding the right expert",
-      "Communicating with experts",
-      "Expert recommendations",
-      "Rating and reviews"
-    ]
-  },
-  {
-    title: "Destinations",
-    icon: MapPin,
-    articles: [
-      "Destination guides",
-      "Local tips and customs",
-      "Safety information",
-      "Best time to visit"
-    ]
-  },
-  {
-    title: "Account & Privacy",
-    icon: Shield,
-    articles: [
-      "Account security",
-      "Privacy settings",
-      "Managing notifications",
-      "Deleting your account"
-    ]
-  },
-];
+/**
+ * §13 (fabrication removal) — what came off this page and why:
+ *  - a "Phone Support" card with a fictitious 555-prefix number, and a "Live
+ *    Chat" card: there is no phone line and no chat vendor integrated anywhere
+ *    in the codebase (no Intercom/Crisp/Zendesk/tawk/Drift). The chat card is
+ *    now honestly the contact form it always linked to.
+ *  - "Our support team is available 24/7": the same named-open §13 arm round 1
+ *    removed from /features. No round-the-clock support exists.
+ *  - the entire "Browse by Category" index: five cards listing twenty article
+ *    titles as clickable links plus a "View All Articles" button, none of which
+ *    had a handler — there is no help-article store, no CMS and no /api/help
+ *    endpoint behind any of them. An article index with zero articles is a
+ *    fabricated resource, so it is gone rather than dressed up as inert text.
+ *    The FAQ accordion below is the page's real content and is kept.
+ *  - payment methods: claimed PayPal, Apple Pay and Google Pay. Only Stripe
+ *    card payments are integrated (identical claim removed from /features in
+ *    round 1, and from /faq in this pass).
+ *  - the "5-7 business days" application-review SLA, and the "24-48 hours /
+ *    24+ hours for a full refund" cancellation windows: no such commitments
+ *    exist. Cancellation terms are per-listing (migration 144
+ *    `cancellation_policy_type`), set by the provider and shown before booking.
+ *  - "background checks" in the expert-vetting answer: no background-check
+ *    vendor is integrated. Kept: the admin review of every application and the
+ *    Knowledge-Proof local-knowledge assessment (§12), which are real.
+ */
 
 const popularFAQs = [
   {
@@ -85,19 +49,19 @@ const popularFAQs = [
   },
   {
     question: "What payment methods do you accept?",
-    answer: "We accept all major credit cards (Visa, Mastercard, American Express), PayPal, and digital wallets like Apple Pay and Google Pay."
+    answer: "We accept card payments (Visa, Mastercard, American Express and other major cards), processed by Stripe."
   },
   {
     question: "Can I cancel my booking?",
-    answer: "Cancellation policies vary by service provider. Generally, you can cancel up to 24-48 hours before your scheduled service for a full refund. Check the specific service details for exact policies."
+    answer: "Each listing carries its own cancellation policy, set by the provider and shown on the listing and at checkout before you confirm. There is no single platform-wide window — read the policy on the booking you're making."
   },
   {
     question: "How do I become a local expert?",
-    answer: "Visit our 'Become an Expert' page and fill out the application form. We review all applications and typically respond within 5-7 business days."
+    answer: "Visit our 'Become an Expert' page and fill out the application form. An admin reviews every application before you can list anything, and you'll be notified once it's been reviewed."
   },
   {
     question: "Are the local experts verified?",
-    answer: "Yes! All our local experts go through a verification process including identity verification, background checks, and expertise validation."
+    answer: "Every expert application is reviewed by an admin before the expert can list anything — nothing an applicant submits publishes itself. The review includes written local-knowledge answers we assess, and identity verification through a third-party provider is available in the earner onboarding flow."
   },
   {
     question: "How does the AI trip planning work?",
@@ -109,7 +73,7 @@ const popularFAQs = [
   },
   {
     question: "Can I get a refund?",
-    answer: "Refunds are processed according to our cancellation policy and the specific service provider's terms. Most cancellations made 24+ hours in advance receive full refunds."
+    answer: "Refunds follow the cancellation policy on the listing you booked, which the provider sets. If something went wrong with a completed booking you can raise it from My Bookings and an admin will review it."
   },
 ];
 
@@ -126,11 +90,11 @@ export default function HelpPage() {
       {/* Hero Section */}
       <section className="bg-gradient-to-br from-primary to-primary/80 text-primary-foreground py-20">
         <div className="container mx-auto px-4 max-w-4xl text-center">
-          <h1 className="text-4xl md:text-5xl font-bold mb-6">
+          <h1 className="text-4xl md:text-5xl font-bold mb-6 text-primary-foreground">
             How can we help you?
           </h1>
           <p className="text-xl text-primary-foreground/90 mb-8">
-            Search our help center or browse categories below
+            Search the answers below, or send us a message
           </p>
           
           {/* Search Bar */}
@@ -151,72 +115,30 @@ export default function HelpPage() {
       {/* Quick Actions */}
       <section className="py-8 border-b bg-muted/30">
         <div className="container mx-auto px-4 max-w-6xl">
-          <div className="grid md:grid-cols-3 gap-4">
+          <div className="grid sm:grid-cols-2 gap-4 max-w-3xl mx-auto">
             <Link href="/contact">
-              <Card className="hover:shadow-lg transition-shadow cursor-pointer">
+              <Card className="hover:shadow-lg transition-shadow cursor-pointer h-full">
                 <CardContent className="p-6 text-center">
                   <MessageCircle className="w-8 h-8 mx-auto mb-3 text-primary" />
-                  <h3 className="font-semibold mb-1">Live Chat</h3>
-                  <p className="text-sm text-muted-foreground">Chat with our support team</p>
+                  <h3 className="font-semibold mb-1">Send us a message</h3>
+                  <p className="text-sm text-muted-foreground">Use the contact form and it reaches the team</p>
                 </CardContent>
               </Card>
             </Link>
-            
-            <Card className="hover:shadow-lg transition-shadow cursor-pointer">
+
+            <Card className="hover:shadow-lg transition-shadow h-full">
               <CardContent className="p-6 text-center">
                 <Mail className="w-8 h-8 mx-auto mb-3 text-primary" />
                 <h3 className="font-semibold mb-1">Email Support</h3>
-                <p className="text-sm text-muted-foreground">support@traveloure.com</p>
+                <a
+                  href="mailto:support@traveloure.com"
+                  className="text-sm text-muted-foreground break-words hover:text-primary hover:underline"
+                  data-testid="link-help-email"
+                >
+                  support@traveloure.com
+                </a>
               </CardContent>
             </Card>
-            
-            <Card className="hover:shadow-lg transition-shadow cursor-pointer">
-              <CardContent className="p-6 text-center">
-                <Phone className="w-8 h-8 mx-auto mb-3 text-primary" />
-                <h3 className="font-semibold mb-1">Phone Support</h3>
-                <p className="text-sm text-muted-foreground">+1 (555) 123-4567</p>
-              </CardContent>
-            </Card>
-          </div>
-        </div>
-      </section>
-
-      {/* Help Categories */}
-      <section className="py-16">
-        <div className="container mx-auto px-4 max-w-6xl">
-          <h2 className="text-3xl font-bold mb-8">Browse by Category</h2>
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {helpCategories.map((category) => {
-              const Icon = category.icon;
-              return (
-                <Card key={category.title} className="hover:shadow-lg transition-shadow">
-                  <CardHeader>
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 rounded-lg bg-primary/10">
-                        <Icon className="w-6 h-6 text-primary" />
-                      </div>
-                      <CardTitle className="text-lg">{category.title}</CardTitle>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    <ul className="space-y-2">
-                      {category.articles.map((article, index) => (
-                        <li key={index}>
-                          <button className="text-sm text-muted-foreground hover:text-primary hover:underline text-left flex items-center gap-2 w-full">
-                            <ArrowRight className="w-3 h-3 flex-shrink-0" />
-                            {article}
-                          </button>
-                        </li>
-                      ))}
-                    </ul>
-                    <Button variant="ghost" className="w-full mt-4" size="sm">
-                      View All Articles
-                      <ExternalLink className="w-4 h-4 ml-2" />
-                    </Button>
-                  </CardContent>
-                </Card>
-              );
-            })}
           </div>
         </div>
       </section>
@@ -267,7 +189,8 @@ export default function HelpPage() {
         <div className="container mx-auto px-4 max-w-4xl text-center">
           <h2 className="text-3xl font-bold mb-4">Still need help?</h2>
           <p className="text-muted-foreground mb-8 max-w-2xl mx-auto">
-            Our support team is available 24/7 to assist you with any questions or concerns
+            Send us a message and we'll get back to you. If you're already travelling,
+            your expert advisor is usually the fastest route — message them in the app.
           </p>
           <div className="flex flex-wrap justify-center gap-4">
             <Link href="/contact">

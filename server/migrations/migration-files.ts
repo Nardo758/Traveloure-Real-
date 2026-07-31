@@ -592,4 +592,35 @@ export const MIGRATION_FILES = [
   // level); the proposal_status CHECK allows NULL so every grandfathered variant leg passes →
   // no publish-push trap. Column registered in the preflight CONSTRAINT_MANIFEST.
   "154_transport_legs_trip_scope.sql",
+  // 155: re-assert the UNIQUE partial index on service_bookings.idempotency_key — the DB half
+  // of the §15 checkout claim. 096 created it, but it lives only in migration SQL (not in
+  // shared/schema.ts), so a push-canonical environment can be missing it while 096 stays
+  // stamped — degrading /api/checkout dedup to check-then-insert. Index-only, guarded on
+  // pre-existing duplicates (NOTICE + plain index, never a failed boot), idempotent. No
+  // column/CHECK/DEFAULT change → no publish-push trap.
+  "155_checkout_idempotency_key_unique.sql",
+  // 156: create the `refunds` audit table — BOTH refund writers (the charge.refunded webhook
+  // and refundServiceBooking, the escrow refund terminal) already INSERT into it, but the
+  // table has never existed in ANY environment (to_regclass NULL in prod AND dev), so every
+  // real refund moved money in Stripe and then threw on the audit insert. Shape derived from
+  // the two writers (readers: none). NEW table → constraints have no legacy rows to violate;
+  // and deliberately NO status CHECK / NOT NULL (Stripe's refund.status is an external
+  // `string | null`) → no publish-push trap and nothing to add to the preflight manifest.
+  "156_refunds_audit_table.sql",
+  // 157: give `user_and_expert_contracts` an owner (`traveler_id`/`earner_id`) so its two
+  // LIVE ungated readers can be gated — `GET /api/expert/contracts/recent` read `expertId`
+  // off the session and never used it (20 most recent contracts platform-wide to any
+  // authenticated caller), and `GET /api/contracts/:id` had no check at all. The writer
+  // (/api/checkout) creates a row per cart item, so the exposure grows with volume. Backfill
+  // is a deterministic join, not a heuristic: `service_bookings.contract_id` already links
+  // each contract to the booking carrying both principals. Additive nullable, no CHECK/
+  // NOT NULL/DEFAULT → no publish-push trap, nothing for the preflight manifest.
+  "157_contract_ownership.sql",
+  // 158: retire the dead `service_demand_requests` table deliberately. It was undeclared in
+  // shared/schema.ts, so the publish push was going to DROP it regardless (observed verbatim in
+  // a push plan) with migration 080 already stamped — i.e. the deploy tool would have made the
+  // call silently. Verified 0 rows + 0 FK dependents in BOTH prod and dev, and zero code
+  // references; it is redundant against the live service_demand_signals / service_requests.
+  // GUARDED: refuses to drop if the table is non-empty when it actually runs.
+  "158_retire_service_demand_requests.sql",
 ] as const;

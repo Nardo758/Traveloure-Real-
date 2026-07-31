@@ -5,6 +5,7 @@ import { db } from "../db";
 import { storage } from "../storage";
 import { users, providerServices, bundleComponents } from "@shared/schema";
 import { isAuthenticated } from "../replit_integrations/auth";
+import { LOCATION_PRECISION_EXACT } from "../utils/service-location";
 
 /**
  * Provider supply tools — /api/provider/settings (Kyoto-supply activation).
@@ -430,10 +431,23 @@ const roomInputSchema = z.object({
   units: z.number().int().min(1).max(100).optional(),
 });
 
+/**
+ * L27-P3: the confirmed map point from the property dialog's location picker.
+ * `location_precision` is DERIVED here (`'exact'`), never read from the body — and only a
+ * point the provider actually confirmed produces it (§13; the shared rule set lives in
+ * utils/service-location.ts). Absent ⇒ the coordinate columns stay NULL, which is the
+ * honest "no point" state (migration 129 never fabricates a city-centre fallback).
+ */
+const locationPointSchema = z.object({
+  lat: z.number().finite().min(-90).max(90),
+  lng: z.number().finite().min(-180).max(180),
+});
+
 const propertyCreateSchema = z.object({
   serviceName: z.string().trim().min(1).max(255),
   description: z.string().max(10000).optional(),
   location: z.string().max(255).optional(),
+  locationPoint: locationPointSchema.optional(),
   neighborhood: z.string().max(100).optional(),
   categoryId: z.string().optional(),
   serviceImage: z.string().max(2000).optional(),
@@ -487,6 +501,14 @@ router.post("/api/provider/properties", isAuthenticated, async (req, res) => {
     const userId = await requireProviderRole(req, res);
     if (!userId) return;
     const body = propertyCreateSchema.parse(req.body);
+    // Only a confirmed point writes coordinates; precision is server-derived (§13).
+    const coords = body.locationPoint
+      ? {
+          latitude: body.locationPoint.lat.toFixed(7),
+          longitude: body.locationPoint.lng.toFixed(7),
+          locationPrecision: LOCATION_PRECISION_EXACT,
+        }
+      : {};
 
     const { property, rooms } = await db.transaction(async (tx) => {
       const [createdProperty] = await tx
@@ -495,6 +517,7 @@ router.post("/api/provider/properties", isAuthenticated, async (req, res) => {
           userId,
           serviceName: body.serviceName,
           description: body.description ?? null,
+          ...coords,
           ...(body.location !== undefined ? { location: body.location } : {}),
           ...(body.neighborhood !== undefined ? { neighborhood: body.neighborhood } : {}),
           ...(body.categoryId !== undefined ? { categoryId: body.categoryId } : {}),
@@ -523,6 +546,11 @@ router.post("/api/provider/properties", isAuthenticated, async (req, res) => {
             categoryId: createdProperty.categoryId,
             location: createdProperty.location,
             neighborhood: createdProperty.neighborhood,
+            // Rooms sit at the property's own confirmed point — inheriting the coordinates
+            // (and its precision) is the same truthful claim, not a new one.
+            latitude: createdProperty.latitude,
+            longitude: createdProperty.longitude,
+            locationPrecision: createdProperty.locationPrecision,
             ...(r.units != null ? { categoryAttributes: { units: r.units } } : {}),
             approvalStatus: "submitted",
             submittedAt: new Date(),
