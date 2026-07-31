@@ -722,6 +722,7 @@ export interface IStorage {
   getBookingOptionsByLegId(legId: string): Promise<any[]>;
   getTopAiVariantByComparison(comparisonId: string): Promise<any | null>;
   deleteItineraryItemsByTrip(tripId: string): Promise<void>;
+  deleteInPlanningItineraryItemsByTrip(tripId: string): Promise<{ deleted: number; preserved: number }>;
   bulkInsertItineraryItems(items: any[]): Promise<void>;
   updateComparisonOptimizedAt(comparisonId: string, variantId: string): Promise<void>;
   getItineraryComparisonByTripId(tripId: string): Promise<any | null>;
@@ -5607,6 +5608,25 @@ export class DatabaseStorage implements IStorage {
 
   async deleteItineraryItemsByTrip(tripId: string): Promise<void> {
     await db.delete(itineraryItems).where(eq(itineraryItems.tripId, tripId));
+  }
+
+  // Lane 5a Defect 2: the routing-status-aware sibling of the method above. `apply-to-trip`
+  // replaces the plan, but a `with_expert` / `ready_for_checkout` / `purchased` item is NOT the
+  // optimizer's to replace — a `purchased` row carries `booking_id` (migration 159), so wiping it
+  // severs a real booking from its plan item. Only `in_planning` rows are replaceable.
+  // DELIBERATELY a NEW method: `deleteItineraryItemsByTrip` keeps its total-wipe semantics for its
+  // own (currently zero other) callers — this does not change any existing behaviour.
+  async deleteInPlanningItineraryItemsByTrip(tripId: string): Promise<{ deleted: number; preserved: number }> {
+    const deleted = await db
+      .delete(itineraryItems)
+      .where(and(eq(itineraryItems.tripId, tripId), eq(itineraryItems.routingStatus, "in_planning")))
+      .returning({ id: itineraryItems.id });
+    // Everything still on the trip after the delete is, by construction, a routed row we preserved.
+    const [remaining] = await db
+      .select({ n: count() })
+      .from(itineraryItems)
+      .where(eq(itineraryItems.tripId, tripId));
+    return { deleted: deleted.length, preserved: Number(remaining?.n ?? 0) };
   }
 
   async bulkInsertItineraryItems(items: any[]): Promise<void> {
