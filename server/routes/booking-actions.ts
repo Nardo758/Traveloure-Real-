@@ -15,7 +15,10 @@ import { isTripAuthor } from '../utils/trip-authorship';
 import { getUserId } from '../utils/auth';
 import { storage } from '../storage';
 import { db } from '../db';
-import { notifications } from '@shared/schema';
+import { and, eq, inArray } from 'drizzle-orm';
+// Aliased: this router already uses `itineraryItems` as a local variable name in more than one
+// handler, and shadowing the table import would be a silent footgun.
+import { notifications, itineraryItems as itineraryItemsTable } from '@shared/schema';
 import { EXPERT_SHARE_RATE } from '../services/commission';
 import {
   completeExpertRequest,
@@ -616,12 +619,21 @@ router.get('/expert/assigned-trips', isAuthenticated, async (req, res) => {
  * The expert side of the funnel's "Find a Trip Planner" escalation: when a
  * booking request carries a tripId (the cart passes it at every escalation
  * point), the receiving expert can view the traveler's plan — trip basics,
- * itinerary items, and the cart items tied to that trip (plus the traveler's
- * unassigned basket, which is the pre-Trip-details cart state).
+ * itinerary items, and the plan items the traveler has routed to them.
  *
  * Access gate: the session user must be the booking's provider/expert (or an
  * admin). The traveler consented to the share by requesting help with this
  * trip. Read-only; all fields server-derived; nothing from req.body.
+ *
+ * ── W6 (Lane 1 Phase 1c): THIS READS THE TRIP, NOT THE CART ──────────────────
+ * It used to call `storage.getCartItems(booking.travelerId)` and hand the expert
+ * the traveler's whole basket — including their UNASSIGNED items (`|| !i.tripId`),
+ * i.e. shopping for other trips entirely. That is the expert-cart pollution the
+ * Trip-Gravity Audit found live, and ROUTING_STATE_CONTRACT §2 settles it: the
+ * expert workspace reads `in_planning` + `with_expert` as "the plan", and is
+ * marked **NEVER** on `ready_for_checkout` — purchase intent is not the expert's
+ * business. So the plan list is now sourced from `itinerary_items` on THIS trip,
+ * filtered to those two states. No cart query runs on this path at all.
  */
 router.get('/expert/bookings/:id/plan-snapshot', isAuthenticated, async (req, res) => {
   try {
@@ -645,11 +657,33 @@ router.get('/expert/bookings/:id/plan-snapshot', isAuthenticated, async (req, re
     const trip = await storage.getTrip(booking.tripId);
     if (!trip) return res.status(404).json({ message: 'Trip not found' });
 
-    const itineraryItems = await storage.getItineraryItems(trip.id);
-    const travelerCart = booking.travelerId ? await storage.getCartItems(booking.travelerId) : [];
-    const cartItems = travelerCart.filter(
-      (i: any) => i.tripId === trip.id || !i.tripId,
-    );
+    // The workstation's live-trip read (scope §1 W6: "already canonical — keep").
+    const tripItems = await storage.getItineraryItems(trip.id);
+
+    // W6: "the plan" as the contract defines it for an expert — this trip's own items in
+    // `in_planning` or `with_expert`. Trip-scoped by construction, so an expert can never see the
+    // traveler's other trips; `ready_for_checkout` and `purchased` are excluded because the
+    // contract marks the expert workspace NEVER / READS-only on those, and a purchase list is not
+    // what an expert is being asked to work on.
+    const planItems = await db
+      .select({
+        id: itineraryItemsTable.id,
+        title: itineraryItemsTable.title,
+        itemType: itineraryItemsTable.itemType,
+        dayNumber: itineraryItemsTable.dayNumber,
+        locationName: itineraryItemsTable.locationName,
+        estimatedCost: itineraryItemsTable.estimatedCost,
+        scheduledDate: itineraryItemsTable.scheduledDate,
+        routingStatus: itineraryItemsTable.routingStatus,
+        providerServiceId: itineraryItemsTable.providerServiceId,
+      })
+      .from(itineraryItemsTable)
+      .where(
+        and(
+          eq(itineraryItemsTable.tripId, trip.id),
+          inArray(itineraryItemsTable.routingStatus, ["in_planning", "with_expert"]),
+        ),
+      );
 
     res.json({
       trip: {
@@ -661,20 +695,25 @@ router.get('/expert/bookings/:id/plan-snapshot', isAuthenticated, async (req, re
         numberOfTravelers: trip.numberOfTravelers,
         eventType: (trip as any).eventType ?? null,
       },
-      itineraryItems: itineraryItems.slice(0, 100).map((i: any) => ({
+      itineraryItems: tripItems.slice(0, 100).map((i: any) => ({
         title: i.title,
         description: i.description,
         dayNumber: i.dayNumber,
         itemType: i.itemType,
         scheduledDate: i.scheduledDate ?? null,
       })),
-      cartItems: cartItems.slice(0, 100).map((i: any) => ({
-        name: i.service?.serviceName ?? (i.contentMeta as any)?.name ?? 'Item',
-        type: i.serviceId ? 'service' : (i.contentType ?? 'item'),
-        price: i.service?.price ?? null,
-        quantity: i.quantity ?? 1,
-        city: i.service?.location ?? (i.contentMeta as any)?.city ?? null,
+      // Same field SHAPE the dialog already renders (name/type/price/quantity/city/scheduledDate),
+      // now sourced from the plan. `quantity` is 1 because a plan item IS one item — it is not a
+      // basket line with a multiplier; that was a cart-only concept and is mapped honestly rather
+      // than dropped, so the client contract is unchanged. `routingStatus` is additive.
+      planItems: planItems.slice(0, 100).map((i: any) => ({
+        name: i.title ?? 'Item',
+        type: i.providerServiceId ? 'service' : (i.itemType ?? 'item'),
+        price: i.estimatedCost ?? null,
+        quantity: 1,
+        city: i.locationName ?? null,
         scheduledDate: i.scheduledDate ?? null,
+        routingStatus: i.routingStatus,
       })),
     });
   } catch (error: any) {

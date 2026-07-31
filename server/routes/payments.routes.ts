@@ -5,6 +5,7 @@ import { storage } from "../storage";
 // W2 (Trip-Canon Lane 1 Phase 1b): `cart_items` has exactly ONE writer — the projection module.
 // The post-booking cart clear below goes through it. Passthrough; behavior identical.
 import * as cartProjection from "../services/cart-projection.service";
+import { markItemPurchased } from "../services/item-routing.service";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
@@ -728,9 +729,26 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
           throw insertErr;
         }
 
+        // ── W4 (H2): the purchase reaches the plan ────────────────────────────────────────
+        // ROUTING_STATE_CONTRACT §2 — checkout is the SOLE writer of the forward
+        // `ready_for_checkout → purchased` edge, and it writes it atomically with THIS item's
+        // booking row (the row exists as of the line above; a lost idempotency claim returned
+        // long before here, so no un-booked item can be flipped).
+        //
+        // Only a PROJECTED cart row has a plan item to flip — `itinerary_item_id` (migration 160)
+        // is NULL on every legacy/guest/direct-add row, and those are skipped. The flip itself is
+        // an atomic conditional UPDATE inside the helper; 0 rows matched is LOGGED AND IGNORED,
+        // never fatal: the booking is the money truth and must not fail over a derived plan flag.
+        //
+        // Deliberately touches NOTHING else — no amount, no Stripe call, no idempotency key, no
+        // slot claim (§14/§15 surfaces are unchanged by this block).
+        if ((item as any).itineraryItemId) {
+          await markItemPurchased((item as any).itineraryItemId, booking.id);
+        }
+
         // Increment bookings count for the service
         await storage.incrementServiceBookings(item.serviceId, 1);
-        
+
         // Create notification for provider
         try {
           const traveler = await storage.getUser(userId);
