@@ -2,6 +2,9 @@ import { verifyTripOwnership } from '../utils/trip-ownership';
 import { Router } from "express";
 import { db } from "../db";
 import { storage } from "../storage";
+// W2 (Trip-Canon Lane 1 Phase 1b): `cart_items` has exactly ONE writer — the projection module.
+// The post-booking cart clear below goes through it. Passthrough; behavior identical.
+import * as cartProjection from "../services/cart-projection.service";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
@@ -771,7 +774,7 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
       }
       
       // Clear cart after creating bookings (before Stripe — recoverable if crash)
-      await storage.clearCart(userId);
+      await cartProjection.clearCart(userId);
 
       // ── Step B: Charge Stripe AFTER booking rows exist ──────────────────────
       // Bookings are already at payment_pending; even if the server crashes here
