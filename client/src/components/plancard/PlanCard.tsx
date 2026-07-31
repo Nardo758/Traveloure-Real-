@@ -1040,6 +1040,7 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
                     day={day}
                     templateConfig={templateConfig}
                     legs={dayLegs}
+                    isOwner={isOwner}
                   />
                 )}
 
@@ -1066,6 +1067,8 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
               totalCostNum={metrics.totalCost}
               budgetNum={trip.budget != null ? Number(trip.budget) : null}
               perPersonDisplay={perPersonDisplay}
+              days={days}
+              bookings={plancardData?.bookings}
             />
 
             {/* Upsell ontrip slot — live "near you" nudge, after content per mockup v3. Self-guards to in-trip window.

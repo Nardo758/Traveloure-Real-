@@ -1,14 +1,16 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
+import { Link } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import {
   MapPin, History, MessageSquare, Activity,
   CheckCircle2, Circle, Navigation2, ChevronDown, ChevronUp, Map, Phone, BadgeCheck,
+  Users, ShoppingCart, Undo2, type LucideIcon,
 } from "lucide-react";
 import {
   TYPE_COLORS, STATUS_STYLES,
-  type TemplateConfig, type PlanCardDay,
+  type TemplateConfig, type PlanCardDay, type PlanCardActivity, type RoutingStatus,
 } from "./plancard-types";
 import { TRANSPORT_MODE_ICONS, TRANSPORT_MODE_LABELS } from "@/lib/maps-platform";
 import { openInMaps, type TraveloureMode } from "@/lib/navigate";
@@ -18,11 +20,198 @@ import {
   useLiveNow, useVisitedActivities, getUpNextInfo,
 } from "./plancard-temporal";
 
+// ── W7 — per-item routing (Trip-Canon Lane 1, Phase 1d) ─────────────────────
+// Governing docs: docs/briefs/RECONCILE_PHASE1_SCOPE.md §1 W7, docs/briefs/ROUTING_STATE_CONTRACT.md.
+// The ONLY endpoint this drives is POST /api/trips/:tripId/items/:itemId/route (routing.routes.ts) —
+// read that file's header before changing which edges this component offers; it is THE authority on
+// which actor may write which edge, not this comment.
+
+/**
+ * The badge is READ-ONLY status — every viewer who can see the card sees it (contract §2: expert
+ * workspace, admin, and share surfaces all have READS on every state). It renders nothing for the
+ * default `in_planning` state (no badge noise) and nothing when the item carries no `routingStatus`
+ * key at all (a variant-snapshot / generated-itinerary item is not on the routing state machine —
+ * §13, never guessed as `in_planning`).
+ *
+ * `booking` presence — NOT `routingStatus === 'purchased'` — is the sole signal for the booked/
+ * receipt treatment (ROUTING_STATE_CONTRACT §2: "presence is the booked state, never inferred from
+ * routing_status alone").
+ */
+function RoutingBadge({ activity }: { activity: PlanCardActivity }) {
+  if (activity.booking) {
+    return (
+      <span
+        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide flex-shrink-0 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-300"
+        data-testid={`badge-routing-booked-${activity.id}`}
+      >
+        <BadgeCheck className="w-3 h-3" /> Booked
+      </span>
+    );
+  }
+  if (activity.routingStatus === "with_expert") {
+    return (
+      <span
+        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide flex-shrink-0 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-800 dark:text-indigo-300"
+        data-testid={`badge-routing-with-expert-${activity.id}`}
+      >
+        <Users className="w-3 h-3" /> With your expert
+      </span>
+    );
+  }
+  if (activity.routingStatus === "ready_for_checkout") {
+    return (
+      <span
+        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide flex-shrink-0 bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300"
+        data-testid={`badge-routing-checkout-${activity.id}`}
+      >
+        <ShoppingCart className="w-3 h-3" /> In checkout
+      </span>
+    );
+  }
+  return null;
+}
+
+function RoutingActionButton({
+  icon: Icon,
+  label,
+  onClick,
+  busy,
+  testId,
+}: {
+  icon: LucideIcon;
+  label: string;
+  onClick: () => void;
+  busy: boolean;
+  testId: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={busy}
+      className="flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-full border border-border bg-background hover:bg-muted/60 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+      data-testid={testId}
+    >
+      <Icon className="w-3 h-3" />
+      {label}
+    </button>
+  );
+}
+
+/**
+ * OWNER-ONLY. Offers exactly the edges `routing.routes.ts` grants the trip owner for the item's
+ * CURRENT state (the endpoint is the authority; this list is not re-derived from the state-machine
+ * diagram, it mirrors the endpoint's LEGAL_FROM table):
+ *   in_planning        → "Send to expert" (with_expert) · "Add to checkout" (ready_for_checkout)
+ *   with_expert        → "Recall from expert" (in_planning) — the endpoint's owner branch permits
+ *                         this recall (actor=owner is granted for any `to` in TRANSITIONABLE, and
+ *                         `in_planning`'s LEGAL_FROM includes `with_expert`), so it is offered.
+ *   ready_for_checkout → "Remove from checkout" (in_planning) + a "Go to checkout" link to /cart
+ *   purchased / booked → no actions (checkout is the sole forward writer, refund the sole reverser)
+ *   no routingStatus   → no actions (nothing real to route — §13, never a button that would 404)
+ */
+function RoutingActions({
+  tripId,
+  itemId,
+  routingStatus,
+  hasBooking,
+}: {
+  tripId: string;
+  itemId: string;
+  routingStatus: RoutingStatus | undefined;
+  hasBooking: boolean;
+}) {
+  const { toast } = useToast();
+
+  const mutation = useMutation({
+    mutationFn: async (to: RoutingStatus) =>
+      apiRequest("POST", `/api/trips/${tripId}/items/${itemId}/route`, { to }),
+    onSuccess: () => {
+      // The transition endpoint reconciles the cart projection itself (W2) — this just refreshes
+      // the two client-visible reads of that state: the plan (badge/actions) and the cart page.
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Couldn't update item",
+        description: err?.message || "Please try again",
+        variant: "destructive",
+      });
+    },
+  });
+
+  if (hasBooking || routingStatus == null || routingStatus === "purchased") return null;
+
+  const busy = mutation.isPending;
+
+  if (routingStatus === "with_expert") {
+    return (
+      <RoutingActionButton
+        icon={Undo2}
+        label="Recall from expert"
+        busy={busy}
+        onClick={() => mutation.mutate("in_planning")}
+        testId={`button-route-recall-${itemId}`}
+      />
+    );
+  }
+
+  if (routingStatus === "ready_for_checkout") {
+    return (
+      <>
+        <RoutingActionButton
+          icon={Undo2}
+          label="Remove from checkout"
+          busy={busy}
+          onClick={() => mutation.mutate("in_planning")}
+          testId={`button-route-remove-checkout-${itemId}`}
+        />
+        {/* The projection row this state implies already exists (W2) — a persistent link, not a
+            one-shot toast, so it stays correct across reloads/remounts (§13). */}
+        <Link
+          href="/cart"
+          className="flex items-center gap-1 text-[11px] font-semibold px-2.5 py-1 rounded-full text-primary hover:underline"
+          data-testid={`link-go-to-checkout-${itemId}`}
+        >
+          <ShoppingCart className="w-3 h-3" /> Go to checkout
+        </Link>
+      </>
+    );
+  }
+
+  // in_planning — the born/default/returned state.
+  return (
+    <>
+      <RoutingActionButton
+        icon={Users}
+        label="Send to expert"
+        busy={busy}
+        onClick={() => mutation.mutate("with_expert")}
+        testId={`button-route-send-expert-${itemId}`}
+      />
+      <RoutingActionButton
+        icon={ShoppingCart}
+        label="Add to checkout"
+        busy={busy}
+        onClick={() => mutation.mutate("ready_for_checkout")}
+        testId={`button-route-add-checkout-${itemId}`}
+      />
+    </>
+  );
+}
+
 interface ActivitiesSectionProps {
   tripId: string;
   day: PlanCardDay | undefined;
   templateConfig: TemplateConfig;
   legs?: InlineTransportLegData[];
+  /**
+   * W7: routing actions (send-to-expert / add-to-checkout / etc.) render ONLY for the trip owner —
+   * the contract matrix marks every other viewer (expert, admin, share/collaborator) READ-only on
+   * routing state. The badge itself is NOT gated on this — it renders for every viewer.
+   */
+  isOwner?: boolean;
 }
 
 interface ConnectorProps {
@@ -185,6 +374,7 @@ export function ActivitiesSection({
   day,
   templateConfig,
   legs = [],
+  isOwner = false,
 }: ActivitiesSectionProps) {
   const [visited, toggleVisited] = useVisitedActivities(tripId, day);
   const now = useLiveNow();
@@ -452,6 +642,30 @@ export function ActivitiesSection({
                       )}
                     </div>
                   )}
+
+                  {/* W7 — routing badge (every viewer) + owner-only routing actions. Both halves
+                      independently decide whether they have anything to show; the row itself
+                      renders only when at least one of them does (no empty row, §13). */}
+                  {(() => {
+                    const hasBadge =
+                      !!a.booking || a.routingStatus === "with_expert" || a.routingStatus === "ready_for_checkout";
+                    const hasActions =
+                      isOwner && a.routingStatus != null && !a.booking && a.routingStatus !== "purchased";
+                    if (!hasBadge && !hasActions) return null;
+                    return (
+                      <div className="flex items-center gap-1.5 flex-wrap mt-2" data-testid={`routing-row-${a.id}`}>
+                        <RoutingBadge activity={a} />
+                        {hasActions && (
+                          <RoutingActions
+                            tripId={tripId}
+                            itemId={a.id}
+                            routingStatus={a.routingStatus}
+                            hasBooking={!!a.booking}
+                          />
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   <div className="flex gap-2.5 mt-2">
                     {/* Mobile-lens audit #6: this was styled cursor-pointer/hover:underline with
