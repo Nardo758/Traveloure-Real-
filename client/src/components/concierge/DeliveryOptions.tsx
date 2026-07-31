@@ -85,6 +85,14 @@ export function DeliveryOptions({
       // Hand off intent + context to cart's existing payment flow.
       // MERGE (not overwrite) — a clobbering write here used to destroy any
       // dates/travelers/slug the traveler had already set upstream.
+      // #972 classification: kept as a merge deliberately (NOT converted to
+      // switchTripContext*) — `destination` here re-affirms the SAME
+      // destination this concierge request quote was already generated
+      // against, not a trip switch, and switching would also wipe the
+      // dates/travelers/slug this comment exists to protect (switchTripContext
+      // REPLACEs the whole identity set, it doesn't cherry-pick one field).
+      // The updateTripContext tripwire (trip-context.ts) still logs if this
+      // ever fires while a DIFFERENT destination's tripId is bound.
       updateTripContext({
         experienceType: eventType,
         destination,

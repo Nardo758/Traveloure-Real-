@@ -103,7 +103,7 @@ import { ESimCard } from "@/components/travelpayouts/ESimCard";
 import { HotelCard } from "@/components/travelpayouts/HotelCard";
 import type { CatalogItem } from "@/types/catalog";
 import { CuratedContentSection } from "@/components/curated-content-section";
-import { updateTripContext, useTripContext } from "@/lib/trip-context";
+import { updateTripContext, useTripContext, switchTripContextPreservingId } from "@/lib/trip-context";
 import { EditTripPanel } from "@/components/trip/edit-trip-panel";
 
 interface VenueResult {
@@ -1065,19 +1065,28 @@ export default function ExperienceTemplatePage() {
     };
     sessionStorage.setItem(`searchSettings_${slug}`, JSON.stringify(settingsToSave));
     // P3b reverse-sync: any remaining internal setter (destination prompt, query
-    // params, trip queue) still propagates to the site-wide TripContext. Merge
-    // semantics + empty values skipped, so blanks never clobber the strip.
-    // Gated on ctxApplied so the mount pass can't write stale local defaults
-    // over the context before the context→local sync has applied.
+    // params, trip queue) still propagates to the site-wide TripContext. Empty
+    // values skipped, so blanks never clobber the strip. Gated on ctxApplied so
+    // the mount pass can't write stale local defaults over the context before
+    // the context→local sync has applied.
+    // #972: destination/dates/travelers/experienceType are identity-coupled —
+    // switchTripContextPreservingId, not a plain merge, so a bound `tripId`
+    // can't silently keep pointing at a DIFFERENT trip once the destination
+    // here has actually diverged from it (this effect fires on every filter/
+    // sort tweak too, but `destinationChanged` only trips when `destination`
+    // itself differs from the live context, so unrelated fires just re-affirm
+    // the same trip and dates/travelers changes alone still preserve it —
+    // the same preserve-vs-clear policy as edit-trip-panel.tsx's save()).
+    // experienceSlug isn't part of that identity set — merged separately.
     if (ctxApplied) {
-      updateTripContext({
+      switchTripContextPreservingId({
         destination: destination.trim() || undefined,
         startDate,
         endDate,
         travelers: adults + kids,
-        experienceSlug: slug,
         experienceType: experienceType?.name,
       });
+      updateTripContext({ experienceSlug: slug });
     }
   }, [
     slug, destination, originCity, originCode, startDate, endDate, activeTab,
@@ -1320,13 +1329,17 @@ export default function ExperienceTemplatePage() {
     
     // Store experience context for cart page to use (dates normalized to
     // YYYY-MM-DD by the module — the previous full-ISO write broke date inputs).
-    updateTripContext({
+    // #972: identity fields via switchTripContextPreservingId (never a bare
+    // merge) — see the reverse-sync effect above for the same reasoning.
+    switchTripContextPreservingId({
       experienceType: experienceType?.name,
-      experienceSlug: slug,
       destination,
       startDate,
       endDate,
       travelers: adults + kids,
+    });
+    updateTripContext({
+      experienceSlug: slug,
       // P4: include DB contextField values in AI itinerary prompt payload
       contextFields: Object.keys(contextValues).length > 0 ? contextValues : undefined,
       selectedServices: cart.map(item => ({
@@ -1489,15 +1502,17 @@ export default function ExperienceTemplatePage() {
         setLocalExternalCart(prev => [...prev, { ...item, quantity: item.quantity || 1 }]);
         toast({ title: "Added to cart", description: `${item.name} added to your cart` });
       }
-      updateTripContext({
+      // #972: identity fields via switchTripContextPreservingId — see the
+      // reverse-sync effect above for the reasoning.
+      switchTripContextPreservingId({
                     title: `${experienceType?.name || slug} Experience`,
                     experienceType: experienceType?.name || slug,
-                    experienceSlug: slug,
                     destination,
                     startDate,
                     endDate,
                     travelers: adults + kids
                   });
+      updateTripContext({ experienceSlug: slug });
       return;
     }
     
@@ -1525,15 +1540,17 @@ export default function ExperienceTemplatePage() {
       }
     }
     // Store experience context and navigate to full cart page
-    updateTripContext({
+    // #972: identity fields via switchTripContextPreservingId — see the
+    // reverse-sync effect above for the reasoning.
+    switchTripContextPreservingId({
                     title: `${experienceType?.name || slug} Experience`,
                     experienceType: experienceType?.name || slug,
-                    experienceSlug: slug,
                     destination,
                     startDate,
                     endDate,
                     travelers: adults + kids
                   });
+    updateTripContext({ experienceSlug: slug });
     setLocation("/cart");
   };
 
@@ -2753,15 +2770,17 @@ export default function ExperienceTemplatePage() {
                   <Button
                     size="sm"
                     onClick={() => {
-                      updateTripContext({
+                      // #972: identity fields via switchTripContextPreservingId
+                      // — see the reverse-sync effect above for the reasoning.
+                      switchTripContextPreservingId({
                     title: `${experienceType?.name} Experience`,
                     experienceType: experienceType?.name,
-                    experienceSlug: slug,
                     destination,
                     startDate,
                     endDate,
                     travelers: adults + kids
                   });
+                      updateTripContext({ experienceSlug: slug });
                       setLocation("/cart");
                     }}
                     className="bg-primary"

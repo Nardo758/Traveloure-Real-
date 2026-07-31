@@ -15,6 +15,7 @@ import { ActionItemsPanel } from "@/components/dashboard/ActionItemsPanel";
 import { ActiveExpertsPanel } from "@/components/dashboard/ActiveExpertsPanel";
 import { TopExpertsPanel } from "@/components/dashboard/TopExpertsPanel";
 import { RecommendedServices } from "@/components/dashboard/RecommendedServices";
+import { syncActiveTripToContext } from "@/lib/trip-selection";
 
 interface Notification {
   id: string | number;
@@ -75,6 +76,17 @@ export default function Dashboard() {
   )[0]?.id ?? null;
   const effectiveTripId = selectedTripId ?? soonestTripId;
   const selectedTrip = activePlans.find(t => t.id === effectiveTripId) ?? null;
+
+  // #972: the trip chip below previously only flipped this page's own local
+  // `selectedTripId` state — it never told the site-wide TripContext which
+  // trip is now active, so /cart (and anywhere else reading TripContext) kept
+  // acting on whichever trip was bound before the click. Selecting a chip
+  // must atomically re-key TripContext to the clicked trip's OWN data (see
+  // syncActiveTripToContext) in the SAME handler that updates local state.
+  const selectTrip = (trip: (typeof activePlans)[number]) => {
+    setSelectedTripId(trip.id);
+    syncActiveTripToContext(trip);
+  };
 
   if (isLoading) {
     return (
@@ -233,7 +245,7 @@ export default function Dashboard() {
                       return (
                         <button
                           key={trip.id}
-                          onClick={() => setSelectedTripId(trip.id)}
+                          onClick={() => selectTrip(trip)}
                           data-testid={`trip-chip-${trip.id}`}
                           className={`flex-shrink-0 text-left rounded-xl px-3 py-2.5 border transition-all ${
                             isSelected

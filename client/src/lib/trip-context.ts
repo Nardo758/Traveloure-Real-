@@ -81,6 +81,31 @@ export function updateTripContext(patch: TripContextPatch): TripContext {
       sanitized[key] = value;
     }
   }
+  // Dev-visible tripwire (no behavior change): a merge write that touches a
+  // display field paired with trip identity (destination/dates) while a trip
+  // is already bound (`tripId` set — Server-truth mode) and does NOT also
+  // re-affirm `tripId` is exactly the #972 desync shape — the Lane-6
+  // trip-scoped push then targets the OLD trip's `trip_contexts` row with the
+  // NEW destination/dates. Any caller that trips this should switch to
+  // switchTripContext / switchTripContextPreservingId instead. Logged, not
+  // blocked — this is a diagnostic, not a behavior change.
+  if (
+    current.tripId &&
+    !("tripId" in patch) &&
+    ("destination" in sanitized || "startDate" in sanitized || "endDate" in sanitized)
+  ) {
+    try {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[trip-context] updateTripContext(merge) wrote destination/dates while tripId="${current.tripId}" ` +
+          "was bound, without including tripId — this can desync a trip's identity from its own " +
+          "displayed destination/dates (the #972 class). Use switchTripContext or " +
+          "switchTripContextPreservingId for identity-changing writes.",
+      );
+    } catch {
+      /* non-browser env */
+    }
+  }
   const next = { ...current, ...sanitized } as TripContext;
   try {
     sessionStorage.setItem(STORAGE_KEY, JSON.stringify(next));
@@ -166,6 +191,30 @@ export function switchTripContext(patch: TripContextPatch): TripContext {
   return next;
 }
 
+/**
+ * Convenience for callers that know a CANDIDATE destination/date/etc. set but
+ * not necessarily whether it differs from whichever trip is currently bound
+ * (e.g. a page-level "reflect my local form state back to context" sync, as
+ * opposed to a deliberate "load trip X" action that already has trip X's own
+ * `tripId` in hand — those should call switchTripContext directly). Mirrors
+ * edit-trip-panel.tsx's save() policy: `tripId` is preserved ONLY when
+ * `destination` is unchanged from the live context; a genuine destination
+ * change always clears it (the identity no longer matches what's displayed).
+ * Fields outside SWITCH_FIELDS in `patch` are dropped exactly like
+ * switchTripContext — callers needing those too should follow with a
+ * separate updateTripContext() merge call for just the extra fields.
+ */
+export function switchTripContextPreservingId(
+  patch: TripContextPatch & { destination?: string },
+): TripContext {
+  const live = getTripContext();
+  const trimmedDestination =
+    typeof patch.destination === "string" ? patch.destination.trim() || undefined : patch.destination;
+  const destinationChanged = (live.destination || "") !== (trimmedDestination || "");
+  const preservedTripId = live.tripId && !destinationChanged ? live.tripId : undefined;
+  return switchTripContext({ ...patch, tripId: preservedTripId });
+}
+
 // ── Server persistence (migration 130; trip-scoped by migration 161) ──────────
 // For signed-in users the context is mirrored to /api/trip-context so planning
 // survives browser restarts and crosses devices. Guests get a 401 which is
@@ -212,17 +261,30 @@ let hydrated = false;
  * active trip is already known locally, otherwise the legacy per-user row exactly as
  * before. A brand-new session with no local `tripId` yet always falls back to the
  * legacy row, matching pre-Lane-6 behavior byte-for-byte.
+ *
+ * Race guard (#972 receipt 3): this fetch is scoped by whichever `tripId` was
+ * local at the moment the REQUEST went out — but the request is async, and a
+ * trip can get bound locally (switchTripContext, e.g. the dashboard trip-chip)
+ * WHILE it's in flight. If the request left scoped to the legacy per-user row
+ * (no `tripId` yet) but a trip is bound by the time the response lands, that
+ * legacy payload describes a stale/unrelated planning session — merging it in
+ * would silently pair a real trip's `tripId` with a DIFFERENT trip's leftover
+ * destination/dates (or resurrect fields switchTripContext had just cleared).
+ * Discard it instead; the now-bound trip's own data already came from
+ * whatever atomically set `tripId` in the first place.
  */
 export async function hydrateTripContextFromServer(): Promise<void> {
   if (hydrated) return;
   hydrated = true;
   try {
+    const requestedLegacyRow = !getTripContext().tripId;
     const res = await fetch(`/api/trip-context${tripScopedQuery(getTripContext())}`, { credentials: "include" });
     if (!res.ok) return; // 401 guest / error — nothing to hydrate
     const data = await res.json().catch(() => null);
     const server = data?.context;
     if (!server || typeof server !== "object" || Object.keys(server).length === 0) return;
     const local = getTripContext();
+    if (requestedLegacyRow && local.tripId) return; // race: a trip was bound mid-flight — discard
     // Merge: server provides the base, local fields override. Only write if
     // at least one server field was missing locally (avoid a no-op write).
     const merged: Record<string, unknown> = { ...server, ...local };
