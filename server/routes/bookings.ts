@@ -16,6 +16,7 @@ import { serviceBookings } from '@shared/schema';
 import { eq, sql } from 'drizzle-orm';
 import { getUserId } from '../utils/auth';
 import { holdWindowDays } from '../config/earnings-hold.config';
+import { revertPurchasedItemsForBooking } from '../services/item-routing.service';
 import Stripe from 'stripe';
 
 const router = Router();
@@ -430,9 +431,17 @@ router.post('/refund', isAuthenticated, async (req, res) => {
     // claim + deterministic Stripe idempotencyKey `refund-sb-<bookingId>`).
     const result = await stripePaymentService.refundServiceBooking(bookingId, reason);
 
+    // Lane 1 W4 — the ROUTING reversal edge (ROUTING_STATE_CONTRACT §1: the refund path is its
+    // SOLE writer). Without it the Trip Card keeps showing as `purchased` an item the traveler was
+    // refunded for — H2's mirror image. Runs AFTER the refund succeeds, so the ledger-first /
+    // Stripe-second ordering above is untouched; the helper is atomic, idempotent, and never
+    // throws (a plan flag must never surface as a refund failure).
+    const routingReversal = await revertPurchasedItemsForBooking(bookingId);
+
     res.json({
       success: true,
       ...result,
+      revertedPlanItems: routingReversal.reverted,
       reversedEarnings: reversal.reversed,
       skippedPaidOut: reversal.skippedPaidOut,
       reversedRevenueRows,
