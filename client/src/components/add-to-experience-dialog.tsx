@@ -149,8 +149,12 @@ export function AddToExperienceDialog({
     },
   });
 
-  const activeTripStatuses = ["planning", "draft", "confirmed"];
-  const activeTrips = trips?.filter((t) => activeTripStatuses.includes(t.status)) || [];
+  // §13: trips.status is a dead write-once field (born draft/planning, never advanced to
+  // completed/cancelled) — filtering on it here never actually excluded a finished trip.
+  // "Still addable" is derived from the trip's own dates instead, mirroring the convention
+  // every traveler-facing renderer uses (client/src/pages/my-trips.tsx: a trip is live/
+  // upcoming while its endDate has not yet passed). See docs/briefs/L3-trips-status-brief.md.
+  const activeTrips = trips?.filter((t) => !t.endDate || new Date(t.endDate) >= new Date()) || [];
 
   if (!isAuthenticated) {
     return (
