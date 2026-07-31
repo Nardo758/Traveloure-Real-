@@ -32,6 +32,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import StripeCheckout from "@/components/booking/StripeCheckout";
+import { StorefrontLink } from "@/components/marketplace/storefront-link";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { planTypeLabel } from "@shared/ready-made-plan-types";
@@ -52,6 +53,8 @@ interface DetailListing {
   badge: string | null;
   insideCounts: { days?: number; items?: number; byType?: Record<string, number> } | null;
   authorName: string;
+  /** MP-2: the author's storefront handle. Null when unclaimed → no link rendered. */
+  authorHandle: string | null;
   section: "trips_by_locals" | "advisor";
 }
 
@@ -309,6 +312,15 @@ export default function ReadyMadeDetailPage() {
           {isPreview ? "Preview only" : "Get this trip"}
         </Button>
       </div>
+
+      {/* MP-2 return path: "I like this — show me everything this expert offers."
+          Renders nothing when the author has not claimed a handle (no dead links). */}
+      <StorefrontLink
+        handle={listing.authorHandle}
+        name={listing.authorName}
+        sellerNoun={listing.section === "trips_by_locals" ? "local expert" : "trip planner"}
+        data-testid="link-rm-storefront"
+      />
 
       <Dialog open={!!paymentIntent} onOpenChange={(open) => !open && !confirming && setPaymentIntent(null)}>
         <DialogContent className="sm:max-w-md">

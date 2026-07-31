@@ -747,11 +747,26 @@ router.get("/api/ready-made", async (_req, res) => {
         reviewedAt: readyMadeTrips.reviewedAt,
         authorFirstName: users.firstName,
         authorRole: users.role,
+        // MP-2: the storefront return path. Nullable (migration 136) — an author who
+        // has not claimed a handle has no /p/ page, and the client renders no link.
+        authorHandle: users.handle,
       })
       .from(readyMadeTrips)
       .innerJoin(users, eq(users.id, readyMadeTrips.authorId))
       .where(and(eq(readyMadeTrips.status, "approved"), eq(readyMadeTrips.active, true)))
-      .orderBy(desc(readyMadeTrips.reviewedAt));
+      // CURATION ORDER (MP-3): badged listings lead, then most-recently-approved.
+      //
+      // Note this lane does NOT use the featured-sort bounded-boost primitive that the
+      // services feed uses. That guardrail exists to stop editorial featuring from burying
+      // a better-QUALITY native result — and `ready_made_trips` has no quality axis at all
+      // (no rating column, no review table, no salesCount). With nothing measured there is
+      // nothing to bury, so a straight badge tier is honest here. If a real quality signal
+      // is ever added to this lane, move it onto featuredAdjustedScore rather than deepening
+      // this ORDER BY.
+      .orderBy(
+        sql`CASE WHEN ${readyMadeTrips.badge} IS NULL THEN 1 ELSE 0 END`,
+        desc(readyMadeTrips.reviewedAt),
+      );
 
     res.json({
       listings: rows.map((r) => ({
@@ -768,6 +783,7 @@ router.get("/api/ready-made", async (_req, res) => {
         badge: r.badge,
         insideCounts: r.insideCounts,
         authorName: r.authorFirstName ?? "Expert",
+        authorHandle: r.authorHandle ?? null,
         // The consumer shelf section (ratified store model): by author TYPE.
         section: r.authorRole === "local_expert" ? "trips_by_locals" : "advisor",
       })),
@@ -805,6 +821,7 @@ router.get("/api/ready-made/:id", async (req, res) => {
         authorId: readyMadeTrips.authorId,
         authorFirstName: users.firstName,
         authorRole: users.role,
+        authorHandle: users.handle, // MP-2 storefront return path (nullable)
       })
       .from(readyMadeTrips)
       .innerJoin(users, eq(users.id, readyMadeTrips.authorId))
@@ -835,6 +852,7 @@ router.get("/api/ready-made/:id", async (req, res) => {
         badge: row.badge,
         insideCounts: row.insideCounts,
         authorName: row.authorFirstName ?? "Expert",
+        authorHandle: row.authorHandle ?? null,
         section: row.authorRole === "local_expert" ? "trips_by_locals" : "advisor",
       },
       preview: isAuthorPreview,

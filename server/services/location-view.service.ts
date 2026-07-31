@@ -23,6 +23,7 @@ import { eq, sql, and, ilike, inArray, asc } from "drizzle-orm";
 import { travelPulseService } from "./travelpulse.service";
 import { feverService } from "./fever.service";
 import { resolveBookability } from "@shared/bookability";
+import { sortByFeaturedAdjusted } from "./featured-sort";
 
 export interface SectionResult<T> {
   data: T | null;
@@ -359,10 +360,43 @@ class LocationViewService {
       .where(
         and(
           eq(providerServices.status, "active"),
+          // F2 READ-GATE (CLAUDE.md §1 / D1a). GET /api/discover/location/:city is a
+          // PUBLIC, unauthenticated, `Cache-Control: public` route, so it is exactly the
+          // kind of surface the F2 sweep gated: offerings are born `submitted`, and
+          // without this predicate a listing that no admin has approved surfaced on the
+          // public city page. `status='active'` is the OWNER's on/off switch — it is NOT
+          // an approval, and was never a substitute for one.
+          eq(providerServices.approvalStatus, "approved"),
           ilike(providerServices.location, `%${cityName}%`),
         ),
       )
-      .orderBy(providerServices.isFeatured);
+      // CURATION ORDER. This replaced `.orderBy(providerServices.isFeatured)`, which was
+      // an INVERTED sort: Postgres orders booleans ASC by default and false < true, so
+      // every admin-featured service sank to the BOTTOM of the city page — the exact
+      // opposite of the intent.
+      //
+      // The fix is not `desc(isFeatured)` either. That is the naive ranking the
+      // featured-sort guardrail exists to prevent ("never bury a better native result"):
+      // it would let a mediocre featured listing outrank a genuinely well-reviewed one.
+      // Instead featuring is a BOUNDED BOOST over a real quality score.
+      //
+      // Quality is honest or absent (§13): it is derived only from real aggregates
+      // (averageRating over reviewCount, both real columns maintained from real reviews),
+      // and a service with NO reviews scores `null` = UNMEASURED, never a stand-in number.
+      // Unmeasured items still take the featured boost — see featuredAdjustedScore, where
+      // the quality FLOOR deliberately does not apply to them.
+      .then((rows) =>
+        sortByFeaturedAdjusted(
+          [...rows],
+          (r) => {
+            const count = Number(r.reviewCount ?? 0);
+            if (count <= 0) return null; // unmeasured — no reviews, so no quality claim
+            const rating = Number(r.averageRating ?? 0);
+            if (!Number.isFinite(rating) || rating <= 0) return null;
+            return (rating / 5) * 100; // 0–5 stars → 0–100, the primitive's scale
+          },
+        ),
+      );
 
     const [hero, recommendations, events, neighborhoods, gems, services] = await Promise.all([
       settle("hero", heroPromise),
