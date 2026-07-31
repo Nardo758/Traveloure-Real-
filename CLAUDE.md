@@ -297,6 +297,14 @@ This document captures architectural decisions to maintain consistency across co
       This is also the destination-aware ordering the packages feed wanted — done in the recommender, not a
       duplicate feed sort. **Still filed:** `help-me-decide` mock packages. **Naming:** each package is expert-titled (free text, reviewed at approval);
       category/destination/duration are structured. **Label standard (ratified, superseded Jul 16, 2026):
+      **Nav extension (MP-1, Jul 30 2026):** the same label standard now governs `nav-config.ts`. The Discover
+      group is renamed **"Marketplace"** and lists ALL FOUR tabs — previously it listed two, and "Ready Made
+      Trips" had **no nav entry anywhere on the site**, so the entire expert store lane was nav-invisible. The
+      services entry moved out of "Experts & Services" and is renamed **"Browse Services"**, NOT "Service
+      Providers": `provider_services` is role-agnostic (the "one builder" rule), so experts list services in
+      that tab too and naming it after one role was wrong about who sells there. **"By Date" is deliberate**
+      and pairs with "By Location" as the two browse AXES — do not "align" it to the `?tab=events` token.
+      **Routing tokens and the `/discover` route are UNCHANGED** — label-only, per this standard.
       traveler-facing = "Ready Made Trips"** (Discover tab/header, my-bookings tab, detail page) — renamed from
       "Packages" because "Packages" read ambiguously against services/bookings and obscured that these are
       pre-made, expert-authored *trips* the traveler buys. The seller console keeps "Itinerary Templates" (same

@@ -6,6 +6,7 @@ import { AdminTabNav } from "@/components/admin/AdminTabNav";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { READY_MADE_BADGE_VALUES } from "@shared/ready-made-badges";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
@@ -20,6 +21,15 @@ interface PendingTemplate {
   currency: string | null;
   category: string | null;
   submittedAt: string | null;
+}
+
+/** A live (approved + active) store listing, as returned by the public feed. */
+interface LiveReadyMade {
+  id: string;
+  title: string;
+  market: string;
+  authorName: string;
+  badge: string | null;
 }
 
 interface PendingReadyMade {
@@ -88,6 +98,25 @@ export default function TemplateApprovals() {
       apiRequest("POST", `/api/admin/ready-made/${id}/reject`, { reason }),
     onSuccess: () => { toast({ title: "Store listing rejected" }); rmInvalidate(); },
     onError: (e: any) => toast({ title: "Reject failed", description: e.message, variant: "destructive" }),
+  });
+
+  // ── CURATION (MP-3): editorial badges on the APPROVED store shelf.
+  // Reuses the PUBLIC feed as its list — /api/ready-made already returns exactly the
+  // approved+active listings a curator acts on (with their current badge), so this adds
+  // no second backend for the same set. The approval queue above is a different set
+  // (submitted), which is why curation needs its own section rather than a column there.
+  const { data: rmLiveData } = useQuery<{ listings: LiveReadyMade[] }>({
+    queryKey: ["/api/ready-made"],
+  });
+  const rmLive = rmLiveData?.listings ?? [];
+  const rmBadgeMutation = useMutation({
+    mutationFn: ({ id, badge }: { id: string; badge: string | null }) =>
+      apiRequest("PATCH", `/api/admin/ready-made/${id}/badge`, { badge }),
+    onSuccess: () => {
+      toast({ title: "Badge updated" });
+      queryClient.invalidateQueries({ queryKey: ["/api/ready-made"] });
+    },
+    onError: (e: any) => toast({ title: "Badge update failed", description: e.message, variant: "destructive" }),
   });
 
   return (
@@ -214,6 +243,62 @@ export default function TemplateApprovals() {
                     data-testid={`button-rm-reject-${l.id}`}
                   >
                     <XCircle className="w-4 h-4 mr-2" /> Reject
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))
+        )}
+
+        {/* ── Store curation: editorial badges on the live shelf ─────────────────
+            These badges are the platform's OWN editorial voice, from a closed
+            vocabulary (shared/ready-made-badges.ts). There is deliberately no
+            "Most popular"/"Best selling" option: the lane has no sales or rating
+            aggregate behind such a claim, and a ranking label with nothing behind
+            it is the §13 fabricated-claim class. Badged listings lead the store
+            shelf; everything else falls back to most-recently-approved. */}
+        <div className="pt-4">
+          <h2 className="text-xl font-semibold">Store curation</h2>
+          <p className="text-sm text-muted-foreground">
+            Editorial badges on live Ready Made Trips. Badged listings lead the store shelf.
+          </p>
+        </div>
+        {rmLive.length === 0 ? (
+          <p className="text-sm text-muted-foreground" data-testid="rm-curation-empty">
+            No live store listings yet.
+          </p>
+        ) : (
+          rmLive.map((l) => (
+            <Card key={l.id} data-testid={`rm-curation-${l.id}`}>
+              <CardContent className="p-4 flex flex-wrap items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-medium truncate">{l.title}</p>
+                  <p className="text-sm text-muted-foreground truncate">
+                    {l.market} · by {l.authorName}
+                    {l.badge && <> · currently <span className="font-medium">{l.badge}</span></>}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {READY_MADE_BADGE_VALUES.map((b) => (
+                    <Button
+                      key={b}
+                      size="sm"
+                      variant={l.badge === b ? "default" : "outline"}
+                      onClick={() => rmBadgeMutation.mutate({ id: l.id, badge: b })}
+                      disabled={rmBadgeMutation.isPending}
+                      data-testid={`rm-badge-${b.replace(/\s+/g, "-").toLowerCase()}-${l.id}`}
+                    >
+                      {b}
+                    </Button>
+                  ))}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => rmBadgeMutation.mutate({ id: l.id, badge: null })}
+                    disabled={rmBadgeMutation.isPending || !l.badge}
+                    data-testid={`rm-badge-clear-${l.id}`}
+                  >
+                    Clear
                   </Button>
                 </div>
               </CardContent>
