@@ -670,6 +670,19 @@ This document captures architectural decisions to maintain consistency across co
   queue → approve → live, out of queue. Full pipeline audit verdicts in the data-capture report
   (docs/audits/, feed/calendar data-capture).
 - **Approval divergences** (§1) — tracked (D1a/Phase 2). *(The coordination-fee $0-budget bug was fixed by #144 — see §7.)*
+- **`trips.status` — DEAD write-once field, do not read, do not write (Lane 3 Option B, ratified Jul 31, 2026).**
+  Born `draft`/`planning` at creation; nothing ever advances it. Trip PHASE is **date-derived everywhere**
+  (`startDate`/`endDate` vs now — the convention `client/src/pages/my-trips.tsx` already used; both columns are
+  NOT NULL so the derivation is total). **Fixed:** the admin trips dashboard's `statusCounts`
+  (`server/routes/admin.routes.ts`) plus two independently-discovered believing readers —
+  `customers.routes.ts`'s `hasActiveTrip` (was structurally always true) and `executive-assistant.tsx`'s stats
+  (a `completed` count structurally always 0) — now derive from dates; the "Add to a Trip" pickers' no-op
+  status filter now excludes genuinely-finished trips by `endDate`. The column and `tripStatusEnum` stay
+  physically in place (no schema change). **The named future owner of a real trip lifecycle is the Phase 4
+  convert-to-ready-made brief** — the field's revival path is documented in the same place as its deprecation;
+  status ownership gets built when Phase 4 gives it a customer. Full record incl. the pass-through echo list
+  and filed latent readers (`storage.getTrips(status)` branch, dead `getAdminTripsList`):
+  `docs/briefs/L3-trips-status-brief.md`.
 - **`expert_service_categories` — NOT a bug (corrected Jul 15, 2026).** Earlier drafts called this a "dropped-by-013
   but still referenced" latent bug. **That premise was factually wrong:** migration 013 explicitly retains it
   (`-- 4. expert_service_categories: intentionally NOT dropped here.`) and migration **030**
