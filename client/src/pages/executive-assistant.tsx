@@ -25,11 +25,25 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { Trip } from "@shared/schema";
 
+// §13: `trips.status` is a dead write-once field (born draft/planning at creation, nothing ever
+// advances it) — do not read it for phase. Phase is derived from dates instead, mirroring the
+// convention every traveler-facing renderer already uses (client/src/pages/my-trips.tsx). See
+// docs/briefs/L3-trips-status-brief.md (Option B, ratified Jul 31, 2026).
+type TripPhase = "upcoming" | "active" | "past";
+
+function deriveTripPhase(trip: Pick<Trip, "startDate" | "endDate">, now: Date): TripPhase {
+  const start = new Date(trip.startDate);
+  const end = new Date(trip.endDate);
+  if (end < now) return "past";
+  if (start <= now && end >= now) return "active";
+  return "upcoming";
+}
+
 interface TripStats {
   total: number;
+  upcoming: number;
   active: number;
-  completed: number;
-  draft: number;
+  past: number;
 }
 
 export default function ExecutiveAssistant() {
@@ -39,11 +53,13 @@ export default function ExecutiveAssistant() {
     queryKey: ["/api/trips"],
   });
 
+  const now = new Date();
+
   const stats: TripStats = {
     total: trips.length,
-    active: trips.filter(t => t.status === "planning" || t.status === "confirmed").length,
-    completed: trips.filter(t => t.status === "completed").length,
-    draft: trips.filter(t => t.status === "draft").length,
+    upcoming: trips.filter(t => deriveTripPhase(t, now) === "upcoming").length,
+    active: trips.filter(t => deriveTripPhase(t, now) === "active").length,
+    past: trips.filter(t => deriveTripPhase(t, now) === "past").length,
   };
 
   const upcomingTrips = trips
@@ -55,17 +71,14 @@ export default function ExecutiveAssistant() {
     .sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime())
     .slice(0, 5);
 
-  const getStatusColor = (status: string | null) => {
-    switch (status) {
-      case "planning":
-      case "confirmed":
+  const getStatusColor = (phase: TripPhase) => {
+    switch (phase) {
+      case "active":
         return "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400";
-      case "completed":
+      case "past":
         return "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400";
-      case "draft":
+      case "upcoming":
         return "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400";
-      case "cancelled":
-        return "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400";
       default:
         return "bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400";
     }
@@ -140,28 +153,28 @@ export default function ExecutiveAssistant() {
               </div>
             </CardContent>
           </Card>
-          <Card className="bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700" data-testid="card-stat-completed">
+          <Card className="bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700" data-testid="card-stat-past">
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-green-100 dark:bg-green-900/30 rounded-lg">
                   <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats.completed}</p>
-                  <p className="text-xs text-gray-600 dark:text-gray-400">Completed</p>
+                  <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats.past}</p>
+                  <p className="text-xs text-gray-600 dark:text-gray-400">Past</p>
                 </div>
               </div>
             </CardContent>
           </Card>
-          <Card className="bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700" data-testid="card-stat-draft">
+          <Card className="bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700" data-testid="card-stat-upcoming-count">
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-yellow-100 dark:bg-yellow-900/30 rounded-lg">
                   <Clock className="w-5 h-5 text-yellow-600 dark:text-yellow-400" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats.draft}</p>
-                  <p className="text-xs text-gray-600 dark:text-gray-400">Drafts</p>
+                  <p className="text-2xl font-bold text-gray-900 dark:text-white">{stats.upcoming}</p>
+                  <p className="text-xs text-gray-600 dark:text-gray-400">Upcoming</p>
                 </div>
               </div>
             </CardContent>
@@ -225,8 +238,8 @@ export default function ExecutiveAssistant() {
                             <p className="text-sm font-medium">
                               {trip.startDate ? new Date(trip.startDate).toLocaleDateString() : "No date"}
                             </p>
-                            <Badge className={cn("mt-1", getStatusColor(trip.status))}>
-                              {trip.status || "draft"}
+                            <Badge className={cn("mt-1", getStatusColor(deriveTripPhase(trip, now)))}>
+                              {deriveTripPhase(trip, now)}
                             </Badge>
                           </div>
                         </div>
@@ -279,8 +292,8 @@ export default function ExecutiveAssistant() {
                             <p className="text-xs text-gray-600 dark:text-gray-400">
                               Created {trip.createdAt ? new Date(trip.createdAt).toLocaleDateString() : ""}
                             </p>
-                            <Badge className={cn("mt-1", getStatusColor(trip.status))}>
-                              {trip.status || "draft"}
+                            <Badge className={cn("mt-1", getStatusColor(deriveTripPhase(trip, now)))}>
+                              {deriveTripPhase(trip, now)}
                             </Badge>
                           </div>
                         </div>
@@ -351,8 +364,8 @@ export default function ExecutiveAssistant() {
                                   {new Date(trip.startDate).toLocaleDateString()}
                                 </p>
                               )}
-                              <Badge className={cn("mt-1", getStatusColor(trip.status))}>
-                                {trip.status || "draft"}
+                              <Badge className={cn("mt-1", getStatusColor(deriveTripPhase(trip, now)))}>
+                                {deriveTripPhase(trip, now)}
                               </Badge>
                             </div>
                           </div>
@@ -413,13 +426,13 @@ export default function ExecutiveAssistant() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {stats.draft > 0 ? (
+              {stats.upcoming > 0 ? (
                 <div className="space-y-3">
                   <div className="flex items-center gap-3 p-3 rounded-lg bg-yellow-50 dark:bg-yellow-900/20">
                     <Clock className="w-5 h-5 text-yellow-600" />
                     <div>
-                      <p className="text-sm font-medium">{stats.draft} draft trip(s)</p>
-                      <p className="text-xs text-gray-600 dark:text-gray-400">Awaiting completion</p>
+                      <p className="text-sm font-medium">{stats.upcoming} upcoming trip(s)</p>
+                      <p className="text-xs text-gray-600 dark:text-gray-400">May need preparation</p>
                     </div>
                   </div>
                 </div>
