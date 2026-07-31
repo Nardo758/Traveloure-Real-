@@ -62,7 +62,9 @@ import { scoreKnowledgeProof, KNOWLEDGE_PROOF_QUESTIONS } from "./services/exper
 // storage.addToCart / updateCartItem / removeFromCart / clearCart / migrateGuestCart /
 // replaceUserCartWithVariantItems directly from a route again, and never `db.insert(cartItems)`.
 import * as cartProjection from "./services/cart-projection.service";
-import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant, type TripPreferences } from "./itinerary-optimizer";
+import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant, type FixedCommitment, type TripPreferences } from "./itinerary-optimizer";
+// Lane 5b: the Trip is the optimizer's baseline. Single expression of the ratified read-set.
+import { loadTripOptimizerInputs } from "./services/optimizer-baseline.service";
 import messagesRouter from "./routes/messages";
 import { availableAtFor } from "./config/earnings-hold.config";
 import { aiOrchestrator } from "./services/ai-orchestrator";
@@ -313,6 +315,32 @@ async function respondIfServiceInBundle(err: any, serviceId: string, res: any): 
   res.status(409).json({
     message: "This service is part of a bundle — remove it from the bundle(s) before deleting it.",
     bundles: rows.map((r) => r.serviceName),
+  });
+  return true;
+}
+
+// ── Lane 5b: the honest dead-end when a signed-in caller's TRIP has nothing to optimize ─────
+// The optimizer reads the Trip now (docs/briefs/L5-optimizer-repoint-brief.md, ratified
+// Jul 31 2026). A user who built a cart signed-out, signed up, and hit Optimize has a full cart
+// and an empty trip. Silently reading their cart instead would rebuild exactly the dual-source
+// ambiguity the reconcile dissolved, so the server says so specifically and points at the real
+// fix — `POST /api/cart/convert-to-itinerary` (W3-fixed) materialises the cart onto the trip.
+//
+// The `cart_items` touch here is an EXISTENCE PROBE, not a baseline read: it selects one id, joins
+// nothing, and its result can only ever choose between two error/no-op paths — it never reaches
+// the optimizer. The cart⋈provider_services baseline read is guest-only (see the create handler).
+// Convention mirrors `respondIfServiceInBundle` above: returns true when the response was sent.
+async function respondIfCartAwaitsConversion(userId: string, res: any): Promise<boolean> {
+  const [pending] = await db
+    .select({ id: cartItems.id })
+    .from(cartItems)
+    .where(eq(cartItems.userId, userId))
+    .limit(1);
+  if (!pending) return false;
+  res.status(409).json({
+    error: "trip_empty_convert_cart",
+    message:
+      "There's nothing on this trip to optimize yet, but your cart isn't empty. Add your cart to the trip first, then run the optimization.",
   });
   return true;
 }
@@ -5916,6 +5944,81 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         if (denied) return res.status(denied.status).json({ message: denied.message });
       }
 
+      // ── Lane 5b: resolve the baseline BEFORE anything is created or verified ────────────────
+      // Deliberately ahead of the pay gate and the insert: a request that has nothing to optimize
+      // must not create a comparison row, and must not send the payer through Stripe verification
+      // for a run that cannot happen.
+      let baselineItems: any[] = [];
+      let fixedCommitments: FixedCommitment[] = [];
+
+      if (tripId) {
+        // THE RE-POINT. The trip was authorized immediately above; `loadTripOptimizerInputs`
+        // applies the ratified read-set (in_planning + ready_for_checkout optimizable, purchased
+        // as constraints, with_expert never read). Trip-first is deliberate — when a trip exists
+        // it IS the plan, so a client-supplied `baselineItems` snapshot must not shadow it (that
+        // is the dual-source ambiguity again, and it would let a stale snapshot hide a booking).
+        const tripInputs = await loadTripOptimizerInputs(tripId);
+        baselineItems = tripInputs.baselineItems;
+        fixedCommitments = tripInputs.fixedCommitments;
+
+        if (baselineItems.length === 0 && (await respondIfCartAwaitsConversion(userId, res))) return;
+      } else if (inlineBaselineItems && inlineBaselineItems.length > 0) {
+        baselineItems = inlineBaselineItems.map((item: any, index: number) => ({
+          id: `inline-${index}`,
+          name: item.name,
+          description: item.description || "",
+          serviceType: item.category || "service",
+          price: parseFloat(item.price || "0"),
+          rating: item.rating || 4.5,
+          location: item.location || "",
+          duration: item.duration || 120,
+          dayNumber: item.dayNumber || Math.floor(index / 3) + 1,
+          timeSlot: item.timeSlot || ["morning", "afternoon", "evening"][index % 3],
+          category: item.category || "service",
+          provider: item.provider || "Provider"
+        }));
+      } else if (!userId) {
+        // ── GUEST-ONLY cart fallback — deliberate debt, ratified Jul 31 2026 ────────────────────
+        // Guests have carts but no trips (guest trips are deferred to G2), so the cart read stays
+        // as their transition path. RETIREMENT CONDITION, written down so this dies by plan rather
+        // than by archaeology: it retires when G2 lands guest trips
+        // (docs/planning/TRIP_CANON_MASTER_BRIEF.md §3, deferred inventory row).
+        //
+        // UNREACHABLE TODAY BY CONSTRUCTION, and that is the point: this route is `isAuthenticated`,
+        // so `userId` is always set. NO logged-in user may ever touch the cart-read path — a
+        // signed-in caller reading the cart is precisely the dual-source ambiguity the reconcile
+        // fixed. The branch is kept, labelled and gated rather than written fresh later.
+        const cartItemsData = await db
+          .select({
+            cartItem: cartItems,
+            service: providerServices,
+          })
+          .from(cartItems)
+          .leftJoin(providerServices, eq(cartItems.serviceId, providerServices.id))
+          .where(eq(cartItems.userId, userId));
+
+        baselineItems = cartItemsData.map((item, index) => ({
+          id: item.cartItem.id,
+          // Lane 5a Defect 3: `id` above is the CART ITEM id; the catalog link is the joined
+          // service's own id. Carrying it means the baseline variant keeps its buyable link.
+          providerServiceId: item.service?.id ?? undefined,
+          name: item.service?.serviceName || "Unknown Service",
+          description: item.service?.shortDescription,
+          serviceType: item.service?.serviceType,
+          price: parseFloat(item.service?.price || "0"),
+          rating: parseFloat(item.service?.averageRating || "4.5"),
+          location: item.service?.location,
+          duration: 120,
+          dayNumber: Math.floor(index / 3) + 1,
+          timeSlot: ["morning", "afternoon", "evening"][index % 3],
+          category: item.service?.serviceType || "service",
+          provider: "Provider"
+        }));
+      } else if (await respondIfCartAwaitsConversion(userId, res)) {
+        // Signed in, no trip, no inline items — the cart read above is not theirs to use.
+        return;
+      }
+
       // ── Optimization authorization gate (Lane 5a Defect 1, harvested from the §9 dead twin) ──
       // The comparison record is ALWAYS created (never blocked) — only the paid LLM run is gated.
       // canRunOptimizer=false → born "pending_payment", no AI call; true → "generating" + optimizer.
@@ -5952,54 +6055,6 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         })
         .returning();
 
-      // Auto-generate AI alternatives immediately
-      let baselineItems: any[] = [];
-
-      if (inlineBaselineItems && inlineBaselineItems.length > 0) {
-        baselineItems = inlineBaselineItems.map((item: any, index: number) => ({
-          id: `inline-${index}`,
-          name: item.name,
-          description: item.description || "",
-          serviceType: item.category || "service",
-          price: parseFloat(item.price || "0"),
-          rating: item.rating || 4.5,
-          location: item.location || "",
-          duration: item.duration || 120,
-          dayNumber: item.dayNumber || Math.floor(index / 3) + 1,
-          timeSlot: item.timeSlot || ["morning", "afternoon", "evening"][index % 3],
-          category: item.category || "service",
-          provider: item.provider || "Provider"
-        }));
-      } else {
-        // Fall back to cart items
-        const cartItemsData = await db
-          .select({
-            cartItem: cartItems,
-            service: providerServices,
-          })
-          .from(cartItems)
-          .leftJoin(providerServices, eq(cartItems.serviceId, providerServices.id))
-          .where(eq(cartItems.userId, userId));
-
-        baselineItems = cartItemsData.map((item, index) => ({
-          id: item.cartItem.id,
-          // Lane 5a Defect 3: `id` above is the CART ITEM id; the catalog link is the joined
-          // service's own id. Carrying it means the baseline variant keeps its buyable link.
-          providerServiceId: item.service?.id ?? undefined,
-          name: item.service?.serviceName || "Unknown Service",
-          description: item.service?.shortDescription,
-          serviceType: item.service?.serviceType,
-          price: parseFloat(item.service?.price || "0"),
-          rating: parseFloat(item.service?.averageRating || "4.5"),
-          location: item.service?.location,
-          duration: 120,
-          dayNumber: Math.floor(index / 3) + 1,
-          timeSlot: ["morning", "afternoon", "evening"][index % 3],
-          category: item.service?.serviceType || "service",
-          provider: "Provider"
-        }));
-      }
-
       // Trigger AI optimization in background only when authorized (payment verified or free re-run)
       if (canRunOptimizer && baselineItems.length > 0) {
         const availableServices = await db
@@ -6024,7 +6079,16 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           formatDate(startDate),
           formatDate(endDate),
           budget ? parseFloat(budget) : undefined,
-          travelers || 1
+          travelers || 1,
+          // tripId / userTransportPrefs / tripPreferences stay UNPASSED here, exactly as before
+          // Lane 5b. Passing `tripId` would newly activate this handler's temporal-anchor and
+          // day-boundary reads — a real behaviour change that belongs to whoever owns that gap,
+          // not to the re-point. `fixedCommitments` is passed directly so the purchased-item
+          // constraint works on both entry points without touching the anchor plumbing.
+          undefined,
+          undefined,
+          undefined,
+          fixedCommitments
         ).catch((err) => console.error("Background optimization error:", err));
       }
 
@@ -6157,6 +6221,109 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         return res.status(401).json({ message: "Unauthorized" });
       }
 
+      // ── Lane 5b: resolve the baseline BEFORE the pay gate ───────────────────────────────────
+      // Order matters and is deliberate: the gate's third branch RECORDS a PaymentIntent on this
+      // row via an atomic conditional claim (§15) — a PI can only ever be spent once. Resolving
+      // the baseline first means a caller with nothing to optimize is never charged for a run that
+      // cannot happen. (Pre-5b the gate ran first, so a 400 could follow a consumed PI.)
+      let baselineItems: any[] = [];
+      let fixedCommitments: FixedCommitment[] = [];
+
+      if (comparison.tripId) {
+        // THE RE-POINT (see the create handler for the full rationale). The stored `tripId` is
+        // re-authorized here rather than trusted from the create-time check: access can be revoked
+        // between the two calls, and this handler triggers a paid run over that trip's contents.
+        const denied = await authorizeTripLogistics(
+          comparison.tripId,
+          userId,
+          "POST /api/itinerary-comparisons/:id/generate",
+        );
+        if (denied) return res.status(denied.status).json({ message: denied.message });
+
+        const tripInputs = await loadTripOptimizerInputs(comparison.tripId);
+        baselineItems = tripInputs.baselineItems;
+        fixedCommitments = tripInputs.fixedCommitments;
+
+        // A trip-linked comparison never falls through to the client's `baselineItems` snapshot —
+        // on the regenerate path that snapshot is sessionStorage from the original run and can be
+        // arbitrarily stale (it predates any purchase the traveler has since made).
+        if (baselineItems.length === 0 && (await respondIfCartAwaitsConversion(userId, res))) return;
+      } else if (inlineBaselineItems && inlineBaselineItems.length > 0) {
+        baselineItems = inlineBaselineItems.map((item: any, index: number) => ({
+          id: `inline-${index}`,
+          name: item.name,
+          description: item.description || "",
+          serviceType: "external",
+          price: parseFloat(item.price || "0"),
+          // §13: no fabricated fallback rating — unknown stays unknown.
+          rating: typeof item.rating === "number" ? item.rating : undefined,
+          location: item.location || "",
+          duration: item.duration || 120,
+          dayNumber: item.dayNumber || Math.floor(index / 3) + 1,
+          timeSlot: item.timeSlot || ["morning", "afternoon", "evening"][index % 3],
+          category: item.category || "service",
+          provider: item.provider || "Provider"
+        }));
+      } else if (comparison.userExperienceId) {
+        const items = await db
+          .select()
+          .from(userExperienceItems)
+          .where(eq(userExperienceItems.userExperienceId, comparison.userExperienceId));
+
+        baselineItems = items.map((item) => ({
+          id: item.id,
+          // Lane 5a Defect 3: user-experience items already carry the catalog link — pass it on
+          // instead of only using it to decide a label.
+          providerServiceId: item.providerServiceId ?? undefined,
+          name: item.name,
+          description: item.description,
+          serviceType: item.providerServiceId ? "provider" : "external",
+          price: parseFloat(item.price || "0"),
+          // §13: user-experience items have no rating source — omit, don't invent.
+          location: item.location,
+          duration: 120,
+          dayNumber: 1,
+          timeSlot: item.scheduledTime || "morning",
+        }));
+      } else if (!userId) {
+        // GUEST-ONLY cart fallback — see the create handler's block for the full rationale and the
+        // written-down retirement condition (G2 guest trips). Unreachable today: `isAuthenticated`.
+        const cartItemsData = await db
+          .select({
+            cartItem: cartItems,
+            service: providerServices,
+          })
+          .from(cartItems)
+          .leftJoin(providerServices, eq(cartItems.serviceId, providerServices.id))
+          .where(eq(cartItems.userId, userId));
+
+        baselineItems = cartItemsData.map((item, index) => ({
+          id: item.cartItem.id,
+          // Lane 5a Defect 3: carry the joined service's catalog id (the `id` above is the cart row).
+          providerServiceId: item.service?.id ?? undefined,
+          name: item.service?.serviceName || "Unknown Service",
+          description: item.service?.shortDescription,
+          serviceType: item.service?.serviceType,
+          price: parseFloat(item.service?.price || "0"),
+          // §13: only the service's REAL aggregate; no 4.5 stand-in for unrated.
+          rating: item.service?.averageRating ? parseFloat(item.service.averageRating) : undefined,
+          location: item.service?.location,
+          duration: 120,
+          dayNumber: Math.floor(index / 3) + 1,
+          timeSlot: ["morning", "afternoon", "evening"][index % 3],
+        }));
+      } else if (await respondIfCartAwaitsConversion(userId, res)) {
+        return;
+      }
+
+      if (baselineItems.length === 0) {
+        return res.status(400).json({
+          message: comparison.tripId
+            ? "No items to optimize. Add items to your trip first."
+            : "No items to optimize. Add services to your cart or experience first.",
+        });
+      }
+
       // ── Optimization authorization gate on REGENERATE (Lane 5a Defect 1) ────────────────────
       // Same defect as create: this handler fired the paid LLM run with zero payment verification.
       // The dead twin carried no gate here either, so the rule below is derived from the fee
@@ -6212,76 +6379,6 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
 
-      let baselineItems: any[] = [];
-
-      if (inlineBaselineItems && inlineBaselineItems.length > 0) {
-        baselineItems = inlineBaselineItems.map((item: any, index: number) => ({
-          id: `inline-${index}`,
-          name: item.name,
-          description: item.description || "",
-          serviceType: "external",
-          price: parseFloat(item.price || "0"),
-          // §13: no fabricated fallback rating — unknown stays unknown.
-          rating: typeof item.rating === "number" ? item.rating : undefined,
-          location: item.location || "",
-          duration: item.duration || 120,
-          dayNumber: item.dayNumber || Math.floor(index / 3) + 1,
-          timeSlot: item.timeSlot || ["morning", "afternoon", "evening"][index % 3],
-          category: item.category || "service",
-          provider: item.provider || "Provider"
-        }));
-      } else if (comparison.userExperienceId) {
-        const items = await db
-          .select()
-          .from(userExperienceItems)
-          .where(eq(userExperienceItems.userExperienceId, comparison.userExperienceId));
-
-        baselineItems = items.map((item) => ({
-          id: item.id,
-          // Lane 5a Defect 3: user-experience items already carry the catalog link — pass it on
-          // instead of only using it to decide a label.
-          providerServiceId: item.providerServiceId ?? undefined,
-          name: item.name,
-          description: item.description,
-          serviceType: item.providerServiceId ? "provider" : "external",
-          price: parseFloat(item.price || "0"),
-          // §13: user-experience items have no rating source — omit, don't invent.
-          location: item.location,
-          duration: 120,
-          dayNumber: 1,
-          timeSlot: item.scheduledTime || "morning",
-        }));
-      } else {
-        const cartItemsData = await db
-          .select({
-            cartItem: cartItems,
-            service: providerServices,
-          })
-          .from(cartItems)
-          .leftJoin(providerServices, eq(cartItems.serviceId, providerServices.id))
-          .where(eq(cartItems.userId, userId));
-
-        baselineItems = cartItemsData.map((item, index) => ({
-          id: item.cartItem.id,
-          // Lane 5a Defect 3: carry the joined service's catalog id (the `id` above is the cart row).
-          providerServiceId: item.service?.id ?? undefined,
-          name: item.service?.serviceName || "Unknown Service",
-          description: item.service?.shortDescription,
-          serviceType: item.service?.serviceType,
-          price: parseFloat(item.service?.price || "0"),
-          // §13: only the service's REAL aggregate; no 4.5 stand-in for unrated.
-          rating: item.service?.averageRating ? parseFloat(item.service.averageRating) : undefined,
-          location: item.service?.location,
-          duration: 120,
-          dayNumber: Math.floor(index / 3) + 1,
-          timeSlot: ["morning", "afternoon", "evening"][index % 3],
-        }));
-      }
-
-      if (baselineItems.length === 0) {
-        return res.status(400).json({ message: "No items to optimize. Add services to your cart or experience first." });
-      }
-
       const availableServices = await db
         .select()
         .from(providerServices)
@@ -6320,7 +6417,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         comparison.travelers || 1,
         comparison.tripId || undefined,
         undefined,
-        tripPreferencesForGen
+        tripPreferencesForGen,
+        fixedCommitments
       ).catch((err) => console.error("Background optimization error:", err));
 
     } catch (error) {
