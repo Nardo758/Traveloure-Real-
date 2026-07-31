@@ -646,4 +646,13 @@ export const MIGRATION_FILES = [
   // ⚠️ Schema addition flagged for decision-maker ratification in the PR — it rides the approved
   // W2 projection design, which did not name the key it requires.
   "160_cart_projection_key.sql",
+  // 161: Trip-Canon Lane 6 — trip_contexts re-key. Swaps the PK from user_id-only to a
+  // surrogate `id`, adds nullable trip_id (FK -> trips, ON DELETE CASCADE), and re-derives
+  // the "one row" invariant via two partial unique indexes (one legacy trip_id-NULL row per
+  // user; one row per (user_id, trip_id) once trip-scoped) since a user_id-only PK cannot
+  // coexist with more than one row per user. Existing rows survive verbatim — they simply
+  // gain a fresh surrogate id and trip_id stays NULL (their pre-migration "legacy" meaning).
+  // No CHECK constraint anywhere in this migration; id/trip_id/indexes are also declared in
+  // shared/schema.ts (deploy-push durability rule).
+  "161_trip_contexts_rekey.sql",
 ] as const;
