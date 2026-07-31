@@ -294,6 +294,13 @@ router.patch("/api/concierge/requests/:id", async (req, res) => {
           .limit(1);
         if (existing) return existing.id;
 
+        // Trip-Canon Lane 2: coordinationStates.tripId deliberately left unset here.
+        // conciergeRequests does carry a tripId column, but it is written straight
+        // from req.body with no ownership verification (out of this lane's scope),
+        // so propagating it into coordination_states would mint an unverified
+        // trip linkage — the exact class of gap this lane closes elsewhere. Leave
+        // null (honest) until conciergeRequests.tripId itself gets an ownership
+        // check of its own.
         const state = await storage.createCoordinationState({
           userId: row.userId,
           experienceType: row.eventType || "event",
@@ -376,6 +383,9 @@ router.post("/api/concierge/requests/:id/claim", async (req, res) => {
     if (existing) {
       coordinationId = existing.id;
     } else {
+      // Trip-Canon Lane 2: same as the PATCH full-pick path above — claimed.tripId
+      // is left unlinked here (unverified body-sourced value, out of this lane's
+      // scope), so this row is born with a null tripId, honestly.
       const state = await storage.createCoordinationState({
         userId,
         experienceType: claimed.eventType || "event",
