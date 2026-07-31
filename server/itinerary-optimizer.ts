@@ -131,7 +131,7 @@ function extractJSON(text: string): string {
   return text.trim();
 }
 
-interface ItineraryItem {
+export interface ItineraryItem {
   id: string;
   name: string;
   description?: string;
@@ -145,6 +145,25 @@ interface ItineraryItem {
   /** Lane 5a Defect 3: the catalog row behind this baseline item, when there is one.
    *  `id` above is the CART ITEM id, not a `provider_services.id` — they are not interchangeable.
    *  Undefined for an external/AI item with no catalog row (the honest value, §13). */
+  providerServiceId?: string;
+}
+
+/**
+ * A `purchased` trip item (Lane 5b, decision-maker ratified Jul 31, 2026).
+ *
+ * NOT a baseline item and never one: the traveler has PAID for this. It enters the optimizer the
+ * way a temporal anchor does — as an immovable fixed point the plan must be built AROUND — because
+ * "an optimizer that can't see it proposes plans that collide with booked reality: a paid product
+ * contradicting a paid booking". It is never emitted as a variant item (asked of the model in the
+ * prompt AND enforced server-side by `stripFixedCommitmentEchoes`), never re-planned, and never
+ * deleted at apply (the Lane 5a `in_planning`-only delete already protects the row).
+ */
+export interface FixedCommitment {
+  id: string;
+  name: string;
+  dayNumber: number;
+  startTime?: string;
+  location?: string;
   providerServiceId?: string;
 }
 
@@ -377,6 +396,62 @@ function formatAnchorForPrompt(anchor: AnchorConstraint): string {
   if (anchor.bufferAfter > 0) desc += `, ${anchor.bufferAfter}min buffer after`;
   if (anchor.location) desc += ` (${anchor.location})`;
   return desc;
+}
+
+/**
+ * Lane 5b: render `purchased` items into the prompt as immovable commitments — the same shape the
+ * anchor section above uses, because they play the same role (a fixed point the plan is built
+ * around). Deliberately NOT fed into `anchorConstraints`: `applyAnchorConstraints` PINS an anchor
+ * by inserting a synthetic activity into the day, and those activities are persisted as variant
+ * items — which would emit the purchased item into every variant, exactly what the ratification
+ * forbids. Prompt-side only; the emission ban is enforced separately and server-side.
+ */
+function buildFixedCommitmentSection(commitments: FixedCommitment[]): string {
+  if (commitments.length === 0) return '';
+  const lines = commitments
+    .slice()
+    .sort((a, b) => (a.dayNumber - b.dayNumber) || (a.startTime ?? '').localeCompare(b.startTime ?? ''))
+    .map(c => {
+      const when = c.startTime ? ` at ${c.startTime}` : '';
+      const where = c.location ? ` (${c.location})` : '';
+      return `- Day ${c.dayNumber}${when}: ${c.name}${where}`;
+    })
+    .join('\n');
+
+  return `\n\nALREADY BOOKED — FIXED COMMITMENTS (the traveler has PAID for these):
+${lines}
+
+These are already on the traveler's plan and are NOT yours to change. Do NOT include them in your variants, do NOT replace, remove, substitute or reschedule them, and do NOT place any activity that overlaps their time or that requires the traveler to be somewhere else at that time. Treat their location as where the traveler will be. Plan AROUND them.`;
+}
+
+/**
+ * Server-side enforcement of "never emitted as a variant item". The prompt asks the model not to
+ * echo a fixed commitment back; this makes it true regardless of what the model does. Necessary
+ * for coherence, not just tidiness: the purchased row SURVIVES apply-to-trip (Lane 5a's
+ * `in_planning`-only delete), so an echoed copy would land as a second, unpaid `in_planning`
+ * duplicate of a booking the traveler already holds.
+ *
+ * Match predicate = the apply-time dedupe predicate, deliberately: `providerServiceId` first
+ * (the catalog identity), then an exact case-insensitive title match (all an AI-authored item
+ * offers). Same rule in both places so the two can't disagree about what "the same item" means.
+ */
+function stripFixedCommitmentEchoes<T extends { name?: string | null; providerServiceId?: string | null }>(
+  items: T[],
+  commitments: FixedCommitment[],
+): { kept: T[]; stripped: number } {
+  if (commitments.length === 0) return { kept: items, stripped: 0 };
+  const committedServiceIds = new Set(
+    commitments.map(c => c.providerServiceId).filter((v): v is string => !!v),
+  );
+  const committedNames = new Set(commitments.map(c => (c.name ?? '').trim().toLowerCase()).filter(Boolean));
+
+  const kept = items.filter(item => {
+    if (item.providerServiceId && committedServiceIds.has(item.providerServiceId)) return false;
+    const name = (item.name ?? '').trim().toLowerCase();
+    if (name && committedNames.has(name)) return false;
+    return true;
+  });
+  return { kept, stripped: items.length - kept.length };
 }
 
 function buildLogisticsContext(expType: ExperienceType): string {
@@ -634,7 +709,13 @@ export async function generateOptimizedItineraries(
   travelers?: number,
   tripId?: string,
   userTransportPrefs?: Partial<UserTransportPrefs>,
-  tripPreferences?: TripPreferences
+  tripPreferences?: TripPreferences,
+  /** Lane 5b: the trip's `purchased` items. Constraints only — see `FixedCommitment`.
+   *  Passed in by the caller (which has already authorized the trip) rather than read here from
+   *  `tripId`, because the create route deliberately does NOT pass `tripId` today and activating
+   *  its anchor/day-boundary reads as a side effect of this lane would be an unrelated behaviour
+   *  change. Empty array / omitted ⇒ every code path below is a no-op. */
+  fixedCommitments: FixedCommitment[] = []
 ): Promise<{ success: boolean; error?: string }> {
   try {
     let anchorConstraints: AnchorConstraint[] = [];
@@ -923,6 +1004,9 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
       marqueeSection = `\n\nPROTECTED ITEMS (must appear in EVERY variant — do NOT replace, remove, or substitute these):\n${marqueeList}\n\nBudget savings MUST come only from non-protected activities and accommodation. Never touch the protected items.`;
     }
 
+    // ── Lane 5b: already-purchased items as immovable constraints ─────────────
+    const fixedCommitmentSection = buildFixedCommitmentSection(fixedCommitments);
+
     // ── Empty day detection ───────────────────────────────────────────────────
     let emptyDaySection = '';
     if (startDate && endDate) {
@@ -931,7 +1015,13 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
       if (!isNaN(startMs) && !isNaN(endMs) && endMs >= startMs) {
         const tripDurationDays = Math.round((endMs - startMs) / (1000 * 60 * 60 * 24)) + 1;
         if (tripDurationDays > 1) {
-          const coveredDays = new Set(baselineItems.map(item => item.dayNumber || 1));
+          // Lane 5b: a day whose only content is an already-PURCHASED item is not empty. Listing
+          // it as "EMPTY DAY TO FILL" would contradict the fixed-commitment section in the same
+          // prompt and invite the model to schedule over a booking.
+          const coveredDays = new Set([
+            ...baselineItems.map(item => item.dayNumber || 1),
+            ...fixedCommitments.map(c => c.dayNumber),
+          ]);
           const emptyDays: number[] = [];
           for (let d = 1; d <= tripDurationDays; d++) {
             if (!coveredDays.has(d)) emptyDays.push(d);
@@ -950,7 +1040,7 @@ For each empty day, add activities that match the user's experience style (infer
 
     const prompt = `You are a travel optimization AI. Analyze the user's itinerary and generate 2 optimized alternatives.
 
-DESTINATION: ${destination} | DATES: ${startDate} to ${endDate} | TRAVELERS: ${travelers || 1} | BUDGET: ${budget ? `$${budget}` : "Open"}${logisticsContextSection}${cityIntelligenceSection}${anchorPromptSection}${marqueeSection}${emptyDaySection}
+DESTINATION: ${destination} | DATES: ${startDate} to ${endDate} | TRAVELERS: ${travelers || 1} | BUDGET: ${budget ? `$${budget}` : "Open"}${logisticsContextSection}${cityIntelligenceSection}${anchorPromptSection}${fixedCommitmentSection}${marqueeSection}${emptyDaySection}
 
 USER'S CURRENT ITINERARY:
 ${compactBaseline}
@@ -1064,8 +1154,19 @@ Respond with valid JSON in this exact format:
         replacementReason: item.replacementReason
       }));
 
+      // Lane 5b: a `purchased` item is NEVER a variant item. The prompt says so; this makes it
+      // true. Applied BEFORE sequencing/metrics so an echoed commitment can neither occupy a slot
+      // nor double-count its price into the variant's totals.
+      const { kept: activitiesAfterCommitmentStrip, stripped: strippedEchoes } =
+        stripFixedCommitmentEchoes(activitiesForSequencing, fixedCommitments);
+      if (strippedEchoes > 0) {
+        console.warn(
+          `[optimizer] variant "${variant.name}": dropped ${strippedEchoes} item(s) echoing an already-purchased commitment`,
+        );
+      }
+
       // Apply smart sequencing to reorder activities
-      const sequencingResult = reorderItinerary(activitiesForSequencing);
+      const sequencingResult = reorderItinerary(activitiesAfterCommitmentStrip);
       let reorderedItems = sequencingResult.reorderedItems;
       const methodologyNotes = [...sequencingResult.allMethodologyNotes];
       const sequencingScore = sequencingResult.overallScore;

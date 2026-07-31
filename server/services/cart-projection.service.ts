@@ -19,10 +19,20 @@
  *   • The one piece of NEW logic is `syncItemProjection()` — the actual W2 projection.
  *
  * Entry-point SEMANTICS are explicitly NOT changed in 1b (no trip-first add-to-cart, no guest
- * reshape — guests have no trips until G2). Re-pointing the funnel first is what makes the
+ * reshape — guests have no trips until G2). Re-pointing the funnel first is what made the
  * merge-gate constraint ("the optimizer's cart read behaves identically") provable: the diff
  * that moves the calls provably changes nothing, and the diff that adds projection rows only
  * fires when a traveler explicitly routes a trip item to checkout.
+ *
+ * ── THE MERGE-GATE CONSTRAINT IS RETIRED (Lane 5b, Jul 31 2026, decision-maker ratified) ──────
+ * That constraint was always scoped "until the re-point lane", and the re-point has landed: the
+ * optimizer now reads the TRIP (`server/services/optimizer-baseline.service.ts`), not the cart.
+ * The cart⋈provider_services baseline read survives only as a labelled guest-only branch that is
+ * unreachable while those endpoints are `isAuthenticated`, and it retires with G2.
+ *
+ * NOTHING ABOUT THIS MODULE'S OWN RULE CHANGES: it is still the SINGLE writer of `cart_items`,
+ * and no path may write that table outside it. The retired constraint was about what the
+ * optimizer READS; the single-writer rule is about who WRITES, and that stands.
  *
  * ─────────────────────────────────────────────────────────────────────────────
  * THE ONE INVARIANT EVERY READER DEPENDS ON
