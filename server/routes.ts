@@ -53,7 +53,7 @@ import {
   SURFACE_SLUGS,
 } from "@shared/content-surface-map";
 import { db } from "./db";
-import { eq, and, or, ilike, sql, desc, count, ne, inArray, asc } from "drizzle-orm";
+import { eq, and, or, ilike, sql, desc, count, ne, inArray, asc, isNull } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
 import { scoreKnowledgeProof, KNOWLEDGE_PROOF_QUESTIONS } from "./services/expertise-scoring.service";
 // W2 (Trip-Canon Lane 1 Phase 1b): `cart_items` has exactly ONE writer — the projection module.
@@ -315,6 +315,112 @@ async function respondIfServiceInBundle(err: any, serviceId: string, res: any): 
     bundles: rows.map((r) => r.serviceName),
   });
   return true;
+}
+
+// ── Lane 5a Defect 1: the paid-optimization gate ────────────────────────────────────────────
+// HARVESTED per §9 from the mount-order-dead twin that lived in `server/routes/trips.routes.ts`
+// (that copy carried the gate; this inline copy wins the path race and did NOT, so the costly
+// `generateOptimizedItineraries` LLM run was free to anyone authenticated). The twin's colliding
+// `POST /api/itinerary-comparisons` handler is deleted in the same change — no born-dead duplicate.
+//
+// §14: every input to the decision is server-derived — the event type comes from the trip/experience
+// row, the required amount from `getFee` (config), and the acting user from the session. The client
+// supplies only the PaymentIntent id, which is then verified against Stripe.
+const stripeForOptimization = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
+  apiVersion: "2024-12-18.acacia" as any,
+});
+
+/** The documented free-re-run window (`/api/optimization-payments` returns `freeRerun` on the same clock). */
+const OPTIMIZATION_FREE_RERUN_MS = 24 * 60 * 60 * 1000;
+
+type OptimizationPaymentCheck =
+  | { ok: true }
+  | { ok: false; status: number; body: Record<string, unknown> };
+
+/**
+ * Verify a client-supplied optimization PaymentIntent before the optimizer is allowed to run.
+ * Ported verbatim-in-spirit from the dead twin: reuse rejection, concrete target, Stripe
+ * `status === 'succeeded'`, PI→user binding, PI type, PI→target binding, and a re-derived
+ * fee-vs-PI-amount check (anti-tampering by server-side recompute — never an allow-list of amounts).
+ */
+async function verifyOptimizationPayment(params: {
+  userId: string;
+  optimizationPaymentId: string;
+  tripId?: string;
+  userExperienceId?: string;
+}): Promise<OptimizationPaymentCheck> {
+  const { userId, optimizationPaymentId, tripId, userExperienceId } = params;
+
+  // Reject reuse: this PI must not already be tied to another comparison.
+  const alreadyUsed = await storage.getComparisonByOptimizationPaymentId(optimizationPaymentId);
+  if (alreadyUsed) {
+    return {
+      ok: false,
+      status: 409,
+      body: {
+        error: "payment_already_used",
+        message: "This optimization payment has already been used. Please start a new optimization.",
+      },
+    };
+  }
+
+  // Require a concrete target when using a payment.
+  if (!tripId && !userExperienceId) {
+    return {
+      ok: false,
+      status: 400,
+      body: { error: "target_required", message: "Provide tripId or userExperienceId for paid optimization." },
+    };
+  }
+
+  try {
+    const pi = await stripeForOptimization.paymentIntents.retrieve(optimizationPaymentId);
+    if (pi.status !== "succeeded") {
+      return { ok: false, status: 402, body: { error: "payment_not_confirmed", message: "Optimization payment has not been confirmed." } };
+    }
+    if (pi.metadata?.userId && pi.metadata.userId !== userId) {
+      return { ok: false, status: 403, body: { error: "payment_belongs_to_another_user" } };
+    }
+    if (pi.metadata?.type !== "optimization_fee") {
+      return { ok: false, status: 402, body: { error: "invalid_payment_type" } };
+    }
+    // Strict PI-to-target binding: PI metadata target must match the request target.
+    const piTargetTrip = pi.metadata?.targetTripId || undefined;
+    const piTargetExp = pi.metadata?.targetExperienceId || undefined;
+    if (piTargetTrip && piTargetTrip !== tripId) {
+      return { ok: false, status: 402, body: { error: "payment_target_mismatch", message: "Payment was issued for a different trip." } };
+    }
+    if (piTargetExp && piTargetExp !== userExperienceId) {
+      return { ok: false, status: 402, body: { error: "payment_target_mismatch", message: "Payment was issued for a different experience." } };
+    }
+    // Re-derive the expected fee from the actual resource (not PI metadata), through the single
+    // fee resolver so admin event-type overrides pass validation (§8 — no rate/amount literals here).
+    const actualEventType = tripId
+      ? ((await storage.getTripEventType(tripId)) ?? undefined)
+      : ((await storage.getExperienceTypeSlugByExperienceId(userExperienceId!)) ?? undefined);
+    const actualTier = complexityTier(actualEventType);
+    const { priceCents: requiredCents, isDisabled: feeDisabled } = await getFee(actualEventType, actualTier);
+    if (feeDisabled) {
+      return {
+        ok: false,
+        status: 402,
+        body: { error: "ai_concierge_disabled", message: "AI Concierge is currently disabled for this experience type." },
+      };
+    }
+    if (pi.amount !== requiredCents) {
+      return {
+        ok: false,
+        status: 402,
+        body: { error: "payment_amount_mismatch", message: "Payment amount does not match the required fee for this resource." },
+      };
+    }
+    return { ok: true };
+  } catch (stripeErr: any) {
+    if (stripeErr?.statusCode || stripeErr?.type === "StripeInvalidRequestError") {
+      return { ok: false, status: 402, body: { error: "payment_verification_failed", message: stripeErr.message } };
+    }
+    throw stripeErr;
+  }
 }
 
 export async function registerRoutes(
@@ -5797,7 +5903,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   app.post("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
     try {
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
-      const { userExperienceId, tripId, title, destination, startDate, endDate, budget, travelers, baselineItems: inlineBaselineItems, experienceTypeSlug } = req.body;
+      const { userExperienceId, tripId, title, destination, startDate, endDate, budget, travelers, baselineItems: inlineBaselineItems, experienceTypeSlug, optimizationPaymentId } = req.body;
 
       // SECURITY: `tripId` is caller-supplied and is persisted onto the comparison row, which
       // downstream handlers (notably POST /api/itinerary-comparisons/:id/apply-to-trip, which
@@ -5809,6 +5915,24 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         const denied = await authorizeTripLogistics(tripId, userId, "POST /api/itinerary-comparisons");
         if (denied) return res.status(denied.status).json({ message: denied.message });
       }
+
+      // ── Optimization authorization gate (Lane 5a Defect 1, harvested from the §9 dead twin) ──
+      // The comparison record is ALWAYS created (never blocked) — only the paid LLM run is gated.
+      // canRunOptimizer=false → born "pending_payment", no AI call; true → "generating" + optimizer.
+      let canRunOptimizer = false;
+
+      // Free 24h re-run eligibility first (no Stripe call needed).
+      const cutoff = new Date(Date.now() - OPTIMIZATION_FREE_RERUN_MS);
+      const recentRun = await storage.getRecentOptimizationRun(userId, cutoff);
+
+      if (recentRun) {
+        canRunOptimizer = true;
+      } else if (optimizationPaymentId) {
+        const check = await verifyOptimizationPayment({ userId, optimizationPaymentId, tripId, userExperienceId });
+        if (!check.ok) return res.status(check.status).json(check.body);
+        canRunOptimizer = true;
+      }
+      // ── End authorization gate ────────────────────────────────────────────────────────────
 
       const [comparison] = await db
         .insert(itineraryComparisons)
@@ -5823,7 +5947,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           budget: budget != null && !isNaN(Number(budget)) ? String(budget) : null,
           travelers: travelers || 1,
           experienceTypeSlug: experienceTypeSlug || null,
-          status: "generating",
+          status: canRunOptimizer ? "generating" : "pending_payment",
+          ...(optimizationPaymentId ? { optimizationPaymentId } : {}),
         })
         .returning();
 
@@ -5858,6 +5983,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
         baselineItems = cartItemsData.map((item, index) => ({
           id: item.cartItem.id,
+          // Lane 5a Defect 3: `id` above is the CART ITEM id; the catalog link is the joined
+          // service's own id. Carrying it means the baseline variant keeps its buyable link.
+          providerServiceId: item.service?.id ?? undefined,
           name: item.service?.serviceName || "Unknown Service",
           description: item.service?.shortDescription,
           serviceType: item.service?.serviceType,
@@ -5872,8 +6000,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }));
       }
 
-      // Trigger AI optimization in background if we have items
-      if (baselineItems.length > 0) {
+      // Trigger AI optimization in background only when authorized (payment verified or free re-run)
+      if (canRunOptimizer && baselineItems.length > 0) {
         const availableServices = await db
           .select()
           .from(providerServices)
@@ -6005,7 +6133,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     try {
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const comparisonId = req.params.id;
-      const { baselineItems: inlineBaselineItems, feedback: rawFeedback } = req.body;
+      const { baselineItems: inlineBaselineItems, feedback: rawFeedback, optimizationPaymentId } = req.body;
 
       // Sprint-1 dislike loop (harvested from the UNMOUNTED trips.routes.ts copy —
       // the router is imported but never app.use()d, so this inline registration
@@ -6027,6 +6155,61 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
       if (comparison.userId !== userId) {
         return res.status(401).json({ message: "Unauthorized" });
+      }
+
+      // ── Optimization authorization gate on REGENERATE (Lane 5a Defect 1) ────────────────────
+      // Same defect as create: this handler fired the paid LLM run with zero payment verification.
+      // The dead twin carried no gate here either, so the rule below is derived from the fee
+      // contract in `optimization.routes.ts` (24h free re-run) + the twin's create gate:
+      //   (a) the caller has ANY completed optimization run in the last 24h  → the DOCUMENTED free
+      //       re-run (identical clock/query to `POST /api/optimization-payments`, which answers
+      //       `freeRerun:true, feeCents:0` in exactly this case);
+      //   (b) THIS comparison's own run was paid inside that same window (its
+      //       `optimizationPaymentId` was Stripe-verified at create) — covers the re-run fired
+      //       before the first run has stamped `optimizedAt`, so a just-paid user is never charged twice;
+      //   (c) the request carries a fresh PaymentIntent that passes the SAME verification as create.
+      //       Accepted only for a comparison that carries no payment yet (the `pending_payment` rows
+      //       created by the unpaid surfaces), and the PI is recorded on the row by an ATOMIC
+      //       conditional update so the reuse guard in (c) can see it — a PI can never be spent twice.
+      // Otherwise 402: the comparison is untouched and no AI call is made.
+      {
+        const cutoff = new Date(Date.now() - OPTIMIZATION_FREE_RERUN_MS);
+        let canRunOptimizer = !!(await storage.getRecentOptimizationRun(userId, cutoff));
+
+        if (!canRunOptimizer && comparison.optimizationPaymentId && comparison.createdAt && comparison.createdAt >= cutoff) {
+          canRunOptimizer = true;
+        }
+
+        if (!canRunOptimizer && optimizationPaymentId) {
+          const check = await verifyOptimizationPayment({
+            userId,
+            optimizationPaymentId,
+            // §14: the target is read from the stored comparison, never from the body.
+            tripId: comparison.tripId ?? undefined,
+            userExperienceId: comparison.userExperienceId ?? undefined,
+          });
+          if (!check.ok) return res.status(check.status).json(check.body);
+
+          const claimed = await db
+            .update(itineraryComparisons)
+            .set({ optimizationPaymentId })
+            .where(and(eq(itineraryComparisons.id, comparisonId), isNull(itineraryComparisons.optimizationPaymentId)))
+            .returning({ id: itineraryComparisons.id });
+          if (claimed.length === 0) {
+            return res.status(409).json({
+              error: "payment_already_recorded",
+              message: "This comparison already has an optimization payment. Please start a new optimization.",
+            });
+          }
+          canRunOptimizer = true;
+        }
+
+        if (!canRunOptimizer) {
+          return res.status(402).json({
+            error: "payment_required",
+            message: "This optimization requires payment. Complete the optimization fee to re-run.",
+          });
+        }
       }
 
       let baselineItems: any[] = [];
@@ -6055,6 +6238,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
         baselineItems = items.map((item) => ({
           id: item.id,
+          // Lane 5a Defect 3: user-experience items already carry the catalog link — pass it on
+          // instead of only using it to decide a label.
+          providerServiceId: item.providerServiceId ?? undefined,
           name: item.name,
           description: item.description,
           serviceType: item.providerServiceId ? "provider" : "external",
@@ -6077,6 +6263,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
         baselineItems = cartItemsData.map((item, index) => ({
           id: item.cartItem.id,
+          // Lane 5a Defect 3: carry the joined service's catalog id (the `id` above is the cart row).
+          providerServiceId: item.service?.id ?? undefined,
           name: item.service?.serviceName || "Unknown Service",
           description: item.service?.shortDescription,
           serviceType: item.service?.serviceType,

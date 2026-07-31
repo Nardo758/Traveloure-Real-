@@ -142,6 +142,10 @@ interface ItineraryItem {
   duration?: number;
   dayNumber?: number;
   timeSlot?: string;
+  /** Lane 5a Defect 3: the catalog row behind this baseline item, when there is one.
+   *  `id` above is the CART ITEM id, not a `provider_services.id` — they are not interchangeable.
+   *  Undefined for an external/AI item with no catalog row (the honest value, §13). */
+  providerServiceId?: string;
 }
 
 interface OptimizedVariant {
@@ -725,6 +729,9 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
       await db.insert(itineraryVariantItems).values(
         baselineItems.map((item, i) => ({
           variantId: baselineVariant[0].id,
+          // Lane 5a Defect 3: carry the catalog link when the caller supplied one (cart-sourced
+          // baselines have it; inline/external ones do not → NULL, never a guess).
+          providerServiceId: item.providerServiceId ?? null,
           dayNumber: item.dayNumber || 1,
           timeSlot: item.timeSlot || "morning",
           name: item.name,
@@ -1025,9 +1032,22 @@ Respond with valid JSON in this exact format:
       throw new Error("Failed to parse AI response");
     }
 
+    // Lane 5a Defect 3: the AI is asked for `originalServiceId` but the value was discarded, so
+    // every AI variant item landed with a NULL `providerServiceId` — which is why apply-to-cart
+    // always inserted 0 rows and apply-to-trip always copied NULL. We now thread it through, but
+    // an LLM can invent an id, so it is only honoured when it matches a service we actually put in
+    // front of it. Anything else (invented, empty, or an item the AI created itself) stays NULL.
+    const offeredServiceIds = new Set(availableServices.map((s) => String(s.id)));
+    const resolveOriginalServiceId = (raw: unknown): string | undefined => {
+      if (typeof raw !== "string") return undefined;
+      const id = raw.trim();
+      return id && offeredServiceIds.has(id) ? id : undefined;
+    };
+
     await Promise.all(aiResponse.variants.map(async (variant, v) => {
       // Convert AI items to SequencedActivity format
       const activitiesForSequencing: SequencedActivity[] = variant.items.map(item => ({
+        providerServiceId: resolveOriginalServiceId(item.originalServiceId),
         name: item.name,
         serviceType: item.serviceType,
         startTime: item.startTime,
@@ -1130,6 +1150,9 @@ Respond with valid JSON in this exact format:
             );
             return {
               variantId: newVariant.id,
+              // Lane 5a Defect 3: the catalog link, validated above against the services actually
+              // offered to the AI. NULL for an AI-invented activity with no catalog row (§13).
+              providerServiceId: item.providerServiceId ?? null,
               dayNumber: item.dayNumber,
               timeSlot: item.timeSlot,
               startTime: item.startTime,

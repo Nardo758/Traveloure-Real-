@@ -76,8 +76,8 @@ Dashed red edges are the holes. Solid edges are verified intact.
 | E1 | Discover/detail → add to cart | ✅ `cart_items.serviceId` FK, plus `slotId`, `tripId`, `contentMeta` | `shared/schema.ts` cartItems | intact |
 | E2 | Cart → `/api/checkout` → booking | ✅ `serviceId` + `tripId` on `service_bookings`; §15 idempotent; slot-claimed; cart cleared before Stripe (recoverable) | `payments.routes.ts:283+` | intact |
 | E3 | Booking → escrow → payout | ✅ full state machine, disputes, reversal | §15/escrow program, landed | intact |
-| E4 | Cart → paid optimize → comparison → variants | ✅ variant items carry `providerServiceId` | variant producer | intact |
-| E5 | Variant → **apply-to-cart** | ✅ `serviceId: item.providerServiceId` restored | `routes.ts:6154` | intact — **but see H6** |
+| E4 | Cart → paid optimize → comparison → variants | ⚠️ **CORRECTED Jul 31, 2026** — the producer never wrote it (see the correction note below). **Fixed by Lane 5a Defect 3**; intact from that change forward. | `itinerary-optimizer.ts` variant-item inserts | was **H9**, now intact |
+| E5 | Variant → **apply-to-cart** | ⚠️ **CORRECTED Jul 31, 2026** — the consumer was always correct, but with E4 broken it inserted **0 rows every time**. Unblocked by the same fix. | `routes.ts` apply-to-cart | intact — **but see H6** |
 | E6 | Cart → **convert-to-itinerary** | ❌ writes `title`/`description`/`estimatedCost` string only, **drops `serviceId` it had in hand**, then `removeFromCart` | `routes.ts:5645–5712` | **H1** |
 | E7 | Variant → **apply-to-trip** | ❌ inserts `title: item.name, itemType: item.serviceType` only — drops `providerServiceId` | `plancard.routes.ts` apply-to-trip | **H5** |
 | E8 | Paid booking → trip itinerary | ❌ nothing writes `itinerary_items` after payment; the TripPlan assembler never reads `service_bookings` | `payments.routes.ts` (no write), `trip-plan.service.ts` (no read) | **H2** |
@@ -85,6 +85,33 @@ Dashed red edges are the holes. Solid edges are verified intact.
 | E10 | Trip Card → share link | ✅ **CLOSED (Lane 4, Jul 31 2026 ground-truth pass)** — see H4 below; this row was stale at authoring time | `trips.routes.ts` `/api/itinerary-share/:token`, `itinerary-view.tsx` | ~~H4~~ |
 | E11 | Expert Workstation → trip | ✅ service picker POSTs with `providerServiceId` | `service-picker-modal.tsx:95` | intact |
 | E12 | Ready-made purchase → cloned trip | ✅ clone spread-copies every column incl. `providerServiceId` | `ready-made-purchase.service.ts:88` | intact |
+
+> ### ⚠️ Correction — Jul 31, 2026 (Lane 5 Phase-0 audit; fixed by Lane 5a Defect 3)
+>
+> The original E4/E5 "intact" verdicts were **wrong**, and wrong in an instructive way: they were written
+> from the **consumer** side. `apply-to-cart` really does read `item.providerServiceId`, and
+> `apply-to-trip`'s W5 fix really does copy it — so both consumers *looked* correct. Nobody checked the
+> **producer**. `server/itinerary-optimizer.ts` prompted the model for `originalServiceId` and declared it
+> on `OptimizedVariant`, but **neither `db.insert(itineraryVariantItems)` site ever wrote
+> `providerServiceId`** — not the baseline insert, not the AI insert. Every variant item in the table
+> carried NULL.
+>
+> Consequences, both previously invisible: `replaceUserCartWithVariantItems` filters on
+> `if (providerServiceId)`, so **apply-to-cart inserted 0 rows on every single call** (the traveler saw
+> "Cart updated" and got an empty cart); and apply-to-trip's W5 mapping faithfully copied NULL, so the
+> H5 fix could never actually preserve a link. This was a real hole (call it **H9 — producer-side linkage
+> loss**), structurally the same family as H1/H5 but one layer upstream.
+>
+> **Fixed on branch `claude/lane5a-optimizer-defects`:** `originalServiceId` is now threaded
+> `OptimizedVariant → SequencedActivity → itinerary_variant_items.providerServiceId`, **validated against
+> the set of `provider_services` actually offered to the model** (an LLM can invent an id; an invented one
+> stays NULL, §13), and the baseline insert carries the cart row's joined `service.id`. Proven behaviorally:
+> a valid id lands on the row, a hallucinated one lands NULL, and apply-to-cart then reports
+> `itemsAdded: 1, skippedExternalItems: 1` instead of the perpetual 0.
+>
+> **The durable lesson:** a linkage verdict written from the consumer alone is not a verdict. Read the
+> producer's INSERT column list — the H6 "reporting is honest now" work sat directly on top of this and
+> still didn't surface it, because `itemsAdded: 0` looked like "the AI invented everything this time."
 
 **The asymmetry worth staring at:** the *expert-built* path (E11) and the *store* path (E12) both preserve the
 commercial link. Only the **traveler's own self-planned paths** (E6, E7) destroy it. The people the platform
@@ -103,6 +130,7 @@ most wants transacting are the ones routed through the lossy bridges.
 | **H5** | `apply-to-trip` (AI-optimized plan → trip) drops `providerServiceId` — second instance of the H1 class. | linkage loss | 🔴 P1 |
 | **H6** | `apply-to-cart` silently *skips* variant items with no `providerServiceId` — external/AI-suggested items vanish from the applied plan with no message. | silent drop | 🟡 P3 |
 | **H7** | No "Add card" flow — `/api/me/payment-methods` is list/default/remove only. (Save-on-payment IS wired: 3 sites set `setup_future_usage`, so the card copy is honest.) | missing feature | 🟡 P3 |
+| **H9** | **(Added Jul 31, 2026 — the E4/E5 correction above.)** The optimizer's variant-item **producer** never wrote `providerServiceId` at either insert site, so every variant item was NULL-linked: apply-to-cart inserted 0 rows on every call and apply-to-trip's W5 fix copied NULL. Third instance of the H1/H5 class, one layer upstream. **FIXED — Lane 5a Defect 3** (validated against the offered catalog set; hallucinated ids stay NULL). | linkage loss | 🔴 P1 (closed) |
 | **H8** | Travel Preferences chips are dead UI — no onClick, no state, Save never sends them. Same class as the removed decorative "Request Payout" buttons. | dead control | 🟡 P3 |
 
 H1 + H5 are the same defect twice, which is itself the finding: **nothing in the system enforces that an
