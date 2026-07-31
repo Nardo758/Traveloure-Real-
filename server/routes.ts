@@ -7070,22 +7070,36 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         // ground-truth flagged.
         const { stripePaymentService: fpService } = await import("./services/stripe-payment.service");
         const coordCustomerId = await fpService.getOrCreateCustomer(userId).catch(() => null);
-        const paymentIntent = await stripe.paymentIntents.create(
-          {
-            amount: netFeeCents,
-            currency: "usd",
-            ...(coordCustomerId ? { customer: coordCustomerId, setup_future_usage: "off_session" as const } : {}),
-            metadata: {
-              type: "coordination_fee",
-              coordinationId,
-              userId,
-              eventType: eventType ?? "",
-              creditCents: String(claimedCreditCents),
+        // #973: attaching the customer is OPTIONAL (falls back to a customer-less PI), but if
+        // the stored id has gone stale, recover once via the shared #973 helper rather than
+        // 500ing (which previously left the atomic claim rolled back to "unpaid" every retry).
+        // Stripe rejects reusing an idempotencyKey with different params (`customer` differs on
+        // the recovery retry) — vary the key on attempt 2 so the retry can actually land.
+        const buildCoordinationPaymentIntent = (customerId: string | undefined, idempotencyKey: string) =>
+          stripe.paymentIntents.create(
+            {
+              amount: netFeeCents,
+              currency: "usd",
+              ...(customerId ? { customer: customerId, setup_future_usage: "off_session" as const } : {}),
+              metadata: {
+                type: "coordination_fee",
+                coordinationId,
+                userId,
+                eventType: eventType ?? "",
+                creditCents: String(claimedCreditCents),
+              },
+              description: `Traveloure event coordination fee (${eventType})`,
             },
-            description: `Traveloure event coordination fee (${eventType})`,
-          },
-          { idempotencyKey: `coord-fee-${coordinationId}` },
-        );
+            { idempotencyKey },
+          );
+        const paymentIntent = coordCustomerId
+          ? await fpService.runWithCustomerRecovery(userId, coordCustomerId, (cid, attempt) =>
+              buildCoordinationPaymentIntent(
+                cid,
+                attempt === 1 ? `coord-fee-${coordinationId}` : `coord-fee-${coordinationId}-recover`,
+              ),
+            )
+          : await buildCoordinationPaymentIntent(undefined, `coord-fee-${coordinationId}`);
 
         await db
           .update(coordinationStates)
