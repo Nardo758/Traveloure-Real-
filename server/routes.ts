@@ -123,6 +123,7 @@ import { ALL_DMO_SOURCES, getMarketGapSummary } from "./content/providers/DMOSou
 import savedItemsRoutes from "./routes/saved-items.routes";
 import serviceRequestsRoutes from "./routes/service-requests.routes";
 import tripContextRoutes from "./routes/trip-context.routes";
+import routingRoutes from "./routes/routing.routes";
 import guestInvitesRoutes from "./routes/guest-invites";
 import shareImagesRoutes from "./routes/share-images.routes";
 import promoTextRoutes from "./routes/promo-text.routes";
@@ -723,6 +724,18 @@ export async function registerRoutes(
   // (inherits the blanket adminApiGuard registered above). New table, migration 123.
   app.use(serviceRequestsRoutes);
   app.use(tripContextRoutes);
+
+  // Per-item routing transitions (Trip-Canon Lane 1 W1, Phase 1b):
+  // POST /api/trips/:tripId/items/:itemId/route — the four traveler/expert edges of the
+  // ROUTING_STATE_CONTRACT §1 machine. `purchased` is refused (checkout-only) and the
+  // reversal off it is refund-only. Role enforcement is IN CODE per contract §4:
+  // →ready_for_checkout is trip-owner-only (purchase intent is traveler-only), →with_expert
+  // is owner-only, →in_planning is owner OR the assigned expert when the item currently sits
+  // in with_expert (the single expert-WRITES cell). Owner resolution deliberately avoids
+  // getTripRole (scope §4). A successful flip reconciles the W2 cart projection.
+  // NO PATH COLLISION: no other router or inline handler registers /api/trips/:tripId/items/*
+  // (the itinerary family lives at /api/trips/:tripId/itinerary-items) — §9 no-shadow rule.
+  app.use(routingRoutes);
 
   // Guest-invite system (destination weddings/events): organizer invite management
   // (session-authenticated + experience-ownership-gated, §14) and public token-based
