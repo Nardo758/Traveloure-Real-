@@ -17,14 +17,23 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { clearTripContext, updateTripContext, useTripContext } from "@/lib/trip-context";
+import { clearTripContext, getTripContext, switchTripContext, useTripContext } from "@/lib/trip-context";
 
 /**
  * EditTripPanel — THE shared edit surface for the site-wide trip context
  * (Trip-Strip program, P2). One form behind every entry point: the cart header
  * today; the P3 strip popover and the experience-template empty state next.
- * Writes ONLY the TripContext (merge semantics); once a trip row exists the
- * downstream flow (resolve-trip reuse + trip PATCH at confirm) syncs the server.
+ *
+ * Writes via switchTripContext (REPLACE semantics for the identity-coupled
+ * fields), not a plain merge: once a trip row exists (`tripId` bound —
+ * Server-truth mode), editing the DESTINATION here means the user is now
+ * describing a DIFFERENT trip than the one `tripId` points at, so `tripId` is
+ * cleared in the SAME atomic write — a stale identity must never survive a
+ * destination edit and end up paired with a destination it no longer matches
+ * (money-adjacent: downstream optimize/payment requests derive the target trip
+ * from `tripId`, so a stale one silently operates on the wrong trip while the
+ * screen shows the right destination). Editing only dates/travelers/title
+ * (destination unchanged) keeps the bound trip — this is not a blanket clear.
  */
 export function EditTripPanel({
   open,
@@ -57,13 +66,22 @@ export function EditTripPanel({
     const start = startDate || undefined;
     let end = endDate || undefined;
     if (start && end && new Date(end) < new Date(start)) end = start;
-    updateTripContext({
+    const trimmedDestination = destination.trim() || undefined;
+
+    // Read fresh (not the `ctx` React-state snapshot from when the panel opened) —
+    // this is the ground truth to compare the edited destination against.
+    const liveCtx = getTripContext();
+    const destinationChanged = (liveCtx.destination || "") !== (trimmedDestination || "");
+    const preservedTripId = liveCtx.tripId && !destinationChanged ? liveCtx.tripId : undefined;
+
+    switchTripContext({
       title: title.trim() || undefined,
-      destination: destination.trim() || undefined,
+      destination: trimmedDestination,
       startDate: start,
       endDate: end,
       travelers,
       experienceType: eventType || undefined,
+      tripId: preservedTripId,
     });
     onOpenChange(false);
   };
