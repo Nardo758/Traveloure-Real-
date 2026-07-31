@@ -35,6 +35,7 @@
  */
 
 import type { ContentOrigin } from "./content-origin";
+import type { RoutingStatus } from "./schema";
 
 /** Bump only with a decision-maker-ratified envelope change; snapshots carry this number. */
 export const TRIP_PLAN_VERSION = 1 as const;
@@ -238,6 +239,18 @@ export interface TripPlanActivity {
    * inferred from `routing_status` alone: an item reads as bought only when a booking row backs it.
    */
   booking?: TripPlanBooking;
+
+  /**
+   * ADDITIVE (Trip-Canon Lane 1, Phase 1d / W7) — `itinerary_items.routing_status` (migration 159:
+   * `in_planning | with_expert | ready_for_checkout | purchased`, ROUTING_STATE_CONTRACT §1). PRESENT
+   * ONLY on the TRIP producer (the variant snapshot has no such column — a proposal is not routable,
+   * ROUTING_STATE_CONTRACT §2 "Logistics family" / capability-gap posture), so an absent key means
+   * "this item is not on the routing state machine," never "in_planning" by default-guessing (§13).
+   * READ-ONLY here: this assembler never writes it — the routing.routes.ts transition endpoint and the
+   * checkout/refund paths are the sole writers (contract §2). The Trip Card (W7) reads this to render
+   * the per-item badge and to decide which routing actions to offer the owner.
+   */
+  routingStatus?: RoutingStatus;
 
   // ── Existing plancard contract fields (kept — live consumers read them) ────────────────
   /** Display type, via the plancard `mapItemType` mapping. */

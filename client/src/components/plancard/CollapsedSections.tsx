@@ -10,11 +10,12 @@ import * as React from "react";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ChevronDown, MessageSquare, Map as MapIcon, Route, Wallet, History } from "lucide-react";
+import { ChevronDown, MessageSquare, Map as MapIcon, Route, Wallet, History, ShoppingBag } from "lucide-react";
 import { openDayInMaps, addDayToCalendar } from "./day-map-actions";
 import { ChangeLogPanel } from "./ChangeLogPanel";
 import { TransportSection } from "./TransportSection";
 import type { PlanCardChange, PlanCardDay } from "./plancard-types";
+import type { TripPlanBooking } from "@shared/trip-plan";
 
 interface CollapsedSectionsProps {
   tripId: string;
@@ -26,6 +27,15 @@ interface CollapsedSectionsProps {
   totalCostNum?: number | null;
   budgetNum?: number | null;
   perPersonDisplay?: string | null;
+  /**
+   * W7 — ALL of the trip's days (not just the selected one), used only to work out which of
+   * `bookings` below is already rendered inline on an activity row (`activity.booking`) so the
+   * Purchases section below surfaces only the ones no plan item points at (RECONCILE_PHASE1_SCOPE
+   * §1 W7: "surface them in a small 'Purchases' section").
+   */
+  days?: PlanCardDay[];
+  /** Every real `service_bookings` row on this trip (plancard route's `bookings` key, W4/H2). */
+  bookings?: TripPlanBooking[];
 }
 
 function SectionShell({
@@ -75,6 +85,8 @@ export function CollapsedSections({
   totalCostNum,
   budgetNum,
   perPersonDisplay,
+  days,
+  bookings,
 }: CollapsedSectionsProps) {
   const { data: tripNotes } = useQuery<{ expertNotes: string }>({
     queryKey: [`/api/trips/${tripId}/expert-notes`],
@@ -87,6 +99,15 @@ export function CollapsedSections({
   const hasBudget = totalCostNum != null && totalCostNum > 0 || (budgetNum != null && budgetNum > 0);
   const budgetPercent =
     budgetNum && budgetNum > 0 && totalCostNum != null ? Math.min(100, Math.round((totalCostNum / budgetNum) * 100)) : null;
+
+  // W7 — bookings no plan item points at (a booking made before migration 159's booking_id key
+  // existed, or bought outside the plan). Real bookings ALREADY rendered inline via
+  // `activity.booking` are excluded so nothing appears twice (§13: presence is the booked state,
+  // read off the same field the badge reads).
+  const linkedBookingIds = new Set(
+    (days ?? []).flatMap((d) => d.activities.map((a) => a.booking?.id).filter((id): id is string => !!id)),
+  );
+  const unlinkedBookings = (bookings ?? []).filter((b) => !linkedBookingIds.has(b.id));
 
   return (
     <div className="flex flex-col gap-2 px-3 sm:px-5 pb-3" data-testid={`collapsed-sections-${tripId}`}>
@@ -174,6 +195,41 @@ export function CollapsedSections({
                 <span className="font-bold text-foreground tabular-nums">{perPersonDisplay}</span>
               </div>
             )}
+          </div>
+        </SectionShell>
+      )}
+
+      {unlinkedBookings.length > 0 && (
+        <SectionShell
+          icon={<ShoppingBag className="w-3.5 h-3.5 text-emerald-600" />}
+          title="Purchases"
+          meta={`${unlinkedBookings.length} booking${unlinkedBookings.length !== 1 ? "s" : ""}`}
+          testId={`collapsed-purchases-${tripId}`}
+        >
+          <div className="flex flex-col gap-2 pt-2">
+            {unlinkedBookings.map((b) => (
+              <div
+                key={b.id}
+                className="flex items-center justify-between gap-2 text-[12.5px] py-1"
+                data-testid={`purchase-row-${b.id}`}
+              >
+                <span className="text-foreground font-medium truncate">
+                  {b.serviceName ?? "Booking"}
+                </span>
+                <span className="flex items-center gap-2 flex-shrink-0">
+                  {b.status && (
+                    <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                      {b.status}
+                    </span>
+                  )}
+                  {b.totalAmount != null && (
+                    <span className="font-bold text-foreground tabular-nums">
+                      ${Number(b.totalAmount).toLocaleString()}
+                    </span>
+                  )}
+                </span>
+              </div>
+            ))}
           </div>
         </SectionShell>
       )}
