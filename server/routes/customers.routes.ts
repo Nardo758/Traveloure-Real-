@@ -25,7 +25,9 @@
  *               omitted, never fabricated into one.
  *
  * Relationship chip (derived, honest):
- *   active_trip — at least one live assigned trip (trip status not completed/cancelled); wins.
+ *   active_trip — at least one live assigned trip (endDate has not yet passed — date-derived,
+ *                 NOT trips.status, which is a dead write-once field nothing ever advances past
+ *                 its born draft/planning value; see CLAUDE.md §13 / docs/briefs/L3-trips-status-brief.md); wins.
  *   repeat      — 2+ paid-shaped transactions (bookings + purchases).
  *   one_time    — everything else.
  *
@@ -122,13 +124,22 @@ function realName(
   return name || email || fallback;
 }
 
-const LIVE_TRIP_EXCLUDED = new Set(["completed", "cancelled"]);
+// §13: `trips.status` is a dead write-once field — it is born draft/planning at creation and
+// nothing ever advances it to "completed"/"cancelled", so a status-based "is this trip still
+// live" check would ALWAYS be true. "Live" is derived from the trip's own dates instead, the
+// same convention every traveler-facing renderer already uses (client/src/pages/my-trips.tsx):
+// a trip is still live while its endDate has not yet passed. See
+// docs/briefs/L3-trips-status-brief.md (Option B, ratified Jul 31, 2026).
+function isTripStillLive(endDate: unknown, now: Date): boolean {
+  return new Date(endDate as any) >= now;
+}
 
 // GET /api/me/customers — read-only, session-scoped, zero writes.
 router.get("/api/me/customers", isAuthenticated, async (req, res) => {
   try {
     const userId = sessionUserId(req);
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
+    const now = new Date();
 
     // ── Source 1: bookings on my services ────────────────────────────────────────────────
     const bookingRows = await db
@@ -180,6 +191,7 @@ router.get("/api/me/customers", isAuthenticated, async (req, res) => {
         destination: trips.destination,
         tripStatus: trips.status,
         startDate: trips.startDate,
+        endDate: trips.endDate,
         assignedAt: tripExpertAdvisors.assignedAt,
       })
       .from(tripExpertAdvisors)
@@ -268,7 +280,7 @@ router.get("/api/me/customers", isAuthenticated, async (req, res) => {
       if (!t.ownerId) continue;
       const row = rowFor(t.ownerId, t.ownerId, realName(t.firstName, t.lastName, t.email, "Traveler"));
       row.trips += 1;
-      if (!LIVE_TRIP_EXCLUDED.has(t.tripStatus)) row.hasActiveTrip = true;
+      if (isTripStillLive(t.endDate, now)) row.hasActiveTrip = true;
       bumpActivity(row, t.assignedAt);
       row.items.trips.push({
         advisorId: t.advisorId,
