@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import { getGuestSessionId } from "@/lib/guestSession";
-import { getTripContext, updateTripContext, useTripContext, type TripContext } from "@/lib/trip-context";
+import { getTripContext, updateTripContext, switchTripContext, useTripContext, type TripContext } from "@/lib/trip-context";
 import { EditTripPanel } from "@/components/trip/edit-trip-panel";
 import { Link, useLocation, useSearch } from "wouter";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -235,7 +235,6 @@ export default function CartPage() {
   const [checkoutIdempotencyKey] = useState<string>(() => crypto.randomUUID());
   const [optimizationResult, setOptimizationResult] = useState<OptimizationResult | null>(null);
   const [experienceSlug, setExperienceSlug] = useState<string | null>(null);
-  const [experienceTitle, setExperienceTitle] = useState<string | null>(null);
   const [externalItems, setExternalItems] = useState<ExternalCartItem[]>([]);
 
   // Optimization preview + payment state (G3 + G4)
@@ -332,14 +331,18 @@ export default function CartPage() {
     const context = getTripContext();
     if (context.experienceSlug) {
       setExperienceSlug(context.experienceSlug);
-      setExperienceTitle(context.title || context.experienceType || null);
-    } else if (Object.keys(context).length > 0) {
-      // Context exists but has no slug — show title/type metadata without filtering the cart.
-      setExperienceTitle(context.title || context.experienceType || null);
-      // experienceSlug stays null → fetches all items unfiltered.
     }
-    // No context at all → experienceSlug stays null → fetch all items.
+    // No slug → experienceSlug stays null → fetches all items unfiltered.
   }, []);
+
+  // Header title + the optimize/payment/comparison request assembly's `comparisonContext.destination`
+  // BOTH derive from this ONE live selector (liveTripCtx, the useTripContext() hook above) — never a
+  // separate frozen-at-mount snapshot. A one-time useState+effect here previously froze this value at
+  // page load, so it could silently disagree with `ctx.tripId` (read fresh via getTripContext() at
+  // request time) once the trip context changed later on the same page visit — "two reads that can
+  // disagree" on which trip is active. Deriving it every render from the same hook the rest of the
+  // page's live trip state (tripStartDate/tripEndDate above) already uses closes that gap.
+  const experienceTitle = liveTripCtx.title || liveTripCtx.experienceType || null;
 
   // Load external cart items from sessionStorage when experience slug changes
   useEffect(() => {
@@ -915,16 +918,28 @@ export default function CartPage() {
         setTripEventType(ctx.experienceType || ctx.eventType || "trip");
       }
 
-      // Persist the resolved tripId (and the dates) into the experience context so
-      // downstream steps (createComparison, requestOptimizationPayment) pick it up
+      // Persist the resolved tripId — and the identity-coupled display fields it's
+      // now bound to — into the context in ONE atomic switchTripContext call.
+      // Money-adjacent invariant: this is the write that re-keys the context to
+      // whichever trip resolve-trip actually returned, so `tripId` and the
+      // destination/title shown on screen can never disagree afterward. A plain
+      // merge (updateTripContext) here would only touch tripId/dates/travelers,
+      // silently leaving destination/title/experienceType at whatever the LIVE
+      // context held by the time this `await` resolved — which is not necessarily
+      // `ctxAtResolve` (the snapshot that was actually sent to and used by
+      // resolve-trip) if another write raced in during the network round-trip.
+      // Pinning every identity field to `ctxAtResolve`/`trip` here closes that gap.
       // The user's explicit header dates WIN over a reused trip's stored dates;
       // fall back to the trip's dates only when none were set (dates derive from
       // the context hook, so this single write updates the header display too).
-      updateTripContext({
+      switchTripContext({
         tripId: trip.id,
+        destination: trip.destination || ctxAtResolve.destination,
+        title: trip.title || ctxAtResolve.title,
         startDate: effStart || trip.startDate || undefined,
         endDate: effEnd || trip.endDate || undefined,
-        travelers: trip.numberOfTravelers || undefined,
+        travelers: trip.numberOfTravelers || ctxAtResolve.travelers || undefined,
+        experienceType: ctxAtResolve.experienceType,
       });
 
       // Trip Details step removed (Trip-Strip P3): the strip + EditTripPanel own

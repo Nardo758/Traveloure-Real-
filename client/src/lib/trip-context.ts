@@ -96,6 +96,76 @@ export function updateTripContext(patch: TripContextPatch): TripContext {
   return next;
 }
 
+// ── Trip switching (atomic identity + display, distinct from merge) ───────────
+// The fields a "which trip is this?" switch must set TOGETHER. updateTripContext's
+// MERGE-BY-DEFAULT (above) is deliberate for additive edits — a surface adding one
+// field must not erase the rest. A *switch* is the opposite contract: any field in
+// this set the caller doesn't pass is CLEARED, never carried over from whichever
+// trip was previously active. This closes the desync class where a display-only
+// write (destination/title/dates via updateTripContext's merge) left `tripId`
+// silently pointing at a DIFFERENT trip than what the screen showed — the server
+// then priced/optimized the wrong (stale) trip while the traveler looked at the
+// right one. Fields outside this set (experienceSlug, city, contextFields,
+// selectedServices, …) are untouched by switchTripContext, exactly like
+// updateTripContext — this function only owns the trip-identity descriptor.
+const SWITCH_FIELDS = [
+  "tripId",
+  "destination",
+  "startDate",
+  "endDate",
+  "title",
+  "travelers",
+  "experienceType",
+] as const;
+
+/**
+ * Atomically switch the active trip: identity (`tripId`) and the display fields
+ * it's paired with are written together in ONE call with REPLACE semantics for
+ * `SWITCH_FIELDS` — a field the caller omits is cleared, not preserved. Use this
+ * (not updateTripContext) for any control that changes WHICH trip is active
+ * (e.g. the "Edit trip" panel deciding the destination now describes a different
+ * trip than the one `tripId` is bound to, or re-keying the context once a trip is
+ * resolved/created). Use updateTripContext for additive edits that don't change
+ * trip identity (e.g. selectedServices, contextFields).
+ *
+ * Debounce-race note: the caller-visible push to the server is scheduled from the
+ * fully-resolved `next` object computed synchronously in THIS call (not re-read
+ * later), and schedulePush cancels any earlier pending timer before arming a new
+ * one — so a push already in flight from a pre-switch write can never fire with
+ * post-switch data (or vice versa); each push always carries the identity+payload
+ * pair captured together at the moment it was scheduled.
+ */
+export function switchTripContext(patch: TripContextPatch): TripContext {
+  const current = getTripContext();
+  const sanitized: Record<string, unknown> = {};
+  for (const key of SWITCH_FIELDS) {
+    const value = (patch as Record<string, unknown>)[key];
+    if (value === undefined) continue;
+    if (key === "startDate" || key === "endDate") {
+      const normalized = normalizeDate(value as string | Date | null);
+      if (normalized !== undefined) sanitized[key] = normalized;
+    } else {
+      sanitized[key] = value;
+    }
+  }
+  const base: Record<string, unknown> = { ...current };
+  for (const key of SWITCH_FIELDS) delete base[key];
+  const next = { ...base, ...sanitized } as TripContext;
+
+  try {
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  } catch {
+    /* storage full/unavailable — context is best-effort */
+  }
+  try {
+    window.dispatchEvent(new CustomEvent(CHANGE_EVENT));
+  } catch {
+    /* non-browser env */
+  }
+  schedulePush(next);
+  return next;
+}
+
 // ── Server persistence (migration 130; trip-scoped by migration 161) ──────────
 // For signed-in users the context is mirrored to /api/trip-context so planning
 // survives browser restarts and crosses devices. Guests get a 401 which is
