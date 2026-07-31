@@ -538,7 +538,11 @@ touched carried two live defects:
   "Best selling" (§13 — the lane has no rating/review/sales aggregate to back a demand claim), plus a
   Store-curation section on the admin approvals page. Feed orders badged-first, then recency.
 
-**MP-4 — BLOCKED, needs a decision-maker call (see below).**
+**MP-4 — SUPERSEDED (Jul 31, 2026): absorbed into the item-lifecycle program.** Hand-testing found four
+defects (share-link renderer, no add-card flow, dead preference chips, cart→trip losing the ability to pay)
+that trace to one missing design: the item lifecycle across the commerce/planning seam. Full map, hole
+inventory (H1–H8, receipts per edge), and the ratification-gated fix program: `docs/E2E_ITEM_LIFECYCLE.md`.
+MP-4's TripPlan amendment ask is now that program's L-D — one ratification closes both.
 
 ### MP-4 — why it stopped, and the decision it needs
 
