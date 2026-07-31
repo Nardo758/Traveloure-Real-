@@ -7,6 +7,10 @@
 -- can query open demand requests to identify booking opportunities.
 --
 -- Idempotent: CREATE TABLE IF NOT EXISTS; safe to re-run.
+--
+-- RETIRED: this table is dropped by migration 158 (empty in all environments, zero code
+-- references, no FK dependents). This file remains only for faithful migration history on
+-- fresh environments. Build any future demand-request feature on `service_requests` instead.
 
 CREATE TABLE IF NOT EXISTS service_demand_requests (
   id                 VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),

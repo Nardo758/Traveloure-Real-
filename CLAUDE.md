@@ -1178,7 +1178,7 @@ If you see `categoryId IS NULL` rows on provider_services, it's likely a categor
   `schema.ts`) is written from ~7 call sites (`claude.service.ts`, `itinerary-optimizer.ts`, chat routes,
   content/experts/trips routers, `routes.ts`) and read by `lead-routing.service.ts` for the admin cost breakdown.
   If a publish drops it, the migration is already stamped so `runMigrations()` will **never recreate it** — silent,
-  permanent loss of AI-cost observability. Same for `service_demand_requests` (dead, low priority). **Rule
+  permanent loss of AI-cost observability. (`service_demand_requests` was dead and has since been RETIRED deliberately by migration 158 — dropped in both environments.) **Rule
   generalized: any DB object the code depends on — index OR table — must be declared in `shared/schema.ts`, or the
   deploy push is authoritative and will remove it.**
 - Guard: **before publishing any migration that adds/changes a CHECK**, run
