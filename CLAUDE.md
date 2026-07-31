@@ -403,6 +403,22 @@ This document captures architectural decisions to maintain consistency across co
       `POST /api/optimization-payments/confirm` verifies the intent and records `platform_revenue`. Client
       pays via cart.tsx / the Concierge UI. Amounts config-resolved (§8). See §7 (payment-gated optimize
       credit). **Still filed (not built):** Pinterest hooks, hotel-concierge B2B.
+      **CORRECTION + FIX (Jul 31, 2026, Trip-Canon Lane 5a): "BILLED" was true of the payment RAIL, not the
+      RUN.** The Lane 5 Phase-0 audit found the gate lived only in the §9 mount-order-DEAD `trips.routes.ts`
+      twin of `POST /api/itinerary-comparisons` — the LIVE inline handler (and `/:id/generate`) fired the
+      costly LLM run with ZERO payment verification, so any authenticated caller could run the paid optimize
+      free by API (the client happened to pay first; the server never checked). **Fixed by the §9 harvest
+      pattern:** the twin's verification (`verifyOptimizationPayment` — PI reuse-rejection, `succeeded`
+      check, PI→user + PI→target binding, fee re-derived server-side via `getFee`, §14) now guards the live
+      create (comparison row still created, born `pending_payment`, LLM gated) and regenerate (24h free
+      re-run on the same clock as `/api/optimization-payments` ‖ this row's own paid run in-window ‖ a fresh
+      PI claimed by atomic conditional update, §15); the dead twin handler is DELETED (no born-dead
+      duplicate). Same lane: apply-to-trip's wipe became routing-status-aware (deletes `in_planning` only —
+      routed/`purchased` rows and their `booking_id` survive), and the optimizer finally persists
+      `providerServiceId` onto variant items (AI `originalServiceId` honoured only when it matches a service
+      actually offered to it — an invented id stays NULL, §13), which un-breaks apply-to-cart's
+      always-0-items behavior. The cart→trip re-point itself is Lane 5b, gated on
+      `docs/briefs/L5-optimizer-repoint-brief.md` (decision-maker).
     - **Concierge→coordination FULFILLMENT wire — Phase 1a LANDED (Jul 22, 2026).** The event-coordination
       engine was fully built but **unwired**: `coordination_states` (status machine, `assigned_expert_id`
       coordinator field, budget/dates/vendors/timeline/cost) + full CRUD + `GET …/:id/fee`
@@ -654,6 +670,19 @@ This document captures architectural decisions to maintain consistency across co
   queue → approve → live, out of queue. Full pipeline audit verdicts in the data-capture report
   (docs/audits/, feed/calendar data-capture).
 - **Approval divergences** (§1) — tracked (D1a/Phase 2). *(The coordination-fee $0-budget bug was fixed by #144 — see §7.)*
+- **`trips.status` — DEAD write-once field, do not read, do not write (Lane 3 Option B, ratified Jul 31, 2026).**
+  Born `draft`/`planning` at creation; nothing ever advances it. Trip PHASE is **date-derived everywhere**
+  (`startDate`/`endDate` vs now — the convention `client/src/pages/my-trips.tsx` already used; both columns are
+  NOT NULL so the derivation is total). **Fixed:** the admin trips dashboard's `statusCounts`
+  (`server/routes/admin.routes.ts`) plus two independently-discovered believing readers —
+  `customers.routes.ts`'s `hasActiveTrip` (was structurally always true) and `executive-assistant.tsx`'s stats
+  (a `completed` count structurally always 0) — now derive from dates; the "Add to a Trip" pickers' no-op
+  status filter now excludes genuinely-finished trips by `endDate`. The column and `tripStatusEnum` stay
+  physically in place (no schema change). **The named future owner of a real trip lifecycle is the Phase 4
+  convert-to-ready-made brief** — the field's revival path is documented in the same place as its deprecation;
+  status ownership gets built when Phase 4 gives it a customer. Full record incl. the pass-through echo list
+  and filed latent readers (`storage.getTrips(status)` branch, dead `getAdminTripsList`):
+  `docs/briefs/L3-trips-status-brief.md`.
 - **`expert_service_categories` — NOT a bug (corrected Jul 15, 2026).** Earlier drafts called this a "dropped-by-013
   but still referenced" latent bug. **That premise was factually wrong:** migration 013 explicitly retains it
   (`-- 4. expert_service_categories: intentionally NOT dropped here.`) and migration **030**
@@ -1178,7 +1207,7 @@ If you see `categoryId IS NULL` rows on provider_services, it's likely a categor
   `schema.ts`) is written from ~7 call sites (`claude.service.ts`, `itinerary-optimizer.ts`, chat routes,
   content/experts/trips routers, `routes.ts`) and read by `lead-routing.service.ts` for the admin cost breakdown.
   If a publish drops it, the migration is already stamped so `runMigrations()` will **never recreate it** — silent,
-  permanent loss of AI-cost observability. Same for `service_demand_requests` (dead, low priority). **Rule
+  permanent loss of AI-cost observability. (`service_demand_requests` was dead and has since been RETIRED deliberately by migration 158 — dropped in both environments.) **Rule
   generalized: any DB object the code depends on — index OR table — must be declared in `shared/schema.ts`, or the
   deploy push is authoritative and will remove it.**
 - Guard: **before publishing any migration that adds/changes a CHECK**, run
@@ -1266,6 +1295,24 @@ Phase-1d approved remap table. Ratified by the Phase 1+ execution dispatch (D1a�
 `provider_services` and `service_templates`; `deliveryMethodEnum` (`shared/schema.ts:523`) and the DB CHECK
 both carry the same 7 canonical values. The "no DB CHECK / no remap" state described here was true only as of 108.**]**
 
+**Migrations 159–160 (Jul 31, 2026; registered in `migration-files.ts`) — Trip-Canon Lane 1 (Reconcile) Phases 1a/1b, decision-maker ratified via PR #344:**
+159 adds `itinerary_items.routing_status` (varchar 20, NOT NULL, DEFAULT `'in_planning'` by explicit ALTER;
+**deliberately NO DB CHECK** — canonical set `ROUTING_STATUSES` = `in_planning|with_expert|ready_for_checkout|purchased`
+lives in `shared/schema.ts`, the pre-109 posture, so no publish-push remap trap) and `itinerary_items.booking_id`
+(nullable FK → `service_bookings`, **ON DELETE SET NULL** — a plan item survives its booking) + its index. 160 adds
+`cart_items.itinerary_item_id` (nullable FK → `itinerary_items`, **ON DELETE CASCADE** — a projection row has no
+independent existence; an orphan would be uncleanable yet chargeable) + its index. All columns AND indexes declared
+in `shared/schema.ts` per the deploy-push durability rule. Existing rows take defaults only — NO inferred `purchased`
+history (§13). Companion code (same PR): `POST /api/trips/:tripId/items/:itemId/route` (the four traveler/expert
+routing edges; `purchased` refused — checkout-only per `docs/briefs/ROUTING_STATE_CONTRACT.md` §2; atomic conditional
+flips; owner via `verifyTripOwnership`+collaborator row, expert-return via canonical `isTripAdvisor`, NEVER
+`getTripRole`) and `server/services/cart-projection.service.ts` — **the SINGLE writer of `cart_items`** (every write
+site funnelled through it, proven behavior-identical incl. a byte-identical optimizer read; `ready_for_checkout`
+items materialize as cart rows keyed by `itinerary_item_id`, NULL-keyed rows never touched by sync). **Rule going
+forward: never write `cart_items` outside the projection module**, and the routing-state contract's WRITES/READS/NEVER
+matrix governs every new consumer — undeclared = NEVER, new writers amend the contract first. Phases 1c/1d
+(leak fixes W3–W6, Trip Card routing UI) follow per `docs/briefs/RECONCILE_PHASE1_SCOPE.md`.
+
 **Migration 123 (Jul 21, 2026; registered in `migration-files.ts`) — Traveler service-requests capture:**
 new table `service_requests` (the "request a service that doesn't exist yet" surface). **Distinct from a
 *service* table** (FAQ prohibition is on new `provider_services`-like tables) — this is a demand-capture
@@ -1330,6 +1377,42 @@ jsonb), upsert `ON CONFLICT (user_id)`. Client (`client/src/lib/trip-context.ts`
 hydrates once per load (server → local **only when local is empty** — an active local session always wins) and
 every `updateTripContext` debounce-pushes (fire-and-forget; 401 for guests silently ignored). No money path.
 Part of the ratified Trip-Strip program (docs/ROADMAP.md, P2 row).
+**Re-keyed by migration 161 (below) — Trip-Canon Lane 6.**
+
+**Migration 161 (Jul 31, 2026; registered in `migration-files.ts`) — trip_contexts re-key (Trip-Canon Lane 6):**
+closes the master-brief gap-registry row "`trip_contexts` keyed by userId, not tripId — re-key after L1 lands"
+(`docs/planning/TRIP_CANON_MASTER_BRIEF.md` §3). Once Lane 1 made the Trip the canonical planning container, a
+user planning two trips at once had their context smeared across both — migration 130's `user_id`-only PK could
+hold exactly one row per user, full stop. **Shape decided by ground-truthing the real constraint, not the
+mechanical "just add trip_id" option:** a `user_id`-only PRIMARY KEY cannot coexist with a second row for the
+same user, so a nullable `trip_id` column alone cannot produce per-(user,trip) rows — the real re-key is a PK
+swap. Executed as ONE migration: `trip_contexts` gains a surrogate `id` PRIMARY KEY (varchar,
+`DEFAULT gen_random_uuid()::varchar` — DB-side, matching migration 151's `bundle_components` pattern, because
+this table is written via raw `db.execute(sql\`…\`)`, not the Drizzle query builder) and a nullable `trip_id`
+FK → `trips` `ON DELETE CASCADE` (mirrors the existing `user_id` CASCADE — a context row has no life
+independent of the trip it's scoped to, same as it has none independent of the user). The "one row per scope"
+invariant that the old PK used to give for free now lives in **two partial unique indexes** —
+`trip_contexts_user_legacy_uidx (user_id) WHERE trip_id IS NULL` (at most one legacy/no-active-trip row per
+user, migration 130's original invariant preserved) and `trip_contexts_user_trip_uidx (user_id, trip_id)
+WHERE trip_id IS NOT NULL` (at most one row per user+trip) — a bare `UNIQUE(user_id, trip_id)` would NOT do
+this, since Postgres treats NULL as distinct from NULL in a unique index and would let a user accumulate
+unlimited `trip_id`-NULL rows. **Existing rows survive verbatim**: they simply gain a fresh surrogate `id`
+(backfilled before the `NOT NULL` + PK swap) and `trip_id` stays NULL — exactly their pre-migration meaning
+(proven behaviorally: pre/post row diff is `user_id`/`context`/`updated_at` byte-identical, `trip_id` NULL).
+No CHECK constraint anywhere in this migration → nothing for the preflight `CONSTRAINT_MANIFEST`, no
+publish-time push trap; `id`/`trip_id`/both partial unique indexes/the `trip_id` btree index are all declared
+in `shared/schema.ts` in the same commit (deploy-push durability rule).
+Companion code (`server/routes/trip-context.routes.ts`): `GET`/`PUT /api/trip-context` gain an optional
+`?tripId=` query param. Present → **ownership-checked** (`verifyTripOwnership` from `server/utils/trip-ownership.ts`
+— §14, the trip must exist AND belong to the session user; 404 if it doesn't exist, 403 if it isn't theirs) and
+reads/writes the trip-scoped row (two INSERT branches, not one dynamic `ON CONFLICT` target, because Postgres
+requires the conflict target to exactly match an existing partial unique index including its predicate).
+Absent → the exact pre-Lane-6 behavior, byte-for-byte: the legacy per-user row, no client change required.
+Client (`client/src/lib/trip-context.ts`): once the LOCAL context already carries a `tripId` (the trip-strip's
+"Server-truth mode" signal, set once a trip actually exists), `schedulePush`/`hydrateTripContextFromServer`
+append `?tripId=` so a second trip started elsewhere can't clobber the first trip's saved context; no local
+`tripId` yet → falls back to the legacy per-user row exactly as before. Hydrate precedence is otherwise
+unchanged (local wins when non-empty). No money path (unchanged from migration 130).
 
 **Migration 116 (Jul 15, 2026; registered in `migration-files.ts`) — Feed measurement: content_impressions completion:**
 analytics-only, no money semantics, fire-and-forget writes. The `content_impressions` table was created by

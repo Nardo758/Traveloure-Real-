@@ -94,6 +94,17 @@ class BookingService {
       INSERT INTO trips (id, user_id, title, destination, start_date, end_date, status, created_at)
       VALUES (${tripId}, ${userId}, ${'AI Generated Trip'}, ${destination}, ${startDate}::date, ${endDate}::date, 'draft', NOW())
     `);
+
+    // L10 owner row: getTripRole()/canMutateTrip() resolve access by collaborator
+    // assignment only (never trips.userId), so a trip minted without this row 403s
+    // its own owner until the boot-time backfill seed happens to run. Same posture
+    // as storage.createTrip; raw SQL because this path is raw SQL (id has no DB
+    // default — supply it, mirroring server/seeds/trip-ownership.seed.ts).
+    await db.execute(sql`
+      INSERT INTO trip_collaborators (id, trip_id, user_id, role, created_at)
+      VALUES (gen_random_uuid()::text, ${tripId}, ${userId}, 'owner', NOW())
+      ON CONFLICT (trip_id, user_id) DO NOTHING
+    `);
     
     console.log(`Created trip ${tripId} for ${cartItems.length} booking items`);
     return tripId;
@@ -999,6 +1010,17 @@ class BookingService {
         ${startDate}, ${endDate}, ${travelers}, ${budget},
         'planning', NOW(), NOW()
       )
+    `);
+
+    // L10 owner row: getTripRole()/canMutateTrip() resolve access by collaborator
+    // assignment only (never trips.userId), so a trip minted without this row 403s
+    // its own owner until the boot-time backfill seed happens to run. Same posture
+    // as storage.createTrip; raw SQL because this path is raw SQL (id has no DB
+    // default — supply it, mirroring server/seeds/trip-ownership.seed.ts).
+    await db.execute(sql`
+      INSERT INTO trip_collaborators (id, trip_id, user_id, role, created_at)
+      VALUES (gen_random_uuid()::text, ${tripId}, ${userId}, 'owner', NOW())
+      ON CONFLICT (trip_id, user_id) DO NOTHING
     `);
 
     return { tripId };

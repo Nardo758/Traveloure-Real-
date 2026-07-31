@@ -319,6 +319,86 @@ router.patch("/api/me/storefront", isAuthenticated, async (req: any, res) => {
   }
 });
 
+// ─── Traveler travel preferences (H8) ────────────────────────────────────────────────────────
+//
+// users.preferences is a namespaced jsonb (migration 150); this owns ONLY its `travelPreferences`
+// key — the same shallow-merge-a-sub-namespace pattern as `settings` (/api/me/preferences above)
+// and `storefront` (/api/me/storefront above), never touching either. Fixes the profile page's
+// "Preferred Travel Style" / "Budget Preference" chips, which previously had no onClick and no
+// state — clicking did nothing and Save Changes never sent them (CLAUDE.md §13 decorative-control
+// class). §14: user from session only, never body. No money path, no new column/migration.
+
+const TRAVEL_STYLES = ["Adventure", "Relaxation", "Culture", "Food & Dining", "Nature", "Nightlife"] as const;
+const BUDGET_PREFERENCES = ["Budget-Friendly", "Moderate", "Luxury"] as const;
+
+const travelPreferencesPatchSchema = z.object({
+  travelStyles: z.array(z.enum(TRAVEL_STYLES)).max(TRAVEL_STYLES.length).optional(),
+  // Present + valid value → set; present + null → clear; absent → leave untouched.
+  budgetPreference: z.enum(BUDGET_PREFERENCES).nullable().optional(),
+}).strict();
+
+router.get("/api/me/travel-preferences", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub ?? req.user?.id;
+    if (!userId) return res.status(401).json({ message: "Authentication required" });
+    const [me] = await db
+      .select({ preferences: users.preferences })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    if (!me) return res.status(401).json({ message: "Authentication required" });
+    const stored = ((me.preferences as any) ?? {}).travelPreferences ?? {};
+    res.json({
+      travelStyles: Array.isArray(stored.travelStyles) ? stored.travelStyles : [],
+      budgetPreference: typeof stored.budgetPreference === "string" ? stored.budgetPreference : null,
+    });
+  } catch (err) {
+    console.error("[me/travel-preferences] read error:", err);
+    res.status(500).json({ message: "Failed to load travel preferences" });
+  }
+});
+
+router.patch("/api/me/travel-preferences", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user?.claims?.sub ?? req.user?.id;
+    if (!userId) return res.status(401).json({ message: "Authentication required" });
+
+    const parsed = travelPreferencesPatchSchema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(400).json({ message: "Invalid travel preferences", errors: parsed.error.flatten() });
+    }
+
+    const [me] = await db
+      .select({ preferences: users.preferences })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    if (!me) return res.status(401).json({ message: "Authentication required" });
+
+    const current = ((me.preferences as any) ?? {});
+    const currentTravel = current.travelPreferences ?? {};
+    const patch = parsed.data;
+    const nextTravel = {
+      ...currentTravel,
+      ...(patch.travelStyles !== undefined ? { travelStyles: patch.travelStyles } : {}),
+      ...(patch.budgetPreference !== undefined ? { budgetPreference: patch.budgetPreference } : {}),
+    };
+
+    await db
+      .update(users)
+      .set({ preferences: { ...current, travelPreferences: nextTravel } })
+      .where(eq(users.id, userId));
+
+    res.json({
+      travelStyles: Array.isArray(nextTravel.travelStyles) ? nextTravel.travelStyles : [],
+      budgetPreference: typeof nextTravel.budgetPreference === "string" ? nextTravel.budgetPreference : null,
+    });
+  } catch (err) {
+    console.error("[me/travel-preferences] write error:", err);
+    res.status(500).json({ message: "Failed to save travel preferences" });
+  }
+});
+
 // ─── Activation checklist (Build 1, "Open your business") ───────────────────────────────────
 //
 // GET /api/me/business-setup — the setup-progress aggregate for the console checklist card.

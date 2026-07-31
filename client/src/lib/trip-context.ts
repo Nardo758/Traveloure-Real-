@@ -96,10 +96,19 @@ export function updateTripContext(patch: TripContextPatch): TripContext {
   return next;
 }
 
-// ── Server persistence (migration 130) ────────────────────────────────────────
+// ── Server persistence (migration 130; trip-scoped by migration 161) ──────────
 // For signed-in users the context is mirrored to /api/trip-context so planning
 // survives browser restarts and crosses devices. Guests get a 401 which is
 // silently ignored — persistence is strictly best-effort.
+//
+// Trip-scoping (Lane 6): once the context carries a `tripId` (the trip-strip's
+// "Server-truth mode" signal — set once a trip actually exists), pushes and hydrates
+// target that trip's OWN server row via `?tripId=`, so a second trip started in another
+// tab/session doesn't clobber the first trip's saved context. No `tripId` yet → the exact
+// pre-Lane-6 behavior: the legacy per-user row, unchanged.
+function tripScopedQuery(context: Pick<TripContext, "tripId">): string {
+  return context.tripId ? `?tripId=${encodeURIComponent(context.tripId)}` : "";
+}
 
 let pushTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -108,7 +117,7 @@ function schedulePush(context: TripContext): void {
   if (pushTimer) clearTimeout(pushTimer);
   pushTimer = setTimeout(() => {
     pushTimer = undefined;
-    fetch("/api/trip-context", {
+    fetch(`/api/trip-context${tripScopedQuery(context)}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
@@ -127,12 +136,18 @@ let hydrated = false;
  * that are already set always win (fresher intent from the current tab), but
  * server fields that are absent locally are merged in so that trip details
  * (destination, dates, party size) survive browser restarts for signed-in users.
+ *
+ * Trip-scoped (Lane 6): reads the LOCAL context's own `tripId` (set once a trip
+ * exists) to decide which server row to hydrate from — the trip-scoped row when an
+ * active trip is already known locally, otherwise the legacy per-user row exactly as
+ * before. A brand-new session with no local `tripId` yet always falls back to the
+ * legacy row, matching pre-Lane-6 behavior byte-for-byte.
  */
 export async function hydrateTripContextFromServer(): Promise<void> {
   if (hydrated) return;
   hydrated = true;
   try {
-    const res = await fetch("/api/trip-context", { credentials: "include" });
+    const res = await fetch(`/api/trip-context${tripScopedQuery(getTripContext())}`, { credentials: "include" });
     if (!res.ok) return; // 401 guest / error — nothing to hydrate
     const data = await res.json().catch(() => null);
     const server = data?.context;

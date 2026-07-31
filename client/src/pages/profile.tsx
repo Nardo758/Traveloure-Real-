@@ -8,15 +8,70 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { PaymentMethodsCard } from "@/components/payment/PaymentMethodsCard";
 
 import { Camera, Mail, Phone, MapPin, Calendar, Save, Loader2 } from "lucide-react";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+
+// H8: the fixed vocabulary the "Preferred Travel Style" (multi-select) and "Budget Preference"
+// (single-select) chips offer. Mirrored server-side (storefront.routes.ts travelPreferencesPatchSchema)
+// so the client can never send a value the server would reject.
+const TRAVEL_STYLES = ["Adventure", "Relaxation", "Culture", "Food & Dining", "Nature", "Nightlife"] as const;
+const BUDGET_PREFERENCES = ["Budget-Friendly", "Moderate", "Luxury"] as const;
+
+interface TravelPreferences {
+  travelStyles: string[];
+  budgetPreference: string | null;
+}
 
 export default function Profile() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [isLoading, setIsLoading] = useState(false);
   const [profileImage, setProfileImage] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // H8: Travel Preferences — persisted via GET/PATCH /api/me/travel-preferences
+  // (users.preferences.travelPreferences, no schema change). Hydrates once from the saved
+  // value, then the chips are locally-controlled toggle state until Save Changes.
+  const [selectedStyles, setSelectedStyles] = useState<string[]>([]);
+  const [selectedBudget, setSelectedBudget] = useState<string | null>(null);
+  const hydratedPrefs = useRef(false);
+
+  const { data: savedTravelPreferences } = useQuery<TravelPreferences>({
+    queryKey: ["/api/me/travel-preferences"],
+  });
+
+  useEffect(() => {
+    if (!savedTravelPreferences || hydratedPrefs.current) return;
+    hydratedPrefs.current = true;
+    setSelectedStyles(savedTravelPreferences.travelStyles ?? []);
+    setSelectedBudget(savedTravelPreferences.budgetPreference ?? null);
+  }, [savedTravelPreferences]);
+
+  const toggleStyle = (style: string) => {
+    setSelectedStyles((prev) =>
+      prev.includes(style) ? prev.filter((s) => s !== style) : [...prev, style]
+    );
+  };
+
+  const toggleBudget = (budget: string) => {
+    setSelectedBudget((prev) => (prev === budget ? null : budget));
+  };
+
+  const saveTravelPreferencesMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("PATCH", "/api/me/travel-preferences", {
+        travelStyles: selectedStyles,
+        budgetPreference: selectedBudget,
+      });
+      return res.json() as Promise<TravelPreferences>;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/me/travel-preferences"] });
+    },
+  });
 
   const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -42,12 +97,21 @@ export default function Profile() {
 
   const handleSave = async () => {
     setIsLoading(true);
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    setIsLoading(false);
-    toast({
-      title: "Profile updated",
-      description: "Your profile has been saved successfully.",
-    });
+    try {
+      await saveTravelPreferencesMutation.mutateAsync();
+      toast({
+        title: "Profile updated",
+        description: "Your profile has been saved successfully.",
+      });
+    } catch (err: any) {
+      toast({
+        title: "Couldn't save your travel preferences",
+        description: err?.message || "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -199,22 +263,46 @@ export default function Profile() {
             <div className="space-y-2">
               <Label className="text-foreground dark:text-white">Preferred Travel Style</Label>
               <div className="flex flex-wrap gap-2">
-                {["Adventure", "Relaxation", "Culture", "Food & Dining", "Nature", "Nightlife"].map(style => (
-                  <Button key={style} variant="outline" size="sm" className="border-border" data-testid={`button-style-${style.toLowerCase()}`}>
-                    {style}
-                  </Button>
-                ))}
+                {TRAVEL_STYLES.map(style => {
+                  const isSelected = selectedStyles.includes(style);
+                  return (
+                    <Button
+                      key={style}
+                      type="button"
+                      variant={isSelected ? "default" : "outline"}
+                      size="sm"
+                      className={isSelected ? "" : "border-border"}
+                      aria-pressed={isSelected}
+                      onClick={() => toggleStyle(style)}
+                      data-testid={`button-style-${style.toLowerCase()}`}
+                    >
+                      {style}
+                    </Button>
+                  );
+                })}
               </div>
             </div>
 
             <div className="space-y-2">
               <Label className="text-foreground dark:text-white">Budget Preference</Label>
               <div className="flex flex-wrap gap-2">
-                {["Budget-Friendly", "Moderate", "Luxury"].map(budget => (
-                  <Button key={budget} variant="outline" size="sm" className="border-border" data-testid={`button-budget-${budget.toLowerCase()}`}>
-                    {budget}
-                  </Button>
-                ))}
+                {BUDGET_PREFERENCES.map(budget => {
+                  const isSelected = selectedBudget === budget;
+                  return (
+                    <Button
+                      key={budget}
+                      type="button"
+                      variant={isSelected ? "default" : "outline"}
+                      size="sm"
+                      className={isSelected ? "" : "border-border"}
+                      aria-pressed={isSelected}
+                      onClick={() => toggleBudget(budget)}
+                      data-testid={`button-budget-${budget.toLowerCase()}`}
+                    >
+                      {budget}
+                    </Button>
+                  );
+                })}
               </div>
             </div>
           </CardContent>

@@ -35,6 +35,7 @@
  */
 
 import type { ContentOrigin } from "./content-origin";
+import type { RoutingStatus } from "./schema";
 
 /** Bump only with a decision-maker-ratified envelope change; snapshots carry this number. */
 export const TRIP_PLAN_VERSION = 1 as const;
@@ -145,6 +146,29 @@ export interface TripPlanMeta {
   heroImageUrl: string | null;
 }
 
+/**
+ * A REAL `service_bookings` row on this trip (Trip-Canon Lane 1, W4 — "purchases reach the plan").
+ *
+ * Emitted at the `full` level ONLY: `teaser` (store) and `preview` (link card) return before the
+ * assembler ever reads bookings, so no redaction branch is needed — a purchase is owner-and-expert
+ * information and never rides a public channel.
+ *
+ * Every field is read straight off the booking row (§13 — no derived "probably booked" state):
+ * an item is booked when `itinerary_items.booking_id` points at one of these, and nothing else.
+ */
+export interface TripPlanBooking {
+  /** `service_bookings.id`. */
+  id: string;
+  /** `service_bookings.service_id` — NULL for transport-commerce bookings (CLAUDE.md exception). */
+  serviceId: string | null;
+  /** RAW booking status (`payment_pending` | `confirmed` | `completed` | `refunded` | …). */
+  status: string | null;
+  /** `provider_services.service_name` when the booking links one; null otherwise. Never a guess. */
+  serviceName: string | null;
+  /** RAW `service_bookings.total_amount` as stored (decimal string). */
+  totalAmount: string | null;
+}
+
 export interface TripPlanActivityChange {
   who: string;
   what: string;
@@ -203,6 +227,30 @@ export interface TripPlanActivity {
    * source vocabulary, for consumers that need to re-map it themselves.
    */
   category?: string | null;
+
+  /**
+   * ADDITIVE (Lane 1 W4 / H2) — the REAL booking this plan item was bought through, resolved by
+   * `itinerary_items.booking_id` (migration 159). PRESENT ONLY WHEN THE ITEM IS REALLY BOOKED, so a
+   * producer/level that carries no bookings is byte-identical to before this field existed (an
+   * absent key, not a null one). The variant snapshot producer never emits it — nothing is booked
+   * on a proposal.
+   *
+   * PRESENCE IS THE BOOKED STATE. There is no separate boolean to disagree with it, and it is never
+   * inferred from `routing_status` alone: an item reads as bought only when a booking row backs it.
+   */
+  booking?: TripPlanBooking;
+
+  /**
+   * ADDITIVE (Trip-Canon Lane 1, Phase 1d / W7) — `itinerary_items.routing_status` (migration 159:
+   * `in_planning | with_expert | ready_for_checkout | purchased`, ROUTING_STATE_CONTRACT §1). PRESENT
+   * ONLY on the TRIP producer (the variant snapshot has no such column — a proposal is not routable,
+   * ROUTING_STATE_CONTRACT §2 "Logistics family" / capability-gap posture), so an absent key means
+   * "this item is not on the routing state machine," never "in_planning" by default-guessing (§13).
+   * READ-ONLY here: this assembler never writes it — the routing.routes.ts transition endpoint and the
+   * checkout/refund paths are the sole writers (contract §2). The Trip Card (W7) reads this to render
+   * the per-item badge and to decide which routing actions to offer the owner.
+   */
+  routingStatus?: RoutingStatus;
 
   // ── Existing plancard contract fields (kept — live consumers read them) ────────────────
   /** Display type, via the plancard `mapItemType` mapping. */
@@ -448,6 +496,15 @@ export interface FullTripPlan {
   changeLogRef: TripPlanChangeLogRef | null;
   /** OPTIONAL (L3b′, additive) — see `TripPlanSourceFigures`. */
   sourceFigures?: TripPlanSourceFigures | null;
+  /**
+   * ADDITIVE (Lane 1 W4 / H2) — EVERY real `service_bookings` row on this trip, whether or not a
+   * plan item points at it. The per-item `activity.booking` covers items that ARE linked; this list
+   * is why the field exists at all: a booking made before the item↔booking key existed, or bought
+   * outside the plan entirely, would otherwise be invisible on the Trip Card — which is H2 itself
+   * ("purchases never reach the plan"). Emitted only by the TRIP producer at `full`; absent
+   * elsewhere, so every pre-existing consumer is unaffected.
+   */
+  bookings?: TripPlanBooking[];
   plancard: TripPlanPlancardExtras;
 }
 
