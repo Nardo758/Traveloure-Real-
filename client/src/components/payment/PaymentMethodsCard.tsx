@@ -13,6 +13,7 @@ import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useSavedPayment, type SavedCard } from "@/hooks/use-saved-payment";
+import { AddCardDialog } from "@/components/payment/AddCardDialog";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -134,14 +135,17 @@ export function PaymentMethodsCard() {
 
   return (
     <Card className="border border-border">
-      <CardHeader>
-        <CardTitle className="text-lg text-foreground dark:text-white flex items-center gap-2">
-          <CreditCard className="w-5 h-5 text-muted-foreground" />
-          Payment Methods
-        </CardTitle>
-        <CardDescription className="text-muted-foreground">
-          Saved cards let you pay booking and coordination fees with one click.
-        </CardDescription>
+      <CardHeader className="flex flex-row items-start justify-between gap-4 space-y-0">
+        <div>
+          <CardTitle className="text-lg text-foreground dark:text-white flex items-center gap-2">
+            <CreditCard className="w-5 h-5 text-muted-foreground" />
+            Payment Methods
+          </CardTitle>
+          <CardDescription className="text-muted-foreground">
+            Saved cards let you pay booking and coordination fees with one click.
+          </CardDescription>
+        </div>
+        {!isLoading && available && <AddCardDialog />}
       </CardHeader>
       <CardContent className="space-y-3">
         {isLoading ? (

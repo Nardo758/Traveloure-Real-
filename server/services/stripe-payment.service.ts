@@ -147,6 +147,24 @@ class StripePaymentService {
     return customerId;
   }
 
+  /**
+   * H7: start the add-card flow. A SetupIntent authorizes Stripe to vault a card against the
+   * user's Customer for future off-session use — it moves no money (no amount anywhere on this
+   * path, §14-clean by construction). Returns null when Stripe is unconfigured or the user has
+   * no resolvable Customer (never fabricates a client secret).
+   */
+  async createSetupIntent(userId: string): Promise<{ clientSecret: string } | null> {
+    if (!this.isReady()) return null;
+    const customerId = await this.getOrCreateCustomer(userId);
+    if (!customerId) return null;
+    const setupIntent = await stripe.setupIntents.create({
+      customer: customerId,
+      usage: 'off_session',
+    });
+    if (!setupIntent.client_secret) return null;
+    return { clientSecret: setupIntent.client_secret };
+  }
+
   /** Saved cards for the session user — read live from Stripe, safe display fields only. */
   async listSavedPaymentMethods(userId: string): Promise<{
     defaultPaymentMethodId: string | null;
