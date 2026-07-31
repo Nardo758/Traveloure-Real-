@@ -12,7 +12,7 @@
  */
 import { db } from "../db";
 import { storage } from "../storage";
-import { trips, itineraryItems, readyMadeTrips, readyMadePurchases, expertEarnings, platformRevenue } from "@shared/schema";
+import { trips, itineraryItems, readyMadeTrips, readyMadePurchases, expertEarnings, platformRevenue, tripCollaborators } from "@shared/schema";
 import { and, eq, inArray, ne } from "drizzle-orm";
 import { getBand, PLATFORM_FEE_RATE, PROCESSING_FEE_RATE } from "./commission";
 import { availableAtFor, holdWindowDays } from "../config/earnings-hold.config";
@@ -79,6 +79,15 @@ export async function fulfillReadyMadePurchase(purchaseId: string): Promise<Fulf
       status: "draft",
     } as any)
     .returning();
+
+  // L10 owner row (same posture as storage.createTrip): without it the BUYER 403s on
+  // their own just-purchased clone's Trip Card until the boot-time backfill seed runs —
+  // the highest-probability real victim in the L10 audit. If this fulfil loses the §15
+  // claim race below, the orphan-trip delete cascades this row away too (FK CASCADE).
+  await db
+    .insert(tripCollaborators)
+    .values({ tripId: cloneTrip.id, userId: purchase.buyerId, role: "owner" })
+    .onConflictDoNothing();
 
   const sourceItems = await db
     .select()
