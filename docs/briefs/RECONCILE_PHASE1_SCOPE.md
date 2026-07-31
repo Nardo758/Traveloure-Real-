@@ -22,7 +22,8 @@
 **W2 — Cart as single-writer projection.**
 - One projection-sync module owns all writes to `cart_items`: item enters `ready_for_checkout` → row upserted; leaves → row removed; `purchased` → row removed.
 - Every other current writer of `cart_items` is re-pointed to write trip items + routing status. The Q1 nine-consumer inventory is the checklist: **each consumer gets an explicit disposition (re-pointed / reads-projection / unchanged-and-why) in the PR description.**
-- **Standing constraint (merge gate):** the optimizer's cart read (routes.ts:5298) and its apply paths must behave identically before/after. This constraint holds until the optimizer re-point lane (lane 6) lands.
+- ~~**Standing constraint (merge gate):** the optimizer's cart read (routes.ts:5298) and its apply paths must behave identically before/after. This constraint holds until the optimizer re-point lane (lane 6) lands.~~
+  **RETIRED Jul 31, 2026 by Lane 5b (the re-point), decision-maker ratified.** The constraint existed only to keep the cart read stable *until* the optimizer read the Trip instead — which it now does: the baseline is the trip's own `itinerary_items` (`in_planning` + `ready_for_checkout`), `purchased` items are anchor-style constraints, `with_expert` is never read (`docs/briefs/ROUTING_STATE_CONTRACT.md` §2, "Optimizer (Lane 5b)"). The cart⋈provider_services read survives ONLY as an explicitly-labelled guest-only branch, unreachable while these endpoints are `isAuthenticated`, retiring with G2. The projection module remains the sole writer of `cart_items` — **that rule is unchanged and not part of the retirement.**
 
 **W3 — H1 fix (convert-to-itinerary, routes.ts:5645–5712).** Preserve `serviceId` through conversion; stop deleting the cart row as the mechanism of conversion — conversion is now a routing-status transition, and the projection sync handles the cart row.
 
@@ -36,7 +37,7 @@
 
 ## 2. Explicitly OUT of scope (named lanes exist — do not absorb)
 
-- Optimizer re-point to tripId → **lane 6** (retires the W2 constraint).
+- Optimizer re-point to tripId → **Lane 5b** (retires the W2 constraint) — **LANDED Jul 31, 2026.** (Earlier drafts labelled this "lane 6"; corrected.)
 - `getTripRole` / auth model → **L10 lane** (Phase 1 merely *sits behind* it).
 - `trip_contexts` re-key to tripId → follow-up after this lane lands.
 - trips.status lifecycle / admin completed-count → **lane 4**.
@@ -61,7 +62,7 @@
 
 ## 4. What NOT to do
 
-- Do **not** break or "improve" the optimizer's cart read — identical behavior is a merge gate until lane 6.
+- ~~Do **not** break or "improve" the optimizer's cart read — identical behavior is a merge gate until lane 6.~~ *(Discharged: Lane 5b replaced the read outright, Jul 31 2026. What replaces this rule: no logged-in caller may read the cart as an optimizer baseline — the Trip is the only baseline for a signed-in user.)*
 - Do **not** let any path other than the projection-sync module write `cart_items` after 1b.
 - Do **not** let the expert (or any non-traveler role) set `ready_for_checkout`.
 - Do **not** introduce fee literals, client-trusted amounts, or client-trusted userId anywhere touched; `fee_bands` resolver only; Stripe idempotency + atomic `WHERE status='pending_payment'` untouched.

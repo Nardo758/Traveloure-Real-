@@ -77,6 +77,37 @@ router.post("/api/itinerary-comparisons/:id/apply-to-trip", isAuthenticated, asy
     // (`in_planning`), so a re-apply keeps replacing exactly the rows it created.
     const { preserved: preservedRoutedItems } = await storage.deleteInPlanningItineraryItemsByTrip(comparison.tripId);
 
+    // ── Lane 5b: apply-time dedupe against the rows that SURVIVED the delete ──────────────────
+    // The two halves of Lane 5a/5b meet here. Since the re-point, `ready_for_checkout` items are
+    // optimizer INPUT (they are still plan), while the delete above deliberately spares them — so
+    // a variant can legitimately propose an item that is already sitting on the trip, and a naive
+    // insert would produce a second copy of it. (The sharpest case: the user selects the BASELINE
+    // variant, whose items literally ARE the trip's own items, and applies it.)
+    //
+    // Deduped against ALL survivors, not just `ready_for_checkout`: the rule is "never create a
+    // second copy of something already on this plan", and that is at its most important for a
+    // `purchased` row — the traveler has paid for it, and a duplicate would read as an unbought
+    // second booking.
+    //
+    // Predicate (ratified): `providerServiceId` first — the catalog identity, and the only
+    // trustworthy key — then an exact case-insensitive title match, which is all an AI-authored
+    // item offers. Same predicate the optimizer uses to refuse to emit a purchased item at all
+    // (`stripFixedCommitmentEchoes`), so the two ends cannot disagree on what "the same item" is.
+    const survivingItems = await storage.getItineraryItems(comparison.tripId);
+    const survivingServiceIds = new Set(
+      survivingItems.map((s: any) => s.providerServiceId).filter((v: any): v is string => !!v),
+    );
+    const survivingTitles = new Set(
+      survivingItems.map((s: any) => String(s.title ?? "").trim().toLowerCase()).filter(Boolean),
+    );
+    const applicableVariantItems = variantItems.filter((item: any) => {
+      if (item.providerServiceId && survivingServiceIds.has(item.providerServiceId)) return false;
+      const name = String(item.name ?? "").trim().toLowerCase();
+      if (name && survivingTitles.has(name)) return false;
+      return true;
+    });
+    const dedupedAgainstRoutedItems = variantItems.length - applicableVariantItems.length;
+
     // W5 (H5): preserve the service link through the apply. `itinerary_variant_items` rows carry
     // `providerServiceId` (shared/schema.ts:1166) and the itinerary item has had the matching
     // column all along — the mapping simply omitted it, so every optimizer-applied plan arrived as
@@ -84,7 +115,7 @@ router.post("/api/itinerary-comparisons/:id/apply-to-trip", isAuthenticated, asy
     // author because no invariant existed to stop it; the Lane G guard is that invariant now).
     // `?? null` is the honest value for an AI-invented item with no catalog row behind it — the
     // optimizer emits those alongside real ones, and NULL says "nothing to link", never a guess.
-    await storage.bulkInsertItineraryItems(variantItems.map((item: any) => ({
+    await storage.bulkInsertItineraryItems(applicableVariantItems.map((item: any) => ({
       tripId: comparison.tripId,
       providerServiceId: item.providerServiceId ?? null,
       title: item.name,
@@ -134,9 +165,10 @@ router.post("/api/itinerary-comparisons/:id/apply-to-trip", isAuthenticated, asy
     // Mark comparison with optimizedAt timestamp
     await storage.updateComparisonOptimizedAt(comparisonId, variant.id);
 
-    // ADDITIVE field (§13 honest reporting): how many already-routed items the apply left in place.
-    // Existing consumers read `tripId`/`delta` and are unaffected; no UI is built on this yet.
-    res.json({ tripId: comparison.tripId, delta, preservedRoutedItems });
+    // ADDITIVE fields (§13 honest reporting): how many already-routed items the apply left in
+    // place, and how many proposed items were dropped because the plan already held them.
+    // Existing consumers read `tripId`/`delta` and are unaffected; no UI is built on these yet.
+    res.json({ tripId: comparison.tripId, delta, preservedRoutedItems, dedupedAgainstRoutedItems });
   } catch (error) {
     console.error("Error applying variant to trip:", error);
     res.status(500).json({ error: "Failed to apply variant to trip" });
