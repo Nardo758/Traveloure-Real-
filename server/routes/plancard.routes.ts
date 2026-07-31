@@ -68,8 +68,14 @@ router.post("/api/itinerary-comparisons/:id/apply-to-trip", isAuthenticated, asy
 
     const variantItems = await storage.getOrderedVariantItemsByVariantId(variant.id);
 
-    // Replace itinerary items for this trip
-    await storage.deleteItineraryItemsByTrip(comparison.tripId);
+    // Replace itinerary items for this trip — ROUTING-STATUS-AWARE (Lane 5a Defect 2).
+    // This was an unconditional `deleteItineraryItemsByTrip`, which also destroyed `with_expert`,
+    // `ready_for_checkout` and `purchased` rows — the last of those carry `booking_id`
+    // (migration 159), so applying an optimizer variant silently severed real bookings from the
+    // plan. Only `in_planning` items are the optimizer's to replace; everything the traveler has
+    // routed onward survives untouched. The inserted variant items take the migration-159 default
+    // (`in_planning`), so a re-apply keeps replacing exactly the rows it created.
+    const { preserved: preservedRoutedItems } = await storage.deleteInPlanningItineraryItemsByTrip(comparison.tripId);
 
     // W5 (H5): preserve the service link through the apply. `itinerary_variant_items` rows carry
     // `providerServiceId` (shared/schema.ts:1166) and the itinerary item has had the matching
@@ -128,7 +134,9 @@ router.post("/api/itinerary-comparisons/:id/apply-to-trip", isAuthenticated, asy
     // Mark comparison with optimizedAt timestamp
     await storage.updateComparisonOptimizedAt(comparisonId, variant.id);
 
-    res.json({ tripId: comparison.tripId, delta });
+    // ADDITIVE field (§13 honest reporting): how many already-routed items the apply left in place.
+    // Existing consumers read `tripId`/`delta` and are unaffected; no UI is built on this yet.
+    res.json({ tripId: comparison.tripId, delta, preservedRoutedItems });
   } catch (error) {
     console.error("Error applying variant to trip:", error);
     res.status(500).json({ error: "Failed to apply variant to trip" });
