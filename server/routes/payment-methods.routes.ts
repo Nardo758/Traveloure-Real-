@@ -1,9 +1,12 @@
 /**
  * payment-methods.routes.ts — FP-1 frictionless payments: saved-card management.
  *
- * GET    /api/me/payment-methods          — list the session user's vaulted cards (+ default)
- * POST   /api/me/payment-methods/default  — set the default card
- * DELETE /api/me/payment-methods/:id      — remove a card
+ * GET    /api/me/payment-methods              — list the session user's vaulted cards (+ default)
+ * POST   /api/me/payment-methods/default       — set the default card
+ * DELETE /api/me/payment-methods/:id           — remove a card
+ * POST   /api/me/payment-methods/setup-intent  — H7: start the add-card flow (Stripe SetupIntent,
+ *                                                 charges nothing — §14-clean by construction, no
+ *                                                 amount anywhere on this path)
  *
  * §14: everything is scoped to the SESSION user's own Stripe Customer — the service verifies a
  * payment_method belongs to that customer before default/detach (a pm id is not a capability).
@@ -34,6 +37,22 @@ router.get("/api/me/payment-methods", isAuthenticated, async (req: any, res) => 
   } catch (err: any) {
     console.error("[payment-methods] list failed:", err);
     return res.status(500).json({ message: "Failed to load payment methods" });
+  }
+});
+
+router.post("/api/me/payment-methods/setup-intent", isAuthenticated, async (req: any, res) => {
+  try {
+    if (!stripePaymentService.isReady()) {
+      return res.status(503).json({ error: "stripe_unavailable", message: "Payments are not yet configured." });
+    }
+    const result = await stripePaymentService.createSetupIntent(sessionUserId(req));
+    if (!result) {
+      return res.status(503).json({ error: "stripe_unavailable", message: "Couldn't start the add-card flow. Try again later." });
+    }
+    return res.json(result);
+  } catch (err: any) {
+    console.error("[payment-methods] setup-intent failed:", err);
+    return res.status(500).json({ message: "Failed to start the add-card flow" });
   }
 });
 
