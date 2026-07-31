@@ -419,6 +419,15 @@ Recommendation: let it go, and retire migration 080 to a no-op with a note.
 
 ---
 
+## TRIP-CANON — the consolidated program (Jul 31, 2026)
+
+**Master brief: `docs/planning/TRIP_CANON_MASTER_BRIEF.md`** — synthesizes the item-lifecycle map, the
+Trip-Gravity audit, the reconcile brief, the Phase 1 scope, and the routing-state contract into ONE gap
+registry (19 findings, each mapped to exactly one lane) and one dependency-ordered plan (merge → Lane 1
+reconcile 1a–1d → Lanes 4/5/6; Lanes 2/7/G parallel; Lane 3 gated on its own decision-maker brief).
+Supersedes the per-document reading order for execution purposes; the sources stay authoritative for their
+own detail.
+
 ## MP — Marketplace bridge program (proposed Jul 30, 2026; awaiting decision-maker sign-off)
 
 **Origin:** the decision-maker's design question — *"Discover becomes the bridge connecting both stores; push the
