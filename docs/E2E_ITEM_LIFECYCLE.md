@@ -111,40 +111,108 @@ because no invariant existed to stop them.
 
 ---
 
-## 4. Target state (proposal — decision-maker ratifies before any fix)
+## 4. Target state — Trip-as-Artifact (decision-maker direction, Jul 31 2026)
 
-One rule, stated once, enforced by a gate:
+**Source of truth: `docs/briefs/TRIP_ARTIFACT_RECONCILE_BRIEF.md`** (supplied by the decision-maker; amends
+`attached_assets/UNIFIED_PLANNING_FLOW_SPEC_v2_*.md`, reinforces G1 Trip-canonical). It supersedes BOTH earlier
+proposals in this document's history — the two-store bridge repair AND the cart-as-planning-workspace model —
+and is **gated on a Phase 0 read-only audit before any build**.
 
-> **An itinerary item that originated from a sellable service ALWAYS carries `providerServiceId`. Its
-> commercial state lives WITH it. The Trip Card is both a buying surface and a receipt.**
+**Why it beats both earlier models in one sentence each:**
+- vs. bridge repair: it removes the second store instead of keeping two stores synchronized forever.
+- vs. cart-as-workspace: it separates **consideration from commitment** — a cart-as-workspace still hands the
+  expert a purchase list and still can't route half a trip to an expert while buying the other half.
+
+### The production line
 
 ```mermaid
 flowchart LR
-  cart2["cart_items"] -->|"convert: keeps serviceId,<br/>item state = planned"| item["itinerary_item<br/>providerServiceId + state"]
-  item -->|"Book this → back to cart"| cart2
-  cart2 --> pay["/api/checkout"]
-  pay -->|"booking links item:<br/>state = booked"| item
-  item --> card2["Trip Card<br/>planned = CTA to book<br/>booked = receipt + logistics"]
+  subgraph ENTRY["ENTRY POINTS"]
+    d2["Discover / Marketplace"]
+    t2["Templates / Ready-made"]
+    a2["AI planner"]
+  end
+
+  subgraph TRIPX["THE TRIP — one canonical artifact, exists from the FIRST selection"]
+    items["trip items<br/>each carries serviceId where sellable<br/>+ per-item ROUTING status"]
+  end
+
+  subgraph STATIONS["STATIONS — operate on the Trip, never own a copy"]
+    exp2["EXPERT WORKSTATION<br/>reads the with_expert subset,<br/>refines, returns to in_planning"]
+    cart2["CART = PROJECTION<br/>filtered read of ready_for_checkout items.<br/>No independent store."]
+  end
+
+  d2 --> items
+  t2 --> items
+  a2 --> items
+  items <-->|"status flip, never a copy"| exp2
+  items -->|"traveler marks for purchase"| cart2
+  cart2 -->|"checkout: server-computed amounts<br/>booking + escrow (unchanged rails)"| paid2["purchased<br/>(snapshot frozen, item lives on)"]
+  paid2 --> items
 ```
 
-Concretely, the fix program (order matters — schema decision first):
+### Per-item routing state (orthogonal to fulfillment state — see finding F-A below)
 
-| Lane | What | Needs ratification? |
-|---|---|---|
-| **L-A** | Ratify the item-state model: `itinerary_items` gains nullable `bookingId` (FK → `service_bookings`); "planned vs booked" is **derived** from it, no new status enum. Additive migration, no CHECK. | **YES — schema (Coordination Prevention)** |
-| **L-B** | Fix H1 + H5 at the write sites: both converters carry `serviceId`/`providerServiceId`. Pure bug fix once L-A defines where state lives. | no |
-| **L-C** | Fix H2: checkout (and webhook confirm) links the booking to its itinerary item — creates one if the buy didn't come from a plan. Trip Card renders booked state. | rides L-A |
-| **L-D** | Fix H3: "Book this" on planned items with a `providerServiceId` → adds back to cart. This **absorbs the blocked MP-4** — the same TripPlan amendment (`providerServiceId` at `full` redaction) serves both. | **YES — §18 TripPlan amendment** |
-| **L-E** | Fix H4: share route becomes a TripPlan channel (`preview`/`teaser` redaction per §18) instead of the old component. | no — §18 already ratified this direction |
-| **L-F** | H6/H7/H8 small fixes: surface skipped externals with a message; SetupIntent add-card; wire or remove the preference chips. | no |
-| **L-G** | **The gate that makes this durable** (Tier 0): a linkage-preservation guard — any code path writing `itinerary_items` from a source that has a service id must carry it. This is the test that would have made H1 and H5 impossible to write. | no |
+```mermaid
+stateDiagram-v2
+  [*] --> in_planning : selection attaches to Trip
+  in_planning --> with_expert : send to expert (per item)
+  with_expert --> in_planning : expert returns (refined)
+  in_planning --> ready_for_checkout : traveler marks for purchase
+  ready_for_checkout --> in_planning : removed from cart (plan keeps it)
+  ready_for_checkout --> purchased : checkout succeeds
+  note right of with_expert : expert can NEVER set ready_for_checkout — purchase intent is traveler-only
+  note right of purchased : never born purchased (D1a discipline)
+```
 
-**Decision points for you (everything else follows mechanically):**
-1. **Move vs copy** at cart→trip conversion. Recommend **move** — the item leaves the cart but stays buyable
-   from the plan (the earlier "(b)" shape). With H3 fixed, move loses nothing.
-2. **L-A schema shape** — nullable `bookingId` FK on `itinerary_items`, state derived. Yes/no.
-3. **L-D TripPlan amendment** — `providerServiceId` (+ derived booked state) at `full` redaction level only.
-   This is the same ask as the parked MP-4; one ratification closes both.
+The two invariants the diagram encodes: **routing is a status flip on one row, never a copy** (removing from
+the cart returns the item to planning instead of destroying it — the exact failure the current
+`removeFromCart` has), and **`with_expert` / `ready_for_checkout` are exclusive per ITEM, not per trip** — half
+a trip can sit with the expert while the other half is bought.
 
-Until these are ratified, none of H1–H5 gets patched — per the decision that these are not to be fixed in
-isolation.
+### What this does to the hole inventory
+
+| Hole | Under trip-as-artifact |
+|---|---|
+| H1 convert-to-itinerary drops serviceId | **Dissolves** — no conversion bridge exists; selections attach to the Trip carrying `serviceId` from the start |
+| H5 apply-to-trip drops the link | **Dissolves** — the optimizer operates on the Trip directly (G3/G4 retarget); no variant→trip copy |
+| H2 paid booking never reaches the plan | **Dissolves structurally** — purchase is a status transition ON the trip item; it never left the plan |
+| H3 no Book action on the Trip Card | **Becomes the core routing affordance** — "send to cart" = flip to `ready_for_checkout` |
+| H6 apply-to-cart silently drops externals | **Dissolves** — non-service items simply stay `in_planning`; nothing is dropped because nothing is copied |
+| H4 share renders the old component | **Survives, unchanged** — still the §18 renderer migration ("do not fork PlanCard" holds) |
+| H7 no add-card flow, H8 dead chips | **Survive, unchanged** — profile-surface fixes, independent of this model |
+
+### Phase 0 — what this document already answers (receipts in §2), what remains
+
+| Brief Q | Status |
+|---|---|
+| Q1 `cart_items` schema + writers/readers | **Largely answered**: schema in §2/E1; writers = add-to-cart, apply-to-cart (`routes.ts:6154`), variant replace; readers = checkout (`payments.routes.ts:283+`), convert (`routes.ts:5645`). Remaining: the full reader sweep + which assume "selection" vs "purchase" (the assumption inventory) |
+| Q4 trip-creation points | **Answered**: convert-to-itinerary, quick-start, ai-itinerary-builder, saved-trip conversion, checkout auto-trip (`booking.service.ts:93`), ready-made clone, expert workstation |
+| Q5 checkout server-computed | **Answered**: §14-clean, §15 idempotent (index declared, migration 155/096) |
+| Q2 G1 status | **Partially**: `user_experiences.tripId` FK EXISTS; items live in `itinerary_items` — which already carries `status` (fulfillment enum) AND `bookingStatus`. See F-A |
+| Q3 guest carts | **Partially**: no `guest_sessions` table; `cart_items.guestSessionId` exists — the guest-Trip retarget needs its own design |
+| Q6 expert handoff carries | open — trace `expert_request` reference-vs-copy |
+| Q7 NULL-userId overlap | open — cross-check against the L10 owner-less-trip paths (three known minters) |
+| Q8 push-vs-migration posture | open per table — note the deploy-push trap history (CLAUDE.md) |
+| Q9 route auth | open — verify, don't assume (§9 class) |
+
+### New Phase 0 finding to carry forward
+
+**F-A — two orthogonal status axes, do not conflate.** `itinerary_items.status` is a **fulfillment** lifecycle
+(`planned, booked, confirmed, in_progress, completed, cancelled, skipped` — `shared/schema.ts:3052`), i.e.
+what happens during the trip. The brief's states are a **routing** lifecycle (where the item currently sits on
+the production line). An item can be `ready_for_checkout` + `planned` today and `purchased` + `confirmed`
+next week. Jamming routing values into the fulfillment enum would corrupt every existing reader of `status`;
+the routing state almost certainly wants its own column. Schema shape = decision-maker ratification
+(Coordination Prevention), decided on Phase 0 findings, not before.
+
+### Open decisions (from the brief, to be decided on Phase 0 evidence)
+
+1. **Cart as pure projection vs thin materialized table.** Early evidence leans thin-table: checkout is deeply
+   coupled to `cart_items` (slot claims, idempotency, snapshot-into-bookingDetails all read it), so a
+   single-writer materialized projection is likely the cheaper Phase 1 than ripping it out. Phase 0 confirms.
+2. **Snapshot-on-purchase** — brief recommends yes, mirroring `ready_made_purchases`. Endorsed; it is also the
+   already-ratified snapshot posture (§17/§18).
+3. **Guest-Trip retention/expiry** for abandoned session trips.
+
+Until Phase 0 findings are approved, none of H1–H6 gets patched — the brief's HARD STOP governs.
