@@ -633,4 +633,17 @@ export const MIGRATION_FILES = [
   // default == ORM default via information_schema). Existing rows take the default only — no
   // inferred `purchased` history (scope §4).
   "159_itinerary_routing_state.sql",
+  // 160: Trip-Canon Lane 1 (Reconcile) Phase 1b — the cart projection's SOURCE KEY.
+  // Additive nullable `cart_items.itinerary_item_id` FK → itinerary_items ON DELETE CASCADE
+  // (+ index). W2 makes `cart_items` a single-writer materialized projection of items in
+  // `ready_for_checkout`; the projection is not expressible without a key back to the item it
+  // projects. NULL = "not a projection" (legacy / guest / direct add) and the sync module never
+  // touches those rows — that is the whole compatibility story for the nine Q1 consumers.
+  // CASCADE (not SET NULL) because the projection row has no independent existence: an orphaned
+  // one would be uncleanable and still chargeable at checkout. No CHECK/DEFAULT/NOT NULL/backfill
+  // → no publish-push trap, nothing for the preflight CONSTRAINT_MANIFEST. Column + index are
+  // also declared in shared/schema.ts (deploy-push durability rule).
+  // ⚠️ Schema addition flagged for decision-maker ratification in the PR — it rides the approved
+  // W2 projection design, which did not name the key it requires.
+  "160_cart_projection_key.sql",
 ] as const;

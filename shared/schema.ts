@@ -1018,9 +1018,23 @@ export const cartItems = pgTable("cart_items", {
   // and content items carry no slot. The capacity CLAIM happens at checkout (atomic bookSlot),
   // never at add-to-cart, so an abandoned cart can't hold a slot hostage.
   slotId: varchar("slot_id").references(() => vendorAvailabilitySlots.id, { onDelete: "set null" }),
+  // The PROJECTION SOURCE KEY (migration 160, Trip-Canon Lane 1 W2). NULL = this cart row is NOT
+  // a projection — a legacy row, a guest add, or a direct add-to-cart. NON-NULL = this row is the
+  // materialized projection of one `itinerary_items` row currently in `ready_for_checkout`, owned
+  // exclusively by server/services/cart-projection.service.ts (the single writer). The sync module
+  // never reads, writes, or deletes a NULL-keyed row, which is what keeps every pre-existing cart
+  // consumer byte-identical. ON DELETE CASCADE (not SET NULL — contrast itinerary_items.booking_id):
+  // the projection has no independent existence, and an orphan would be uncleanable yet chargeable.
+  itineraryItemId: varchar("itinerary_item_id").references(() => itineraryItems.id, { onDelete: "cascade" }),
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => ({
+  // Declared here, not only in migration 160: per the CLAUDE.md deploy-push rule the publish-time
+  // drizzle push is authoritative over objects absent from THIS file and will DROP an index that
+  // exists only in migration SQL — after which the stamped migration never recreates it. This is
+  // the sync module's ONLY lookup key ("find the projection row for this item").
+  cartItemsItineraryItemIdIdx: index("idx_cart_items_itinerary_item_id").on(table.itineraryItemId),
+}));
 
 // === AI Blueprints ===
 
