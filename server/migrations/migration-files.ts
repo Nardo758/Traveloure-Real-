@@ -623,4 +623,14 @@ export const MIGRATION_FILES = [
   // references; it is redundant against the live service_demand_signals / service_requests.
   // GUARDED: refuses to drop if the table is non-empty when it actually runs.
   "158_retire_service_demand_requests.sql",
+  // 159: Trip-Canon Lane 1 (Reconcile) Phase 1a — per-item `routing_status`
+  // (in_planning|with_expert|ready_for_checkout|purchased, default in_planning) + the
+  // `booking_id` FK → service_bookings ON DELETE SET NULL that the refund/cancel reversal edge
+  // resolves through (master brief §5 item 2), + its index. Value set is TS-level
+  // (`ROUTING_STATUSES` in shared/schema.ts) with deliberately NO DB CHECK — the pre-109
+  // delivery-method posture; a CHECK on a brand-new all-default column buys nothing and creates a
+  // publish-push remap trap. Default is set by the explicit ALTER (the Phase 1a gate proves DB
+  // default == ORM default via information_schema). Existing rows take the default only — no
+  // inferred `purchased` history (scope §4).
+  "159_itinerary_routing_state.sql",
 ] as const;

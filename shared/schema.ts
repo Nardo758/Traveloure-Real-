@@ -31,6 +31,13 @@ export const energyTypeEnum = ["physical", "mental", "social", "mixed"] as const
 export const peakTimingEnum = ["morning", "afternoon", "evening", "night", "flexible"] as const;
 export const attendanceRequirementEnum = ["all", "subset", "optional"] as const;
 
+// Per-item routing state (migration 159; Trip-Canon Lane 1 W1, docs/briefs/ROUTING_STATE_CONTRACT.md).
+// Exclusive per item, mixed per trip. The canonical value set lives HERE, not in a DB CHECK — the
+// column is a plain varchar (the pre-109 delivery-method posture) so the publish-time drizzle push
+// has no CHECK to enforce against un-remapped rows. Transitions are contract-gated in code.
+export const ROUTING_STATUSES = ["in_planning", "with_expert", "ready_for_checkout", "purchased"] as const;
+export type RoutingStatus = (typeof ROUTING_STATUSES)[number];
+
 // === Tables ===
 
 export const touristPlacesSearches = pgTable("tourist_places_searches", {
@@ -3238,6 +3245,11 @@ export const itineraryItems = pgTable("itinerary_items", {
   providerServiceId: varchar("provider_service_id").references(() => providerServices.id, { onDelete: "set null" }),
   bookingReference: varchar("booking_reference", { length: 255 }),
   bookingStatus: varchar("booking_status", { length: 20 }), // not_required, pending, confirmed, cancelled
+  // The item↔booking key (migration 159; master brief §5 item 2). Stamped by the checkout confirm
+  // path atomically with `routingStatus → 'purchased'`, and the key the refund/cancel reversal
+  // edge (`purchased → in_planning`) resolves through. Nullable — an item has no booking until
+  // bought. ON DELETE SET NULL so removing a booking never cascade-deletes the plan item.
+  bookingId: varchar("booking_id").references(() => serviceBookings.id, { onDelete: "set null" }),
   confirmationNumber: varchar("confirmation_number", { length: 255 }),
   
   // Cost
@@ -3289,10 +3301,23 @@ export const itineraryItems = pgTable("itinerary_items", {
 
   // Ordering
   sortOrder: integer("sort_order").default(0),
-  
+
+  // Per-item routing state (migration 159, Trip-Canon Lane 1 W1). Canonical value set =
+  // ROUTING_STATUSES above; deliberately NO DB CHECK (see the migration header). The DEFAULT here
+  // must stay byte-identical to the migration's explicit ALTER default — the Phase 1a gate proves
+  // ORM default == DB default via information_schema, and a divergence would make the publish push
+  // rewrite the column default on every deploy.
+  routingStatus: varchar("routing_status", { length: 20 }).notNull().default("in_planning"),
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => ({
+  // Declared here, not only in migration 159: per the CLAUDE.md deploy-push rule the publish-time
+  // drizzle push is authoritative over objects it does not find in THIS file and will DROP an
+  // index that exists only in migration SQL — after which the stamped migration never recreates
+  // it. This index serves the refund/cancel reversal lookup (find the item for a booking).
+  itineraryItemsBookingIdIdx: index("idx_itinerary_items_booking_id").on(table.bookingId),
+}));
 
 // Temporal Anchors - Fixed time commitments that constrain all other scheduling
 export const temporalAnchors = pgTable("temporal_anchors", {
