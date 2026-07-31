@@ -56,6 +56,12 @@ import { db } from "./db";
 import { eq, and, or, ilike, sql, desc, count, ne, inArray, asc } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
 import { scoreKnowledgeProof, KNOWLEDGE_PROOF_QUESTIONS } from "./services/expertise-scoring.service";
+// W2 (Trip-Canon Lane 1 Phase 1b): `cart_items` has exactly ONE writer — the projection module.
+// Every cart write below goes through `cartProjection.*`; the functions are thin passthroughs to
+// the storage layer, so behavior is identical to the pre-funnel code. Do not call
+// storage.addToCart / updateCartItem / removeFromCart / clearCart / migrateGuestCart /
+// replaceUserCartWithVariantItems directly from a route again, and never `db.insert(cartItems)`.
+import * as cartProjection from "./services/cart-projection.service";
 import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant, type TripPreferences } from "./itinerary-optimizer";
 import messagesRouter from "./routes/messages";
 import { availableAtFor } from "./config/earnings-hold.config";
@@ -117,6 +123,7 @@ import { ALL_DMO_SOURCES, getMarketGapSummary } from "./content/providers/DMOSou
 import savedItemsRoutes from "./routes/saved-items.routes";
 import serviceRequestsRoutes from "./routes/service-requests.routes";
 import tripContextRoutes from "./routes/trip-context.routes";
+import routingRoutes from "./routes/routing.routes";
 import guestInvitesRoutes from "./routes/guest-invites";
 import shareImagesRoutes from "./routes/share-images.routes";
 import promoTextRoutes from "./routes/promo-text.routes";
@@ -717,6 +724,18 @@ export async function registerRoutes(
   // (inherits the blanket adminApiGuard registered above). New table, migration 123.
   app.use(serviceRequestsRoutes);
   app.use(tripContextRoutes);
+
+  // Per-item routing transitions (Trip-Canon Lane 1 W1, Phase 1b):
+  // POST /api/trips/:tripId/items/:itemId/route — the four traveler/expert edges of the
+  // ROUTING_STATE_CONTRACT §1 machine. `purchased` is refused (checkout-only) and the
+  // reversal off it is refund-only. Role enforcement is IN CODE per contract §4:
+  // →ready_for_checkout is trip-owner-only (purchase intent is traveler-only), →with_expert
+  // is owner-only, →in_planning is owner OR the assigned expert when the item currently sits
+  // in with_expert (the single expert-WRITES cell). Owner resolution deliberately avoids
+  // getTripRole (scope §4). A successful flip reconciles the W2 cart projection.
+  // NO PATH COLLISION: no other router or inline handler registers /api/trips/:tripId/items/*
+  // (the itinerary family lives at /api/trips/:tripId/itinerary-items) — §9 no-shadow rule.
+  app.use(routingRoutes);
 
   // Guest-invite system (destination weddings/events): organizer invite management
   // (session-authenticated + experience-ownership-gated, §14) and public token-based
@@ -4248,7 +4267,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
       const experienceSlug = rawSlug ? resolveSlug(rawSlug) : "general";
-      const item = await storage.addToCart(userId, {
+      const item = await cartProjection.addToCart(userId, {
         serviceId: serviceId || undefined,
         customVenueId: customVenueId || undefined,
         quantity: quantity || 1,
@@ -5410,11 +5429,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         status: "draft",
       });
 
-      // 7. Backfill tripId on all matching cart items
-      const whereClause = experienceSlug
-        ? and(eq(cartItems.userId, userId), eq(cartItems.experienceSlug, experienceSlug))
-        : eq(cartItems.userId, userId);
-      await db.update(cartItems).set({ tripId: trip.id }).where(whereClause);
+      // 7. Backfill tripId on all matching cart items.
+      // W2: routed through the projection module (the single cart writer). The WHERE/SET moved
+      // verbatim — same rows, same column, same result as the raw db.update this replaced.
+      await cartProjection.attachTripToCartItems(userId, trip.id, experienceSlug);
 
       // 8. Link to user_experience idempotently (via client-supplied id or slug-resolved id)
       if (resolvedUserExperienceId) {
@@ -5552,7 +5570,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
 
-      const item = await storage.addToCart(userId, {
+      const item = await cartProjection.addToCart(userId, {
         serviceId: serviceId || undefined,
         customVenueId: customVenueId || undefined,
         ...(isContentAdd ? { contentType, contentId, contentMeta: safeContentMeta } : {}),
@@ -5584,7 +5602,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         return res.status(403).json({ message: "Forbidden" });
       }
       const { quantity, scheduledDate, notes } = req.body;
-      const updated = await storage.updateCartItem(req.params.id, {
+      const updated = await cartProjection.updateCartItem(req.params.id, {
         quantity,
         scheduledDate: scheduledDate ? new Date(scheduledDate) : undefined,
         notes,
@@ -5606,7 +5624,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (existing.userId !== userId) {
         return res.status(403).json({ message: "Forbidden" });
       }
-      await storage.removeFromCart(req.params.id);
+      await cartProjection.removeFromCart(req.params.id);
       res.status(204).send();
     } catch (err) {
       res.status(500).json({ message: "Failed to remove from cart" });
@@ -5618,7 +5636,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     try {
       const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const experienceSlug = req.query.experience as string | undefined;
-      await storage.clearCart(userId, experienceSlug);
+      await cartProjection.clearCart(userId, experienceSlug);
       res.status(204).send();
     } catch (err) {
       res.status(500).json({ message: "Failed to clear cart" });
@@ -5633,7 +5651,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (!guestSessionId || typeof guestSessionId !== "string") {
         return res.status(400).json({ message: "guestSessionId is required" });
       }
-      const result = await storage.migrateGuestCart(guestSessionId, userId);
+      const result = await cartProjection.migrateGuestCart(guestSessionId, userId);
       res.json({ success: true, ...result });
     } catch (err) {
       console.error("Cart migration error:", err);
@@ -5704,7 +5722,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           estimatedCost,
         } as any);
 
-        await storage.removeFromCart(cartItemId);
+        await cartProjection.removeFromCart(cartItemId);
         convertedCount++;
       }
 
@@ -6150,18 +6168,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         .from(itineraryVariantItems)
         .where(eq(itineraryVariantItems.variantId, comparison.selectedVariantId));
 
-      await db.delete(cartItems).where(eq(cartItems.userId, userId));
-
-      for (const item of variantItems) {
-        if (item.providerServiceId) {
-          await db.insert(cartItems).values({
-            userId,
-            serviceId: item.providerServiceId,
-            quantity: 1,
-            notes: `Day ${item.dayNumber} - ${item.timeSlot}`,
-          });
-        }
-      }
+      // W2: routed through the projection module (the single cart writer). The storage
+      // implementation performs the IDENTICAL delete-all-then-insert-per-variant-item this
+      // replaced (same rows, same notes string, same providerServiceId filter); the response
+      // below still reports `variantItems.length`, unchanged.
+      await cartProjection.replaceUserCartWithVariantItems(userId, variantItems);
 
       // Fire-and-forget: T4 funnel event
       trackFunnelEvent({

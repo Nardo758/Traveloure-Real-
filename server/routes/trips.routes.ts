@@ -8,6 +8,11 @@ import { transformDevHtml } from "../vite-dev-html";
 import crypto from "crypto";
 import { Router } from "express";
 import { storage } from "../storage";
+// W2 (Trip-Canon Lane 1 Phase 1b): `cart_items` has exactly ONE writer — the projection module.
+// NOTE: the apply-to-cart handler below is a §9 SHADOWED copy (this router mounts LAST, so the
+// inline routes.ts copy wins the path). It is re-pointed anyway so no live-or-dead file retains a
+// direct cart write. Passthrough; behavior identical.
+import * as cartProjection from "../services/cart-projection.service";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
@@ -990,7 +995,7 @@ router.post("/api/itinerary-comparisons/:id/apply-to-cart", isAuthenticated, asy
       }
 
       const variantItems = await storage.getItineraryVariantItemsByVariantId(comparison.selectedVariantId);
-      await storage.replaceUserCartWithVariantItems(userId, variantItems);
+      await cartProjection.replaceUserCartWithVariantItems(userId, variantItems);
       res.json({ message: "Cart updated with selected itinerary", itemsAdded: variantItems.length });
     } catch (error) {
       console.error("Error applying to cart:", error);
