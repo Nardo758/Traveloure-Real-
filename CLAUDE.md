@@ -403,6 +403,22 @@ This document captures architectural decisions to maintain consistency across co
       `POST /api/optimization-payments/confirm` verifies the intent and records `platform_revenue`. Client
       pays via cart.tsx / the Concierge UI. Amounts config-resolved (§8). See §7 (payment-gated optimize
       credit). **Still filed (not built):** Pinterest hooks, hotel-concierge B2B.
+      **CORRECTION + FIX (Jul 31, 2026, Trip-Canon Lane 5a): "BILLED" was true of the payment RAIL, not the
+      RUN.** The Lane 5 Phase-0 audit found the gate lived only in the §9 mount-order-DEAD `trips.routes.ts`
+      twin of `POST /api/itinerary-comparisons` — the LIVE inline handler (and `/:id/generate`) fired the
+      costly LLM run with ZERO payment verification, so any authenticated caller could run the paid optimize
+      free by API (the client happened to pay first; the server never checked). **Fixed by the §9 harvest
+      pattern:** the twin's verification (`verifyOptimizationPayment` — PI reuse-rejection, `succeeded`
+      check, PI→user + PI→target binding, fee re-derived server-side via `getFee`, §14) now guards the live
+      create (comparison row still created, born `pending_payment`, LLM gated) and regenerate (24h free
+      re-run on the same clock as `/api/optimization-payments` ‖ this row's own paid run in-window ‖ a fresh
+      PI claimed by atomic conditional update, §15); the dead twin handler is DELETED (no born-dead
+      duplicate). Same lane: apply-to-trip's wipe became routing-status-aware (deletes `in_planning` only —
+      routed/`purchased` rows and their `booking_id` survive), and the optimizer finally persists
+      `providerServiceId` onto variant items (AI `originalServiceId` honoured only when it matches a service
+      actually offered to it — an invented id stays NULL, §13), which un-breaks apply-to-cart's
+      always-0-items behavior. The cart→trip re-point itself is Lane 5b, gated on
+      `docs/briefs/L5-optimizer-repoint-brief.md` (decision-maker).
     - **Concierge→coordination FULFILLMENT wire — Phase 1a LANDED (Jul 22, 2026).** The event-coordination
       engine was fully built but **unwired**: `coordination_states` (status machine, `assigned_expert_id`
       coordinator field, budget/dates/vendors/timeline/cost) + full CRUD + `GET …/:id/fee`
