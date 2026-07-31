@@ -720,15 +720,30 @@ export default function CartPage() {
     (item) => item.isContentItem || (!!item.contentId && !!item.contentType)
   );
 
+  // Fix #970: the convert-to-trip control used to gate on `contentItems` alone (Discover
+  // saves), so a cart holding ONLY a platform-service row (serviceId, no contentId/contentType)
+  // had no "Start Planning" / "Add to Trip Itinerary" control at all — even though
+  // POST /api/cart/convert-to-itinerary (W3) already converts service rows and preserves
+  // providerServiceId on the created itinerary item. planCandidateItems mirrors that server
+  // gate exactly (content OR a real service), so the control renders whenever the cart has
+  // ANY convertible item.
+  const planCandidateItems = (cart?.items || []).filter(
+    (item) => item.isContentItem || (!!item.contentId && !!item.contentType) || !!item.serviceId
+  );
+
   const openPlanningDialog = () => {
     if (!user) { openSignInModal(); return; }
-    setSelectedPlanItemIds(new Set(contentItems.map((i) => i.id)));
+    setSelectedPlanItemIds(new Set(planCandidateItems.map((i) => i.id)));
     setPlanningTripMode("existing");
     setPlanningTripId("");
     setNewTripName("");
+    // §13: `provider_services.location` defaults to the literal "Unknown" — that is the
+    // absence of a location, not a place name, so it must never be used as a destination fallback.
+    const firstServiceLocation = planCandidateItems.find((i) => i.serviceId)?.service?.location;
     setNewTripDestination(
       (contentItems[0]?.contentMeta as any)?.city ||
       (contentItems[0]?.contentMeta as any)?.location ||
+      (firstServiceLocation && firstServiceLocation !== "Unknown" ? firstServiceLocation : "") ||
       ""
     );
     setShowPlanningDialog(true);
@@ -956,6 +971,26 @@ export default function CartPage() {
     await proceedOptimize(effStart, effEnd);
   };
 
+  // Fix #971: shared refusal handling for `POST /api/optimization-payments` — that endpoint now
+  // runs the SAME `trip_empty_convert_cart` pre-flight `createComparison`'s
+  // `POST /api/itinerary-comparisons` call already handled below (server/routes/optimization.routes.ts),
+  // so a signed-in user with an empty trip and a full cart is refused BEFORE any Stripe call
+  // instead of paying first and only finding out when the comparison is created. Both entry
+  // points into that endpoint (the payment-sheet flow and the one-click saved-card flow) route
+  // through this so the same guidance dialog opens either way. Returns true when the response
+  // WAS this refusal — the caller stops there, having already surfaced the dialog.
+  const handleOptimizationPaymentRefusal = (status: number, body: any): boolean => {
+    if (status === 409 && body?.error === "trip_empty_convert_cart") {
+      toast({
+        title: "Add your cart to the trip first",
+        description: "These items aren't on your trip yet, so there's nothing for the optimizer to work with.",
+      });
+      setShowPlanningDialog(true);
+      return true;
+    }
+    return false;
+  };
+
   // ── G3: Create Stripe PaymentIntent for the optimization fee ─────────────
   const requestOptimizationPayment = async () => {
     if (!user) {
@@ -976,8 +1011,12 @@ export default function CartPage() {
         credentials: "include",
         body: JSON.stringify({ tripId, userExperienceId, comparisonContext: { destination: experienceTitle } }),
       });
-      if (!res.ok) throw new Error("Could not create payment");
-      const data = await res.json();
+      // Read the body regardless of status — the refusal is a JSON error payload, not a network failure.
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (handleOptimizationPaymentRefusal(res.status, data)) return;
+        throw new Error(data?.message || "Could not create payment");
+      }
 
       if (data.freeRerun) {
         // Skip payment for 24h free re-run
@@ -994,6 +1033,8 @@ export default function CartPage() {
     } catch (err: any) {
       toast({ variant: "destructive", title: "Payment setup failed", description: err.message });
     } finally {
+      // Runs on every path out of this function — success, the refusal `return`, and the
+      // catch — so "Setting up…" never hangs regardless of which of those fires.
       setPaymentLoading(false);
     }
   };
@@ -1025,8 +1066,12 @@ export default function CartPage() {
           useSavedCard: true,
         }),
       });
-      if (!res.ok) throw new Error("Could not start payment");
-      const data = await res.json();
+      // Read the body regardless of status — the refusal is a JSON error payload, not a network failure.
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (handleOptimizationPaymentRefusal(res.status, data)) return;
+        throw new Error(data?.message || "Could not start payment");
+      }
 
       if (data.freeRerun) {
         await createComparison();
@@ -1803,14 +1848,14 @@ export default function CartPage() {
                       />
                     </div>
                     <CardFooter className="flex flex-col gap-3">
-                      {contentItems.length > 0 && (
+                      {planCandidateItems.length > 0 && (
                         <div className="w-full p-3 rounded-lg bg-gradient-to-r from-emerald-500/10 to-teal-500/10 border border-emerald-500/20">
                           <div className="flex items-start gap-2 mb-2">
                             <Route className="w-4 h-4 text-emerald-600 mt-0.5 flex-shrink-0" />
                             <div>
                               <h4 className="text-sm font-medium">Start Planning Your Trip</h4>
                               <p className="text-xs text-muted-foreground mt-1">
-                                Add your {contentItems.length} saved discover item{contentItems.length !== 1 ? "s" : ""} directly to a trip itinerary.
+                                Add your {planCandidateItems.length} saved item{planCandidateItems.length !== 1 ? "s" : ""} directly to a trip itinerary.
                               </p>
                             </div>
                           </div>
@@ -2517,10 +2562,19 @@ export default function CartPage() {
                 Select items to add ({selectedPlanItemIds.size} selected)
               </Label>
               <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                {contentItems.map((item) => {
+                {planCandidateItems.map((item) => {
                   const meta = item.contentMeta as any || {};
-                  const name = meta.name || item.contentId || "Discover item";
-                  const city = meta.city || meta.location || null;
+                  const isContent = item.isContentItem || (!!item.contentId && !!item.contentType);
+                  // Fix #970: a platform-service row has no contentMeta — its honest name/
+                  // location/price come from the joined `service` (never invented; §13's
+                  // "Unknown" location literal is filtered out, matching the rest of this file).
+                  const name = isContent
+                    ? (meta.name || item.contentId || "Discover item")
+                    : (item.service?.serviceName || "Platform service");
+                  const city = isContent
+                    ? (meta.city || meta.location || null)
+                    : (item.service?.location && item.service.location !== "Unknown" ? item.service.location : null);
+                  const price = isContent ? null : item.service?.price;
                   const checked = selectedPlanItemIds.has(item.id);
                   return (
                     <label
@@ -2547,6 +2601,11 @@ export default function CartPage() {
                           </p>
                         )}
                       </div>
+                      {price && parseFloat(String(price)) > 0 && (
+                        <span className="text-xs text-muted-foreground shrink-0" data-testid={`text-plan-item-price-${item.id}`}>
+                          {formatPrice(parseFloat(String(price)))}
+                        </span>
+                      )}
                     </label>
                   );
                 })}
