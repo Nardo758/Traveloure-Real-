@@ -22,3 +22,5 @@ checkout/payout flows. Also cross-check the Stripe account ID segment embedded i
 (the string right after `sk_live_`/`pk_live_`) matches between `STRIPE_SECRET_KEY` and
 `STRIPE_PUBLISHABLE_KEY` — mismatched accounts silently break checkout even with a syntactically
 valid secret key.
+
+**client_secret mismatch variant (July 2026):** Stripe Elements error "The client_secret provided does not match any associated PaymentIntent/SetupIntent on this account" means the publishable key belongs to a DIFFERENT Stripe account (or mode) than the secret key that created the intent. The sk's account is identifiable from intent ids (e.g. `pi_3...JZ5fFY5Q8L...` ↔ acct_1OL2SOJZ5fFY5Q8L). Fix: re-copy the pk from the same account+mode as the sk. Remember VITE_ vars need a dev-server restart to be inlined.
