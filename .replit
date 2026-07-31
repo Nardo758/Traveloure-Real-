@@ -68,6 +68,9 @@ PARTNERIZE_PUBLISHER_ID = "1101l337068"
 VITE_STRIPE_PUBLISHABLE_KEY = "pk_test_51TzOTXRJlh67IHOHszuZ0udMBCCMZsTfRQ8xyQxxD0HrQqPPSz5NFplGzBE1IKK8DDStRI8IzRw8VuFulhoDeIcL00Z5enB7tt"
 STRIPE_SECRET_KEY_TEST = "[redacted]"
 
+[userenv.production]
+ENVIRONMENT = "PROD"
+
 [postMerge]
 path = "scripts/post-merge.sh"
 timeoutMs = 30000
