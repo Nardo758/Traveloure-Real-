@@ -1348,6 +1348,42 @@ jsonb), upsert `ON CONFLICT (user_id)`. Client (`client/src/lib/trip-context.ts`
 hydrates once per load (server → local **only when local is empty** — an active local session always wins) and
 every `updateTripContext` debounce-pushes (fire-and-forget; 401 for guests silently ignored). No money path.
 Part of the ratified Trip-Strip program (docs/ROADMAP.md, P2 row).
+**Re-keyed by migration 161 (below) — Trip-Canon Lane 6.**
+
+**Migration 161 (Jul 31, 2026; registered in `migration-files.ts`) — trip_contexts re-key (Trip-Canon Lane 6):**
+closes the master-brief gap-registry row "`trip_contexts` keyed by userId, not tripId — re-key after L1 lands"
+(`docs/planning/TRIP_CANON_MASTER_BRIEF.md` §3). Once Lane 1 made the Trip the canonical planning container, a
+user planning two trips at once had their context smeared across both — migration 130's `user_id`-only PK could
+hold exactly one row per user, full stop. **Shape decided by ground-truthing the real constraint, not the
+mechanical "just add trip_id" option:** a `user_id`-only PRIMARY KEY cannot coexist with a second row for the
+same user, so a nullable `trip_id` column alone cannot produce per-(user,trip) rows — the real re-key is a PK
+swap. Executed as ONE migration: `trip_contexts` gains a surrogate `id` PRIMARY KEY (varchar,
+`DEFAULT gen_random_uuid()::varchar` — DB-side, matching migration 151's `bundle_components` pattern, because
+this table is written via raw `db.execute(sql\`…\`)`, not the Drizzle query builder) and a nullable `trip_id`
+FK → `trips` `ON DELETE CASCADE` (mirrors the existing `user_id` CASCADE — a context row has no life
+independent of the trip it's scoped to, same as it has none independent of the user). The "one row per scope"
+invariant that the old PK used to give for free now lives in **two partial unique indexes** —
+`trip_contexts_user_legacy_uidx (user_id) WHERE trip_id IS NULL` (at most one legacy/no-active-trip row per
+user, migration 130's original invariant preserved) and `trip_contexts_user_trip_uidx (user_id, trip_id)
+WHERE trip_id IS NOT NULL` (at most one row per user+trip) — a bare `UNIQUE(user_id, trip_id)` would NOT do
+this, since Postgres treats NULL as distinct from NULL in a unique index and would let a user accumulate
+unlimited `trip_id`-NULL rows. **Existing rows survive verbatim**: they simply gain a fresh surrogate `id`
+(backfilled before the `NOT NULL` + PK swap) and `trip_id` stays NULL — exactly their pre-migration meaning
+(proven behaviorally: pre/post row diff is `user_id`/`context`/`updated_at` byte-identical, `trip_id` NULL).
+No CHECK constraint anywhere in this migration → nothing for the preflight `CONSTRAINT_MANIFEST`, no
+publish-time push trap; `id`/`trip_id`/both partial unique indexes/the `trip_id` btree index are all declared
+in `shared/schema.ts` in the same commit (deploy-push durability rule).
+Companion code (`server/routes/trip-context.routes.ts`): `GET`/`PUT /api/trip-context` gain an optional
+`?tripId=` query param. Present → **ownership-checked** (`verifyTripOwnership` from `server/utils/trip-ownership.ts`
+— §14, the trip must exist AND belong to the session user; 404 if it doesn't exist, 403 if it isn't theirs) and
+reads/writes the trip-scoped row (two INSERT branches, not one dynamic `ON CONFLICT` target, because Postgres
+requires the conflict target to exactly match an existing partial unique index including its predicate).
+Absent → the exact pre-Lane-6 behavior, byte-for-byte: the legacy per-user row, no client change required.
+Client (`client/src/lib/trip-context.ts`): once the LOCAL context already carries a `tripId` (the trip-strip's
+"Server-truth mode" signal, set once a trip actually exists), `schedulePush`/`hydrateTripContextFromServer`
+append `?tripId=` so a second trip started elsewhere can't clobber the first trip's saved context; no local
+`tripId` yet → falls back to the legacy per-user row exactly as before. Hydrate precedence is otherwise
+unchanged (local wins when non-empty). No money path (unchanged from migration 130).
 
 **Migration 116 (Jul 15, 2026; registered in `migration-files.ts`) — Feed measurement: content_impressions completion:**
 analytics-only, no money semantics, fire-and-forget writes. The `content_impressions` table was created by
