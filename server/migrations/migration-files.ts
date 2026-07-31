@@ -623,4 +623,36 @@ export const MIGRATION_FILES = [
   // references; it is redundant against the live service_demand_signals / service_requests.
   // GUARDED: refuses to drop if the table is non-empty when it actually runs.
   "158_retire_service_demand_requests.sql",
+  // 159: Trip-Canon Lane 1 (Reconcile) Phase 1a — per-item `routing_status`
+  // (in_planning|with_expert|ready_for_checkout|purchased, default in_planning) + the
+  // `booking_id` FK → service_bookings ON DELETE SET NULL that the refund/cancel reversal edge
+  // resolves through (master brief §5 item 2), + its index. Value set is TS-level
+  // (`ROUTING_STATUSES` in shared/schema.ts) with deliberately NO DB CHECK — the pre-109
+  // delivery-method posture; a CHECK on a brand-new all-default column buys nothing and creates a
+  // publish-push remap trap. Default is set by the explicit ALTER (the Phase 1a gate proves DB
+  // default == ORM default via information_schema). Existing rows take the default only — no
+  // inferred `purchased` history (scope §4).
+  "159_itinerary_routing_state.sql",
+  // 160: Trip-Canon Lane 1 (Reconcile) Phase 1b — the cart projection's SOURCE KEY.
+  // Additive nullable `cart_items.itinerary_item_id` FK → itinerary_items ON DELETE CASCADE
+  // (+ index). W2 makes `cart_items` a single-writer materialized projection of items in
+  // `ready_for_checkout`; the projection is not expressible without a key back to the item it
+  // projects. NULL = "not a projection" (legacy / guest / direct add) and the sync module never
+  // touches those rows — that is the whole compatibility story for the nine Q1 consumers.
+  // CASCADE (not SET NULL) because the projection row has no independent existence: an orphaned
+  // one would be uncleanable and still chargeable at checkout. No CHECK/DEFAULT/NOT NULL/backfill
+  // → no publish-push trap, nothing for the preflight CONSTRAINT_MANIFEST. Column + index are
+  // also declared in shared/schema.ts (deploy-push durability rule).
+  // ⚠️ Schema addition flagged for decision-maker ratification in the PR — it rides the approved
+  // W2 projection design, which did not name the key it requires.
+  "160_cart_projection_key.sql",
+  // 161: Trip-Canon Lane 6 — trip_contexts re-key. Swaps the PK from user_id-only to a
+  // surrogate `id`, adds nullable trip_id (FK -> trips, ON DELETE CASCADE), and re-derives
+  // the "one row" invariant via two partial unique indexes (one legacy trip_id-NULL row per
+  // user; one row per (user_id, trip_id) once trip-scoped) since a user_id-only PK cannot
+  // coexist with more than one row per user. Existing rows survive verbatim — they simply
+  // gain a fresh surrogate id and trip_id stays NULL (their pre-migration "legacy" meaning).
+  // No CHECK constraint anywhere in this migration; id/trip_id/indexes are also declared in
+  // shared/schema.ts (deploy-push durability rule).
+  "161_trip_contexts_rekey.sql",
 ] as const;

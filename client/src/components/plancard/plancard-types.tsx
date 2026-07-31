@@ -4,6 +4,11 @@ import {
 import { differenceInDays, isValid } from "date-fns";
 import { MODE_COLORS, MODE_ICON_MAP, getModeIcon } from "@/lib/transport-modes";
 import type { InlineTransportLegData } from "@/components/itinerary/InlineTransportSelector";
+import type { RoutingStatus } from "@shared/schema";
+import type { TripPlanBooking } from "@shared/trip-plan";
+
+// Re-exported so plancard consumers can name the routing-status union without a second import.
+export type { RoutingStatus };
 
 // Re-exported for back-compat; the single source is @/lib/transport-modes.
 export { MODE_COLORS, MODE_ICON_MAP };
@@ -183,6 +188,20 @@ export interface PlanCardActivity {
   vendorPhone?: string | null;
   /** itinerary_items.confirmationNumber (falls back to bookingReference) — null until a real booking exists. */
   confirmationNumber?: string | null;
+  /**
+   * Trip-Canon Lane 1 Phase 1d (W7) — `itinerary_items.routing_status`, present only on the trip
+   * producer (a variant snapshot/generated-itinerary fallback item is not on the routing state
+   * machine, so it carries no key — never guessed as `in_planning`, §13). Drives the per-item badge
+   * and which routing actions the owner is offered.
+   */
+  routingStatus?: RoutingStatus;
+  /**
+   * The real `service_bookings` row this item was bought through — present only when the item is
+   * really booked (§13; ROUTING_STATE_CONTRACT §2 "presence is the booked state"). Same object as
+   * `TripPlanBooking` (shared/trip-plan.ts); duplicated here rather than re-exported wholesale so
+   * PlanCardActivity stays a self-contained client contract.
+   */
+  booking?: TripPlanBooking;
 }
 
 export interface PlanCardTransport {
@@ -331,6 +350,12 @@ export interface PlanCardData {
   stats: PlanCardStats;
   optimizationDelta?: OptimizationDelta | null;
   lastOptimizedAt?: string | null;
+  /**
+   * Trip-Canon Lane 1 W4/H2 — EVERY real booking on this trip, including ones no plan item points at
+   * (see `TripPlanBooking` / the plancard route's `bookings` key). Used by W7's "Purchases" section to
+   * surface a booking that isn't rendered inline on any activity row.
+   */
+  bookings?: TripPlanBooking[];
 }
 
 export interface PlanCardTrip {

@@ -9,6 +9,13 @@ export * from "./models/auth";
 export * from "./models/chat";
 
 // === Enums ===
+// §13 (CLAUDE.md): DEAD FIELD — trips.status (below) is write-once at creation (born draft/
+// planning depending on the create path) and no code path ever advances it to confirmed/
+// completed/cancelled. DO NOT READ this column for trip phase/lifecycle — every renderer derives
+// phase from startDate/endDate vs now instead (see client/src/pages/my-trips.tsx). DO NOT WRITE
+// new transitions into it either — see docs/briefs/L3-trips-status-brief.md (Option B, ratified
+// Jul 31, 2026) for the full record and the named future owner (the Phase 4 convert-to-ready-made
+// brief) if a real trip lifecycle is ever needed.
 export const tripStatusEnum = ["draft", "planning", "confirmed", "completed", "cancelled"] as const;
 export const expertAdvisorStatusEnum = ["pending", "accepted", "rejected"] as const;
 export const itineraryStatusEnum = ["pending", "generated", "failed"] as const;
@@ -30,6 +37,13 @@ export const temporalAnchorTypeEnum = [
 export const energyTypeEnum = ["physical", "mental", "social", "mixed"] as const;
 export const peakTimingEnum = ["morning", "afternoon", "evening", "night", "flexible"] as const;
 export const attendanceRequirementEnum = ["all", "subset", "optional"] as const;
+
+// Per-item routing state (migration 159; Trip-Canon Lane 1 W1, docs/briefs/ROUTING_STATE_CONTRACT.md).
+// Exclusive per item, mixed per trip. The canonical value set lives HERE, not in a DB CHECK — the
+// column is a plain varchar (the pre-109 delivery-method posture) so the publish-time drizzle push
+// has no CHECK to enforce against un-remapped rows. Transitions are contract-gated in code.
+export const ROUTING_STATUSES = ["in_planning", "with_expert", "ready_for_checkout", "purchased"] as const;
+export type RoutingStatus = (typeof ROUTING_STATUSES)[number];
 
 // === Tables ===
 
@@ -70,6 +84,10 @@ export const trips = pgTable("trips", {
   startDate: date("start_date").notNull(),
   endDate: date("end_date").notNull(),
   destination: varchar("destination", { length: 255 }).notNull(),
+  // §13: DEAD FIELD — write-once at creation, nothing ever advances it past its born draft/
+  // planning value. DO NOT READ for trip phase (derive from startDate/endDate vs now instead —
+  // see client/src/pages/my-trips.tsx); DO NOT add new writers. See tripStatusEnum above and
+  // docs/briefs/L3-trips-status-brief.md (Option B, ratified Jul 31, 2026).
   status: varchar("status", { length: 20 }).default("draft").notNull(), // Enum: tripStatusEnum
   numberOfTravelers: integer("number_of_travelers").default(1),
   adults: integer("adults").default(2),
@@ -1011,9 +1029,23 @@ export const cartItems = pgTable("cart_items", {
   // and content items carry no slot. The capacity CLAIM happens at checkout (atomic bookSlot),
   // never at add-to-cart, so an abandoned cart can't hold a slot hostage.
   slotId: varchar("slot_id").references(() => vendorAvailabilitySlots.id, { onDelete: "set null" }),
+  // The PROJECTION SOURCE KEY (migration 160, Trip-Canon Lane 1 W2). NULL = this cart row is NOT
+  // a projection — a legacy row, a guest add, or a direct add-to-cart. NON-NULL = this row is the
+  // materialized projection of one `itinerary_items` row currently in `ready_for_checkout`, owned
+  // exclusively by server/services/cart-projection.service.ts (the single writer). The sync module
+  // never reads, writes, or deletes a NULL-keyed row, which is what keeps every pre-existing cart
+  // consumer byte-identical. ON DELETE CASCADE (not SET NULL — contrast itinerary_items.booking_id):
+  // the projection has no independent existence, and an orphan would be uncleanable yet chargeable.
+  itineraryItemId: varchar("itinerary_item_id").references(() => itineraryItems.id, { onDelete: "cascade" }),
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => ({
+  // Declared here, not only in migration 160: per the CLAUDE.md deploy-push rule the publish-time
+  // drizzle push is authoritative over objects absent from THIS file and will DROP an index that
+  // exists only in migration SQL — after which the stamped migration never recreates it. This is
+  // the sync module's ONLY lookup key ("find the projection row for this item").
+  cartItemsItineraryItemIdIdx: index("idx_cart_items_itinerary_item_id").on(table.itineraryItemId),
+}));
 
 // === AI Blueprints ===
 
@@ -1329,13 +1361,40 @@ export const influencerCuratedContent = pgTable("influencer_curated_content", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-// TripContext server persistence (migration 130, Trip-Strip P2/E2): mirrors the
-// client sessionStorage trip context for signed-in users. Self-scoped by user_id.
+// TripContext server persistence (migration 130, Trip-Strip P2/E2; re-keyed by migration
+// 161, Trip-Canon Lane 6): mirrors the client sessionStorage trip context for signed-in
+// users. A `user_id`-only PK could hold only one row per user, so it could never let
+// context follow a SPECIFIC trip once the Trip became the canonical planning container
+// (Lane 1) — a user planning two trips at once had their context smeared across both.
+// Re-keyed onto a surrogate `id` PK; `tripId` NULL = the legacy "no active trip" row
+// (migration 130's original one-row-per-user meaning, preserved verbatim for every
+// pre-migration row), non-NULL = a context scoped to that specific trip. The "one row per
+// scope" invariant now lives in the two partial unique indexes below rather than the PK,
+// because Postgres treats NULL as distinct in a unique index — a bare
+// UNIQUE(userId, tripId) would let a user accumulate unlimited legacy rows.
 export const tripContexts = pgTable("trip_contexts", {
-  userId: varchar("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  // DB-side default is LOAD-BEARING (the shortLinks / ai_cost_tracking posture, NOT the house
+  // $defaultFn pattern): this table is written via raw db.execute(sql`…`) which never supplies
+  // `id`, so the default must exist in the database itself — and it must be DECLARED here or the
+  // deploy push treats it as drift and drops it (the sb_idempotency_key_idx lesson), after which
+  // every trip-context PUT would violate NOT NULL.
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  tripId: varchar("trip_id").references(() => trips.id, { onDelete: "cascade" }),
   context: jsonb("context").notNull().default({}),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => ({
+  // At most one legacy (tripId IS NULL) row per user — migration 130's original invariant.
+  userLegacyUidx: uniqueIndex("trip_contexts_user_legacy_uidx")
+    .on(table.userId)
+    .where(sql`${table.tripId} IS NULL`),
+  // At most one row per (userId, tripId) once trip-scoped.
+  userTripUidx: uniqueIndex("trip_contexts_user_trip_uidx")
+    .on(table.userId, table.tripId)
+    .where(sql`${table.tripId} IS NOT NULL`),
+  // Ownership checks / trip-scoped lookups filter by tripId alone.
+  tripIdIdx: index("idx_trip_contexts_trip_id").on(table.tripId),
+}));
 
 export const userExperiences = pgTable("user_experiences", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -3238,6 +3297,11 @@ export const itineraryItems = pgTable("itinerary_items", {
   providerServiceId: varchar("provider_service_id").references(() => providerServices.id, { onDelete: "set null" }),
   bookingReference: varchar("booking_reference", { length: 255 }),
   bookingStatus: varchar("booking_status", { length: 20 }), // not_required, pending, confirmed, cancelled
+  // The item↔booking key (migration 159; master brief §5 item 2). Stamped by the checkout confirm
+  // path atomically with `routingStatus → 'purchased'`, and the key the refund/cancel reversal
+  // edge (`purchased → in_planning`) resolves through. Nullable — an item has no booking until
+  // bought. ON DELETE SET NULL so removing a booking never cascade-deletes the plan item.
+  bookingId: varchar("booking_id").references(() => serviceBookings.id, { onDelete: "set null" }),
   confirmationNumber: varchar("confirmation_number", { length: 255 }),
   
   // Cost
@@ -3289,10 +3353,23 @@ export const itineraryItems = pgTable("itinerary_items", {
 
   // Ordering
   sortOrder: integer("sort_order").default(0),
-  
+
+  // Per-item routing state (migration 159, Trip-Canon Lane 1 W1). Canonical value set =
+  // ROUTING_STATUSES above; deliberately NO DB CHECK (see the migration header). The DEFAULT here
+  // must stay byte-identical to the migration's explicit ALTER default — the Phase 1a gate proves
+  // ORM default == DB default via information_schema, and a divergence would make the publish push
+  // rewrite the column default on every deploy.
+  routingStatus: varchar("routing_status", { length: 20 }).notNull().default("in_planning"),
+
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => ({
+  // Declared here, not only in migration 159: per the CLAUDE.md deploy-push rule the publish-time
+  // drizzle push is authoritative over objects it does not find in THIS file and will DROP an
+  // index that exists only in migration SQL — after which the stamped migration never recreates
+  // it. This index serves the refund/cancel reversal lookup (find the item for a booking).
+  itineraryItemsBookingIdIdx: index("idx_itinerary_items_booking_id").on(table.bookingId),
+}));
 
 // Temporal Anchors - Fixed time commitments that constrain all other scheduling
 export const temporalAnchors = pgTable("temporal_anchors", {

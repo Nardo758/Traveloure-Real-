@@ -571,10 +571,24 @@ export default function ItineraryComparisonPage() {
 
   const applyToCartMutation = useMutation({
     mutationFn: async () => {
-      return apiRequest("POST", `/api/itinerary-comparisons/${id}/apply-to-cart`);
+      const res = await apiRequest("POST", `/api/itinerary-comparisons/${id}/apply-to-cart`);
+      return (await res.json()) as {
+        message?: string;
+        itemsAdded?: number;
+        skippedExternalItems?: number;
+      };
     },
-    onSuccess: () => {
-      toast({ title: "Cart updated", description: "Your selected itinerary has been added to cart" });
+    // Lane 1 W5 (H6): items with no bookable platform service are skipped by the writer — that
+    // has always been true, and was always silent. The server now returns the real counts and an
+    // explanatory message; render it instead of the flat "added to cart" claim (§13).
+    onSuccess: (data) => {
+      toast({
+        title: "Cart updated",
+        description:
+          data?.skippedExternalItems && data.skippedExternalItems > 0
+            ? data.message
+            : "Your selected itinerary has been added to cart",
+      });
       queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
       setLocation("/cart");
     },

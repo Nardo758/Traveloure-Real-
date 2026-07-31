@@ -39,7 +39,7 @@
 
 import { db } from "../db";
 import { storage } from "../storage";
-import { providerServices, tripExpertAdvisors, tripTransactions } from "@shared/schema";
+import { providerServices, serviceBookings, tripExpertAdvisors, tripTransactions } from "@shared/schema";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { contentOriginFor } from "@shared/content-origin";
 import {
@@ -52,6 +52,7 @@ import {
   type TeaserTripPlan,
   type TripPlanActivity,
   type TripPlanActivitySource,
+  type TripPlanBooking,
   type TripPlanBudget,
   type TripPlanBudgetCategory,
   type TripPlanChange,
@@ -417,6 +418,43 @@ async function resolveBudget(
   };
 }
 
+/**
+ * Every REAL `service_bookings` row on this trip (Lane 1 W4 / H2 — "purchases reach the plan").
+ *
+ * Read ONCE per assembly and used twice: to attach `activity.booking` where an item's
+ * `booking_id` points at one, and to emit the whole list as `plan.bookings` so a booking with no
+ * linked item still renders (a booking made before the migration-159 key existed, or bought
+ * outside the plan). `service_name` is joined off `provider_services` — LEFT, because a
+ * transport-commerce booking legitimately carries a NULL `service_id` (CLAUDE.md "Service Model"
+ * exception) and must still appear rather than be silently dropped.
+ *
+ * §13: nothing here is derived or inferred — an absent booking is an absent key, never a
+ * "probably booked" flag. §14: no request input reaches this query; it is keyed on the tripId the
+ * caller already authorized.
+ */
+async function resolveTripBookings(tripId: string): Promise<TripPlanBooking[]> {
+  const rows = await db
+    .select({
+      id: serviceBookings.id,
+      serviceId: serviceBookings.serviceId,
+      status: serviceBookings.status,
+      totalAmount: serviceBookings.totalAmount,
+      serviceName: providerServices.serviceName,
+    })
+    .from(serviceBookings)
+    .leftJoin(providerServices, eq(serviceBookings.serviceId, providerServices.id))
+    .where(eq(serviceBookings.tripId, tripId))
+    .orderBy(desc(serviceBookings.createdAt));
+
+  return rows.map((r) => ({
+    id: r.id,
+    serviceId: r.serviceId ?? null,
+    status: r.status ?? null,
+    serviceName: r.serviceName ?? null,
+    totalAmount: r.totalAmount != null ? String(r.totalAmount) : null,
+  }));
+}
+
 /** Meeting points for items linked to a platform service. Bulk-read once per assembly. */
 async function resolveMeetingPoints(serviceIds: string[]): Promise<Record<string, string | null>> {
   const out: Record<string, string | null> = {};
@@ -577,6 +615,12 @@ export async function assembleTripPlan(
     ),
   );
 
+  // ── W4 (H2): the trip's REAL bookings. `full` only — `teaser`/`preview` returned above, so a
+  // store or link-card channel never sees a purchase. The endpoint that asks for `full` is already
+  // owner/expert/author/admin-gated (this service authorizes nothing — see the header note).
+  const tripBookings = await resolveTripBookings(tripId);
+  const bookingById = new Map<string, TripPlanBooking>(tripBookings.map((b) => [b.id, b]));
+
   const dayNumbers = Array.from(new Set(items.map((i) => i.dayNumber))).sort((a, b) => a - b);
 
   const buildLeg = (leg: any): TripPlanLeg => buildTripPlanLegCore(leg, legBookingMap[leg.id]);
@@ -622,6 +666,19 @@ export async function assembleTripPlan(
         .filter((c) => c.activityId === item.id)
         .slice(0, 1)
         .map((c) => ({ who: c.who, what: c.action, when: formatTimeAgo(c.createdAt) })),
+
+      // W4 (H2): the booked state, and ONLY when a real booking row backs it. `booking_id`
+      // (migration 159) is stamped by checkout atomically with the `→ purchased` flip and cleared
+      // of that flip by the refund path. Present-only-when-real: an unbooked item carries no key
+      // at all, so every pre-existing consumer of this activity shape is untouched (§13).
+      ...(item.bookingId && bookingById.has(item.bookingId)
+        ? { booking: bookingById.get(item.bookingId)! }
+        : {}),
+
+      // Phase 1d (W7): the item's own routing state, straight off the row — this producer is the
+      // ONLY one with the column (the variant snapshot adapter below never sets this key). READ-only
+      // pass-through; nothing here writes routing_status (contract §2).
+      routingStatus: item.routingStatus,
     };
   };
 
@@ -797,6 +854,11 @@ export async function assembleTripPlan(
     tripNote: trip.expertNotes ?? null,
     budget,
     changeLogRef: { tripId: trip.id, endpoint: `/api/trips/${trip.id}/changes` },
+    // W4 (H2): every real booking on this trip, including ones no plan item points at — the whole
+    // point of the list (see TripPlanBooking / FullTripPlan.bookings). Empty array when the trip
+    // has none, never omitted here, so a consumer can distinguish "no purchases" from "this
+    // producer does not report purchases" (the variant snapshot omits the key entirely).
+    bookings: tripBookings,
     plancard: {
       tripRole: options.tripRole ?? (trip.userId === options.viewerId ? "owner" : "expert"),
       trip: {

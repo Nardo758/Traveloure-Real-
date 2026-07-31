@@ -1162,9 +1162,23 @@ export default function CartPage() {
       const autoApplyFlag = experienceContext?.tripId ? "?autoApply=1" : "";
       setLocation(`/itinerary-comparison/${comparison.id}${autoApplyFlag}`);
     } catch (error: any) {
+      // Lane 5b: the optimizer reads the TRIP now, so a full cart against an empty trip is a
+      // specific, fixable state rather than a generic failure. The server names it; we open the
+      // existing "add these to a trip" dialog instead of dead-ending on a red toast.
+      // (Matching on the message body follows the `dispute_window_closed` precedent in
+      // my-bookings.tsx — apiRequest throws `"<status>: <body>"`.)
+      const msg = typeof error?.message === "string" ? error.message : "";
+      if (msg.includes("trip_empty_convert_cart")) {
+        toast({
+          title: "Add your cart to the trip first",
+          description: "These items aren't on your trip yet, so there's nothing for the optimizer to work with.",
+        });
+        setShowPlanningDialog(true);
+        return;
+      }
       console.error("Failed to create comparison:", error);
-      toast({ 
-        variant: "destructive", 
+      toast({
+        variant: "destructive",
         title: "Failed to generate itinerary",
         description: error?.message || "Please try again"
       });

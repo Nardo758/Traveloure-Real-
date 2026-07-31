@@ -8,6 +8,11 @@ import { transformDevHtml } from "../vite-dev-html";
 import crypto from "crypto";
 import { Router } from "express";
 import { storage } from "../storage";
+// W2 (Trip-Canon Lane 1 Phase 1b): `cart_items` has exactly ONE writer — the projection module.
+// NOTE: the apply-to-cart handler below is a §9 SHADOWED copy (this router mounts LAST, so the
+// inline routes.ts copy wins the path). It is re-pointed anyway so no live-or-dead file retains a
+// direct cart write. Passthrough; behavior identical.
+import * as cartProjection from "../services/cart-projection.service";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
@@ -572,217 +577,11 @@ router.get(api.helpGuideTrips.get.path, async (req, res) => {
 
   // AI Blueprint Generation API
 
-// §9 mount-order-dead twin (this handler always loses to the identically-routed
-// POST /api/itinerary-comparisons in routes.ts — see registerRoutes' tripsRoutes mount
-// comment). Kept in sync for safety only: the reconciliation sweep filed in CLAUDE.md §9
-// still needs to resolve the two copies' broader divergence (this one additionally
-// supports the paid-optimization-run gate the live copy does not).
-router.post("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
-    try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
-      const { userExperienceId, tripId, title, destination, startDate, endDate, budget, travelers, baselineItems: inlineBaselineItems, experienceTypeSlug, optimizationPaymentId } = req.body;
-
-      // SECURITY (P0-a IDOR twin, kept in sync with the live fix in routes.ts): `tripId` is
-      // caller-supplied and is persisted onto the comparison row, which downstream handlers
-      // (notably apply-to-trip, which DELETES the trip's itinerary items) treat as the trip to
-      // mutate. Without a check here an attacker could point their own comparison at someone
-      // else's trip and then apply it. A comparison with NO trip is legitimate (cart /
-      // experience-template flows create one before any trip exists), so only authorize when a
-      // tripId is actually supplied.
-      if (tripId) {
-        const denied = await authorizeTripLogistics(tripId, userId, "POST /api/itinerary-comparisons");
-        if (denied) return res.status(denied.status).json({ message: denied.message });
-      }
-
-      // ── Optimization authorization gate ──────────────────────────────────────
-      // Comparison records are ALWAYS created (never blocked).
-      // The AI optimizer only runs when payment is verified OR a 24h free rerun applies.
-      let canRunOptimizer = false;
-
-      // Check free 24h rerun eligibility first (no Stripe call needed)
-      const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
-      const recentRun = await storage.getRecentOptimizationRun(userId, cutoff);
-
-      if (recentRun) {
-        canRunOptimizer = true;
-      } else if (optimizationPaymentId) {
-        // Paid run path — verify payment before allowing optimizer
-        // Reject reuse: check if this PI is already tied to any existing comparison
-        const alreadyUsed = await storage.getComparisonByOptimizationPaymentId(optimizationPaymentId);
-        if (alreadyUsed) {
-          return res.status(409).json({
-            error: "payment_already_used",
-            message: "This optimization payment has already been used. Please start a new optimization.",
-          });
-        }
-
-        // Require a concrete target when using a payment
-        if (!tripId && !userExperienceId) {
-          return res.status(400).json({
-            error: "target_required",
-            message: "Provide tripId or userExperienceId for paid optimization.",
-          });
-        }
-
-        // Verify with Stripe
-        try {
-          const pi = await stripeForOptimization.paymentIntents.retrieve(optimizationPaymentId);
-          if (pi.status !== "succeeded") {
-            return res.status(402).json({ error: "payment_not_confirmed", message: "Optimization payment has not been confirmed." });
-          }
-          if (pi.metadata?.userId && pi.metadata.userId !== userId) {
-            return res.status(403).json({ error: "payment_belongs_to_another_user" });
-          }
-          if (pi.metadata?.type !== "optimization_fee") {
-            return res.status(402).json({ error: "invalid_payment_type" });
-          }
-          // Strict PI-to-target binding: PI metadata target must match the request target
-          const piTargetTrip = pi.metadata?.targetTripId || undefined;
-          const piTargetExp = pi.metadata?.targetExperienceId || undefined;
-          if (piTargetTrip && piTargetTrip !== tripId) {
-            return res.status(402).json({ error: "payment_target_mismatch", message: "Payment was issued for a different trip." });
-          }
-          if (piTargetExp && piTargetExp !== userExperienceId) {
-            return res.status(402).json({ error: "payment_target_mismatch", message: "Payment was issued for a different experience." });
-          }
-          // Re-derive expected fee from the actual comparison resource (not PI metadata).
-          // CON-A.P2 (FEE-A): resolve through the single fee resolver so admin event-type
-          // overrides (e.g. wedding $49.99) pass validation. Anti-tampering by server-side // fee-literal-ok: comment example, fee resolves from config
-          // recompute — no hardcoded allow-list of amounts.
-          let actualEventType: string | undefined;
-          if (tripId) {
-            actualEventType = (await storage.getTripEventType(tripId)) ?? undefined;
-          } else {
-            actualEventType = (await storage.getExperienceTypeSlugByExperienceId(userExperienceId!)) ?? undefined;
-          }
-          const actualTier = complexityTier(actualEventType);
-          const { priceCents: requiredCents, isDisabled: feeDisabled } = await getFee(actualEventType, actualTier);
-          if (feeDisabled) {
-            return res.status(402).json({
-              error: "ai_concierge_disabled",
-              message: "AI Concierge is currently disabled for this experience type.",
-            });
-          }
-          if (pi.amount !== requiredCents) {
-            return res.status(402).json({
-              error: "payment_amount_mismatch",
-              message: `Payment amount does not match the required fee for this resource.`,
-            });
-          }
-          canRunOptimizer = true;
-        } catch (stripeErr: any) {
-          if ((stripeErr as any).statusCode || (stripeErr as any).type === "StripeInvalidRequestError") {
-            return res.status(402).json({ error: "payment_verification_failed", message: stripeErr.message });
-          }
-          throw stripeErr;
-        }
-      }
-      // ── End authorization gate ──────────────────────────────────────────────
-      // canRunOptimizer=false → comparison created with status "pending_payment"
-      // canRunOptimizer=true  → comparison created with status "generating" + optimizer triggered
-
-      const comparison = await storage.createItineraryComparison({
-          userId,
-          userExperienceId,
-          tripId,
-          title: title || "My Itinerary Comparison",
-          destination,
-          startDate,
-          endDate,
-          budget: budget?.toString(),
-          travelers: travelers || 1,
-          experienceTypeSlug: experienceTypeSlug || null,
-          status: canRunOptimizer ? "generating" : "pending_payment",
-          ...(optimizationPaymentId ? { optimizationPaymentId } : {}),
-        });
-
-      // Auto-generate AI alternatives immediately
-      let baselineItems: any[] = [];
-
-      if (inlineBaselineItems && inlineBaselineItems.length > 0) {
-        baselineItems = inlineBaselineItems.map((item: any, index: number) => ({
-          id: `inline-${index}`,
-          name: item.name,
-          description: item.description || "",
-          serviceType: item.category || "service",
-          price: parseFloat(item.price || "0"),
-          // §13: no fabricated fallback rating — unknown stays unknown.
-          rating: typeof item.rating === "number" ? item.rating : undefined,
-          location: item.location || "",
-          duration: item.duration || 120,
-          dayNumber: item.dayNumber || Math.floor(index / 3) + 1,
-          timeSlot: item.timeSlot || ["morning", "afternoon", "evening"][index % 3],
-          category: item.category || "service",
-          provider: item.provider || "Provider"
-        }));
-      } else {
-        // Fall back to cart items
-        const cartItemsData = await storage.getCartItemsWithServices(userId);
-
-        baselineItems = cartItemsData.map((item, index) => ({
-          id: item.cartItem.id,
-          name: item.service?.serviceName || "Unknown Service",
-          description: item.service?.shortDescription,
-          serviceType: item.service?.serviceType,
-          price: parseFloat(item.service?.price || "0"),
-          // §13: only the service's REAL aggregate; no 4.5 stand-in for unrated.
-          rating: item.service?.averageRating ? parseFloat(item.service.averageRating) : undefined,
-          location: item.service?.location,
-          duration: 120,
-          dayNumber: Math.floor(index / 3) + 1,
-          timeSlot: ["morning", "afternoon", "evening"][index % 3],
-          category: item.service?.serviceType || "service",
-          provider: "Provider"
-        }));
-      }
-
-      // Trigger AI optimization in background only when authorized (payment verified or free rerun)
-      if (canRunOptimizer && baselineItems.length > 0) {
-        const availableServices = await storage.getActiveProviderServices(100);
-
-        // Ensure dates are in YYYY-MM-DD format
-        const formatDate = (d: string | undefined | null) => {
-          if (!d) return new Date().toISOString().split('T')[0];
-          if (d.includes('T')) return d.split('T')[0];
-          return d;
-        };
-
-        // Build trip preferences for adaptive variant strategy
-        let tripPreferences: TripPreferences | undefined;
-        if (tripId) {
-          const tripRow = await storage.getTrip(tripId);
-          if (tripRow) {
-            const prefs = (tripRow.preferences as Record<string, any>) || {};
-            tripPreferences = {
-              eventType: tripRow.eventType,
-              budget: tripRow.budget ? parseFloat(tripRow.budget) : null,
-              travelStyles: Array.isArray(prefs.travelStyles) ? prefs.travelStyles : [],
-            };
-          }
-        }
-
-        generateOptimizedItineraries(
-          comparison.id,
-          userId,
-          baselineItems,
-          availableServices,
-          destination || "Unknown",
-          formatDate(startDate),
-          formatDate(endDate),
-          budget ? parseFloat(budget) : undefined,
-          travelers || 1,
-          tripId,
-          undefined,
-          tripPreferences
-        ).catch((err) => console.error("Background optimization error:", err));
-      }
-
-      res.status(201).json(comparison);
-    } catch (error) {
-      console.error("Error creating comparison:", error);
-      res.status(500).json({ message: "Failed to create comparison" });
-    }
-  });
+// §9 Lane 5a (Defect 1): the `POST /api/itinerary-comparisons` handler that lived here was a
+// mount-order-dead twin of the inline copy in routes.ts (this router mounts LAST, so its copy
+// always lost the path race). It carried the ONLY paid-optimization gate; that gate is now
+// harvested into the live routes.ts copy and this born-dead duplicate is DELETED — the §9 rule
+// is "harvest the superior delta into the live copy, leave no stale twin behind".
 
 
 router.get("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
@@ -990,7 +789,7 @@ router.post("/api/itinerary-comparisons/:id/apply-to-cart", isAuthenticated, asy
       }
 
       const variantItems = await storage.getItineraryVariantItemsByVariantId(comparison.selectedVariantId);
-      await storage.replaceUserCartWithVariantItems(userId, variantItems);
+      await cartProjection.replaceUserCartWithVariantItems(userId, variantItems);
       res.json({ message: "Cart updated with selected itinerary", itemsAdded: variantItems.length });
     } catch (error) {
       console.error("Error applying to cart:", error);

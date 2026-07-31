@@ -26,11 +26,12 @@ const typeColors: Record<string, string> = {
   Event: "bg-amber-100 text-amber-700 border-amber-200",
 };
 
+// §13: the API now returns a date-derived phase (upcoming/active/past) — NOT trips.status
+// (a dead write-once field nothing ever advances). See docs/briefs/L3-trips-status-brief.md.
 const statusColors: Record<string, string> = {
   active: "bg-green-100 text-green-700 border-green-200",
-  pending: "bg-amber-100 text-amber-700 border-amber-200",
-  completed: "bg-blue-100 text-blue-700 border-blue-200",
-  cancelled: "bg-red-100 text-red-700 border-red-200",
+  upcoming: "bg-amber-100 text-amber-700 border-amber-200",
+  past: "bg-blue-100 text-blue-700 border-blue-200",
 };
 
 export default function AdminPlans() {
@@ -39,7 +40,7 @@ export default function AdminPlans() {
 
   const { data: plansData, isLoading } = useQuery<{
     trips: Array<{ id: string; title: string; type: string; destination: string; startDate: string; endDate: string; guests: number; budget: string; status: string; user: string; created: string }>;
-    stats: { total: number; active: number; pending: number; completed: number };
+    stats: { total: number; upcoming: number; active: number; past: number };
   }>({ queryKey: ["/api/admin/trips", { search: searchQuery, status: statusFilter }] });
 
   if (isLoading) {
@@ -54,28 +55,12 @@ export default function AdminPlans() {
 
   const trips = plansData?.trips ?? [];
 
-  // Map API status values to display status
-  const mapStatus = (status: string): string => {
-    switch (status) {
-      case "planning":
-      case "confirmed":
-        return "active";
-      case "draft":
-        return "pending";
-      case "completed":
-        return "completed";
-      case "cancelled":
-        return "cancelled";
-      default:
-        return status;
-    }
-  };
-
   // Capitalize first letter of type (eventType)
   const formatType = (type: string): string => {
     return type.charAt(0).toUpperCase() + type.slice(1);
   };
 
+  // status is already the API's date-derived phase (upcoming/active/past) — no client remap.
   const plans = trips.map((trip) => ({
     id: trip.id,
     title: trip.title,
@@ -86,7 +71,7 @@ export default function AdminPlans() {
       : trip.startDate || trip.endDate || "",
     guests: trip.guests,
     budget: trip.budget,
-    status: mapStatus(trip.status),
+    status: trip.status,
     user: trip.user,
     created: trip.created,
   }));
@@ -100,9 +85,9 @@ export default function AdminPlans() {
 
   const stats = plansData?.stats ?? {
     total: plans.length,
+    upcoming: plans.filter(p => p.status === "upcoming").length,
     active: plans.filter(p => p.status === "active").length,
-    pending: plans.filter(p => p.status === "pending").length,
-    completed: plans.filter(p => p.status === "completed").length,
+    past: plans.filter(p => p.status === "past").length,
   };
 
   return (
@@ -122,16 +107,16 @@ export default function AdminPlans() {
               <p className="text-sm text-gray-500">Active</p>
             </CardContent>
           </Card>
-          <Card data-testid="card-stat-pending">
+          <Card data-testid="card-stat-upcoming">
             <CardContent className="p-4 text-center">
-              <p className="text-2xl font-bold text-amber-600">{stats.pending}</p>
-              <p className="text-sm text-gray-500">Pending</p>
+              <p className="text-2xl font-bold text-amber-600">{stats.upcoming}</p>
+              <p className="text-sm text-gray-500">Upcoming</p>
             </CardContent>
           </Card>
-          <Card data-testid="card-stat-completed">
+          <Card data-testid="card-stat-past">
             <CardContent className="p-4 text-center">
-              <p className="text-2xl font-bold text-blue-600">{stats.completed}</p>
-              <p className="text-sm text-gray-500">Completed</p>
+              <p className="text-2xl font-bold text-blue-600">{stats.past}</p>
+              <p className="text-sm text-gray-500">Past</p>
             </CardContent>
           </Card>
         </div>
@@ -168,20 +153,20 @@ export default function AdminPlans() {
                   Active
                 </Button>
                 <Button
-                  variant={statusFilter === "pending" ? "default" : "outline"}
+                  variant={statusFilter === "upcoming" ? "default" : "outline"}
                   size="sm"
-                  onClick={() => setStatusFilter("pending")}
-                  data-testid="button-filter-pending"
+                  onClick={() => setStatusFilter("upcoming")}
+                  data-testid="button-filter-upcoming"
                 >
-                  Pending
+                  Upcoming
                 </Button>
                 <Button
-                  variant={statusFilter === "completed" ? "default" : "outline"}
+                  variant={statusFilter === "past" ? "default" : "outline"}
                   size="sm"
-                  onClick={() => setStatusFilter("completed")}
-                  data-testid="button-filter-completed"
+                  onClick={() => setStatusFilter("past")}
+                  data-testid="button-filter-past"
                 >
-                  Completed
+                  Past
                 </Button>
               </div>
             </div>
