@@ -616,4 +616,11 @@ export const MIGRATION_FILES = [
   // each contract to the booking carrying both principals. Additive nullable, no CHECK/
   // NOT NULL/DEFAULT → no publish-push trap, nothing for the preflight manifest.
   "157_contract_ownership.sql",
+  // 158: retire the dead `service_demand_requests` table deliberately. It was undeclared in
+  // shared/schema.ts, so the publish push was going to DROP it regardless (observed verbatim in
+  // a push plan) with migration 080 already stamped — i.e. the deploy tool would have made the
+  // call silently. Verified 0 rows + 0 FK dependents in BOTH prod and dev, and zero code
+  // references; it is redundant against the live service_demand_signals / service_requests.
+  // GUARDED: refuses to drop if the table is non-empty when it actually runs.
+  "158_retire_service_demand_requests.sql",
 ] as const;
