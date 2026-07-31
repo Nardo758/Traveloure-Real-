@@ -6330,6 +6330,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         title: z.string().min(1).max(255).optional(),
         status: z.string().max(50).optional(),
         metadata: z.record(z.any()).optional(),
+        tripId: z.string().min(1).max(255).optional(),
       }).parse(req.body);
       // D-BUDGET(interim): persist the event budget into the existing `budget` jsonb column
       // ({ amount: dollars, currency }). The request carries it as metadata.budget (dollars); the
@@ -6339,10 +6340,29 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const budget = Number.isFinite(budgetAmount) && budgetAmount > 0
         ? { amount: budgetAmount, currency: "USD" }
         : undefined;
+      // Trip-Canon Lane 2: coordination_states.tripId is a reader-without-writer
+      // (GET /api/trips/:tripId/coordination-states reads it, but nothing wrote it).
+      // §14 posture: never trust a body-supplied tripId/ownership linkage without
+      // server verification — load the trip and require the session user own it.
+      // 404 on missing trip, 403 on mismatch. Absent/invalid tripId → create without
+      // one, exactly as before (honest null, not a fabricated link).
+      let tripId: string | undefined;
+      if (coordInput.tripId) {
+        const trip = await storage.getTrip(coordInput.tripId);
+        if (!trip) {
+          return res.status(404).json({ message: "Trip not found" });
+        }
+        if (trip.userId !== userId) {
+          return res.status(403).json({ message: "You do not own this trip" });
+        }
+        tripId = coordInput.tripId;
+      }
+      const { tripId: _omitTripId, ...coordInputRest } = coordInput;
       const state = await storage.createCoordinationState({
-        ...coordInput,
+        ...coordInputRest,
         userId,
         ...(budget ? { budget } : {}),
+        ...(tripId ? { tripId } : {}),
       });
       res.status(201).json(state);
     } catch (error) {
