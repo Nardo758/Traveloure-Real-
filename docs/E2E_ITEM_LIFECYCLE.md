@@ -55,14 +55,14 @@ flowchart LR
 
   trip --> plancard
   plancard -.->|"H3 no Book action<br/>plan is a dead end for money"| cart
-  plancard -.->|"H4 share renders OLD ItineraryCard,<br/>not the Trip Card"| share
+  plancard -->|"H4 CLOSED (Lane 4) — TripPlan<br/>variant producer + PlanCard family"| share
 
   expert["Expert Workstation<br/>service picker ✓ providerServiceId"] --> trip
   rmclone["Ready-made purchase clone<br/>✓ spread-copies all columns"] --> trip
 
   classDef broken stroke:#c0392b,stroke-width:2px,stroke-dasharray:5 4
   classDef ok stroke:#1e8449,stroke-width:2px
-  class cart,checkout,booking,escrow,mybookings,compare,variant,expert,rmclone ok
+  class cart,checkout,booking,escrow,mybookings,compare,variant,expert,rmclone,share ok
 ```
 
 Dashed red edges are the holes. Solid edges are verified intact.
@@ -82,7 +82,7 @@ Dashed red edges are the holes. Solid edges are verified intact.
 | E7 | Variant → **apply-to-trip** | ❌ inserts `title: item.name, itemType: item.serviceType` only — drops `providerServiceId` | `plancard.routes.ts` apply-to-trip | **H5** |
 | E8 | Paid booking → trip itinerary | ❌ nothing writes `itinerary_items` after payment; the TripPlan assembler never reads `service_bookings` | `payments.routes.ts` (no write), `trip-plan.service.ts` (no read) | **H2** |
 | E9 | Trip Card → cart / payment | ❌ no "Book this" action exists, even for items that DO carry `providerServiceId` | plancard components | **H3** |
-| E10 | Trip Card → share link | ❌ `/itinerary-view/:token` renders the old `ItineraryCard`, not the TripPlan renderer — §18 violation | `itinerary-view.tsx:15` | **H4** |
+| E10 | Trip Card → share link | ✅ **CLOSED (Lane 4, Jul 31 2026 ground-truth pass)** — see H4 below; this row was stale at authoring time | `trips.routes.ts` `/api/itinerary-share/:token`, `itinerary-view.tsx` | ~~H4~~ |
 | E11 | Expert Workstation → trip | ✅ service picker POSTs with `providerServiceId` | `service-picker-modal.tsx:95` | intact |
 | E12 | Ready-made purchase → cloned trip | ✅ clone spread-copies every column incl. `providerServiceId` | `ready-made-purchase.service.ts:88` | intact |
 
@@ -99,7 +99,7 @@ most wants transacting are the ones routed through the lossy bridges.
 | **H1** | `convert-to-itinerary` drops `serviceId` and deletes the cart row — a **one-way door out of commerce**. The item becomes permanently unbuyable free text. | linkage loss | 🔴 P1 |
 | **H2** | A **paid** booking never appears on the trip. Checkout writes `service_bookings` (with `tripId`!) but no itinerary item; the Trip Card assembler never reads bookings. The traveler pays and their plan doesn't change. | missing bridge | 🔴 P1 |
 | **H3** | The Trip Card has **no Book/Pay action**. Even a properly-linked item (expert-added, ready-made-cloned) is a dead end for money. | missing bridge | 🔴 P1 |
-| **H4** | Share link renders the old `ItineraryCard`, not the Trip Card. The §18 "one circulating plan object" contract has an unmigrated channel. | stale renderer | 🟠 P2 |
+| **H4** | ~~Share link renders the old `ItineraryCard`, not the Trip Card.~~ **CLOSED — this finding was already stale when this document was authored (Jul 31 07:05).** Ground-truthed by Lane 4 (`claude/lane4-share-tripplan`): the server endpoint (`GET /api/itinerary-share/:token`) was migrated onto the ONE TripPlan assembler's variant producer (`assembleTripPlanFromVariant`) by commit `ed19b0eb` "TripPlan variant producer (L3b')" (Jul 29 23:29) — predating this doc — and the client page (`itinerary-view.tsx`) already renders the non-expert view through `<PlanCard role="viewer" stage="full" days={...}>` and the expert-review view through the shared plancard sub-components (`HeroSection`/`StatsRow`/`DaySelector`/`SectionTabs`/`TransportSection`) since commit `32787272` (Jul 29 16:59) / `22d3c2cb` (Jul 30). `ItineraryCard` itself has **zero JSX importers anywhere in the client** — only 3 files (`itinerary.tsx`, `itinerary-view.tsx`, `ItineraryMapView.tsx`) import its co-located **types** (`ActivityDiff`/`TransportDiff`/etc.), not the component; left in place (not dead-code-lane material by itself — its exports are load-bearing). Behavioral proof (real local Postgres, fixture trip+booking+variant+share-token): anonymous `GET /api/itinerary-share/:token` returns zero of `bookings`/`booking`/`routingStatus`/`budget`/`changeLog`; the same trip's owner `GET /api/trips/:tripId/plancard` returns all of them. OG injection (`/itinerary-view/:token`) already uses the `preview` redaction level. No code change was required; the only edit in this lane is this doc correction (E2E_ITEM_LIFECYCLE.md + TRIP_CANON_MASTER_BRIEF.md) so later lanes don't re-scope already-closed work. | stale finding, now corrected | ~~🟠 P2~~ closed |
 | **H5** | `apply-to-trip` (AI-optimized plan → trip) drops `providerServiceId` — second instance of the H1 class. | linkage loss | 🔴 P1 |
 | **H6** | `apply-to-cart` silently *skips* variant items with no `providerServiceId` — external/AI-suggested items vanish from the applied plan with no message. | silent drop | 🟡 P3 |
 | **H7** | No "Add card" flow — `/api/me/payment-methods` is list/default/remove only. (Save-on-payment IS wired: 3 sites set `setup_future_usage`, so the card copy is honest.) | missing feature | 🟡 P3 |
@@ -179,7 +179,7 @@ a trip can sit with the expert while the other half is bought.
 | H2 paid booking never reaches the plan | **Dissolves structurally** — purchase is a status transition ON the trip item; it never left the plan |
 | H3 no Book action on the Trip Card | **Becomes the core routing affordance** — "send to cart" = flip to `ready_for_checkout` |
 | H6 apply-to-cart silently drops externals | **Dissolves** — non-service items simply stay `in_planning`; nothing is dropped because nothing is copied |
-| H4 share renders the old component | **Survives, unchanged** — still the §18 renderer migration ("do not fork PlanCard" holds) |
+| H4 share renders the old component | **Already closed** (Lane 4 ground-truth, Jul 31 2026) — see the H4 row above; nothing left for trip-as-artifact to change here |
 | H7 no add-card flow, H8 dead chips | **Survive, unchanged** — profile-surface fixes, independent of this model |
 
 ### Phase 0 findings — COMPLETE (Jul 31, 2026; all nine questions answered with receipts)
