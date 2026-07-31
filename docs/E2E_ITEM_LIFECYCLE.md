@@ -182,19 +182,63 @@ a trip can sit with the expert while the other half is bought.
 | H4 share renders the old component | **Survives, unchanged** — still the §18 renderer migration ("do not fork PlanCard" holds) |
 | H7 no add-card flow, H8 dead chips | **Survive, unchanged** — profile-surface fixes, independent of this model |
 
-### Phase 0 — what this document already answers (receipts in §2), what remains
+### Phase 0 findings — COMPLETE (Jul 31, 2026; all nine questions answered with receipts)
 
-| Brief Q | Status |
-|---|---|
-| Q1 `cart_items` schema + writers/readers | **Largely answered**: schema in §2/E1; writers = add-to-cart, apply-to-cart (`routes.ts:6154`), variant replace; readers = checkout (`payments.routes.ts:283+`), convert (`routes.ts:5645`). Remaining: the full reader sweep + which assume "selection" vs "purchase" (the assumption inventory) |
-| Q4 trip-creation points | **Answered**: convert-to-itinerary, quick-start, ai-itinerary-builder, saved-trip conversion, checkout auto-trip (`booking.service.ts:93`), ready-made clone, expert workstation |
-| Q5 checkout server-computed | **Answered**: §14-clean, §15 idempotent (index declared, migration 155/096) |
-| Q2 G1 status | **Partially**: `user_experiences.tripId` FK EXISTS; items live in `itinerary_items` — which already carries `status` (fulfillment enum) AND `bookingStatus`. See F-A |
-| Q3 guest carts | **Partially**: no `guest_sessions` table; `cart_items.guestSessionId` exists — the guest-Trip retarget needs its own design |
-| Q6 expert handoff carries | open — trace `expert_request` reference-vs-copy |
-| Q7 NULL-userId overlap | open — cross-check against the L10 owner-less-trip paths (three known minters) |
-| Q8 push-vs-migration posture | open per table — note the deploy-push trap history (CLAUDE.md) |
-| Q9 route auth | open — verify, don't assume (§9 class) |
+**Q1 — the assumption inventory (the brief's latent-bug list).** Every consumer of `cart_items`, and which
+meaning of a cart row it assumes. Two meanings live on one table, exactly as the brief predicted:
+
+| Consumer | Where | Assumes a cart row means… |
+|---|---|---|
+| `GET /api/cart` display | `routes.ts:5179` | selection (neutral) |
+| **`/api/checkout`** | `payments.routes.ts:270` | **PURCHASE — buys every row** |
+| `apply-to-cart` (variant→cart writer) | `routes.ts:6154` | purchase (staged to buy) |
+| `convert-to-itinerary` | `routes.ts:5645` | selection (a plan to keep) |
+| **Expert workspace handoff** | `booking-actions.ts:649` reads `getCartItems(booking.travelerId)` | selection ("plan under consideration") |
+| Itinerary-share/export **cart fallback** | `trips.routes.ts:720,883` | selection (renders the cart as the plan) |
+| Optimizer / comparisons | `routes.ts:5298` | selection (the plan to optimize) |
+| Upsell engine context | `upsell-engine.service.ts` | selection (interest signal) |
+| Guest cart + migrate | `storage.ts:1886,280` | selection |
+
+**The split: 2 consumers treat the cart as a purchase list; 6 treat it as a plan.** Checkout will buy what the
+expert believed was merely under consideration. This is the concrete, receipted form of the brief's §0 problem
+statement — and the expert-handoff row is the "expert receives a purchase list" pollution, live in code.
+
+**Q2 — G1 + state home.** `user_experiences.tripId` FK exists. Items live in `itinerary_items`, which already
+carries `status` (fulfillment enum, `schema.ts:3052`) and `bookingStatus` — see F-A: routing state needs its
+OWN column; the existing enum is a different axis.
+
+**Q3 — guest.** More built than the brief assumed: `getGuestCartItems`, `addToCart(guestSessionId)`, and
+`migrateGuestCart(guestSessionId, userId)` all exist (`storage.ts:274–280,1886`). G2's session-Trip retarget is
+a **port of working machinery, not a green-field build**.
+
+**Q4 — trip creation points.** Seven: convert-to-itinerary, quick-start, ai-itinerary-builder, saved-trip
+conversion (`booking.service.ts:994`), checkout auto-trip (`booking.service.ts:94`), ready-made clone, expert
+workstation. The first four assume a cart/selection precedes the trip — all four invert under this model.
+
+**Q5 — checkout.** Server-computed, §15 idempotent (index now declared in schema.ts), slot-claimed. Clean.
+
+**Q6 — expert handoff is ALREADY reference-based.** `expert_requests` carries `tripId` (FK, cascade),
+`variantId`, `comparisonId` + a jsonb context — references, not copied content — and the workstation reads
+**live** trip data (`getTrip`/`getItineraryItems`, `booking-actions.ts:645–648`). The brief's target shape
+mostly exists; the one violation is the workspace ALSO reading the live **cart** (line 649) — which is the
+container with the wrong meaning, per Q1.
+
+**Q7 — NULL-userId overlap CONFIRMED.** The checkout auto-trip (`booking.service.ts:94`) and saved-trip
+conversion (`:994`) are raw-SQL trip minters — the **same two paths** the L10 audit flagged as owner-less-trip
+minters (no `trip_collaborators` owner row). Phase 1 rework of checkout→trip MUST route through the
+`createTrip` helper (owner-row fix) rather than re-inheriting the bug. This brief must not merge ahead of that
+fix on these shared paths.
+
+**Q8 — migration posture is clean for this change.** All four tables (`cart_items`, `itinerary_items`,
+`trips`, `user_experiences`) are baseline (`000_baseline_schema.sql`) AND declared in `schema.ts` — push and
+migrations agree. `itinerary_items.status` has **no DB CHECK** (enum is TS-level), so adding a routing column
+is additive-nullable with no publish-push trap — but per the deploy-push durability rule it MUST be declared
+in `schema.ts`, not migration-only.
+
+**Q9 — auth verified.** Cart CRUD (`routes.ts:5179,5440,5599,5617`) and `/api/checkout`
+(`payments.routes.ts:270`) all carry `isAuthenticated`; trips router is mounted (§9 sweep). The known caveat
+stands: trip-access predicates are the L10 divergence area — new routing-flip endpoints must use the canonical
+gate, never `getTripRole` (brief §6 already forbids this).
 
 ### New Phase 0 finding to carry forward
 
