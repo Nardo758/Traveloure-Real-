@@ -419,6 +419,15 @@ Recommendation: let it go, and retire migration 080 to a no-op with a note.
 
 ---
 
+## TRIP-CANON — the consolidated program (Jul 31, 2026)
+
+**Master brief: `docs/planning/TRIP_CANON_MASTER_BRIEF.md`** — synthesizes the item-lifecycle map, the
+Trip-Gravity audit, the reconcile brief, the Phase 1 scope, and the routing-state contract into ONE gap
+registry (19 findings, each mapped to exactly one lane) and one dependency-ordered plan (merge → Lane 1
+reconcile 1a–1d → Lanes 4/5/6; Lanes 2/7/G parallel; Lane 3 gated on its own decision-maker brief).
+Supersedes the per-document reading order for execution purposes; the sources stay authoritative for their
+own detail.
+
 ## MP — Marketplace bridge program (proposed Jul 30, 2026; awaiting decision-maker sign-off)
 
 **Origin:** the decision-maker's design question — *"Discover becomes the bridge connecting both stores; push the
@@ -538,7 +547,11 @@ touched carried two live defects:
   "Best selling" (§13 — the lane has no rating/review/sales aggregate to back a demand claim), plus a
   Store-curation section on the admin approvals page. Feed orders badged-first, then recency.
 
-**MP-4 — BLOCKED, needs a decision-maker call (see below).**
+**MP-4 — SUPERSEDED (Jul 31, 2026): absorbed into the item-lifecycle program.** Hand-testing found four
+defects (share-link renderer, no add-card flow, dead preference chips, cart→trip losing the ability to pay)
+that trace to one missing design: the item lifecycle across the commerce/planning seam. Full map, hole
+inventory (H1–H8, receipts per edge), and the ratification-gated fix program: `docs/E2E_ITEM_LIFECYCLE.md`.
+MP-4's TripPlan amendment ask is now that program's L-D — one ratification closes both.
 
 ### MP-4 — why it stopped, and the decision it needs
 
