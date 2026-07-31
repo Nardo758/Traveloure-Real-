@@ -1362,7 +1362,12 @@ export const influencerCuratedContent = pgTable("influencer_curated_content", {
 // because Postgres treats NULL as distinct in a unique index — a bare
 // UNIQUE(userId, tripId) would let a user accumulate unlimited legacy rows.
 export const tripContexts = pgTable("trip_contexts", {
-  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  // DB-side default is LOAD-BEARING (the shortLinks / ai_cost_tracking posture, NOT the house
+  // $defaultFn pattern): this table is written via raw db.execute(sql`…`) which never supplies
+  // `id`, so the default must exist in the database itself — and it must be DECLARED here or the
+  // deploy push treats it as drift and drops it (the sb_idempotency_key_idx lesson), after which
+  // every trip-context PUT would violate NOT NULL.
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   tripId: varchar("trip_id").references(() => trips.id, { onDelete: "cascade" }),
   context: jsonb("context").notNull().default({}),
