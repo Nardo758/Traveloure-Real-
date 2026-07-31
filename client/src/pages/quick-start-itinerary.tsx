@@ -59,7 +59,7 @@ import {
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
-import { updateTripContext } from "@/lib/trip-context";
+import { updateTripContext, switchTripContextPreservingId } from "@/lib/trip-context";
 import type { ExperienceType } from "@shared/schema";
 
 interface DayActivity {
@@ -405,12 +405,20 @@ export default function QuickStartItinerary() {
     // Store the trip details in the shared TripContext so the experience page
     // and cart actually see them (the old tripContext_<slug> key had no readers
     // — quick-start's dates/travelers were silently lost).
-    updateTripContext({
-      experienceSlug,
+    // #972: destination/dates are identity-coupled — switchTripContextPreservingId
+    // (not a plain merge) so a stale `tripId` left over from a PREVIOUS trip can
+    // never silently pair with THIS new destination/dates (it's cleared unless
+    // the destination happens to be unchanged from whatever was already bound).
+    // experienceSlug/contextFields aren't part of the identity set switch owns —
+    // merge those in separately.
+    switchTripContextPreservingId({
       destination: customDestination || destination,
       startDate,
       endDate,
       travelers: adults + kids,
+    });
+    updateTripContext({
+      experienceSlug,
       contextFields: {
         country: customCountry || country,
         interests,

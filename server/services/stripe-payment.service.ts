@@ -117,6 +117,13 @@ class StripePaymentService {
    * Get (or lazily create) the user's Stripe Customer, persisting the id. Resolution order:
    * persisted id → email search (adopts a customer an older flow created) → create. Returns
    * null when Stripe is unconfigured or the user has no email (never fabricates).
+   *
+   * NOTE: this does NOT validate that a persisted id still exists in Stripe — that would cost
+   * an extra API call on every hot-path invocation. A stored id can go stale (a row carrying a
+   * live-mode id while the server runs test-mode keys, or the customer deleted from the Stripe
+   * dashboard) and Stripe will 500 the FIRST call that actually uses it with `resource_missing`.
+   * Recovery from that lives in `retryOnMissingCustomer`/`withResolvedCustomer` below, at the
+   * call sites that make the Stripe request — not here.
    */
   async getOrCreateCustomer(userId: string): Promise<string | null> {
     if (!this.isReady()) return null;
@@ -148,6 +155,101 @@ class StripePaymentService {
   }
 
   /**
+   * True when `err` is Stripe reporting `resource_missing` for EXACTLY `customerId` (Stripe's
+   * error message always names the missing resource's id, e.g. "No such customer: 'cus_xxx'") —
+   * never a broader match. This keeps recovery scoped to "the STORED customer id is gone", not
+   * any other `resource_missing` (e.g. a missing payment_method), which must propagate as-is.
+   */
+  private isMissingCustomerError(err: unknown, customerId: string): boolean {
+    const stripeErr = err as { code?: string; message?: string } | null | undefined;
+    return (
+      !!stripeErr &&
+      stripeErr.code === 'resource_missing' &&
+      typeof stripeErr.message === 'string' &&
+      stripeErr.message.includes(customerId)
+    );
+  }
+
+  /**
+   * Recovery step for a confirmed-stale customer id: clear it (guarded so a concurrent
+   * recovery that already fixed the row isn't clobbered) and mint+persist a fresh customer via
+   * getOrCreateCustomer's own search-by-email/create flow. Returns null if no fresh customer
+   * could be created (e.g. the user has no email) so the caller can surface the ORIGINAL error.
+   */
+  private async recreateCustomer(userId: string, staleCustomerId: string): Promise<string | null> {
+    await db.execute(sql`
+      UPDATE users SET stripe_customer_id = NULL WHERE id = ${userId} AND stripe_customer_id = ${staleCustomerId}
+    `);
+    return this.getOrCreateCustomer(userId);
+  }
+
+  /**
+   * Run a Stripe `operation` that references `customerId`. If Stripe reports THAT exact
+   * customer id as `resource_missing` (#973 — stale/deleted customer), recover once: clear the
+   * stored id, mint+persist a fresh customer, and retry `operation` with the fresh id. Any
+   * OTHER error (including resource_missing for something else) propagates unchanged — fail
+   * loudly, never swallow. Retries exactly once: a second failure (even resource_missing again)
+   * is not caught here and propagates, so this can never loop.
+   *
+   * `operation` receives the attempt number (1 | 2) alongside the customer id. This matters for
+   * any caller passing a Stripe idempotencyKey: Stripe rejects reusing the SAME key with
+   * DIFFERENT request parameters ("Keys for idempotent requests can only be used with the same
+   * parameters..."), and the retry's `customer` differs from the original by construction — a
+   * caller with an idempotencyKey must vary it by `attempt` (e.g. append `-recover` on attempt
+   * 2) or the recovery attempt itself would fail. Callers with no idempotencyKey can ignore it.
+   */
+  private async retryOnMissingCustomer<T>(
+    userId: string,
+    customerId: string,
+    operation: (customerId: string, attempt: 1 | 2) => Promise<T>,
+  ): Promise<T> {
+    try {
+      return await operation(customerId, 1);
+    } catch (err) {
+      if (!this.isMissingCustomerError(err, customerId)) throw err;
+      logger.warn(
+        { userId, staleCustomerId: customerId },
+        '[stripe] stored customer id missing in Stripe (resource_missing) — recreating and retrying once',
+      );
+      const freshId = await this.recreateCustomer(userId, customerId);
+      if (!freshId) throw err; // could not recover — surface the ORIGINAL error
+      return operation(freshId, 2);
+    }
+  }
+
+  /**
+   * Resolve the user's Stripe customer (getOrCreateCustomer) and run `operation` against it,
+   * with the same #973 stale-id recovery as retryOnMissingCustomer. The single call site to use
+   * for any Stripe request that REQUIRES a customer (returns null, like getOrCreateCustomer,
+   * when none can be resolved at all — Stripe unconfigured / no email). For a call site that
+   * tolerates proceeding WITHOUT a customer, resolve the id yourself and use
+   * retryOnMissingCustomer directly (see createPaymentIntent).
+   */
+  private async withResolvedCustomer<T>(
+    userId: string,
+    operation: (customerId: string, attempt: 1 | 2) => Promise<T>,
+  ): Promise<T | null> {
+    const customerId = await this.getOrCreateCustomer(userId);
+    if (!customerId) return null;
+    return this.retryOnMissingCustomer(userId, customerId, operation);
+  }
+
+  /**
+   * PUBLIC #973 entry point for callers OUTSIDE this service that already resolved a
+   * (possibly-stale) customer id via getOrCreateCustomer and build their own Stripe request
+   * around it — e.g. a route handler attaching the customer to a PaymentIntent it constructs
+   * itself. Same one-retry stale-customer recovery as the private helpers above (see the
+   * `attempt` note on retryOnMissingCustomer if your request carries an idempotencyKey).
+   */
+  async runWithCustomerRecovery<T>(
+    userId: string,
+    customerId: string,
+    operation: (customerId: string, attempt: 1 | 2) => Promise<T>,
+  ): Promise<T> {
+    return this.retryOnMissingCustomer(userId, customerId, operation);
+  }
+
+  /**
    * H7: start the add-card flow. A SetupIntent authorizes Stripe to vault a card against the
    * user's Customer for future off-session use — it moves no money (no amount anywhere on this
    * path, §14-clean by construction). Returns null when Stripe is unconfigured or the user has
@@ -155,14 +257,14 @@ class StripePaymentService {
    */
   async createSetupIntent(userId: string): Promise<{ clientSecret: string } | null> {
     if (!this.isReady()) return null;
-    const customerId = await this.getOrCreateCustomer(userId);
-    if (!customerId) return null;
-    const setupIntent = await stripe.setupIntents.create({
-      customer: customerId,
-      usage: 'off_session',
+    const result = await this.withResolvedCustomer(userId, async (customerId) => {
+      const setupIntent = await stripe.setupIntents.create({
+        customer: customerId,
+        usage: 'off_session',
+      });
+      return setupIntent.client_secret ? { clientSecret: setupIntent.client_secret } : null;
     });
-    if (!setupIntent.client_secret) return null;
-    return { clientSecret: setupIntent.client_secret };
+    return result ?? null;
   }
 
   /** Saved cards for the session user — read live from Stripe, safe display fields only. */
@@ -170,30 +272,34 @@ class StripePaymentService {
     defaultPaymentMethodId: string | null;
     methods: Array<{ id: string; brand: string; last4: string; expMonth: number; expYear: number }>;
   }> {
-    const customerId = await this.getOrCreateCustomer(userId);
-    if (!customerId) return { defaultPaymentMethodId: null, methods: [] };
-    const [customer, methods] = await Promise.all([
-      stripe.customers.retrieve(customerId),
-      stripe.paymentMethods.list({ customer: customerId, type: 'card' }),
-    ]);
-    const defaultPm =
-      !('deleted' in customer) && customer.invoice_settings?.default_payment_method
-        ? String(customer.invoice_settings.default_payment_method)
-        : null;
-    return {
-      defaultPaymentMethodId: defaultPm,
-      methods: methods.data.map((pm) => ({
-        id: pm.id,
-        brand: pm.card?.brand ?? 'card',
-        last4: pm.card?.last4 ?? '',
-        expMonth: pm.card?.exp_month ?? 0,
-        expYear: pm.card?.exp_year ?? 0,
-      })),
-    };
+    const result = await this.withResolvedCustomer(userId, async (customerId) => {
+      const [customer, methods] = await Promise.all([
+        stripe.customers.retrieve(customerId),
+        stripe.paymentMethods.list({ customer: customerId, type: 'card' }),
+      ]);
+      const defaultPm =
+        !('deleted' in customer) && customer.invoice_settings?.default_payment_method
+          ? String(customer.invoice_settings.default_payment_method)
+          : null;
+      return {
+        defaultPaymentMethodId: defaultPm,
+        methods: methods.data.map((pm) => ({
+          id: pm.id,
+          brand: pm.card?.brand ?? 'card',
+          last4: pm.card?.last4 ?? '',
+          expMonth: pm.card?.exp_month ?? 0,
+          expYear: pm.card?.exp_year ?? 0,
+        })),
+      };
+    });
+    return result ?? { defaultPaymentMethodId: null, methods: [] };
   }
 
   /** Detach a saved card — ONLY if it belongs to the session user's own customer (§14). */
   async detachSavedPaymentMethod(userId: string, paymentMethodId: string): Promise<boolean> {
+    // No Stripe call here takes the customer id as a request parameter (only the local
+    // `pm.customer` ownership comparison below) — a stale id just fails that comparison
+    // safely (returns false), so #973 recovery doesn't apply to this call site.
     const customerId = await this.getOrCreateCustomer(userId);
     if (!customerId) return false;
     const pm = await stripe.paymentMethods.retrieve(paymentMethodId);
@@ -207,10 +313,14 @@ class StripePaymentService {
     const customerId = await this.getOrCreateCustomer(userId);
     if (!customerId) return false;
     const pm = await stripe.paymentMethods.retrieve(paymentMethodId);
+    // Ownership check happens BEFORE any customer-id Stripe call — a stale/mismatched id fails
+    // this safely (false) without ever reaching customers.update, so the common case never hits
+    // #973 recovery here. Still wrapped for the case where the id was genuinely valid at
+    // ownership-check time but the customer was deleted between then and this call.
     if (pm.customer !== customerId) return false;
-    await stripe.customers.update(customerId, {
-      invoice_settings: { default_payment_method: paymentMethodId },
-    });
+    await this.retryOnMissingCustomer(userId, customerId, (cid) =>
+      stripe.customers.update(cid, { invoice_settings: { default_payment_method: paymentMethodId } }),
+    );
     return true;
   }
 
@@ -247,18 +357,26 @@ class StripePaymentService {
     if (!customerId) return { status: 'no_saved_method' };
 
     try {
-      const pi = await stripe.paymentIntents.create(
-        {
-          amount: params.amountCents,
-          currency: (params.currency ?? 'usd').toLowerCase(),
-          customer: customerId,
-          payment_method: paymentMethodId,
-          off_session: true,
-          confirm: true,
-          metadata: params.metadata,
-          description: params.description,
-        },
-        { idempotencyKey: params.idempotencyKey },
+      // #973: retryOnMissingCustomer recovers once if `customerId` has gone stale between the
+      // listSavedPaymentMethods() read above and this charge (low-probability race — the common
+      // stale-id case already short-circuits to 'no_saved_method' above, since a recreated
+      // customer starts with zero saved payment methods).
+      const pi = await this.retryOnMissingCustomer(userId, customerId, (cid, attempt) =>
+        stripe.paymentIntents.create(
+          {
+            amount: params.amountCents,
+            currency: (params.currency ?? 'usd').toLowerCase(),
+            customer: cid,
+            payment_method: paymentMethodId,
+            off_session: true,
+            confirm: true,
+            metadata: params.metadata,
+            description: params.description,
+          },
+          // Stripe rejects reusing an idempotencyKey with different params (`customer` differs
+          // on the recovery retry) — vary the key on attempt 2 so the retry can actually land.
+          { idempotencyKey: attempt === 1 ? params.idempotencyKey : `${params.idempotencyKey}-recover` },
+        ),
       );
       if (pi.status === 'succeeded') return { status: 'succeeded', paymentIntentId: pi.id };
       if (pi.status === 'requires_action' && pi.client_secret) {
@@ -325,12 +443,16 @@ class StripePaymentService {
 
       // FP-1: attach the durable Stripe Customer so the PaymentElement sheet offers the user's
       // saved cards (near-one-click) and newly entered cards can be vaulted for next time.
+      // Attaching is OPTIONAL here (falls back to a customer-less PI, not a hard failure), so
+      // this doesn't use withResolvedCustomer (which bails to null when no customer resolves at
+      // all) — it resolves the id itself and, if attaching it 500s with #973's resource_missing,
+      // recovers via retryOnMissingCustomer and rebuilds the SAME params with the fresh id.
       const fpCustomerId = await this.getOrCreateCustomer(userId).catch(() => null);
 
-      const paymentIntent = await stripe.paymentIntents.create({
+      const buildPaymentIntentParams = (customerId: string | null) => ({
         amount: stripeAmount,
         currency: effectiveCurrency,
-        ...(fpCustomerId ? { customer: fpCustomerId, setup_future_usage: 'off_session' as const } : {}),
+        ...(customerId ? { customer: customerId, setup_future_usage: 'off_session' as const } : {}),
         metadata: {
           userId,
           bookingIds: truncatedBookingIds,
@@ -342,7 +464,20 @@ class StripePaymentService {
         automatic_payment_methods: {
           enabled: true,
         },
-      }, stripeRequestOptions);
+      });
+
+      // Stripe rejects reusing an idempotencyKey with different params (`customer` differs on
+      // the recovery retry) — vary the key on attempt 2 so the retry can actually land.
+      const requestOptionsForAttempt = (attempt: 1 | 2) =>
+        attempt === 1 || !stripeRequestOptions
+          ? stripeRequestOptions
+          : { idempotencyKey: `${stripeRequestOptions.idempotencyKey}-recover` };
+
+      const paymentIntent = fpCustomerId
+        ? await this.retryOnMissingCustomer(userId, fpCustomerId, (cid, attempt) =>
+            stripe.paymentIntents.create(buildPaymentIntentParams(cid), requestOptionsForAttempt(attempt)),
+          )
+        : await stripe.paymentIntents.create(buildPaymentIntentParams(null), stripeRequestOptions);
 
       // Store payment intent in database
       const metadataJson = JSON.stringify(paymentIntent.metadata);
