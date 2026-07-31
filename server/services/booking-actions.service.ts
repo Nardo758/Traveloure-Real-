@@ -327,11 +327,23 @@ export async function upsertTripShareToken(
   shareToken: string,
   expiresAt: Date,
 ): Promise<void> {
+  // Fix #969: `shared_trips.trip_id` has NO unique/exclusion constraint (verified against
+  // shared/schema.ts + server/migrations/000_baseline_schema.sql — only a PK on `id` and an
+  // FK on `trip_id`), so `ON CONFLICT (trip_id)` 500s on EVERY call with
+  // "there is no unique or exclusion constraint matching the ON CONFLICT specification"
+  // (proven locally: this was the actual root cause of the client's "Could not create share
+  // link" toast — the endpoint was reachable, not missing). Adding the missing unique
+  // constraint is out of scope here (no migrations in this change), so this uses the
+  // constraint-free idempotent-insert idiom instead: insert only if no row exists yet for
+  // this trip. Not perfectly race-proof under two concurrent first-share requests for the
+  // same trip (a narrow window could insert two rows), but `getCanonicalTripShareToken`
+  // always returns a single deterministic token via `LIMIT 1`, so the endpoint stays
+  // idempotent from the caller's perspective either way.
   const id = crypto.randomUUID();
   await db.execute(sql`
     INSERT INTO shared_trips (id, trip_id, shared_by, share_token, expires_at, views, bookings, created_at)
-    VALUES (${id}, ${tripId}, ${userId}, ${shareToken}, ${expiresAt.toISOString()}, 0, 0, NOW())
-    ON CONFLICT (trip_id) DO NOTHING
+    SELECT ${id}, ${tripId}, ${userId}, ${shareToken}, ${expiresAt.toISOString()}, 0, 0, NOW()
+    WHERE NOT EXISTS (SELECT 1 FROM shared_trips WHERE trip_id = ${tripId})
   `);
 }
 
