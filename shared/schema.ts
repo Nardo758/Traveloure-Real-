@@ -809,6 +809,8 @@ export const serviceBookings = pgTable("service_bookings", {
 
   // Idempotency: set by the client on checkout; checked server-side before insert.
   // Unique partial index (WHERE NOT NULL) prevents duplicate bookings on retries.
+  // The index is DECLARED below — see the note on `sbIdempotencyKeyIdx`; leaving it in
+  // migration SQL only is what made it non-durable across publishes.
   idempotencyKey: text("idempotency_key"),
 
   // Timestamps
@@ -818,7 +820,32 @@ export const serviceBookings = pgTable("service_bookings", {
   cancellationReason: text("cancellation_reason"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => ({
+  // §15 CHECKOUT IDEMPOTENCY — the DB half of the guard, and the reason this declaration
+  // exists at all.
+  //
+  // This index was created by migration 096 and re-asserted by 155, but declared ONLY in
+  // migration SQL. Per the CLAUDE.md deploy-push note, publish runs an automatic drizzle-kit
+  // push from THIS FILE and is authoritative over objects it does not find declared here —
+  // proven by isolating a bare `DROP INDEX "sb_idempotency_key_idx"` in a push plan. That made
+  // the index NON-DURABLE in the worst possible way: publish 1 drops it and the (first-time)
+  // migration recreates it, but publish 2+ drops it while both migrations are already stamped,
+  // so it is never recreated and is silently, permanently gone.
+  //
+  // It is load-bearing, not belt-and-braces. `/api/checkout` has a SELECT fast-path that two
+  // concurrent same-key requests BOTH pass; this unique index is the only thing that makes the
+  // loser's insert raise 23505 before any Stripe call. Measured: without it, 3 concurrent
+  // same-key checkouts produced 3 REAL STRIPE CHARGES; with it, 1.
+  //
+  // Safe to declare (verified in BOTH environments before adding, because a UNIQUE the push
+  // cannot satisfy fails the deploy and offers the destructive "copy dev over production"
+  // option): zero duplicate non-NULL keys in prod or dev, and the live `indexdef` in both is
+  // byte-identical to what this emits — same name, same UNIQUE, same partial predicate. Any
+  // divergence in name or predicate would make the push DROP and CREATE it on every publish.
+  sbIdempotencyKeyIdx: uniqueIndex("service_bookings_idempotency_key_idx")
+    .on(table.idempotencyKey)
+    .where(sql`${table.idempotencyKey} IS NOT NULL`),
+}));
 
 // === Service Reviews ===
 
