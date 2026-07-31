@@ -326,22 +326,30 @@ router.post("/api/optimization-payments", isAuthenticated, async (req, res) => {
     }
 
     // Create Stripe PaymentIntent with saved-card support
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount: priceCents,
-      currency: currency.toLowerCase(),
-      ...(stripeCustomerId ? { customer: stripeCustomerId } : {}),
-      setup_future_usage: "off_session",
-      metadata: {
-        type: "optimization_fee",
-        userId,
-        complexityTier: tier,
-        eventType: dbEventType ?? "",
-        targetTripId: tripId ?? "",
-        targetExperienceId: userExperienceId ?? "",
-        context: JSON.stringify(comparisonContext || {}),
-      },
-      description: `Traveloure AI Optimization (${tier})`,
-    });
+    // #973: attaching the customer is OPTIONAL (falls back to a customer-less PI), but if the
+    // stored id has gone stale, recover once via the shared #973 helper rather than 500ing.
+    const buildOptimizationPaymentIntent = (customerId?: string) =>
+      stripe.paymentIntents.create({
+        amount: priceCents,
+        currency: currency.toLowerCase(),
+        ...(customerId ? { customer: customerId } : {}),
+        setup_future_usage: "off_session",
+        metadata: {
+          type: "optimization_fee",
+          userId,
+          complexityTier: tier,
+          eventType: dbEventType ?? "",
+          targetTripId: tripId ?? "",
+          targetExperienceId: userExperienceId ?? "",
+          context: JSON.stringify(comparisonContext || {}),
+        },
+        description: `Traveloure AI Optimization (${tier})`,
+      });
+    const paymentIntent = stripeCustomerId
+      ? await stripePaymentService.runWithCustomerRecovery(userId, stripeCustomerId, (cid) =>
+          buildOptimizationPaymentIntent(cid),
+        )
+      : await buildOptimizationPaymentIntent(undefined);
 
     return res.json({
       freeRerun: false,
