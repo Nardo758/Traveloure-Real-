@@ -1266,6 +1266,24 @@ Phase-1d approved remap table. Ratified by the Phase 1+ execution dispatch (D1a�
 `provider_services` and `service_templates`; `deliveryMethodEnum` (`shared/schema.ts:523`) and the DB CHECK
 both carry the same 7 canonical values. The "no DB CHECK / no remap" state described here was true only as of 108.**]**
 
+**Migrations 159–160 (Jul 31, 2026; registered in `migration-files.ts`) — Trip-Canon Lane 1 (Reconcile) Phases 1a/1b, decision-maker ratified via PR #344:**
+159 adds `itinerary_items.routing_status` (varchar 20, NOT NULL, DEFAULT `'in_planning'` by explicit ALTER;
+**deliberately NO DB CHECK** — canonical set `ROUTING_STATUSES` = `in_planning|with_expert|ready_for_checkout|purchased`
+lives in `shared/schema.ts`, the pre-109 posture, so no publish-push remap trap) and `itinerary_items.booking_id`
+(nullable FK → `service_bookings`, **ON DELETE SET NULL** — a plan item survives its booking) + its index. 160 adds
+`cart_items.itinerary_item_id` (nullable FK → `itinerary_items`, **ON DELETE CASCADE** — a projection row has no
+independent existence; an orphan would be uncleanable yet chargeable) + its index. All columns AND indexes declared
+in `shared/schema.ts` per the deploy-push durability rule. Existing rows take defaults only — NO inferred `purchased`
+history (§13). Companion code (same PR): `POST /api/trips/:tripId/items/:itemId/route` (the four traveler/expert
+routing edges; `purchased` refused — checkout-only per `docs/briefs/ROUTING_STATE_CONTRACT.md` §2; atomic conditional
+flips; owner via `verifyTripOwnership`+collaborator row, expert-return via canonical `isTripAdvisor`, NEVER
+`getTripRole`) and `server/services/cart-projection.service.ts` — **the SINGLE writer of `cart_items`** (every write
+site funnelled through it, proven behavior-identical incl. a byte-identical optimizer read; `ready_for_checkout`
+items materialize as cart rows keyed by `itinerary_item_id`, NULL-keyed rows never touched by sync). **Rule going
+forward: never write `cart_items` outside the projection module**, and the routing-state contract's WRITES/READS/NEVER
+matrix governs every new consumer — undeclared = NEVER, new writers amend the contract first. Phases 1c/1d
+(leak fixes W3–W6, Trip Card routing UI) follow per `docs/briefs/RECONCILE_PHASE1_SCOPE.md`.
+
 **Migration 123 (Jul 21, 2026; registered in `migration-files.ts`) — Traveler service-requests capture:**
 new table `service_requests` (the "request a service that doesn't exist yet" surface). **Distinct from a
 *service* table** (FAQ prohibition is on new `provider_services`-like tables) — this is a demand-capture

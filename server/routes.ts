@@ -5700,21 +5700,46 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         const cartItem = await storage.getCartItemById(cartItemId);
         if (!cartItem) continue;
         if (cartItem.userId !== userId) continue;
-        if (!cartItem.contentId || !cartItem.contentType) continue;
+        // W3 (H1, first half): a row is convertible when it carries EITHER discover content
+        // (contentId + contentType) OR a real platform service. The old gate demanded content, so
+        // a SERVICE cart row — the only kind that has a link worth preserving — was silently
+        // skipped and never converted at all. Rows with neither are still skipped (nothing to make
+        // an item out of).
+        if (!cartItem.serviceId && (!cartItem.contentId || !cartItem.contentType)) continue;
 
         const meta: Record<string, any> = cartItem.contentMeta || {};
         const rawPrice = meta.price ? String(meta.price).replace(/[^0-9.]/g, "") : null;
-        const estimatedCost = rawPrice && parseFloat(rawPrice) > 0 ? rawPrice : null;
+        // W3 (H1, second half): the linkage the audit found destroyed. `cart_items.serviceId` IS a
+        // `provider_services.id`, and the itinerary item has had a column for it all along — the
+        // conversion just never wrote it, so a converted service became permanently unbuyable text
+        // (docs/E2E_ITEM_LIFECYCLE.md §3). Preserving it makes the round trip real: the item can be
+        // routed back to `ready_for_checkout`, projected into the cart, and bought.
+        //
+        // The service row is read ONLY for honest display values (name / location / catalog price)
+        // for a service row that carries no contentMeta. Nothing here reads or decides an amount for
+        // a charge — checkout re-derives every price server-side from the catalog (§14).
+        const service = cartItem.serviceId
+          ? await storage.getProviderServiceById(cartItem.serviceId)
+          : null;
+        const servicePrice =
+          service?.price && parseFloat(String(service.price)) > 0 ? String(service.price) : null;
+        const estimatedCost =
+          rawPrice && parseFloat(rawPrice) > 0 ? rawPrice : servicePrice;
+        // §13: `provider_services.location` defaults to the literal "Unknown" — that is the absence
+        // of a location, not a place name, so it must never be copied onto the plan item.
+        const serviceLocation =
+          service?.location && service.location !== "Unknown" ? service.location : null;
 
-        // linkage-none-ok: KNOWN HOLE H1 — fix owned by Reconcile Phase 1c (W3); remove this annotation
-        // in that PR so the guard enforces the fix.
+        // Born `in_planning` — the migration-159 column default, deliberately NOT set here: a
+        // converted item is a plan item, not purchase intent (ROUTING_STATE_CONTRACT §2).
         await storage.createItineraryItem({
           tripId: targetTripId,
-          title: meta.name || cartItem.contentId || "Discovered item",
-          description: meta.description || null,
+          providerServiceId: cartItem.serviceId ?? null,
+          title: meta.name || service?.serviceName || cartItem.contentId || "Discovered item",
+          description: meta.description || service?.shortDescription || null,
           itemType: cartItem.contentType === "hotel" ? "accommodation" : "activity",
           dayNumber: 1,
-          locationName: meta.city || meta.location || null,
+          locationName: meta.city || meta.location || serviceLocation,
           notes: cartItem.notes || null,
           suggestedBy: "user",
           status: "planned",
@@ -6170,9 +6195,16 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
       // W2: routed through the projection module (the single cart writer). The storage
       // implementation performs the IDENTICAL delete-all-then-insert-per-variant-item this
-      // replaced (same rows, same notes string, same providerServiceId filter); the response
-      // below still reports `variantItems.length`, unchanged.
-      await cartProjection.replaceUserCartWithVariantItems(userId, variantItems);
+      // replaced (same rows, same notes string, same providerServiceId filter).
+      const itemsAdded = await cartProjection.replaceUserCartWithVariantItems(userId, variantItems);
+
+      // W5 companion (H6): the writer has ALWAYS skipped variant items with no
+      // `providerServiceId` (an AI-invented activity has no catalog row, so there is nothing to
+      // put in a cart) — but the response reported `variantItems.length`, so the traveler was told
+      // "9 items added" when 4 landed. The BEHAVIOR is deliberately unchanged (scope §1 W5: "do
+      // not change its behavior, just stop it being silent"); only the reporting becomes honest —
+      // the real inserted count plus an explicit skip count and message (§13).
+      const skippedExternalItems = variantItems.length - itemsAdded;
 
       // Fire-and-forget: T4 funnel event
       trackFunnelEvent({
@@ -6181,7 +6213,16 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         funnelStage: "T4",
       }).catch(() => {});
 
-      res.json({ message: "Cart updated with selected itinerary", itemsAdded: variantItems.length });
+      res.json({
+        message:
+          skippedExternalItems > 0
+            ? `Cart updated with ${itemsAdded} bookable item${itemsAdded === 1 ? "" : "s"}. ` +
+              `${skippedExternalItems} item${skippedExternalItems === 1 ? " is" : "s are"} not bookable ` +
+              `on Traveloure and stayed on your itinerary only.`
+            : "Cart updated with selected itinerary",
+        itemsAdded,
+        skippedExternalItems,
+      });
     } catch (error) {
       console.error("Error applying to cart:", error);
       res.status(500).json({ message: "Failed to apply itinerary to cart" });

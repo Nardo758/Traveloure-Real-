@@ -102,6 +102,7 @@ import {
   type CommissionRates,
 } from "../services/commission";
 import { calculateCommission, BookingType } from "../utils/commissionCalculator";
+import { revertPurchasedItemsForBooking } from "../services/item-routing.service";
 import {
   getAdminRole, getFullAdminUser, insertAccessAuditLog, getContactSubmissions,
   updateContactSubmission, getAllUsersBasic, getUserCommissionOverrides,
@@ -901,8 +902,15 @@ router.post("/api/admin/disputes/:bookingId/uphold", isAuthenticated, async (req
     // unmapped, which 400'd at Stripe AFTER the ledger reversal above had already run.
     const refund = await stripePaymentService.refundServiceBooking(bookingId, reason || "dispute_upheld");
 
+    // 4: Lane 1 W4 — the ROUTING reversal edge (ROUTING_STATE_CONTRACT §1: the refund path is its
+    // SOLE writer; this is the second of its two callers, sharing ONE helper rather than a second
+    // copy). Returns the refunded item to `in_planning` so the Trip Card stops showing it as
+    // bought. After the refund, atomic, idempotent, never throws.
+    const routingReversal = await revertPurchasedItemsForBooking(bookingId);
+
     res.json({
       success: true,
+      revertedPlanItems: routingReversal.reverted,
       reversedEarnings: earnings.reversed,
       skippedPaidOut: earnings.skippedPaidOut,
       reversedRevenueRows: revenueRows,
