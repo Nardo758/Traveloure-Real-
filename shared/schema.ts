@@ -9,6 +9,13 @@ export * from "./models/auth";
 export * from "./models/chat";
 
 // === Enums ===
+// §13 (CLAUDE.md): DEAD FIELD — trips.status (below) is write-once at creation (born draft/
+// planning depending on the create path) and no code path ever advances it to confirmed/
+// completed/cancelled. DO NOT READ this column for trip phase/lifecycle — every renderer derives
+// phase from startDate/endDate vs now instead (see client/src/pages/my-trips.tsx). DO NOT WRITE
+// new transitions into it either — see docs/briefs/L3-trips-status-brief.md (Option B, ratified
+// Jul 31, 2026) for the full record and the named future owner (the Phase 4 convert-to-ready-made
+// brief) if a real trip lifecycle is ever needed.
 export const tripStatusEnum = ["draft", "planning", "confirmed", "completed", "cancelled"] as const;
 export const expertAdvisorStatusEnum = ["pending", "accepted", "rejected"] as const;
 export const itineraryStatusEnum = ["pending", "generated", "failed"] as const;
@@ -77,6 +84,10 @@ export const trips = pgTable("trips", {
   startDate: date("start_date").notNull(),
   endDate: date("end_date").notNull(),
   destination: varchar("destination", { length: 255 }).notNull(),
+  // §13: DEAD FIELD — write-once at creation, nothing ever advances it past its born draft/
+  // planning value. DO NOT READ for trip phase (derive from startDate/endDate vs now instead —
+  // see client/src/pages/my-trips.tsx); DO NOT add new writers. See tripStatusEnum above and
+  // docs/briefs/L3-trips-status-brief.md (Option B, ratified Jul 31, 2026).
   status: varchar("status", { length: 20 }).default("draft").notNull(), // Enum: tripStatusEnum
   numberOfTravelers: integer("number_of_travelers").default(1),
   adults: integer("adults").default(2),
