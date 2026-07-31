@@ -85,6 +85,7 @@ Item routing state machine and the full component contract: `ROUTING_STATE_CONTR
 | H7 no add-card flow (save-on-payment already honest) | Lifecycle | **L7** | SetupIntent "Add card" on the profile card |
 | H8 dead Travel-Preferences chips | Lifecycle | **L7** | Wire to state + save, or remove |
 | No linkage/contract invariant exists (H1+H5 were written twice) | Lifecycle §3 | **LG** | Tier-0 gates: linkage-preservation guard + contract-role assertions (1b/1d ship the in-code half) |
+| **NEW (Lane 2 discovery):** `concierge_requests.tripId` accepted from body at create with NO ownership verification — §14-class unverified linkage grant | Lane 2 report / PR #343 | **filed** | Small ownership check at concierge create; assign with the Lane 4/5 batch |
 | Guest expiry unowned · L7 afterlife (rebooking, RM prompts) · repeat-pair rails rate (spec-ahead) · guest-invite trip linkage (#154) · no RM review object | Audit P3 | **deferred** | Documented inventory; pulled only explicitly |
 
 Deliberate non-gaps (snapshot-at-money posture, notification freezing, claim-at-pay slots, provider
