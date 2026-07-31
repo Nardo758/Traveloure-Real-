@@ -674,6 +674,11 @@ export async function assembleTripPlan(
       ...(item.bookingId && bookingById.has(item.bookingId)
         ? { booking: bookingById.get(item.bookingId)! }
         : {}),
+
+      // Phase 1d (W7): the item's own routing state, straight off the row — this producer is the
+      // ONLY one with the column (the variant snapshot adapter below never sets this key). READ-only
+      // pass-through; nothing here writes routing_status (contract §2).
+      routingStatus: item.routingStatus,
     };
   };
 
