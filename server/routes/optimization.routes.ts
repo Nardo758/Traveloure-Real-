@@ -16,7 +16,7 @@
 
 import { Router } from "express";
 import { db } from "../db";
-import { itineraryComparisons, users, trips, userExperiences, experienceTypes, platformRevenue, coordinationFeeCredits } from "@shared/schema";
+import { itineraryComparisons, users, trips, userExperiences, experienceTypes, platformRevenue, coordinationFeeCredits, cartItems } from "@shared/schema";
 import { eq, and, gte } from "drizzle-orm";
 import { isAuthenticated } from "../replit_integrations/auth";
 import {
@@ -26,6 +26,7 @@ import {
 import { getFee, isEventOptimizer } from "../services/optimization-fee.service";
 import { revenueTrackingService } from "../services/revenue-tracking.service";
 import { stripePaymentService } from "../services/stripe-payment.service";
+import { loadTripOptimizerInputs } from "../services/optimizer-baseline.service";
 import Stripe from "stripe";
 
 const router = Router();
@@ -186,6 +187,30 @@ async function resolveTargetFromDb(
   return { eventType: undefined, ownerId: undefined };
 }
 
+// ── Fix #971: the SAME pre-flight `routes.ts` runs before `POST /api/itinerary-comparisons`
+// touches the optimizer, mirrored here (not imported — `routes.ts` mounts this router, so an
+// import back into it would be circular) so this endpoint can refuse BEFORE it ever creates a
+// Stripe PaymentIntent. Without this, a signed-in user with an empty trip and a full cart hit
+// "Setting up…" and hung: the client paid first, then the comparisons-create 409 fired only
+// AFTER the PaymentIntent step had already run. `respondIfCartAwaitsConversion` in `routes.ts`
+// is the one-id existence probe this mirrors verbatim — it selects one cart_items id, joins
+// nothing, and never reads a baseline from the cart; it only decides between two error/no-op
+// paths.
+async function respondIfCartAwaitsConversion(userId: string, res: any): Promise<boolean> {
+  const [pending] = await db
+    .select({ id: cartItems.id })
+    .from(cartItems)
+    .where(eq(cartItems.userId, userId))
+    .limit(1);
+  if (!pending) return false;
+  res.status(409).json({
+    error: "trip_empty_convert_cart",
+    message:
+      "There's nothing on this trip to optimize yet, but your cart isn't empty. Add your cart to the trip first, then run the optimization.",
+  });
+  return true;
+}
+
 router.post("/api/optimization-payments", isAuthenticated, async (req, res) => {
   try {
     const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
@@ -206,6 +231,17 @@ router.post("/api/optimization-payments", isAuthenticated, async (req, res) => {
     }
     if (ownerId !== userId) {
       return res.status(403).json({ error: "Not authorized to optimize this resource" });
+    }
+
+    // Fix #971: refuse BEFORE any Stripe call, same as the comparisons-create pre-flight —
+    // a trip target with nothing optimizable and a non-empty cart means the traveler needs
+    // to convert their cart first, not pay to run an optimizer with no baseline. Scoped to the
+    // `tripId` path only (free-rerun / no-tripId / userExperienceId-only paths unchanged).
+    if (tripId) {
+      const tripInputs = await loadTripOptimizerInputs(tripId);
+      if (tripInputs.baselineItems.length === 0 && (await respondIfCartAwaitsConversion(userId, res))) {
+        return;
+      }
     }
 
     const tier = complexityTier(dbEventType);
