@@ -41,7 +41,7 @@ flowchart LR
     bookT -.->|"H2 purchase never reaches plan → L1"| tripT
     cardT -.->|"H3 no route-to-checkout action → L1"| cartT
     expT -.->|"reads live CART as the plan → L1"| cartT
-    cardT -.->|"H4 old renderer → L4"| shareT
+    cardT -->|"H4 CLOSED → L4 (already done pre-brief)"| shareT
     tripT -.->|"coordination_states.tripId<br/>never written → L2"| coordT["Coordination"]
     tripT -.->|"status='completed' has a reader,<br/>no writer → L3"| adminT["Admin dashboard"]
   end
@@ -79,7 +79,7 @@ Item routing state machine and the full component contract: `ROUTING_STATE_CONTR
 | Saved-trip conversion owner-less minter | Audit P2 | **L0 — DONE** | Same commit |
 | `coordination_states.tripId` reader-without-writer | Audit P1 | **L2** | Create paths write tripId where a trip exists |
 | `trips.status` dead lifecycle field with believing admin reader; L4→L5→L6 unowned | Audit P2/P3 | **L3** | Own brief: own the transitions OR derive-and-drop the field (decision-maker call) |
-| H4 share page renders old `ItineraryCard` (§18 violation) | Lifecycle | **L4** | Share becomes a TripPlan channel (`preview`/`teaser` redaction) |
+| H4 share page renders old `ItineraryCard` (§18 violation) | Lifecycle | **L4 — CLOSED, was already stale** | Ground-truthed Jul 31 2026 (`claude/lane4-share-tripplan`): server (`GET /api/itinerary-share/:token`) and OG injection (`/itinerary-view/:token`) were already on the TripPlan variant producer via `ed19b0eb` (Jul 29), and the client already renders through the PlanCard family since `32787272`/`22d3c2cb` — both predate this brief. `ItineraryCard` has zero JSX importers. Proven: anon share fetch carries zero of `bookings`/`booking`/`routingStatus`/`budget`; owner `/plancard` fetch of the same trip carries all of them. Receipt: `docs/E2E_ITEM_LIFECYCLE.md` H4. |
 | Optimizer is cart-based (spec said tripId) — W2 behavior-identical constraint | Audit P1 / Scope §0 | **L5** | Re-point optimizer to the Trip; retires the W2 merge gate |
 | `trip_contexts` keyed by userId, not tripId | Audit P2 | **L6** | Re-key after L1 lands |
 | H7 no add-card flow (save-on-payment already honest) | Lifecycle | **L7** | SetupIntent "Add card" on the profile card |
@@ -121,7 +121,7 @@ flowchart TD
 | 2 | Coordination tripId | Sonnet | merge only | Independent of routing state; unblocks coordinator↔Trip Card join |
 | 7 | Profile H7+H8 | Sonnet | nothing | Fully independent; can start today |
 | G | Tier-0 guards | Sonnet | merge only | The durable half: any itinerary-item write from a service-bearing source must carry the id; public reads must gate on approval; concurrent same-key checkout ⇒ one charge |
-| 4 | Share renderer | Sonnet | L1d | Channel redaction levels want the finished TripPlan item shape (routing state included) |
+| 4 | Share renderer | Sonnet | L1d | **CLOSED Jul 31 2026, was already stale** — ground-truth found the channel migration (server producer + client PlanCard rendering) landed pre-brief via `ed19b0eb`/`32787272`/`22d3c2cb`; no code change needed, only this doc correction |
 | 5 | Optimizer re-point | Opus | L1d | Retires the W2 behavior-identical constraint; touches the paid path |
 | 6 | trip_contexts re-key | Sonnet | L1 | Context follows a specific trip once the Trip is canonical |
 | 3 | trips.status | — | **decision-maker brief** | Two honest options (own the L4–L6 transitions vs derive-and-drop the field); neither is mine to pick |
