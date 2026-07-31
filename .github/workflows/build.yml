@@ -57,3 +57,18 @@ jobs:
       # (dead → 200-HTML). Node built-ins only — no npm ci needed. See §9.
       - name: Unmounted-router guard
         run: node scripts/check-unmounted-routers.cjs
+
+  linkage-preservation-guard:
+    name: linkage-preservation-guard (Trip-Canon Lane G / E2E_ITEM_LIFECYCLE.md §3)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # Fails if an itinerary-item write site (createItineraryItem / db.insert(itineraryItems) /
+      # bulkInsertItineraryItems) references a service-bearing source (cartItem, providerServiceId,
+      # variantItems, …) without writing providerServiceId onto the item — the H1/H5 class. Node
+      # built-ins only — no npm ci needed. See docs/E2E_ITEM_LIFECYCLE.md §3.
+      - name: Linkage-preservation guard
+        run: node scripts/check-linkage-preservation.cjs
