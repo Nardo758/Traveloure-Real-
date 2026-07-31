@@ -18,7 +18,7 @@ import { db } from '../db';
 import { and, eq, inArray } from 'drizzle-orm';
 // Aliased: this router already uses `itineraryItems` as a local variable name in more than one
 // handler, and shadowing the table import would be a silent footgun.
-import { notifications, itineraryItems as itineraryItemsTable } from '@shared/schema';
+import { notifications, itineraryItems as itineraryItemsTable, tripCollaborators } from '@shared/schema';
 import { EXPERT_SHARE_RATE } from '../services/commission';
 import {
   completeExpertRequest,
@@ -32,7 +32,6 @@ import {
   insertSharedTrip,
   getSharedTripByVariantToken,
   incrementSharedTripViews,
-  getTripOwnerCheck,
   upsertTripShareToken,
   getCanonicalTripShareToken,
   getTripByShareToken,
@@ -64,6 +63,29 @@ const router = Router();
 // Helper to generate secure tokens
 function generateToken(): string {
   return crypto.randomBytes(32).toString('hex');
+}
+
+/**
+ * Fix #969 — canonical owner check for `POST /api/trips/:id/share` (the routing.routes.ts
+ * `isTripOwner` pattern, NEVER `getTripRole` — see CLAUDE.md L10). True when `userId` is the
+ * trip's owner via `trips.userId` OR a `trip_collaborators` role='owner' row (the two places
+ * ownership can live — `createTrip` writes both, some raw-SQL trip-minting paths write only
+ * the `trips` row).
+ */
+async function isTripOwnerCanonical(tripId: string, userId: string): Promise<boolean> {
+  if (await verifyTripOwnership(tripId, userId)) return true;
+  const [row] = await db
+    .select({ role: tripCollaborators.role })
+    .from(tripCollaborators)
+    .where(
+      and(
+        eq(tripCollaborators.tripId, tripId),
+        eq(tripCollaborators.userId, userId),
+        eq(tripCollaborators.role, 'owner'),
+      ),
+    )
+    .limit(1);
+  return !!row;
 }
 
 /**
@@ -435,9 +457,14 @@ router.post('/trips/:id/share', isAuthenticated, async (req, res) => {
       return res.status(404).json({ error: 'Trip not found' });
     }
 
-    const owns = await getTripOwnerCheck(id, userId);
+    const exists = await tripExistsById(id);
+    if (!exists) {
+      return res.status(404).json({ error: 'Trip not found' });
+    }
+
+    const owns = await isTripOwnerCanonical(id, userId);
     if (!owns) {
-      return res.status(404).json({ error: 'Trip not found or not owned by you' });
+      return res.status(403).json({ error: 'Only the trip owner can create a share link for this trip' });
     }
 
     const shareToken = generateToken();
