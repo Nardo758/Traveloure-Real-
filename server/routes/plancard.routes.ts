@@ -71,10 +71,16 @@ router.post("/api/itinerary-comparisons/:id/apply-to-trip", isAuthenticated, asy
     // Replace itinerary items for this trip
     await storage.deleteItineraryItemsByTrip(comparison.tripId);
 
-    // linkage-none-ok: KNOWN HOLE H5 — fix owned by Reconcile Phase 1c (W5); remove this annotation
-    // in that PR so the guard enforces the fix.
+    // W5 (H5): preserve the service link through the apply. `itinerary_variant_items` rows carry
+    // `providerServiceId` (shared/schema.ts:1166) and the itinerary item has had the matching
+    // column all along — the mapping simply omitted it, so every optimizer-applied plan arrived as
+    // unbuyable text (docs/E2E_ITEM_LIFECYCLE.md §3, the H1 bug written a second time by a second
+    // author because no invariant existed to stop it; the Lane G guard is that invariant now).
+    // `?? null` is the honest value for an AI-invented item with no catalog row behind it — the
+    // optimizer emits those alongside real ones, and NULL says "nothing to link", never a guess.
     await storage.bulkInsertItineraryItems(variantItems.map((item: any) => ({
       tripId: comparison.tripId,
+      providerServiceId: item.providerServiceId ?? null,
       title: item.name,
       description: item.description || "",
       itemType: item.serviceType || "activity",
@@ -178,6 +184,10 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
       tripNote: plan.tripNote,
       budget: plan.budget,
       changeLogRef: plan.changeLogRef,
+      // Lane 1 W4 (H2): the trip's real bookings. Additive — `days[].activities[].booking` already
+      // rides the unchanged `days` passthrough above; this is the list that also surfaces bookings
+      // no plan item points at. This surface is owner/expert/author/admin-gated above.
+      bookings: plan.bookings,
     });
   } catch (error) {
     if (error instanceof TripPlanNotFoundError) {
