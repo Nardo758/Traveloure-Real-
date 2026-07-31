@@ -102,6 +102,7 @@ import {
   type CommissionRates,
 } from "../services/commission";
 import { calculateCommission, BookingType } from "../utils/commissionCalculator";
+import { revertPurchasedItemsForBooking } from "../services/item-routing.service";
 import {
   getAdminRole, getFullAdminUser, insertAccessAuditLog, getContactSubmissions,
   updateContactSubmission, getAllUsersBasic, getUserCommissionOverrides,
@@ -901,8 +902,15 @@ router.post("/api/admin/disputes/:bookingId/uphold", isAuthenticated, async (req
     // unmapped, which 400'd at Stripe AFTER the ledger reversal above had already run.
     const refund = await stripePaymentService.refundServiceBooking(bookingId, reason || "dispute_upheld");
 
+    // 4: Lane 1 W4 — the ROUTING reversal edge (ROUTING_STATE_CONTRACT §1: the refund path is its
+    // SOLE writer; this is the second of its two callers, sharing ONE helper rather than a second
+    // copy). Returns the refunded item to `in_planning` so the Trip Card stops showing it as
+    // bought. After the refund, atomic, idempotent, never throws.
+    const routingReversal = await revertPurchasedItemsForBooking(bookingId);
+
     res.json({
       success: true,
+      revertedPlanItems: routingReversal.reverted,
       reversedEarnings: earnings.reversed,
       skippedPaidOut: earnings.skippedPaidOut,
       reversedRevenueRows: revenueRows,
@@ -4038,6 +4046,19 @@ router.delete("/api/admin/users/:id", isAuthenticated, async (req, res) => {
 
   // === Admin Trips/Plans Management ===
 
+// CLAUDE.md §13: `trips.status` is a dead write-once field (born draft/planning at creation,
+// nothing ever advances it) — do not read it for phase. Every phase derivation here mirrors the
+// date-derived convention already used by every traveler-facing renderer (client/src/pages/my-trips.tsx:
+// past = endDate < now, active = startDate <= now <= endDate, upcoming = startDate > now).
+// See docs/briefs/L3-trips-status-brief.md (Option B, ratified Jul 31, 2026).
+function deriveTripPhase(startDate: unknown, endDate: unknown, now: Date): "upcoming" | "active" | "past" {
+  const start = new Date(startDate as any);
+  const end = new Date(endDate as any);
+  if (end < now) return "past";
+  if (start <= now && end >= now) return "active";
+  return "upcoming";
+}
+
 router.get("/api/admin/trips", isAuthenticated, async (req, res) => {
     try {
       const user = req.user as any;
@@ -4046,9 +4067,13 @@ router.get("/api/admin/trips", isAuthenticated, async (req, res) => {
       }
 
       const search = (req.query.search as string) || "";
-      const status = req.query.status as string | undefined;
+      // §13: `status` filtering used to run `eq(trips.status, status)` against the dead field —
+      // it never matched the client's "active"/"pending"/"completed" filter values (which aren't
+      // trips.status vocabulary at all) and would have silently returned zero rows. Phase is now
+      // derived post-fetch (below) and the requested phase, if any, filters on that instead.
+      const phaseFilter = req.query.status as string | undefined;
 
-      let conditions: any[] = [];
+      const conditions: any[] = [];
       if (search) {
         conditions.push(
           or(
@@ -4057,12 +4082,11 @@ router.get("/api/admin/trips", isAuthenticated, async (req, res) => {
           )
         );
       }
-      if (status) {
-        conditions.push(eq(trips.status, status));
-      }
 
       const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
       const allTrips = await getAdminTrips(whereClause);
+
+      const now = new Date();
 
       const enrichedTrips = await Promise.all(allTrips.map(async (t) => {
         const owner = await storage.getUser(t.userId || '');
@@ -4075,20 +4099,27 @@ router.get("/api/admin/trips", isAuthenticated, async (req, res) => {
           endDate: t.endDate,
           guests: t.numberOfTravelers || 1,
           budget: t.budget ? `$${Number(t.budget).toLocaleString()}` : "N/A",
-          status: t.status || "draft",
+          // Honest, date-derived phase (§13) — NOT trips.status (dead field).
+          status: deriveTripPhase(t.startDate, t.endDate, now),
           user: owner ? [owner.firstName, owner.lastName].filter(Boolean).join(" ") || owner.email : "Unknown",
           created: t.createdAt ? new Date(t.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Unknown",
         };
       }));
 
+      const phaseFiltered = phaseFilter
+        ? enrichedTrips.filter(t => t.status === phaseFilter)
+        : enrichedTrips;
+
+      // Honest labels (§13) — no fabricated "completed"/"pending" bucket derived from a field
+      // nothing writes; the three buckets below are exactly the three deriveTripPhase can return.
       const statusCounts = {
         total: enrichedTrips.length,
-        active: enrichedTrips.filter(t => t.status === "planning" || t.status === "confirmed").length,
-        pending: enrichedTrips.filter(t => t.status === "draft").length,
-        completed: enrichedTrips.filter(t => t.status === "completed").length,
+        upcoming: enrichedTrips.filter(t => t.status === "upcoming").length,
+        active: enrichedTrips.filter(t => t.status === "active").length,
+        past: enrichedTrips.filter(t => t.status === "past").length,
       };
 
-      res.json({ trips: enrichedTrips, stats: statusCounts });
+      res.json({ trips: phaseFiltered, stats: statusCounts });
     } catch (err) {
       console.error("Admin trips error:", err);
       res.status(500).json({ message: "Failed to fetch trips" });

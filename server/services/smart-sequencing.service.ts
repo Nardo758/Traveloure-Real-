@@ -934,6 +934,10 @@ export function getSequencingRulesDisplay() {
 // Activity with sequencing metadata
 export interface SequencedActivity {
   id?: string;
+  /** Lane 5a Defect 3: the `provider_services.id` behind this activity, when it has one.
+   *  Carried through reordering/anchoring so the variant-item insert can persist the catalog
+   *  link. Undefined for an AI-invented or external activity (§13 — NULL, never a guess). */
+  providerServiceId?: string;
   name: string;
   serviceType: string;
   startTime?: string;

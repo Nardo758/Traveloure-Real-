@@ -612,13 +612,18 @@ interface PlanSnapshot {
     itemType?: string | null;
     scheduledDate?: string | null;
   }>;
-  cartItems: Array<{
+  // Lane 1 W6: the server no longer reads the traveler's CART here — it returns THIS trip's own
+  // plan items in `in_planning`/`with_expert` (ROUTING_STATE_CONTRACT §2: the expert workspace is
+  // NEVER shown purchase intent, and never the traveler's other trips). Same field shape, honest
+  // name, plus the routing state.
+  planItems: Array<{
     name: string;
     type: string;
     price?: string | number | null;
     quantity: number;
     city?: string | null;
     scheduledDate?: string | null;
+    routingStatus?: string;
   }>;
 }
 
@@ -681,17 +686,17 @@ function TripPlanDialog({
               </p>
             </div>
 
-            {snapshot.cartItems.length > 0 && (
+            {snapshot.planItems.length > 0 && (
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-console-mid mb-2">
-                  In their cart ({snapshot.cartItems.length})
+                  Their plan ({snapshot.planItems.length})
                 </p>
                 <div className="space-y-1.5">
-                  {snapshot.cartItems.map((item, idx) => (
+                  {snapshot.planItems.map((item, idx) => (
                     <div
                       key={idx}
                       className="flex items-center justify-between gap-2 rounded-md border border-console-light px-3 py-2 text-sm"
-                      data-testid={`plan-cart-item-${idx}`}
+                      data-testid={`plan-plan-item-${idx}`}
                     >
                       <div className="min-w-0">
                         <p className="font-medium text-console-darkest truncate">{item.name}</p>
@@ -736,7 +741,7 @@ function TripPlanDialog({
               </div>
             )}
 
-            {snapshot.cartItems.length === 0 && snapshot.itineraryItems.length === 0 && (
+            {snapshot.planItems.length === 0 && snapshot.itineraryItems.length === 0 && (
               <p className="text-sm text-console-mid py-2">
                 The trip has no items yet — the traveler is starting from scratch.
               </p>
