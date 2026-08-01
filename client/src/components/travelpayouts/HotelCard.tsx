@@ -64,7 +64,7 @@ export function HotelCard({ item, className }: { item: CatalogItem; className?: 
             </Button>
           </div>
           <BookWithExpertButton
-            destination={item.destination}
+            destination={item.destination ?? undefined}
             topic="hotels"
             className="w-full justify-center"
             data-testid={`button-expert-hotel-${item.id}`}
