@@ -8828,6 +8828,15 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // only gate. Canonical authorization, matching the sibling itinerary-item handlers above.
       const denied = await authorizeTripLogistics(req.params.tripId, userId, "POST /api/trips/:tripId/itinerary/reorder");
       if (denied) return res.status(denied.status).json({ message: denied.message });
+      // FABLE-REVIEW: the mode-flip gate (QA_PUNCH_LIST item 18), same derivation as the
+      // item-create handler's `isAdvisor` above — never the owner, never the author. Computed
+      // AFTER authorizeTripLogistics has already passed, so it narrows nothing that handler
+      // grants; it only refuses the advisor branch once the assignment's plan is approved.
+      const owned = await verifyTripOwnership(req.params.tripId, userId);
+      const isAdvisor = owned ? false : await storage.isExpertAssignedToTrip(req.params.tripId, userId);
+      if (isAdvisor && await isPlanApprovedForExpert(req.params.tripId, userId)) {
+        return res.status(409).json(PLAN_APPROVED_SUGGEST_INSTEAD_ERROR);
+      }
       const { dayNumber, itemIds } = req.body;
       const items = await itineraryIntelligenceService.reorderItems(req.params.tripId, dayNumber, itemIds);
       // Change-log role, derived honestly (§13 applies to logs): this used to hardcode "owner",
@@ -8835,8 +8844,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // passing branch (owner ‖ assigned expert ‖ author ‖ admin) and does not report which one, so
       // ownership is the only branch we can state as fact; every other authorized party gets the
       // neutral "editor" label rather than a guess (the `logLegChange` precedent in
-      // transport-legs.routes.ts).
-      const role = (await verifyTripOwnership(req.params.tripId, userId)) ? "owner" : "editor";
+      // transport-legs.routes.ts). Reuses the `owned` flag computed above for the mode-flip gate.
+      const role = owned ? "owner" : "editor";
       logItineraryChange(req.params.tripId, userName, `Reordered Day ${dayNumber} activities`, "reorder", role);
       res.json(items);
     } catch (error) {
@@ -8851,6 +8860,16 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // authorization, so any authenticated user could compute an optimized order for any trip.
       const denied = await authorizeTripLogistics(req.params.tripId, userId, "POST /api/trips/:tripId/itinerary/optimize-order");
       if (denied) return res.status(denied.status).json({ message: denied.message });
+      // FABLE-REVIEW: the mode-flip gate (QA_PUNCH_LIST item 18) — same derivation as the
+      // reorder handler above (itself mirroring the item-create handler's `isAdvisor`). This
+      // endpoint only COMPUTES a suggested order (no write), but gating it too means an
+      // advisor on an approved plan can't even fish for a machine order to hand-apply via
+      // the reorder endpoint under a different guise.
+      const owned = await verifyTripOwnership(req.params.tripId, userId);
+      const isAdvisor = owned ? false : await storage.isExpertAssignedToTrip(req.params.tripId, userId);
+      if (isAdvisor && await isPlanApprovedForExpert(req.params.tripId, userId)) {
+        return res.status(409).json(PLAN_APPROVED_SUGGEST_INSTEAD_ERROR);
+      }
       const { dayNumber } = req.body;
       const optimizedOrder = await itineraryIntelligenceService.optimizeOrder(req.params.tripId, dayNumber);
       res.json({ optimizedOrder });
