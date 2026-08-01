@@ -13,6 +13,10 @@
 >
 > **As-of:** branch `replit-sync-aug2` @ `60df477a` (post PR #390). Line numbers drift — treat them
 > as anchors, re-grep before relying on one.
+>
+> **Update (branch `claude/money-hardening-r1`):** F-1, F-2, F-3, F-6, F-7, F-8 closed — see the
+> struck FINDINGS entries below for what changed and where. F-4/F-5 untouched (need a design
+> decision, out of scope for this pass).
 
 ---
 
@@ -33,7 +37,7 @@ vs `ENVIRONMENT==="PROD"` (`:26-53`) — the other instantiations accept whateve
 | `server/jobs/stripeReconciliation.ts:27` | daily charge reconcile |
 | `server/routes/optimization.routes.ts:34` | |
 | `server/routes.ts:361` + per-request at `:3502`, `:3555`, `:6973`, `:7072`, `:7151`, `:7235` | monolith money endpoints |
-| `server/routes/trips.routes.ts:72` | **declared, zero call sites** (dead) |
+| ~~`server/routes/trips.routes.ts:72`~~ | **REMOVED (F-6 closed)** — was declared, zero call sites |
 | `server/routes/bookings.ts:360` | webhook verify |
 | `server/routes/content.routes.ts:7658` | content-hub checkout |
 | `server/routes/ready-made.routes.ts:1061`, `1109`, `1183` | ready-made buy/confirm/refund |
@@ -46,10 +50,10 @@ vs `ENVIRONMENT==="PROD"` (`:26-53`) — the other instantiations accept whateve
 |---|---|---|
 | `stripe-payment.service.ts:365` (`chargeSavedMethod`) | off-session saved-card charge | YES (caller key, `-recover` retry) |
 | `stripe-payment.service.ts:478/480` (`createPaymentIntent`) | cart checkout total | YES `pi-<key>` |
-| `stripe-payment.service.ts:876` (`createExpertServicePaymentIntent`) | expert review / review+book / full-concierge fee | **NO — gap (F-3)** |
-| `routes.ts:3509` | expert-template purchase (price from `expert_templates`) | **NO — gap (F-3)** |
+| `stripe-payment.service.ts:876` (`createExpertServicePaymentIntent`) | expert review / review+book / full-concierge fee | YES `expert-svc-<variantId>-<comparisonId>-<serviceType>-<userId>` (F-3 closed) |
+| `routes.ts:~3509` | expert-template purchase (price from `expert_templates`) | YES `tpl-buy-<templateId>-<userId>` (F-3 closed) |
 | `routes.ts:7084` (+ saved-card path `:7028`) | coordination fee | YES `coord-fee-<id>` |
-| `optimization.routes.ts:332` (+ saved-card path `:284`) | optimization fee | saved-card YES / Elements path **NO — gap (F-3)** |
+| `optimization.routes.ts:~332` (+ saved-card path `:~298`) | optimization fee | YES both paths, `opt-fee-<userId>-<target>-<YYYY-MM-DD>` via a shared `buildOptimizationFeeIdempotencyKey` helper (F-3 closed) |
 | `ready-made.routes.ts:1064` | ready-made trip purchase | YES `rm-buy-<listing>-<user>` |
 
 ### 1c. Refunds — `refunds.create`
@@ -75,7 +79,7 @@ behind the §15 atomic `claim{Expert,Provider}PayoutForProcessing`.
 |---|---|---|---|
 | `stripe.service.ts:134` | transport booking | NO | `handleStripePaymentSuccess` (`:178`) + `checkout.session.completed` type `transport_booking` |
 | `stripe-payment.service.ts:934` | expert service hosted checkout | NO | `checkout.session.completed` type `expert_service` |
-| `content.routes.ts:7665` | content-hub curated item | NO | **NONE — F-1, money collected, nothing fulfilled/recorded** |
+| ~~`content.routes.ts:7665`~~ | content-hub curated item | — | **REMOVED (F-1 closed).** `POST /api/content/checkout` now returns 501 `content_checkout_unavailable` instead of creating a session — see FINDINGS. |
 
 ### 1g. PI verification reads (`paymentIntents.retrieve`)
 `stripe-payment.service.ts:838, 981` · `booking.service.ts:597` · `routes.ts:3558, 6974, 7152, 409` ·
@@ -152,7 +156,7 @@ self-service request (`payments.routes.ts:1179-1180`), transfer webhook (`webhoo
 | POST `/api/ready-made/:id/purchase` (+`/confirm`) (`ready-made.routes.ts:1023/1100`) | ready-made purchase | isAuthenticated + PI metadata match |
 | POST `/api/expert-requests/payment-intent` → POST `/api/expert-requests` (`booking-actions.ts:103/166`) | expert service fee | isAuthenticated + variant owner + PI verify |
 | POST `/api/bookings/process-cart` → `/confirm-payment` (`bookings.ts:72/125`) | cart bookings + earnings/revenue on confirm | isAuthenticated (+ ownership in service) |
-| POST `/api/content/checkout` (`content.routes.ts:7607`) | hosted checkout session | isAuthenticated — **F-1: no fulfillment** |
+| POST `/api/content/checkout` (`content.routes.ts:~7607`) | **GATED OFF — 501 `content_checkout_unavailable`** (F-1 closed; no fulfillment leg exists) | isAuthenticated |
 | POST `/api/transport-booking-options/:id/book` (`transport-hub.routes.ts:326`) | transport checkout session | isAuthenticated + authorizeTripLogistics |
 
 **Refund/dispute/escrow:**
@@ -183,14 +187,16 @@ POST `/api/admin/optimization-fees` (`:5905`).
 | path | secret env | verified? | notes |
 |---|---|---|---|
 | POST `/api/webhooks/stripe` (`webhooks.routes.ts:535`) | `STRIPE_CONNECT_WEBHOOK_SECRET` | YES; **unverified-parse fallback when secret unset AND NODE_ENV!=='production'** | account.updated, transfer.created/paid, payment_intent.succeeded/failed, charge.dispute.created/closed; `webhook_events` dedup |
-| POST `/api/bookings/webhooks/stripe` (`bookings.ts:348`) | `STRIPE_WEBHOOK_SECRET` | YES but secret defaults `''` — constructEvent just fails; **no prod-presence guard** | PI lifecycle, charge.refunded, checkout.session.completed (`expert_service`, `transport_booking`) |
+| POST `/api/bookings/webhooks/stripe` (`bookings.ts:~348`) | `STRIPE_WEBHOOK_SECRET` | YES; secret still defaults `''`, but a **prod-presence guard now returns 503 before attempting verification** when unset in production (F-2 closed) | PI lifecycle, charge.refunded, checkout.session.completed (`expert_service`, `transport_booking`) |
 | POST `/api/webhooks/stripe-identity` (`webhooks.routes.ts:28`) | `STRIPE_IDENTITY_WEBHOOK_SECRET` | YES; same non-prod fallback | identity verification |
 | POST `/api/webhooks/persona` (`webhooks.routes.ts:81`) | `PERSONA_WEBHOOK_SECRET` | YES (HMAC, prod-required) | Persona KYC |
 
-Raw body capture: `server/index.ts:82`. Dead code: `verifyStripeWebhookSignature`
-(`stripe.service.ts:240`) — zero call sites.
-**None of the four secrets appear in `.env.example`** (F-2); `STRIPE_WEBHOOK_SECRET` is at least
-logged at boot (`server/index.ts:195`) and listed in `docs/backoffice/LAUNCH_ENV_CHECKLIST.md`.
+Raw body capture: `server/index.ts:82`. Dead code `verifyStripeWebhookSignature`
+(`stripe.service.ts:240`, zero call sites) is **removed (F-6 closed)**.
+**All five secrets now appear in `.env.example`** (F-2 + F-8 closed), and `server/validate-env.ts`
+WARNs (non-fatal) when `STRIPE_SECRET_KEY` is set but a webhook secret is missing.
+`STRIPE_WEBHOOK_SECRET` is also logged at boot (`server/index.ts:195`) and listed in
+`docs/backoffice/LAUNCH_ENV_CHECKLIST.md`.
 
 ---
 
@@ -239,40 +245,54 @@ Publishable key `VITE_STRIPE_PUBLISHABLE_KEY` — also absent from `.env.example
 `commission.ts:36-42` (`AI_PLATFORM_FEE 1.00`, `AFFILIATE_PLATFORM_FEE 0.70`, `AFFILIATE_EXPERT_SHARE 0.30`,
 `PROCESSING_FEE_RATE 0.03` declarations) · `pricing.service.ts:23` (`DEFAULT_DEPOSIT_RATE 0.25` fallback) ·
 `transport-booking-options.service.ts:276-317` (transport/margin fallbacks) · `storage.ts:3591`
-(referral `'50'` fallback) · payout floor duplicated THREE times (`admin.routes.ts:3690`, `:3768`,
-`payments.routes.ts:1118`).
+(referral `'50'` fallback) · ~~payout floor duplicated THREE times~~ **single-sourced (F-7 closed)** —
+`server/config/payout.config.ts` (`MIN_PAYOUT_CENTS`/`MIN_PAYOUT_DOLLARS`, `fee-literal-ok`), imported by
+`admin.routes.ts` (both sites) and `payments.routes.ts`.
 
 ---
 
 ## FINDINGS (open, ranked — filed Aug 1 2026 by the map sweep)
 
-- **F-1 🔴 Content-hub checkout collects money with NO fulfillment.** `POST /api/content/checkout`
-  (`content.routes.ts:7607`) creates a real Stripe Checkout Session (`metadata.type='content_hub_purchase'`),
-  and it is client-reachable (`curated-content-section.tsx:236`) — but NO webhook branch, ledger write, or
-  delivery handles that metadata type. A traveler can pay and nothing is recorded or delivered. Fix options:
-  gate honestly (the W0.4 tip-endpoint 501 pattern) until a fulfillment leg exists, or build the
-  `checkout.session.completed` branch + ledger write. Decision-maker call which.
-- **F-2 🔴 Webhook secrets undiscoverable.** `STRIPE_WEBHOOK_SECRET`, `STRIPE_CONNECT_WEBHOOK_SECRET`,
-  `STRIPE_IDENTITY_WEBHOOK_SECRET`, `PERSONA_WEBHOOK_SECRET`, `VITE_STRIPE_PUBLISHABLE_KEY` — none in
-  `.env.example`, none in `validate-env.ts`. Draft task #143 covers the Connect one; add all five.
-  Add a prod-presence guard to `bookings.ts:367` (secret currently defaults `''`).
-- **F-3 🟡 Three charge sites lack a Stripe idempotencyKey:** expert-service PI
-  (`stripe-payment.service.ts:876`), template-purchase PI (`routes.ts:3509`), optimization Elements-path PI
-  (`optimization.routes.ts:332`). All three DO have DB-side §15 claims on confirm, so the exposure is a
-  duplicate *uncaptured* PI on retry, not a double charge — still, add deterministic keys (cheap).
-  The three `checkout.sessions.create` sites are keyless too.
+- ~~**F-1 🔴 Content-hub checkout collects money with NO fulfillment.**~~ **FIXED (`claude/money-hardening-r1`).**
+  `POST /api/content/checkout` (`content.routes.ts:~7607`) now returns `501 { code: "content_checkout_unavailable" }`
+  instead of creating a Stripe Checkout Session — gated honestly per the W0.4 tip-endpoint pattern; the
+  Stripe-session code was removed (git history has it), not commented out. Client
+  (`curated-content-section.tsx`) surfaces the server's message on error and, for the one case that ONLY led
+  here (a priced non-affiliate curated item), replaces "Book Now" with a disabled "Not available yet" control
+  instead of letting a traveler click into the dead end. **Fulfillment leg itself is filed, not built** — this
+  closes the money-collected-for-nothing hazard; building `checkout.session.completed` handling + ledger write
+  (or retiring the surface) is still a decision-maker call.
+- ~~**F-2 🔴 Webhook secrets undiscoverable.**~~ **FIXED (`claude/money-hardening-r1`).** All five vars
+  (`STRIPE_WEBHOOK_SECRET`, `STRIPE_CONNECT_WEBHOOK_SECRET`, `STRIPE_IDENTITY_WEBHOOK_SECRET`,
+  `PERSONA_WEBHOOK_SECRET`, `VITE_STRIPE_PUBLISHABLE_KEY`) are now in `.env.example` with one-line comments;
+  `server/validate-env.ts` WARNs (non-fatal) when `STRIPE_SECRET_KEY` is set but a webhook secret is missing.
+  `bookings.ts`'s `/webhooks/stripe` route now returns 503 (logged once) instead of attempting
+  `constructEvent` with an empty secret when `NODE_ENV==='production'` and `STRIPE_WEBHOOK_SECRET` is unset.
+- ~~**F-3 🟡 Three charge sites lack a Stripe idempotencyKey.**~~ **FIXED (`claude/money-hardening-r1`).**
+  All three now pass a deterministic key: expert-service PI (`stripe-payment.service.ts:876`,
+  `expert-svc-<variantId>-<comparisonId>-<serviceType>-<userId>`), template-purchase PI (`routes.ts:~3509`,
+  `tpl-buy-<templateId>-<userId>`), optimization Elements-path PI (`optimization.routes.ts:~332`, the exact
+  `opt-fee-<userId>-<target>-<YYYY-MM-DD>` format the saved-card path already used, factored into a shared
+  `buildOptimizationFeeIdempotencyKey` helper so the two paths can't drift). The three
+  `checkout.sessions.create` sites remain keyless — out of scope this round, unchanged.
 - **F-4 🟡 Two raw ledger INSERTs bypass the canonical writers** (`booking.service.ts:716/735` inside the
   cart-confirm tx). Deliberate (transactionality) but undocumented — any change to
   `createProviderEarning`/`recordPlatformRevenue` semantics (e.g. new default column) silently misses them.
   Either route through the canonical writers inside the tx or mark both sites with a pointer comment.
+  **NOT touched this round — needs a design decision.**
 - **F-5 🟡 Agent-booking affiliate earnings recorded as `"0.00"`** (`content.routes.ts:6917`) — the
   reconciliation matcher can never amount-match them (5% band of 0). Real commissions from Travelpayouts
   polling will stay `unmatched` for this rail. Needs an expected-commission estimate at write time or a
-  matcher rule for zero-amount internal rows.
-- **F-6 🟢 Dead code:** `verifyStripeWebhookSignature` (`stripe.service.ts:240`, zero callers);
-  `trips.routes.ts:72` Stripe client (zero call sites). Delete both.
-- **F-7 🟢 Payout floor literal ×3** — single source it (config or one exported const).
-- **F-8 🟢 `.env.example` missing `TRAVELPAYOUTS_MARKER`** (added by PR #390's env centralization).
+  matcher rule for zero-amount internal rows. **NOT touched this round — needs a design decision.**
+- ~~**F-6 🟢 Dead code.**~~ **FIXED (`claude/money-hardening-r1`).** `verifyStripeWebhookSignature`
+  (`stripe.service.ts:240`, zero callers) and the `trips.routes.ts:72` Stripe client (zero call sites in that
+  file) are both deleted.
+- ~~**F-7 🟢 Payout floor literal ×3.**~~ **FIXED (`claude/money-hardening-r1`).** Single-sourced in
+  `server/config/payout.config.ts` (`MIN_PAYOUT_CENTS` = 1000, `MIN_PAYOUT_DOLLARS` derived,
+  `fee-literal-ok: single source, admin-configurable is a filed follow-up`); `admin.routes.ts` (both sites)
+  and `payments.routes.ts` now import it — behavior unchanged.
+- ~~**F-8 🟢 `.env.example` missing `TRAVELPAYOUTS_MARKER`**.~~ **FIXED (`claude/money-hardening-r1`).** Added
+  with a comment (affiliate attribution marker, falls back to the account marker).
 
 **Update discipline:** when a finding is fixed, strike it here in the same PR. When new money surfaces land
 (bundle booking, property booking, tip payment leg — all ratified-but-unbuilt), add their sites here BEFORE
