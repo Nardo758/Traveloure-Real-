@@ -9,6 +9,8 @@ import { ExpertLayout } from "@/components/expert/expert-layout";
 import { DmoPickerCore } from "@/components/expert/dmo-picker-modal";
 import { ServicePickerModal } from "@/components/expert/service-picker-modal";
 import { TransportPickerCore } from "@/components/expert/transport-picker";
+import { PlatformContentPickerCore } from "@/components/expert/platform-content-picker";
+import { MyServicesPickerCore } from "@/components/expert/my-services-picker";
 import ReadyMadeListingPanel, { type ReadyMadeListing } from "@/components/expert/ready-made-listing-panel";
 import { resolveFormat } from "@/lib/build-formats/registry";
 import { ClientFormatView } from "@/components/build-formats/ClientFormatView";
@@ -303,6 +305,84 @@ function InlineAddItemForm({ tripId, dayNumber, destination, onAdded }: { tripId
       <button onClick={handleSubmit} disabled={!form.title.trim() || createMutation.isPending || geocoding} data-testid="button-inline-add-confirm" style={{ ...btnPrimaryStyle, padding: "9px", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, opacity: !form.title.trim() || createMutation.isPending || geocoding ? 0.6 : 1 }}>
         {(createMutation.isPending || geocoding) ? <Loader2 style={{ width: 13, height: 13 }} className="animate-spin" /> : <Plus style={{ width: 13, height: 13 }} />} Add to Day {dayNumber}
       </button>
+    </div>
+  );
+}
+
+/** W1-A: "Log completed booking" — a small inline form on each Partner-inventory (affiliate
+ *  network) card, for an expert who booked something OFF-SITE through that network and wants
+ *  it to show up on the client's plan. Writes through the SAME item-create rail as every other
+ *  Add-panel source (POST /api/trips/:tripId/itinerary-items) — no new endpoint. The provider
+ *  name is the one honest, non-affiliate fact this form carries about the network: it goes into
+ *  `description` as a plain "Booked via <Network>" prefix (mirrors InlineAddItemForm/DmoPickerCore
+ *  writing real-but-plain text into existing free-text columns, never a new field). `bookingStatus`
+ *  is set to "confirmed" — this form exists specifically to log a booking that already happened.
+ *  §16: the affiliate/booking URL is NEVER read here — this component only ever receives
+ *  `providerName` (a plain string), never the partner's `websiteUrl`/affiliate link, so there is
+ *  nothing to leak into the write even by accident. */
+function LogBookingForm({
+  tripId, dayNumber, providerName, onAdded, onClose,
+}: { tripId: string; dayNumber: number; providerName: string; onAdded: () => void; onClose: () => void }) {
+  const { toast } = useToast();
+  const [form, setForm] = useState({ title: "", startTime: "", estimatedCost: "", locationName: "" });
+  const createMutation = useMutation({
+    mutationFn: async (data: any) => { const res = await apiRequest("POST", `/api/trips/${tripId}/itinerary-items`, data); return res.json(); },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/itinerary-items`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+      onAdded();
+      toast({ title: "Booking logged", description: `Added to Day ${dayNumber}` });
+      onClose();
+    },
+    onError: (err: any) => toast({ title: "Failed to log booking", description: parseApiErrorMessage(err, "Please check the fields and try again."), variant: "destructive" }),
+  });
+  const handleSubmit = () => {
+    if (!form.title.trim()) return;
+    createMutation.mutate({
+      title: form.title.trim(),
+      itemType: "activity",
+      dayNumber,
+      startTime: form.startTime || undefined,
+      estimatedCost: form.estimatedCost ? String(parseFloat(form.estimatedCost)) : undefined,
+      locationName: form.locationName.trim() || undefined,
+      description: `Booked via ${providerName}`,
+      bookingStatus: "confirmed",
+    });
+  };
+  const labelStyle: React.CSSProperties = { fontSize: 11, fontWeight: 600, color: MID, display: "block", marginBottom: 3 };
+  const inputStyle: React.CSSProperties = { width: "100%", padding: "6px 8px", borderRadius: 7, border: `1.5px solid ${LINE}`, fontSize: 12.5, outline: "none", boxSizing: "border-box" as any, background: CARD, color: INK };
+  return (
+    <div style={{ marginTop: 8, padding: "9px 10px", background: GROUND, border: `1px solid ${LINE}`, borderRadius: 8, display: "flex", flexDirection: "column", gap: 7 }} data-testid={`form-log-booking-${providerName.toLowerCase().replace(/[^a-z0-9]/g, "-")}`}>
+      <div style={{ fontSize: 11, color: MID }}>Booked via <strong style={{ color: INK }}>{providerName}</strong> — Day {dayNumber}</div>
+      <div>
+        <label style={labelStyle}>Title *</label>
+        <input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="e.g. Fushimi Inari night tour" data-testid="input-log-booking-title" style={inputStyle} />
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7 }}>
+        <div>
+          <label style={labelStyle}>Start time</label>
+          <input type="time" value={form.startTime} onChange={e => setForm(f => ({ ...f, startTime: e.target.value }))} data-testid="input-log-booking-time" style={inputStyle} />
+        </div>
+        <div>
+          <label style={labelStyle}>Est. cost (USD)</label>
+          <input type="number" value={form.estimatedCost} onChange={e => setForm(f => ({ ...f, estimatedCost: e.target.value }))} placeholder="0" data-testid="input-log-booking-cost" style={inputStyle} />
+        </div>
+      </div>
+      <div>
+        <label style={labelStyle}>Location (optional)</label>
+        <input value={form.locationName} onChange={e => setForm(f => ({ ...f, locationName: e.target.value }))} placeholder="Meeting point" data-testid="input-log-booking-location" style={inputStyle} />
+      </div>
+      <div style={{ display: "flex", gap: 6 }}>
+        <button onClick={onClose} data-testid="button-log-booking-cancel" style={{ ...btnQuietStyle, flex: 1, padding: "6px", fontSize: 12 }}>Cancel</button>
+        <button
+          onClick={handleSubmit}
+          disabled={!form.title.trim() || createMutation.isPending}
+          data-testid="button-log-booking-confirm"
+          style={{ ...btnPrimaryStyle, flex: 2, padding: "6px", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, opacity: !form.title.trim() || createMutation.isPending ? 0.6 : 1 }}
+        >
+          {createMutation.isPending ? <Loader2 style={{ width: 12, height: 12 }} className="animate-spin" /> : <CheckCircle style={{ width: 12, height: 12 }} />} Log booking
+        </button>
+      </div>
     </div>
   );
 }
@@ -995,12 +1075,14 @@ interface SuggestionPayload {
 // pill now carries a plain-language caption so a first-time expert can tell what each
 // source actually is without hovering a tooltip; `comingSoon` sources stay honestly
 // labeled but are clickable (§13 "coming soon" pattern) instead of dead/disabled.
+// W1-A: "Platform content" and "My services" are wired up (platform-content-picker.tsx /
+// my-services-picker.tsx) — comingSoon removed from both.
 const ADD_SOURCES: { k: string; l: string; caption: string; comingSoon?: boolean }[] = [
   { k: "dmo", l: "DMO Library", caption: "Local research your admin has approved for Kyoto — refine it, then drop it into a day." },
-  { k: "content", l: "Platform content", caption: "The shared Traveloure content library. Not wired up yet — the read is on the way.", comingSoon: true },
+  { k: "content", l: "Platform content", caption: "The shared Traveloure content library, scoped to this build's destination." },
   { k: "platform", l: "Platform services", caption: "Traveloure's approved bookable services in this city, plus a map to browse them." },
   { k: "partner", l: "Partner inventory", caption: "External booking networks Traveloure has integrated — book off-site, log it here." },
-  { k: "mine", l: "My services", caption: "Your own approved listings. Coming with the Catalog module.", comingSoon: true },
+  { k: "mine", l: "My services", caption: "Your own approved, active listings — drop one straight onto this build." },
   { k: "custom", l: "Custom", caption: "Add anything by hand — a place, a note, or a reservation with no catalog match." },
   { k: "transport", l: "Transport", caption: "Ground-transport routes (train, taxi, transfer) between stops." },
 ];
@@ -1235,6 +1317,9 @@ export default function ExpertWorkspace() {
   const notesDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [bookingBrief, setBookingBrief] = useState<{ provider: string; bookingUrl?: string } | null>(null);
   const [servicePickerOpen, setServicePickerOpen] = useState(false);
+  // W1-A: "Log completed booking" — which affiliate-network card (by name) has its inline
+  // log-a-booking form open. One at a time, mirroring ItemsEditorPanel's single-expanded-row pattern.
+  const [logBookingOpenFor, setLogBookingOpenFor] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
   // W-4 location-aware builds: the destination chip is editable for authored builds.
@@ -2360,16 +2445,18 @@ export default function ExpertWorkspace() {
             </>
           )}
 
-          {/* Add · Platform content / My services — D1 (UX audit Jul 29): these two pills used
-              to be `disabled` with only a hover tooltip explaining why, so clicking them did
-              nothing and left a first-time expert with no feedback. They're clickable now
-              (see ADD_SOURCES above) and land here on an honest "not built yet" panel — same
-              §13 posture as every other coming-soon state in the console. */}
-          {rightTab === "add" && (addSource === "content" || addSource === "mine") && (
-            <div style={{ flex: 1, padding: "24px 16px", textAlign: "center" }}>
-              <div style={{ padding: "18px 14px", background: GROUND, borderRadius: 10, color: MID, fontSize: 12.5 }}>
-                {ADD_SOURCES.find(s => s.k === addSource)?.caption}
-              </div>
+          {/* Add · Platform content — W1-A: the shared content_registry library, embedded
+              (same fetch + same write as every other Add-panel source). */}
+          {rightTab === "add" && addSource === "content" && (
+            <div style={{ flex: 1, overflowY: "auto", padding: "12px 12px" }}>
+              <PlatformContentPickerCore tripId={tripId!} destination={destination} dayNumber={focusDay} onAdded={triggerEnergyRecalc} />
+            </div>
+          )}
+
+          {/* Add · My services — W1-A: the expert's own approved+active listings, embedded. */}
+          {rightTab === "add" && addSource === "mine" && (
+            <div style={{ flex: 1, overflowY: "auto", padding: "12px 12px" }}>
+              <MyServicesPickerCore tripId={tripId!} dayNumber={focusDay} onAdded={triggerEnergyRecalc} />
             </div>
           )}
 
@@ -2606,7 +2693,23 @@ export default function ExpertWorkspace() {
                       </button>
                     </div>
                     {aff.description && (
-                      <div style={{ fontSize: 11, color: MID, background: GROUND, borderRadius: 6, padding: "5px 8px" }}>{aff.description}</div>
+                      <div style={{ fontSize: 11, color: MID, background: GROUND, borderRadius: 6, padding: "5px 8px", marginBottom: 6 }}>{aff.description}</div>
+                    )}
+                    <button
+                      onClick={() => setLogBookingOpenFor(o => o === aff.name ? null : aff.name)}
+                      data-testid={`button-log-booking-${aff.name.toLowerCase().replace(/[^a-z0-9]/g, "-")}`}
+                      style={{ ...btnQuietStyle, padding: "4px 9px", borderRadius: 7, fontSize: 11 }}
+                    >
+                      {logBookingOpenFor === aff.name ? "Close log-booking form" : "Log completed booking"}
+                    </button>
+                    {logBookingOpenFor === aff.name && (
+                      <LogBookingForm
+                        tripId={tripId!}
+                        dayNumber={focusDay}
+                        providerName={aff.name}
+                        onAdded={triggerEnergyRecalc}
+                        onClose={() => setLogBookingOpenFor(null)}
+                      />
                     )}
                   </div>
                 ))
