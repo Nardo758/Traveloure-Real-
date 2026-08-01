@@ -109,13 +109,9 @@ export const CATALOG_NETWORKS: NetworkDef[] = [
     category: "accommodation",
     fetch: async (city) => (await import("./travelpayouts/booking.service")).searchBooking({ destination: city, limit: 40 }),
   },
-  {
-    key: "hotellook",
-    partnerName: "Hotellook",
-    websiteUrl: "https://www.hotellook.com",
-    category: "accommodation",
-    fetch: async (city) => (await import("./travelpayouts/hotellook.service")).searchHotellook({ destination: city, limit: 40 }),
-  },
+  // Hotellook RETIRED 2026-08: Travelpayouts shut down the public Hotellook data API
+  // (engine.hotellook.com/api/v2/* all 404 — see hotellook.service.ts). Do not re-add
+  // unless a working replacement endpoint is verified.
   {
     key: "stasher",
     partnerName: "Stasher",

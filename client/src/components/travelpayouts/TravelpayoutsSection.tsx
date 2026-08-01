@@ -76,7 +76,7 @@ export function TravelpayoutsSection({
 
   const flightsQ  = useQuery<{ items: CatalogItem[] }>({ queryKey: ["/api/catalog/flights", flightOrigin, destination], enabled: !!flightOrigin && !!destination && activeTab === "flights" });
 
-  const hotellookQ = useQuery<{ items: CatalogItem[] }>({ queryKey: ["/api/catalog/hotels-look", destination],  enabled: enabled("hotels") });
+  // Hotellook query removed — Travelpayouts retired its public data API (2026-08); Agoda covers hotels.
   const agodaQ     = useQuery<{ items: CatalogItem[] }>({ queryKey: ["/api/catalog/agoda", destination],        enabled: enabled("hotels") });
 
   const transfersQ = useQuery<{ items: CatalogItem[] }>({ queryKey: ["/api/catalog/transfers", destination],    enabled: enabled("transfers") });
@@ -101,8 +101,8 @@ export function TravelpayoutsSection({
   ];
   const activitiesLoading = tiqetsQ.isLoading || wegoQ.isLoading || viatorFQ.isLoading || gygQ.isLoading || klookQ.isLoading;
 
-  const allHotels = [...(hotellookQ.data?.items || []), ...(agodaQ.data?.items || [])];
-  const hotelsLoading = hotellookQ.isLoading || agodaQ.isLoading;
+  const allHotels = [...(agodaQ.data?.items || [])];
+  const hotelsLoading = agodaQ.isLoading;
 
   const allCars = [...(carsQ.data?.items || []), ...(rentalcarsQ.data?.items || [])];
   const carsLoading = carsQ.isLoading || rentalcarsQ.isLoading;
@@ -186,10 +186,10 @@ export function TravelpayoutsSection({
           )}
         </TabsContent>
 
-        {/* Hotels — HotelLook + Agoda */}
+        {/* Hotels — Agoda (Hotellook retired) */}
         <TabsContent value="hotels">
           {!destination ? (
-            <Alert><AlertDescription>Enter a destination to find hotels via HotelLook & Agoda.</AlertDescription></Alert>
+            <Alert><AlertDescription>Enter a destination to find hotels via Agoda.</AlertDescription></Alert>
           ) : hotelsLoading ? (
             <LoadingGrid />
           ) : allHotels.length === 0 ? (
