@@ -263,6 +263,78 @@ router.patch("/api/expert/ready-made/build/:tripId", isAuthenticated, async (req
   }
 });
 
+// ─── W-5: delete a NEVER-SHIPPED draft build (v1 scope — shipped builds are not deletable;
+// withdraw-from-store isn't built yet, see refusal (c) below). Id from the path, user from the
+// session — no req.body is ever read here (§14 posture; this isn't a money endpoint either way).
+// ROUTE ORDER: registered after PATCH .../build/:tripId, both under the literal "build" segment,
+// so :id here can't be shadowed by (nor shadow) any :id-style route above it.
+router.delete("/api/expert/ready-made/build/:id", isAuthenticated, async (req, res) => {
+  try {
+    const userId = sessionUserId(req);
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+    const tripId = req.params.id;
+
+    // (a) Load + (b) AUTHOR GATE — mirrors the PATCH build handler's exact predicate/session-id
+    // extraction: getAuthoredTrip (explicit present-value author check, never getTripRole), a
+    // single 403 for both "no such trip" and "not the author" so existence is never leaked.
+    const trip = await getAuthoredTrip(tripId, userId);
+    if (!trip) return res.status(403).json({ message: "Not this build's author" });
+
+    // (c) REFUSE if this build has already shipped to the store — withdraw isn't built yet.
+    const [shipped] = await db
+      .select({ id: readyMadeTrips.id })
+      .from(readyMadeTrips)
+      .where(eq(readyMadeTrips.sourceTripId, tripId))
+      .limit(1);
+    if (shipped) {
+      return res.status(409).json({
+        message: "Shipped builds can't be deleted — withdraw isn't built yet.",
+      });
+    }
+
+    // (d) REFUSE if a client assignment exists on this trip. Defensive: an authored build
+    // (userId=NULL, authorId=caller) shouldn't ever carry an advisor row, but check anyway.
+    const [advisor] = await db
+      .select({ id: tripExpertAdvisors.id })
+      .from(tripExpertAdvisors)
+      .where(eq(tripExpertAdvisors.tripId, tripId))
+      .limit(1);
+    if (advisor) {
+      return res.status(409).json({
+        message: "This build has a client assignment and can't be deleted.",
+      });
+    }
+
+    // (e) DEFENSIVE INVARIANT: never delete paid history. Refuse if any itinerary item on this
+    // trip is already routed to checkout (purchased) or carries a real booking.
+    const [paidItem] = await db
+      .select({ id: itineraryItems.id })
+      .from(itineraryItems)
+      .where(
+        and(
+          eq(itineraryItems.tripId, tripId),
+          sql`(${itineraryItems.routingStatus} = 'purchased' OR ${itineraryItems.bookingId} IS NOT NULL)`,
+        ),
+      )
+      .limit(1);
+    if (paidItem) {
+      return res.status(409).json({
+        message: "This build has paid itinerary history and can't be deleted.",
+      });
+    }
+
+    // (f) Delete. itinerary_items (and every other trip-scoped child table) cascade at the DB
+    // level (ON DELETE CASCADE on trip_id); ready_made_trips.source_trip_id has no cascade
+    // (refusal (c) above already guarantees no such row exists for this trip).
+    await storage.deleteTrip(tripId);
+    res.status(204).send();
+  } catch (err: any) {
+    console.error("[ready-made] build delete error:", err);
+    res.status(500).json({ message: "Failed to delete build", error: err.message });
+  }
+});
+
 // ─── Workspace mode resolution (dual-mode bootstrap) ─────────────────────────
 router.get("/api/expert/workspace-context/:tripId", isAuthenticated, async (req, res) => {
   try {
