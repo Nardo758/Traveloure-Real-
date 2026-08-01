@@ -104,6 +104,18 @@ Items are struck through when merged to main (with the PR). Decision-maker calls
     REVERSE notification — expert is notified when the customer approves or requests changes;
     (c) per-item comments = item 12 (the communication half of this).
 
+15. **Traveler messaging center — the missing half of in-platform messaging.** The chat RAILS are
+    real and shared (`/chat`, `/api/chats`, per-booking message buttons, the Trip Card's
+    "Message <expert>" action), and the EARNER side has a proper center (expert Inbox "Messages"
+    tab + earner-mode `/chat` lists real conversation threads). But the TRAVELER side of `/chat`
+    explicitly returns no threads (`if (!isEarner) return []`) — a traveler's sidebar is a
+    browse-experts DIRECTORY, not their conversations; a traveler with 2+ ongoing expert
+    conversations has no list of them anywhere. Minimal fix: give traveler-mode `/chat` the same
+    real-threads list the earner fix added (same `/api/chats` grouping, counterpart = the expert).
+    [DM, bigger design call: whether the traveler gets a unified INBOX (chat threads + the item-14
+    trip-event notifications in one place, mirroring the earner console's Inbox module) — or chat
+    stays chat and the bell stays the bell.]
+
 ## Open — decision-maker calls [DM]
 
 - **Partner-drawer commission attribution.** "Open →" opens the partner's plain `websiteUrl`
