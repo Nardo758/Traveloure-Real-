@@ -80,8 +80,29 @@ Items are struck through when merged to main (with the PR). Decision-maker calls
     expert's direct-edit mode flips to suggest-mode — post-approval changes enter as suggestions
     requiring customer approval, instead of silently mutating an approved plan. This gives the
     "send the planning object around, then the Trip Card once final" behavior without a second
-    object or snapshots (snapshots stay money-events-only per §18). [DM: ratify the mode-flip
-    rule + whether pre-approval direct adds also need a suggest-by-default option.]
+    object or snapshots (snapshots stay money-events-only per §18). **RATIFIED (decision-maker,
+    Aug 1 "ok sounds good"): the mode-flip rule stands — approval flips expert direct-edit to
+    suggest-mode. Pre-approval stays direct-edit (live collaboration is the planning phase's
+    point; protection begins at sign-off).**
+14. **Delivery / notification / communication findings (decision-maker questions, Aug 1).**
+    Ground truth of what exists:
+    - **Where the plan is delivered:** in-platform, by reference — the customer's dashboard Trip
+      Card and their own `/trip/:id` view render the one TripPlan object (full channel);
+      notifications deep-link to `/trip/:id?tab=itinerary`. External/offline: the read-only share
+      link (`/itinerary-view/:token`) plus its KML/GPX exports and per-leg navigate links.
+    - **Change notifications (in-app, already wired):** suggestion created → "New suggestion from
+      your expert"; `in_review` → "ready for your review"; `delivered` → "delivered" — all
+      best-effort inserts into the notifications bell, deep-linked to the customer's trip view.
+      Direct expert edits pre-approval are deliberately un-notified (live planning); post-approval
+      every change is a suggestion → notified by the existing suggestion notice.
+    - **Communication:** the Trip Card's sticky action bar has "Message <expert>" → `/chat`
+      (real thread); suggestion reject carries a rejection note; change-history renders on the
+      card.
+    **Gaps (build items):** (a) no EMAIL or push channel for the three trip events — a customer
+    not logged in never learns their plan was delivered or changed (tie into the existing email
+    cluster; [DM] which events warrant email vs bell-only); (b) the item-11 handshake needs the
+    REVERSE notification — expert is notified when the customer approves or requests changes;
+    (c) per-item comments = item 12 (the communication half of this).
 
 ## Open — decision-maker calls [DM]
 
