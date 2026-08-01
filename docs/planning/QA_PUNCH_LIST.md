@@ -57,6 +57,37 @@ owner-only, denormalized names) has ZERO client callers — retire as dead code 
   order" + the mode-flip 409 extended to reorder/optimize-order advisor paths)~~ (#374 — the
   item-19 DISCOVERY layer stays pending [DM] ratification of the layered-map model)
 
+## Fixed (Wave 5, Aug 1 — PRs #376 / #377 / #378 / #379 / #380)
+
+- ~~Item 6 (DMO refine read-back)~~ (#376 — library/picker render the expert's own refinements,
+  per-expert scoped, proven both directions; add-to-trip carries refined content)
+- ~~activity_comments dead backend~~ (#377 — retired incl. a hidden count consumer; guarded drop,
+  migration 167. **activity_bookings half REFUSED — premise corrected**: its schema declaration
+  deliberately guards a prod table holding a real booking with a live Stripe PaymentIntent;
+  removing it would make the publish push DROP that data. Re-framed [DM] below.)
+- ~~Items 20 + 21 (content-logistics envelope, migration 166 + rules-first transport-gap checker
+  in the AI Gaps tab, "Propose leg" wired to the live leg engine)~~ (#378)
+- ~~Item 15 unified-Inbox half (traveler /inbox: Messages + Updates, honest badge)~~ (#379 —
+  found+filed: chat read_at machinery exists server-side with zero client consumers; a real
+  unread-messages badge is a future lane that must wire mark-read into chat first)
+- ~~Item 19 (canvas map DISCOVERY layer — the ratified layered model complete)~~ (#380)
+
+**Resolved by principle (no code): non-catalog checkout routing.** Items without a server-side
+catalog price can never be §14-compliantly charged (no server price authority) — display-only in
+the cart IS the design, not a gap. CLOSED.
+
+## Open — [DM] / externally-gated only (the buildable column is EMPTY as of Wave 5)
+
+- **activity_bookings** [DM, re-framed]: keep the declaration + accept the publish prompt (safe,
+  current state, recommended), or deliberately archive the one real booking row (live Stripe PI)
+  somewhere durable and then drop table + declaration together. Never just delete the declaration.
+- **Partner tier-b live availability + commission attribution** [externally gated]: needs partner
+  API keys/agreements (Klook/Musement; 12Go via Travelpayouts) only the decision-maker can obtain.
+- **Chat unread-messages badge** [future lane]: wire real mark-read into chat.tsx first (the found
+  never-consumed /api/messages read-tracking API), then the Inbox badge can count messages.
+- **Curated testimonials + per-experience-type stats** [DM, editorial]: which reviews get featured
+  is a decision-maker call; never invent either source (§13, filed long-standing).
+
 ## Open — build items
 
 1. **Partner drawer: close the book-off-site loop.** The pill promises "book off-site, log it here",
