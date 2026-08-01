@@ -41,7 +41,7 @@ export interface ReadyMadeListing {
   priceCents: number | null;
   heroImageUrl: string | null;
   heroImageMeta: { photographer?: string; profileUrl?: string } | null;
-  status: "draft" | "submitted" | "approved" | "rejected";
+  status: "draft" | "submitted" | "approved" | "rejected" | "withdrawn";
   rejectionReason: string | null;
   buildReview?: {
     score: number;
@@ -73,6 +73,7 @@ const STATUS_COPY: Record<ReadyMadeListing["status"], { label: string; bg: strin
   submitted: { label: "In review", bg: "#FFFBEB", fg: "#B45309", note: "Our team is reviewing this listing. You can keep editing — material changes restart the review." },
   approved: { label: "Approved", bg: "#F0FDF4", fg: "#15803D", note: "Live for travelers. Changing the title, length, price or photo sends it back for re-review." },
   rejected: { label: "Needs changes", bg: "#FEF2F2", fg: "#991B1B", note: "Address the reviewer's note, then resubmit." },
+  withdrawn: { label: "Withdrawn", bg: "#F5F5F0", fg: G[600], note: "Hidden from the store. Buyers who already purchased keep their copy. Resubmit whenever you're ready to relist." },
 };
 
 const money = (cents: number | null | undefined) =>
@@ -216,6 +217,28 @@ export default function ReadyMadeListingPanel({
     onError: (e: Error) => toast({ title: "Not ready to submit", description: e.message, variant: "destructive" }),
   });
 
+  // W2-B: withdraw a submitted/approved/rejected listing from the store. Existing buyers keep
+  // their purchase (a purchase snapshots the trip at fulfillment — nothing here touches that);
+  // this only hides the listing going forward. Not terminal — /submit accepts 'withdrawn' back
+  // into the review queue (see the "Resubmit" section below).
+  const withdraw = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/expert/ready-made/${listing.id}/withdraw`, {
+        method: "POST", headers: { "content-type": "application/json" }, credentials: "include",
+      });
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(body.message ?? "Could not withdraw the listing");
+      return body as { listing: ReadyMadeListing };
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [`/api/expert/workspace-context/${tripId}`] });
+      qc.invalidateQueries({ queryKey: ["/api/expert/ready-made/mine"] });
+      qc.invalidateQueries({ queryKey: ["/api/expert/ready-made/builds"] });
+      toast({ title: "Withdrawn from the store", description: "It's hidden from travelers now. You can resubmit anytime." });
+    },
+    onError: (e: Error) => toast({ title: "Not withdrawn", description: e.message, variant: "destructive" }),
+  });
+
   const buildReview = useMutation({
     mutationFn: async () => {
       const res = await fetch(`/api/expert/ready-made/${listing.id}/build-review`, {
@@ -252,10 +275,33 @@ export default function ReadyMadeListingPanel({
     <div style={{ flex: 1, overflowY: "auto", padding: "14px 12px" }} data-testid="panel-ready-made-listing">
       {/* Status — displayed, never editable here (approval is not self-service, D1a). */}
       <div style={{ background: status.bg, borderRadius: 10, padding: "9px 11px", marginBottom: 14 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 4 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 7, marginBottom: 4 }}>
           <span data-testid="text-listing-status" style={{ fontSize: 11, fontWeight: 800, color: status.fg, letterSpacing: "0.04em", textTransform: "uppercase" }}>
             {status.label}
           </span>
+          {/* W2-B: withdraw is offered from any status that has actually entered the pipeline
+              (submitted/approved/rejected) — draft was never public/pending, withdrawn already is. */}
+          {(listing.status === "submitted" || listing.status === "approved" || listing.status === "rejected") && (
+            <button
+              onClick={() => {
+                if (window.confirm(
+                  "Withdraw this listing from the store? It's hidden from travelers immediately. " +
+                  "Anyone who already bought it keeps their copy. You can resubmit it later.",
+                )) {
+                  withdraw.mutate();
+                }
+              }}
+              disabled={withdraw.isPending}
+              data-testid="button-withdraw-listing"
+              style={{
+                flexShrink: 0, background: "white", border: `1px solid ${status.fg}`, borderRadius: 7,
+                padding: "3px 8px", fontSize: 10.5, fontWeight: 700, color: status.fg,
+                cursor: withdraw.isPending ? "wait" : "pointer",
+              }}
+            >
+              {withdraw.isPending ? "Withdrawing…" : "Withdraw from store"}
+            </button>
+          )}
         </div>
         <div style={{ fontSize: 11, color: status.fg, lineHeight: 1.5 }}>{status.note}</div>
         {listing.status === "rejected" && listing.rejectionReason && (
@@ -417,12 +463,12 @@ export default function ReadyMadeListingPanel({
         </button>
       </div>
 
-      {/* Submit for review — the push into the store. Only offered from draft / needs-changes;
-          the SERVER is the authority on readiness (plan type, hero, price, no empty days) and
-          names exactly what's missing, so this button is honest even when incomplete. */}
-      {(listing.status === "draft" || listing.status === "rejected") && (
+      {/* Submit for review — the push into the store. Offered from draft / needs-changes / W2-B
+          withdrawn; the SERVER is the authority on readiness (plan type, hero, price, no empty
+          days) and names exactly what's missing, so this button is honest even when incomplete. */}
+      {(listing.status === "draft" || listing.status === "rejected" || listing.status === "withdrawn") && (
         <div style={{ borderTop: `1px solid ${G[200]}`, paddingTop: 12, marginBottom: 14 }}>
-          <span style={label}>{listing.status === "rejected" ? "Resubmit" : "Publish to the store"}</span>
+          <span style={label}>{listing.status === "draft" ? "Publish to the store" : "Resubmit"}</span>
           <div style={{ fontSize: 11, color: G[500], lineHeight: 1.5, marginBottom: 8 }}>
             Needs a plan type, a cover photo, a price, and no empty days. An admin reviews it before it
             appears in Ready Made Trips.
@@ -441,7 +487,7 @@ export default function ReadyMadeListingPanel({
             }}
           >
             {submit.isPending ? <Loader2 style={{ width: 12, height: 12 }} className="animate-spin" /> : <Send style={{ width: 12, height: 12 }} />}
-            {listing.status === "rejected" ? "Resubmit for review" : "Submit for review"}
+            {listing.status === "draft" ? "Submit for review" : "Resubmit for review"}
           </button>
         </div>
       )}

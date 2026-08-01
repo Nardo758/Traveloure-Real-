@@ -1034,6 +1034,7 @@ const LISTING_CHIP: Record<string, { label: string; tone: ChipTone }> = {
   submitted: { label: "Store — in review", tone: "warn" },
   approved: { label: "Store — approved", tone: "ok" },
   rejected: { label: "Store — needs changes", tone: "danger" },
+  withdrawn: { label: "Store — withdrawn", tone: "mut" },
 };
 
 const formatDate = (d?: string | null) => d ? new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—";
@@ -1957,8 +1958,11 @@ export default function ExpertWorkspace() {
           ),
           open: () => setLocation(`/expert/workspace/${b.id}`),
           sortKey: b.createdAt ?? "",
-          // Delete control only for never-shipped drafts (v1 scope): no listing row yet.
-          deleteId: b.listingId ? undefined : b.id,
+          // Delete control: never-shipped drafts (no listing row yet) OR — W2-B — a shipped
+          // build whose listing has been WITHDRAWN. The server is the real gate (it also
+          // refuses a withdrawn listing that was ever sold, §409 "This build was sold"); this
+          // is UI-side scoping so the control isn't offered for a live/pending listing at all.
+          deleteId: (!b.listingId || b.listingStatus === "withdrawn") ? b.id : undefined,
         };
       }),
     ].sort((a, b) => (b.sortKey || "").localeCompare(a.sortKey || ""));
@@ -2056,7 +2060,8 @@ export default function ExpertWorkspace() {
                   <span style={{ fontSize: 11.5, color: MID }}>{r.sub}</span>
                 </span>
                 <span style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
-                  {/* W-5: never-shipped drafts only (deleteId is unset for assigned/shipped rows). */}
+                  {/* W-5/W2-B: never-shipped drafts, or a shipped build whose listing was
+                      withdrawn (deleteId is unset for assigned rows and live/pending listings). */}
                   {r.deleteId && (
                     <button
                       onClick={(e) => {

@@ -35,6 +35,7 @@ const STATUS_STYLE: Record<ReadyMadeListing["status"], { label: string; bg: stri
   submitted: { label: "In review", bg: "#FFFBEB", fg: "#B45309" },
   approved: { label: "Approved", bg: "#F0FDF4", fg: "#15803D" },
   rejected: { label: "Needs changes", bg: "#FEF2F2", fg: "#991B1B" },
+  withdrawn: { label: "Withdrawn", bg: "#F3F4F6", fg: G[500] },
 };
 
 export default function ExpertReadyMade() {

@@ -672,6 +672,14 @@ export const MIGRATION_FILES = [
   // so future seeded rows are born with coords instead of relying on a future
   // re-backfill migration.
   "162_provider_services_coords_rebackfill.sql",
+  // 163: W2-B — widens the migration-133 ready_made_trips_status_check to include 'withdrawn'
+  // (drop-and-recreate CHECK pattern, 127_coordination_fee_refunded_status.sql). Backs the new
+  // POST /api/expert/ready-made/:id/withdraw endpoint (author retracts a listing from the store;
+  // existing purchases unaffected — buyers hold a snapshot clone) and the existing /submit
+  // endpoint's widened allowed-from set (draft|rejected|withdrawn -> submitted), so a
+  // withdrawn-then-resubmitted listing re-enters the admin queue (D1a: never straight back to
+  // 'approved'). A widen never invalidates an existing row → no preflight remap needed.
+  "163_ready_made_withdraw_status.sql",
   // 164: QA_PUNCH_LIST W2-A — plan-approval handshake. Three additive nullable columns on
   // trip_expert_advisors: plan_approval_status ('approved'|'changes_requested', NULL = no
   // decision yet), plan_approved_at, plan_review_note. NO DB CHECK — canonical set lives in
