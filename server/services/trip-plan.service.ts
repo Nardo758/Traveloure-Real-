@@ -627,7 +627,11 @@ export async function assembleTripPlan(
   const legBookingMap = await resolveLegBookings([...variantLegs, ...tripLegs]);
 
   const changes = await storage.getItineraryChanges(tripId, 20);
-  const commentCounts = await storage.getActivityCommentCounts(tripId);
+  // W5-D cleanup (Aug 1, 2026): `activity_comments` (the source of a per-activity comment
+  // COUNT) is retired — zero client renderer ever read `TripPlanActivity.comments` (the
+  // other producers of a PlanCardActivity, e.g. client/src/pages/itinerary.tsx, always
+  // hardcoded it to 0 too). The field stays in the shared type/contract (other live fields
+  // in the same block are read), just permanently 0 now, matching every other producer.
 
   // Mobile-lens audit §5: surface real vendor phone (vendor_contracts) + confirmation number
   // (itinerary_items, already stored) on the activity row. Bulk-fetch once per assembly; render
@@ -693,7 +697,7 @@ export async function assembleTripPlan(
       type: mapItemType(item.itemType),
       status: mapItemStatus(item.status),
       cost: parseFloat(item.estimatedCost?.toString() || "0"),
-      comments: commentCounts[item.id] || 0,
+      comments: 0,
       suggestedBy: item.suggestedBy || null,
       changes: changes
         .filter((c) => c.activityId === item.id)

@@ -705,4 +705,12 @@ export const MIGRATION_FILES = [
   // (isTripOwner, the canonical isTripAdvisor from server/utils/trip-advisor.ts, isTripAuthor
   // — never getTripRole, per CLAUDE.md L10).
   "165_trip_item_comments.sql",
+  // 166: NOT present on this branch — lane W5-B is concurrently claiming 166 on its own
+  // branch. Registry order (165, 166, 167) reconciles at merge; this branch appends 167
+  // directly after 165.
+  // 167: W5-D dead-code cleanup — retires `activity_comments` (zero client callers of its
+  // GET/POST/DELETE endpoints ever existed; the per-item comment system is
+  // `trip_item_comments`, migration 165). See 167_drop_activity_comments.sql for the full
+  // rationale + the guarded DROP.
+  "167_drop_activity_comments.sql",
 ] as const;
