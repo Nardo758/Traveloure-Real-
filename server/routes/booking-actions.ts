@@ -1648,6 +1648,27 @@ router.get("/trips/:tripId/workspace-constraints", isAuthenticated, async (req, 
   }
 });
 
+// GET /api/trips/:tripId/transport-gaps — QA_PUNCH_LIST item 21, the rules-first transport-gap
+// checker (server/services/transport-gap.service.ts). Same principal set as workspace-constraints
+// (owner ‖ assigned-expert ‖ authored-build author ‖ admin) via the canonical authorizeTripLogistics.
+router.get("/trips/:tripId/transport-gaps", isAuthenticated, async (req, res) => {
+  try {
+    const userId = (req.user as any).claims?.sub ?? (req.user as any)?.id;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const denied = await authorizeTripLogistics(req.params.tripId, userId, "GET /api/trips/:tripId/transport-gaps");
+    if (denied) return res.status(denied.status).json({ message: denied.message });
+
+    const trip = await storage.getTrip(req.params.tripId);
+    if (!trip) return res.status(404).json({ message: "Trip not found" });
+
+    const { analyzeTransportGaps } = await import('../services/transport-gap.service');
+    const analysis = await analyzeTransportGaps(req.params.tripId);
+    res.json(analysis);
+  } catch (error: any) {
+    res.status(500).json({ message: "Failed to analyze transport gaps", error: error.message });
+  }
+});
+
 // POST /api/trips/:tripId/calculate-energy — per-day energy depletion; owner/admin/expert.
 router.post("/trips/:tripId/calculate-energy", isAuthenticated, async (req, res) => {
   try {
