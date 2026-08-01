@@ -17,6 +17,7 @@ import { motion } from "framer-motion";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useWebSocket } from "@/hooks/use-websocket";
 import { useToast } from "@/hooks/use-toast";
+import { buildConversationId, useMarkConversationRead } from "@/hooks/use-message-read";
 
 interface RealtimeMessage {
   id: string;
@@ -43,6 +44,9 @@ interface DisplayExpert {
   /** True for earner-mode conversation partners — swaps the "browse an expert" card layout
    *  (rating/location/specialties) for a real thread-preview layout. */
   isConversationPartner?: boolean;
+  /** W5-E: unread-received-message count for this thread (from useConversationThreads),
+   *  cleared once the thread is opened and read-all is confirmed. */
+  unreadCount?: number;
 }
 
 /** Map a raw /api/experts row to the chat display shape. Ratings stay honest —
@@ -174,6 +178,7 @@ export default function Chat() {
       responseTime: "",
       lastMessage: t.lastMessage ?? undefined,
       isConversationPartner: true,
+      unreadCount: t.unreadCount,
     }));
   }, [isEarner, conversationThreads]);
 
@@ -276,6 +281,25 @@ export default function Chat() {
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // W5-E: mark-read wiring. A "conversation" server-side (server/routes/messages.ts,
+  // server/services/messages.service.ts) is keyed by the sorted pair of participant user ids —
+  // exactly the same pairing chat.tsx already threads by (session user + selectedExpert.id), so
+  // `read-all` on the conversationId is the right primitive here (not per-message PATCH): one
+  // call marks every unread-received message in the open thread, and the server scopes the
+  // update to `receiverId = session user` (verified in messages.service.ts) so a caller's own
+  // sent messages are never touched.
+  const markConversationRead = useMarkConversationRead();
+
+  // Mark-read on thread open/select. Runs whenever the open thread's counterpart changes; a
+  // harmless no-op when there's no real conversation yet (e.g. browsing the expert directory
+  // pre-first-message) since read-all matches zero rows in that case.
+  useEffect(() => {
+    if (!user?.id || !selectedExpert) return;
+    const conversationId = buildConversationId(user.id, String(selectedExpert.id));
+    markConversationRead.mutate(conversationId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, selectedExpert?.id]);
+
   const handleNewMessage = useCallback((msg: any) => {
     if (msg.type === "chat") {
       setRealtimeMessages(prev => [...prev, {
@@ -286,8 +310,13 @@ export default function Chat() {
         timestamp: msg.timestamp || new Date().toISOString(),
       }]);
       refetch();
+      // A new message arrived while this thread is open (the sender is the currently selected
+      // counterpart) — mark it read immediately rather than waiting for the next thread-open.
+      if (user?.id && selectedExpert && msg.senderId === String(selectedExpert.id)) {
+        markConversationRead.mutate(buildConversationId(user.id, String(selectedExpert.id)));
+      }
     }
-  }, [refetch]);
+  }, [refetch, user?.id, selectedExpert, markConversationRead]);
 
   const handleTyping = useCallback((senderId: string) => {
     if (selectedExpert && String(selectedExpert.id) === senderId) {
@@ -390,9 +419,21 @@ export default function Chat() {
               <AvatarFallback>{expert.name[0]}</AvatarFallback>
             </Avatar>
             <div className="flex-1 min-w-0">
-              <h3 className="font-semibold text-slate-900 dark:text-white truncate">
-                {expert.name}
-              </h3>
+              <div className="flex items-center gap-2">
+                <h3 className="font-semibold text-slate-900 dark:text-white truncate">
+                  {expert.name}
+                </h3>
+                {/* W5-E: per-thread unread indicator — real count from useConversationThreads
+                    (readAt-derived), cleared once the thread is opened. */}
+                {!!expert.unreadCount && expert.unreadCount > 0 && (
+                  <span
+                    className="min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-white text-[10px] font-semibold flex items-center justify-center flex-shrink-0"
+                    data-testid={`badge-thread-unread-${expert.id}`}
+                  >
+                    {expert.unreadCount > 9 ? "9+" : expert.unreadCount}
+                  </span>
+                )}
+              </div>
               {expert.isConversationPartner ? (
                 expert.lastMessage && (
                   <p className="text-sm text-muted-foreground truncate mt-1">
