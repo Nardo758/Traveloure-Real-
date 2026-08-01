@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MapPin, Plus, Check, Search } from "lucide-react";
+import { envelopeFromProviderService, envelopeToItineraryItemFields } from "@shared/content-logistics";
 
 /** Full provider_services row shape, as returned by GET /api/expert/services (the owner console —
  *  intentionally ungated on approval, D1a/§1, so it can show the whole pipeline). We client-filter
@@ -25,6 +26,14 @@ interface OwnedService {
   latitude?: string | number | null;
   longitude?: string | number | null;
   locationPrecision?: string | null;
+  // Content logistics envelope sources (migration 166, QA_PUNCH_LIST item 20) — see
+  // service-picker-modal.tsx's identical fields for the full rationale.
+  pickupAvailable?: boolean | null;
+  pickupAddress?: string | null;
+  dropOffPoint?: string | null;
+  transportProvided?: string | null;
+  deliveryTimeframe?: string | null;
+  availability?: unknown;
 }
 
 // Mirrors service-picker-modal.tsx's itemTypeFor for the same target vocabulary.
@@ -73,6 +82,9 @@ export function MyServicesPickerCore({
       const lat = s.latitude == null ? NaN : typeof s.latitude === "number" ? s.latitude : parseFloat(s.latitude);
       const lng = s.longitude == null ? NaN : typeof s.longitude === "number" ? s.longitude : parseFloat(s.longitude);
       const withCoords = s.locationPrecision === "exact" && Number.isFinite(lat) && Number.isFinite(lng);
+      // Content logistics envelope (migration 166, QA_PUNCH_LIST item 20) — see
+      // service-picker-modal.tsx's identical carry for the full rationale.
+      const logistics = envelopeToItineraryItemFields(envelopeFromProviderService(s));
       const res = await apiRequest("POST", `/api/trips/${tripId}/itinerary-items`, {
         title: s.serviceName,
         description: s.description || undefined,
@@ -83,6 +95,7 @@ export function MyServicesPickerCore({
         providerServiceId: s.id,
         dayNumber,
         suggestedBy: "expert",
+        ...logistics,
       });
       return res.json();
     },
