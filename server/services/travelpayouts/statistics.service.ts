@@ -1,4 +1,19 @@
-import { getTravelpayoutsToken, tpFetch } from "./travelpayouts-client";
+import { getTravelpayoutsToken, tpPartnerFetch } from "./travelpayouts-client";
+
+/**
+ * Travelpayouts commission statistics.
+ *
+ * Uses the real partner APIs (verified live against the account token):
+ *   • POST /statistics/v1/execute_query  — raw action rows (campaign_id, profits, state, sub_id).
+ *     Auth via X-Access-Token header. The legacy /v1/statistics/payments endpoint does NOT
+ *     exist (404) — it must not be used.
+ *   • GET /finance/v2/get_user_balance   — current balance per currency.
+ *
+ * All programs on the account are covered because execute_query is queried without a
+ * campaign filter — this includes WeGoTrip (Travelpayouts program/campaign #150), whose
+ * bookings are attributed via the ?sub_id=<marker> link parameter and show up here as
+ * action rows with campaign_id=150.
+ */
 
 export interface PartnerCommission {
   partner: string;
@@ -19,19 +34,34 @@ export interface TravelpayoutsStatistics {
   byPartner: PartnerCommission[];
 }
 
-const PARTNER_LABELS: Record<string, string> = {
+/** Friendly labels by Travelpayouts campaign (program) id. */
+const CAMPAIGN_LABELS: Record<number, string> = {
+  84: "Booking.com",
+  100: "Aviasales",
+  101: "Hotellook",
+  110: "GetYourGuide",
+  115: "Klook",
+  121: "Agoda",
+  125: "Rental Cars",
+  150: "WeGoTrip",
+};
+
+/** Fallback labels when only a campaign name string is available. */
+const NAME_LABELS: Record<string, string> = {
   agoda: "Agoda",
   klook: "Klook",
   aviasales: "Aviasales",
   getyourguide: "GetYourGuide",
   kiwi: "Kiwi.com",
-  booking: "Booking.com (feed)",
-  viator: "Viator (feed)",
+  booking: "Booking.com",
+  "booking.com": "Booking.com",
+  viator: "Viator",
   hotellook: "Hotellook",
   rentalcars: "Rental Cars",
   busbud: "BusBud",
   omio: "Omio",
   discovercars: "DiscoverCars",
+  wegotrip: "WeGoTrip",
 };
 
 function fmt(d: Date): string {
@@ -60,53 +90,118 @@ function getPeriodRange(period: string): { from: string; to: string } {
   return getThisMonthRange();
 }
 
-async function fetchAmountForRange(from: string, to: string): Promise<number> {
+export interface TpActionRow {
+  campaign_id: number;
+  campaign_name_en: string | null;
+  action_id: string;
+  created_at_day: string;
+  sub_id: string | null;
+  state: string;
+  type: string;
+  paid_profit_usd: string | number;
+  processing_profit_usd: string | number;
+  price_usd: string | number;
+}
+
+const QUERY_PAGE_LIMIT = 300;
+
+/**
+ * Fetch raw action rows (bookings + referral actions) for a date range across ALL
+ * campaigns on the account, paginating until total_rows is exhausted.
+ * Exported so the reconciliation service can reuse the same verified query.
+ */
+export async function fetchTravelpayoutsActions(from: string, to: string): Promise<TpActionRow[]> {
+  const rows: TpActionRow[] = [];
+  let offset = 0;
+  for (;;) {
+    const data = await tpPartnerFetch("/statistics/v1/execute_query", {
+      method: "POST",
+      body: {
+        fields: [
+          "campaign_id",
+          "campaign_name_en",
+          "action_id",
+          "created_at_day",
+          "sub_id",
+          "state",
+          "type",
+          "paid_profit_usd",
+          "processing_profit_usd",
+          "price_usd",
+        ],
+        filters: [
+          { field: "date", op: "ge", value: from },
+          { field: "date", op: "le", value: to },
+          { field: "type", op: "in", value: ["action", "referral"] },
+        ],
+        offset,
+        limit: QUERY_PAGE_LIMIT,
+      },
+    });
+    const page: TpActionRow[] = Array.isArray(data?.results) ? data.results : [];
+    rows.push(...page);
+    const totalRows = typeof data?.total_rows === "number" ? data.total_rows : rows.length;
+    offset += page.length;
+    if (page.length === 0 || offset >= totalRows) break;
+  }
+  return rows;
+}
+
+function num(v: string | number | undefined | null): number {
+  const n = typeof v === "number" ? v : parseFloat(v || "0");
+  return isNaN(n) ? 0 : n;
+}
+
+/** Commission earned for a row: paid profit plus profit still processing. */
+function rowProfit(r: TpActionRow): number {
+  return num(r.paid_profit_usd) + num(r.processing_profit_usd);
+}
+
+function partnerKey(r: TpActionRow): string {
+  const name = (r.campaign_name_en || "").trim();
+  if (name) return name.toLowerCase().replace(/\s+/g, "_");
+  return r.campaign_id ? `campaign_${r.campaign_id}` : "other";
+}
+
+function partnerLabel(r: TpActionRow): string {
+  if (r.campaign_id && CAMPAIGN_LABELS[r.campaign_id]) return CAMPAIGN_LABELS[r.campaign_id];
+  const name = (r.campaign_name_en || "").trim();
+  if (name) return NAME_LABELS[name.toLowerCase()] || name;
+  return r.campaign_id ? `Program #${r.campaign_id}` : "Other";
+}
+
+async function safeFetchActions(from: string, to: string): Promise<TpActionRow[]> {
   try {
-    const data = await tpFetch("/v1/statistics/payments", { from, to });
-    if (!Array.isArray(data)) return 0;
-    return data.reduce((sum: number, p: any) => {
-      const n = typeof p.amount === "number" ? p.amount : parseFloat(p.amount || "0");
-      return sum + (isNaN(n) ? 0 : n);
-    }, 0);
-  } catch {
-    return 0;
+    return await fetchTravelpayoutsActions(from, to);
+  } catch (err) {
+    console.warn("[TP Statistics] execute_query failed:", err instanceof Error ? err.message : err);
+    return [];
   }
 }
 
 async function fetchBalanceData(): Promise<{ balance: number; currency: string }> {
   try {
-    const data = await tpFetch("/v1/statistics/balance");
-    return {
-      balance: typeof data?.balance === "number" ? data.balance : parseFloat(data?.balance || "0"),
-      currency: data?.currency || "USD",
-    };
-  } catch {
+    const data = await tpPartnerFetch("/finance/v2/get_user_balance");
+    return { balance: num(data?.balance?.usd), currency: "USD" };
+  } catch (err) {
+    console.warn("[TP Statistics] balance fetch failed:", err instanceof Error ? err.message : err);
     return { balance: 0, currency: "USD" };
   }
 }
 
-/**
- * Fetch payments for a date range and group the totals by partner/program key.
- */
-async function fetchPartnerAmounts(from: string, to: string): Promise<Record<string, number>> {
-  try {
-    const data = await tpFetch("/v1/statistics/payments", { from, to });
-    if (!Array.isArray(data)) return {};
-    const byPartner: Record<string, number> = {};
-    for (const payment of data) {
-      const partner = (payment.partner || payment.program || "other")
-        .toLowerCase()
-        .replace(/\s+/g, "_");
-      const n =
-        typeof payment.amount === "number"
-          ? payment.amount
-          : parseFloat(payment.amount || "0");
-      byPartner[partner] = (byPartner[partner] || 0) + (isNaN(n) ? 0 : n);
-    }
-    return byPartner;
-  } catch {
-    return {};
+function sumProfits(rows: TpActionRow[]): number {
+  return rows.reduce((s, r) => s + rowProfit(r), 0);
+}
+
+function groupByPartner(rows: TpActionRow[]): Map<string, { label: string; amount: number }> {
+  const map = new Map<string, { label: string; amount: number }>();
+  for (const r of rows) {
+    const key = partnerKey(r);
+    const entry = map.get(key) || { label: partnerLabel(r), amount: 0 };
+    entry.amount += rowProfit(r);
+    map.set(key, entry);
   }
+  return map;
 }
 
 export async function getTravelpayoutsStatistics(period: string): Promise<TravelpayoutsStatistics> {
@@ -128,65 +223,50 @@ export async function getTravelpayoutsStatistics(period: string): Promise<Travel
   const lastRange = getLastMonthRange();
   const selectedRange = getPeriodRange(period);
 
-  // Always fetch this-month and last-month amounts separately (for MoM display).
-  // For the selected period total: use the exact range so 90-day isn't approximated.
-  // For partner breakdown: fetch all three ranges to populate all three columns accurately.
   const needsThirdFetch = period === "last_90_days";
 
-  const fetches: Promise<any>[] = [
-    fetchAmountForRange(thisRange.from, thisRange.to),      // 0: this month total
-    fetchAmountForRange(lastRange.from, lastRange.to),      // 1: last month total
-    fetchBalanceData(),                                      // 2: balance
-    fetchPartnerAmounts(thisRange.from, thisRange.to),      // 3: this month per-partner
-    fetchPartnerAmounts(lastRange.from, lastRange.to),      // 4: last month per-partner
-  ];
+  const [thisRows, lastRows, balanceData, selectedRows] = await Promise.all([
+    safeFetchActions(thisRange.from, thisRange.to),
+    safeFetchActions(lastRange.from, lastRange.to),
+    fetchBalanceData(),
+    needsThirdFetch ? safeFetchActions(selectedRange.from, selectedRange.to) : Promise.resolve(null),
+  ]);
 
-  if (needsThirdFetch) {
-    // 5: actual 90-day total
-    fetches.push(fetchAmountForRange(selectedRange.from, selectedRange.to));
-    // 6: actual 90-day per-partner breakdown
-    fetches.push(fetchPartnerAmounts(selectedRange.from, selectedRange.to));
-  }
-
-  const results = await Promise.all(fetches);
-
-  const thisMonthTotal = results[0] as number;
-  const lastMonthTotal = results[1] as number;
-  const balanceData = results[2] as { balance: number; currency: string };
-  const thisMonthPartners = results[3] as Record<string, number>;
-  const lastMonthPartners = results[4] as Record<string, number>;
+  const thisMonthTotal = sumProfits(thisRows);
+  const lastMonthTotal = sumProfits(lastRows);
 
   let total: number;
-  let selectedRangePartners: Record<string, number>;
+  let selectedPartners: Map<string, { label: string; amount: number }>;
+  const thisMonthPartners = groupByPartner(thisRows);
+  const lastMonthPartners = groupByPartner(lastRows);
 
-  if (period === "this_month") {
-    total = thisMonthTotal;
-    selectedRangePartners = thisMonthPartners;
-  } else if (period === "last_month") {
+  if (period === "last_month") {
     total = lastMonthTotal;
-    selectedRangePartners = lastMonthPartners;
+    selectedPartners = lastMonthPartners;
+  } else if (needsThirdFetch && selectedRows) {
+    total = sumProfits(selectedRows);
+    selectedPartners = groupByPartner(selectedRows);
   } else {
-    // last_90_days: use actual fetched values — no approximation
-    total = results[5] as number;
-    selectedRangePartners = results[6] as Record<string, number>;
+    total = thisMonthTotal;
+    selectedPartners = thisMonthPartners;
   }
 
-  // Build partner breakdown: union of partners seen in any range.
-  // thisMonth / lastMonth columns always reflect calendar-month actuals.
-  // total column reflects the selected period exactly.
   const allPartners = new Set([
-    ...Object.keys(thisMonthPartners),
-    ...Object.keys(lastMonthPartners),
-    ...Object.keys(selectedRangePartners),
+    ...Array.from(thisMonthPartners.keys()),
+    ...Array.from(lastMonthPartners.keys()),
+    ...Array.from(selectedPartners.keys()),
   ]);
 
   const byPartner: PartnerCommission[] = Array.from(allPartners).map((partner) => ({
     partner,
     partnerLabel:
-      PARTNER_LABELS[partner] || partner.charAt(0).toUpperCase() + partner.slice(1),
-    thisMonth: thisMonthPartners[partner] || 0,
-    lastMonth: lastMonthPartners[partner] || 0,
-    total: selectedRangePartners[partner] || 0,
+      selectedPartners.get(partner)?.label ||
+      thisMonthPartners.get(partner)?.label ||
+      lastMonthPartners.get(partner)?.label ||
+      partner,
+    thisMonth: thisMonthPartners.get(partner)?.amount || 0,
+    lastMonth: lastMonthPartners.get(partner)?.amount || 0,
+    total: selectedPartners.get(partner)?.amount || 0,
     currency: balanceData.currency,
   }));
 

@@ -83,7 +83,7 @@ export function FlightCard({ item, className }: FlightCardProps) {
             </Button>
           </div>
           <BookWithExpertButton
-            destination={item.destination}
+            destination={item.destination ?? undefined}
             topic="flights"
             className="w-full justify-center"
             data-testid={`button-expert-flight-${item.id}`}
