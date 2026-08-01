@@ -705,6 +705,18 @@ export const MIGRATION_FILES = [
   // (isTripOwner, the canonical isTripAdvisor from server/utils/trip-advisor.ts, isTripAuthor
   // — never getTripRole, per CLAUDE.md L10).
   "165_trip_item_comments.sql",
+  // 166: QA_PUNCH_LIST item 20 — the content-logistics envelope. Additive nullable only:
+  // provider_services.drop_off_point (the one field with no existing home — meetingPoint/
+  // pickupAddress cover arrival, nothing covered departure); itinerary_items gains
+  // transport_provided/pickup_point/drop_off_point (durationMinutes already existed). NO CHECK,
+  // NO DEFAULT, NO backfill (NULL = honest unknown, §13) -> nothing for the preflight
+  // CONSTRAINT_MANIFEST, no publish-time push trap. All four columns also declared on the
+  // providerServices/itineraryItems pgTables in shared/schema.ts (deploy-push durability rule).
+  // Companion code: shared/content-logistics.ts (the envelope type + per-source mappers), the
+  // Platform-services/My-services pickers carrying the envelope onto new itinerary items, the
+  // item-PATCH pass-through (trips.routes.ts's existing strip-immutable pattern already lets the
+  // new fields through — no allow-list change needed), and ServiceForm's new Drop-off point field.
+  "166_content_logistics.sql",
   // 166: NOT present on this branch — lane W5-B is concurrently claiming 166 on its own
   // branch. Registry order (165, 166, 167) reconciles at merge; this branch appends 167
   // directly after 165.
