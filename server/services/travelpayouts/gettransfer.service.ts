@@ -1,4 +1,4 @@
-import { getTravelpayoutsToken } from "./travelpayouts-client";
+import { getTravelpayoutsToken, getTravelpayoutsMarker } from "./travelpayouts-client";
 import type { CatalogItem } from "../experience-catalog.service";
 
 const GT_BASE = "https://api.gettransfer.com/api";
@@ -8,7 +8,7 @@ async function gtFetch(path: string, params: Record<string, string | number | un
   if (!token) throw new Error("TRAVELPAYOUTS_TOKEN not configured");
 
   const url = new URL(path, GT_BASE);
-  url.searchParams.set("marker", token);
+  url.searchParams.set("marker", getTravelpayoutsMarker());
   for (const [k, v] of Object.entries(params)) {
     if (v !== undefined) url.searchParams.set(k, String(v));
   }
@@ -32,7 +32,7 @@ export async function searchGetTransferOptions(params: GetTransferSearchParams):
   if (!getTravelpayoutsToken()) return [];
 
   try {
-    const token = getTravelpayoutsToken();
+    const marker = getTravelpayoutsMarker();
     const data = await gtFetch("/transfers/search", {
       from_address: params.from,
       to_address: params.to,
@@ -60,8 +60,8 @@ export async function searchGetTransferOptions(params: GetTransferSearchParams):
       duration: o.duration ? `${Math.round(o.duration / 60)} min` : null,
       categories: ["transfer", "airport-transfer"],
       tags: [o.vehicle?.class || "private", "door-to-door"],
-      bookingUrl: `https://www.gettransfer.com/en/transfers/new?from=${encodeURIComponent(params.from)}&to=${encodeURIComponent(params.to)}&marker=${token}`,
-      affiliateUrl: `https://www.gettransfer.com/en/transfers/new?from=${encodeURIComponent(params.from)}&to=${encodeURIComponent(params.to)}&marker=${token}`,
+      bookingUrl: `https://www.gettransfer.com/en/transfers/new?from=${encodeURIComponent(params.from)}&to=${encodeURIComponent(params.to)}&marker=${marker}`,
+      affiliateUrl: `https://www.gettransfer.com/en/transfers/new?from=${encodeURIComponent(params.from)}&to=${encodeURIComponent(params.to)}&marker=${marker}`,
       source: "travelpayouts/gettransfer",
       lastUpdated: new Date(),
     } as CatalogItem));
