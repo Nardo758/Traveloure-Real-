@@ -23,6 +23,7 @@ import {
   getSourcesByMarket,
   getMarketGapSummary,
 } from "../content/providers/DMOSourceRegistry";
+import { searchWorkstationPlatformContent } from "../services/content-query.service";
 
 const router = Router();
 
@@ -194,6 +195,22 @@ router.get(
     }
 
     res.json(item);
+  }),
+);
+
+// ============================================================
+// PLATFORM CONTENT — W1-A: the Workstation Add panel's "Platform content" pill.
+// Read-only search over the central content_registry, scoped to destination + free-text.
+// ============================================================
+
+router.get(
+  "/platform-content",
+  requireExpert,
+  asyncHandler(async (req: Request, res: Response) => {
+    const city = (req.query.city as string) || undefined;
+    const q = (req.query.q as string) || undefined;
+    const items = await searchWorkstationPlatformContent({ city, query: q, limit: 30 });
+    res.json({ items });
   }),
 );
 
