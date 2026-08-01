@@ -41,6 +41,28 @@ Items are struck through when merged to main (with the PR). Decision-maker calls
 9. §13 residue in optimizer surfaces: `rating || 4.5` fallback; metrics mapper missing
    accommodation/free-time buckets.
 
+10. **Partner catalog in-workspace (DMO-style) — decision-maker requested Aug 1, three requirements.**
+    Upgrade the Partner-inventory pill from a network *list* to a browsable partner *catalog* drawer
+    (the Transport pill is the exact precedent: a §16-clean drawer over the existing `/api/catalog/*`
+    Travelpayouts feeds — ~15 endpoints incl. tours/activities — informational add, affiliate URL never
+    client-side). Requirement mapping:
+    - **(3) Expert preview + add-to-plan before leaving the site** → the drawer itself: browse cards
+      (name, image, price, description from the feed), "Add to Day N" creates a real itinerary item;
+      booking still rides the Booking Brief flow afterwards.
+    - **(2) Traveler agrees before the expert books** → reuse the EXISTING suggestion rail
+      (`POST /api/trips/:id/suggestions`, Distribute→Client card): on assignment trips a partner item
+      enters as a suggestion; the Booking Brief "Continue to <partner>" unlocks only once the traveler
+      has approved that item. No new approval machinery.
+    - **(1) Live availability / not-out-of-stock** → honest tiering, §13: tier (a) show feed data with
+      a fetched-at timestamp and an explicit "availability confirmed at booking" label — a cached feed
+      must never claim in-stock; tier (b) real-time per-partner availability APIs (Klook/Musement
+      partner APIs; 12Go via Travelpayouts) — a per-network integration lane gated on API
+      access/agreements [DM: which networks to pursue]; tier (c) the expert's booking-time check on
+      the partner site remains the final guarantee (the current flow already forces it). Ship (a)+(c)
+      first; (b) per network as access lands.
+    Folding this feed into the central registry stays the separately-filed §16 architectural item —
+    this lane READS the existing feeds, it does not build a third content home.
+
 ## Open — decision-maker calls [DM]
 
 - **Partner-drawer commission attribution.** "Open →" opens the partner's plain `websiteUrl`
