@@ -20,7 +20,10 @@ async function main() {
   }
   const res = await fetch(
     `https://${hostname}/api/v2/connection?include_secrets=true&connector_names=stripe`,
-    { headers: { Accept: "application/json", X_REPLIT_TOKEN: xReplitToken } }
+    {
+      headers: { Accept: "application/json", X_REPLIT_TOKEN: xReplitToken },
+      signal: AbortSignal.timeout(15000),
+    }
   );
   if (!res.ok) {
     console.error(`[dev-stripe-key] connector API ${res.status}`);
