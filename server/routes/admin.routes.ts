@@ -7,6 +7,7 @@ import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { db } from "../db";
 import { bookingExpiryScheduler } from "../services/booking-expiry-scheduler.service";
+import { MIN_PAYOUT_CENTS, MIN_PAYOUT_DOLLARS } from "../config/payout.config";
 import { stripePaymentService } from "../services/stripe-payment.service";
 import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, isNull, asc } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
@@ -3687,7 +3688,6 @@ router.post("/api/admin/payouts", isAuthenticated, async (req, res) => {
         summary = await storage.getProviderEarningsSummary(requesterId);
       }
 
-      const MIN_PAYOUT_CENTS = 1000; // $10.00 — below this Stripe fees consume too much
       const payoutAmountCents = amountCents ?? Math.round(summary.available * 100);
       if (payoutAmountCents <= 0) {
         return res.status(400).json({ error: "No available earnings to payout" });
@@ -3764,8 +3764,7 @@ router.patch("/api/admin/payouts/:id", isAuthenticated, async (req, res) => {
 
           const payoutAmountNum = parseFloat(payoutAmount || '0');
 
-          // Minimum payout threshold — same $10 floor as the creation gate
-          const MIN_PAYOUT_DOLLARS = 10;
+          // Minimum payout threshold — same floor as the creation gate (MONEY_MAP F-7)
           if (payoutAmountNum < MIN_PAYOUT_DOLLARS) {
             return res.status(400).json({
               error: `Payout of $${payoutAmountNum.toFixed(2)} is below the $${MIN_PAYOUT_DOLLARS.toFixed(2)} minimum. Accumulate more earnings before transferring.`,
