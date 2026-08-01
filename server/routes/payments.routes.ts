@@ -10,6 +10,7 @@ import { api } from "@shared/routes";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { isExpertRole, isProviderRole, isEarnerRole } from "@shared/roles";
+import { MIN_PAYOUT_CENTS } from "../config/payout.config";
 import { eq, and, or, like, ilike, sql, desc, count, ne, isNotNull, asc, inArray } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
 import { 
@@ -1115,7 +1116,7 @@ router.get("/api/fee-bands/:bandKey", async (req, res) => {
   // idempotency-safe Stripe transfer (PATCH /api/admin/payouts/:id, §15 FIX 1). No new
   // payout mechanics. Buildable now that the escrow spine defines a real "available" balance
   // (releasable earnings) — the reason self-service was deferred is resolved.
-  const MIN_PAYOUT_REQUEST_CENTS = 1000; // $10 — mirrors the admin path threshold
+  // Minimum floor mirrors the admin path threshold — single-sourced (MONEY_MAP F-7).
 
   router.post("/api/payouts/request", isAuthenticated, async (req, res) => {
     try {
@@ -1166,10 +1167,10 @@ router.get("/api/fee-bands/:bandKey", async (req, res) => {
       if (amountCents <= 0) {
         return res.status(400).json({ error: "no_balance", message: "You have no available balance to withdraw." });
       }
-      if (amountCents < MIN_PAYOUT_REQUEST_CENTS) {
+      if (amountCents < MIN_PAYOUT_CENTS) {
         return res.status(400).json({
           error: "below_minimum",
-          message: `The minimum payout is $${(MIN_PAYOUT_REQUEST_CENTS / 100).toFixed(2)}. Your available balance is $${(amountCents / 100).toFixed(2)}.`,
+          message: `The minimum payout is $${(MIN_PAYOUT_CENTS / 100).toFixed(2)}. Your available balance is $${(amountCents / 100).toFixed(2)}.`,
         });
       }
 
