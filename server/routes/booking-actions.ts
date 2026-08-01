@@ -15,10 +15,10 @@ import { isTripAuthor } from '../utils/trip-authorship';
 import { getUserId } from '../utils/auth';
 import { storage } from '../storage';
 import { db } from '../db';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 // Aliased: this router already uses `itineraryItems` as a local variable name in more than one
 // handler, and shadowing the table import would be a silent footgun.
-import { notifications, itineraryItems as itineraryItemsTable, tripCollaborators } from '@shared/schema';
+import { notifications, itineraryItems as itineraryItemsTable, tripCollaborators, tripExpertAdvisors, PLAN_APPROVAL_STATUSES } from '@shared/schema';
 import { EXPERT_SHARE_RATE } from '../services/commission';
 import {
   completeExpertRequest,
@@ -1051,6 +1051,103 @@ router.patch("/expert/assignments/:assignmentId/workspace-status", isAuthenticat
   } catch (err) {
     console.error("[Expert] workspace-status error:", err);
     res.status(500).json({ message: "Failed to update workspace status" });
+  }
+});
+
+// POST /api/trips/:id/plan-review — the delivery handshake (QA_PUNCH_LIST W2-A, items 11+13+14b;
+// migration 164). Customer signs off on a `delivered` plan (`decision: "approve"`) or sends it
+// back (`decision: "request_changes"`, optional `note`). This is what flips the assigned expert's
+// direct-edit mode to suggest-mode (see server/utils/plan-approval.ts + the item-write gates).
+//
+// FABLE-REVIEW: owner gate. Same predicate as the suggestion-approve handler above (`isTripOwner`
+// — trips.userId only), NEVER getTripRole (CLAUDE.md L10: getTripRole never reads `trips` and
+// under-grants the owner on several live gates; this handler must not inherit that class of bug).
+router.post('/trips/:id/plan-review', isAuthenticated, async (req, res) => {
+  try {
+    const userId = (req as any).user?.claims?.sub;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const { id } = req.params;
+    const { decision, note } = req.body ?? {};
+
+    if (decision !== 'approve' && decision !== 'request_changes') {
+      return res.status(400).json({ error: 'decision must be "approve" or "request_changes"' });
+    }
+    if (note !== undefined && typeof note !== 'string') {
+      return res.status(400).json({ error: 'note must be a string' });
+    }
+
+    const owns = await isTripOwner(id, userId);
+    if (!owns) return res.status(403).json({ error: 'Access denied' });
+
+    // §15 posture: claim the candidate row first (find the one delivered advisor row — the
+    // uniqueTripExpert index means at most one row per (trip, expert), so if more than one
+    // expert has ever advised this trip we take the most recently assigned), then flip it with
+    // the SAME 'delivered' precondition re-asserted in the UPDATE's WHERE clause — that is the
+    // atomic conditional guard, not the earlier SELECT. A racing/duplicate request_changes call
+    // loses the race because the first one already moved workspace_status off 'delivered', so
+    // the second UPDATE matches 0 rows -> 409. A racing approve is naturally idempotent (both
+    // converge on the same 'approved' end state).
+    const [candidate] = await db
+      .select({ id: tripExpertAdvisors.id, localExpertId: tripExpertAdvisors.localExpertId })
+      .from(tripExpertAdvisors)
+      .where(and(eq(tripExpertAdvisors.tripId, id), eq(tripExpertAdvisors.workspaceStatus, 'delivered')))
+      .orderBy(desc(tripExpertAdvisors.assignedAt))
+      .limit(1);
+
+    if (!candidate) {
+      return res.status(409).json({ error: 'This trip has no delivered plan awaiting review' });
+    }
+
+    const setValues =
+      decision === 'approve'
+        ? { planApprovalStatus: PLAN_APPROVAL_STATUSES[0] /* 'approved' */, planApprovedAt: new Date() }
+        : {
+            planApprovalStatus: PLAN_APPROVAL_STATUSES[1] /* 'changes_requested' */,
+            planReviewNote: note ?? null,
+            workspaceStatus: 'draft', // send the expert back to work; re-delivery re-runs this handshake
+          };
+
+    const [updated] = await db
+      .update(tripExpertAdvisors)
+      .set(setValues as any)
+      .where(and(eq(tripExpertAdvisors.id, candidate.id), eq(tripExpertAdvisors.workspaceStatus, 'delivered')))
+      .returning();
+
+    if (!updated) {
+      // Lost the race (a concurrent decision already moved this row off 'delivered').
+      return res.status(409).json({ error: 'This trip has no delivered plan awaiting review' });
+    }
+
+    // Reverse notification (item 14b): the expert learns the customer's decision without polling
+    // the workspace. Mirrors the traveler-notify inserts above exactly (type, data shape); points
+    // at the EXPERT's own workspace surface, never the traveler's trip view. Best-effort — a
+    // notification failure never fails the decision already committed above.
+    try {
+      await db.insert(notifications).values({
+        userId: updated.localExpertId,
+        type: 'itinerary_update',
+        title: decision === 'approve' ? 'Plan approved' : 'Changes requested',
+        message:
+          decision === 'approve'
+            ? 'Your client approved the delivered plan.'
+            : `Your client requested changes${note ? `: ${note}` : '.'}`,
+        relatedId: id,
+        relatedType: 'trip',
+        data: { tripId: id, workspacePath: `/expert/workspace/${id}` },
+      } as any);
+    } catch (notifyErr) {
+      console.error('[PlanReview] expert notify failed (non-fatal):', notifyErr);
+    }
+
+    res.json({
+      success: true,
+      planApprovalStatus: updated.planApprovalStatus,
+      workspaceStatus: updated.workspaceStatus,
+    });
+  } catch (error: any) {
+    console.error('Plan review error:', error);
+    res.status(500).json({ error: error.message });
   }
 });
 

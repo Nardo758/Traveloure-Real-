@@ -672,4 +672,18 @@ export const MIGRATION_FILES = [
   // so future seeded rows are born with coords instead of relying on a future
   // re-backfill migration.
   "162_provider_services_coords_rebackfill.sql",
+  // 164: QA_PUNCH_LIST W2-A — plan-approval handshake. Three additive nullable columns on
+  // trip_expert_advisors: plan_approval_status ('approved'|'changes_requested', NULL = no
+  // decision yet), plan_approved_at, plan_review_note. NO DB CHECK — canonical set lives in
+  // shared/schema.ts as PLAN_APPROVAL_STATUSES (the pre-109/159 posture), so no publish-push
+  // remap trap. No backfill (NULL is honest — the feature has no history yet). Columns are also
+  // declared on the tripExpertAdvisors pgTable in shared/schema.ts (deploy-push durability rule).
+  // Companion code: POST /api/trips/:id/plan-review (booking-actions.ts) + the server-side
+  // expert-direct-edit mode flip on the item create/PATCH/DELETE handlers, gated via
+  // server/utils/plan-approval.ts.
+  // NUMBERING NOTE: this landed as 163 on this branch; lane W2-B independently claimed 163
+  // (163_ready_made_withdraw_status.sql) on its own branch first, so this was renumbered to
+  // 164 before push. Registry order (162, 163, 164) reconciles at rebase/merge — W2-B's 163
+  // entry is not present on this branch's migration-files.ts.
+  "164_plan_approval.sql",
 ] as const;
