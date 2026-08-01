@@ -19,7 +19,7 @@ import { resolveFormat } from "@/lib/build-formats/registry";
 import { ClientFormatView } from "@/components/build-formats/ClientFormatView";
 import { SocialKitCard } from "@/components/build-formats/SocialKitCard";
 import { STORE_GATE_MESSAGE } from "@shared/launch-markets";
-import { APIProvider, Map, AdvancedMarker, InfoWindow } from "@vis.gl/react-google-maps";
+import { APIProvider, Map, AdvancedMarker, InfoWindow, useMap, useMapsLibrary } from "@vis.gl/react-google-maps";
 import {
   MapPin, ChevronRight, ChevronDown, ChevronUp, Pencil, Sparkles, Link2, PenSquare,
   Send, MessageSquare, Plus, Lock, Eye, EyeOff,
@@ -198,6 +198,176 @@ function BookingBriefModal({ provider, bookingUrl, tripId, onClose }: { provider
   );
 }
 
+/** QA_PUNCH_LIST item 17 — Google Places autocomplete, the inner render (needs an `<APIProvider>`
+ *  ancestor for `useMapsLibrary`). Uses the classic `AutocompleteService`/`PlacesService` pair
+ *  (works with just the `places` library, loaded on demand — no `libraries` prop needed on
+ *  `<APIProvider>`, `useMapsLibrary` imports it lazily). A plain, uncontrolled suggestion
+ *  dropdown — no external autocomplete widget/web-component, so it composes with this file's own
+ *  input styling. `onChange` fires on every keystroke regardless of API state, so typing is never
+ *  gated on Places being available — only the SUGGESTIONS are. */
+function PlacesAutocompleteInputInner({
+  value, onChange, onPlaceSelected, placeholder, testId, disabled, style,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  onPlaceSelected?: (place: { text: string; lat?: string; lng?: string }) => void;
+  placeholder?: string;
+  testId: string;
+  disabled?: boolean;
+  style: React.CSSProperties;
+}) {
+  const placesLib = useMapsLibrary("places");
+  const [predictions, setPredictions] = useState<google.maps.places.AutocompletePrediction[]>([]);
+  const [open, setOpen] = useState(false);
+  const acServiceRef = useRef<google.maps.places.AutocompleteService | null>(null);
+  const placesServiceRef = useRef<google.maps.places.PlacesService | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!placesLib) return;
+    try {
+      acServiceRef.current = new placesLib.AutocompleteService();
+      placesServiceRef.current = new placesLib.PlacesService(document.createElement("div"));
+    } catch {
+      // Construction failing (bad key / billing) is exactly the fallback case — leave the refs
+      // null so getPlacePredictions below is skipped and this behaves as plain text.
+      acServiceRef.current = null;
+      placesServiceRef.current = null;
+    }
+  }, [placesLib]);
+
+  useEffect(() => () => { if (debounceRef.current) clearTimeout(debounceRef.current); }, []);
+
+  const handleChange = (v: string) => {
+    onChange(v);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (!acServiceRef.current || !v.trim()) {
+      setPredictions([]);
+      setOpen(false);
+      return;
+    }
+    debounceRef.current = setTimeout(() => {
+      try {
+        acServiceRef.current!.getPlacePredictions({ input: v }, (results, status) => {
+          if (status === "OK" && results?.length) {
+            setPredictions(results);
+            setOpen(true);
+          } else {
+            // Covers REQUEST_DENIED (bad key) and every other non-OK status — same fallback
+            // posture as a load failure: no dropdown, plain text keeps working.
+            setPredictions([]);
+            setOpen(false);
+          }
+        });
+      } catch {
+        setPredictions([]);
+        setOpen(false);
+      }
+    }, 300);
+  };
+
+  const pick = (prediction: google.maps.places.AutocompletePrediction) => {
+    onChange(prediction.description);
+    setOpen(false);
+    setPredictions([]);
+    if (!onPlaceSelected) return;
+    if (!placesServiceRef.current) {
+      onPlaceSelected({ text: prediction.description });
+      return;
+    }
+    try {
+      placesServiceRef.current.getDetails(
+        { placeId: prediction.place_id, fields: ["geometry", "name"] },
+        (place, status) => {
+          if (status === "OK" && place?.geometry?.location) {
+            onPlaceSelected({
+              text: prediction.description,
+              lat: String(place.geometry.location.lat()),
+              lng: String(place.geometry.location.lng()),
+            });
+          } else {
+            onPlaceSelected({ text: prediction.description });
+          }
+        },
+      );
+    } catch {
+      onPlaceSelected({ text: prediction.description });
+    }
+  };
+
+  return (
+    <div style={{ position: "relative" }}>
+      <input
+        value={value}
+        onChange={e => handleChange(e.target.value)}
+        onBlur={() => { setTimeout(() => setOpen(false), 150); }}
+        onFocus={() => { if (predictions.length > 0) setOpen(true); }}
+        placeholder={placeholder}
+        data-testid={testId}
+        disabled={disabled}
+        style={style}
+        autoComplete="off"
+      />
+      {open && predictions.length > 0 && (
+        <div
+          data-testid={`${testId}-suggestions`}
+          style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 30, background: CARD, border: `1px solid ${LINE}`, borderRadius: 8, marginTop: 3, maxHeight: 180, overflowY: "auto", boxShadow: "0 4px 14px rgba(0,0,0,0.18)" }}
+        >
+          {predictions.map(p => (
+            <button
+              key={p.place_id}
+              type="button"
+              onMouseDown={e => { e.preventDefault(); pick(p); }}
+              data-testid={`${testId}-suggestion-${p.place_id}`}
+              style={{ display: "block", width: "100%", textAlign: "left", padding: "7px 10px", fontSize: 12.5, background: "none", border: "none", cursor: "pointer", color: INK }}
+            >
+              {p.description}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** QA_PUNCH_LIST item 17 outer wrapper — decides whether Places is even attempted. FALLBACK IS
+ *  MANDATORY (no key, or the Maps API failed to load): renders a plain `<input>`, byte-identical
+ *  to what these two fields rendered before this lane — never blocks typing, never crashes. A
+ *  local `<APIProvider>` (not a page-wide one) mirrors this file's established convention of
+ *  wrapping Maps usage locally around the section that needs it (see the Platform-services browse
+ *  map below); nesting multiple `<APIProvider>`s with the SAME apiKey is safe — the underlying
+ *  loader is a de-duped singleton keyed by its serialized params (`GoogleMapsApiLoader.load`),
+ *  so a second provider with identical params is a harmless no-op re-import, never a duplicate
+ *  script load or a "loaded with different parameters" conflict. */
+function PlacesAutocompleteInput(props: {
+  value: string;
+  onChange: (v: string) => void;
+  onPlaceSelected?: (place: { text: string; lat?: string; lng?: string }) => void;
+  placeholder?: string;
+  testId: string;
+  disabled?: boolean;
+  style: React.CSSProperties;
+}) {
+  const [loadFailed, setLoadFailed] = useState(false);
+  if (!MAPS_KEY || loadFailed) {
+    return (
+      <input
+        value={props.value}
+        onChange={e => props.onChange(e.target.value)}
+        placeholder={props.placeholder}
+        data-testid={props.testId}
+        disabled={props.disabled}
+        style={props.style}
+      />
+    );
+  }
+  return (
+    <APIProvider apiKey={MAPS_KEY} onError={() => setLoadFailed(true)}>
+      <PlacesAutocompleteInputInner {...props} />
+    </APIProvider>
+  );
+}
+
 /** The Add panel's "Custom" source — same fields, same POST /api/trips/:tripId/itinerary-items
  *  write as the old AddItemModal. Day-aware (P2-13): the add targets the day in focus.
  *  `estimatedCost` writes to `itinerary_items.estimated_cost`, a decimal(10,2) column —
@@ -208,6 +378,10 @@ function InlineAddItemForm({ tripId, dayNumber, destination, onAdded }: { tripId
   const { toast } = useToast();
   const [form, setForm] = useState({ title: "", itemType: "activity", startTime: "", estimatedCost: "", locationName: "" });
   const [geocoding, setGeocoding] = useState(false);
+  // Item 17: coordinates from an ACTUAL Places pick (exact precision) — cleared whenever the
+  // location text is edited by hand (typing after a pick means the text may no longer match the
+  // picked place, so the stale coords must not silently ride along).
+  const [placeCoords, setPlaceCoords] = useState<{ lat: string; lng: string } | null>(null);
   const createMutation = useMutation({
     mutationFn: async (data: any) => { const res = await apiRequest("POST", `/api/trips/${tripId}/itinerary-items`, data); return res.json(); },
     onSuccess: () => {
@@ -216,22 +390,24 @@ function InlineAddItemForm({ tripId, dayNumber, destination, onAdded }: { tripId
       onAdded();
       toast({ title: "Item added", description: `Added to Day ${dayNumber}` });
       setForm({ title: "", itemType: "activity", startTime: "", estimatedCost: "", locationName: "" });
+      setPlaceCoords(null);
     },
     onError: (err: any) => toast({ title: "Failed to add item", description: parseApiErrorMessage(err, "Please check the fields and try again."), variant: "destructive" }),
   });
-  // FIX 4 (QA pass): geocode-on-add, never fabricate. A custom item previously carried no
-  // coordinates at all — this leaves it unroutable (no transport legs, no map pin) forever.
-  // We now try the existing /api/geocode rail (same one the destination map-center lookup
-  // above uses) with "<locationName>, <destination>" when a location name was typed. On
-  // success we attach real latitude/longitude (as STRINGS — decimal DB columns, matching the
-  // platform-services add path). On any failure/miss we submit exactly as before: no coords,
-  // honest null — never a city-center guess. Geocoding is best-effort and must never block
-  // the add.
+  // FIX 4 (QA pass) + item 17: attach real coordinates, never fabricate. Preference order:
+  // (1) an exact Places pick (placeCoords) — skip the geocode entirely, it's already exact;
+  // (2) FALLBACK — the existing submit-time /api/geocode rail (same one the destination
+  //     map-center lookup above uses) with "<locationName>, <destination>", unchanged from
+  //     before this lane (this is the "Places unavailable → behaves exactly as today" path,
+  //     item 17's mandatory fallback). On any failure/miss: no coords, honest null — never a
+  //     city-center guess. Geocoding is best-effort and must never block the add.
   const handleSubmit = async () => {
     if (!form.title.trim()) return;
     let coords: { latitude: string; longitude: string } | undefined;
     const locationName = form.locationName.trim();
-    if (locationName) {
+    if (placeCoords) {
+      coords = { latitude: placeCoords.lat, longitude: placeCoords.lng };
+    } else if (locationName) {
       setGeocoding(true);
       try {
         const address = destination ? `${locationName}, ${destination}` : locationName;
@@ -282,7 +458,17 @@ function InlineAddItemForm({ tripId, dayNumber, destination, onAdded }: { tripId
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
         <div>
           <label style={labelStyle}>Location</label>
-          <input value={form.locationName} onChange={e => setForm(f => ({ ...f, locationName: e.target.value }))} placeholder="Venue name" data-testid="input-inline-add-location" style={inputStyle} />
+          <PlacesAutocompleteInput
+            value={form.locationName}
+            onChange={v => { setForm(f => ({ ...f, locationName: v })); setPlaceCoords(null); }}
+            onPlaceSelected={place => {
+              setForm(f => ({ ...f, locationName: place.text }));
+              setPlaceCoords(place.lat && place.lng ? { lat: place.lat, lng: place.lng } : null);
+            }}
+            placeholder="Venue name"
+            testId="input-inline-add-location"
+            style={inputStyle}
+          />
         </div>
         <div>
           <label style={labelStyle}>Est. Cost (USD)</label>
@@ -2058,11 +2244,15 @@ export default function ExpertWorkspace() {
         {/* ONE create action (P1-1). The build is unlabeled at birth; channels attach in Distribute.
             W-4: the destination is set here — it is the location the build's data loads from
             (neighborhoods, platform-services search, format). Blank → the launch-market default. */}
-        <input
+        {/* Item 17: Places autocomplete on the destination text — just the text (the destination
+            geocode rail elsewhere in this page already handles centering off it), lat/lng not
+            needed here. */}
+        <PlacesAutocompleteInput
           value={newBuildDest}
-          onChange={e => setNewBuildDest(e.target.value)}
+          onChange={setNewBuildDest}
+          onPlaceSelected={place => setNewBuildDest(place.text)}
           placeholder="Where is this build for? (default: Kyoto)"
-          data-testid="input-new-build-destination"
+          testId="input-new-build-destination"
           disabled={isEventPlanner}
           style={{ width: "100%", boxSizing: "border-box", fontSize: 13, color: INK, border: `1px solid ${LINE}`, borderRadius: 9, padding: "9px 12px", marginBottom: 8, outline: "none", background: CARD }}
         />
