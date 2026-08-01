@@ -202,6 +202,31 @@ migration required for v1 (snapshot columns exist; `expert_note`, vendor phone, 
 - This file is the routing table for future sessions: pick the top unblocked lane, honor the tier column.
 - Amendments to §3's contract are decision-maker calls (it defines the product's core object).
 
+## 4b. Testing protocol — Fable-minimized (ratified Aug 1, 2026)
+
+Same economics as the build side: **cheap models run and summarize; Fable reads verdicts and
+triages money-path failures only.** Rules:
+
+1. **Journeys are repo artifacts, not prompts.** Every browser journey lives as a self-contained
+   driver in `scripts/journeys/` (Playwright, `executablePath` from `/opt/pw-browsers`, two-context
+   multi-role support, idempotent fixture seeding, JSON verdict output). Writing a NEW journey is a
+   one-time Sonnet job; RE-running one is a Haiku job ("run scripts/journeys/X, report the verdict
+   table"). Never re-brief a journey that already exists as a script.
+2. **Report contract (what reaches Fable):** a per-step verdict table (step · action · UI · DB proof ·
+   PASS/FAIL), ≤40 lines, screenshots referenced by filename and attached **only for FAILs** plus at
+   most 3 story shots. Full transcripts stay in the runner's output file; Fable never reads them
+   unless a verdict is disputed.
+3. **Triage tiering:** UI-only failures → Sonnet fixes directly (Fable sees the PR diffstat, not the
+   hunks). Anything touching §14/§15 surfaces (payments, routing writes, projections, approvals) →
+   Fable reads the failing step + the fix hunks, nothing more.
+4. **Two tracks, no overlap:** the sandbox runs everything structural (roles, routing, projections,
+   approvals — full site, dummy external keys). The Replit dev tester owns anything needing REAL
+   external services (Stripe test-mode confirms via the connector, Maps, AI keys). A journey step
+   that needs a real key is marked `EXTERNAL` in the driver and skipped locally, not faked (§13).
+5. **DB-proof is mandatory** for every mutation step — a screenshot alone never counts as PASS.
+6. Sandbox boot recipe (postgres in /var/tmp + `tsx server/index.ts` with dummy env) is embedded in
+   each driver's header so any model or human can run it cold.
+
 ## Hole-closing sweep — status board (Jul 30, 2026)
 
 Decision-maker directive: **"lets fix all the holes you have found."** Every known hole is either landed, in
