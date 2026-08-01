@@ -36,7 +36,8 @@
  */
 import { Component, useCallback, useMemo, useState } from "react";
 import type { ErrorInfo, ReactNode } from "react";
-import { APIProvider, Map, AdvancedMarker } from "@vis.gl/react-google-maps";
+import { APIProvider, Map } from "@vis.gl/react-google-maps";
+import { MapMarker, GOOGLE_MAPS_MAP_ID } from "@/components/ui/map-marker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -359,7 +360,7 @@ export function LocationPointPicker({
             >
               <APIProvider apiKey={MAPS_KEY}>
                 <Map
-                  mapId={`${idPrefix}-map`}
+                  mapId={GOOGLE_MAPS_MAP_ID}
                   defaultCenter={mapCenter ?? { lat: 35.0116, lng: 135.7681 }}
                   center={mapCenter ?? undefined}
                   defaultZoom={mapCenter ? 16 : 11}
@@ -375,8 +376,9 @@ export function LocationPointPicker({
                   }}
                 >
                   {candidate && (
-                    <AdvancedMarker
+                    <MapMarker
                       position={candidate}
+                      title="Drag me"
                       draggable
                       onDragEnd={(e) => {
                         const ll = (e as any)?.latLng;
@@ -403,7 +405,7 @@ export function LocationPointPicker({
                       >
                         Drag me
                       </div>
-                    </AdvancedMarker>
+                    </MapMarker>
                   )}
                 </Map>
               </APIProvider>

@@ -14,7 +14,8 @@ import { resolveFormat } from "@/lib/build-formats/registry";
 import { ClientFormatView } from "@/components/build-formats/ClientFormatView";
 import { SocialKitCard } from "@/components/build-formats/SocialKitCard";
 import { STORE_GATE_MESSAGE } from "@shared/launch-markets";
-import { APIProvider, Map, AdvancedMarker, InfoWindow } from "@vis.gl/react-google-maps";
+import { APIProvider, Map, InfoWindow } from "@vis.gl/react-google-maps";
+import { MapMarker, GOOGLE_MAPS_MAP_ID } from "@/components/ui/map-marker";
 import {
   MapPin, ChevronRight, ChevronDown, ChevronUp, Pencil, Sparkles, Link2, PenSquare,
   Send, MessageSquare, Plus, Lock, Eye, EyeOff,
@@ -2304,7 +2305,7 @@ export default function ExpertWorkspace() {
                 {MAPS_KEY ? (
                   <APIProvider apiKey={MAPS_KEY}>
                     <Map
-                      mapId="browse-map"
+                      mapId={GOOGLE_MAPS_MAP_ID}
                       defaultCenter={mapCenter}
                       center={mapCenter}
                       defaultZoom={13}
@@ -2314,15 +2315,16 @@ export default function ExpertWorkspace() {
                       onClick={() => setSelectedPin(null)}
                     >
                       {searchResults.filter(r => r.location?.lat).map((result: any) => (
-                        <AdvancedMarker
+                        <MapMarker
                           key={result.id}
                           position={{ lat: result.location.lat, lng: result.location.lng }}
+                          title={result.name}
                           onClick={() => setSelectedPin(result)}
                         >
                           <div style={{ background: "var(--console-brand)", color: "var(--console-card)", borderRadius: 20, padding: "3px 8px", fontSize: 11, fontWeight: 700, boxShadow: "0 2px 6px rgba(0,0,0,0.3)", border: selectedPin?.id === result.id ? `2px solid var(--console-card)` : "none", whiteSpace: "nowrap", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis" }}>
                             {result.name.length > 16 ? result.name.slice(0, 16) + "…" : result.name}
                           </div>
-                        </AdvancedMarker>
+                        </MapMarker>
                       ))}
 
                       {selectedPin && selectedPin.location?.lat && (
