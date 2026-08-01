@@ -655,4 +655,21 @@ export const MIGRATION_FILES = [
   // No CHECK constraint anywhere in this migration; id/trip_id/indexes are also declared in
   // shared/schema.ts (deploy-push durability rule).
   "161_trip_contexts_rekey.sql",
+  // 162: data-only re-backfill of migration 129's provider_services centroid
+  // coordinate fill, for rows INSERTED AFTER 129 ran (the Kyoto/popular-cities
+  // seed scripts set `neighborhood` but never set latitude/longitude/city/
+  // location_precision, so those rows stayed born-NULL-coordinate and never
+  // got a map pin from the Platform-services pill). Re-runs 129's exact
+  // slug-first-then-name centroid match, guarded WHERE latitude IS NULL
+  // (idempotent — a re-run is a no-op). NEVER FABRICATES: a row whose
+  // neighborhood doesn't resolve stays all-NULL. No schema change (the four
+  // columns already exist + are declared in shared/schema.ts since 129); no
+  // CHECK constraint → nothing for the preflight CONSTRAINT_MANIFEST, no
+  // publish-time push trap. Companion code: the three provider_services
+  // seeders that set `neighborhood` (phase-d-kyoto-vendors.seed.ts,
+  // phase-4-kyoto-fill.seed.ts, popular-cities-content.seed.ts) now resolve
+  // the same centroid at INSERT time via server/seeds/lib/neighborhood-centroid.ts,
+  // so future seeded rows are born with coords instead of relying on a future
+  // re-backfill migration.
+  "162_provider_services_coords_rebackfill.sql",
 ] as const;
