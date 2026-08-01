@@ -893,7 +893,13 @@ router.patch('/trips/:id/suggestions/:suggestionId', isAuthenticated, async (req
       return res.status(404).json({ error: 'Suggestion not found or already reviewed' });
     }
 
-    await updateSuggestionStatus(suggestionId, id, status, rejectionNote ?? null);
+    const claimed = await updateSuggestionStatus(suggestionId, id, status, rejectionNote ?? null);
+    if (!claimed) {
+      // Lost a race: a concurrent decision already moved this suggestion off 'pending'.
+      return res.status(409).json({ error: 'Suggestion already reviewed' });
+    }
+
+    let createdItemId: string | undefined;
 
     if (status === 'approved') {
       const itinerary = await getGeneratedItinerary(id);
@@ -928,9 +934,28 @@ router.patch('/trips/:id/suggestions/:suggestionId', isAuthenticated, async (req
 
         await updateGeneratedItineraryData(itinerary.id, { ...itineraryData, days });
       }
+
+      // W3-A (FABLE-REVIEW): the legacy `generated_itineraries` write above lands in a jsonb blob
+      // that `days`/`ItemsEditorPanel` in the expert Workstation — and the traveler's Trip Card —
+      // do NOT read; both render from the canonical `itinerary_items` table (GET
+      // /api/trips/:tripId/itinerary-items, §18). Without this, an "approved" suggestion never
+      // actually materialized on the plan the traveler/expert look at — the doc's assumption that
+      // "the existing suggestion-approve flow already applies approved suggestions into the
+      // itinerary" did not hold for the canonical model. This closes that gap for every suggestion
+      // (not just partner-catalog ones): approval now also creates a real itinerary_items row,
+      // through the same storage path every other Add-panel source writes through.
+      const created = await storage.createItineraryItem({
+        tripId: id,
+        title: suggestion.title,
+        description: suggestion.description ?? undefined,
+        itemType: suggestion.type || 'activity',
+        dayNumber: suggestion.day_number ?? 1,
+        estimatedCost: suggestion.estimated_cost ?? undefined,
+      } as any);
+      createdItemId = created.id;
     }
 
-    res.json({ success: true, suggestion: { id: suggestionId, status } });
+    res.json({ success: true, suggestion: { id: suggestionId, status }, itemId: createdItemId });
   } catch (error: any) {
     console.error('Review trip suggestion error:', error);
     res.status(500).json({ success: false, error: error.message });

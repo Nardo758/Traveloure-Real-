@@ -9,6 +9,8 @@ import { ExpertLayout } from "@/components/expert/expert-layout";
 import { DmoPickerCore } from "@/components/expert/dmo-picker-modal";
 import { ServicePickerModal } from "@/components/expert/service-picker-modal";
 import { TransportPickerCore } from "@/components/expert/transport-picker";
+import { PartnerCatalogPickerCore } from "@/components/expert/partner-catalog-picker";
+import { parsePartnerSource } from "@/lib/partner-source";
 import { PlatformContentPickerCore } from "@/components/expert/platform-content-picker";
 import { MyServicesPickerCore } from "@/components/expert/my-services-picker";
 import ReadyMadeListingPanel, { type ReadyMadeListing } from "@/components/expert/ready-made-listing-panel";
@@ -407,12 +409,18 @@ class MapSectionErrorBoundary extends Component<{ children: ReactNode }, { hasEr
  *  (trips.routes.ts) — no new server surface for A-2; C-1's server change is the read-side
  *  column preference in plancard.routes.ts. */
 function ItemsEditorPanel({
-  tripId, days, maxDay, onDayMoved,
+  tripId, days, maxDay, onDayMoved, onOpenBookingBrief,
 }: {
   tripId: string;
   days: { dayNumber: number; items: ItineraryItem[] }[];
   maxDay: number;
   onDayMoved: () => void;
+  // W3-A: opens the shared BookingBriefModal for a partner-sourced item. The item's mere
+  // presence here is the gate itself — on an assignment trip a partner item ONLY reaches
+  // itinerary_items via an approved suggestion (partner-catalog-picker.tsx never creates the
+  // item directly there), so any row this panel can show is already either author-owned or
+  // client-approved. Nothing here needs to re-check approval state.
+  onOpenBookingBrief: (network: string) => void;
 }) {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
@@ -486,10 +494,15 @@ function ItemsEditorPanel({
           {allItems.map(item => {
             const isExpanded = expandedId === item.id;
             const draftNote = noteDrafts[item.id] ?? (item.expertNote ?? "");
+            // W3-A: an item carrying the "Partner: <Network>" marker (written by
+            // partner-catalog-picker.tsx) gets a Booking Brief entry point. Its presence in
+            // `days`/`allItems` at all IS the gate — see the prop comment above.
+            const partnerSource = parsePartnerSource(item.description);
             return (
               <div key={item.id} data-testid={`item-editor-row-${item.id}`} style={{ border: `1px solid ${LINE}`, borderRadius: 8, padding: "8px 10px" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <StateChip tone="mut">Day {item.dayNumber}</StateChip>
+                  {partnerSource && <StateChip tone="brand">{partnerSource.network}</StateChip>}
                   <span style={{ fontSize: 12.5, fontWeight: 600, color: INK, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</span>
                   <button
                     onClick={() => setExpandedId(isExpanded ? null : item.id)}
@@ -533,6 +546,15 @@ function ItemsEditorPanel({
                         Save note
                       </button>
                     </div>
+                    {partnerSource && (
+                      <button
+                        onClick={() => onOpenBookingBrief(partnerSource.network)}
+                        data-testid={`button-booking-brief-${item.id}`}
+                        style={{ ...btnQuietStyle, alignSelf: "flex-start", padding: "5px 12px", fontSize: 11.5, display: "flex", alignItems: "center", gap: 5 }}
+                      >
+                        <ShieldCheck style={{ width: 12, height: 12 }} /> Booking Brief — {partnerSource.network}
+                      </button>
+                    )}
                     <button
                       onClick={() => {
                         if (!window.confirm(`Remove "${item.title}" from this build?`)) return;
@@ -967,6 +989,10 @@ interface ItineraryItem {
   id: string; title: string; itemType: string; status: string; dayNumber: number;
   startTime?: string | null; estimatedCost?: string | null; locationName?: string | null;
   bookingStatus?: string | null; notes?: string | null;
+  // Real column on itinerary_items (full storage row, same as latitude/longitude below) — used
+  // by W3-A's parsePartnerSource to detect a partner-catalog-sourced item ("Partner: <Network>"
+  // prefix) and gate the item editor's Booking Brief action.
+  description?: string | null;
   // Durable per-item expert note (migration 152, Workstation audit C-1) — the traveler-visible
   // tip PlanCard renders per activity. Distinct from `notes` above.
   expertNote?: string | null;
@@ -1076,7 +1102,7 @@ const ADD_SOURCES: { k: string; l: string; caption: string; comingSoon?: boolean
   { k: "dmo", l: "DMO Library", caption: "Local research your admin has approved for Kyoto — refine it, then drop it into a day." },
   { k: "content", l: "Platform content", caption: "The shared Traveloure content library, scoped to this build's destination." },
   { k: "platform", l: "Platform services", caption: "Traveloure's approved bookable services in this city, plus a map to browse them." },
-  { k: "partner", l: "Partner inventory", caption: "External booking networks Traveloure has integrated — book off-site, log it here." },
+  { k: "partner", l: "Partner inventory", caption: "Browse tours & activities from Traveloure's partner networks, or jump straight to a network's booking site." },
   { k: "mine", l: "My services", caption: "Your own approved, active listings — drop one straight onto this build." },
   { k: "custom", l: "Custom", caption: "Add anything by hand — a place, a note, or a reservation with no catalog match." },
   { k: "transport", l: "Transport", caption: "Ground-transport routes (train, taxi, transfer) between stops." },
@@ -1219,7 +1245,14 @@ function ClientSuggestPanel({ tripId }: { tripId: string }) {
               <p style={{ fontSize: 11.5, color: MID, margin: 0 }}>No suggestions sent yet.</p>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }} data-testid="expert-suggestions-log">
-                {suggestions.map(s => (
+                {suggestions.map(s => {
+                  // W3-A: a partner-catalog suggestion (see partner-catalog-picker.tsx) carries
+                  // the same "Partner: <Network>" marker as the eventual item. Booking still has
+                  // exactly ONE home (the item editor's Booking Brief button, which only exists
+                  // once the item is real) — this row never opens it itself, it only ever states
+                  // the honest gate state truthfully: never an enabled Book action pre-approval.
+                  const partnerSource = parsePartnerSource(s.description);
+                  return (
                   <div
                     key={s.id}
                     data-testid={`expert-suggestion-log-${s.id}`}
@@ -1230,6 +1263,9 @@ function ClientSuggestPanel({ tripId }: { tripId: string }) {
                   >
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                       <span style={{ fontWeight: 600, color: INK, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.title}</span>
+                      {partnerSource && (
+                        <StateChip tone="brand" testId={`suggestion-partner-badge-${s.id}`}>{partnerSource.network}</StateChip>
+                      )}
                       {s.status === "approved" && (
                         <span style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 10, color: OK, flexShrink: 0 }}>
                           <CheckCircle style={{ width: 11, height: 11 }} /> Approved
@@ -1249,8 +1285,25 @@ function ClientSuggestPanel({ tripId }: { tripId: string }) {
                     {s.rejection_note && (
                       <p style={{ fontSize: 10.5, color: DANGER, fontStyle: "italic", margin: "3px 0 0" }}>"{s.rejection_note}"</p>
                     )}
+                    {partnerSource && s.status === "pending" && (
+                      <div
+                        data-testid={`text-booking-brief-gated-${s.id}`}
+                        style={{ marginTop: 5, display: "flex", alignItems: "center", gap: 5, fontSize: 10.5, color: FAINT }}
+                      >
+                        <Lock style={{ width: 10, height: 10 }} /> Booking Brief — Awaiting client approval
+                      </div>
+                    )}
+                    {partnerSource && s.status === "approved" && (
+                      <div
+                        data-testid={`text-booking-brief-ready-${s.id}`}
+                        style={{ marginTop: 5, display: "flex", alignItems: "center", gap: 5, fontSize: 10.5, color: MID }}
+                      >
+                        <ShieldCheck style={{ width: 10, height: 10 }} /> Booking Brief available in Edit items
+                      </div>
+                    )}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -1330,12 +1383,28 @@ export default function ExpertWorkspace() {
     staleTime: 5 * 60 * 1000,
   });
   const affiliatePartners = affiliatePartnersData?.partners ?? [];
+  // W3-A: resolves a partner-catalog network name (e.g. "Klook", from the item's "Partner: <X>"
+  // marker) to the admin-managed affiliate_partners homepage URL, so the item editor's Booking
+  // Brief action can reuse the exact same sanctioned "Continue to <provider>" mechanism the
+  // existing Affiliate Networks list already uses — never a new/derived URL. No match → no
+  // bookingUrl, and BookingBriefModal's Continue action simply closes (existing fallback).
+  const resolvePartnerBookingUrl = useCallback((network: string): string | undefined => {
+    const needle = network.trim().toLowerCase();
+    if (!needle) return undefined;
+    const match = affiliatePartners.find(
+      (p) => p.name.toLowerCase().includes(needle) || needle.includes(p.name.toLowerCase()),
+    );
+    return match?.websiteUrl;
+  }, [affiliatePartners]);
   const [identityRevealed, setIdentityRevealed] = useState(false);
   const [noteText, setNoteText] = useState("");
   const [noteSaveStatus, setNoteSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [notesOpen, setNotesOpen] = useState(false);
   const [partnerOpen, setPartnerOpen] = useState(false);
+  // W3-A: the Partner pill's sub-tab — the new browsable catalog (default) vs. the existing
+  // affiliate-networks list, kept intact below.
+  const [partnerSubTab, setPartnerSubTab] = useState<"catalog" | "networks">("catalog");
   const [, setNowTick] = useState(0);
   const noteInitialized = useRef(false);
   const notesDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -2390,7 +2459,15 @@ export default function ExpertWorkspace() {
               )}
 
               {/* A-2 / C-1b (Workstation audit): day-move + expert-note editor for existing items. */}
-              {tripId && <ItemsEditorPanel tripId={tripId} days={days} maxDay={maxDay} onDayMoved={triggerEnergyRecalc} />}
+              {tripId && (
+                <ItemsEditorPanel
+                  tripId={tripId}
+                  days={days}
+                  maxDay={maxDay}
+                  onDayMoved={triggerEnergyRecalc}
+                  onOpenBookingBrief={(network) => setBookingBrief({ provider: network, bookingUrl: resolvePartnerBookingUrl(network) })}
+                />
+              )}
 
               {/* L4b (docs/briefs/L4-transport-legs.md): the between-stops transport editor. */}
               {tripId && <TransportLegsPanel tripId={tripId} days={days} />}
@@ -2681,13 +2758,59 @@ export default function ExpertWorkspace() {
             </div>
           )}
 
-          {/* Add · Partner inventory — the affiliate networks (booking-brief rail, §16). */}
+          {/* Add · Partner inventory — a browsable catalog (W3-A, default) plus the existing
+              affiliate-networks list as a sub-tab (booking-brief rail, §16). */}
           {rightTab === "add" && addSource === "partner" && (
             <div style={{ flex: 1, overflowY: "auto", padding: "14px 12px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 4 }}>
                 <div style={{ width: 22, height: 22, borderRadius: 7, background: BRAND_SOFT, display: "flex", alignItems: "center", justifyContent: "center" }}><Link2 style={{ width: 11, height: 11, color: BRAND }} /></div>
-                <span style={{ fontSize: 13, fontWeight: 700, color: INK }}>Affiliate Networks</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: INK }}>Partner inventory</span>
               </div>
+              <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+                <button
+                  onClick={() => setPartnerSubTab("catalog")}
+                  data-testid="button-partner-subtab-catalog"
+                  style={{
+                    padding: "4px 10px", borderRadius: 7, fontSize: 11.5, fontWeight: 600, cursor: "pointer",
+                    border: `1px solid ${partnerSubTab === "catalog" ? BRAND : LINE}`,
+                    background: partnerSubTab === "catalog" ? BRAND : CARD,
+                    color: partnerSubTab === "catalog" ? CARD : MID,
+                  }}
+                >
+                  Catalog
+                </button>
+                <button
+                  onClick={() => setPartnerSubTab("networks")}
+                  data-testid="button-partner-subtab-networks"
+                  style={{
+                    padding: "4px 10px", borderRadius: 7, fontSize: 11.5, fontWeight: 600, cursor: "pointer",
+                    border: `1px solid ${partnerSubTab === "networks" ? BRAND : LINE}`,
+                    background: partnerSubTab === "networks" ? BRAND : CARD,
+                    color: partnerSubTab === "networks" ? CARD : MID,
+                  }}
+                >
+                  Networks
+                </button>
+              </div>
+
+              {partnerSubTab === "catalog" && (
+                <>
+                  <p style={{ fontSize: 11, color: MID, marginBottom: 12 }}>
+                    Tours & activities from Traveloure's partner networks.{" "}
+                    {isAuthoring ? "Add straight to a day." : "Adding sends it to your client for approval before it lands on their plan."}
+                  </p>
+                  <PartnerCatalogPickerCore
+                    tripId={tripId!}
+                    destination={destination}
+                    dayNumber={focusDay}
+                    isAuthoring={isAuthoring}
+                    onAdded={triggerEnergyRecalc}
+                  />
+                </>
+              )}
+
+              {partnerSubTab === "networks" && (
+              <>
               <p style={{ fontSize: 11, color: MID, marginBottom: 12 }}>External booking networks integrated by Traveloure. Use these to complete bookings on behalf of your client. Managed by admins at /admin/affiliate-partners.</p>
               {affiliatePartnersLoading ? (
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -2746,6 +2869,8 @@ export default function ExpertWorkspace() {
                     )}
                   </div>
                 ))
+              )}
+              </>
               )}
             </div>
           )}
