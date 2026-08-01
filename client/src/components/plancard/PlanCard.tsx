@@ -27,6 +27,7 @@ import { MapControlCenter } from "./MapControlCenter";
 import { UpNextHero } from "./UpNextHero";
 import { CollapsedSections } from "./CollapsedSections";
 import { BottomActionBar } from "./BottomActionBar";
+import { PlanApprovalBanner } from "./PlanApprovalBanner";
 import {
   Dialog,
   DialogContent,
@@ -932,6 +933,13 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
               {new Date(lastOptimizedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
             </span>
           </div>
+        )}
+
+        {/* Plan-approval delivery handshake (migration 164, CLAUDE.md §18 / QA_PUNCH_LIST W2-A
+            items 11+13) — owner-only, suppressed in the Workstation embed (that's the expert's
+            OWN view of their build, not the customer's sign-off surface). */}
+        {!embedded && isOwner && (
+          <PlanApprovalBanner tripId={trip.id} planApproval={plancardData?.meta?.planApproval} />
         )}
 
         {/* Concierge — front and center for TRAVELERS; suppressed in the Workstation embed

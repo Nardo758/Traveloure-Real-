@@ -118,6 +118,9 @@ import {
 } from "../services/commission";
 import { getTripRole, canMutateTrip } from "../utils/trip-role";
 import { isTripAuthor } from "../utils/trip-authorship";
+// Plan-approval mode-flip (migration 164, QA_PUNCH_LIST W2-A item 13): see routes.ts's import of
+// the same module for the full rationale. Advisor-only gate — never owner, never author.
+import { isPlanApprovedForExpert, PLAN_APPROVED_SUGGEST_INSTEAD_ERROR } from "../utils/plan-approval";
 
 import { trackAnthropicResponse } from "../services/ai-cost-tracker";
 
@@ -3154,6 +3157,12 @@ router.patch("/api/trips/:tripId/itinerary-items/:itemId", isAuthenticated, asyn
       if (!canMutateTrip(tripRole) && !authorMayMutate) {
         return res.status(403).json({ message: tripRole === "friend" ? "Friends can only suggest changes, not edit activities directly" : "Access denied" });
       }
+      // FABLE-REVIEW: the mode-flip gate. `tripRole === "expert"` is the advisor-only branch of
+      // canMutateTrip (never owner — see trip-role.ts; never the authored-build author, which
+      // takes the separate authorMayMutate branch above and never reaches "expert" here).
+      if (tripRole === "expert" && await isPlanApprovedForExpert(tripId, userId)) {
+        return res.status(409).json(PLAN_APPROVED_SUGGEST_INSTEAD_ERROR);
+      }
       const existing = await storage.getItineraryItemByIdAndTrip(itemId, tripId);
       if (!existing) return res.status(404).json({ message: "Item not found in this trip" });
       // Strip immutable/ownership fields to prevent mass-assignment
@@ -3177,6 +3186,10 @@ router.delete("/api/trips/:tripId/itinerary-items/:itemId", isAuthenticated, asy
       const authorMayMutate = canMutateTrip(tripRole) ? false : await isTripAuthor(tripId, userId);
       if (!canMutateTrip(tripRole) && !authorMayMutate) {
         return res.status(403).json({ message: tripRole === "friend" ? "Friends cannot remove activities" : "Access denied" });
+      }
+      // FABLE-REVIEW: the mode-flip gate — see the PATCH handler above for the full rationale.
+      if (tripRole === "expert" && await isPlanApprovedForExpert(tripId, userId)) {
+        return res.status(409).json(PLAN_APPROVED_SUGGEST_INSTEAD_ERROR);
       }
       const existing = await storage.getItineraryItemByIdAndTrip(itemId, tripId);
       if (!existing) return res.status(404).json({ message: "Item not found in this trip" });

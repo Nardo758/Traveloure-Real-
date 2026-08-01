@@ -30,6 +30,7 @@ import {
 // server uses (CLAUDE.md §18's chauffeured set) — never a hand-typed duplicate list.
 import { CHAUFFEURED_MODES, isChauffeuredMode } from "@shared/trip-plan";
 import { TRANSPORT_MODE_ICONS, TRANSPORT_MODE_LABELS } from "@/lib/maps-platform";
+import { parseApiErrorMessage } from "@/lib/api-error";
 
 const MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
 
@@ -192,23 +193,6 @@ function BookingBriefModal({ provider, bookingUrl, tripId, onClose }: { provider
       </div>
     </div>
   );
-}
-
-/** apiRequest throws `Error("<status>: <body>")` — pull the server's honest message out of it
- *  (falling back to the raw text) so a 400 zod-validation refusal reads as prose, not a status code. */
-function parseApiErrorMessage(err: unknown, fallback: string): string {
-  if (err instanceof Error) {
-    const match = err.message.match(/^\d+:\s*([\s\S]*)$/);
-    const body = match ? match[1] : err.message;
-    try {
-      const parsed = JSON.parse(body);
-      if (parsed?.message) return parsed.message as string;
-    } catch {
-      // not JSON — use the raw body text
-    }
-    return body || fallback;
-  }
-  return fallback;
 }
 
 /** The Add panel's "Custom" source — same fields, same POST /api/trips/:tripId/itinerary-items
@@ -450,7 +434,10 @@ function ItemsEditorPanel({
         toast({ title: "Expert note saved" });
       }
     },
-    onError: () => toast({ title: "Failed to update item", variant: "destructive" }),
+    // Plan-approval mode flip (migration 164): once the client approves a delivered plan, this
+    // PATCH 409s with an honest "send it as a suggestion instead" message — surface it verbatim
+    // rather than the generic fallback (the existing parseApiErrorMessage pattern above).
+    onError: (err: any) => toast({ title: "Failed to update item", description: parseApiErrorMessage(err, "Please try again."), variant: "destructive" }),
   });
 
   // FIX 2 (QA pass): item-level delete. Must use the TRIP-SCOPED endpoint — the bare
@@ -470,7 +457,8 @@ function ItemsEditorPanel({
       if (expandedId === itemId) setExpandedId(null);
       toast({ title: "Item removed" });
     },
-    onError: () => toast({ title: "Failed to remove item", variant: "destructive" }),
+    // See the update mutation's onError above — same mode-flip 409, same honest surfacing.
+    onError: (err: any) => toast({ title: "Failed to remove item", description: parseApiErrorMessage(err, "Please try again."), variant: "destructive" }),
   });
 
   const allItems = days.flatMap(d => d.items);
@@ -989,7 +977,13 @@ interface ItineraryItem {
   longitude?: string | number | null;
 }
 interface ItineraryData { days: { dayNumber: number; items: ItineraryItem[] }[]; total: number; }
-interface MyAssignment { id: string; tripId: string; localExpertId: string; status: string; workspaceStatus: string | null; message?: string | null; }
+interface MyAssignment {
+  id: string; tripId: string; localExpertId: string; status: string; workspaceStatus: string | null; message?: string | null;
+  // Plan-approval handshake (migration 164) — `GET .../my-assignment` selects the whole row, so
+  // these ride along for free; NULL until the customer decides.
+  planApprovalStatus?: "approved" | "changes_requested" | null;
+  planReviewNote?: string | null;
+}
 
 interface AnchorImpact { type: string; message: string; severity: 'warning' | 'critical'; }
 interface AnchorConflict { anchorId: string; anchorType: string; description: string; impacts: AnchorImpact[]; }
@@ -1770,7 +1764,8 @@ export default function ExpertWorkspace() {
       toast({ title: "Added to itinerary", description: `${result.name} → Day ${focusDay}` });
       setSelectedPin(null);
     },
-    onError: () => toast({ title: "Failed to add item", variant: "destructive" }),
+    // Plan-approval mode flip (migration 164) — see ItemsEditorPanel's updateMutation above.
+    onError: (err: any) => toast({ title: "Failed to add item", description: parseApiErrorMessage(err, "Please try again."), variant: "destructive" }),
   });
 
   // ── Coordination status advance (coordinator-side) ──
@@ -1900,6 +1895,10 @@ export default function ExpertWorkspace() {
   };
 
   const workspaceStatus = assignment?.workspaceStatus || "draft";
+  // Plan-approval mode flip (migration 164): once true, this expert's direct item writes on
+  // this trip 409 server-side (see server/utils/plan-approval.ts) — the Client card below
+  // reflects that honestly instead of leaving the delivered chip as the only signal.
+  const planApproved = assignment?.planApprovalStatus === "approved";
   const days = itineraryData?.days || [];
   const totalItems = itineraryData?.total || 0;
 
@@ -2921,6 +2920,7 @@ export default function ExpertWorkspace() {
                   <User style={{ width: 12, height: 12, color: MID }} />
                   <span style={{ fontSize: 12, fontWeight: 700, color: INK }}>Client</span>
                   {!isAuthoring && workspaceStatus === "delivered" && <StateChip tone="ok">Delivered</StateChip>}
+                  {!isAuthoring && planApproved && <StateChip tone="ok">Approved</StateChip>}
                 </div>
                 {isAuthoring ? (
                   <div style={{ padding: "14px 12px", fontSize: 12.5, color: MID, lineHeight: 1.55 }} data-testid="text-distribute-client-muted">
@@ -2964,6 +2964,28 @@ export default function ExpertWorkspace() {
                         {advanceStatusMutation.isPending ? <Loader2 style={{ width: 12, height: 12 }} className="animate-spin" /> : <Send style={{ width: 12, height: 12 }} />}
                         {workspaceStatus === "draft" ? "Send edits for client review" : "Mark delivered"}
                       </button>
+                    )}
+
+                    {/* Plan-approval mode flip (migration 164): the customer's decision on a
+                        delivered plan. `planApproved` is the honest signal the item-write 409s
+                        already enforce server-side — this just names it instead of leaving the
+                        expert to discover the flip from a failed edit. */}
+                    {planApproved && (
+                      <div
+                        style={{ background: OK_SOFT, border: `1px solid ${LINE}`, borderRadius: 8, padding: "8px 10px", fontSize: 12, color: OK, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}
+                        data-testid="text-plan-approved-notice"
+                      >
+                        <CheckCircle style={{ width: 12, height: 12, flexShrink: 0 }} />
+                        Approved by client — changes now go through suggestions.
+                      </div>
+                    )}
+                    {!planApproved && assignment?.planApprovalStatus === "changes_requested" && assignment?.planReviewNote && (
+                      <div
+                        style={{ background: GROUND, border: `1px solid ${LINE}`, borderRadius: 8, padding: "8px 10px", fontSize: 12, color: MID }}
+                        data-testid="text-plan-changes-requested-note"
+                      >
+                        <strong style={{ color: INK }}>Client requested changes:</strong> {assignment.planReviewNote}
+                      </div>
                     )}
 
                     {/* Suggest to client — traveler-approval rail (C5, from /expert/assigned-trips). */}

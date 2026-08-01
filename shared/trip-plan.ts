@@ -98,6 +98,19 @@ export interface TripPlanExpertAttribution {
   avatar: string | null;
 }
 
+/**
+ * The delivery handshake (migration 164; QA_PUNCH_LIST W2-A items 11+13). Read off the trip's
+ * advisor row — `null` when the trip has no expert advisor at all (self-planned). `status` mirrors
+ * `PLAN_APPROVAL_STATUSES` in shared/schema.ts (`null` = delivered-but-undecided, when
+ * `workspaceStatus === "delivered"`).
+ */
+export interface TripPlanPlanApproval {
+  workspaceStatus: string | null; // draft | in_review | delivered
+  status: "approved" | "changes_requested" | null;
+  approvedAt: string | null;
+  reviewNote: string | null;
+}
+
 export interface TripPlanDates {
   start: string | null;
   end: string | null;
@@ -136,6 +149,11 @@ export interface TripPlanMeta {
   origin: ContentOrigin;
   /** Null when no expert is attached to the trip (self-planned). Never invented. */
   deliveredBy: TripPlanExpertAttribution | null;
+  /**
+   * The delivery handshake (migration 164). Null when the trip has no expert advisor row at all
+   * — the Trip Card's "Approve plan / Request changes" banner reads this, never a client guess.
+   */
+  planApproval: TripPlanPlanApproval | null;
   /** Real day count from the assembled day list — the link-card / store "N days". */
   dayCount: number;
   /**
