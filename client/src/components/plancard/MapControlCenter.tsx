@@ -1,7 +1,8 @@
 import * as React from "react";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { APIProvider, Map, AdvancedMarker, InfoWindow, useMap } from "@vis.gl/react-google-maps";
+import { APIProvider, Map, InfoWindow, useMap } from "@vis.gl/react-google-maps";
+import { MapMarker, GOOGLE_MAPS_MAP_ID } from "@/components/ui/map-marker";
 import { Polyline } from "@/components/ui/map-polyline";
 import { Button } from "@/components/ui/button";
 import { SiGoogle, SiApple } from "react-icons/si";
@@ -112,8 +113,8 @@ function MapContent({
               strokeWeight={style.strokeWeight}
               icons={style.icons}
             />
-            {tr.duration && (
-              <AdvancedMarker position={{ lat: midLat, lng: midLng }}>
+            {tr.duration && GOOGLE_MAPS_MAP_ID && (
+              <MapMarker position={{ lat: midLat, lng: midLng }}>
                 <div
                   className="px-1.5 py-0.5 rounded-full text-[9px] font-bold whitespace-nowrap shadow-md border"
                   style={{
@@ -125,7 +126,7 @@ function MapContent({
                 >
                   {tr.duration}m
                 </div>
-              </AdvancedMarker>
+              </MapMarker>
             )}
           </React.Fragment>
         );
@@ -134,9 +135,10 @@ function MapContent({
       {layers.activities && geocodedActivities.map((activity) => {
         const tc = TYPE_COLORS[activity.type] || TYPE_COLORS.attraction;
         return (
-          <AdvancedMarker
+          <MapMarker
             key={activity.id}
             position={{ lat: activity.resolvedLat, lng: activity.resolvedLng }}
+            title={activity.name}
             onClick={() => onSelectPin(activity.id)}
           >
             <div className="flex flex-col items-center" data-testid={`map-pin-${activity.id}`}>
@@ -160,14 +162,15 @@ function MapContent({
                 }}
               />
             </div>
-          </AdvancedMarker>
+          </MapMarker>
         );
       })}
 
       {layers.expertNotes && expertNoteActivities.map((activity) => (
-        <AdvancedMarker
+        <MapMarker
           key={`note-${activity.id}`}
           position={{ lat: activity.resolvedLat + 0.0002, lng: activity.resolvedLng + 0.0002 }}
+          title={`Expert tip: ${activity.expertNote}`}
           onClick={() => onSelectPin(`note-${activity.id}`)}
         >
           <div
@@ -177,7 +180,7 @@ function MapContent({
           >
             <MessageSquare className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
           </div>
-        </AdvancedMarker>
+        </MapMarker>
       ))}
 
       {selectedPinId && (() => {
@@ -326,7 +329,7 @@ export function MapControlCenter({
           >
             <APIProvider apiKey={MAPS_API_KEY}>
               <Map
-                mapId="plancard-map"
+                mapId={GOOGLE_MAPS_MAP_ID}
                 style={{ width: "100%", height: "100%" }}
                 defaultZoom={13}
                 defaultCenter={{ lat: 0, lng: 0 }}
@@ -375,7 +378,7 @@ export function MapControlCenter({
       ) : (
         <div className="h-[420px] bg-muted/50 flex flex-col items-center justify-center gap-3" data-testid={`map-placeholder-${tripId}`}>
           <MapPin className="w-12 h-12 text-muted-foreground/30" />
-          <p className="text-muted-foreground text-sm">Google Maps API key required</p>
+          <p className="text-muted-foreground text-sm">Map unavailable — add VITE_GOOGLE_MAPS_API_KEY</p>
           <div className="flex gap-1 z-10">
             {days.map((d, i) => (
               <button
