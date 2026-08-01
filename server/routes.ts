@@ -5969,7 +5969,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           description: item.description || "",
           serviceType: item.category || "service",
           price: parseFloat(item.price || "0"),
-          rating: item.rating || 4.5,
+          // §13: honest-or-absent — no fabricated stand-in rating for an item that has none.
+          // itinerary-optimizer.ts already averages/compares only over items that HAVE a real
+          // rating (baselineAvgRating), so an undefined value here correctly excludes it rather
+          // than polluting that average with an invented 4.5.
+          rating: typeof item.rating === "number" ? item.rating : undefined,
           location: item.location || "",
           duration: item.duration || 120,
           dayNumber: item.dayNumber || Math.floor(index / 3) + 1,
@@ -6006,7 +6010,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           description: item.service?.shortDescription,
           serviceType: item.service?.serviceType,
           price: parseFloat(item.service?.price || "0"),
-          rating: parseFloat(item.service?.averageRating || "4.5"),
+          // §13: same honest-or-absent rule as the inline-baseline mapping above — an unrated
+          // service carries no rating, never a fabricated 4.5 stand-in.
+          rating: item.service?.averageRating ? parseFloat(item.service.averageRating) : undefined,
           location: item.service?.location,
           duration: 120,
           dayNumber: Math.floor(index / 3) + 1,

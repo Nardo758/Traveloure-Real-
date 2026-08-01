@@ -6,7 +6,7 @@
  */
 
 // Activity categories for sequencing logic
-export type ActivityCategory = 
+export type ActivityCategory =
   | 'adventure' | 'hiking' | 'water_sports' | 'skiing' | 'climbing'
   | 'spa' | 'wellness' | 'massage' | 'yoga' | 'meditation'
   | 'dining_light' | 'dining_heavy' | 'breakfast' | 'lunch' | 'dinner' | 'snack'
@@ -14,7 +14,12 @@ export type ActivityCategory =
   | 'nightlife' | 'entertainment' | 'show' | 'concert'
   | 'beach' | 'relaxation' | 'pool'
   | 'shopping' | 'market'
-  | 'transport' | 'flight' | 'train' | 'transfer';
+  | 'transport' | 'flight' | 'train' | 'transfer'
+  // FIX 4b (W1c polish): the two `itineraryItemTypeEnum` values that previously matched no rule
+  // below and silently fell to the `sightseeing` default (see optimizer-baseline.service.ts's
+  // documented hole) — honest categories from the SAME existing item-type vocabulary, not new
+  // item types.
+  | 'accommodation' | 'free_time';
 
 // Physical intensity levels (1-10)
 export type IntensityLevel = 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10;
@@ -318,7 +323,12 @@ export const ACTIVITY_INTENSITY: Record<string, IntensityLevel> = {
   'transport': 2,
   'flight': 2,
   'train': 2,
-  'transfer': 2
+  'transfer': 2,
+
+  // FIX 4b: accommodation (rest, matches spa/relaxation intensity) and free time
+  // (unstructured, low-moderate — same tier as show/concert/entertainment).
+  'accommodation': 1,
+  'free_time': 2
 };
 
 // Service type to category mapping
@@ -351,7 +361,15 @@ export function mapServiceTypeToCategory(serviceType: string): ActivityCategory 
   if (type.includes('flight') || type.includes('air')) return 'flight';
   if (type.includes('train') || type.includes('rail')) return 'train';
   if (type.includes('transport') || type.includes('transfer') || type.includes('taxi') || type.includes('bus')) return 'transport';
-  
+  // FIX 4b: these two `itineraryItemTypeEnum`/serviceType values previously matched no rule
+  // above and fell to the `sightseeing` default (an accommodation night or unstructured free
+  // time counted as active sightseeing time) — mapped honestly from the same existing
+  // vocabulary (itinerary_items.itemType 'accommodation'/'free_time'; provider_services
+  // serviceType also uses 'hotel', matching the same substring convention as
+  // affiliate.service.ts's hotel/accommodation/stay check).
+  if (type.includes('accommodation') || type.includes('hotel') || type.includes('lodging')) return 'accommodation';
+  if (type.includes('free_time') || type.includes('free time')) return 'free_time';
+
   return 'sightseeing'; // Default
 }
 
@@ -661,13 +679,21 @@ export function calculateItineraryMetrics(
     // Time allocation
     if (['adventure', 'hiking', 'water_sports', 'skiing', 'climbing', 'walking', 'sightseeing'].includes(category)) {
       activeMinutes += duration;
-    } else if (['spa', 'wellness', 'massage', 'yoga', 'meditation', 'relaxation', 'beach', 'pool'].includes(category)) {
+    } else if (['spa', 'wellness', 'massage', 'yoga', 'meditation', 'relaxation', 'beach', 'pool', 'accommodation'].includes(category)) {
+      // FIX 4b: accommodation (an overnight stay) is downtime, not active sightseeing time —
+      // it belongs in the same bucket as spa/relaxation, not the active bucket it silently fell
+      // into before (via the mapper's old `sightseeing` default).
       relaxationMinutes += duration;
     } else if (['transport', 'flight', 'train', 'transfer'].includes(category)) {
       travelMinutes += duration;
     } else if (['breakfast', 'lunch', 'dinner', 'dining_light', 'dining_heavy', 'snack'].includes(category)) {
       diningMinutes += duration;
     }
+    // FIX 4b: 'free_time' is deliberately excluded from every bucket above (it used to be
+    // miscounted as active/sightseeing time via the mapper's old default). Its duration is
+    // therefore excluded from `totalMinutes` below, so it correctly widens the derived
+    // `freeMinutes` gap instead of shrinking it — honest, and without a redundant explicit
+    // tally that would double-count against that same derived gap.
     
     // Intensity tracking
     totalIntensity += intensity;
@@ -769,6 +795,13 @@ function getCostCategory(activityCategory: ActivityCategory): string {
   }
   if (['transport', 'flight', 'train', 'transfer'].includes(activityCategory)) {
     return 'Transport';
+  }
+  // FIX 4b: an accommodation night was previously lumped into 'Activities' via the mapper's old
+  // `sightseeing` default — a materially misleading cost breakdown for what is usually the
+  // largest line item on a trip. `free_time` items carry no real cost of their own, so they
+  // stay on the 'Activities' default below (nothing to relabel).
+  if (activityCategory === 'accommodation') {
+    return 'Accommodation';
   }
   if (['spa', 'wellness', 'massage', 'yoga', 'meditation', 'relaxation', 'beach', 'pool'].includes(activityCategory)) {
     return 'Wellness';

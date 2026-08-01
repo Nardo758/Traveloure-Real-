@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTrips } from "@/hooks/use-trips";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
@@ -38,6 +38,29 @@ interface Conversation {
   createdAt: string;
 }
 
+// FIX 3 (W1c polish): dashboard selected-trip persistence. Keyed per-user so a shared/kiosk
+// browser doesn't leak one account's selection into another's session. Read/write are
+// best-effort — a storage failure (private mode, quota) must never break the dashboard.
+function dashboardTripStorageKey(userId: string): string {
+  return `dashboard-selected-trip-${userId}`;
+}
+
+function readStoredTripId(userId: string): string | null {
+  try {
+    return localStorage.getItem(dashboardTripStorageKey(userId));
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredTripId(userId: string, tripId: string): void {
+  try {
+    localStorage.setItem(dashboardTripStorageKey(userId), tripId);
+  } catch {
+    // best-effort — never block the UI on a storage failure
+  }
+}
+
 const CTA_CARDS = [
   {
     icon: "+",
@@ -65,6 +88,9 @@ export default function Dashboard() {
     queryKey: ["/api/conversations"],
   });
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
+  // Only attempt the localStorage restore once per mount — subsequent trips-list refetches
+  // (e.g. after a mutation) must not fight a since-made explicit selection.
+  const hasAttemptedRestore = useRef(false);
 
   const now = new Date();
   const allPlans = trips ?? [];
@@ -77,6 +103,23 @@ export default function Dashboard() {
   const effectiveTripId = selectedTripId ?? soonestTripId;
   const selectedTrip = activePlans.find(t => t.id === effectiveTripId) ?? null;
 
+  // FIX 3: restore the last-selected trip on reload, but only once the trips list has
+  // actually loaded AND the stored id is still present in it — otherwise fall back to the
+  // existing soonest-upcoming-trip default (effectiveTripId above already does that when
+  // selectedTripId stays null).
+  useEffect(() => {
+    if (hasAttemptedRestore.current) return;
+    if (isLoading || !user?.id) return;
+    hasAttemptedRestore.current = true;
+    const storedTripId = readStoredTripId(user.id);
+    if (storedTripId && activePlans.some(t => t.id === storedTripId)) {
+      setSelectedTripId(storedTripId);
+    }
+    // activePlans is derived from `trips` each render; keying off `trips`/`isLoading`/`user?.id`
+    // avoids re-running on every render while still waiting for the real fetched list.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading, user?.id, trips]);
+
   // #972: the trip chip below previously only flipped this page's own local
   // `selectedTripId` state — it never told the site-wide TripContext which
   // trip is now active, so /cart (and anywhere else reading TripContext) kept
@@ -85,6 +128,7 @@ export default function Dashboard() {
   // syncActiveTripToContext) in the SAME handler that updates local state.
   const selectTrip = (trip: (typeof activePlans)[number]) => {
     setSelectedTripId(trip.id);
+    if (user?.id) writeStoredTripId(user.id, trip.id);
     syncActiveTripToContext(trip);
   };
 

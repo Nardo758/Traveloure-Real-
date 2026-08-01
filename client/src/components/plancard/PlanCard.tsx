@@ -853,6 +853,9 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
   const effectiveRole: PlanCardRole = plancardData?.tripRole ?? role ?? "viewer";
   const isViewer = effectiveRole === "viewer" || effectiveRole === "friend";
   const isOwner = effectiveRole === "owner";
+  // W7 expert-return edge (routing.routes.ts): the trip's assigned expert gets the ONE
+  // with_expert → in_planning write; ActivitiesSection/RoutingActions enforce the rest.
+  const isExpertViewer = effectiveRole === "expert";
 
   return (
     <motion.div
@@ -1041,6 +1044,7 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
                     templateConfig={templateConfig}
                     legs={dayLegs}
                     isOwner={isOwner}
+                    isExpertViewer={isExpertViewer}
                   />
                 )}
 
