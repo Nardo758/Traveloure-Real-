@@ -159,6 +159,10 @@ import { isTripAuthor } from "./utils/trip-authorship";
 // Canonical per-trip mutation authorization: owner ‖ trip-assigned expert ‖ trip author ‖
 // audit-logged admin. Returns null when authorized, else the {status, message} to send.
 import { authorizeTripLogistics } from "./utils/trip-logistics-auth";
+// Plan-approval mode-flip (migration 164, QA_PUNCH_LIST W2-A item 13): once the customer
+// approves a delivered plan, the assigned expert's DIRECT item writes on that trip are refused —
+// checked ONLY on the advisor/assigned-expert path, never for the owner or an authored-build author.
+import { isPlanApprovedForExpert, PLAN_APPROVED_SUGGEST_INSTEAD_ERROR } from "./utils/plan-approval";
 
 // ─── Service-category → booking_fee_configs category mapping ─────────────────
 // serviceCategories.slug values are detailed provider-category slugs (e.g.
@@ -8719,10 +8723,20 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const userName = (req.user as any).claims.name || "User";
       const { tripId } = req.params;
       const owned = await verifyTripOwnership(tripId, userId);
-      const assigned = owned ? true : await storage.isExpertAssignedToTrip(tripId, userId);
+      // Split out from the OR'd `assigned` boolean below so the mode-flip gate can target the
+      // advisor-only path — never the owner (owned ? true : ...) short-circuits, so `isAdvisor`
+      // is deliberately NOT that combined flag.
+      const isAdvisor = owned ? false : await storage.isExpertAssignedToTrip(tripId, userId);
+      const assigned = owned || isAdvisor;
       // Authoring mode (ready-made brief §2): the trip's author may build it.
       const authored = (owned || assigned) ? false : await isTripAuthor(tripId, userId);
       if (!owned && !assigned && !authored) return res.status(403).json({ message: "Access denied" });
+      // FABLE-REVIEW: the mode-flip gate. Advisor-only (never owner, never author) — see
+      // server/utils/plan-approval.ts. Pre-approval (NULL/changes_requested) is byte-identical
+      // to today; suggestions (POST /trips/:id/suggestions) are unaffected by this gate.
+      if (isAdvisor && await isPlanApprovedForExpert(tripId, userId)) {
+        return res.status(409).json(PLAN_APPROVED_SUGGEST_INSTEAD_ERROR);
+      }
       const parsed = insertItineraryItemSchema.safeParse({ ...req.body, tripId });
       if (!parsed.success) return res.status(400).json({ message: "Invalid data", errors: parsed.error.errors });
       const item = await storage.createItineraryItem(parsed.data as any);

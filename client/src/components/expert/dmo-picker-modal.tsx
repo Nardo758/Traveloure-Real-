@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { parseApiErrorMessage } from "@/lib/api-error";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -152,8 +153,11 @@ export function DmoPickerCore({
       onAdded();
       toast({ title: "Added to itinerary", description: `${item.name} → Day ${dayNumber}` });
     },
+    // Plan-approval mode flip (migration 164): once the client approves a delivered plan, this
+    // 409s with an honest "send it as a suggestion instead" message — parse it out rather than
+    // showing the raw `"409: {...}"` string.
     onError: (err: any) => {
-      toast({ title: "Couldn't add item", description: String(err?.message ?? err), variant: "destructive" });
+      toast({ title: "Couldn't add item", description: parseApiErrorMessage(err, "Please try again."), variant: "destructive" });
     },
   });
 
