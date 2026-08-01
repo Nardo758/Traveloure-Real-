@@ -19,7 +19,7 @@ import { resolveFormat } from "@/lib/build-formats/registry";
 import { ClientFormatView } from "@/components/build-formats/ClientFormatView";
 import { SocialKitCard } from "@/components/build-formats/SocialKitCard";
 import { STORE_GATE_MESSAGE } from "@shared/launch-markets";
-import { APIProvider, Map, AdvancedMarker, InfoWindow } from "@vis.gl/react-google-maps";
+import { APIProvider, Map, AdvancedMarker, InfoWindow, useMap, useMapsLibrary } from "@vis.gl/react-google-maps";
 import {
   MapPin, ChevronRight, ChevronDown, ChevronUp, Pencil, Sparkles, Link2, PenSquare,
   Send, MessageSquare, Plus, Lock, Eye, EyeOff,
@@ -198,6 +198,176 @@ function BookingBriefModal({ provider, bookingUrl, tripId, onClose }: { provider
   );
 }
 
+/** QA_PUNCH_LIST item 17 — Google Places autocomplete, the inner render (needs an `<APIProvider>`
+ *  ancestor for `useMapsLibrary`). Uses the classic `AutocompleteService`/`PlacesService` pair
+ *  (works with just the `places` library, loaded on demand — no `libraries` prop needed on
+ *  `<APIProvider>`, `useMapsLibrary` imports it lazily). A plain, uncontrolled suggestion
+ *  dropdown — no external autocomplete widget/web-component, so it composes with this file's own
+ *  input styling. `onChange` fires on every keystroke regardless of API state, so typing is never
+ *  gated on Places being available — only the SUGGESTIONS are. */
+function PlacesAutocompleteInputInner({
+  value, onChange, onPlaceSelected, placeholder, testId, disabled, style,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  onPlaceSelected?: (place: { text: string; lat?: string; lng?: string }) => void;
+  placeholder?: string;
+  testId: string;
+  disabled?: boolean;
+  style: React.CSSProperties;
+}) {
+  const placesLib = useMapsLibrary("places");
+  const [predictions, setPredictions] = useState<google.maps.places.AutocompletePrediction[]>([]);
+  const [open, setOpen] = useState(false);
+  const acServiceRef = useRef<google.maps.places.AutocompleteService | null>(null);
+  const placesServiceRef = useRef<google.maps.places.PlacesService | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!placesLib) return;
+    try {
+      acServiceRef.current = new placesLib.AutocompleteService();
+      placesServiceRef.current = new placesLib.PlacesService(document.createElement("div"));
+    } catch {
+      // Construction failing (bad key / billing) is exactly the fallback case — leave the refs
+      // null so getPlacePredictions below is skipped and this behaves as plain text.
+      acServiceRef.current = null;
+      placesServiceRef.current = null;
+    }
+  }, [placesLib]);
+
+  useEffect(() => () => { if (debounceRef.current) clearTimeout(debounceRef.current); }, []);
+
+  const handleChange = (v: string) => {
+    onChange(v);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (!acServiceRef.current || !v.trim()) {
+      setPredictions([]);
+      setOpen(false);
+      return;
+    }
+    debounceRef.current = setTimeout(() => {
+      try {
+        acServiceRef.current!.getPlacePredictions({ input: v }, (results, status) => {
+          if (status === "OK" && results?.length) {
+            setPredictions(results);
+            setOpen(true);
+          } else {
+            // Covers REQUEST_DENIED (bad key) and every other non-OK status — same fallback
+            // posture as a load failure: no dropdown, plain text keeps working.
+            setPredictions([]);
+            setOpen(false);
+          }
+        });
+      } catch {
+        setPredictions([]);
+        setOpen(false);
+      }
+    }, 300);
+  };
+
+  const pick = (prediction: google.maps.places.AutocompletePrediction) => {
+    onChange(prediction.description);
+    setOpen(false);
+    setPredictions([]);
+    if (!onPlaceSelected) return;
+    if (!placesServiceRef.current) {
+      onPlaceSelected({ text: prediction.description });
+      return;
+    }
+    try {
+      placesServiceRef.current.getDetails(
+        { placeId: prediction.place_id, fields: ["geometry", "name"] },
+        (place, status) => {
+          if (status === "OK" && place?.geometry?.location) {
+            onPlaceSelected({
+              text: prediction.description,
+              lat: String(place.geometry.location.lat()),
+              lng: String(place.geometry.location.lng()),
+            });
+          } else {
+            onPlaceSelected({ text: prediction.description });
+          }
+        },
+      );
+    } catch {
+      onPlaceSelected({ text: prediction.description });
+    }
+  };
+
+  return (
+    <div style={{ position: "relative" }}>
+      <input
+        value={value}
+        onChange={e => handleChange(e.target.value)}
+        onBlur={() => { setTimeout(() => setOpen(false), 150); }}
+        onFocus={() => { if (predictions.length > 0) setOpen(true); }}
+        placeholder={placeholder}
+        data-testid={testId}
+        disabled={disabled}
+        style={style}
+        autoComplete="off"
+      />
+      {open && predictions.length > 0 && (
+        <div
+          data-testid={`${testId}-suggestions`}
+          style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 30, background: CARD, border: `1px solid ${LINE}`, borderRadius: 8, marginTop: 3, maxHeight: 180, overflowY: "auto", boxShadow: "0 4px 14px rgba(0,0,0,0.18)" }}
+        >
+          {predictions.map(p => (
+            <button
+              key={p.place_id}
+              type="button"
+              onMouseDown={e => { e.preventDefault(); pick(p); }}
+              data-testid={`${testId}-suggestion-${p.place_id}`}
+              style={{ display: "block", width: "100%", textAlign: "left", padding: "7px 10px", fontSize: 12.5, background: "none", border: "none", cursor: "pointer", color: INK }}
+            >
+              {p.description}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** QA_PUNCH_LIST item 17 outer wrapper — decides whether Places is even attempted. FALLBACK IS
+ *  MANDATORY (no key, or the Maps API failed to load): renders a plain `<input>`, byte-identical
+ *  to what these two fields rendered before this lane — never blocks typing, never crashes. A
+ *  local `<APIProvider>` (not a page-wide one) mirrors this file's established convention of
+ *  wrapping Maps usage locally around the section that needs it (see the Platform-services browse
+ *  map below); nesting multiple `<APIProvider>`s with the SAME apiKey is safe — the underlying
+ *  loader is a de-duped singleton keyed by its serialized params (`GoogleMapsApiLoader.load`),
+ *  so a second provider with identical params is a harmless no-op re-import, never a duplicate
+ *  script load or a "loaded with different parameters" conflict. */
+function PlacesAutocompleteInput(props: {
+  value: string;
+  onChange: (v: string) => void;
+  onPlaceSelected?: (place: { text: string; lat?: string; lng?: string }) => void;
+  placeholder?: string;
+  testId: string;
+  disabled?: boolean;
+  style: React.CSSProperties;
+}) {
+  const [loadFailed, setLoadFailed] = useState(false);
+  if (!MAPS_KEY || loadFailed) {
+    return (
+      <input
+        value={props.value}
+        onChange={e => props.onChange(e.target.value)}
+        placeholder={props.placeholder}
+        data-testid={props.testId}
+        disabled={props.disabled}
+        style={props.style}
+      />
+    );
+  }
+  return (
+    <APIProvider apiKey={MAPS_KEY} onError={() => setLoadFailed(true)}>
+      <PlacesAutocompleteInputInner {...props} />
+    </APIProvider>
+  );
+}
+
 /** The Add panel's "Custom" source — same fields, same POST /api/trips/:tripId/itinerary-items
  *  write as the old AddItemModal. Day-aware (P2-13): the add targets the day in focus.
  *  `estimatedCost` writes to `itinerary_items.estimated_cost`, a decimal(10,2) column —
@@ -208,6 +378,10 @@ function InlineAddItemForm({ tripId, dayNumber, destination, onAdded }: { tripId
   const { toast } = useToast();
   const [form, setForm] = useState({ title: "", itemType: "activity", startTime: "", estimatedCost: "", locationName: "" });
   const [geocoding, setGeocoding] = useState(false);
+  // Item 17: coordinates from an ACTUAL Places pick (exact precision) — cleared whenever the
+  // location text is edited by hand (typing after a pick means the text may no longer match the
+  // picked place, so the stale coords must not silently ride along).
+  const [placeCoords, setPlaceCoords] = useState<{ lat: string; lng: string } | null>(null);
   const createMutation = useMutation({
     mutationFn: async (data: any) => { const res = await apiRequest("POST", `/api/trips/${tripId}/itinerary-items`, data); return res.json(); },
     onSuccess: () => {
@@ -216,22 +390,24 @@ function InlineAddItemForm({ tripId, dayNumber, destination, onAdded }: { tripId
       onAdded();
       toast({ title: "Item added", description: `Added to Day ${dayNumber}` });
       setForm({ title: "", itemType: "activity", startTime: "", estimatedCost: "", locationName: "" });
+      setPlaceCoords(null);
     },
     onError: (err: any) => toast({ title: "Failed to add item", description: parseApiErrorMessage(err, "Please check the fields and try again."), variant: "destructive" }),
   });
-  // FIX 4 (QA pass): geocode-on-add, never fabricate. A custom item previously carried no
-  // coordinates at all — this leaves it unroutable (no transport legs, no map pin) forever.
-  // We now try the existing /api/geocode rail (same one the destination map-center lookup
-  // above uses) with "<locationName>, <destination>" when a location name was typed. On
-  // success we attach real latitude/longitude (as STRINGS — decimal DB columns, matching the
-  // platform-services add path). On any failure/miss we submit exactly as before: no coords,
-  // honest null — never a city-center guess. Geocoding is best-effort and must never block
-  // the add.
+  // FIX 4 (QA pass) + item 17: attach real coordinates, never fabricate. Preference order:
+  // (1) an exact Places pick (placeCoords) — skip the geocode entirely, it's already exact;
+  // (2) FALLBACK — the existing submit-time /api/geocode rail (same one the destination
+  //     map-center lookup above uses) with "<locationName>, <destination>", unchanged from
+  //     before this lane (this is the "Places unavailable → behaves exactly as today" path,
+  //     item 17's mandatory fallback). On any failure/miss: no coords, honest null — never a
+  //     city-center guess. Geocoding is best-effort and must never block the add.
   const handleSubmit = async () => {
     if (!form.title.trim()) return;
     let coords: { latitude: string; longitude: string } | undefined;
     const locationName = form.locationName.trim();
-    if (locationName) {
+    if (placeCoords) {
+      coords = { latitude: placeCoords.lat, longitude: placeCoords.lng };
+    } else if (locationName) {
       setGeocoding(true);
       try {
         const address = destination ? `${locationName}, ${destination}` : locationName;
@@ -282,7 +458,17 @@ function InlineAddItemForm({ tripId, dayNumber, destination, onAdded }: { tripId
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
         <div>
           <label style={labelStyle}>Location</label>
-          <input value={form.locationName} onChange={e => setForm(f => ({ ...f, locationName: e.target.value }))} placeholder="Venue name" data-testid="input-inline-add-location" style={inputStyle} />
+          <PlacesAutocompleteInput
+            value={form.locationName}
+            onChange={v => { setForm(f => ({ ...f, locationName: v })); setPlaceCoords(null); }}
+            onPlaceSelected={place => {
+              setForm(f => ({ ...f, locationName: place.text }));
+              setPlaceCoords(place.lat && place.lng ? { lat: place.lat, lng: place.lng } : null);
+            }}
+            placeholder="Venue name"
+            testId="input-inline-add-location"
+            style={inputStyle}
+          />
         </div>
         <div>
           <label style={labelStyle}>Est. Cost (USD)</label>
@@ -408,9 +594,19 @@ class MapSectionErrorBoundary extends Component<{ children: ReactNode }, { hasEr
  *  (C-1b — the traveler-visible tip, distinct from the private Build notes sidebar). Both
  *  write through the existing PATCH /api/trips/:tripId/itinerary-items/:itemId endpoint
  *  (trips.routes.ts) — no new server surface for A-2; C-1's server change is the read-side
- *  column preference in plancard.routes.ts. */
+ *  column preference in plancard.routes.ts.
+ *
+ *  QA_PUNCH_LIST item 18: also the within-day reorder UI (up/down arrows per item calling the
+ *  existing POST .../itinerary/reorder with the day's full ordered id list — properly
+ *  authorizeTripLogistics- AND now plan-approval-mode-flip-gated server-side, see routes.ts) and
+ *  a per-day "Suggest best order" action (POST .../itinerary/optimize-order) that stages the
+ *  machine's proposed order for an explicit "Apply this order?" confirm — never auto-applied
+ *  (D1a posture: the machine proposes, the expert confirms). This panel is also item 16's
+ *  "Go to item" scroll target (see focusItemId/onFocusHandled below) — the only per-item,
+ *  DOM-addressable list the canvas renders (the day list itself is the shared PlanCard, a
+ *  read-mostly component this lane deliberately does not modify). */
 function ItemsEditorPanel({
-  tripId, days, maxDay, onDayMoved, onOpenBookingBrief,
+  tripId, days, maxDay, onDayMoved, onOpenBookingBrief, focusItemId, onFocusHandled,
 }: {
   tripId: string;
   days: { dayNumber: number; items: ItineraryItem[] }[];
@@ -422,11 +618,75 @@ function ItemsEditorPanel({
   // item directly there), so any row this panel can show is already either author-owned or
   // client-approved. Nothing here needs to re-check approval state.
   onOpenBookingBrief: (network: string) => void;
+  // Item 16's "Go to item": when set, this panel opens (if closed), expands that item's row,
+  // and scrolls it into view, then reports back via onFocusHandled so the caller clears the
+  // request (a one-shot signal, not a controlled/sticky prop).
+  focusItemId?: string | null;
+  onFocusHandled?: () => void;
 }) {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
+  // dayNumber → machine-suggested id order, staged from optimize-order and applied only on
+  // explicit confirm (never auto-applied).
+  const [suggestedOrder, setSuggestedOrder] = useState<Record<number, string[]>>({});
+
+  useEffect(() => {
+    if (!focusItemId) return;
+    setOpen(true);
+    setExpandedId(focusItemId);
+    // Wait one paint for the (possibly just-opened) panel to render the row before scrolling.
+    const t = setTimeout(() => {
+      const el = document.querySelector(`[data-testid="item-editor-row-${focusItemId}"]`);
+      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+      onFocusHandled?.();
+    }, 60);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusItemId]);
+
+  const reorderMutation = useMutation({
+    mutationFn: async ({ dayNumber, itemIds }: { dayNumber: number; itemIds: string[] }) => {
+      const res = await apiRequest("POST", `/api/trips/${tripId}/itinerary/reorder`, { dayNumber, itemIds });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/itinerary-items`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+    },
+    // Same mode-flip 409 as the other item mutations above — surfaced honestly, not generically.
+    onError: (err: any) => toast({ title: "Failed to reorder", description: parseApiErrorMessage(err, "Please try again."), variant: "destructive" }),
+  });
+
+  const moveWithinDay = (day: { dayNumber: number; items: ItineraryItem[] }, index: number, direction: -1 | 1) => {
+    const target = index + direction;
+    if (target < 0 || target >= day.items.length) return;
+    const itemIds = day.items.map(i => i.id);
+    [itemIds[index], itemIds[target]] = [itemIds[target], itemIds[index]];
+    reorderMutation.mutate({ dayNumber: day.dayNumber, itemIds });
+  };
+
+  const optimizeMutation = useMutation({
+    mutationFn: async (dayNumber: number) => {
+      const res = await apiRequest("POST", `/api/trips/${tripId}/itinerary/optimize-order`, { dayNumber });
+      const json = await res.json();
+      return { dayNumber, optimizedOrder: (json.optimizedOrder ?? []) as string[] };
+    },
+    onSuccess: ({ dayNumber, optimizedOrder }) => {
+      setSuggestedOrder(s => ({ ...s, [dayNumber]: optimizedOrder }));
+    },
+    onError: (err: any) => toast({ title: "Couldn't suggest an order", description: parseApiErrorMessage(err, "Please try again."), variant: "destructive" }),
+  });
+
+  const applySuggestedOrder = (dayNumber: number) => {
+    const itemIds = suggestedOrder[dayNumber];
+    if (!itemIds) return;
+    reorderMutation.mutate({ dayNumber, itemIds }, {
+      onSuccess: () => setSuggestedOrder(s => { const next = { ...s }; delete next[dayNumber]; return next; }),
+    });
+  };
+  const discardSuggestedOrder = (dayNumber: number) => setSuggestedOrder(s => { const next = { ...s }; delete next[dayNumber]; return next; });
 
   const updateMutation = useMutation({
     mutationFn: async ({ itemId, data }: { itemId: string; data: Record<string, any> }) => {
@@ -491,29 +751,93 @@ function ItemsEditorPanel({
         </span>
       </button>
       {open && (
-        <div style={{ padding: "0 14px 12px", display: "flex", flexDirection: "column", gap: 6 }}>
-          {allItems.map(item => {
-            const isExpanded = expandedId === item.id;
-            const draftNote = noteDrafts[item.id] ?? (item.expertNote ?? "");
-            // W3-A: an item carrying the "Partner: <Network>" marker (written by
-            // partner-catalog-picker.tsx) gets a Booking Brief entry point. Its presence in
-            // `days`/`allItems` at all IS the gate — see the prop comment above.
-            const partnerSource = parsePartnerSource(item.description);
+        <div style={{ padding: "0 14px 12px", display: "flex", flexDirection: "column", gap: 10 }}>
+          {days.filter(d => d.items.length > 0).map(day => {
+            const suggestion = suggestedOrder[day.dayNumber];
             return (
-              <div key={item.id} data-testid={`item-editor-row-${item.id}`} style={{ border: `1px solid ${LINE}`, borderRadius: 8, padding: "8px 10px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <StateChip tone="mut">Day {item.dayNumber}</StateChip>
-                  {partnerSource && <StateChip tone="brand">{partnerSource.network}</StateChip>}
-                  <span style={{ fontSize: 12.5, fontWeight: 600, color: INK, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</span>
+              <div key={day.dayNumber} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "2px 0" }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: FAINT, textTransform: "uppercase", letterSpacing: "0.05em" }}>Day {day.dayNumber}</span>
                   <button
-                    onClick={() => setExpandedId(isExpanded ? null : item.id)}
-                    data-testid={`button-expand-item-${item.id}`}
-                    style={{ ...btnQuietStyle, padding: "3px 9px", fontSize: 11 }}
+                    onClick={() => optimizeMutation.mutate(day.dayNumber)}
+                    disabled={day.items.length < 2 || (optimizeMutation.isPending && optimizeMutation.variables === day.dayNumber)}
+                    data-testid={`button-suggest-order-day-${day.dayNumber}`}
+                    title="Compute a suggested order for this day — nothing changes until you apply it"
+                    style={{ ...btnQuietStyle, marginLeft: "auto", padding: "2px 8px", fontSize: 10.5, display: "flex", alignItems: "center", gap: 4, opacity: day.items.length < 2 ? 0.5 : 1 }}
                   >
-                    {isExpanded ? "Close" : "Edit"}
+                    {(optimizeMutation.isPending && optimizeMutation.variables === day.dayNumber)
+                      ? <Loader2 style={{ width: 10, height: 10 }} className="animate-spin" />
+                      : <Sparkles style={{ width: 10, height: 10 }} />}
+                    Suggest best order
                   </button>
                 </div>
-                {isExpanded && (
+
+                {suggestion && (
+                  <div data-testid={`panel-suggested-order-day-${day.dayNumber}`} style={{ background: BRAND_SOFT, border: `1px dashed ${BRAND}`, borderRadius: 8, padding: "8px 10px", display: "flex", flexDirection: "column", gap: 6 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: INK }}>Suggested order for Day {day.dayNumber}</div>
+                    <ol style={{ margin: 0, paddingLeft: 18, fontSize: 11.5, color: MID, display: "flex", flexDirection: "column", gap: 2 }}>
+                      {suggestion.map(id => (
+                        <li key={id}>{day.items.find(i => i.id === id)?.title ?? id}</li>
+                      ))}
+                    </ol>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <button onClick={() => discardSuggestedOrder(day.dayNumber)} data-testid={`button-discard-order-day-${day.dayNumber}`} style={{ ...btnQuietStyle, flex: 1, padding: "5px", fontSize: 11 }}>Discard</button>
+                      <button
+                        onClick={() => applySuggestedOrder(day.dayNumber)}
+                        disabled={reorderMutation.isPending}
+                        data-testid={`button-apply-order-day-${day.dayNumber}`}
+                        style={{ ...btnPrimaryStyle, flex: 2, padding: "5px", fontSize: 11, opacity: reorderMutation.isPending ? 0.6 : 1 }}
+                      >
+                        Apply this order?
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {day.items.map((item, index) => {
+                  const isExpanded = expandedId === item.id;
+                  const draftNote = noteDrafts[item.id] ?? (item.expertNote ?? "");
+                  // W3-A: an item carrying the "Partner: <Network>" marker (written by
+                  // partner-catalog-picker.tsx) gets a Booking Brief entry point. Its presence in
+                  // `days` at all IS the gate — see the prop comment above.
+                  const partnerSource = parsePartnerSource(item.description);
+                  return (
+                    <div key={item.id} data-testid={`item-editor-row-${item.id}`} style={{ border: `1px solid ${LINE}`, borderRadius: 8, padding: "8px 10px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        {/* Item 18: within-day reorder — swaps this item with its neighbor and
+                            sends the day's full ordered id list to the existing reorder endpoint.
+                            Disabled at the day's edges. */}
+                        <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                          <button
+                            onClick={() => moveWithinDay(day, index, -1)}
+                            disabled={index === 0 || reorderMutation.isPending}
+                            data-testid={`button-move-up-${item.id}`}
+                            title="Move earlier"
+                            style={{ background: "none", border: "none", cursor: index === 0 ? "default" : "pointer", padding: 1, color: index === 0 ? FAINT : MID, opacity: index === 0 ? 0.4 : 1, display: "flex" }}
+                          >
+                            <ChevronUp style={{ width: 12, height: 12 }} />
+                          </button>
+                          <button
+                            onClick={() => moveWithinDay(day, index, 1)}
+                            disabled={index === day.items.length - 1 || reorderMutation.isPending}
+                            data-testid={`button-move-down-${item.id}`}
+                            title="Move later"
+                            style={{ background: "none", border: "none", cursor: index === day.items.length - 1 ? "default" : "pointer", padding: 1, color: index === day.items.length - 1 ? FAINT : MID, opacity: index === day.items.length - 1 ? 0.4 : 1, display: "flex" }}
+                          >
+                            <ChevronDown style={{ width: 12, height: 12 }} />
+                          </button>
+                        </div>
+                        {partnerSource && <StateChip tone="brand">{partnerSource.network}</StateChip>}
+                        <span style={{ fontSize: 12.5, fontWeight: 600, color: INK, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</span>
+                        <button
+                          onClick={() => setExpandedId(isExpanded ? null : item.id)}
+                          data-testid={`button-expand-item-${item.id}`}
+                          style={{ ...btnQuietStyle, padding: "3px 9px", fontSize: 11 }}
+                        >
+                          {isExpanded ? "Close" : "Edit"}
+                        </button>
+                      </div>
+                      {isExpanded && (
                   <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 8 }}>
                     <div>
                       <label style={labelStyle}>Move to day</label>
@@ -576,6 +900,9 @@ function ItemsEditorPanel({
                   </div>
                 )}
               </div>
+                  );
+                })}
+              </div>
             );
           })}
         </div>
@@ -613,6 +940,218 @@ function isLocatedItem(item: { latitude?: unknown; longitude?: unknown }): boole
   if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return false;
   if (lat === 0 && lng === 0) return false;
   return true;
+}
+
+/** Item 16 (QA_PUNCH_LIST): "fit the map to these pins" — mirrors the Trip Card's own
+ *  MapControlCenter bounds-fit (`client/src/components/plancard/MapControlCenter.tsx`), a
+ *  proven pattern: `useMap()` + `google.maps.LatLngBounds` + `map.fitBounds`. Needs a `<Map>`
+ *  ancestor to call `useMap()`, so it renders nothing and lives INSIDE the `<Map>` below. */
+function PlanMapFitBounds({ items }: { items: ItineraryItem[] }) {
+  const map = useMap();
+  // Stable dependency: only re-fit when the actual set of pinned coordinates changes, not on
+  // every parent re-render (a fresh `items` array reference on every render is expected here).
+  const fitKey = items.map(i => `${i.id}:${i.latitude}:${i.longitude}`).join("|");
+  useEffect(() => {
+    if (!map || typeof google === "undefined" || !google.maps || items.length === 0) return;
+    if (items.length === 1) {
+      map.setCenter({ lat: parseFloat(String(items[0].latitude)), lng: parseFloat(String(items[0].longitude)) });
+      map.setZoom(14);
+      return;
+    }
+    const bounds = new google.maps.LatLngBounds();
+    items.forEach(i => bounds.extend({ lat: parseFloat(String(i.latitude)), lng: parseFloat(String(i.longitude)) }));
+    map.fitBounds(bounds, 48);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, fitKey]);
+  return null;
+}
+
+/** QA_PUNCH_LIST item 16 — the plan map ON the build canvas. PLAN LAYER ONLY: item 19's
+ *  candidate/discovery layer (pins from an open Add-panel source drawer) is NOT yet
+ *  decision-maker-ratified, so this renders only pins for items already IN the plan. Structured
+ *  so that layer can be added later without rework — plan-pin rendering is isolated in its own
+ *  child render pass inside `<Map>`, so a sibling candidate-pins pass could mount alongside it
+ *  (same `<Map>` instance, same `<APIProvider>`) without touching this component's contract.
+ *
+ *  Collapsible (closed→open persisted per-trip in sessionStorage, mirroring the "closed by
+ *  default" convention ItemsEditorPanel/TransportLegsPanel already use for canvas sections).
+ *  Reuses the file's existing @vis.gl/react-google-maps imports and the MapSectionErrorBoundary
+ *  pattern verbatim (a Maps billing/key failure collapses to a one-line notice, never blanks the
+ *  canvas — see that class's doc comment above). Never fabricates a pin (§13): only items
+ *  passing `isLocatedItem` are ever rendered; the unlocated count below the map is real. */
+function CanvasMapSection({
+  tripId, days, destination, onGoToItem,
+}: {
+  tripId: string;
+  days: { dayNumber: number; items: ItineraryItem[] }[];
+  destination: string;
+  onGoToItem: (itemId: string) => void;
+}) {
+  const storageKey = `workstation-map-open-${tripId}`;
+  const [open, setOpen] = useState<boolean>(() => {
+    try { return sessionStorage.getItem(storageKey) === "1"; } catch { return false; }
+  });
+  useEffect(() => {
+    try { sessionStorage.setItem(storageKey, open ? "1" : "0"); } catch { /* sessionStorage unavailable — the toggle just won't persist */ }
+  }, [open, storageKey]);
+
+  // Map-local day filter — mirrors the Add panel's day-focus control (all-days default,
+  // focusing a day filters the pins to it). Deliberately its OWN state, not the Add panel's
+  // `focusDay`: that control picks WHERE a new item is added; this picks WHICH pins show.
+  const [mapDayFilter, setMapDayFilter] = useState<number | "all">("all");
+  const [selectedPinItem, setSelectedPinItem] = useState<ItineraryItem | null>(null);
+
+  const allItems = days.flatMap(d => d.items);
+  const locatedItems = allItems.filter(isLocatedItem);
+  const unlocatedCount = allItems.length - locatedItems.length;
+  const visibleItems = mapDayFilter === "all" ? locatedItems : locatedItems.filter(i => i.dayNumber === mapDayFilter);
+  const dayNumbersWithItems = Array.from(new Set(days.filter(d => d.items.length > 0).map(d => d.dayNumber))).sort((a, b) => a - b);
+
+  // Center fallback ONLY needed when the plan has zero located items anywhere (not just the
+  // current filter) — same destination-geocode rail the Add panel's Platform-services browse
+  // map already fetches (`["/api/geocode", destination]`); broadening its `enabled` here reuses
+  // that query/cache rather than adding a parallel fetch.
+  const { data: fallbackCenter } = useQuery<{ lat: number; lng: number } | null>({
+    queryKey: ["/api/geocode", destination],
+    queryFn: async () => {
+      const res = await fetch(`/api/geocode?address=${encodeURIComponent(destination)}`);
+      if (!res.ok) return null;
+      const j = await res.json();
+      return Number.isFinite(j?.lat) && Number.isFinite(j?.lng) ? j : null;
+    },
+    enabled: open && !!destination && locatedItems.length === 0,
+    staleTime: Infinity,
+  });
+
+  if (allItems.length === 0) return null;
+
+  // Three-tier center rule (item 16 spec): located pins → bounds-fit; none but a destination
+  // geocode exists → center there; neither → no map box at all, honest notice only.
+  const hasAnyLocated = locatedItems.length > 0;
+  const canShowMap = hasAnyLocated || !!fallbackCenter;
+  const initialCenter = visibleItems[0]
+    ? { lat: parseFloat(String(visibleItems[0].latitude)), lng: parseFloat(String(visibleItems[0].longitude)) }
+    : (fallbackCenter ?? { lat: 35.0116, lng: 135.7681 }); // Kyoto — only reached when canShowMap is already false and this value is never rendered
+
+  return (
+    <div style={{ background: CARD, borderRadius: 10, border: `1px solid ${LINE}`, marginBottom: 12 }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        data-testid="button-toggle-plan-map"
+        style={{ width: "100%", padding: "10px 14px", background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}
+      >
+        <MapPinned style={{ width: 12, height: 12, color: MID }} />
+        <span style={{ fontSize: 12.5, fontWeight: 700, color: INK }}>Plan map</span>
+        <span style={{ fontSize: 11, color: FAINT }}>({locatedItems.length} located)</span>
+        <span style={{ marginLeft: "auto", color: FAINT, display: "flex" }}>
+          {open ? <ChevronUp style={{ width: 13, height: 13 }} /> : <ChevronDown style={{ width: 13, height: 13 }} />}
+        </span>
+      </button>
+      {open && (
+        <div style={{ padding: "0 14px 12px" }}>
+          {dayNumbersWithItems.length > 1 && (
+            <div style={{ display: "flex", gap: 5, overflowX: "auto", paddingBottom: 8 }}>
+              <button
+                onClick={() => setMapDayFilter("all")}
+                data-testid="button-map-day-filter-all"
+                style={{ padding: "4px 10px", borderRadius: 99, fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap", border: mapDayFilter === "all" ? `1.5px solid ${BRAND}` : `1.5px solid ${LINE}`, background: mapDayFilter === "all" ? BRAND_SOFT : CARD, color: mapDayFilter === "all" ? BRAND : MID }}
+              >
+                All days
+              </button>
+              {dayNumbersWithItems.map(n => (
+                <button
+                  key={n}
+                  onClick={() => setMapDayFilter(n)}
+                  data-testid={`button-map-day-filter-${n}`}
+                  style={{ padding: "4px 10px", borderRadius: 99, fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap", border: mapDayFilter === n ? `1.5px solid ${BRAND}` : `1.5px solid ${LINE}`, background: mapDayFilter === n ? BRAND_SOFT : CARD, color: mapDayFilter === n ? BRAND : MID }}
+                >
+                  Day {n}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div style={{ height: 260, borderRadius: 8, overflow: "hidden", position: "relative" }}>
+            <MapSectionErrorBoundary>
+              {MAPS_KEY && canShowMap ? (
+                <APIProvider apiKey={MAPS_KEY}>
+                  <Map
+                    mapId="canvas-plan-map"
+                    defaultCenter={initialCenter}
+                    defaultZoom={13}
+                    gestureHandling="greedy"
+                    disableDefaultUI={true}
+                    style={{ width: "100%", height: "100%" }}
+                    onClick={() => setSelectedPinItem(null)}
+                  >
+                    <PlanMapFitBounds items={visibleItems} />
+                    {visibleItems.map(item => (
+                      <AdvancedMarker
+                        key={item.id}
+                        position={{ lat: parseFloat(String(item.latitude)), lng: parseFloat(String(item.longitude)) }}
+                        onClick={() => setSelectedPinItem(item)}
+                      >
+                        <div
+                          data-testid={`map-pin-${item.id}`}
+                          title={item.title}
+                          style={{
+                            width: 22, height: 22, borderRadius: "50%",
+                            background: "var(--console-brand)", color: "var(--console-card)",
+                            border: selectedPinItem?.id === item.id ? "2px solid var(--console-card)" : "2px solid transparent",
+                            boxShadow: "0 2px 6px rgba(0,0,0,0.3)",
+                            fontSize: 10.5, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center",
+                          }}
+                        >
+                          {item.dayNumber}
+                        </div>
+                      </AdvancedMarker>
+                    ))}
+
+                    {selectedPinItem && isLocatedItem(selectedPinItem) && (
+                      <InfoWindow
+                        position={{ lat: parseFloat(String(selectedPinItem.latitude)), lng: parseFloat(String(selectedPinItem.longitude)) }}
+                        onCloseClick={() => setSelectedPinItem(null)}
+                      >
+                        <div style={{ fontFamily: "'Inter',-apple-system,sans-serif", minWidth: 160, maxWidth: 220 }}>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: INK, marginBottom: 2 }}>{selectedPinItem.title}</div>
+                          <div style={{ fontSize: 11.5, color: MID, marginBottom: 8 }}>Day {selectedPinItem.dayNumber}</div>
+                          <button
+                            onClick={() => { const id = selectedPinItem.id; setSelectedPinItem(null); onGoToItem(id); }}
+                            data-testid={`button-goto-item-${selectedPinItem.id}`}
+                            style={{ ...btnPrimaryStyle, width: "100%", padding: "5px 8px", borderRadius: 7, fontSize: 12 }}
+                          >
+                            Go to item
+                          </button>
+                        </div>
+                      </InfoWindow>
+                    )}
+                  </Map>
+                </APIProvider>
+              ) : (
+                <div data-testid="text-plan-map-unavailable" style={{ height: "100%", background: GROUND, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 6 }}>
+                  <MapPin style={{ width: 24, height: 24, color: FAINT }} />
+                  <span style={{ fontSize: 12, color: MID }}>
+                    {!MAPS_KEY ? "Map unavailable" : "No located items to show yet"}
+                  </span>
+                </div>
+              )}
+            </MapSectionErrorBoundary>
+          </div>
+
+          {/* §13: honest, never fabricated — a real count of items with no lat/lng, never a
+              city-center guess standing in for a real pin. */}
+          {unlocatedCount > 0 && (
+            // Wording matches the punch-list spec's literal template verbatim ("N items have no
+            // location yet") — not a grammar bug, a deliberate choice not to over-engineer
+            // pluralization the spec didn't ask for.
+            <div data-testid="text-unlocated-count" style={{ fontSize: 11.5, color: MID, marginTop: 8 }}>
+              {unlocatedCount} item{unlocatedCount === 1 ? "" : "s"} have no location yet
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 interface TransportLegAlternative { mode: string; durationMinutes: number; costUsd: number | null; energyCost: number; reason: string; }
@@ -1434,6 +1973,10 @@ export default function ExpertWorkspace() {
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [selectedPin, setSelectedPin] = useState<any | null>(null);
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Item 16: "Go to item" from the plan-map InfoWindow — a one-shot signal consumed by
+  // ItemsEditorPanel (the canvas's only per-item, DOM-addressable list) which opens/expands/
+  // scrolls to the row, then clears this back to null.
+  const [focusItemId, setFocusItemId] = useState<string | null>(null);
 
   useEffect(() => {
     if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
@@ -2058,11 +2601,15 @@ export default function ExpertWorkspace() {
         {/* ONE create action (P1-1). The build is unlabeled at birth; channels attach in Distribute.
             W-4: the destination is set here — it is the location the build's data loads from
             (neighborhoods, platform-services search, format). Blank → the launch-market default. */}
-        <input
+        {/* Item 17: Places autocomplete on the destination text — just the text (the destination
+            geocode rail elsewhere in this page already handles centering off it), lat/lng not
+            needed here. */}
+        <PlacesAutocompleteInput
           value={newBuildDest}
-          onChange={e => setNewBuildDest(e.target.value)}
+          onChange={setNewBuildDest}
+          onPlaceSelected={place => setNewBuildDest(place.text)}
           placeholder="Where is this build for? (default: Kyoto)"
-          data-testid="input-new-build-destination"
+          testId="input-new-build-destination"
           disabled={isEventPlanner}
           style={{ width: "100%", boxSizing: "border-box", fontSize: 13, color: INK, border: `1px solid ${LINE}`, borderRadius: 9, padding: "9px 12px", marginBottom: 8, outline: "none", background: CARD }}
         />
@@ -2397,6 +2944,17 @@ export default function ExpertWorkspace() {
             </div>
           ) : (
             <>
+              {/* Item 16: the plan map — PLAN LAYER ONLY (item 19's discovery layer is not yet
+                  ratified). Sits above the day list per the punch-list spec. */}
+              {tripId && (
+                <CanvasMapSection
+                  tripId={tripId}
+                  days={days}
+                  destination={destination}
+                  onGoToItem={(itemId) => setFocusItemId(itemId)}
+                />
+              )}
+
               {/* F1: the format registry picks the structure; client:default = the existing
                   PlanCard day-list, rendered exactly as before. */}
               {buildFormat.grouping === "days" && trip && (
@@ -2473,6 +3031,8 @@ export default function ExpertWorkspace() {
                   maxDay={maxDay}
                   onDayMoved={triggerEnergyRecalc}
                   onOpenBookingBrief={(network) => setBookingBrief({ provider: network, bookingUrl: resolvePartnerBookingUrl(network) })}
+                  focusItemId={focusItemId}
+                  onFocusHandled={() => setFocusItemId(null)}
                 />
               )}
 
