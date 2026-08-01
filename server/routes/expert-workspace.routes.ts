@@ -109,14 +109,55 @@ const libraryQuerySchema = z.object({
   sortOrder: z.string().optional().default("desc"),
 });
 
+// W5-C: overlay an expert's OWN latest DMO edit onto a raw content row so "Refine" writes
+// (expert_dmo_edits) are actually visible in the library/picker/add-to-trip flow instead of
+// dead-ending (QA_PUNCH_LIST item 6). Only fields the edit row actually set are overlaid —
+// a NULL/empty edit field falls through to the raw value (§13: never blank out real content
+// with an untouched edit column). Returns the merged fields plus a `raw` snapshot so a caller
+// can honestly render "refined" vs the original.
+function nonEmptyArray(v: unknown): v is unknown[] {
+  return Array.isArray(v) && v.length > 0;
+}
+
+function mergeDmoEdit(raw: typeof dmoRawContent.$inferSelect, edit?: typeof expertDmoEdits.$inferSelect) {
+  const rawSnapshot = {
+    name: raw.name,
+    description: raw.description,
+    shortDescription: raw.shortDescription,
+    tags: raw.tags,
+    categories: raw.categories,
+    eventTypes: raw.eventTypes,
+    images: raw.images,
+    address: raw.address,
+    latitude: raw.latitude,
+    longitude: raw.longitude,
+  };
+  if (!edit) {
+    return { overlay: {} as Record<string, unknown>, raw: rawSnapshot };
+  }
+  const overlay: Record<string, unknown> = {};
+  if (edit.editedName != null && edit.editedName !== "") overlay.name = edit.editedName;
+  if (edit.editedDescription != null && edit.editedDescription !== "") overlay.description = edit.editedDescription;
+  if (edit.editedShortDescription != null && edit.editedShortDescription !== "") overlay.shortDescription = edit.editedShortDescription;
+  if (nonEmptyArray(edit.editedTags)) overlay.tags = edit.editedTags;
+  if (nonEmptyArray(edit.editedCategories)) overlay.categories = edit.editedCategories;
+  if (nonEmptyArray(edit.editedEventTypes)) overlay.eventTypes = edit.editedEventTypes;
+  if (nonEmptyArray(edit.editedImages)) overlay.images = edit.editedImages;
+  if (edit.editedAddress != null && edit.editedAddress !== "") overlay.address = edit.editedAddress;
+  if (edit.editedLatitude != null) overlay.latitude = edit.editedLatitude;
+  if (edit.editedLongitude != null) overlay.longitude = edit.editedLongitude;
+  return { overlay, raw: rawSnapshot };
+}
+
 router.get(
   "/library",
   requireExpert,
-  asyncHandler(async (req: Request, res: Response) => {
+  asyncHandler(async (req: any, res: Response) => {
     const params = libraryQuerySchema.parse(req.query);
     const page = Math.max(1, parseInt(params.page, 10));
     const limit = Math.min(100, Math.max(1, parseInt(params.limit, 10)));
     const offset = (page - 1) * limit;
+    const expertId = req.user?.claims?.sub || req.user?.id;
 
     const conditions = [];
 
@@ -165,17 +206,51 @@ router.get(
       db.select({ count: count() }).from(dmoRawContent).where(whereClause),
     ]);
 
+    // Overlay the requesting expert's OWN latest edit per raw content row. Scoping decision
+    // (deliberate): expert_dmo_edits.expertId scopes an edit to the expert who wrote it — this
+    // JOIN filters on the SESSION expert's id, so each expert sees only their own refinements,
+    // never another expert's edits to the same shared raw content (the edit store was built
+    // per-expert, not collaborative — leaking cross-expert overlays would silently attribute
+    // one expert's wording/tags to another's library view).
+    const ids = items.map((i) => i.id);
+    const editsByContentId = new Map<string, typeof expertDmoEdits.$inferSelect>();
+    if (ids.length > 0 && expertId) {
+      const edits = await db
+        .select()
+        .from(expertDmoEdits)
+        .where(and(inArray(expertDmoEdits.rawContentId, ids), eq(expertDmoEdits.expertId, expertId)))
+        .orderBy(
+          desc(sql`case when ${expertDmoEdits.editStatus} = 'submitted' then 1 else 0 end`),
+          desc(expertDmoEdits.updatedAt),
+          desc(expertDmoEdits.createdAt),
+        );
+      // Rows arrive newest-preferred-first (submitted > updatedAt > createdAt) — keep only the
+      // first (i.e. latest/preferred) edit seen per raw content id.
+      for (const edit of edits) {
+        if (!editsByContentId.has(edit.rawContentId)) {
+          editsByContentId.set(edit.rawContentId, edit);
+        }
+      }
+    }
+
     res.json({
       page,
       limit,
       total: totalResult[0]?.count || 0,
-      items: items.map((item) => ({
-        ...item,
-        rawData: undefined, // Don't send raw payload to client — too large
-        extractedData: undefined,
-        normalizedData: undefined,
-        embeddingVector: undefined,
-      })),
+      items: items.map((item) => {
+        const edit = editsByContentId.get(item.id);
+        const { overlay, raw } = mergeDmoEdit(item, edit);
+        return {
+          ...item,
+          rawData: undefined, // Don't send raw payload to client — too large
+          extractedData: undefined,
+          normalizedData: undefined,
+          embeddingVector: undefined,
+          ...overlay,
+          isRefined: Boolean(edit),
+          raw,
+        };
+      }),
     });
   }),
 );
