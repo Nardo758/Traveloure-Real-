@@ -142,6 +142,10 @@ const ExpertWorkspace = lazy(() => import("@/pages/expert/workspace"));
 const CartPage = lazy(() => import("@/pages/cart"));
 const MyBookingsPage = lazy(() => import("@/pages/my-bookings"));
 const MyEventsPage = lazy(() => import("@/pages/my-events"));
+// W5-E (docs/planning/QA_PUNCH_LIST.md item 15 [DM]): traveler unified Inbox — Messages
+// (real /api/chats threads, via the shared useConversationThreads hook) + Updates (real
+// /api/notifications), mirroring the earner console's Inbox concept.
+const InboxPage = lazy(() => import("@/pages/inbox"));
 const ContractViewPage = lazy(() => import("@/pages/contract-view"));
 const ServiceDetailPage = lazy(() => import("@/pages/service-detail"));
 const LayoutMock = lazy(() => import("@/pages/layout-mock"));
@@ -369,6 +373,9 @@ function Router() {
       </Route>
       <Route path="/my-events">
         {() => <ProtectedRoute component={MyEventsPage} />}
+      </Route>
+      <Route path="/inbox">
+        {() => <ProtectedRoute component={InboxPage} />}
       </Route>
       <Route path="/contracts/:id">
         <PageErrorBoundary fallbackHeading="Contract Not Found">

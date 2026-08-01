@@ -1,4 +1,5 @@
 import { useChats, useSendMessage } from "@/hooks/use-chat";
+import { useConversationThreads } from "@/hooks/use-conversation-threads";
 import { useAuth } from "@/hooks/use-auth";
 import { isEarnerRole } from "@shared/roles";
 import { getRoleHomePath } from "@/lib/role-utils";
@@ -153,37 +154,28 @@ export default function Chat() {
 
   // Real conversation partners, grouped from the same /api/chats rows the provider/expert Inbox
   // "Recent conversations" list reads (server enriches each row with `participant.displayName`,
-  // role-agnostic — no new endpoint). Mapped onto the existing DisplayExpert shape so the rest of
-  // the thread UI (selection, header, messages) is unchanged. Computed for BOTH roles: an earner's
-  // counterpart is a client, a traveler's counterpart is the expert they messaged (W1-B) — the
-  // grouping logic itself is symmetric, only the counterpart's real-world role differs.
+  // role-agnostic — no new endpoint). Grouping itself now lives in the shared
+  // useConversationThreads hook (W5-E extraction, so the traveler Inbox Messages tab can reuse
+  // it byte-for-byte instead of re-implementing it) — mapped here onto the existing DisplayExpert
+  // shape so the rest of the thread UI (selection, header, messages) is unchanged. Computed for
+  // BOTH roles: an earner's counterpart is a client, a traveler's counterpart is the expert they
+  // messaged (W1-B) — the grouping is symmetric, only the counterpart's real-world role differs.
+  const { threads: conversationThreads } = useConversationThreads();
   const conversationPartners = useMemo<DisplayExpert[]>(() => {
-    const byCounterpart = new Map<string, { row: any; latest: number }>();
-    for (const c of (chats as any[] | null | undefined) ?? []) {
-      const counterpartId = c.senderId === user?.id ? c.receiverId : c.senderId;
-      if (!counterpartId) continue;
-      const ts = c.createdAt ? +new Date(c.createdAt) : 0;
-      const existing = byCounterpart.get(counterpartId);
-      if (!existing || ts > existing.latest) {
-        byCounterpart.set(counterpartId, { row: c, latest: ts });
-      }
-    }
-    return Array.from(byCounterpart.entries())
-      .sort((a, b) => b[1].latest - a[1].latest)
-      .map(([counterpartId, { row }]) => ({
-        id: counterpartId,
-        name: row.participant?.displayName || (isEarner ? "Client" : "Expert"),
-        location: isEarner ? "Client" : "Expert",
-        avatar: row.participant?.profileImageUrl || row.participant?.profileImage || "",
-        rating: null,
-        reviews: 0,
-        specialties: [],
-        languages: [],
-        responseTime: "",
-        lastMessage: row.message ?? undefined,
-        isConversationPartner: true,
-      }));
-  }, [isEarner, chats, user?.id]);
+    return conversationThreads.map((t) => ({
+      id: t.counterpartId,
+      name: t.displayName || (isEarner ? "Client" : "Expert"),
+      location: isEarner ? "Client" : "Expert",
+      avatar: t.avatarUrl || "",
+      rating: null,
+      reviews: 0,
+      specialties: [],
+      languages: [],
+      responseTime: "",
+      lastMessage: t.lastMessage ?? undefined,
+      isConversationPartner: true,
+    }));
+  }, [isEarner, conversationThreads]);
 
   // Traveler-mode browse directory (real experts + any deep-linked expert not already in the
   // list). Kept separate from conversationPartners so the two can render as distinct groups
