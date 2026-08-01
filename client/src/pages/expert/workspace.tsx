@@ -2147,7 +2147,11 @@ export default function ExpertWorkspace() {
               <FileText style={{ width: 40, height: 40, color: FAINT, margin: "0 auto 12px" }} />
               <div style={{ fontSize: 16, fontWeight: 600, color: INK, marginBottom: 8 }}>No itinerary items yet</div>
               <div style={{ fontSize: 13, color: MID, marginBottom: 20 }}>Build the itinerary from the Add panel — DMO places, platform services, or your own items.</div>
-              <button onClick={() => { setRightTab("add"); setAddSource("custom"); }} data-testid="button-add-first-item" style={{ ...btnPrimaryStyle, padding: "9px 20px", fontSize: 14, display: "inline-flex", alignItems: "center", gap: 6 }}>
+              {/* FIX 3 (QA pass): the Add panel's default source pill is already "dmo" (line ~1160) —
+                  this CTA used to override that to "custom" (the hand-entry form), pushing every
+                  first-time builder past the platform's DMO catalog. Just open the panel; let the
+                  existing default stand. */}
+              <button onClick={() => { setRightTab("add"); setAddSource("dmo"); }} data-testid="button-add-first-item" style={{ ...btnPrimaryStyle, padding: "9px 20px", fontSize: 14, display: "inline-flex", alignItems: "center", gap: 6 }}>
                 <Plus style={{ width: 14, height: 14 }} /> Add your first item
               </button>
             </div>
