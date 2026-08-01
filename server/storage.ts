@@ -851,13 +851,15 @@ export class DatabaseStorage implements IStorage {
 
   // Chats
   async getChats(userId: string): Promise<UserAndExpertChat[]> {
-    // Get chats where user is sender or receiver
-    // Drizzle OR logic needed here, for simplicity return all for now or filter in memory if volume low
-    // Implementing proper OR
-    // return await db.select().from(userAndExpertChats).where(or(eq(userAndExpertChats.senderId, userId), eq(userAndExpertChats.receiverId, userId)));
-    
-    // Simplification for MVP: get all chats
-    return await db.select().from(userAndExpertChats);
+    // FABLE-REVIEW (W5-E mark-read lane): was `db.select().from(userAndExpertChats)` with NO
+    // WHERE clause — every authenticated user's GET /api/chats returned EVERY message in the
+    // entire system (every other user's private conversations, full content). §14-class gate
+    // that was simply never written. Fixed to the sender-or-receiver scope the surrounding code
+    // (and messages.service.ts's getConversationList) already assumes.
+    return await db
+      .select()
+      .from(userAndExpertChats)
+      .where(or(eq(userAndExpertChats.senderId, userId), eq(userAndExpertChats.receiverId, userId)));
   }
 
   async createChat(chat: any): Promise<UserAndExpertChat> {

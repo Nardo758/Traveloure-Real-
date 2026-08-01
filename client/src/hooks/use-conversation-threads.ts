@@ -15,6 +15,12 @@ export interface ConversationThread {
   lastMessage: string | null;
   /** ISO timestamp of the most recent message in this thread, or null. */
   lastMessageAt: string | null;
+  /** Count of messages in this thread the session user RECEIVED and has not yet read
+   *  (`readAt IS NULL` on the `/api/chats` row where `receiverId === session user`). Computed
+   *  client-side from the same fully-fetched `/api/chats` list — no second endpoint (W5-E: the
+   *  aggregate count has a real server source too, GET /api/messages/unread/count, but a
+   *  cheap per-conversation breakdown of it doesn't need its own route). */
+  unreadCount: number;
 }
 
 /**
@@ -32,24 +38,32 @@ export function useConversationThreads(): { threads: ConversationThread[]; isLoa
   const { data: chats, isLoading } = useChats();
 
   const threads = useMemo<ConversationThread[]>(() => {
-    const byCounterpart = new Map<string, { row: any; latest: number }>();
+    const byCounterpart = new Map<string, { row: any; latest: number; unreadCount: number }>();
     for (const c of (chats as any[] | null | undefined) ?? []) {
       const counterpartId = c.senderId === user?.id ? c.receiverId : c.senderId;
       if (!counterpartId) continue;
       const ts = c.createdAt ? +new Date(c.createdAt) : 0;
+      const isUnreadIncoming = c.receiverId === user?.id && !c.readAt;
       const existing = byCounterpart.get(counterpartId);
-      if (!existing || ts > existing.latest) {
-        byCounterpart.set(counterpartId, { row: c, latest: ts });
+      if (!existing) {
+        byCounterpart.set(counterpartId, { row: c, latest: ts, unreadCount: isUnreadIncoming ? 1 : 0 });
+      } else {
+        if (ts > existing.latest) {
+          existing.row = c;
+          existing.latest = ts;
+        }
+        if (isUnreadIncoming) existing.unreadCount += 1;
       }
     }
     return Array.from(byCounterpart.entries())
       .sort((a, b) => b[1].latest - a[1].latest)
-      .map(([counterpartId, { row }]) => ({
+      .map(([counterpartId, { row, unreadCount }]) => ({
         counterpartId,
         displayName: row.participant?.displayName ?? null,
         avatarUrl: row.participant?.profileImageUrl || row.participant?.profileImage || null,
         lastMessage: row.message ?? null,
         lastMessageAt: row.createdAt ?? null,
+        unreadCount,
       }));
   }, [chats, user?.id]);
 
