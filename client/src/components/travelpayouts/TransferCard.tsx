@@ -75,7 +75,7 @@ export function TransferCard({ item, className }: TransferCardProps) {
             </Button>
           </div>
           <BookWithExpertButton
-            destination={item.destination}
+            destination={item.destination ?? undefined}
             topic="transfers"
             className="w-full justify-center"
             data-testid={`button-expert-transfer-${item.id}`}

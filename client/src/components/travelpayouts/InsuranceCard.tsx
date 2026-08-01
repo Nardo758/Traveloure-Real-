@@ -67,7 +67,7 @@ export function InsuranceCard({ item, className }: { item: CatalogItem; classNam
             </Button>
           </div>
           <BookWithExpertButton
-            destination={item.destination}
+            destination={item.destination ?? undefined}
             topic="insurance"
             className="w-full justify-center"
             data-testid={`button-expert-insurance-${item.id}`}

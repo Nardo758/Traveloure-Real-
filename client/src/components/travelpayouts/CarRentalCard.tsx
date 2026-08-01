@@ -93,7 +93,7 @@ export function CarRentalCard({ item, className }: CarRentalCardProps) {
             </Button>
           </div>
           <BookWithExpertButton
-            destination={item.destination}
+            destination={item.destination ?? undefined}
             topic="car-rental"
             className="w-full justify-center"
             data-testid={`button-expert-car-${item.id}`}
