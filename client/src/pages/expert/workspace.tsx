@@ -192,8 +192,29 @@ function BookingBriefModal({ provider, bookingUrl, tripId, onClose }: { provider
   );
 }
 
+/** apiRequest throws `Error("<status>: <body>")` — pull the server's honest message out of it
+ *  (falling back to the raw text) so a 400 zod-validation refusal reads as prose, not a status code. */
+function parseApiErrorMessage(err: unknown, fallback: string): string {
+  if (err instanceof Error) {
+    const match = err.message.match(/^\d+:\s*([\s\S]*)$/);
+    const body = match ? match[1] : err.message;
+    try {
+      const parsed = JSON.parse(body);
+      if (parsed?.message) return parsed.message as string;
+    } catch {
+      // not JSON — use the raw body text
+    }
+    return body || fallback;
+  }
+  return fallback;
+}
+
 /** The Add panel's "Custom" source — same fields, same POST /api/trips/:tripId/itinerary-items
- *  write as the old AddItemModal. Day-aware (P2-13): the add targets the day in focus. */
+ *  write as the old AddItemModal. Day-aware (P2-13): the add targets the day in focus.
+ *  `estimatedCost` writes to `itinerary_items.estimated_cost`, a decimal(10,2) column —
+ *  `insertItineraryItemSchema` (drizzle-zod) expects a STRING for decimal columns, so a raw
+ *  `parseFloat` JS number 400s with "invalid_type expected string received number" (the same
+ *  drift `server/routes.ts:1271,7793` already guard against via `String(...)`). */
 function InlineAddItemForm({ tripId, dayNumber, onAdded }: { tripId: string; dayNumber: number; onAdded: () => void }) {
   const { toast } = useToast();
   const [form, setForm] = useState({ title: "", itemType: "activity", startTime: "", estimatedCost: "", locationName: "" });
@@ -206,11 +227,11 @@ function InlineAddItemForm({ tripId, dayNumber, onAdded }: { tripId: string; day
       toast({ title: "Item added", description: `Added to Day ${dayNumber}` });
       setForm({ title: "", itemType: "activity", startTime: "", estimatedCost: "", locationName: "" });
     },
-    onError: () => toast({ title: "Failed to add item", variant: "destructive" }),
+    onError: (err: any) => toast({ title: "Failed to add item", description: parseApiErrorMessage(err, "Please check the fields and try again."), variant: "destructive" }),
   });
   const handleSubmit = () => {
     if (!form.title.trim()) return;
-    createMutation.mutate({ ...form, dayNumber, estimatedCost: form.estimatedCost ? parseFloat(form.estimatedCost) : undefined });
+    createMutation.mutate({ ...form, dayNumber, estimatedCost: form.estimatedCost ? String(parseFloat(form.estimatedCost)) : undefined });
   };
   const labelStyle: React.CSSProperties = { fontSize: 12, fontWeight: 600, color: MID, display: "block", marginBottom: 4 };
   const inputStyle: React.CSSProperties = { width: "100%", padding: "8px 10px", borderRadius: 8, border: `1.5px solid ${LINE}`, fontSize: 13, outline: "none", boxSizing: "border-box" as any, background: CARD, color: INK };
@@ -901,7 +922,9 @@ interface SuggestionPayload {
   dayNumber?: number;
   title: string;
   description?: string;
-  estimatedCost?: number;
+  // string, not number — mirrors `createTripSuggestion`'s `estimatedCost?: string | null` param
+  // (Fix 1's same-drift sibling: `trip_suggestions.estimated_cost` is a decimal column too).
+  estimatedCost?: string;
 }
 
 // Add-panel source pills (§17 Central Content network). D1/D5 (UX audit Jul 29): every
@@ -964,7 +987,7 @@ function ClientSuggestPanel({ tripId }: { tripId: string }) {
     const payload: SuggestionPayload = { type: form.type, title: form.title.trim() };
     if (form.dayNumber) payload.dayNumber = parseInt(form.dayNumber, 10);
     if (form.description.trim()) payload.description = form.description.trim();
-    if (form.estimatedCost) payload.estimatedCost = parseFloat(form.estimatedCost);
+    if (form.estimatedCost) payload.estimatedCost = String(parseFloat(form.estimatedCost));
     submitSuggestionMutation.mutate(payload);
   };
 

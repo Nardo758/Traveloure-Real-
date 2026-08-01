@@ -79,7 +79,10 @@ export function TransportPickerCore({
         title: opt.title,
         itemType: "transport",
         description: [opt.description, opt.duration ? `~${opt.duration}` : null].filter(Boolean).join(" · ") || undefined,
-        estimatedCost: opt.price ?? undefined,
+        // `estimated_cost` is a decimal(10,2) column — insertItineraryItemSchema (drizzle-zod)
+        // expects a STRING, not the raw number `opt.price` carries (Fix 1's same-drift sibling,
+        // matching service-picker-modal.tsx's `String(s.price)` next to it on the same endpoint).
+        estimatedCost: opt.price != null ? String(opt.price) : undefined,
         dayNumber,
       });
       return res.json();
