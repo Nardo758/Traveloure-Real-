@@ -688,17 +688,23 @@ export async function getPendingSuggestion(suggestionId: string, tripId: string)
   return result.rows?.[0] ?? null;
 }
 
+// W3-A hardening (§15): the transition is atomic-conditional on `status = 'pending'` — the
+// separate getPendingSuggestion SELECT in the route is a TOCTOU check on its own, and approval
+// now creates a real itinerary_items row, so a racing double-approve must lose here (0 rows)
+// rather than double-materialize the item. Returns whether a row actually flipped.
 export async function updateSuggestionStatus(
   suggestionId: string,
   tripId: string,
   status: string,
   rejectionNote?: string | null,
-): Promise<void> {
-  await db.execute(sql`
+): Promise<boolean> {
+  const result = await db.execute(sql`
     UPDATE trip_suggestions
     SET status = ${status}, rejection_note = ${rejectionNote ?? null}, reviewed_at = NOW()
-    WHERE id = ${suggestionId} AND trip_id = ${tripId}
+    WHERE id = ${suggestionId} AND trip_id = ${tripId} AND status = 'pending'
+    RETURNING id
   `);
+  return ((result as any).rows?.length ?? 0) > 0;
 }
 
 export async function getGeneratedItinerary(tripId: string): Promise<{ id: string; itinerary_data: any } | null> {

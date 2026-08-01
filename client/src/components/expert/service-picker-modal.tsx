@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { parseApiErrorMessage } from "@/lib/api-error";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -8,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MapPin, Plus, Check, Store, Search, Star } from "lucide-react";
+import { envelopeFromProviderService, envelopeToItineraryItemFields } from "@shared/content-logistics";
 
 interface PlatformService {
   id: string;
@@ -20,6 +22,15 @@ interface PlatformService {
   serviceType?: string | null;
   averageRating?: string | null;
   reviewCount?: number | null;
+  // Content logistics envelope sources (migration 166, QA_PUNCH_LIST item 20) — carried onto the
+  // new itinerary item via envelopeToItineraryItemFields below so the plan retains what this
+  // listing knew about duration/transport at add time.
+  pickupAvailable?: boolean | null;
+  pickupAddress?: string | null;
+  dropOffPoint?: string | null;
+  transportProvided?: string | null;
+  deliveryTimeframe?: string | null;
+  availability?: unknown;
   // L27-P1: migration 129's additive coordinate columns, returned by GET /api/services
   // (full row select). Only wired through when locationPrecision === 'exact' — today
   // every populated row is 'neighborhood_centroid' (the migration's one-time backfill;
@@ -85,6 +96,11 @@ export function ServicePickerModal({
       const lat = s.latitude == null ? NaN : typeof s.latitude === "number" ? s.latitude : parseFloat(s.latitude);
       const lng = s.longitude == null ? NaN : typeof s.longitude === "number" ? s.longitude : parseFloat(s.longitude);
       const withCoords = s.locationPrecision === "exact" && Number.isFinite(lat) && Number.isFinite(lng);
+      // Content logistics envelope (migration 166, QA_PUNCH_LIST item 20) — this listing's
+      // duration/transport facts, mapped once through the shared envelope and carried onto the
+      // new item so the plan retains them independent of the source row. Fields the listing never
+      // captured stay omitted (envelopeToItineraryItemFields), never defaulted.
+      const logistics = envelopeToItineraryItemFields(envelopeFromProviderService(s));
       const res = await apiRequest("POST", `/api/trips/${tripId}/itinerary-items`, {
         title: s.serviceName,
         description: s.description || undefined,
@@ -95,6 +111,7 @@ export function ServicePickerModal({
         providerServiceId: s.id,
         dayNumber,
         suggestedBy: "expert",
+        ...logistics,
       });
       return res.json();
     },
@@ -105,8 +122,9 @@ export function ServicePickerModal({
       onAdded();
       toast({ title: "Added to itinerary", description: `${s.serviceName} → Day ${dayNumber}` });
     },
+    // Plan-approval mode flip (migration 164) — see dmo-picker-modal.tsx's addMutation.
     onError: (err: any) => {
-      toast({ title: "Couldn't add service", description: String(err?.message ?? err), variant: "destructive" });
+      toast({ title: "Couldn't add service", description: parseApiErrorMessage(err, "Please try again."), variant: "destructive" });
     },
   });
 

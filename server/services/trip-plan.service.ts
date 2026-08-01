@@ -62,6 +62,7 @@ import {
   type TripPlanLeg,
   type TripPlanMeta,
   type TripPlanMetrics,
+  type TripPlanPlanApproval,
   type VariantFullTripPlan,
 } from "@shared/trip-plan";
 import { geocodeAddress } from "../utils/geocode";
@@ -383,6 +384,36 @@ async function resolveDeliveredBy(
 }
 
 /**
+ * The delivery handshake (migration 164, QA_PUNCH_LIST W2-A items 11+13). Reads the same
+ * accepted-advisor row `resolveDeliveredBy` prefers (most recently assigned, `status='accepted'`)
+ * — one advisor row per (trip, expert) by the `uniqueTripExpert` index, so this is unambiguous
+ * for the common single-advisor case. `null` when the trip has no accepted advisor at all
+ * (self-planned or still-pending) — the Trip Card banner must never guess a handshake state that
+ * doesn't exist.
+ */
+async function resolvePlanApproval(tripId: string): Promise<TripPlanPlanApproval | null> {
+  const [row] = await db
+    .select({
+      workspaceStatus: tripExpertAdvisors.workspaceStatus,
+      planApprovalStatus: tripExpertAdvisors.planApprovalStatus,
+      planApprovedAt: tripExpertAdvisors.planApprovedAt,
+      planReviewNote: tripExpertAdvisors.planReviewNote,
+    })
+    .from(tripExpertAdvisors)
+    .where(and(eq(tripExpertAdvisors.tripId, tripId), eq(tripExpertAdvisors.status, "accepted")))
+    .orderBy(desc(tripExpertAdvisors.assignedAt))
+    .limit(1);
+
+  if (!row) return null;
+  return {
+    workspaceStatus: row.workspaceStatus ?? null,
+    status: (row.planApprovalStatus as "approved" | "changes_requested" | null) ?? null,
+    approvedAt: row.planApprovedAt ? String(row.planApprovedAt) : null,
+    reviewNote: row.planReviewNote ?? null,
+  };
+}
+
+/**
  * Budget (§3). `planned` is the trip's own budget column; `spentBreakdown` is REAL paid
  * `trip_transactions` grouped by category. No transactions ⇒ empty array (never a projected or
  * estimated spend — §13). Single platform currency today (CLAUDE.md §10 Currency); multi-currency
@@ -501,6 +532,7 @@ export async function assembleTripPlan(
 
   const startDate = trip.startDate ? new Date(trip.startDate) : new Date();
   const deliveredBy = await resolveDeliveredBy(tripId, trip.expertId);
+  const planApproval = await resolvePlanApproval(tripId);
 
   const baseMeta = (dayCount: number): TripPlanMeta => ({
     tripPlanVersion: TRIP_PLAN_VERSION,
@@ -520,6 +552,7 @@ export async function assembleTripPlan(
     // Single source of truth for origin — a trip is platform-originated content.
     origin: contentOriginFor("trip"),
     deliveredBy,
+    planApproval,
     dayCount,
     // No trip-level hero-image column exists; emitted null rather than invented (§13).
     heroImageUrl: null,
@@ -594,7 +627,11 @@ export async function assembleTripPlan(
   const legBookingMap = await resolveLegBookings([...variantLegs, ...tripLegs]);
 
   const changes = await storage.getItineraryChanges(tripId, 20);
-  const commentCounts = await storage.getActivityCommentCounts(tripId);
+  // W5-D cleanup (Aug 1, 2026): `activity_comments` (the source of a per-activity comment
+  // COUNT) is retired — zero client renderer ever read `TripPlanActivity.comments` (the
+  // other producers of a PlanCardActivity, e.g. client/src/pages/itinerary.tsx, always
+  // hardcoded it to 0 too). The field stays in the shared type/contract (other live fields
+  // in the same block are read), just permanently 0 now, matching every other producer.
 
   // Mobile-lens audit §5: surface real vendor phone (vendor_contracts) + confirmation number
   // (itinerary_items, already stored) on the activity row. Bulk-fetch once per assembly; render
@@ -660,7 +697,7 @@ export async function assembleTripPlan(
       type: mapItemType(item.itemType),
       status: mapItemStatus(item.status),
       cost: parseFloat(item.estimatedCost?.toString() || "0"),
-      comments: commentCounts[item.id] || 0,
+      comments: 0,
       suggestedBy: item.suggestedBy || null,
       changes: changes
         .filter((c) => c.activityId === item.id)
@@ -987,6 +1024,8 @@ export async function assembleTripPlanFromVariant(
     origin: contentOriginFor("itinerary_variant"),
     // See the capability-gap note above: never the sharer.
     deliveredBy: null,
+    // A variant snapshot has no `trip_expert_advisors` row of its own — never fabricated.
+    planApproval: null,
     dayCount,
     // No hero-image column on a variant; emitted null rather than invented (§13).
     heroImageUrl: null,

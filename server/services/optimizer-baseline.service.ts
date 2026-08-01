@@ -72,16 +72,19 @@ export interface TripOptimizerInputs {
  * | activity        | `activity`      | no (marquee-eligible: a $500 private activity SHOULD be protected) | `sightseeing` (the mapper's documented default) | ✓ |
  * | meal            | `meal`          | no             | `dining_light` (via `includes('meal')`) | ✓ |
  * | transport       | `transport`     | YES            | `transport`               | ✓ |
- * | accommodation   | `accommodation` | YES            | `sightseeing`¹            | ✓ |
- * | free_time       | `free_time`     | no             | `sightseeing`¹            | ✓ |
+ * | accommodation   | `accommodation` | YES            | `accommodation`² (relaxation-bucket, own cost category) | ✓ |
+ * | free_time       | `free_time`     | no             | `free_time`² (excluded from every time bucket — widens the derived free-time gap instead of being miscounted as active) | ✓ |
  * | meeting         | `meeting`       | no             | `sightseeing`¹            | ✓ |
  * | checkpoint      | `checkpoint`    | no             | `sightseeing`¹            | ✓ |
  *
- * ¹ `mapServiceTypeToCategory` has no accommodation / free-time / meeting bucket at all — those
- *   strings match no rule and fall to its `sightseeing` default. That is PRE-EXISTING behaviour of
- *   the metrics mapper (the cart read fed it raw `provider_services.serviceType`, which has the
- *   same hole), and inventing a category here to paper over it would be a fabrication. Recorded,
- *   not silently "fixed".
+ * ¹ `mapServiceTypeToCategory` still has no `meeting` bucket — that string matches no rule and
+ *   falls to its `sightseeing` default. That is PRE-EXISTING behaviour of the metrics mapper (the
+ *   cart read fed it raw `provider_services.serviceType`, which has the same hole), and inventing a
+ *   category here to paper over it would be a fabrication. Recorded, not silently "fixed".
+ * ² FIX 4b (W1c polish) closed the `accommodation`/`free_time` half of this hole — the mapper now
+ *   recognizes both (mapping honestly from the same existing `itineraryItemTypeEnum` vocabulary,
+ *   no new item type), so they no longer silently inherit `sightseeing`'s active-time miscount.
+ *   `meeting` is unchanged/still open.
  *
  * The map lands on identity for all seven values — but only AFTER checking each one against those
  * three consumers, and the two that matter (`transport`, `accommodation`) are exactly the members

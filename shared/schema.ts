@@ -45,6 +45,13 @@ export const attendanceRequirementEnum = ["all", "subset", "optional"] as const;
 export const ROUTING_STATUSES = ["in_planning", "with_expert", "ready_for_checkout", "purchased"] as const;
 export type RoutingStatus = (typeof ROUTING_STATUSES)[number];
 
+// Plan-approval handshake on trip_expert_advisors (migration 164; QA_PUNCH_LIST W2-A, item 13
+// ratified Aug 1 2026). NULL = no decision yet (the honest pre-feature/pre-delivery state). Same
+// pre-109 posture as ROUTING_STATUSES above: plain varchar, canonical set lives HERE not in a DB
+// CHECK, so the publish-time drizzle push has no CHECK to enforce against un-remapped rows.
+export const PLAN_APPROVAL_STATUSES = ["approved", "changes_requested"] as const;
+export type PlanApprovalStatus = (typeof PLAN_APPROVAL_STATUSES)[number];
+
 // === Tables ===
 
 export const touristPlacesSearches = pgTable("tourist_places_searches", {
@@ -145,6 +152,12 @@ export const tripExpertAdvisors = pgTable("trip_expert_advisors", {
   message: text("message"),
   expertResponse: text("expert_response"),
   assignedAt: timestamp("assigned_at").defaultNow(),
+  // Plan-approval handshake (migration 164). NULL = no customer decision yet. Set only once the
+  // advisor row is `delivered` (server-enforced at the decision endpoint, not here). See
+  // PLAN_APPROVAL_STATUSES above for the canonical value set.
+  planApprovalStatus: varchar("plan_approval_status", { length: 20 }),
+  planApprovedAt: timestamp("plan_approved_at"),
+  planReviewNote: text("plan_review_note"),
 }, (table) => ({
   uniqueTripExpert: uniqueIndex("trip_expert_advisors_trip_expert_unique").on(table.tripId, table.localExpertId),
 }));
@@ -166,6 +179,23 @@ export const tripSuggestions = pgTable("trip_suggestions", {
 
 export type TripSuggestion = typeof tripSuggestions.$inferSelect;
 export type InsertTripSuggestion = typeof tripSuggestions.$inferInsert;
+
+// === Per-item plan comments (migration 165, QA_PUNCH_LIST W3-C item 12) ===
+// The communication half of the delivery loop: "can we do this earlier?" lives on the item,
+// not in detached chat. Declared here (deploy-push durability rule) even though the FK targets
+// (trips/itineraryItems/users) are declared elsewhere in this file — the `() => x.id` callback
+// form Drizzle uses for references is resolved lazily, so declaration order doesn't matter.
+export const tripItemComments = pgTable("trip_item_comments", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  tripId: varchar("trip_id").notNull().references(() => trips.id, { onDelete: "cascade" }),
+  itemId: varchar("item_id").notNull().references(() => itineraryItems.id, { onDelete: "cascade" }),
+  authorId: varchar("author_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  body: text("body").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type TripItemComment = typeof tripItemComments.$inferSelect;
+export type InsertTripItemComment = typeof tripItemComments.$inferInsert;
 
 export const reviewRatings = pgTable("review_ratings", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -600,6 +630,10 @@ export const providerServices = pgTable("provider_services", {
   // 3-value so "not applicable" (remote/self-guided) is distinct from an explicit "no transport".
   // DB CHECK enforced in migration 119. Default not_applicable so grandfathered rows make no claim.
   transportProvided: varchar("transport_provided", { length: 20 }).default("not_applicable"), // yes, no, not_applicable
+  // Content logistics envelope (migration 166, QA_PUNCH_LIST item 20) — the one logistics field
+  // with no prior home: meetingPoint/pickupAddress cover arrival, nothing structurally captured
+  // departure. Additive nullable, no DB CHECK. NULL = never captured (§13, not "no drop-off").
+  dropOffPoint: text("drop_off_point"),
   // Neighborhood tag (v2 spec §5.1) — soft reference into city_neighborhoods.slug.
   neighborhood: varchar("neighborhood", { length: 100 }),
 
@@ -3342,6 +3376,17 @@ export const itineraryItems = pgTable("itinerary_items", {
   // tip PlanCard renders per activity. Distinct from notes (traveler's own) and privateNotes
   // (organizer-only): this is the EXPERT's voice on the item. Nullable; NULL = no note.
   expertNote: text("expert_note"),
+  // Content logistics envelope (migration 166, QA_PUNCH_LIST item 20) — what the ADDING SOURCE
+  // knew about transport at add-time, carried onto the plan item so it survives independent of
+  // the source row (a partner-feed or DMO item has nothing else to carry it in). transportProvided
+  // mirrors provider_services.transportProvided's app-layer vocabulary (yes|no|not_applicable,
+  // no DB CHECK here — see migration 166 header). durationMinutes above already served the
+  // "duration" leg of the envelope pre-166. Nullable; NULL = the source never captured that fact
+  // (§13 — never fabricated, never defaulted to "not provided" at the DATA layer; the transport-gap
+  // checker (21) is the layer that treats unknown as "not provided" for FLAGGING purposes only).
+  transportProvided: varchar("transport_provided", { length: 20 }),
+  pickupPoint: text("pickup_point"),
+  dropOffPoint: text("drop_off_point"),
   attachments: jsonb("attachments").default([]), // [{name, url, type}]
   
   // Suggestion tracking
@@ -5333,25 +5378,15 @@ export const itineraryChanges = pgTable("itinerary_changes", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const activityComments = pgTable("activity_comments", {
-  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
-  activityId: varchar("activity_id").notNull(),
-  tripId: varchar("trip_id").notNull().references(() => trips.id, { onDelete: "cascade" }),
-  authorId: varchar("author_id").notNull(),
-  authorName: varchar("author_name", { length: 255 }).notNull(),
-  text: text("text").notNull(),
-  role: varchar("role", { length: 20 }).notNull(),
-  parentId: varchar("parent_id"),
-  createdAt: timestamp("created_at").defaultNow(),
-});
+// NOTE (W5-D cleanup, Aug 1, 2026): the `activity_comments` table + its schema were retired here —
+// zero client callers of GET/POST /api/activities/:activityId/comments or DELETE /api/comments/:id
+// ever existed. Per-item comments now live on `trip_item_comments` (migration 165). See migration
+// 167_drop_activity_comments.sql for the DROP TABLE rationale.
 
 export const insertItineraryChangeSchema = createInsertSchema(itineraryChanges).omit({ id: true, createdAt: true });
-export const insertActivityCommentSchema = createInsertSchema(activityComments).omit({ id: true, createdAt: true });
 
 export type ItineraryChange = typeof itineraryChanges.$inferSelect;
 export type InsertItineraryChange = z.infer<typeof insertItineraryChangeSchema>;
-export type ActivityComment = typeof activityComments.$inferSelect;
-export type InsertActivityComment = z.infer<typeof insertActivityCommentSchema>;
 
 // ============================================
 // DATA MONETIZATION & ANALYTICS INFRASTRUCTURE
@@ -7087,7 +7122,7 @@ export const readyMadeTrips = pgTable("ready_made_trips", {
   pricingMode: varchar("pricing_mode", { length: 20 }).notNull().default("fixed"), // CHECK fixed|per_traveler
   priceCents: integer("price_cents"), // display/charge base; USD-only v1; resolved with fee band
   feeBandKey: varchar("fee_band_key", { length: 100 }).notNull().default("ready_made_trip"),
-  status: varchar("status", { length: 20 }).notNull().default("draft"), // CHECK draft|submitted|approved|rejected
+  status: varchar("status", { length: 20 }).notNull().default("draft"), // CHECK draft|submitted|approved|rejected|withdrawn (migration 163)
   badge: varchar("badge", { length: 30 }),
   insideCounts: jsonb("inside_counts"), // snapshot derived ONLY at the approved transition
   buildReview: jsonb("build_review"),   // Phase 2.5 advisory verdict (score + findings), admin-queue visible

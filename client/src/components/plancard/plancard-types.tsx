@@ -5,7 +5,7 @@ import { differenceInDays, isValid } from "date-fns";
 import { MODE_COLORS, MODE_ICON_MAP, getModeIcon } from "@/lib/transport-modes";
 import type { InlineTransportLegData } from "@/components/itinerary/InlineTransportSelector";
 import type { RoutingStatus } from "@shared/schema";
-import type { TripPlanBooking } from "@shared/trip-plan";
+import type { TripPlanBooking, TripPlanPlanApproval } from "@shared/trip-plan";
 
 // Re-exported so plancard consumers can name the routing-status union without a second import.
 export type { RoutingStatus };
@@ -356,6 +356,12 @@ export interface PlanCardData {
    * surface a booking that isn't rendered inline on any activity row.
    */
   bookings?: TripPlanBooking[];
+  /**
+   * TripPlan v1 envelope passthrough (the plancard route's `meta` key). Only the delivery-handshake
+   * field is consumed client-side today (PlanApprovalBanner) — narrowed to that rather than the
+   * full TripPlanMeta shape so this stays a thin, additive read.
+   */
+  meta?: { planApproval?: TripPlanPlanApproval | null };
 }
 
 export interface PlanCardTrip {

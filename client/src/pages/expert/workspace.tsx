@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, Component, type ReactNode, type ErrorInfo } from "react";
 import { PlanCard } from "@/components/plancard/PlanCard";
+import { ItemComments } from "@/components/plancard/ItemComments";
 import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -9,12 +10,16 @@ import { ExpertLayout } from "@/components/expert/expert-layout";
 import { DmoPickerCore } from "@/components/expert/dmo-picker-modal";
 import { ServicePickerModal } from "@/components/expert/service-picker-modal";
 import { TransportPickerCore } from "@/components/expert/transport-picker";
+import { PartnerCatalogPickerCore } from "@/components/expert/partner-catalog-picker";
+import { parsePartnerSource } from "@/lib/partner-source";
+import { PlatformContentPickerCore } from "@/components/expert/platform-content-picker";
+import { MyServicesPickerCore } from "@/components/expert/my-services-picker";
 import ReadyMadeListingPanel, { type ReadyMadeListing } from "@/components/expert/ready-made-listing-panel";
 import { resolveFormat } from "@/lib/build-formats/registry";
 import { ClientFormatView } from "@/components/build-formats/ClientFormatView";
 import { SocialKitCard } from "@/components/build-formats/SocialKitCard";
 import { STORE_GATE_MESSAGE } from "@shared/launch-markets";
-import { APIProvider, Map, InfoWindow } from "@vis.gl/react-google-maps";
+import { APIProvider, Map, InfoWindow, useMap, useMapsLibrary } from "@vis.gl/react-google-maps";
 import { MapMarker, GOOGLE_MAPS_MAP_ID } from "@/components/ui/map-marker";
 import {
   MapPin, ChevronRight, ChevronDown, ChevronUp, Pencil, Sparkles, Link2, PenSquare,
@@ -29,6 +34,11 @@ import {
 // server uses (CLAUDE.md §18's chauffeured set) — never a hand-typed duplicate list.
 import { CHAUFFEURED_MODES, isChauffeuredMode } from "@shared/trip-plan";
 import { TRANSPORT_MODE_ICONS, TRANSPORT_MODE_LABELS } from "@/lib/maps-platform";
+import { parseApiErrorMessage } from "@/lib/api-error";
+// W5-A (QA_PUNCH_LIST item 19) — the discovery-layer candidate-pin publish/subscribe store. Every
+// Add-panel source drawer publishes its own current results here; CanvasMapSection reads the
+// single active publisher. See client/src/lib/map-candidates.ts for the full contract.
+import { usePublishMapCandidates, useMapCandidates, type MapCandidate } from "@/lib/map-candidates";
 
 const MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
 
@@ -193,21 +203,174 @@ function BookingBriefModal({ provider, bookingUrl, tripId, onClose }: { provider
   );
 }
 
-/** apiRequest throws `Error("<status>: <body>")` — pull the server's honest message out of it
- *  (falling back to the raw text) so a 400 zod-validation refusal reads as prose, not a status code. */
-function parseApiErrorMessage(err: unknown, fallback: string): string {
-  if (err instanceof Error) {
-    const match = err.message.match(/^\d+:\s*([\s\S]*)$/);
-    const body = match ? match[1] : err.message;
+/** QA_PUNCH_LIST item 17 — Google Places autocomplete, the inner render (needs an `<APIProvider>`
+ *  ancestor for `useMapsLibrary`). Uses the classic `AutocompleteService`/`PlacesService` pair
+ *  (works with just the `places` library, loaded on demand — no `libraries` prop needed on
+ *  `<APIProvider>`, `useMapsLibrary` imports it lazily). A plain, uncontrolled suggestion
+ *  dropdown — no external autocomplete widget/web-component, so it composes with this file's own
+ *  input styling. `onChange` fires on every keystroke regardless of API state, so typing is never
+ *  gated on Places being available — only the SUGGESTIONS are. */
+function PlacesAutocompleteInputInner({
+  value, onChange, onPlaceSelected, placeholder, testId, disabled, style,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  onPlaceSelected?: (place: { text: string; lat?: string; lng?: string }) => void;
+  placeholder?: string;
+  testId: string;
+  disabled?: boolean;
+  style: React.CSSProperties;
+}) {
+  const placesLib = useMapsLibrary("places");
+  const [predictions, setPredictions] = useState<google.maps.places.AutocompletePrediction[]>([]);
+  const [open, setOpen] = useState(false);
+  const acServiceRef = useRef<google.maps.places.AutocompleteService | null>(null);
+  const placesServiceRef = useRef<google.maps.places.PlacesService | null>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!placesLib) return;
     try {
-      const parsed = JSON.parse(body);
-      if (parsed?.message) return parsed.message as string;
+      acServiceRef.current = new placesLib.AutocompleteService();
+      placesServiceRef.current = new placesLib.PlacesService(document.createElement("div"));
     } catch {
-      // not JSON — use the raw body text
+      // Construction failing (bad key / billing) is exactly the fallback case — leave the refs
+      // null so getPlacePredictions below is skipped and this behaves as plain text.
+      acServiceRef.current = null;
+      placesServiceRef.current = null;
     }
-    return body || fallback;
+  }, [placesLib]);
+
+  useEffect(() => () => { if (debounceRef.current) clearTimeout(debounceRef.current); }, []);
+
+  const handleChange = (v: string) => {
+    onChange(v);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (!acServiceRef.current || !v.trim()) {
+      setPredictions([]);
+      setOpen(false);
+      return;
+    }
+    debounceRef.current = setTimeout(() => {
+      try {
+        acServiceRef.current!.getPlacePredictions({ input: v }, (results, status) => {
+          if (status === "OK" && results?.length) {
+            setPredictions(results);
+            setOpen(true);
+          } else {
+            // Covers REQUEST_DENIED (bad key) and every other non-OK status — same fallback
+            // posture as a load failure: no dropdown, plain text keeps working.
+            setPredictions([]);
+            setOpen(false);
+          }
+        });
+      } catch {
+        setPredictions([]);
+        setOpen(false);
+      }
+    }, 300);
+  };
+
+  const pick = (prediction: google.maps.places.AutocompletePrediction) => {
+    onChange(prediction.description);
+    setOpen(false);
+    setPredictions([]);
+    if (!onPlaceSelected) return;
+    if (!placesServiceRef.current) {
+      onPlaceSelected({ text: prediction.description });
+      return;
+    }
+    try {
+      placesServiceRef.current.getDetails(
+        { placeId: prediction.place_id, fields: ["geometry", "name"] },
+        (place, status) => {
+          if (status === "OK" && place?.geometry?.location) {
+            onPlaceSelected({
+              text: prediction.description,
+              lat: String(place.geometry.location.lat()),
+              lng: String(place.geometry.location.lng()),
+            });
+          } else {
+            onPlaceSelected({ text: prediction.description });
+          }
+        },
+      );
+    } catch {
+      onPlaceSelected({ text: prediction.description });
+    }
+  };
+
+  return (
+    <div style={{ position: "relative" }}>
+      <input
+        value={value}
+        onChange={e => handleChange(e.target.value)}
+        onBlur={() => { setTimeout(() => setOpen(false), 150); }}
+        onFocus={() => { if (predictions.length > 0) setOpen(true); }}
+        placeholder={placeholder}
+        data-testid={testId}
+        disabled={disabled}
+        style={style}
+        autoComplete="off"
+      />
+      {open && predictions.length > 0 && (
+        <div
+          data-testid={`${testId}-suggestions`}
+          style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 30, background: CARD, border: `1px solid ${LINE}`, borderRadius: 8, marginTop: 3, maxHeight: 180, overflowY: "auto", boxShadow: "0 4px 14px rgba(0,0,0,0.18)" }}
+        >
+          {predictions.map(p => (
+            <button
+              key={p.place_id}
+              type="button"
+              onMouseDown={e => { e.preventDefault(); pick(p); }}
+              data-testid={`${testId}-suggestion-${p.place_id}`}
+              style={{ display: "block", width: "100%", textAlign: "left", padding: "7px 10px", fontSize: 12.5, background: "none", border: "none", cursor: "pointer", color: INK }}
+            >
+              {p.description}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** QA_PUNCH_LIST item 17 outer wrapper — decides whether Places is even attempted. FALLBACK IS
+ *  MANDATORY (no key, or the Maps API failed to load): renders a plain `<input>`, byte-identical
+ *  to what these two fields rendered before this lane — never blocks typing, never crashes. A
+ *  local `<APIProvider>` (not a page-wide one) mirrors this file's established convention of
+ *  wrapping Maps usage locally around the section that needs it (see the Platform-services browse
+ *  map below); nesting multiple `<APIProvider>`s with the SAME apiKey is safe — the underlying
+ *  loader is a de-duped singleton keyed by its serialized params (`GoogleMapsApiLoader.load`),
+ *  so a second provider with identical params is a harmless no-op re-import, never a duplicate
+ *  script load or a "loaded with different parameters" conflict. */
+function PlacesAutocompleteInput(props: {
+  value: string;
+  onChange: (v: string) => void;
+  onPlaceSelected?: (place: { text: string; lat?: string; lng?: string }) => void;
+  placeholder?: string;
+  testId: string;
+  disabled?: boolean;
+  style: React.CSSProperties;
+}) {
+  const [loadFailed, setLoadFailed] = useState(false);
+  if (!MAPS_KEY || loadFailed) {
+    return (
+      <input
+        value={props.value}
+        onChange={e => props.onChange(e.target.value)}
+        placeholder={props.placeholder}
+        data-testid={props.testId}
+        disabled={props.disabled}
+        style={props.style}
+      />
+    );
   }
-  return fallback;
+  return (
+    <APIProvider apiKey={MAPS_KEY} onError={() => setLoadFailed(true)}>
+      <PlacesAutocompleteInputInner {...props} />
+    </APIProvider>
+  );
 }
 
 /** The Add panel's "Custom" source — same fields, same POST /api/trips/:tripId/itinerary-items
@@ -216,9 +379,14 @@ function parseApiErrorMessage(err: unknown, fallback: string): string {
  *  `insertItineraryItemSchema` (drizzle-zod) expects a STRING for decimal columns, so a raw
  *  `parseFloat` JS number 400s with "invalid_type expected string received number" (the same
  *  drift `server/routes.ts:1271,7793` already guard against via `String(...)`). */
-function InlineAddItemForm({ tripId, dayNumber, onAdded }: { tripId: string; dayNumber: number; onAdded: () => void }) {
+function InlineAddItemForm({ tripId, dayNumber, destination, onAdded }: { tripId: string; dayNumber: number; destination?: string; onAdded: () => void }) {
   const { toast } = useToast();
   const [form, setForm] = useState({ title: "", itemType: "activity", startTime: "", estimatedCost: "", locationName: "" });
+  const [geocoding, setGeocoding] = useState(false);
+  // Item 17: coordinates from an ACTUAL Places pick (exact precision) — cleared whenever the
+  // location text is edited by hand (typing after a pick means the text may no longer match the
+  // picked place, so the stale coords must not silently ride along).
+  const [placeCoords, setPlaceCoords] = useState<{ lat: string; lng: string } | null>(null);
   const createMutation = useMutation({
     mutationFn: async (data: any) => { const res = await apiRequest("POST", `/api/trips/${tripId}/itinerary-items`, data); return res.json(); },
     onSuccess: () => {
@@ -227,12 +395,46 @@ function InlineAddItemForm({ tripId, dayNumber, onAdded }: { tripId: string; day
       onAdded();
       toast({ title: "Item added", description: `Added to Day ${dayNumber}` });
       setForm({ title: "", itemType: "activity", startTime: "", estimatedCost: "", locationName: "" });
+      setPlaceCoords(null);
     },
     onError: (err: any) => toast({ title: "Failed to add item", description: parseApiErrorMessage(err, "Please check the fields and try again."), variant: "destructive" }),
   });
-  const handleSubmit = () => {
+  // FIX 4 (QA pass) + item 17: attach real coordinates, never fabricate. Preference order:
+  // (1) an exact Places pick (placeCoords) — skip the geocode entirely, it's already exact;
+  // (2) FALLBACK — the existing submit-time /api/geocode rail (same one the destination
+  //     map-center lookup above uses) with "<locationName>, <destination>", unchanged from
+  //     before this lane (this is the "Places unavailable → behaves exactly as today" path,
+  //     item 17's mandatory fallback). On any failure/miss: no coords, honest null — never a
+  //     city-center guess. Geocoding is best-effort and must never block the add.
+  const handleSubmit = async () => {
     if (!form.title.trim()) return;
-    createMutation.mutate({ ...form, dayNumber, estimatedCost: form.estimatedCost ? String(parseFloat(form.estimatedCost)) : undefined });
+    let coords: { latitude: string; longitude: string } | undefined;
+    const locationName = form.locationName.trim();
+    if (placeCoords) {
+      coords = { latitude: placeCoords.lat, longitude: placeCoords.lng };
+    } else if (locationName) {
+      setGeocoding(true);
+      try {
+        const address = destination ? `${locationName}, ${destination}` : locationName;
+        const res = await fetch(`/api/geocode?address=${encodeURIComponent(address)}`);
+        if (res.ok) {
+          const j = await res.json();
+          if (Number.isFinite(j?.lat) && Number.isFinite(j?.lng)) {
+            coords = { latitude: String(j.lat), longitude: String(j.lng) };
+          }
+        }
+      } catch {
+        // Geocode failure must not block the add — submit without coords, exactly as today.
+      } finally {
+        setGeocoding(false);
+      }
+    }
+    createMutation.mutate({
+      ...form,
+      dayNumber,
+      estimatedCost: form.estimatedCost ? String(parseFloat(form.estimatedCost)) : undefined,
+      ...(coords ?? {}),
+    });
   };
   const labelStyle: React.CSSProperties = { fontSize: 12, fontWeight: 600, color: MID, display: "block", marginBottom: 4 };
   const inputStyle: React.CSSProperties = { width: "100%", padding: "8px 10px", borderRadius: 8, border: `1.5px solid ${LINE}`, fontSize: 13, outline: "none", boxSizing: "border-box" as any, background: CARD, color: INK };
@@ -261,16 +463,104 @@ function InlineAddItemForm({ tripId, dayNumber, onAdded }: { tripId: string; day
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
         <div>
           <label style={labelStyle}>Location</label>
-          <input value={form.locationName} onChange={e => setForm(f => ({ ...f, locationName: e.target.value }))} placeholder="Venue name" data-testid="input-inline-add-location" style={inputStyle} />
+          <PlacesAutocompleteInput
+            value={form.locationName}
+            onChange={v => { setForm(f => ({ ...f, locationName: v })); setPlaceCoords(null); }}
+            onPlaceSelected={place => {
+              setForm(f => ({ ...f, locationName: place.text }));
+              setPlaceCoords(place.lat && place.lng ? { lat: place.lat, lng: place.lng } : null);
+            }}
+            placeholder="Venue name"
+            testId="input-inline-add-location"
+            style={inputStyle}
+          />
         </div>
         <div>
           <label style={labelStyle}>Est. Cost (USD)</label>
           <input type="number" value={form.estimatedCost} onChange={e => setForm(f => ({ ...f, estimatedCost: e.target.value }))} placeholder="0" data-testid="input-inline-add-cost" style={inputStyle} />
         </div>
       </div>
-      <button onClick={handleSubmit} disabled={!form.title.trim() || createMutation.isPending} data-testid="button-inline-add-confirm" style={{ ...btnPrimaryStyle, padding: "9px", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, opacity: !form.title.trim() || createMutation.isPending ? 0.6 : 1 }}>
-        {createMutation.isPending ? <Loader2 style={{ width: 13, height: 13 }} className="animate-spin" /> : <Plus style={{ width: 13, height: 13 }} />} Add to Day {dayNumber}
+      <button onClick={handleSubmit} disabled={!form.title.trim() || createMutation.isPending || geocoding} data-testid="button-inline-add-confirm" style={{ ...btnPrimaryStyle, padding: "9px", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, opacity: !form.title.trim() || createMutation.isPending || geocoding ? 0.6 : 1 }}>
+        {(createMutation.isPending || geocoding) ? <Loader2 style={{ width: 13, height: 13 }} className="animate-spin" /> : <Plus style={{ width: 13, height: 13 }} />} Add to Day {dayNumber}
       </button>
+    </div>
+  );
+}
+
+/** W1-A: "Log completed booking" — a small inline form on each Partner-inventory (affiliate
+ *  network) card, for an expert who booked something OFF-SITE through that network and wants
+ *  it to show up on the client's plan. Writes through the SAME item-create rail as every other
+ *  Add-panel source (POST /api/trips/:tripId/itinerary-items) — no new endpoint. The provider
+ *  name is the one honest, non-affiliate fact this form carries about the network: it goes into
+ *  `description` as a plain "Booked via <Network>" prefix (mirrors InlineAddItemForm/DmoPickerCore
+ *  writing real-but-plain text into existing free-text columns, never a new field). `bookingStatus`
+ *  is set to "confirmed" — this form exists specifically to log a booking that already happened.
+ *  §16: the affiliate/booking URL is NEVER read here — this component only ever receives
+ *  `providerName` (a plain string), never the partner's `websiteUrl`/affiliate link, so there is
+ *  nothing to leak into the write even by accident. */
+function LogBookingForm({
+  tripId, dayNumber, providerName, onAdded, onClose,
+}: { tripId: string; dayNumber: number; providerName: string; onAdded: () => void; onClose: () => void }) {
+  const { toast } = useToast();
+  const [form, setForm] = useState({ title: "", startTime: "", estimatedCost: "", locationName: "" });
+  const createMutation = useMutation({
+    mutationFn: async (data: any) => { const res = await apiRequest("POST", `/api/trips/${tripId}/itinerary-items`, data); return res.json(); },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/itinerary-items`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+      onAdded();
+      toast({ title: "Booking logged", description: `Added to Day ${dayNumber}` });
+      onClose();
+    },
+    onError: (err: any) => toast({ title: "Failed to log booking", description: parseApiErrorMessage(err, "Please check the fields and try again."), variant: "destructive" }),
+  });
+  const handleSubmit = () => {
+    if (!form.title.trim()) return;
+    createMutation.mutate({
+      title: form.title.trim(),
+      itemType: "activity",
+      dayNumber,
+      startTime: form.startTime || undefined,
+      estimatedCost: form.estimatedCost ? String(parseFloat(form.estimatedCost)) : undefined,
+      locationName: form.locationName.trim() || undefined,
+      description: `Booked via ${providerName}`,
+      bookingStatus: "confirmed",
+    });
+  };
+  const labelStyle: React.CSSProperties = { fontSize: 11, fontWeight: 600, color: MID, display: "block", marginBottom: 3 };
+  const inputStyle: React.CSSProperties = { width: "100%", padding: "6px 8px", borderRadius: 7, border: `1.5px solid ${LINE}`, fontSize: 12.5, outline: "none", boxSizing: "border-box" as any, background: CARD, color: INK };
+  return (
+    <div style={{ marginTop: 8, padding: "9px 10px", background: GROUND, border: `1px solid ${LINE}`, borderRadius: 8, display: "flex", flexDirection: "column", gap: 7 }} data-testid={`form-log-booking-${providerName.toLowerCase().replace(/[^a-z0-9]/g, "-")}`}>
+      <div style={{ fontSize: 11, color: MID }}>Booked via <strong style={{ color: INK }}>{providerName}</strong> — Day {dayNumber}</div>
+      <div>
+        <label style={labelStyle}>Title *</label>
+        <input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="e.g. Fushimi Inari night tour" data-testid="input-log-booking-title" style={inputStyle} />
+      </div>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7 }}>
+        <div>
+          <label style={labelStyle}>Start time</label>
+          <input type="time" value={form.startTime} onChange={e => setForm(f => ({ ...f, startTime: e.target.value }))} data-testid="input-log-booking-time" style={inputStyle} />
+        </div>
+        <div>
+          <label style={labelStyle}>Est. cost (USD)</label>
+          <input type="number" value={form.estimatedCost} onChange={e => setForm(f => ({ ...f, estimatedCost: e.target.value }))} placeholder="0" data-testid="input-log-booking-cost" style={inputStyle} />
+        </div>
+      </div>
+      <div>
+        <label style={labelStyle}>Location (optional)</label>
+        <input value={form.locationName} onChange={e => setForm(f => ({ ...f, locationName: e.target.value }))} placeholder="Meeting point" data-testid="input-log-booking-location" style={inputStyle} />
+      </div>
+      <div style={{ display: "flex", gap: 6 }}>
+        <button onClick={onClose} data-testid="button-log-booking-cancel" style={{ ...btnQuietStyle, flex: 1, padding: "6px", fontSize: 12 }}>Cancel</button>
+        <button
+          onClick={handleSubmit}
+          disabled={!form.title.trim() || createMutation.isPending}
+          data-testid="button-log-booking-confirm"
+          style={{ ...btnPrimaryStyle, flex: 2, padding: "6px", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, opacity: !form.title.trim() || createMutation.isPending ? 0.6 : 1 }}
+        >
+          {createMutation.isPending ? <Loader2 style={{ width: 12, height: 12 }} className="animate-spin" /> : <CheckCircle style={{ width: 12, height: 12 }} />} Log booking
+        </button>
+      </div>
     </div>
   );
 }
@@ -309,19 +599,99 @@ class MapSectionErrorBoundary extends Component<{ children: ReactNode }, { hasEr
  *  (C-1b — the traveler-visible tip, distinct from the private Build notes sidebar). Both
  *  write through the existing PATCH /api/trips/:tripId/itinerary-items/:itemId endpoint
  *  (trips.routes.ts) — no new server surface for A-2; C-1's server change is the read-side
- *  column preference in plancard.routes.ts. */
+ *  column preference in plancard.routes.ts.
+ *
+ *  QA_PUNCH_LIST item 18: also the within-day reorder UI (up/down arrows per item calling the
+ *  existing POST .../itinerary/reorder with the day's full ordered id list — properly
+ *  authorizeTripLogistics- AND now plan-approval-mode-flip-gated server-side, see routes.ts) and
+ *  a per-day "Suggest best order" action (POST .../itinerary/optimize-order) that stages the
+ *  machine's proposed order for an explicit "Apply this order?" confirm — never auto-applied
+ *  (D1a posture: the machine proposes, the expert confirms). This panel is also item 16's
+ *  "Go to item" scroll target (see focusItemId/onFocusHandled below) — the only per-item,
+ *  DOM-addressable list the canvas renders (the day list itself is the shared PlanCard, a
+ *  read-mostly component this lane deliberately does not modify). */
 function ItemsEditorPanel({
-  tripId, days, maxDay, onDayMoved,
+  tripId, days, maxDay, onDayMoved, onOpenBookingBrief, focusItemId, onFocusHandled,
 }: {
   tripId: string;
   days: { dayNumber: number; items: ItineraryItem[] }[];
   maxDay: number;
   onDayMoved: () => void;
+  // W3-A: opens the shared BookingBriefModal for a partner-sourced item. The item's mere
+  // presence here is the gate itself — on an assignment trip a partner item ONLY reaches
+  // itinerary_items via an approved suggestion (partner-catalog-picker.tsx never creates the
+  // item directly there), so any row this panel can show is already either author-owned or
+  // client-approved. Nothing here needs to re-check approval state.
+  onOpenBookingBrief: (network: string) => void;
+  // Item 16's "Go to item": when set, this panel opens (if closed), expands that item's row,
+  // and scrolls it into view, then reports back via onFocusHandled so the caller clears the
+  // request (a one-shot signal, not a controlled/sticky prop).
+  focusItemId?: string | null;
+  onFocusHandled?: () => void;
 }) {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
+  // dayNumber → machine-suggested id order, staged from optimize-order and applied only on
+  // explicit confirm (never auto-applied).
+  const [suggestedOrder, setSuggestedOrder] = useState<Record<number, string[]>>({});
+
+  useEffect(() => {
+    if (!focusItemId) return;
+    setOpen(true);
+    setExpandedId(focusItemId);
+    // Wait one paint for the (possibly just-opened) panel to render the row before scrolling.
+    const t = setTimeout(() => {
+      const el = document.querySelector(`[data-testid="item-editor-row-${focusItemId}"]`);
+      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+      onFocusHandled?.();
+    }, 60);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusItemId]);
+
+  const reorderMutation = useMutation({
+    mutationFn: async ({ dayNumber, itemIds }: { dayNumber: number; itemIds: string[] }) => {
+      const res = await apiRequest("POST", `/api/trips/${tripId}/itinerary/reorder`, { dayNumber, itemIds });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/itinerary-items`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+    },
+    // Same mode-flip 409 as the other item mutations above — surfaced honestly, not generically.
+    onError: (err: any) => toast({ title: "Failed to reorder", description: parseApiErrorMessage(err, "Please try again."), variant: "destructive" }),
+  });
+
+  const moveWithinDay = (day: { dayNumber: number; items: ItineraryItem[] }, index: number, direction: -1 | 1) => {
+    const target = index + direction;
+    if (target < 0 || target >= day.items.length) return;
+    const itemIds = day.items.map(i => i.id);
+    [itemIds[index], itemIds[target]] = [itemIds[target], itemIds[index]];
+    reorderMutation.mutate({ dayNumber: day.dayNumber, itemIds });
+  };
+
+  const optimizeMutation = useMutation({
+    mutationFn: async (dayNumber: number) => {
+      const res = await apiRequest("POST", `/api/trips/${tripId}/itinerary/optimize-order`, { dayNumber });
+      const json = await res.json();
+      return { dayNumber, optimizedOrder: (json.optimizedOrder ?? []) as string[] };
+    },
+    onSuccess: ({ dayNumber, optimizedOrder }) => {
+      setSuggestedOrder(s => ({ ...s, [dayNumber]: optimizedOrder }));
+    },
+    onError: (err: any) => toast({ title: "Couldn't suggest an order", description: parseApiErrorMessage(err, "Please try again."), variant: "destructive" }),
+  });
+
+  const applySuggestedOrder = (dayNumber: number) => {
+    const itemIds = suggestedOrder[dayNumber];
+    if (!itemIds) return;
+    reorderMutation.mutate({ dayNumber, itemIds }, {
+      onSuccess: () => setSuggestedOrder(s => { const next = { ...s }; delete next[dayNumber]; return next; }),
+    });
+  };
+  const discardSuggestedOrder = (dayNumber: number) => setSuggestedOrder(s => { const next = { ...s }; delete next[dayNumber]; return next; });
 
   const updateMutation = useMutation({
     mutationFn: async ({ itemId, data }: { itemId: string; data: Record<string, any> }) => {
@@ -338,7 +708,31 @@ function ItemsEditorPanel({
         toast({ title: "Expert note saved" });
       }
     },
-    onError: () => toast({ title: "Failed to update item", variant: "destructive" }),
+    // Plan-approval mode flip (migration 164): once the client approves a delivered plan, this
+    // PATCH 409s with an honest "send it as a suggestion instead" message — surface it verbatim
+    // rather than the generic fallback (the existing parseApiErrorMessage pattern above).
+    onError: (err: any) => toast({ title: "Failed to update item", description: parseApiErrorMessage(err, "Please try again."), variant: "destructive" }),
+  });
+
+  // FIX 2 (QA pass): item-level delete. Must use the TRIP-SCOPED endpoint — the bare
+  // DELETE /api/itinerary-items/:id gates on trips.userId only (verifyTripOwnership), which 403s
+  // on authored builds (userId=NULL); the trip-scoped route carries the parallel isTripAuthor
+  // branch, the same reason move-item's PATCH above uses it. Mirrors the move-item mutation's
+  // invalidation set (itinerary-items + plancard) and also triggers the same energy recalc a
+  // day-move does via onDayMoved, since removing an item changes a day's load too.
+  const deleteMutation = useMutation({
+    mutationFn: async (itemId: string) => {
+      await apiRequest("DELETE", `/api/trips/${tripId}/itinerary-items/${itemId}`);
+    },
+    onSuccess: (_res, itemId) => {
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/itinerary-items`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+      onDayMoved();
+      if (expandedId === itemId) setExpandedId(null);
+      toast({ title: "Item removed" });
+    },
+    // See the update mutation's onError above — same mode-flip 409, same honest surfacing.
+    onError: (err: any) => toast({ title: "Failed to remove item", description: parseApiErrorMessage(err, "Please try again."), variant: "destructive" }),
   });
 
   const allItems = days.flatMap(d => d.items);
@@ -362,24 +756,93 @@ function ItemsEditorPanel({
         </span>
       </button>
       {open && (
-        <div style={{ padding: "0 14px 12px", display: "flex", flexDirection: "column", gap: 6 }}>
-          {allItems.map(item => {
-            const isExpanded = expandedId === item.id;
-            const draftNote = noteDrafts[item.id] ?? (item.expertNote ?? "");
+        <div style={{ padding: "0 14px 12px", display: "flex", flexDirection: "column", gap: 10 }}>
+          {days.filter(d => d.items.length > 0).map(day => {
+            const suggestion = suggestedOrder[day.dayNumber];
             return (
-              <div key={item.id} data-testid={`item-editor-row-${item.id}`} style={{ border: `1px solid ${LINE}`, borderRadius: 8, padding: "8px 10px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <StateChip tone="mut">Day {item.dayNumber}</StateChip>
-                  <span style={{ fontSize: 12.5, fontWeight: 600, color: INK, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</span>
+              <div key={day.dayNumber} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "2px 0" }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: FAINT, textTransform: "uppercase", letterSpacing: "0.05em" }}>Day {day.dayNumber}</span>
                   <button
-                    onClick={() => setExpandedId(isExpanded ? null : item.id)}
-                    data-testid={`button-expand-item-${item.id}`}
-                    style={{ ...btnQuietStyle, padding: "3px 9px", fontSize: 11 }}
+                    onClick={() => optimizeMutation.mutate(day.dayNumber)}
+                    disabled={day.items.length < 2 || (optimizeMutation.isPending && optimizeMutation.variables === day.dayNumber)}
+                    data-testid={`button-suggest-order-day-${day.dayNumber}`}
+                    title="Compute a suggested order for this day — nothing changes until you apply it"
+                    style={{ ...btnQuietStyle, marginLeft: "auto", padding: "2px 8px", fontSize: 10.5, display: "flex", alignItems: "center", gap: 4, opacity: day.items.length < 2 ? 0.5 : 1 }}
                   >
-                    {isExpanded ? "Close" : "Edit"}
+                    {(optimizeMutation.isPending && optimizeMutation.variables === day.dayNumber)
+                      ? <Loader2 style={{ width: 10, height: 10 }} className="animate-spin" />
+                      : <Sparkles style={{ width: 10, height: 10 }} />}
+                    Suggest best order
                   </button>
                 </div>
-                {isExpanded && (
+
+                {suggestion && (
+                  <div data-testid={`panel-suggested-order-day-${day.dayNumber}`} style={{ background: BRAND_SOFT, border: `1px dashed ${BRAND}`, borderRadius: 8, padding: "8px 10px", display: "flex", flexDirection: "column", gap: 6 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: INK }}>Suggested order for Day {day.dayNumber}</div>
+                    <ol style={{ margin: 0, paddingLeft: 18, fontSize: 11.5, color: MID, display: "flex", flexDirection: "column", gap: 2 }}>
+                      {suggestion.map(id => (
+                        <li key={id}>{day.items.find(i => i.id === id)?.title ?? id}</li>
+                      ))}
+                    </ol>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <button onClick={() => discardSuggestedOrder(day.dayNumber)} data-testid={`button-discard-order-day-${day.dayNumber}`} style={{ ...btnQuietStyle, flex: 1, padding: "5px", fontSize: 11 }}>Discard</button>
+                      <button
+                        onClick={() => applySuggestedOrder(day.dayNumber)}
+                        disabled={reorderMutation.isPending}
+                        data-testid={`button-apply-order-day-${day.dayNumber}`}
+                        style={{ ...btnPrimaryStyle, flex: 2, padding: "5px", fontSize: 11, opacity: reorderMutation.isPending ? 0.6 : 1 }}
+                      >
+                        Apply this order?
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {day.items.map((item, index) => {
+                  const isExpanded = expandedId === item.id;
+                  const draftNote = noteDrafts[item.id] ?? (item.expertNote ?? "");
+                  // W3-A: an item carrying the "Partner: <Network>" marker (written by
+                  // partner-catalog-picker.tsx) gets a Booking Brief entry point. Its presence in
+                  // `days` at all IS the gate — see the prop comment above.
+                  const partnerSource = parsePartnerSource(item.description);
+                  return (
+                    <div key={item.id} data-testid={`item-editor-row-${item.id}`} style={{ border: `1px solid ${LINE}`, borderRadius: 8, padding: "8px 10px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        {/* Item 18: within-day reorder — swaps this item with its neighbor and
+                            sends the day's full ordered id list to the existing reorder endpoint.
+                            Disabled at the day's edges. */}
+                        <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                          <button
+                            onClick={() => moveWithinDay(day, index, -1)}
+                            disabled={index === 0 || reorderMutation.isPending}
+                            data-testid={`button-move-up-${item.id}`}
+                            title="Move earlier"
+                            style={{ background: "none", border: "none", cursor: index === 0 ? "default" : "pointer", padding: 1, color: index === 0 ? FAINT : MID, opacity: index === 0 ? 0.4 : 1, display: "flex" }}
+                          >
+                            <ChevronUp style={{ width: 12, height: 12 }} />
+                          </button>
+                          <button
+                            onClick={() => moveWithinDay(day, index, 1)}
+                            disabled={index === day.items.length - 1 || reorderMutation.isPending}
+                            data-testid={`button-move-down-${item.id}`}
+                            title="Move later"
+                            style={{ background: "none", border: "none", cursor: index === day.items.length - 1 ? "default" : "pointer", padding: 1, color: index === day.items.length - 1 ? FAINT : MID, opacity: index === day.items.length - 1 ? 0.4 : 1, display: "flex" }}
+                          >
+                            <ChevronDown style={{ width: 12, height: 12 }} />
+                          </button>
+                        </div>
+                        {partnerSource && <StateChip tone="brand">{partnerSource.network}</StateChip>}
+                        <span style={{ fontSize: 12.5, fontWeight: 600, color: INK, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</span>
+                        <button
+                          onClick={() => setExpandedId(isExpanded ? null : item.id)}
+                          data-testid={`button-expand-item-${item.id}`}
+                          style={{ ...btnQuietStyle, padding: "3px 9px", fontSize: 11 }}
+                        >
+                          {isExpanded ? "Close" : "Edit"}
+                        </button>
+                      </div>
+                      {isExpanded && (
                   <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 8 }}>
                     <div>
                       <label style={labelStyle}>Move to day</label>
@@ -413,8 +876,37 @@ function ItemsEditorPanel({
                         Save note
                       </button>
                     </div>
+                    {partnerSource && (
+                      <button
+                        onClick={() => onOpenBookingBrief(partnerSource.network)}
+                        data-testid={`button-booking-brief-${item.id}`}
+                        style={{ ...btnQuietStyle, alignSelf: "flex-start", padding: "5px 12px", fontSize: 11.5, display: "flex", alignItems: "center", gap: 5 }}
+                      >
+                        <ShieldCheck style={{ width: 12, height: 12 }} /> Booking Brief — {partnerSource.network}
+                      </button>
+                    )}
+                    <button
+                      onClick={() => {
+                        if (!window.confirm(`Remove "${item.title}" from this build?`)) return;
+                        deleteMutation.mutate(item.id);
+                      }}
+                      disabled={deleteMutation.isPending}
+                      data-testid={`button-delete-item-${item.id}`}
+                      style={{ ...btnQuietStyle, alignSelf: "flex-start", padding: "5px 12px", fontSize: 11.5, color: DANGER, display: "flex", alignItems: "center", gap: 5, opacity: deleteMutation.isPending ? 0.6 : 1 }}
+                    >
+                      <Trash2 style={{ width: 12, height: 12 }} /> Remove item
+                    </button>
+
+                    {/* QA_PUNCH_LIST W3-C item 12 — the expert-side half of the per-item thread.
+                        Shared component with the Trip Card's ActivitiesSection; plain shadcn
+                        tokens read fine inside this console-scoped panel (same posture as the
+                        other shared Add-panel pickers on this page). */}
+                    <ItemComments tripId={tripId} itemId={item.id} />
                   </div>
                 )}
+              </div>
+                  );
+                })}
               </div>
             );
           })}
@@ -453,6 +945,301 @@ function isLocatedItem(item: { latitude?: unknown; longitude?: unknown }): boole
   if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return false;
   if (lat === 0 && lng === 0) return false;
   return true;
+}
+
+/** Item 16 (QA_PUNCH_LIST): "fit the map to these pins" — mirrors the Trip Card's own
+ *  MapControlCenter bounds-fit (`client/src/components/plancard/MapControlCenter.tsx`), a
+ *  proven pattern: `useMap()` + `google.maps.LatLngBounds` + `map.fitBounds`. Needs a `<Map>`
+ *  ancestor to call `useMap()`, so it renders nothing and lives INSIDE the `<Map>` below. */
+function PlanMapFitBounds({ items }: { items: ItineraryItem[] }) {
+  const map = useMap();
+  // Stable dependency: only re-fit when the actual set of pinned coordinates changes, not on
+  // every parent re-render (a fresh `items` array reference on every render is expected here).
+  const fitKey = items.map(i => `${i.id}:${i.latitude}:${i.longitude}`).join("|");
+  useEffect(() => {
+    if (!map || typeof google === "undefined" || !google.maps || items.length === 0) return;
+    if (items.length === 1) {
+      map.setCenter({ lat: parseFloat(String(items[0].latitude)), lng: parseFloat(String(items[0].longitude)) });
+      map.setZoom(14);
+      return;
+    }
+    const bounds = new google.maps.LatLngBounds();
+    items.forEach(i => bounds.extend({ lat: parseFloat(String(i.latitude)), lng: parseFloat(String(i.longitude)) }));
+    map.fitBounds(bounds, 48);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, fitKey]);
+  return null;
+}
+
+/** W5-A (QA_PUNCH_LIST item 19) — thin mount/unmount publisher for the Platform-services drawer,
+ *  which (unlike the other five Add-panel sources) is inline JSX in this file rather than its own
+ *  component. Rendered ONLY inside the `addSource === "platform"` block, so its mount lifetime is
+ *  the same "is this drawer open" signal `usePublishMapCandidates` relies on everywhere else. */
+function MapCandidatesPublisher({
+  source, sourceLabel, items, onAdd,
+}: {
+  source: string;
+  sourceLabel: string;
+  items: MapCandidate[];
+  onAdd: (id: string) => void;
+}) {
+  usePublishMapCandidates(source, sourceLabel, items, onAdd);
+  return null;
+}
+
+/** QA_PUNCH_LIST item 16 (plan layer) + item 19 (discovery layer) — the plan map ON the build
+ *  canvas.
+ *
+ *  PLAN layer (always on, unchanged from #374): pins for items already IN the plan, filtered by
+ *  `mapDayFilter`. Never fabricates a pin (§13): only items passing `isLocatedItem` are ever
+ *  rendered; the unlocated count below the map is real.
+ *
+ *  DISCOVERY layer (item 19, ratified): whenever an Add-panel source drawer is open, that
+ *  drawer's CURRENT results render as candidate pins on this SAME map, in a visually distinct
+ *  (hollow) style — read from the single active publisher via `useMapCandidates`. ONE filter
+ *  state drives both the drawer's list and its pins (no separate map filter bar — see
+ *  map-candidates.ts). Clicking a candidate opens a preview InfoWindow with an "Add to Day N"
+ *  action that calls back into the SAME add handler the drawer's own list button uses — never a
+ *  duplicated write path. Only items with real coords ever publish as candidates (§13); the
+ *  drawer's list remains the complete view regardless of what the map can show.
+ *
+ *  Collapsible (closed→open persisted per-trip in sessionStorage, mirroring the "closed by
+ *  default" convention ItemsEditorPanel/TransportLegsPanel already use for canvas sections).
+ *  Reuses the file's existing @vis.gl/react-google-maps imports and the MapSectionErrorBoundary
+ *  pattern verbatim (a Maps billing/key failure collapses to a one-line notice, never blanks the
+ *  canvas — see that class's doc comment above). */
+function CanvasMapSection({
+  tripId, days, destination, onGoToItem, discoveryDayNumber,
+}: {
+  tripId: string;
+  days: { dayNumber: number; items: ItineraryItem[] }[];
+  destination: string;
+  onGoToItem: (itemId: string) => void;
+  /** The Add panel's current day-focus (item 19) — labels/targets the discovery layer's
+   *  "Add to Day N" action. Purely a label/target for candidates; never affects plan pins. */
+  discoveryDayNumber: number;
+}) {
+  const storageKey = `workstation-map-open-${tripId}`;
+  const [open, setOpen] = useState<boolean>(() => {
+    try { return sessionStorage.getItem(storageKey) === "1"; } catch { return false; }
+  });
+  useEffect(() => {
+    try { sessionStorage.setItem(storageKey, open ? "1" : "0"); } catch { /* sessionStorage unavailable — the toggle just won't persist */ }
+  }, [open, storageKey]);
+
+  // Map-local day filter — mirrors the Add panel's day-focus control (all-days default,
+  // focusing a day filters the pins to it). Deliberately its OWN state, not the Add panel's
+  // `focusDay`: that control picks WHERE a new item is added; this picks WHICH pins show.
+  const [mapDayFilter, setMapDayFilter] = useState<number | "all">("all");
+  const [selectedPinItem, setSelectedPinItem] = useState<ItineraryItem | null>(null);
+  // Item 19 — the discovery layer's own selection, kept separate from the plan layer's so
+  // opening one InfoWindow never closes/overrides the other's state by accident.
+  const [selectedCandidate, setSelectedCandidate] = useState<MapCandidate | null>(null);
+  const { source: candidateSource, sourceLabel: candidateSourceLabel, items: candidateItems, onAdd: onAddCandidate } = useMapCandidates();
+  // Drawer switched (or its filter narrowed the set to nothing) — drop any stale selection
+  // rather than leave an InfoWindow open referencing a candidate that's no longer published.
+  useEffect(() => {
+    setSelectedCandidate(null);
+  }, [candidateSource, candidateSourceLabel]);
+
+  const allItems = days.flatMap(d => d.items);
+  const locatedItems = allItems.filter(isLocatedItem);
+  const unlocatedCount = allItems.length - locatedItems.length;
+  const visibleItems = mapDayFilter === "all" ? locatedItems : locatedItems.filter(i => i.dayNumber === mapDayFilter);
+  const dayNumbersWithItems = Array.from(new Set(days.filter(d => d.items.length > 0).map(d => d.dayNumber))).sort((a, b) => a - b);
+
+  // Center fallback ONLY needed when the plan has zero located items anywhere (not just the
+  // current filter) — same destination-geocode rail the Add panel's Platform-services browse
+  // map already fetches (`["/api/geocode", destination]`); broadening its `enabled` here reuses
+  // that query/cache rather than adding a parallel fetch.
+  const { data: fallbackCenter } = useQuery<{ lat: number; lng: number } | null>({
+    queryKey: ["/api/geocode", destination],
+    queryFn: async () => {
+      const res = await fetch(`/api/geocode?address=${encodeURIComponent(destination)}`);
+      if (!res.ok) return null;
+      const j = await res.json();
+      return Number.isFinite(j?.lat) && Number.isFinite(j?.lng) ? j : null;
+    },
+    enabled: open && !!destination && locatedItems.length === 0,
+    staleTime: Infinity,
+  });
+
+  if (allItems.length === 0) return null;
+
+  // Three-tier center rule (item 16 spec): located pins → bounds-fit; none but a destination
+  // geocode exists → center there; neither → no map box at all, honest notice only.
+  const hasAnyLocated = locatedItems.length > 0;
+  const canShowMap = hasAnyLocated || !!fallbackCenter;
+  const initialCenter = visibleItems[0]
+    ? { lat: parseFloat(String(visibleItems[0].latitude)), lng: parseFloat(String(visibleItems[0].longitude)) }
+    : (fallbackCenter ?? { lat: 35.0116, lng: 135.7681 }); // Kyoto — only reached when canShowMap is already false and this value is never rendered
+
+  return (
+    <div style={{ background: CARD, borderRadius: 10, border: `1px solid ${LINE}`, marginBottom: 12 }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        data-testid="button-toggle-plan-map"
+        style={{ width: "100%", padding: "10px 14px", background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}
+      >
+        <MapPinned style={{ width: 12, height: 12, color: MID }} />
+        <span style={{ fontSize: 12.5, fontWeight: 700, color: INK }}>Plan map</span>
+        <span style={{ fontSize: 11, color: FAINT }}>({locatedItems.length} located)</span>
+        <span style={{ marginLeft: "auto", color: FAINT, display: "flex" }}>
+          {open ? <ChevronUp style={{ width: 13, height: 13 }} /> : <ChevronDown style={{ width: 13, height: 13 }} />}
+        </span>
+      </button>
+      {open && (
+        <div style={{ padding: "0 14px 12px" }}>
+          {dayNumbersWithItems.length > 1 && (
+            <div style={{ display: "flex", gap: 5, overflowX: "auto", paddingBottom: 8 }}>
+              <button
+                onClick={() => setMapDayFilter("all")}
+                data-testid="button-map-day-filter-all"
+                style={{ padding: "4px 10px", borderRadius: 99, fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap", border: mapDayFilter === "all" ? `1.5px solid ${BRAND}` : `1.5px solid ${LINE}`, background: mapDayFilter === "all" ? BRAND_SOFT : CARD, color: mapDayFilter === "all" ? BRAND : MID }}
+              >
+                All days
+              </button>
+              {dayNumbersWithItems.map(n => (
+                <button
+                  key={n}
+                  onClick={() => setMapDayFilter(n)}
+                  data-testid={`button-map-day-filter-${n}`}
+                  style={{ padding: "4px 10px", borderRadius: 99, fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap", border: mapDayFilter === n ? `1.5px solid ${BRAND}` : `1.5px solid ${LINE}`, background: mapDayFilter === n ? BRAND_SOFT : CARD, color: mapDayFilter === n ? BRAND : MID }}
+                >
+                  Day {n}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div style={{ height: 260, borderRadius: 8, overflow: "hidden", position: "relative" }}>
+            <MapSectionErrorBoundary>
+              {MAPS_KEY && canShowMap ? (
+                <APIProvider apiKey={MAPS_KEY}>
+                  <Map
+                    mapId={GOOGLE_MAPS_MAP_ID}
+                    defaultCenter={initialCenter}
+                    defaultZoom={13}
+                    gestureHandling="greedy"
+                    disableDefaultUI={true}
+                    style={{ width: "100%", height: "100%" }}
+                    onClick={() => { setSelectedPinItem(null); setSelectedCandidate(null); }}
+                  >
+                    <PlanMapFitBounds items={visibleItems} />
+                    {visibleItems.map(item => (
+                      <MapMarker
+                        key={item.id}
+                        position={{ lat: parseFloat(String(item.latitude)), lng: parseFloat(String(item.longitude)) }}
+                        onClick={() => setSelectedPinItem(item)}
+                      >
+                        <div
+                          data-testid={`map-pin-${item.id}`}
+                          title={item.title}
+                          style={{
+                            width: 22, height: 22, borderRadius: "50%",
+                            background: "var(--console-brand)", color: "var(--console-card)",
+                            border: selectedPinItem?.id === item.id ? "2px solid var(--console-card)" : "2px solid transparent",
+                            boxShadow: "0 2px 6px rgba(0,0,0,0.3)",
+                            fontSize: 10.5, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center",
+                          }}
+                        >
+                          {item.dayNumber}
+                        </div>
+                      </MapMarker>
+                    ))}
+
+                    {selectedPinItem && isLocatedItem(selectedPinItem) && (
+                      <InfoWindow
+                        position={{ lat: parseFloat(String(selectedPinItem.latitude)), lng: parseFloat(String(selectedPinItem.longitude)) }}
+                        onCloseClick={() => setSelectedPinItem(null)}
+                      >
+                        <div style={{ fontFamily: "'Inter',-apple-system,sans-serif", minWidth: 160, maxWidth: 220 }}>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: INK, marginBottom: 2 }}>{selectedPinItem.title}</div>
+                          <div style={{ fontSize: 11.5, color: MID, marginBottom: 8 }}>Day {selectedPinItem.dayNumber}</div>
+                          <button
+                            onClick={() => { const id = selectedPinItem.id; setSelectedPinItem(null); onGoToItem(id); }}
+                            data-testid={`button-goto-item-${selectedPinItem.id}`}
+                            style={{ ...btnPrimaryStyle, width: "100%", padding: "5px 8px", borderRadius: 7, fontSize: 12 }}
+                          >
+                            Go to item
+                          </button>
+                        </div>
+                      </InfoWindow>
+                    )}
+
+                    {/* Item 19 — DISCOVERY layer: candidate pins from whichever Add-panel source
+                        drawer is currently open (empty when none is), hollow/secondary style to
+                        stay visually distinct from the plan layer's solid brand-filled pins. */}
+                    {candidateItems.map(cand => (
+                      <MapMarker
+                        key={`candidate-${cand.id}`}
+                        position={{ lat: cand.lat, lng: cand.lng }}
+                        onClick={() => setSelectedCandidate(cand)}
+                      >
+                        <div
+                          data-testid={`map-candidate-pin-${cand.id}`}
+                          title={cand.title}
+                          style={{
+                            width: 20, height: 20, borderRadius: "50%",
+                            background: "var(--console-card)",
+                            border: `2.5px solid var(--console-brand)`,
+                            boxShadow: "0 2px 6px rgba(0,0,0,0.3)",
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                          }}
+                        >
+                          <Plus style={{ width: 10, height: 10, color: "var(--console-brand)" }} />
+                        </div>
+                      </MapMarker>
+                    ))}
+
+                    {selectedCandidate && (
+                      <InfoWindow
+                        position={{ lat: selectedCandidate.lat, lng: selectedCandidate.lng }}
+                        onCloseClick={() => setSelectedCandidate(null)}
+                      >
+                        <div style={{ fontFamily: "'Inter',-apple-system,sans-serif", minWidth: 160, maxWidth: 220 }}>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: INK, marginBottom: 2 }}>{selectedCandidate.title}</div>
+                          <div style={{ fontSize: 11.5, color: MID, marginBottom: selectedCandidate.price ? 2 : 8 }}>{candidateSourceLabel}</div>
+                          {selectedCandidate.price && (
+                            <div style={{ fontSize: 11.5, color: MID, marginBottom: 8 }}>{selectedCandidate.price}</div>
+                          )}
+                          <button
+                            onClick={() => { const id = selectedCandidate.id; setSelectedCandidate(null); onAddCandidate(id); }}
+                            data-testid={`button-add-candidate-${selectedCandidate.id}`}
+                            style={{ ...btnPrimaryStyle, width: "100%", padding: "5px 8px", borderRadius: 7, fontSize: 12 }}
+                          >
+                            Add to Day {discoveryDayNumber}
+                          </button>
+                        </div>
+                      </InfoWindow>
+                    )}
+                  </Map>
+                </APIProvider>
+              ) : (
+                <div data-testid="text-plan-map-unavailable" style={{ height: "100%", background: GROUND, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 6 }}>
+                  <MapPin style={{ width: 24, height: 24, color: FAINT }} />
+                  <span style={{ fontSize: 12, color: MID }}>
+                    {!MAPS_KEY ? "Map unavailable" : "No located items to show yet"}
+                  </span>
+                </div>
+              )}
+            </MapSectionErrorBoundary>
+          </div>
+
+          {/* §13: honest, never fabricated — a real count of items with no lat/lng, never a
+              city-center guess standing in for a real pin. */}
+          {unlocatedCount > 0 && (
+            // Wording matches the punch-list spec's literal template verbatim ("N items have no
+            // location yet") — not a grammar bug, a deliberate choice not to over-engineer
+            // pluralization the spec didn't ask for.
+            <div data-testid="text-unlocated-count" style={{ fontSize: 11.5, color: MID, marginTop: 8 }}>
+              {unlocatedCount} item{unlocatedCount === 1 ? "" : "s"} have no location yet
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 interface TransportLegAlternative { mode: string; durationMinutes: number; costUsd: number | null; energyCost: number; reason: string; }
@@ -836,6 +1623,10 @@ interface ItineraryItem {
   id: string; title: string; itemType: string; status: string; dayNumber: number;
   startTime?: string | null; estimatedCost?: string | null; locationName?: string | null;
   bookingStatus?: string | null; notes?: string | null;
+  // Real column on itinerary_items (full storage row, same as latitude/longitude below) — used
+  // by W3-A's parsePartnerSource to detect a partner-catalog-sourced item ("Partner: <Network>"
+  // prefix) and gate the item editor's Booking Brief action.
+  description?: string | null;
   // Durable per-item expert note (migration 152, Workstation audit C-1) — the traveler-visible
   // tip PlanCard renders per activity. Distinct from `notes` above.
   expertNote?: string | null;
@@ -846,11 +1637,37 @@ interface ItineraryItem {
   longitude?: string | number | null;
 }
 interface ItineraryData { days: { dayNumber: number; items: ItineraryItem[] }[]; total: number; }
-interface MyAssignment { id: string; tripId: string; localExpertId: string; status: string; workspaceStatus: string | null; message?: string | null; }
+interface MyAssignment {
+  id: string; tripId: string; localExpertId: string; status: string; workspaceStatus: string | null; message?: string | null;
+  // Plan-approval handshake (migration 164) — `GET .../my-assignment` selects the whole row, so
+  // these ride along for free; NULL until the customer decides.
+  planApprovalStatus?: "approved" | "changes_requested" | null;
+  planReviewNote?: string | null;
+}
 
 interface AnchorImpact { type: string; message: string; severity: 'warning' | 'critical'; }
 interface AnchorConflict { anchorId: string; anchorType: string; description: string; impacts: AnchorImpact[]; }
 interface EnergyRecord { id?: string; dayNumber: number; startingEnergy: number; activityDepletion: number; endingEnergy: number; recoveryNeeded: boolean; recoveryReason?: string | null; createdAt?: string | null; }
+
+// QA_PUNCH_LIST item 21 — transport-gap checker (server/services/transport-gap.service.ts).
+type TransportGapFlag = "transport_gap" | "timing_infeasible" | "missing_pickup_detail";
+interface TransportGapPair {
+  dayNumber: number; fromItemId: string; fromTitle: string; toItemId: string; toTitle: string;
+  flags: TransportGapFlag[]; assumedPrevDuration: boolean; availableGapMinutes: number;
+  estimatedTravelMinutes: number; estimatedTravelMode: string;
+}
+interface TransportGapSkip {
+  dayNumber: number; fromItemId: string; fromTitle: string; toItemId: string; toTitle: string;
+  reason: "insufficient_data"; detail: "missing_coordinates" | "missing_start_time";
+}
+interface TransportGapDayResult { dayNumber: number; pairs: TransportGapPair[]; skipped: TransportGapSkip[]; }
+interface TransportGapAnalysis { tripId: string; days: TransportGapDayResult[]; }
+
+const TRANSPORT_GAP_FLAG_COPY: Record<TransportGapFlag, string> = {
+  transport_gap: "No confirmed transport arranged for this leg.",
+  timing_infeasible: "The estimated travel time doesn't fit in the gap between these stops.",
+  missing_pickup_detail: "Transport is provided, but no pickup point is recorded yet.",
+};
 
 // calculate-energy INSERTS a fresh energy_tracking row per day on every recalculation
 // (triggered on every itinerary edit) rather than upserting — so a trip edited N times
@@ -897,6 +1714,7 @@ const LISTING_CHIP: Record<string, { label: string; tone: ChipTone }> = {
   submitted: { label: "Store — in review", tone: "warn" },
   approved: { label: "Store — approved", tone: "ok" },
   rejected: { label: "Store — needs changes", tone: "danger" },
+  withdrawn: { label: "Store — withdrawn", tone: "mut" },
 };
 
 const formatDate = (d?: string | null) => d ? new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "—";
@@ -932,12 +1750,14 @@ interface SuggestionPayload {
 // pill now carries a plain-language caption so a first-time expert can tell what each
 // source actually is without hovering a tooltip; `comingSoon` sources stay honestly
 // labeled but are clickable (§13 "coming soon" pattern) instead of dead/disabled.
+// W1-A: "Platform content" and "My services" are wired up (platform-content-picker.tsx /
+// my-services-picker.tsx) — comingSoon removed from both.
 const ADD_SOURCES: { k: string; l: string; caption: string; comingSoon?: boolean }[] = [
   { k: "dmo", l: "DMO Library", caption: "Local research your admin has approved for Kyoto — refine it, then drop it into a day." },
-  { k: "content", l: "Platform content", caption: "The shared Traveloure content library. Not wired up yet — the read is on the way.", comingSoon: true },
+  { k: "content", l: "Platform content", caption: "The shared Traveloure content library, scoped to this build's destination." },
   { k: "platform", l: "Platform services", caption: "Traveloure's approved bookable services in this city, plus a map to browse them." },
-  { k: "partner", l: "Partner inventory", caption: "External booking networks Traveloure has integrated — book off-site, log it here." },
-  { k: "mine", l: "My services", caption: "Your own approved listings. Coming with the Catalog module.", comingSoon: true },
+  { k: "partner", l: "Partner inventory", caption: "Browse tours & activities from Traveloure's partner networks, or jump straight to a network's booking site." },
+  { k: "mine", l: "My services", caption: "Your own approved, active listings — drop one straight onto this build." },
   { k: "custom", l: "Custom", caption: "Add anything by hand — a place, a note, or a reservation with no catalog match." },
   { k: "transport", l: "Transport", caption: "Ground-transport routes (train, taxi, transfer) between stops." },
 ];
@@ -1079,7 +1899,14 @@ function ClientSuggestPanel({ tripId }: { tripId: string }) {
               <p style={{ fontSize: 11.5, color: MID, margin: 0 }}>No suggestions sent yet.</p>
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }} data-testid="expert-suggestions-log">
-                {suggestions.map(s => (
+                {suggestions.map(s => {
+                  // W3-A: a partner-catalog suggestion (see partner-catalog-picker.tsx) carries
+                  // the same "Partner: <Network>" marker as the eventual item. Booking still has
+                  // exactly ONE home (the item editor's Booking Brief button, which only exists
+                  // once the item is real) — this row never opens it itself, it only ever states
+                  // the honest gate state truthfully: never an enabled Book action pre-approval.
+                  const partnerSource = parsePartnerSource(s.description);
+                  return (
                   <div
                     key={s.id}
                     data-testid={`expert-suggestion-log-${s.id}`}
@@ -1090,6 +1917,9 @@ function ClientSuggestPanel({ tripId }: { tripId: string }) {
                   >
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                       <span style={{ fontWeight: 600, color: INK, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.title}</span>
+                      {partnerSource && (
+                        <StateChip tone="brand" testId={`suggestion-partner-badge-${s.id}`}>{partnerSource.network}</StateChip>
+                      )}
                       {s.status === "approved" && (
                         <span style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 10, color: OK, flexShrink: 0 }}>
                           <CheckCircle style={{ width: 11, height: 11 }} /> Approved
@@ -1109,8 +1939,25 @@ function ClientSuggestPanel({ tripId }: { tripId: string }) {
                     {s.rejection_note && (
                       <p style={{ fontSize: 10.5, color: DANGER, fontStyle: "italic", margin: "3px 0 0" }}>"{s.rejection_note}"</p>
                     )}
+                    {partnerSource && s.status === "pending" && (
+                      <div
+                        data-testid={`text-booking-brief-gated-${s.id}`}
+                        style={{ marginTop: 5, display: "flex", alignItems: "center", gap: 5, fontSize: 10.5, color: FAINT }}
+                      >
+                        <Lock style={{ width: 10, height: 10 }} /> Booking Brief — Awaiting client approval
+                      </div>
+                    )}
+                    {partnerSource && s.status === "approved" && (
+                      <div
+                        data-testid={`text-booking-brief-ready-${s.id}`}
+                        style={{ marginTop: 5, display: "flex", alignItems: "center", gap: 5, fontSize: 10.5, color: MID }}
+                      >
+                        <ShieldCheck style={{ width: 10, height: 10 }} /> Booking Brief available in Edit items
+                      </div>
+                    )}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -1118,6 +1965,32 @@ function ClientSuggestPanel({ tripId }: { tripId: string }) {
       )}
     </div>
   );
+}
+
+// FIX 2 (W1c polish): "+ Day" persistence. Per-trip sessionStorage so the extended day range
+// survives a reload instead of collapsing back to the real max day. Read/write are best-effort —
+// a storage failure (private mode, quota) must never break the workspace, so both fall back to
+// the pre-existing behavior (default 1 / silent no-op).
+function extraMaxDayStorageKey(tripId: string): string {
+  return `workspace-extra-day-${tripId}`;
+}
+
+function readExtraMaxDay(tripId: string): number {
+  try {
+    const raw = sessionStorage.getItem(extraMaxDayStorageKey(tripId));
+    const n = raw ? parseInt(raw, 10) : NaN;
+    return Number.isFinite(n) && n >= 1 ? n : 1;
+  } catch {
+    return 1;
+  }
+}
+
+function writeExtraMaxDay(tripId: string, value: number): void {
+  try {
+    sessionStorage.setItem(extraMaxDayStorageKey(tripId), String(value));
+  } catch {
+    // best-effort — never block the UI on a storage failure
+  }
 }
 
 export default function ExpertWorkspace() {
@@ -1140,8 +2013,11 @@ export default function ExpertWorkspace() {
   const [extraMaxDay, setExtraMaxDay] = useState<number>(1);
   // Trip-scoped UI state must reset when navigating between trips in the same mounted
   // component instance, or Trip B inherits Trip A's expanded day range / focused day.
+  // FIX 2: "reset" for extraMaxDay means "restore this trip's own persisted value" (default 1
+  // when none was ever saved), not always 1 — so a reload of the SAME trip keeps its "+ Day"
+  // extension instead of losing it.
   useEffect(() => {
-    setExtraMaxDay(1);
+    setExtraMaxDay(tripId ? readExtraMaxDay(tripId) : 1);
     setFocusDay(1);
   }, [tripId]);
 
@@ -1161,17 +2037,36 @@ export default function ExpertWorkspace() {
     staleTime: 5 * 60 * 1000,
   });
   const affiliatePartners = affiliatePartnersData?.partners ?? [];
+  // W3-A: resolves a partner-catalog network name (e.g. "Klook", from the item's "Partner: <X>"
+  // marker) to the admin-managed affiliate_partners homepage URL, so the item editor's Booking
+  // Brief action can reuse the exact same sanctioned "Continue to <provider>" mechanism the
+  // existing Affiliate Networks list already uses — never a new/derived URL. No match → no
+  // bookingUrl, and BookingBriefModal's Continue action simply closes (existing fallback).
+  const resolvePartnerBookingUrl = useCallback((network: string): string | undefined => {
+    const needle = network.trim().toLowerCase();
+    if (!needle) return undefined;
+    const match = affiliatePartners.find(
+      (p) => p.name.toLowerCase().includes(needle) || needle.includes(p.name.toLowerCase()),
+    );
+    return match?.websiteUrl;
+  }, [affiliatePartners]);
   const [identityRevealed, setIdentityRevealed] = useState(false);
   const [noteText, setNoteText] = useState("");
   const [noteSaveStatus, setNoteSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
   const [notesOpen, setNotesOpen] = useState(false);
   const [partnerOpen, setPartnerOpen] = useState(false);
+  // W3-A: the Partner pill's sub-tab — the new browsable catalog (default) vs. the existing
+  // affiliate-networks list, kept intact below.
+  const [partnerSubTab, setPartnerSubTab] = useState<"catalog" | "networks">("catalog");
   const [, setNowTick] = useState(0);
   const noteInitialized = useRef(false);
   const notesDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [bookingBrief, setBookingBrief] = useState<{ provider: string; bookingUrl?: string } | null>(null);
   const [servicePickerOpen, setServicePickerOpen] = useState(false);
+  // W1-A: "Log completed booking" — which affiliate-network card (by name) has its inline
+  // log-a-booking form open. One at a time, mirroring ItemsEditorPanel's single-expanded-row pattern.
+  const [logBookingOpenFor, setLogBookingOpenFor] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
   // W-4 location-aware builds: the destination chip is editable for authored builds.
@@ -1186,6 +2081,10 @@ export default function ExpertWorkspace() {
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [selectedPin, setSelectedPin] = useState<any | null>(null);
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Item 16: "Go to item" from the plan-map InfoWindow — a one-shot signal consumed by
+  // ItemsEditorPanel (the canvas's only per-item, DOM-addressable list) which opens/expands/
+  // scrolls to the row, then clears this back to null.
+  const [focusItemId, setFocusItemId] = useState<string | null>(null);
 
   useEffect(() => {
     if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
@@ -1341,6 +2240,21 @@ export default function ExpertWorkspace() {
     onError: (e: any) => toast({ title: "Couldn't rename the build", description: e.message, variant: "destructive" }),
   });
 
+  // W-5: delete a never-shipped draft build (Workstation home "Your builds" list). Only rows
+  // with no listing yet expose the control (server refuses shipped builds with 409 regardless —
+  // this is UI-side scoping, not the real gate). Id from the path, no body.
+  const deleteBuildMutation = useMutation({
+    mutationFn: async (buildId: string) => {
+      await apiRequest("DELETE", `/api/expert/ready-made/build/${buildId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/expert/ready-made/builds"] });
+      toast({ title: "Draft deleted" });
+    },
+    onError: (e: any) =>
+      toast({ title: "Couldn't delete this build", description: parseApiErrorMessage(e, "Something went wrong."), variant: "destructive" }),
+  });
+
   const assignedTrip = assignedTrips?.find(t => t.trip_id === tripId);
   // Authoring trips carry userId=NULL and no traveler, so they cannot come from assigned-trips.
   // Shape the context's trip row into the same view model the whole page already reads.
@@ -1375,6 +2289,28 @@ export default function ExpertWorkspace() {
     queryKey: [`/api/trips/${tripId}/workspace-constraints`],
     enabled: !!tripId,
     staleTime: 30 * 1000,
+  });
+
+  // QA_PUNCH_LIST item 21 — lazy-loaded only when the AI Gaps tab is actually open, mirroring
+  // TransportLegsPanel's own `enabled: open` gating (the underlying analysis calls the travel-time
+  // estimator per same-day pair — no reason to pay for it on every workspace load).
+  const { data: transportGaps, isLoading: transportGapsLoading } = useQuery<TransportGapAnalysis>({
+    queryKey: [`/api/trips/${tripId}/transport-gaps`],
+    enabled: !!tripId && rightTab === "gaps",
+  });
+
+  const proposeLegsMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/trips/${tripId}/transport-legs/generate`, {});
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/transport-gaps`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/transport-legs`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+      toast({ title: "Transport legs proposed", description: "Review them in Transport legs on the canvas." });
+    },
+    onError: (e: any) => toast({ title: "Couldn't propose transport legs", description: e?.message, variant: "destructive" }),
   });
 
   const tripExperienceType = workspaceConstraints?.tripExperienceType ?? null;
@@ -1578,7 +2514,8 @@ export default function ExpertWorkspace() {
       toast({ title: "Added to itinerary", description: `${result.name} → Day ${focusDay}` });
       setSelectedPin(null);
     },
-    onError: () => toast({ title: "Failed to add item", variant: "destructive" }),
+    // Plan-approval mode flip (migration 164) — see ItemsEditorPanel's updateMutation above.
+    onError: (err: any) => toast({ title: "Failed to add item", description: parseApiErrorMessage(err, "Please try again."), variant: "destructive" }),
   });
 
   // ── Coordination status advance (coordinator-side) ──
@@ -1708,6 +2645,10 @@ export default function ExpertWorkspace() {
   };
 
   const workspaceStatus = assignment?.workspaceStatus || "draft";
+  // Plan-approval mode flip (migration 164): once true, this expert's direct item writes on
+  // this trip 409 server-side (see server/utils/plan-approval.ts) — the Client card below
+  // reflects that honestly instead of leaving the delivered chip as the only signal.
+  const planApproved = assignment?.planApprovalStatus === "approved";
   const days = itineraryData?.days || [];
   const totalItems = itineraryData?.total || 0;
 
@@ -1723,7 +2664,7 @@ export default function ExpertWorkspace() {
   // ── Screen 1: workspace home — ONE create action + ONE "Your builds" list (v9 :208-224).
   if (!tripId) {
     const builds = myBuildsData?.builds ?? [];
-    type BuildRow = { key: string; title: string; sub: React.ReactNode; open: () => void; sortKey: string };
+    type BuildRow = { key: string; title: string; sub: React.ReactNode; open: () => void; sortKey: string; deleteId?: string };
     const rows: BuildRow[] = [
       ...(assignedTrips ?? []).map((t): BuildRow => ({
         key: `trip-${t.trip_id}`,
@@ -1736,6 +2677,7 @@ export default function ExpertWorkspace() {
         ),
         open: () => setLocation(`/expert/workspace/${t.trip_id}`),
         sortKey: t.assigned_at ?? "",
+        // No delete control: assigned-client rows are never author-deletable here.
       })),
       // W-3 task 3: authored lane = the builds endpoint — unshipped builds (no listing)
       // appear too, badged "Draft — not distributed"; shipped ones keep the Store badge
@@ -1752,12 +2694,24 @@ export default function ExpertWorkspace() {
           title: b.title || "Untitled build",
           sub: (
             <>
-              {b.destination || "—"}{durationDays ? ` · ${durationDays} days` : ""}{" "}
+              {/* FIX 6 (QA pass): this is the calendar-span duration (start/end date window — the
+                  same figure "Days" on the store listing reads) — kept as the honest ship-to-store
+                  number rather than re-derived. It disagreed in wording with the build header's
+                  "N items · N days" chip, which counts days that actually HAVE content once items
+                  exist — a genuinely different number once a build's content doesn't fill its
+                  whole date window. Cheapest honest fix: relabel here ("N-day trip") rather than
+                  invent a third derivation or fetch each build's item count just for this list. */}
+              {b.destination || "—"}{durationDays ? ` · ${durationDays}-day trip` : ""}{" "}
               <StateChip tone={chip.tone}>{chip.label}</StateChip>
             </>
           ),
           open: () => setLocation(`/expert/workspace/${b.id}`),
           sortKey: b.createdAt ?? "",
+          // Delete control: never-shipped drafts (no listing row yet) OR — W2-B — a shipped
+          // build whose listing has been WITHDRAWN. The server is the real gate (it also
+          // refuses a withdrawn listing that was ever sold, §409 "This build was sold"); this
+          // is UI-side scoping so the control isn't offered for a live/pending listing at all.
+          deleteId: (!b.listingId || b.listingStatus === "withdrawn") ? b.id : undefined,
         };
       }),
     ].sort((a, b) => (b.sortKey || "").localeCompare(a.sortKey || ""));
@@ -1777,11 +2731,15 @@ export default function ExpertWorkspace() {
         {/* ONE create action (P1-1). The build is unlabeled at birth; channels attach in Distribute.
             W-4: the destination is set here — it is the location the build's data loads from
             (neighborhoods, platform-services search, format). Blank → the launch-market default. */}
-        <input
+        {/* Item 17: Places autocomplete on the destination text — just the text (the destination
+            geocode rail elsewhere in this page already handles centering off it), lat/lng not
+            needed here. */}
+        <PlacesAutocompleteInput
           value={newBuildDest}
-          onChange={e => setNewBuildDest(e.target.value)}
+          onChange={setNewBuildDest}
+          onPlaceSelected={place => setNewBuildDest(place.text)}
           placeholder="Where is this build for? (default: Kyoto)"
-          data-testid="input-new-build-destination"
+          testId="input-new-build-destination"
           disabled={isEventPlanner}
           style={{ width: "100%", boxSizing: "border-box", fontSize: 13, color: INK, border: `1px solid ${LINE}`, borderRadius: 9, padding: "9px 12px", marginBottom: 8, outline: "none", background: CARD }}
         />
@@ -1835,9 +2793,12 @@ export default function ExpertWorkspace() {
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
             {rows.map((r) => (
-              <button
+              <div
                 key={r.key}
                 onClick={r.open}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") r.open(); }}
                 data-testid={`workspace-open-${r.key}`}
                 style={{
                   textAlign: "left", cursor: "pointer", padding: "10px 14px", borderRadius: 10,
@@ -1851,8 +2812,32 @@ export default function ExpertWorkspace() {
                   </span>
                   <span style={{ fontSize: 11.5, color: MID }}>{r.sub}</span>
                 </span>
-                <span style={{ fontSize: 11.5, fontWeight: 700, color: BRAND, whiteSpace: "nowrap" }}>Open →</span>
-              </button>
+                <span style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+                  {/* W-5/W2-B: never-shipped drafts, or a shipped build whose listing was
+                      withdrawn (deleteId is unset for assigned rows and live/pending listings). */}
+                  {r.deleteId && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (window.confirm(`Delete "${r.title}"? This can't be undone.`)) {
+                          deleteBuildMutation.mutate(r.deleteId!);
+                        }
+                      }}
+                      disabled={deleteBuildMutation.isPending}
+                      data-testid={`button-delete-build-${r.deleteId}`}
+                      title="Delete draft"
+                      style={{
+                        background: "none", border: "none", padding: 4, display: "flex",
+                        alignItems: "center", color: DANGER,
+                        cursor: deleteBuildMutation.isPending ? "wait" : "pointer",
+                      }}
+                    >
+                      <Trash2 style={{ width: 14, height: 14 }} />
+                    </button>
+                  )}
+                  <span style={{ fontSize: 11.5, fontWeight: 700, color: BRAND, whiteSpace: "nowrap" }}>Open →</span>
+                </span>
+              </div>
             ))}
           </div>
         )}
@@ -2079,12 +3064,28 @@ export default function ExpertWorkspace() {
               <FileText style={{ width: 40, height: 40, color: FAINT, margin: "0 auto 12px" }} />
               <div style={{ fontSize: 16, fontWeight: 600, color: INK, marginBottom: 8 }}>No itinerary items yet</div>
               <div style={{ fontSize: 13, color: MID, marginBottom: 20 }}>Build the itinerary from the Add panel — DMO places, platform services, or your own items.</div>
-              <button onClick={() => { setRightTab("add"); setAddSource("custom"); }} data-testid="button-add-first-item" style={{ ...btnPrimaryStyle, padding: "9px 20px", fontSize: 14, display: "inline-flex", alignItems: "center", gap: 6 }}>
+              {/* FIX 3 (QA pass): the Add panel's default source pill is already "dmo" (line ~1160) —
+                  this CTA used to override that to "custom" (the hand-entry form), pushing every
+                  first-time builder past the platform's DMO catalog. Just open the panel; let the
+                  existing default stand. */}
+              <button onClick={() => { setRightTab("add"); setAddSource("dmo"); }} data-testid="button-add-first-item" style={{ ...btnPrimaryStyle, padding: "9px 20px", fontSize: 14, display: "inline-flex", alignItems: "center", gap: 6 }}>
                 <Plus style={{ width: 14, height: 14 }} /> Add your first item
               </button>
             </div>
           ) : (
             <>
+              {/* Item 16 (plan layer) + item 19 (discovery layer, ratified) — the plan map.
+                  Sits above the day list per the punch-list spec. */}
+              {tripId && (
+                <CanvasMapSection
+                  tripId={tripId}
+                  days={days}
+                  destination={destination}
+                  onGoToItem={(itemId) => setFocusItemId(itemId)}
+                  discoveryDayNumber={focusDay}
+                />
+              )}
+
               {/* F1: the format registry picks the structure; client:default = the existing
                   PlanCard day-list, rendered exactly as before. */}
               {buildFormat.grouping === "days" && trip && (
@@ -2154,7 +3155,17 @@ export default function ExpertWorkspace() {
               )}
 
               {/* A-2 / C-1b (Workstation audit): day-move + expert-note editor for existing items. */}
-              {tripId && <ItemsEditorPanel tripId={tripId} days={days} maxDay={maxDay} onDayMoved={triggerEnergyRecalc} />}
+              {tripId && (
+                <ItemsEditorPanel
+                  tripId={tripId}
+                  days={days}
+                  maxDay={maxDay}
+                  onDayMoved={triggerEnergyRecalc}
+                  onOpenBookingBrief={(network) => setBookingBrief({ provider: network, bookingUrl: resolvePartnerBookingUrl(network) })}
+                  focusItemId={focusItemId}
+                  onFocusHandled={() => setFocusItemId(null)}
+                />
+              )}
 
               {/* L4b (docs/briefs/L4-transport-legs.md): the between-stops transport editor. */}
               {tripId && <TransportLegsPanel tripId={tripId} days={days} />}
@@ -2228,7 +3239,7 @@ export default function ExpertWorkspace() {
                 {/* A-1 (Workstation audit): extend the selectable range by one day, client-side —
                     a day exists in the data model the moment an item lands with that dayNumber. */}
                 <button
-                  onClick={() => { const next = maxDay + 1; setExtraMaxDay(next); setFocusDay(next); }}
+                  onClick={() => { const next = maxDay + 1; setExtraMaxDay(next); setFocusDay(next); if (tripId) writeExtraMaxDay(tripId, next); }}
                   data-testid="button-add-day"
                   style={{
                     padding: "3px 9px", borderRadius: 99, fontSize: 11, fontWeight: 650, whiteSpace: "nowrap", cursor: "pointer",
@@ -2242,16 +3253,18 @@ export default function ExpertWorkspace() {
             </>
           )}
 
-          {/* Add · Platform content / My services — D1 (UX audit Jul 29): these two pills used
-              to be `disabled` with only a hover tooltip explaining why, so clicking them did
-              nothing and left a first-time expert with no feedback. They're clickable now
-              (see ADD_SOURCES above) and land here on an honest "not built yet" panel — same
-              §13 posture as every other coming-soon state in the console. */}
-          {rightTab === "add" && (addSource === "content" || addSource === "mine") && (
-            <div style={{ flex: 1, padding: "24px 16px", textAlign: "center" }}>
-              <div style={{ padding: "18px 14px", background: GROUND, borderRadius: 10, color: MID, fontSize: 12.5 }}>
-                {ADD_SOURCES.find(s => s.k === addSource)?.caption}
-              </div>
+          {/* Add · Platform content — W1-A: the shared content_registry library, embedded
+              (same fetch + same write as every other Add-panel source). */}
+          {rightTab === "add" && addSource === "content" && (
+            <div style={{ flex: 1, overflowY: "auto", padding: "12px 12px" }}>
+              <PlatformContentPickerCore tripId={tripId!} destination={destination} dayNumber={focusDay} onAdded={triggerEnergyRecalc} />
+            </div>
+          )}
+
+          {/* Add · My services — W1-A: the expert's own approved+active listings, embedded. */}
+          {rightTab === "add" && addSource === "mine" && (
+            <div style={{ flex: 1, overflowY: "auto", padding: "12px 12px" }}>
+              <MyServicesPickerCore tripId={tripId!} dayNumber={focusDay} onAdded={triggerEnergyRecalc} />
             </div>
           )}
 
@@ -2265,7 +3278,7 @@ export default function ExpertWorkspace() {
           {/* Add · Custom — the add-item form, inline; day-aware. */}
           {rightTab === "add" && addSource === "custom" && (
             <div style={{ flex: 1, overflowY: "auto", padding: "12px 12px" }}>
-              <InlineAddItemForm tripId={tripId!} dayNumber={focusDay} onAdded={triggerEnergyRecalc} />
+              <InlineAddItemForm tripId={tripId!} dayNumber={focusDay} destination={destination} onAdded={triggerEnergyRecalc} />
             </div>
           )}
 
@@ -2273,6 +3286,21 @@ export default function ExpertWorkspace() {
                approved-catalog picker. Both write through POST /api/trips/:tripId/itinerary-items. */}
           {rightTab === "add" && addSource === "platform" && (
             <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+
+              {/* Item 19 — publish this SAME search+category-filtered `searchResults` list (the
+                  exact set already rendered as pins on this drawer's OWN local browse map below)
+                  as candidate pins for the canvas map's discovery layer too. */}
+              <MapCandidatesPublisher
+                source="platform"
+                sourceLabel="Platform services"
+                items={searchResults
+                  .filter((r: any) => Number.isFinite(r.location?.lat) && Number.isFinite(r.location?.lng))
+                  .map((r: any) => ({ id: r.id, title: r.name, lat: r.location.lat, lng: r.location.lng, price: r.priceLabel ?? null }))}
+                onAdd={(id) => {
+                  const result = searchResults.find((r: any) => r.id === id);
+                  if (result) addFromSearchMutation.mutate(result);
+                }}
+              />
 
               {/* Search bar + category chips */}
               <div style={{ padding: "10px 12px 8px", borderBottom: `1px solid ${LINE}`, background: CARD, flexShrink: 0 }}>
@@ -2318,7 +3346,6 @@ export default function ExpertWorkspace() {
                         <MapMarker
                           key={result.id}
                           position={{ lat: result.location.lat, lng: result.location.lng }}
-                          title={result.name}
                           onClick={() => setSelectedPin(result)}
                         >
                           <div style={{ background: "var(--console-brand)", color: "var(--console-card)", borderRadius: 20, padding: "3px 8px", fontSize: 11, fontWeight: 700, boxShadow: "0 2px 6px rgba(0,0,0,0.3)", border: selectedPin?.id === result.id ? `2px solid var(--console-card)` : "none", whiteSpace: "nowrap", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis" }}>
@@ -2444,13 +3471,59 @@ export default function ExpertWorkspace() {
             </div>
           )}
 
-          {/* Add · Partner inventory — the affiliate networks (booking-brief rail, §16). */}
+          {/* Add · Partner inventory — a browsable catalog (W3-A, default) plus the existing
+              affiliate-networks list as a sub-tab (booking-brief rail, §16). */}
           {rightTab === "add" && addSource === "partner" && (
             <div style={{ flex: 1, overflowY: "auto", padding: "14px 12px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 4 }}>
                 <div style={{ width: 22, height: 22, borderRadius: 7, background: BRAND_SOFT, display: "flex", alignItems: "center", justifyContent: "center" }}><Link2 style={{ width: 11, height: 11, color: BRAND }} /></div>
-                <span style={{ fontSize: 13, fontWeight: 700, color: INK }}>Affiliate Networks</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: INK }}>Partner inventory</span>
               </div>
+              <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+                <button
+                  onClick={() => setPartnerSubTab("catalog")}
+                  data-testid="button-partner-subtab-catalog"
+                  style={{
+                    padding: "4px 10px", borderRadius: 7, fontSize: 11.5, fontWeight: 600, cursor: "pointer",
+                    border: `1px solid ${partnerSubTab === "catalog" ? BRAND : LINE}`,
+                    background: partnerSubTab === "catalog" ? BRAND : CARD,
+                    color: partnerSubTab === "catalog" ? CARD : MID,
+                  }}
+                >
+                  Catalog
+                </button>
+                <button
+                  onClick={() => setPartnerSubTab("networks")}
+                  data-testid="button-partner-subtab-networks"
+                  style={{
+                    padding: "4px 10px", borderRadius: 7, fontSize: 11.5, fontWeight: 600, cursor: "pointer",
+                    border: `1px solid ${partnerSubTab === "networks" ? BRAND : LINE}`,
+                    background: partnerSubTab === "networks" ? BRAND : CARD,
+                    color: partnerSubTab === "networks" ? CARD : MID,
+                  }}
+                >
+                  Networks
+                </button>
+              </div>
+
+              {partnerSubTab === "catalog" && (
+                <>
+                  <p style={{ fontSize: 11, color: MID, marginBottom: 12 }}>
+                    Tours & activities from Traveloure's partner networks.{" "}
+                    {isAuthoring ? "Add straight to a day." : "Adding sends it to your client for approval before it lands on their plan."}
+                  </p>
+                  <PartnerCatalogPickerCore
+                    tripId={tripId!}
+                    destination={destination}
+                    dayNumber={focusDay}
+                    isAuthoring={isAuthoring}
+                    onAdded={triggerEnergyRecalc}
+                  />
+                </>
+              )}
+
+              {partnerSubTab === "networks" && (
+              <>
               <p style={{ fontSize: 11, color: MID, marginBottom: 12 }}>External booking networks integrated by Traveloure. Use these to complete bookings on behalf of your client. Managed by admins at /admin/affiliate-partners.</p>
               {affiliatePartnersLoading ? (
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -2489,10 +3562,28 @@ export default function ExpertWorkspace() {
                       </button>
                     </div>
                     {aff.description && (
-                      <div style={{ fontSize: 11, color: MID, background: GROUND, borderRadius: 6, padding: "5px 8px" }}>{aff.description}</div>
+                      <div style={{ fontSize: 11, color: MID, background: GROUND, borderRadius: 6, padding: "5px 8px", marginBottom: 6 }}>{aff.description}</div>
+                    )}
+                    <button
+                      onClick={() => setLogBookingOpenFor(o => o === aff.name ? null : aff.name)}
+                      data-testid={`button-log-booking-${aff.name.toLowerCase().replace(/[^a-z0-9]/g, "-")}`}
+                      style={{ ...btnQuietStyle, padding: "4px 9px", borderRadius: 7, fontSize: 11 }}
+                    >
+                      {logBookingOpenFor === aff.name ? "Close log-booking form" : "Log completed booking"}
+                    </button>
+                    {logBookingOpenFor === aff.name && (
+                      <LogBookingForm
+                        tripId={tripId!}
+                        dayNumber={focusDay}
+                        providerName={aff.name}
+                        onAdded={triggerEnergyRecalc}
+                        onClose={() => setLogBookingOpenFor(null)}
+                      />
                     )}
                   </div>
                 ))
+              )}
+              </>
               )}
             </div>
           )}
@@ -2655,6 +3746,88 @@ export default function ExpertWorkspace() {
                   </div>
                 )}
               </div>
+
+              {/* Transport Gaps (QA_PUNCH_LIST item 21) — rules-first checker over the content
+                  logistics envelope (item 20). "Propose leg" calls the EXISTING §18 L4
+                  leg-proposal engine (POST .../transport-legs/generate, the same action
+                  TransportLegsPanel's "Generate transport" button triggers below on the canvas). */}
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                  <div style={sectionLabelStyle}>Transport Gaps</div>
+                  {transportGaps && transportGaps.days.some(d => d.pairs.length > 0) && (
+                    <button
+                      onClick={() => proposeLegsMutation.mutate()}
+                      disabled={proposeLegsMutation.isPending}
+                      data-testid="button-propose-transport-legs-gaps"
+                      style={{ ...btnQuietStyle, padding: "4px 10px", fontSize: 11, display: "flex", alignItems: "center", gap: 5, opacity: proposeLegsMutation.isPending ? 0.6 : 1 }}
+                    >
+                      {proposeLegsMutation.isPending ? <Loader2 style={{ width: 11, height: 11 }} className="animate-spin" /> : <Route style={{ width: 11, height: 11 }} />}
+                      Propose all
+                    </button>
+                  )}
+                </div>
+                {transportGapsLoading ? (
+                  <Skeleton className="h-16 rounded-lg" />
+                ) : !transportGaps || transportGaps.days.every(d => d.pairs.length === 0 && d.skipped.length === 0) ? (
+                  <div style={{ background: OK_SOFT, border: `1px solid ${LINE}`, borderRadius: 8, padding: "8px 10px", display: "flex", alignItems: "center", gap: 6 }}>
+                    <CheckCircle style={{ width: 12, height: 12, color: OK }} />
+                    <span style={{ fontSize: 12, color: OK, fontWeight: 500 }}>No transport gaps flagged</span>
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    {transportGaps.days.map(day => (
+                      <div key={day.dayNumber}>
+                        <span style={{ fontSize: 10, fontWeight: 700, color: FAINT, textTransform: "uppercase", letterSpacing: "0.06em" }}>Day {day.dayNumber}</span>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 5, marginTop: 4 }}>
+                          {day.pairs.map(pair => {
+                            const critical = pair.flags.includes("timing_infeasible");
+                            return (
+                              <div
+                                key={`${pair.fromItemId}-${pair.toItemId}`}
+                                data-testid={`transport-gap-card-${pair.fromItemId}-${pair.toItemId}`}
+                                style={{ border: `1px solid ${LINE}`, borderRadius: 8, padding: "8px 10px", background: critical ? DANGER_SOFT : WARN_SOFT }}
+                              >
+                                <div style={{ fontSize: 12, fontWeight: 600, color: INK, marginBottom: 4 }}>{pair.fromTitle} → {pair.toTitle}</div>
+                                {pair.flags.map(flag => (
+                                  <div key={flag} data-testid={`transport-gap-flag-${flag}-${pair.fromItemId}-${pair.toItemId}`} style={{ display: "flex", gap: 5, marginBottom: 2 }}>
+                                    <AlertTriangle style={{ width: 10, height: 10, color: flag === "timing_infeasible" ? DANGER : WARN, marginTop: 2, flexShrink: 0 }} />
+                                    <span style={{ fontSize: 11, color: flag === "timing_infeasible" ? DANGER : WARN }}>{TRANSPORT_GAP_FLAG_COPY[flag]}</span>
+                                  </div>
+                                ))}
+                                <div style={{ fontSize: 10, color: MID, marginTop: 3 }}>
+                                  ~{pair.estimatedTravelMinutes} min by {pair.estimatedTravelMode} needed · {pair.availableGapMinutes} min available
+                                  {pair.assumedPrevDuration && (
+                                    <span> (assumed "{pair.fromTitle}" lasts 60 min — no recorded duration)</span>
+                                  )}
+                                </div>
+                                {pair.flags.includes("transport_gap") && (
+                                  <button
+                                    onClick={() => proposeLegsMutation.mutate()}
+                                    disabled={proposeLegsMutation.isPending}
+                                    data-testid={`button-propose-leg-${pair.fromItemId}-${pair.toItemId}`}
+                                    style={{ ...btnQuietStyle, marginTop: 6, padding: "4px 10px", fontSize: 11, display: "flex", alignItems: "center", gap: 5, opacity: proposeLegsMutation.isPending ? 0.6 : 1 }}
+                                  >
+                                    <Route style={{ width: 10, height: 10 }} /> Propose leg
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          })}
+                          {day.skipped.map(skip => (
+                            <div
+                              key={`${skip.fromItemId}-${skip.toItemId}`}
+                              data-testid={`transport-gap-skip-${skip.fromItemId}-${skip.toItemId}`}
+                              style={{ fontSize: 11, color: FAINT, padding: "4px 0" }}
+                            >
+                              {skip.fromTitle} → {skip.toTitle}: not enough data to check ({skip.detail === "missing_coordinates" ? "missing location" : "missing start time"})
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
@@ -2672,6 +3845,7 @@ export default function ExpertWorkspace() {
                   <User style={{ width: 12, height: 12, color: MID }} />
                   <span style={{ fontSize: 12, fontWeight: 700, color: INK }}>Client</span>
                   {!isAuthoring && workspaceStatus === "delivered" && <StateChip tone="ok">Delivered</StateChip>}
+                  {!isAuthoring && planApproved && <StateChip tone="ok">Approved</StateChip>}
                 </div>
                 {isAuthoring ? (
                   <div style={{ padding: "14px 12px", fontSize: 12.5, color: MID, lineHeight: 1.55 }} data-testid="text-distribute-client-muted">
@@ -2715,6 +3889,28 @@ export default function ExpertWorkspace() {
                         {advanceStatusMutation.isPending ? <Loader2 style={{ width: 12, height: 12 }} className="animate-spin" /> : <Send style={{ width: 12, height: 12 }} />}
                         {workspaceStatus === "draft" ? "Send edits for client review" : "Mark delivered"}
                       </button>
+                    )}
+
+                    {/* Plan-approval mode flip (migration 164): the customer's decision on a
+                        delivered plan. `planApproved` is the honest signal the item-write 409s
+                        already enforce server-side — this just names it instead of leaving the
+                        expert to discover the flip from a failed edit. */}
+                    {planApproved && (
+                      <div
+                        style={{ background: OK_SOFT, border: `1px solid ${LINE}`, borderRadius: 8, padding: "8px 10px", fontSize: 12, color: OK, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}
+                        data-testid="text-plan-approved-notice"
+                      >
+                        <CheckCircle style={{ width: 12, height: 12, flexShrink: 0 }} />
+                        Approved by client — changes now go through suggestions.
+                      </div>
+                    )}
+                    {!planApproved && assignment?.planApprovalStatus === "changes_requested" && assignment?.planReviewNote && (
+                      <div
+                        style={{ background: GROUND, border: `1px solid ${LINE}`, borderRadius: 8, padding: "8px 10px", fontSize: 12, color: MID }}
+                        data-testid="text-plan-changes-requested-note"
+                      >
+                        <strong style={{ color: INK }}>Client requested changes:</strong> {assignment.planReviewNote}
+                      </div>
                     )}
 
                     {/* Suggest to client — traveler-approval rail (C5, from /expert/assigned-trips). */}

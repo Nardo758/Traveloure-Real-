@@ -159,6 +159,10 @@ import { isTripAuthor } from "./utils/trip-authorship";
 // Canonical per-trip mutation authorization: owner ‖ trip-assigned expert ‖ trip author ‖
 // audit-logged admin. Returns null when authorized, else the {status, message} to send.
 import { authorizeTripLogistics } from "./utils/trip-logistics-auth";
+// Plan-approval mode-flip (migration 164, QA_PUNCH_LIST W2-A item 13): once the customer
+// approves a delivered plan, the assigned expert's DIRECT item writes on that trip are refused —
+// checked ONLY on the advisor/assigned-expert path, never for the owner or an authored-build author.
+import { isPlanApprovedForExpert, PLAN_APPROVED_SUGGEST_INSTEAD_ERROR } from "./utils/plan-approval";
 
 // ─── Service-category → booking_fee_configs category mapping ─────────────────
 // serviceCategories.slug values are detailed provider-category slugs (e.g.
@@ -5969,7 +5973,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           description: item.description || "",
           serviceType: item.category || "service",
           price: parseFloat(item.price || "0"),
-          rating: item.rating || 4.5,
+          // §13: honest-or-absent — no fabricated stand-in rating for an item that has none.
+          // itinerary-optimizer.ts already averages/compares only over items that HAVE a real
+          // rating (baselineAvgRating), so an undefined value here correctly excludes it rather
+          // than polluting that average with an invented 4.5.
+          rating: typeof item.rating === "number" ? item.rating : undefined,
           location: item.location || "",
           duration: item.duration || 120,
           dayNumber: item.dayNumber || Math.floor(index / 3) + 1,
@@ -6006,7 +6014,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           description: item.service?.shortDescription,
           serviceType: item.service?.serviceType,
           price: parseFloat(item.service?.price || "0"),
-          rating: parseFloat(item.service?.averageRating || "4.5"),
+          // §13: same honest-or-absent rule as the inline-baseline mapping above — an unrated
+          // service carries no rating, never a fabricated 4.5 stand-in.
+          rating: item.service?.averageRating ? parseFloat(item.service.averageRating) : undefined,
           location: item.service?.location,
           duration: 120,
           dayNumber: Math.floor(index / 3) + 1,
@@ -8713,10 +8723,20 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const userName = (req.user as any).claims.name || "User";
       const { tripId } = req.params;
       const owned = await verifyTripOwnership(tripId, userId);
-      const assigned = owned ? true : await storage.isExpertAssignedToTrip(tripId, userId);
+      // Split out from the OR'd `assigned` boolean below so the mode-flip gate can target the
+      // advisor-only path — never the owner (owned ? true : ...) short-circuits, so `isAdvisor`
+      // is deliberately NOT that combined flag.
+      const isAdvisor = owned ? false : await storage.isExpertAssignedToTrip(tripId, userId);
+      const assigned = owned || isAdvisor;
       // Authoring mode (ready-made brief §2): the trip's author may build it.
       const authored = (owned || assigned) ? false : await isTripAuthor(tripId, userId);
       if (!owned && !assigned && !authored) return res.status(403).json({ message: "Access denied" });
+      // FABLE-REVIEW: the mode-flip gate. Advisor-only (never owner, never author) — see
+      // server/utils/plan-approval.ts. Pre-approval (NULL/changes_requested) is byte-identical
+      // to today; suggestions (POST /trips/:id/suggestions) are unaffected by this gate.
+      if (isAdvisor && await isPlanApprovedForExpert(tripId, userId)) {
+        return res.status(409).json(PLAN_APPROVED_SUGGEST_INSTEAD_ERROR);
+      }
       const parsed = insertItineraryItemSchema.safeParse({ ...req.body, tripId });
       if (!parsed.success) return res.status(400).json({ message: "Invalid data", errors: parsed.error.errors });
       const item = await storage.createItineraryItem(parsed.data as any);
@@ -8808,6 +8828,15 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // only gate. Canonical authorization, matching the sibling itinerary-item handlers above.
       const denied = await authorizeTripLogistics(req.params.tripId, userId, "POST /api/trips/:tripId/itinerary/reorder");
       if (denied) return res.status(denied.status).json({ message: denied.message });
+      // FABLE-REVIEW: the mode-flip gate (QA_PUNCH_LIST item 18), same derivation as the
+      // item-create handler's `isAdvisor` above — never the owner, never the author. Computed
+      // AFTER authorizeTripLogistics has already passed, so it narrows nothing that handler
+      // grants; it only refuses the advisor branch once the assignment's plan is approved.
+      const owned = await verifyTripOwnership(req.params.tripId, userId);
+      const isAdvisor = owned ? false : await storage.isExpertAssignedToTrip(req.params.tripId, userId);
+      if (isAdvisor && await isPlanApprovedForExpert(req.params.tripId, userId)) {
+        return res.status(409).json(PLAN_APPROVED_SUGGEST_INSTEAD_ERROR);
+      }
       const { dayNumber, itemIds } = req.body;
       const items = await itineraryIntelligenceService.reorderItems(req.params.tripId, dayNumber, itemIds);
       // Change-log role, derived honestly (§13 applies to logs): this used to hardcode "owner",
@@ -8815,8 +8844,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // passing branch (owner ‖ assigned expert ‖ author ‖ admin) and does not report which one, so
       // ownership is the only branch we can state as fact; every other authorized party gets the
       // neutral "editor" label rather than a guess (the `logLegChange` precedent in
-      // transport-legs.routes.ts).
-      const role = (await verifyTripOwnership(req.params.tripId, userId)) ? "owner" : "editor";
+      // transport-legs.routes.ts). Reuses the `owned` flag computed above for the mode-flip gate.
+      const role = owned ? "owner" : "editor";
       logItineraryChange(req.params.tripId, userName, `Reordered Day ${dayNumber} activities`, "reorder", role);
       res.json(items);
     } catch (error) {
@@ -8831,6 +8860,16 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // authorization, so any authenticated user could compute an optimized order for any trip.
       const denied = await authorizeTripLogistics(req.params.tripId, userId, "POST /api/trips/:tripId/itinerary/optimize-order");
       if (denied) return res.status(denied.status).json({ message: denied.message });
+      // FABLE-REVIEW: the mode-flip gate (QA_PUNCH_LIST item 18) — same derivation as the
+      // reorder handler above (itself mirroring the item-create handler's `isAdvisor`). This
+      // endpoint only COMPUTES a suggested order (no write), but gating it too means an
+      // advisor on an approved plan can't even fish for a machine order to hand-apply via
+      // the reorder endpoint under a different guise.
+      const owned = await verifyTripOwnership(req.params.tripId, userId);
+      const isAdvisor = owned ? false : await storage.isExpertAssignedToTrip(req.params.tripId, userId);
+      if (isAdvisor && await isPlanApprovedForExpert(req.params.tripId, userId)) {
+        return res.status(409).json(PLAN_APPROVED_SUGGEST_INSTEAD_ERROR);
+      }
       const { dayNumber } = req.body;
       const optimizedOrder = await itineraryIntelligenceService.optimizeOrder(req.params.tripId, dayNumber);
       res.json({ optimizedOrder });

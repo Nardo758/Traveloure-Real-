@@ -88,9 +88,8 @@ import {
   type ExpertMatchAnalytics, type InsertExpertMatchAnalytics,
   type DestinationSearchPattern, type InsertDestinationSearchPattern,
   type DestinationMetricsHistory, type InsertDestinationMetricsHistory,
-  itineraryChanges, activityComments,
+  itineraryChanges,
   type ItineraryChange, type InsertItineraryChange,
-  type ActivityComment, type InsertActivityComment,
   itineraryItems, tripExpertAdvisors, providerSettings, tripCollaborators,
   type ItineraryItem, type InsertItineraryItem,
   type ProviderSettings, type InsertProviderSettings,
@@ -544,7 +543,7 @@ export interface IStorage {
 
   // Expert Workspace Status
   getExpertAssignment(assignmentId: string): Promise<any>;
-  updateExpertAssignmentWorkspaceStatus(assignmentId: string, workspaceStatus: string): Promise<any>;
+  updateExpertAssignmentWorkspaceStatus(assignmentId: string, workspaceStatus: string, expectedCurrentStatus?: string): Promise<any>;
 
   // Expert/Provider Logistics
   getProviderAvailability(providerId: string): Promise<ProviderAvailabilitySchedule[]>;
@@ -584,13 +583,6 @@ export interface IStorage {
   getItineraryChanges(tripId: string, limit?: number): Promise<ItineraryChange[]>;
   createItineraryChange(change: InsertItineraryChange): Promise<ItineraryChange>;
   deleteItineraryChange(id: string): Promise<void>;
-
-  // Activity Comments (PlanCard collaboration)
-  getActivityComment(id: string): Promise<ActivityComment | undefined>;
-  getActivityComments(activityId: string): Promise<ActivityComment[]>;
-  getActivityCommentCounts(tripId: string): Promise<Record<string, number>>;
-  createActivityComment(comment: InsertActivityComment): Promise<ActivityComment>;
-  deleteActivityComment(id: string): Promise<void>;
 
   // Affiliate Booking Requests
   createAffiliateBookingRequest(data: InsertAffiliateBookingRequest): Promise<AffiliateBookingRequest>;
@@ -4804,42 +4796,6 @@ export class DatabaseStorage implements IStorage {
     await db.delete(itineraryChanges).where(eq(itineraryChanges.id, id));
   }
 
-  async getActivityComment(id: string): Promise<ActivityComment | undefined> {
-    const [comment] = await db.select().from(activityComments)
-      .where(eq(activityComments.id, id))
-      .limit(1);
-    return comment;
-  }
-
-  async getActivityComments(activityId: string): Promise<ActivityComment[]> {
-    return await db.select().from(activityComments)
-      .where(eq(activityComments.activityId, activityId))
-      .orderBy(desc(activityComments.createdAt));
-  }
-
-  async getActivityCommentCounts(tripId: string): Promise<Record<string, number>> {
-    const rows = await db.select({
-      activityId: activityComments.activityId,
-      count: count(),
-    }).from(activityComments)
-      .where(eq(activityComments.tripId, tripId))
-      .groupBy(activityComments.activityId);
-    const result: Record<string, number> = {};
-    for (const row of rows) {
-      result[row.activityId] = row.count;
-    }
-    return result;
-  }
-
-  async createActivityComment(comment: InsertActivityComment): Promise<ActivityComment> {
-    const [created] = await db.insert(activityComments).values(comment).returning();
-    return created;
-  }
-
-  async deleteActivityComment(id: string): Promise<void> {
-    await db.delete(activityComments).where(eq(activityComments.id, id));
-  }
-
   // Provider Settings
   async getProviderSettings(userId: string): Promise<ProviderSettings | null> {
     const [row] = await db.select().from(providerSettings).where(eq(providerSettings.userId, userId));
@@ -4925,10 +4881,21 @@ export class DatabaseStorage implements IStorage {
     return row ?? null;
   }
 
-  async updateExpertAssignmentWorkspaceStatus(assignmentId: string, workspaceStatus: string): Promise<any> {
+  // W3-B: `expectedCurrentStatus` re-asserts the pre-transition value in the WHERE clause (§15
+  // atomic-conditional posture — mirrors the plan-review handler's `workspaceStatus='delivered'`
+  // re-assert). The route's earlier JS-level `validTransitions` check is TOCTOU-vulnerable on its
+  // own (two concurrent requests can both read the same starting status); the guard here is what
+  // actually makes a duplicate/racing transition lose (0 rows updated -> caller 409s), which now
+  // matters because a `delivered` transition also fires a customer email. Omitting the param keeps
+  // the prior unconditional-update behavior for any other caller.
+  async updateExpertAssignmentWorkspaceStatus(assignmentId: string, workspaceStatus: string, expectedCurrentStatus?: string): Promise<any> {
     const [updated] = await db.update(tripExpertAdvisors)
       .set({ workspaceStatus })
-      .where(eq(tripExpertAdvisors.id, assignmentId))
+      .where(
+        expectedCurrentStatus !== undefined
+          ? and(eq(tripExpertAdvisors.id, assignmentId), eq(tripExpertAdvisors.workspaceStatus, expectedCurrentStatus))
+          : eq(tripExpertAdvisors.id, assignmentId)
+      )
       .returning();
     return updated;
   }

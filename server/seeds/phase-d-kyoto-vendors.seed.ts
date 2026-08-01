@@ -22,6 +22,7 @@ import { db } from "../db";
 import { users, serviceProviderForms, providerServices, serviceCategories } from "@shared/schema";
 import { eq, inArray } from "drizzle-orm";
 import * as crypto from "crypto";
+import { resolveNeighborhoodCentroid } from "./lib/neighborhood-centroid";
 
 // ─── Category placeholders (vendor arrays reference these at module load time) ─
 // Values are key names — the seed function resolves real IDs from the DB at runtime.
@@ -762,6 +763,11 @@ export async function seedPhaseDKyotoVendors(): Promise<{
 
       if (existingSvc.length > 0) continue;
 
+      // Migration-129 pattern applied at insert time: resolve the neighborhood
+      // slug to its city_neighborhoods centroid so this row isn't born
+      // NULL-coordinate (never fabricates — a miss just leaves it NULL).
+      const centroid = await resolveNeighborhoodCentroid(svc.neighborhood);
+
       await db.insert(providerServices).values({
         userId,
         serviceName: svc.serviceName,
@@ -782,6 +788,12 @@ export async function seedPhaseDKyotoVendors(): Promise<{
         status: "active",
         revenueShareRate: "0.75",
         leadTimeHours: 48,
+        ...(centroid && {
+          latitude: centroid.latitude,
+          longitude: centroid.longitude,
+          city: centroid.city,
+          locationPrecision: centroid.locationPrecision,
+        }),
       });
       servicesInserted++;
     }

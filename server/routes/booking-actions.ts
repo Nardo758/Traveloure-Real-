@@ -5,6 +5,7 @@
 
 import { Router } from 'express';
 import crypto from 'crypto';
+import { z } from 'zod';
 import { stripePaymentService } from '../services/stripe-payment.service';
 import { isAuthenticated } from '../replit_integrations/auth';
 import { trackFunnelEvent } from '../utils/funnelTracker';
@@ -12,14 +13,21 @@ import { bookingService } from '../services/booking.service';
 import { verifyTripOwnership } from '../utils/trip-ownership';
 import { authorizeTripLogistics } from '../utils/trip-logistics-auth';
 import { isTripAuthor } from '../utils/trip-authorship';
+import { isTripAdvisor, TRIP_ADVISOR_ACCESS_STATUSES } from '../utils/trip-advisor';
 import { getUserId } from '../utils/auth';
 import { storage } from '../storage';
 import { db } from '../db';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray } from 'drizzle-orm';
 // Aliased: this router already uses `itineraryItems` as a local variable name in more than one
 // handler, and shadowing the table import would be a silent footgun.
-import { notifications, itineraryItems as itineraryItemsTable, tripCollaborators } from '@shared/schema';
+import { notifications, itineraryItems as itineraryItemsTable, tripCollaborators, tripExpertAdvisors, tripItemComments, users, PLAN_APPROVAL_STATUSES } from '@shared/schema';
 import { EXPERT_SHARE_RATE } from '../services/commission';
+import {
+  sendPlanDeliveredEmail,
+  sendPlanApprovedEmail,
+  sendPlanChangesRequestedEmail,
+  sendNewSuggestionEmail,
+} from '../services/email.service';
 import {
   completeExpertRequest,
   getPaidUncompletedExpertRequestIds,
@@ -827,6 +835,30 @@ router.post('/trips/:id/suggestions', isAuthenticated, async (req, res) => {
           relatedType: "trip",
           data: { tripId: id, workspacePath: `/trip/${id}?tab=itinerary` },
         } as any);
+
+        // W3-B ③: POST-APPROVAL suggestion created -> customer email, ONLY when the assignment's
+        // plan is already approved (`plan_approval_status='approved'`). An in-planning suggestion
+        // (NULL / 'changes_requested') stays bell-only, deliberately — the whole point of the
+        // pre-approval phase is the expert iterating freely without emailing the customer on every
+        // suggestion. `(tripId, localExpertId)` is unique (migration 164 `uniqueTripExpert`
+        // index), so this is an exact-match lookup, not a "most recent advisor" pick. Best-effort,
+        // inside the same try/catch as the bell insert above.
+        const [advisor] = await db
+          .select({ planApprovalStatus: tripExpertAdvisors.planApprovalStatus })
+          .from(tripExpertAdvisors)
+          .where(and(eq(tripExpertAdvisors.tripId, id), eq(tripExpertAdvisors.localExpertId, userId)))
+          .limit(1);
+        if (advisor?.planApprovalStatus === PLAN_APPROVAL_STATUSES[0] /* 'approved' */) {
+          const customer = await storage.getUser(trip.userId);
+          if (customer?.email) {
+            await sendNewSuggestionEmail({
+              toEmail: customer.email,
+              firstName: customer.firstName ?? null,
+              tripId: id,
+              suggestionTitle: title,
+            });
+          }
+        }
       }
     } catch (notifyErr) {
       console.error("[Expert] suggestion notify failed (non-fatal):", notifyErr);
@@ -863,7 +895,13 @@ router.patch('/trips/:id/suggestions/:suggestionId', isAuthenticated, async (req
       return res.status(404).json({ error: 'Suggestion not found or already reviewed' });
     }
 
-    await updateSuggestionStatus(suggestionId, id, status, rejectionNote ?? null);
+    const claimed = await updateSuggestionStatus(suggestionId, id, status, rejectionNote ?? null);
+    if (!claimed) {
+      // Lost a race: a concurrent decision already moved this suggestion off 'pending'.
+      return res.status(409).json({ error: 'Suggestion already reviewed' });
+    }
+
+    let createdItemId: string | undefined;
 
     if (status === 'approved') {
       const itinerary = await getGeneratedItinerary(id);
@@ -898,9 +936,28 @@ router.patch('/trips/:id/suggestions/:suggestionId', isAuthenticated, async (req
 
         await updateGeneratedItineraryData(itinerary.id, { ...itineraryData, days });
       }
+
+      // W3-A (FABLE-REVIEW): the legacy `generated_itineraries` write above lands in a jsonb blob
+      // that `days`/`ItemsEditorPanel` in the expert Workstation — and the traveler's Trip Card —
+      // do NOT read; both render from the canonical `itinerary_items` table (GET
+      // /api/trips/:tripId/itinerary-items, §18). Without this, an "approved" suggestion never
+      // actually materialized on the plan the traveler/expert look at — the doc's assumption that
+      // "the existing suggestion-approve flow already applies approved suggestions into the
+      // itinerary" did not hold for the canonical model. This closes that gap for every suggestion
+      // (not just partner-catalog ones): approval now also creates a real itinerary_items row,
+      // through the same storage path every other Add-panel source writes through.
+      const created = await storage.createItineraryItem({
+        tripId: id,
+        title: suggestion.title,
+        description: suggestion.description ?? undefined,
+        itemType: suggestion.type || 'activity',
+        dayNumber: suggestion.day_number ?? 1,
+        estimatedCost: suggestion.estimated_cost ?? undefined,
+      } as any);
+      createdItemId = created.id;
     }
 
-    res.json({ success: true, suggestion: { id: suggestionId, status } });
+    res.json({ success: true, suggestion: { id: suggestionId, status }, itemId: createdItemId });
   } catch (error: any) {
     console.error('Review trip suggestion error:', error);
     res.status(500).json({ success: false, error: error.message });
@@ -995,7 +1052,11 @@ router.patch("/expert/assignments/:assignmentId/workspace-status", isAuthenticat
     if (!validTransitions[current]?.includes(workspaceStatus)) {
       return res.status(400).json({ message: `Cannot transition workspace status from '${current}' to '${workspaceStatus}'. Allowed: ${validTransitions[current]?.join(", ") || "none"}` });
     }
-    const updated = await storage.updateExpertAssignmentWorkspaceStatus(assignmentId, workspaceStatus);
+    const updated = await storage.updateExpertAssignmentWorkspaceStatus(assignmentId, workspaceStatus, current);
+    if (!updated) {
+      // Lost the race — a concurrent call already moved this row off `current` (§15).
+      return res.status(409).json({ message: `Cannot transition workspace status from '${current}' to '${workspaceStatus}'. A concurrent update already changed it.` });
+    }
 
     // F2 (workstation-flows audit): delivery was SILENT — the expert advanced the status and the
     // traveler was never told, discovering changes only by reopening their trip. Notify the trip
@@ -1019,6 +1080,22 @@ router.patch("/expert/assignments/:assignmentId/workspace-status", isAuthenticat
           // their own trip view, never the expert workspace.
           data: { tripId: assignment.tripId, workspacePath: `/trip/${assignment.tripId}?tab=itinerary` },
         } as any);
+
+        // W3-B ①: plan DELIVERED -> customer email. Same trigger + same trip/userId already
+        // resolved above for the bell insert; fired only on the outward `delivered` transition
+        // (never `in_review`), never for a logged-out/no-account trip (trip.userId null-guarded
+        // by the same `if` this sits inside). Best-effort — inside the same try/catch as the bell
+        // insert, so a send failure never fails the already-committed workspace-status transition.
+        if (workspaceStatus === "delivered") {
+          const customer = await storage.getUser(trip.userId);
+          if (customer?.email) {
+            await sendPlanDeliveredEmail({
+              toEmail: customer.email,
+              firstName: customer.firstName ?? null,
+              tripId: assignment.tripId,
+            });
+          }
+        }
       }
     } catch (notifyErr) {
       console.error("[Expert] workspace-status notify failed (non-fatal):", notifyErr);
@@ -1051,6 +1128,280 @@ router.patch("/expert/assignments/:assignmentId/workspace-status", isAuthenticat
   } catch (err) {
     console.error("[Expert] workspace-status error:", err);
     res.status(500).json({ message: "Failed to update workspace status" });
+  }
+});
+
+// POST /api/trips/:id/plan-review — the delivery handshake (QA_PUNCH_LIST W2-A, items 11+13+14b;
+// migration 164). Customer signs off on a `delivered` plan (`decision: "approve"`) or sends it
+// back (`decision: "request_changes"`, optional `note`). This is what flips the assigned expert's
+// direct-edit mode to suggest-mode (see server/utils/plan-approval.ts + the item-write gates).
+//
+// FABLE-REVIEW: owner gate. Same predicate as the suggestion-approve handler above (`isTripOwner`
+// — trips.userId only), NEVER getTripRole (CLAUDE.md L10: getTripRole never reads `trips` and
+// under-grants the owner on several live gates; this handler must not inherit that class of bug).
+router.post('/trips/:id/plan-review', isAuthenticated, async (req, res) => {
+  try {
+    const userId = (req as any).user?.claims?.sub;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const { id } = req.params;
+    const { decision, note } = req.body ?? {};
+
+    if (decision !== 'approve' && decision !== 'request_changes') {
+      return res.status(400).json({ error: 'decision must be "approve" or "request_changes"' });
+    }
+    if (note !== undefined && typeof note !== 'string') {
+      return res.status(400).json({ error: 'note must be a string' });
+    }
+
+    const owns = await isTripOwner(id, userId);
+    if (!owns) return res.status(403).json({ error: 'Access denied' });
+
+    // §15 posture: claim the candidate row first (find the one delivered advisor row — the
+    // uniqueTripExpert index means at most one row per (trip, expert), so if more than one
+    // expert has ever advised this trip we take the most recently assigned), then flip it with
+    // the SAME 'delivered' precondition re-asserted in the UPDATE's WHERE clause — that is the
+    // atomic conditional guard, not the earlier SELECT. A racing/duplicate request_changes call
+    // loses the race because the first one already moved workspace_status off 'delivered', so
+    // the second UPDATE matches 0 rows -> 409. A racing approve is naturally idempotent (both
+    // converge on the same 'approved' end state).
+    const [candidate] = await db
+      .select({ id: tripExpertAdvisors.id, localExpertId: tripExpertAdvisors.localExpertId })
+      .from(tripExpertAdvisors)
+      .where(and(eq(tripExpertAdvisors.tripId, id), eq(tripExpertAdvisors.workspaceStatus, 'delivered')))
+      .orderBy(desc(tripExpertAdvisors.assignedAt))
+      .limit(1);
+
+    if (!candidate) {
+      return res.status(409).json({ error: 'This trip has no delivered plan awaiting review' });
+    }
+
+    const setValues =
+      decision === 'approve'
+        ? { planApprovalStatus: PLAN_APPROVAL_STATUSES[0] /* 'approved' */, planApprovedAt: new Date() }
+        : {
+            planApprovalStatus: PLAN_APPROVAL_STATUSES[1] /* 'changes_requested' */,
+            planReviewNote: note ?? null,
+            workspaceStatus: 'draft', // send the expert back to work; re-delivery re-runs this handshake
+          };
+
+    const [updated] = await db
+      .update(tripExpertAdvisors)
+      .set(setValues as any)
+      .where(and(eq(tripExpertAdvisors.id, candidate.id), eq(tripExpertAdvisors.workspaceStatus, 'delivered')))
+      .returning();
+
+    if (!updated) {
+      // Lost the race (a concurrent decision already moved this row off 'delivered').
+      return res.status(409).json({ error: 'This trip has no delivered plan awaiting review' });
+    }
+
+    // Reverse notification (item 14b): the expert learns the customer's decision without polling
+    // the workspace. Mirrors the traveler-notify inserts above exactly (type, data shape); points
+    // at the EXPERT's own workspace surface, never the traveler's trip view. Best-effort — a
+    // notification failure never fails the decision already committed above.
+    try {
+      await db.insert(notifications).values({
+        userId: updated.localExpertId,
+        type: 'itinerary_update',
+        title: decision === 'approve' ? 'Plan approved' : 'Changes requested',
+        message:
+          decision === 'approve'
+            ? 'Your client approved the delivered plan.'
+            : `Your client requested changes${note ? `: ${note}` : '.'}`,
+        relatedId: id,
+        relatedType: 'trip',
+        data: { tripId: id, workspacePath: `/expert/workspace/${id}` },
+      } as any);
+    } catch (notifyErr) {
+      console.error('[PlanReview] expert notify failed (non-fatal):', notifyErr);
+    }
+
+    // W3-B ②/④: CHANGES REQUESTED / plan APPROVED -> expert email, symmetric with the bell
+    // insert directly above (same trigger, same recipient — the expert who delivered the plan).
+    // Best-effort, own try/catch so an email failure never fails the decision already committed
+    // by the atomic UPDATE above.
+    try {
+      const expertUser = await storage.getUser(updated.localExpertId);
+      if (expertUser?.email) {
+        if (decision === 'approve') {
+          await sendPlanApprovedEmail({
+            toEmail: expertUser.email,
+            firstName: expertUser.firstName ?? null,
+            tripId: id,
+          });
+        } else {
+          await sendPlanChangesRequestedEmail({
+            toEmail: expertUser.email,
+            firstName: expertUser.firstName ?? null,
+            tripId: id,
+            note: note ?? null,
+          });
+        }
+      }
+    } catch (emailErr) {
+      console.error('[PlanReview] expert email failed (non-fatal):', emailErr);
+    }
+
+    res.json({
+      success: true,
+      planApprovalStatus: updated.planApprovalStatus,
+      workspaceStatus: updated.workspaceStatus,
+    });
+  } catch (error: any) {
+    console.error('Plan review error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ─── Per-item plan comments (QA_PUNCH_LIST W3-C item 12, migration 165) ────────────────────
+// The communication half of the delivery loop: "can we do this earlier?" lives on the item,
+// not in detached chat.
+
+/**
+ * FABLE-REVIEW: access gate. Same tri-predicate as the rest of this file — trip OWNER
+ * (`isTripOwner`, trips.userId only), OR assigned advisor via the CANONICAL allow-list
+ * predicate (`isTripAdvisor` from server/utils/trip-advisor.ts — pending|accepted|assigned
+ * grant, rejected denies; NEVER `storage.isExpertAssignedToTrip`/the stale
+ * `getExistingAdvisorRecord`-style `status IN ('pending','accepted')` filters, which
+ * under-grant admin-confirmed 'assigned' experts), OR trip AUTHOR (`isTripAuthor` —
+ * authored/speculative builds). Never `getTripRole` (CLAUDE.md L10: it never reads `trips`
+ * and under-grants the owner).
+ */
+async function resolveItemCommentRole(tripId: string, userId: string): Promise<'owner' | 'expert' | 'author' | null> {
+  if (await isTripOwner(tripId, userId)) return 'owner';
+  if (await isTripAdvisor(tripId, userId)) return 'expert';
+  if (await isTripAuthor(tripId, userId)) return 'author';
+  return null;
+}
+
+const itemCommentBodySchema = z.object({
+  body: z.string().trim().min(1).max(2000),
+});
+
+/** Shared read: comment rows for an item, joined to the real author name (§13 — never fabricated). */
+async function loadItemComments(itemId: string) {
+  const rows = await db
+    .select({
+      id: tripItemComments.id,
+      body: tripItemComments.body,
+      createdAt: tripItemComments.createdAt,
+      authorId: tripItemComments.authorId,
+      authorFirstName: users.firstName,
+      authorLastName: users.lastName,
+    })
+    .from(tripItemComments)
+    .innerJoin(users, eq(users.id, tripItemComments.authorId))
+    .where(eq(tripItemComments.itemId, itemId))
+    .orderBy(tripItemComments.createdAt);
+
+  return rows.map((r) => ({
+    id: r.id,
+    body: r.body,
+    createdAt: r.createdAt,
+    authorId: r.authorId,
+    authorName: [r.authorFirstName, r.authorLastName].filter(Boolean).join(' ') || 'Member',
+  }));
+}
+
+router.get('/trips/:tripId/items/:itemId/comments', isAuthenticated, async (req, res) => {
+  try {
+    const userId = getUserId(req);
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+    const { tripId, itemId } = req.params;
+
+    const role = await resolveItemCommentRole(tripId, userId);
+    if (!role) return res.status(403).json({ error: 'Access denied' });
+
+    const item = await storage.getItineraryItemByIdAndTrip(itemId, tripId);
+    if (!item) return res.status(404).json({ error: 'Item not found in this trip' });
+
+    const comments = await loadItemComments(itemId);
+    res.json({ comments });
+  } catch (error: any) {
+    console.error('Get item comments error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/trips/:tripId/items/:itemId/comments', isAuthenticated, async (req, res) => {
+  try {
+    // §14: author is the SESSION user — never a body-supplied id.
+    const userId = getUserId(req);
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+    const { tripId, itemId } = req.params;
+
+    const parsed = itemCommentBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'body must be a string of 1-2000 characters' });
+    }
+
+    const role = await resolveItemCommentRole(tripId, userId);
+    if (!role) return res.status(403).json({ error: 'Access denied' });
+
+    const item = await storage.getItineraryItemByIdAndTrip(itemId, tripId);
+    if (!item) return res.status(404).json({ error: 'Item not found in this trip' });
+
+    const [inserted] = await db
+      .insert(tripItemComments)
+      .values({ tripId, itemId, authorId: userId, body: parsed.data.body })
+      .returning({ id: tripItemComments.id });
+
+    // Reverse notification, mirroring the plan-review/suggestion notification inserts above
+    // exactly (type, data shape). Owner comments -> notify the assigned expert at their
+    // workspace path; expert comments -> notify the trip owner at their trip path. Author-mode
+    // comments (authored/speculative builds) have no traveler owner and no guaranteed advisor —
+    // skip silently, never fabricate a recipient. Best-effort: a notification failure never
+    // fails the comment already committed above.
+    try {
+      if (role === 'owner') {
+        const [advisor] = await db
+          .select({ localExpertId: tripExpertAdvisors.localExpertId })
+          .from(tripExpertAdvisors)
+          .where(
+            and(
+              eq(tripExpertAdvisors.tripId, tripId),
+              inArray(tripExpertAdvisors.status, [...TRIP_ADVISOR_ACCESS_STATUSES]),
+            ),
+          )
+          .orderBy(desc(tripExpertAdvisors.assignedAt))
+          .limit(1);
+        if (advisor) {
+          await db.insert(notifications).values({
+            userId: advisor.localExpertId,
+            type: 'itinerary_update',
+            title: 'New comment on the plan',
+            message: `Your client commented: "${parsed.data.body.slice(0, 140)}"`,
+            relatedId: itemId,
+            relatedType: 'trip',
+            data: { tripId, itemId, workspacePath: `/expert/workspace/${tripId}` },
+          } as any);
+        }
+      } else if (role === 'expert') {
+        const trip = await storage.getTrip(tripId);
+        if (trip?.userId) {
+          await db.insert(notifications).values({
+            userId: trip.userId,
+            type: 'itinerary_update',
+            title: 'New comment from your expert',
+            message: `Your expert commented: "${parsed.data.body.slice(0, 140)}"`,
+            relatedId: itemId,
+            relatedType: 'trip',
+            data: { tripId, itemId, workspacePath: `/trip/${tripId}?tab=itinerary` },
+          } as any);
+        }
+      }
+      // role === 'author': no counterpart to notify — skip silently.
+    } catch (notifyErr) {
+      console.error('[ItemComments] notify failed (non-fatal):', notifyErr);
+    }
+
+    const comments = await loadItemComments(itemId);
+    const comment = comments.find((c) => c.id === inserted.id) ?? comments[comments.length - 1];
+    res.status(201).json({ comment });
+  } catch (error: any) {
+    console.error('Create item comment error:', error);
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -1294,6 +1645,27 @@ router.get("/trips/:tripId/workspace-constraints", isAuthenticated, async (req, 
     });
   } catch (error: any) {
     res.status(500).json({ message: "Failed to fetch workspace constraints", error: error.message });
+  }
+});
+
+// GET /api/trips/:tripId/transport-gaps — QA_PUNCH_LIST item 21, the rules-first transport-gap
+// checker (server/services/transport-gap.service.ts). Same principal set as workspace-constraints
+// (owner ‖ assigned-expert ‖ authored-build author ‖ admin) via the canonical authorizeTripLogistics.
+router.get("/trips/:tripId/transport-gaps", isAuthenticated, async (req, res) => {
+  try {
+    const userId = (req.user as any).claims?.sub ?? (req.user as any)?.id;
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+    const denied = await authorizeTripLogistics(req.params.tripId, userId, "GET /api/trips/:tripId/transport-gaps");
+    if (denied) return res.status(denied.status).json({ message: denied.message });
+
+    const trip = await storage.getTrip(req.params.tripId);
+    if (!trip) return res.status(404).json({ message: "Trip not found" });
+
+    const { analyzeTransportGaps } = await import('../services/transport-gap.service');
+    const analysis = await analyzeTransportGaps(req.params.tripId);
+    res.json(analysis);
+  } catch (error: any) {
+    res.status(500).json({ message: "Failed to analyze transport gaps", error: error.message });
   }
 });
 

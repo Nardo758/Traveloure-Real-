@@ -655,4 +655,74 @@ export const MIGRATION_FILES = [
   // No CHECK constraint anywhere in this migration; id/trip_id/indexes are also declared in
   // shared/schema.ts (deploy-push durability rule).
   "161_trip_contexts_rekey.sql",
+  // 162: data-only re-backfill of migration 129's provider_services centroid
+  // coordinate fill, for rows INSERTED AFTER 129 ran (the Kyoto/popular-cities
+  // seed scripts set `neighborhood` but never set latitude/longitude/city/
+  // location_precision, so those rows stayed born-NULL-coordinate and never
+  // got a map pin from the Platform-services pill). Re-runs 129's exact
+  // slug-first-then-name centroid match, guarded WHERE latitude IS NULL
+  // (idempotent — a re-run is a no-op). NEVER FABRICATES: a row whose
+  // neighborhood doesn't resolve stays all-NULL. No schema change (the four
+  // columns already exist + are declared in shared/schema.ts since 129); no
+  // CHECK constraint → nothing for the preflight CONSTRAINT_MANIFEST, no
+  // publish-time push trap. Companion code: the three provider_services
+  // seeders that set `neighborhood` (phase-d-kyoto-vendors.seed.ts,
+  // phase-4-kyoto-fill.seed.ts, popular-cities-content.seed.ts) now resolve
+  // the same centroid at INSERT time via server/seeds/lib/neighborhood-centroid.ts,
+  // so future seeded rows are born with coords instead of relying on a future
+  // re-backfill migration.
+  "162_provider_services_coords_rebackfill.sql",
+  // 163: W2-B — widens the migration-133 ready_made_trips_status_check to include 'withdrawn'
+  // (drop-and-recreate CHECK pattern, 127_coordination_fee_refunded_status.sql). Backs the new
+  // POST /api/expert/ready-made/:id/withdraw endpoint (author retracts a listing from the store;
+  // existing purchases unaffected — buyers hold a snapshot clone) and the existing /submit
+  // endpoint's widened allowed-from set (draft|rejected|withdrawn -> submitted), so a
+  // withdrawn-then-resubmitted listing re-enters the admin queue (D1a: never straight back to
+  // 'approved'). A widen never invalidates an existing row → no preflight remap needed.
+  "163_ready_made_withdraw_status.sql",
+  // 164: QA_PUNCH_LIST W2-A — plan-approval handshake. Three additive nullable columns on
+  // trip_expert_advisors: plan_approval_status ('approved'|'changes_requested', NULL = no
+  // decision yet), plan_approved_at, plan_review_note. NO DB CHECK — canonical set lives in
+  // shared/schema.ts as PLAN_APPROVAL_STATUSES (the pre-109/159 posture), so no publish-push
+  // remap trap. No backfill (NULL is honest — the feature has no history yet). Columns are also
+  // declared on the tripExpertAdvisors pgTable in shared/schema.ts (deploy-push durability rule).
+  // Companion code: POST /api/trips/:id/plan-review (booking-actions.ts) + the server-side
+  // expert-direct-edit mode flip on the item create/PATCH/DELETE handlers, gated via
+  // server/utils/plan-approval.ts.
+  // NUMBERING NOTE: this landed as 163 on this branch; lane W2-B independently claimed 163
+  // (163_ready_made_withdraw_status.sql) on its own branch first, so this was renumbered to
+  // 164 before push. Registry order (162, 163, 164) reconciles at rebase/merge — W2-B's 163
+  // entry is not present on this branch's migration-files.ts.
+  "164_plan_approval.sql",
+  // 165: QA_PUNCH_LIST W3-C (item 12) — per-item comment threads on the plan. New table
+  // `trip_item_comments` (id/trip_id/item_id/author_id/body/created_at), FKs to
+  // trips/itinerary_items/users all ON DELETE CASCADE (a comment has no life beyond its
+  // trip/item/author). NO CHECK constraint -> nothing for the preflight CONSTRAINT_MANIFEST,
+  // no publish-time push trap. Table + indexes also declared on the new tripItemComments
+  // pgTable in shared/schema.ts (deploy-push durability rule). Companion code:
+  // GET/POST /api/trips/:tripId/items/:itemId/comments (server/routes/booking-actions.ts),
+  // gated by the same owner/advisor/author tri-predicate as the rest of this file
+  // (isTripOwner, the canonical isTripAdvisor from server/utils/trip-advisor.ts, isTripAuthor
+  // — never getTripRole, per CLAUDE.md L10).
+  "165_trip_item_comments.sql",
+  // 166: QA_PUNCH_LIST item 20 — the content-logistics envelope. Additive nullable only:
+  // provider_services.drop_off_point (the one field with no existing home — meetingPoint/
+  // pickupAddress cover arrival, nothing covered departure); itinerary_items gains
+  // transport_provided/pickup_point/drop_off_point (durationMinutes already existed). NO CHECK,
+  // NO DEFAULT, NO backfill (NULL = honest unknown, §13) -> nothing for the preflight
+  // CONSTRAINT_MANIFEST, no publish-time push trap. All four columns also declared on the
+  // providerServices/itineraryItems pgTables in shared/schema.ts (deploy-push durability rule).
+  // Companion code: shared/content-logistics.ts (the envelope type + per-source mappers), the
+  // Platform-services/My-services pickers carrying the envelope onto new itinerary items, the
+  // item-PATCH pass-through (trips.routes.ts's existing strip-immutable pattern already lets the
+  // new fields through — no allow-list change needed), and ServiceForm's new Drop-off point field.
+  "166_content_logistics.sql",
+  // 166: NOT present on this branch — lane W5-B is concurrently claiming 166 on its own
+  // branch. Registry order (165, 166, 167) reconciles at merge; this branch appends 167
+  // directly after 165.
+  // 167: W5-D dead-code cleanup — retires `activity_comments` (zero client callers of its
+  // GET/POST/DELETE endpoints ever existed; the per-item comment system is
+  // `trip_item_comments`, migration 165). See 167_drop_activity_comments.sql for the full
+  // rationale + the guarded DROP.
+  "167_drop_activity_comments.sql",
 ] as const;

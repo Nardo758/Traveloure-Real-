@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { parseApiErrorMessage } from "@/lib/api-error";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -11,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MapPin, Plus, Check, Library, Search, Pencil, Sparkles } from "lucide-react";
+import { usePublishMapCandidates } from "@/lib/map-candidates";
 
 interface DmoItem {
   id: string;
@@ -26,6 +28,17 @@ interface DmoItem {
   // coordinate, not a neighborhood substitute, so they're safe to carry through.
   latitude?: string | number | null;
   longitude?: string | number | null;
+  // W5-C: the server now overlays the requesting expert's OWN latest expert_dmo_edits row
+  // onto name/description/tags/etc — `name`/`description`/`tags` above are already the
+  // MERGED (refined-if-present) values. `isRefined` says whether an overlay actually
+  // happened; `raw` is the untouched original so the UI can show what changed, honestly.
+  isRefined?: boolean;
+  raw?: {
+    name: string;
+    description?: string | null;
+    shortDescription?: string | null;
+    tags?: string[] | null;
+  };
 }
 
 // Mirrors workspace.tsx's isLocatedItem: decimal columns arrive as strings over JSON;
@@ -152,13 +165,38 @@ export function DmoPickerCore({
       onAdded();
       toast({ title: "Added to itinerary", description: `${item.name} → Day ${dayNumber}` });
     },
+    // Plan-approval mode flip (migration 164): once the client approves a delivered plan, this
+    // 409s with an honest "send it as a suggestion instead" message — parse it out rather than
+    // showing the raw `"409: {...}"` string.
     onError: (err: any) => {
-      toast({ title: "Couldn't add item", description: String(err?.message ?? err), variant: "destructive" });
+      toast({ title: "Couldn't add item", description: parseApiErrorMessage(err, "Please try again."), variant: "destructive" });
     },
   });
 
   const items = (data?.items ?? []).filter((it) =>
     !q.trim() || it.name.toLowerCase().includes(q.trim().toLowerCase()),
+  );
+
+  // W5-A (QA_PUNCH_LIST item 19) — publish this SAME filtered list (search already applied) as
+  // candidate pins for the canvas map's discovery layer. Excludes already-`added` rows (once
+  // added they become a real plan pin on the next refetch, so they shouldn't linger as a
+  // separate candidate at the same coordinate) and anything failing the real-coords check (§13).
+  usePublishMapCandidates(
+    "dmo",
+    "DMO Library",
+    items
+      .filter((it) => hasRealCoords(it) && !added.has(it.id))
+      .map((it) => ({
+        id: it.id,
+        title: it.name,
+        lat: typeof it.latitude === "number" ? it.latitude : parseFloat(String(it.latitude)),
+        lng: typeof it.longitude === "number" ? it.longitude : parseFloat(String(it.longitude)),
+        price: null,
+      })),
+    (id) => {
+      const it = items.find((i) => i.id === id);
+      if (it) addMutation.mutate(it);
+    },
   );
 
   return (
@@ -196,6 +234,11 @@ export function DmoPickerCore({
                     <div className="flex items-center gap-2">
                       <span className="font-medium text-sm truncate">{it.name}</span>
                       <Badge variant="outline" className="capitalize shrink-0 text-xs">{it.contentType}</Badge>
+                      {it.isRefined && (
+                        <Badge className="shrink-0 text-xs gap-1" data-testid={`badge-refined-${it.id}`}>
+                          <Sparkles className="w-3 h-3" /> Refined
+                        </Badge>
+                      )}
                     </div>
                     {it.neighborhood && (
                       <span className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
@@ -240,6 +283,12 @@ export function DmoPickerCore({
                       Refine the raw content below so it's ready to build into a Ready Made Trip or a
                       client itinerary.
                     </p>
+                    {it.isRefined && it.raw && (
+                      <p className="text-xs text-muted-foreground/80 rounded-md bg-background border px-2 py-1.5" data-testid={`dmo-refine-original-${it.id}`}>
+                        Original (unrefined): <span className="italic">{it.raw.name}</span>
+                        {it.raw.description ? ` — ${it.raw.description}` : ""}
+                      </p>
+                    )}
                     <div className="space-y-1">
                       <Label htmlFor={`dmo-refine-name-${it.id}`} className="text-xs">Name</Label>
                       <Input

@@ -4,7 +4,7 @@ import { Link } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import {
-  MapPin, History, MessageSquare, Activity,
+  MapPin, History, Activity,
   CheckCircle2, Circle, Navigation2, ChevronDown, ChevronUp, Map, Phone, BadgeCheck,
   Users, ShoppingCart, Undo2, type LucideIcon,
 } from "lucide-react";
@@ -12,6 +12,7 @@ import {
   TYPE_COLORS, STATUS_STYLES,
   type TemplateConfig, type PlanCardDay, type PlanCardActivity, type RoutingStatus,
 } from "./plancard-types";
+import { ItemComments } from "./ItemComments";
 import { TRANSPORT_MODE_ICONS, TRANSPORT_MODE_LABELS } from "@/lib/maps-platform";
 import { openInMaps, type TraveloureMode } from "@/lib/navigate";
 import type { InlineTransportLegData } from "@/components/itinerary/InlineTransportSelector";
@@ -99,15 +100,20 @@ function RoutingActionButton({
 }
 
 /**
- * OWNER-ONLY. Offers exactly the edges `routing.routes.ts` grants the trip owner for the item's
- * CURRENT state (the endpoint is the authority; this list is not re-derived from the state-machine
- * diagram, it mirrors the endpoint's LEGAL_FROM table):
- *   in_planning        → "Send to expert" (with_expert) · "Add to checkout" (ready_for_checkout)
- *   with_expert        → "Recall from expert" (in_planning) — the endpoint's owner branch permits
- *                         this recall (actor=owner is granted for any `to` in TRANSITIONABLE, and
- *                         `in_planning`'s LEGAL_FROM includes `with_expert`), so it is offered.
- *   ready_for_checkout → "Remove from checkout" (in_planning) + a "Go to checkout" link to /cart
- *   purchased / booked → no actions (checkout is the sole forward writer, refund the sole reverser)
+ * Offers exactly the edges `routing.routes.ts` grants the ACTOR for the item's CURRENT state
+ * (the endpoint is the authority; this list is not re-derived from the state-machine diagram, it
+ * mirrors the endpoint's owner/expert branches):
+ *   OWNER:
+ *     in_planning        → "Send to expert" (with_expert) · "Add to checkout" (ready_for_checkout)
+ *     with_expert        → "Recall from expert" (in_planning) — the endpoint's owner branch permits
+ *                           this recall (actor=owner is granted for any `to` in TRANSITIONABLE, and
+ *                           `in_planning`'s LEGAL_FROM includes `with_expert`), so it is offered.
+ *     ready_for_checkout → "Remove from checkout" (in_planning) + a "Go to checkout" link to /cart
+ *   EXPERT (the ONE cell the endpoint grants the assigned expert — see routing.routes.ts header):
+ *     with_expert        → "Return to planning" (in_planning). No other edge is offered to the
+ *                           expert actor; every other state renders nothing for them.
+ *   purchased / booked → no actions for either actor (checkout is the sole forward writer, refund
+ *                         the sole reverser)
  *   no routingStatus   → no actions (nothing real to route — §13, never a button that would 404)
  */
 function RoutingActions({
@@ -115,11 +121,13 @@ function RoutingActions({
   itemId,
   routingStatus,
   hasBooking,
+  actor,
 }: {
   tripId: string;
   itemId: string;
   routingStatus: RoutingStatus | undefined;
   hasBooking: boolean;
+  actor: "owner" | "expert";
 }) {
   const { toast } = useToast();
 
@@ -144,6 +152,24 @@ function RoutingActions({
   if (hasBooking || routingStatus == null || routingStatus === "purchased") return null;
 
   const busy = mutation.isPending;
+
+  // EXPERT: the endpoint grants exactly one edge (with_expert → in_planning, the expert-return
+  // edge). Every other state — including in_planning and ready_for_checkout, which the expert
+  // must never act on — renders nothing.
+  if (actor === "expert") {
+    if (routingStatus === "with_expert") {
+      return (
+        <RoutingActionButton
+          icon={Undo2}
+          label="Return to planning"
+          busy={busy}
+          onClick={() => mutation.mutate("in_planning")}
+          testId={`button-route-return-planning-${itemId}`}
+        />
+      );
+    }
+    return null;
+  }
 
   if (routingStatus === "with_expert") {
     return (
@@ -212,6 +238,12 @@ interface ActivitiesSectionProps {
    * routing state. The badge itself is NOT gated on this — it renders for every viewer.
    */
   isOwner?: boolean;
+  /**
+   * The ONE non-owner actor the routing endpoint grants a write to: the trip's assigned expert,
+   * restricted to the single with_expert → in_planning "Return to planning" edge (routing.routes.ts
+   * header). Never combined with owner actions on the same render — `isOwner` takes precedence.
+   */
+  isExpertViewer?: boolean;
 }
 
 interface ConnectorProps {
@@ -375,6 +407,7 @@ export function ActivitiesSection({
   templateConfig,
   legs = [],
   isOwner = false,
+  isExpertViewer = false,
 }: ActivitiesSectionProps) {
   const [visited, toggleVisited] = useVisitedActivities(tripId, day);
   const now = useLiveNow();
@@ -650,7 +683,7 @@ export function ActivitiesSection({
                     const hasBadge =
                       !!a.booking || a.routingStatus === "with_expert" || a.routingStatus === "ready_for_checkout";
                     const hasActions =
-                      isOwner && a.routingStatus != null && !a.booking && a.routingStatus !== "purchased";
+                      (isOwner || isExpertViewer) && a.routingStatus != null && !a.booking && a.routingStatus !== "purchased";
                     if (!hasBadge && !hasActions) return null;
                     return (
                       <div className="flex items-center gap-1.5 flex-wrap mt-2" data-testid={`routing-row-${a.id}`}>
@@ -661,6 +694,7 @@ export function ActivitiesSection({
                             itemId={a.id}
                             routingStatus={a.routingStatus}
                             hasBooking={!!a.booking}
+                            actor={isOwner ? "owner" : "expert"}
                           />
                         )}
                       </div>
@@ -668,18 +702,6 @@ export function ActivitiesSection({
                   })()}
 
                   <div className="flex gap-2.5 mt-2">
-                    {/* Mobile-lens audit #6: this was styled cursor-pointer/hover:underline with
-                        no onClick — a dead-looking-live control. No comments panel exists at this
-                        layer to open, so it's a plain (non-interactive) count, honestly styled. */}
-                    {a.comments > 0 && (
-                      <span
-                        className="text-[11px] text-blue-600 dark:text-blue-400 flex items-center gap-1"
-                        data-testid={`link-comments-${a.id}`}
-                      >
-                        <MessageSquare className="w-3 h-3" /> {a.comments} comment
-                        {a.comments > 1 ? "s" : ""}
-                      </span>
-                    )}
                     {(a.changes?.length ?? 0) > 0 && (
                       <span
                         className="text-[11px] text-amber-600 dark:text-amber-400 flex items-center gap-1"
@@ -689,6 +711,15 @@ export function ActivitiesSection({
                       </span>
                     )}
                   </div>
+
+                  {/* QA_PUNCH_LIST W3-C item 12 — the real thread the mobile-lens audit #6 note
+                      above (now removed) said didn't exist yet. Owner and the trip's assigned
+                      expert both have server-side access (server/routes/booking-actions.ts); a
+                      share/collaborator/friend viewer is neither, so this renders nothing for
+                      them rather than a component that would just 403. */}
+                  {(isOwner || isExpertViewer) && (
+                    <ItemComments tripId={tripId} itemId={a.id} className="mt-2" />
+                  )}
                 </div>
               </div>
             )}

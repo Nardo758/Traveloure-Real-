@@ -27,6 +27,7 @@ import { MapControlCenter } from "./MapControlCenter";
 import { UpNextHero } from "./UpNextHero";
 import { CollapsedSections } from "./CollapsedSections";
 import { BottomActionBar } from "./BottomActionBar";
+import { PlanApprovalBanner } from "./PlanApprovalBanner";
 import {
   Dialog,
   DialogContent,
@@ -853,6 +854,9 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
   const effectiveRole: PlanCardRole = plancardData?.tripRole ?? role ?? "viewer";
   const isViewer = effectiveRole === "viewer" || effectiveRole === "friend";
   const isOwner = effectiveRole === "owner";
+  // W7 expert-return edge (routing.routes.ts): the trip's assigned expert gets the ONE
+  // with_expert → in_planning write; ActivitiesSection/RoutingActions enforce the rest.
+  const isExpertViewer = effectiveRole === "expert";
 
   return (
     <motion.div
@@ -929,6 +933,13 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
               {new Date(lastOptimizedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
             </span>
           </div>
+        )}
+
+        {/* Plan-approval delivery handshake (migration 164, CLAUDE.md §18 / QA_PUNCH_LIST W2-A
+            items 11+13) — owner-only, suppressed in the Workstation embed (that's the expert's
+            OWN view of their build, not the customer's sign-off surface). */}
+        {!embedded && isOwner && (
+          <PlanApprovalBanner tripId={trip.id} planApproval={plancardData?.meta?.planApproval} />
         )}
 
         {/* Concierge — front and center for TRAVELERS; suppressed in the Workstation embed
@@ -1041,6 +1052,7 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
                     templateConfig={templateConfig}
                     legs={dayLegs}
                     isOwner={isOwner}
+                    isExpertViewer={isExpertViewer}
                   />
                 )}
 

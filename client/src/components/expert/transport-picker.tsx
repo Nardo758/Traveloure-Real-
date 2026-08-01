@@ -1,12 +1,14 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { parseApiErrorMessage } from "@/lib/api-error";
 import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Search, Plus, Check } from "lucide-react";
+import { usePublishMapCandidates, isRealLatLng } from "@/lib/map-candidates";
 
 /**
  * Display-only shape for a ground-transport catalog row.
@@ -27,6 +29,13 @@ interface TransportOption {
   price?: number | null;
   currency?: string | null;
   duration?: string | number | null;
+  // W5-A (QA_PUNCH_LIST item 19): the raw payload's `location` field (BaseItem in
+  // experience-catalog.service.ts) is NOT a URL — safe to carry through for the discovery-layer
+  // candidate pins. Today's only wired feed (Omio) always returns `location: null` (no per-route
+  // coordinate source), so this is honestly empty in practice (§13 — never fabricated), but the
+  // field is real and future ground-transport feeds may populate it.
+  latitude?: number | null;
+  longitude?: number | null;
 }
 interface GroundTransportResponse { items: TransportOption[]; total: number }
 
@@ -67,6 +76,8 @@ export function TransportPickerCore({
         price: typeof raw.price === "number" ? raw.price : null,
         currency: raw.currency ?? null,
         duration: raw.duration ?? null,
+        latitude: typeof raw.location?.lat === "number" ? raw.location.lat : null,
+        longitude: typeof raw.location?.lng === "number" ? raw.location.lng : null,
       }));
       return { items, total: json.total ?? items.length };
     },
@@ -94,8 +105,9 @@ export function TransportPickerCore({
       onAdded();
       toast({ title: "Added to itinerary", description: `${opt.title} → Day ${dayNumber}` });
     },
+    // Plan-approval mode flip (migration 164) — see dmo-picker-modal.tsx's addMutation.
     onError: (err: any) => {
-      toast({ title: "Couldn't add item", description: String(err?.message ?? err), variant: "destructive" });
+      toast({ title: "Couldn't add item", description: parseApiErrorMessage(err, "Please try again."), variant: "destructive" });
     },
   });
 
@@ -124,6 +136,27 @@ export function TransportPickerCore({
 
   const items = (data?.items ?? []).filter((it) =>
     !q.trim() || it.title.toLowerCase().includes(q.trim().toLowerCase()),
+  );
+
+  // W5-A (QA_PUNCH_LIST item 19) — publish the SAME search-filtered list as discovery-layer
+  // candidate pins. Only rows with real coords ever become a pin (§13) — the honest reality
+  // today is that's zero, since Omio never returns a per-route location.
+  usePublishMapCandidates(
+    "transport",
+    "Transport",
+    items
+      .filter((it) => isRealLatLng(it.latitude, it.longitude) && !added.has(it.id))
+      .map((it) => ({
+        id: it.id,
+        title: it.title,
+        lat: it.latitude as number,
+        lng: it.longitude as number,
+        price: it.price != null ? `~${it.currency ?? "USD"} ${it.price}` : null,
+      })),
+    (id) => {
+      const it = items.find((i) => i.id === id);
+      if (it) addMutation.mutate(it);
+    },
   );
 
   return (

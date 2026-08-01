@@ -1,4 +1,5 @@
 import { Link, useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import {
   Sidebar,
@@ -27,6 +28,7 @@ import {
   Package,
   Crown,
   Sparkles,
+  Inbox,
 } from "lucide-react";
 
 const menuGroups = [
@@ -50,6 +52,16 @@ const menuGroups = [
     ],
   },
   {
+    label: "Inbox",
+    items: [
+      // W5-E: unified Messages + Updates. Badge is sourced from the SAME real
+      // /api/notifications/unread-count the bell reads (GET, no fabrication) — there is no
+      // unread-message concept in the chats schema, so the badge counts unread notifications
+      // only, never a fabricated messages count.
+      { title: "Inbox", href: "/inbox", icon: Inbox },
+    ],
+  },
+  {
     label: "Account",
     items: [
       { title: "Messages", href: "/chat", icon: MessageSquare },
@@ -64,6 +76,17 @@ export function DashboardSidebar() {
   const { user, logout } = useAuth();
 
   const initials = ((user?.firstName?.[0] || "") + (user?.lastName?.[0] || "")).toUpperCase() || "U";
+
+  // W5-E: the SAME real unread-notification count the bell (notification-bell.tsx) reads —
+  // no separate/fabricated count. There is no unread-message field on the chats schema, so
+  // the Inbox badge counts unread notifications only.
+  const { data: unreadNotifications } = useQuery<{ count: number }>({
+    queryKey: ["/api/notifications/unread-count"],
+    enabled: !!user,
+    staleTime: 30_000,
+    refetchInterval: 30000,
+  });
+  const inboxUnreadCount = unreadNotifications?.count ?? 0;
 
   return (
     <Sidebar collapsible="icon" className="bg-white" style={{ borderRight: "1px solid #E8E8E2" }}>
@@ -116,7 +139,16 @@ export function DashboardSidebar() {
                       >
                         <Link href={item.href} data-testid={`link-sidebar-${item.title.toLowerCase().replace(/\s+/g, '-')}`}>
                           <item.icon className="w-4 h-4" style={{ opacity: isActive ? 1 : 0.7 }} />
-                          <span className="text-[13px]">{item.title}</span>
+                          <span className="text-[13px] flex-1">{item.title}</span>
+                          {item.href === "/inbox" && inboxUnreadCount > 0 && (
+                            <span
+                              className="ml-auto min-w-[18px] h-[18px] px-1 rounded-full text-white text-[10px] font-semibold flex items-center justify-center flex-shrink-0"
+                              style={{ background: "#E85D55" }}
+                              data-testid="badge-sidebar-inbox-unread"
+                            >
+                              {inboxUnreadCount > 9 ? "9+" : inboxUnreadCount}
+                            </span>
+                          )}
                         </Link>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
