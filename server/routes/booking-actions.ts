@@ -863,7 +863,11 @@ router.patch('/trips/:id/suggestions/:suggestionId', isAuthenticated, async (req
       return res.status(404).json({ error: 'Suggestion not found or already reviewed' });
     }
 
-    await updateSuggestionStatus(suggestionId, id, status, rejectionNote ?? null);
+    const claimed = await updateSuggestionStatus(suggestionId, id, status, rejectionNote ?? null);
+    if (!claimed) {
+      // Lost a race: a concurrent decision already moved this suggestion off 'pending'.
+      return res.status(409).json({ error: 'Suggestion already reviewed' });
+    }
 
     let createdItemId: string | undefined;
 
