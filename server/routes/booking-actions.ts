@@ -21,6 +21,12 @@ import { and, desc, eq, inArray } from 'drizzle-orm';
 import { notifications, itineraryItems as itineraryItemsTable, tripCollaborators, tripExpertAdvisors, PLAN_APPROVAL_STATUSES } from '@shared/schema';
 import { EXPERT_SHARE_RATE } from '../services/commission';
 import {
+  sendPlanDeliveredEmail,
+  sendPlanApprovedEmail,
+  sendPlanChangesRequestedEmail,
+  sendNewSuggestionEmail,
+} from '../services/email.service';
+import {
   completeExpertRequest,
   getPaidUncompletedExpertRequestIds,
   getExpertRequestsByUser,
@@ -827,6 +833,30 @@ router.post('/trips/:id/suggestions', isAuthenticated, async (req, res) => {
           relatedType: "trip",
           data: { tripId: id, workspacePath: `/trip/${id}?tab=itinerary` },
         } as any);
+
+        // W3-B ③: POST-APPROVAL suggestion created -> customer email, ONLY when the assignment's
+        // plan is already approved (`plan_approval_status='approved'`). An in-planning suggestion
+        // (NULL / 'changes_requested') stays bell-only, deliberately — the whole point of the
+        // pre-approval phase is the expert iterating freely without emailing the customer on every
+        // suggestion. `(tripId, localExpertId)` is unique (migration 164 `uniqueTripExpert`
+        // index), so this is an exact-match lookup, not a "most recent advisor" pick. Best-effort,
+        // inside the same try/catch as the bell insert above.
+        const [advisor] = await db
+          .select({ planApprovalStatus: tripExpertAdvisors.planApprovalStatus })
+          .from(tripExpertAdvisors)
+          .where(and(eq(tripExpertAdvisors.tripId, id), eq(tripExpertAdvisors.localExpertId, userId)))
+          .limit(1);
+        if (advisor?.planApprovalStatus === PLAN_APPROVAL_STATUSES[0] /* 'approved' */) {
+          const customer = await storage.getUser(trip.userId);
+          if (customer?.email) {
+            await sendNewSuggestionEmail({
+              toEmail: customer.email,
+              firstName: customer.firstName ?? null,
+              tripId: id,
+              suggestionTitle: title,
+            });
+          }
+        }
       }
     } catch (notifyErr) {
       console.error("[Expert] suggestion notify failed (non-fatal):", notifyErr);
@@ -995,7 +1025,11 @@ router.patch("/expert/assignments/:assignmentId/workspace-status", isAuthenticat
     if (!validTransitions[current]?.includes(workspaceStatus)) {
       return res.status(400).json({ message: `Cannot transition workspace status from '${current}' to '${workspaceStatus}'. Allowed: ${validTransitions[current]?.join(", ") || "none"}` });
     }
-    const updated = await storage.updateExpertAssignmentWorkspaceStatus(assignmentId, workspaceStatus);
+    const updated = await storage.updateExpertAssignmentWorkspaceStatus(assignmentId, workspaceStatus, current);
+    if (!updated) {
+      // Lost the race — a concurrent call already moved this row off `current` (§15).
+      return res.status(409).json({ message: `Cannot transition workspace status from '${current}' to '${workspaceStatus}'. A concurrent update already changed it.` });
+    }
 
     // F2 (workstation-flows audit): delivery was SILENT — the expert advanced the status and the
     // traveler was never told, discovering changes only by reopening their trip. Notify the trip
@@ -1019,6 +1053,22 @@ router.patch("/expert/assignments/:assignmentId/workspace-status", isAuthenticat
           // their own trip view, never the expert workspace.
           data: { tripId: assignment.tripId, workspacePath: `/trip/${assignment.tripId}?tab=itinerary` },
         } as any);
+
+        // W3-B ①: plan DELIVERED -> customer email. Same trigger + same trip/userId already
+        // resolved above for the bell insert; fired only on the outward `delivered` transition
+        // (never `in_review`), never for a logged-out/no-account trip (trip.userId null-guarded
+        // by the same `if` this sits inside). Best-effort — inside the same try/catch as the bell
+        // insert, so a send failure never fails the already-committed workspace-status transition.
+        if (workspaceStatus === "delivered") {
+          const customer = await storage.getUser(trip.userId);
+          if (customer?.email) {
+            await sendPlanDeliveredEmail({
+              toEmail: customer.email,
+              firstName: customer.firstName ?? null,
+              tripId: assignment.tripId,
+            });
+          }
+        }
       }
     } catch (notifyErr) {
       console.error("[Expert] workspace-status notify failed (non-fatal):", notifyErr);
@@ -1138,6 +1188,32 @@ router.post('/trips/:id/plan-review', isAuthenticated, async (req, res) => {
       } as any);
     } catch (notifyErr) {
       console.error('[PlanReview] expert notify failed (non-fatal):', notifyErr);
+    }
+
+    // W3-B ②/④: CHANGES REQUESTED / plan APPROVED -> expert email, symmetric with the bell
+    // insert directly above (same trigger, same recipient — the expert who delivered the plan).
+    // Best-effort, own try/catch so an email failure never fails the decision already committed
+    // by the atomic UPDATE above.
+    try {
+      const expertUser = await storage.getUser(updated.localExpertId);
+      if (expertUser?.email) {
+        if (decision === 'approve') {
+          await sendPlanApprovedEmail({
+            toEmail: expertUser.email,
+            firstName: expertUser.firstName ?? null,
+            tripId: id,
+          });
+        } else {
+          await sendPlanChangesRequestedEmail({
+            toEmail: expertUser.email,
+            firstName: expertUser.firstName ?? null,
+            tripId: id,
+            note: note ?? null,
+          });
+        }
+      }
+    } catch (emailErr) {
+      console.error('[PlanReview] expert email failed (non-fatal):', emailErr);
     }
 
     res.json({
