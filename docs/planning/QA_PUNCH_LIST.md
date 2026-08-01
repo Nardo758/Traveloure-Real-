@@ -128,6 +128,68 @@ Items are struck through when merged to main (with the PR). Decision-maker calls
 - **Should trip-routed non-catalog items be checkout-routable** (today: display-only in cart,
   honestly labeled)?
 
+## Build map (Fable-minimized, per docs/EXECUTION_MAP.md §1/§4b — mapped Aug 1, 2026)
+
+Execution rules for every lane below: Sonnet agent in a worktree on a `claude/*` branch, pushed
+(never a PR from the agent); the lane spec IS this section — the dispatch is a one-liner naming
+the lane. Fable reads diffstat only, EXCEPT the hunks each lane marks `FABLE-REVIEW` (ownership /
+money / contract / migration surfaces), which get line-by-line review before the PR. Behavioral
+proof against a local DB is part of every lane's definition of done; the expert-loop journey
+(`scripts/journeys/expert-loop.mjs`) is extended where a lane adds a step to the canonical loop,
+and reruns are Haiku one-liners.
+
+**Wave 1 (parallel, no schema, no [DM] blockers):**
+- **W1-A "Add-panel completion"** = items 1+2+3. New read-only endpoints: registry search for the
+  Platform-content pill (approved/platform-origin only, destination-scoped; `sourced` stays
+  excluded per the §12 invariant — reuse `content-query.service.ts` exclusion), session-scoped
+  own-approved-services read for My-services pill; both drawers copy the DMO/Transport drawer
+  pattern; partner drawer gains "Log completed booking" → existing item-create rail.
+  FABLE-REVIEW: none (read-only endpoints + UI) — diffstat + proof table.
+- **W1-B "Comms minimal"** = item 15 minimal: traveler-mode `/chat` real-threads list (mirror the
+  earner grouping; counterpart = expert). Pure client. FABLE-REVIEW: none.
+- **W1-C "Polish batch"** = items 5+7+8+9: expert Return-to-planning button (UI over the EXISTING
+  server edge — RoutingActions gains the expert branch; FABLE-REVIEW: this one hunk, it touches
+  the routing-contract surface); "+ Day" persistence hint or sessionStorage; dashboard selected
+  trip persisted (localStorage keyed by user); kill `rating || 4.5` fallback (§13) + add the two
+  missing metrics buckets.
+
+**Wave 2 (after W1 merges; schema + gates → real Fable review):**
+- **W2-A "Plan lifecycle"** = items 11+13(ratified)+14(b). Migration (next number): additive
+  nullable `trip_expert_advisors.plan_approved_at` + `plan_approval_status`
+  (`approved|changes_requested`, NO DB CHECK — pre-109 posture; declared in schema.ts per the
+  deploy-push rule). Customer Trip Card: "Approve plan / Request changes(+note)" on
+  `delivered`. Mode flip server-side: once approved, the expert's direct item-writes on THAT
+  assignment 409 with "plan approved — send as suggestion" (suggestion rail unchanged); customer
+  notified by existing suggestion notice; NEW reverse notification to the expert on
+  approve/request-changes. FABLE-REVIEW: the migration, the 409 gate hunk, the approval
+  endpoint's owner gate.
+- **W2-B "Store withdraw"** = item 4: `POST /api/expert/ready-made/:id/withdraw` (author-gated,
+  status → `withdrawn`; existing purchases unaffected — ready-made buys are snapshots); shipped
+  builds with a WITHDRAWN listing become deletable (relax #359's refusal (c) to
+  listing-exists-AND-not-withdrawn... simpler ratified shape: withdraw deletes nothing, delete
+  still refuses while a non-withdrawn listing exists). FABLE-REVIEW: the status-machine +
+  author-gate hunks.
+
+**Wave 3 (after W2-A lands its semantics):**
+- **W3-A "Partner catalog v1"** = item 10 tiers (a)+(c): catalog drawer over `/api/catalog/*`
+  (tours/activities first), feed-timestamp + "availability confirmed at booking" labels (§13),
+  Booking Brief "Continue to partner" gated on the item's suggestion being customer-approved
+  (W2-A semantics). FABLE-REVIEW: the §16 surface (no affiliate URL client-side) + the gate hunk.
+- **W3-B "Email events"** = item 14(a): wire delivered + changes-requested (+post-approval
+  suggestion) into the existing email cluster. [DM default proposed: those three email;
+  in-planning suggestions bell-only.] FABLE-REVIEW: none (template + send-site wiring).
+- **W3-C "Per-item comments"** = item 12: new additive table `trip_item_comments` (id, trip_id FK
+  CASCADE, item_id FK CASCADE, author_id, body, created_at; no CHECK; declared in schema.ts),
+  owner-or-assigned-expert gated read/write (canonical predicates, never getTripRole);
+  thread renders on the item in both Trip Card + Workstation. FABLE-REVIEW: migration + the
+  access-gate hunks.
+
+**Blocked on [DM] (no code until answered):** partner commission attribution + which partner
+APIs to pursue (item 10 tier b); `activity_bookings` schema delete; non-catalog checkout
+routing; unified traveler Inbox (decide at Wave 3); email-event list confirmation (W3-B ships
+the proposed default unless overridden). The "Soon pills" [DM] is RESOLVED BY W1-A (both pills
+get real reads — nothing left to hide).
+
 ## Answered questions (for the record)
 
 - **"How does an expert delete Workspace drafts?"** → they couldn't; #359 built it (v1 scope).
