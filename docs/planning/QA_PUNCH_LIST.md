@@ -24,6 +24,13 @@ Items are struck through when merged to main (with the PR). Decision-maker calls
 - ~~Item 5 (expert Return-to-planning button)~~, ~~item 7 (+Day persistence)~~, ~~item 8 (dashboard
   trip chip persists)~~, ~~item 9 (rating||4.5 + metrics buckets)~~ (#365)
 
+## Fixed (Wave 2, Aug 1 — PRs #367 / #368)
+
+- ~~Item 4 (withdraw-from-store + delete withdrawn unsold shipped builds)~~ (#367 — migration 163
+  CHECK-widen; resubmit re-enters the admin queue; sold history never deletable)
+- ~~Items 11 + 13 + 14b (delivery handshake, ratified approval mode-flip, reverse notification)~~
+  (#368 — migration 164; post-approval expert edits 409 into suggest-mode; owner/author never gated)
+
 ## Open — build items
 
 1. **Partner drawer: close the book-off-site loop.** The pill promises "book off-site, log it here",
