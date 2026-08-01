@@ -694,4 +694,15 @@ export const MIGRATION_FILES = [
   // 164 before push. Registry order (162, 163, 164) reconciles at rebase/merge — W2-B's 163
   // entry is not present on this branch's migration-files.ts.
   "164_plan_approval.sql",
+  // 165: QA_PUNCH_LIST W3-C (item 12) — per-item comment threads on the plan. New table
+  // `trip_item_comments` (id/trip_id/item_id/author_id/body/created_at), FKs to
+  // trips/itinerary_items/users all ON DELETE CASCADE (a comment has no life beyond its
+  // trip/item/author). NO CHECK constraint -> nothing for the preflight CONSTRAINT_MANIFEST,
+  // no publish-time push trap. Table + indexes also declared on the new tripItemComments
+  // pgTable in shared/schema.ts (deploy-push durability rule). Companion code:
+  // GET/POST /api/trips/:tripId/items/:itemId/comments (server/routes/booking-actions.ts),
+  // gated by the same owner/advisor/author tri-predicate as the rest of this file
+  // (isTripOwner, the canonical isTripAdvisor from server/utils/trip-advisor.ts, isTripAuthor
+  // — never getTripRole, per CLAUDE.md L10).
+  "165_trip_item_comments.sql",
 ] as const;
