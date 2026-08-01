@@ -1813,7 +1813,14 @@ export default function ExpertWorkspace() {
           title: b.title || "Untitled build",
           sub: (
             <>
-              {b.destination || "—"}{durationDays ? ` · ${durationDays} days` : ""}{" "}
+              {/* FIX 6 (QA pass): this is the calendar-span duration (start/end date window — the
+                  same figure "Days" on the store listing reads) — kept as the honest ship-to-store
+                  number rather than re-derived. It disagreed in wording with the build header's
+                  "N items · N days" chip, which counts days that actually HAVE content once items
+                  exist — a genuinely different number once a build's content doesn't fill its
+                  whole date window. Cheapest honest fix: relabel here ("N-day trip") rather than
+                  invent a third derivation or fetch each build's item count just for this list. */}
+              {b.destination || "—"}{durationDays ? ` · ${durationDays}-day trip` : ""}{" "}
               <StateChip tone={chip.tone}>{chip.label}</StateChip>
             </>
           ),
