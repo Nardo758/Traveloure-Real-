@@ -1484,7 +1484,14 @@ export default function CartPage() {
                       price: (item.contentMeta as any).price || null,
                     } : null);
 
-                    const contentTypeLabel = item.contentType === "gem" ? "Hidden Gem" : item.contentType === "hotel" ? "Hotel" : item.contentType === "activity" ? "Activity" : "Discover Item";
+                    // Fix 2 (journey UI fixes): the backend deliberately marks a plan item routed
+                    // through to checkout with contentType:"itinerary_item" (cart-projection.service.ts
+                    // — EXTERNAL_PROJECTION_CONTENT_TYPE) whenever it has no providerServiceId. That's
+                    // correct server-side; the bug was this component rendering it with the generic
+                    // Discover badge/copy, which is simply false for something that came from the
+                    // traveler's own trip plan, not a Discover save.
+                    const isTripRoutedItem = item.contentType === "itinerary_item";
+                    const contentTypeLabel = isTripRoutedItem ? "From your trip" : item.contentType === "gem" ? "Hidden Gem" : item.contentType === "hotel" ? "Hotel" : item.contentType === "activity" ? "Activity" : "Discover Item";
 
                     if (isContent && contentDisplay) {
                       return (
@@ -1523,8 +1530,18 @@ export default function CartPage() {
                                     </span>
                                   )}
                                 </div>
+                                {/* Fix 3 (journey UI fixes): ground-truthed against /api/checkout
+                                    (payments.routes.ts) — every content-type cart row (isContentItem,
+                                    including this itinerary_item projection) is enriched with
+                                    `service: null` (storage._enrichCartItems) and checkout's subtotal
+                                    loop + booking-creation loop both `if (!item.service) continue;` —
+                                    so this price is genuinely never added to the subtotal/total and no
+                                    booking is created for it. "Will be resolved at checkout" was false
+                                    for a trip-routed item (nothing resolves it); label it honestly. */}
                                 <p className="text-xs text-muted-foreground mt-1">
-                                  Saved from Discover — will be resolved at checkout
+                                  {isTripRoutedItem
+                                    ? "Routed from your trip plan — shown for reference only, not included in this checkout total"
+                                    : "Saved from Discover — will be resolved at checkout"}
                                 </p>
                               </div>
                             </div>
