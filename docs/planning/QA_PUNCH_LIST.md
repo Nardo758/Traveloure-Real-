@@ -124,6 +124,31 @@ Items are struck through when merged to main (with the PR). Decision-maker calls
     trip-event notifications in one place, mirroring the earner console's Inbox module) — or chat
     stays chat and the bell stays the bell.]
 
+16. **Canvas lane (decision-maker raised Aug 1: "location, surface, and order"): plan map ON the
+    build canvas.** Ground truth: the only map in the Workstation is inside the Platform-services
+    browse drawer — the build canvas (the day list) renders no map of the plan's own items, so
+    experts sequence days with zero spatial awareness even though items now carry real coords
+    (W1/162). Build: a collapsible plan-map section on the canvas (mirrors the Trip Card's map
+    peer) — pins for located items, colored/filtered by the day-focus control, click-pin →
+    scroll-to-item; reuse the file's existing @vis.gl components + `MapSectionErrorBoundary`
+    pattern (a Maps billing/key failure collapses to a one-line notice, never blanks the canvas);
+    unlocated items listed honestly under the map ("no location yet"), never fabricated pins (§13).
+17. **Canvas lane: location autocomplete.** No Places autocomplete exists anywhere in the client —
+    Custom-form location and new-build destination are plain text with silent submit-time geocode.
+    Wire Google Places autocomplete on both (the Maps JS provider is already mounted in the
+    workspace; the key setup includes Places). On pick: store the text + lat/lng (exact precision).
+    Fallback: Places unavailable → plain text + the existing submit-geocode, unchanged.
+18. **Canvas lane: reorder UI (server already done) + a mode-flip gap it exposed.**
+    `POST /api/trips/:tripId/itinerary/reorder` (+ `optimize-order`) exist, properly
+    `authorizeTripLogistics`-gated, with `sort_order` on items — no Workstation UI calls them.
+    Build: within-day reorder controls (up/down per item in the day list; drag optional later)
+    calling the existing endpoint; surface `optimize-order` as a per-day "Suggest best order"
+    action (applies only via the same reorder call — expert confirms, §18 D1a posture).
+    **MUST also close the gap this audit found: the reorder + optimize-order endpoints are NOT
+    covered by the W2-A mode-flip** — a post-approval expert could silently resequence an
+    approved plan. Add the advisor-only `isPlanApprovedForExpert` 409 to both (same pattern as
+    the item-write gates; owner/author unaffected).
+
 ## Open — decision-maker calls [DM]
 
 - **Partner-drawer commission attribution.** "Open →" opens the partner's plain `websiteUrl`
