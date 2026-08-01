@@ -942,6 +942,218 @@ function isLocatedItem(item: { latitude?: unknown; longitude?: unknown }): boole
   return true;
 }
 
+/** Item 16 (QA_PUNCH_LIST): "fit the map to these pins" — mirrors the Trip Card's own
+ *  MapControlCenter bounds-fit (`client/src/components/plancard/MapControlCenter.tsx`), a
+ *  proven pattern: `useMap()` + `google.maps.LatLngBounds` + `map.fitBounds`. Needs a `<Map>`
+ *  ancestor to call `useMap()`, so it renders nothing and lives INSIDE the `<Map>` below. */
+function PlanMapFitBounds({ items }: { items: ItineraryItem[] }) {
+  const map = useMap();
+  // Stable dependency: only re-fit when the actual set of pinned coordinates changes, not on
+  // every parent re-render (a fresh `items` array reference on every render is expected here).
+  const fitKey = items.map(i => `${i.id}:${i.latitude}:${i.longitude}`).join("|");
+  useEffect(() => {
+    if (!map || typeof google === "undefined" || !google.maps || items.length === 0) return;
+    if (items.length === 1) {
+      map.setCenter({ lat: parseFloat(String(items[0].latitude)), lng: parseFloat(String(items[0].longitude)) });
+      map.setZoom(14);
+      return;
+    }
+    const bounds = new google.maps.LatLngBounds();
+    items.forEach(i => bounds.extend({ lat: parseFloat(String(i.latitude)), lng: parseFloat(String(i.longitude)) }));
+    map.fitBounds(bounds, 48);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, fitKey]);
+  return null;
+}
+
+/** QA_PUNCH_LIST item 16 — the plan map ON the build canvas. PLAN LAYER ONLY: item 19's
+ *  candidate/discovery layer (pins from an open Add-panel source drawer) is NOT yet
+ *  decision-maker-ratified, so this renders only pins for items already IN the plan. Structured
+ *  so that layer can be added later without rework — plan-pin rendering is isolated in its own
+ *  child render pass inside `<Map>`, so a sibling candidate-pins pass could mount alongside it
+ *  (same `<Map>` instance, same `<APIProvider>`) without touching this component's contract.
+ *
+ *  Collapsible (closed→open persisted per-trip in sessionStorage, mirroring the "closed by
+ *  default" convention ItemsEditorPanel/TransportLegsPanel already use for canvas sections).
+ *  Reuses the file's existing @vis.gl/react-google-maps imports and the MapSectionErrorBoundary
+ *  pattern verbatim (a Maps billing/key failure collapses to a one-line notice, never blanks the
+ *  canvas — see that class's doc comment above). Never fabricates a pin (§13): only items
+ *  passing `isLocatedItem` are ever rendered; the unlocated count below the map is real. */
+function CanvasMapSection({
+  tripId, days, destination, onGoToItem,
+}: {
+  tripId: string;
+  days: { dayNumber: number; items: ItineraryItem[] }[];
+  destination: string;
+  onGoToItem: (itemId: string) => void;
+}) {
+  const storageKey = `workstation-map-open-${tripId}`;
+  const [open, setOpen] = useState<boolean>(() => {
+    try { return sessionStorage.getItem(storageKey) === "1"; } catch { return false; }
+  });
+  useEffect(() => {
+    try { sessionStorage.setItem(storageKey, open ? "1" : "0"); } catch { /* sessionStorage unavailable — the toggle just won't persist */ }
+  }, [open, storageKey]);
+
+  // Map-local day filter — mirrors the Add panel's day-focus control (all-days default,
+  // focusing a day filters the pins to it). Deliberately its OWN state, not the Add panel's
+  // `focusDay`: that control picks WHERE a new item is added; this picks WHICH pins show.
+  const [mapDayFilter, setMapDayFilter] = useState<number | "all">("all");
+  const [selectedPinItem, setSelectedPinItem] = useState<ItineraryItem | null>(null);
+
+  const allItems = days.flatMap(d => d.items);
+  const locatedItems = allItems.filter(isLocatedItem);
+  const unlocatedCount = allItems.length - locatedItems.length;
+  const visibleItems = mapDayFilter === "all" ? locatedItems : locatedItems.filter(i => i.dayNumber === mapDayFilter);
+  const dayNumbersWithItems = Array.from(new Set(days.filter(d => d.items.length > 0).map(d => d.dayNumber))).sort((a, b) => a - b);
+
+  // Center fallback ONLY needed when the plan has zero located items anywhere (not just the
+  // current filter) — same destination-geocode rail the Add panel's Platform-services browse
+  // map already fetches (`["/api/geocode", destination]`); broadening its `enabled` here reuses
+  // that query/cache rather than adding a parallel fetch.
+  const { data: fallbackCenter } = useQuery<{ lat: number; lng: number } | null>({
+    queryKey: ["/api/geocode", destination],
+    queryFn: async () => {
+      const res = await fetch(`/api/geocode?address=${encodeURIComponent(destination)}`);
+      if (!res.ok) return null;
+      const j = await res.json();
+      return Number.isFinite(j?.lat) && Number.isFinite(j?.lng) ? j : null;
+    },
+    enabled: open && !!destination && locatedItems.length === 0,
+    staleTime: Infinity,
+  });
+
+  if (allItems.length === 0) return null;
+
+  // Three-tier center rule (item 16 spec): located pins → bounds-fit; none but a destination
+  // geocode exists → center there; neither → no map box at all, honest notice only.
+  const hasAnyLocated = locatedItems.length > 0;
+  const canShowMap = hasAnyLocated || !!fallbackCenter;
+  const initialCenter = visibleItems[0]
+    ? { lat: parseFloat(String(visibleItems[0].latitude)), lng: parseFloat(String(visibleItems[0].longitude)) }
+    : (fallbackCenter ?? { lat: 35.0116, lng: 135.7681 }); // Kyoto — only reached when canShowMap is already false and this value is never rendered
+
+  return (
+    <div style={{ background: CARD, borderRadius: 10, border: `1px solid ${LINE}`, marginBottom: 12 }}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        data-testid="button-toggle-plan-map"
+        style={{ width: "100%", padding: "10px 14px", background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}
+      >
+        <MapPinned style={{ width: 12, height: 12, color: MID }} />
+        <span style={{ fontSize: 12.5, fontWeight: 700, color: INK }}>Plan map</span>
+        <span style={{ fontSize: 11, color: FAINT }}>({locatedItems.length} located)</span>
+        <span style={{ marginLeft: "auto", color: FAINT, display: "flex" }}>
+          {open ? <ChevronUp style={{ width: 13, height: 13 }} /> : <ChevronDown style={{ width: 13, height: 13 }} />}
+        </span>
+      </button>
+      {open && (
+        <div style={{ padding: "0 14px 12px" }}>
+          {dayNumbersWithItems.length > 1 && (
+            <div style={{ display: "flex", gap: 5, overflowX: "auto", paddingBottom: 8 }}>
+              <button
+                onClick={() => setMapDayFilter("all")}
+                data-testid="button-map-day-filter-all"
+                style={{ padding: "4px 10px", borderRadius: 99, fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap", border: mapDayFilter === "all" ? `1.5px solid ${BRAND}` : `1.5px solid ${LINE}`, background: mapDayFilter === "all" ? BRAND_SOFT : CARD, color: mapDayFilter === "all" ? BRAND : MID }}
+              >
+                All days
+              </button>
+              {dayNumbersWithItems.map(n => (
+                <button
+                  key={n}
+                  onClick={() => setMapDayFilter(n)}
+                  data-testid={`button-map-day-filter-${n}`}
+                  style={{ padding: "4px 10px", borderRadius: 99, fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap", border: mapDayFilter === n ? `1.5px solid ${BRAND}` : `1.5px solid ${LINE}`, background: mapDayFilter === n ? BRAND_SOFT : CARD, color: mapDayFilter === n ? BRAND : MID }}
+                >
+                  Day {n}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div style={{ height: 260, borderRadius: 8, overflow: "hidden", position: "relative" }}>
+            <MapSectionErrorBoundary>
+              {MAPS_KEY && canShowMap ? (
+                <APIProvider apiKey={MAPS_KEY}>
+                  <Map
+                    mapId="canvas-plan-map"
+                    defaultCenter={initialCenter}
+                    defaultZoom={13}
+                    gestureHandling="greedy"
+                    disableDefaultUI={true}
+                    style={{ width: "100%", height: "100%" }}
+                    onClick={() => setSelectedPinItem(null)}
+                  >
+                    <PlanMapFitBounds items={visibleItems} />
+                    {visibleItems.map(item => (
+                      <AdvancedMarker
+                        key={item.id}
+                        position={{ lat: parseFloat(String(item.latitude)), lng: parseFloat(String(item.longitude)) }}
+                        onClick={() => setSelectedPinItem(item)}
+                      >
+                        <div
+                          data-testid={`map-pin-${item.id}`}
+                          title={item.title}
+                          style={{
+                            width: 22, height: 22, borderRadius: "50%",
+                            background: "var(--console-brand)", color: "var(--console-card)",
+                            border: selectedPinItem?.id === item.id ? "2px solid var(--console-card)" : "2px solid transparent",
+                            boxShadow: "0 2px 6px rgba(0,0,0,0.3)",
+                            fontSize: 10.5, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center",
+                          }}
+                        >
+                          {item.dayNumber}
+                        </div>
+                      </AdvancedMarker>
+                    ))}
+
+                    {selectedPinItem && isLocatedItem(selectedPinItem) && (
+                      <InfoWindow
+                        position={{ lat: parseFloat(String(selectedPinItem.latitude)), lng: parseFloat(String(selectedPinItem.longitude)) }}
+                        onCloseClick={() => setSelectedPinItem(null)}
+                      >
+                        <div style={{ fontFamily: "'Inter',-apple-system,sans-serif", minWidth: 160, maxWidth: 220 }}>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: INK, marginBottom: 2 }}>{selectedPinItem.title}</div>
+                          <div style={{ fontSize: 11.5, color: MID, marginBottom: 8 }}>Day {selectedPinItem.dayNumber}</div>
+                          <button
+                            onClick={() => { const id = selectedPinItem.id; setSelectedPinItem(null); onGoToItem(id); }}
+                            data-testid={`button-goto-item-${selectedPinItem.id}`}
+                            style={{ ...btnPrimaryStyle, width: "100%", padding: "5px 8px", borderRadius: 7, fontSize: 12 }}
+                          >
+                            Go to item
+                          </button>
+                        </div>
+                      </InfoWindow>
+                    )}
+                  </Map>
+                </APIProvider>
+              ) : (
+                <div data-testid="text-plan-map-unavailable" style={{ height: "100%", background: GROUND, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 6 }}>
+                  <MapPin style={{ width: 24, height: 24, color: FAINT }} />
+                  <span style={{ fontSize: 12, color: MID }}>
+                    {!MAPS_KEY ? "Map unavailable" : "No located items to show yet"}
+                  </span>
+                </div>
+              )}
+            </MapSectionErrorBoundary>
+          </div>
+
+          {/* §13: honest, never fabricated — a real count of items with no lat/lng, never a
+              city-center guess standing in for a real pin. */}
+          {unlocatedCount > 0 && (
+            // Wording matches the punch-list spec's literal template verbatim ("N items have no
+            // location yet") — not a grammar bug, a deliberate choice not to over-engineer
+            // pluralization the spec didn't ask for.
+            <div data-testid="text-unlocated-count" style={{ fontSize: 11.5, color: MID, marginTop: 8 }}>
+              {unlocatedCount} item{unlocatedCount === 1 ? "" : "s"} have no location yet
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface TransportLegAlternative { mode: string; durationMinutes: number; costUsd: number | null; energyCost: number; reason: string; }
 interface TripTransportLeg {
   id: string;
@@ -1761,6 +1973,10 @@ export default function ExpertWorkspace() {
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [selectedPin, setSelectedPin] = useState<any | null>(null);
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Item 16: "Go to item" from the plan-map InfoWindow — a one-shot signal consumed by
+  // ItemsEditorPanel (the canvas's only per-item, DOM-addressable list) which opens/expands/
+  // scrolls to the row, then clears this back to null.
+  const [focusItemId, setFocusItemId] = useState<string | null>(null);
 
   useEffect(() => {
     if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
@@ -2728,6 +2944,17 @@ export default function ExpertWorkspace() {
             </div>
           ) : (
             <>
+              {/* Item 16: the plan map — PLAN LAYER ONLY (item 19's discovery layer is not yet
+                  ratified). Sits above the day list per the punch-list spec. */}
+              {tripId && (
+                <CanvasMapSection
+                  tripId={tripId}
+                  days={days}
+                  destination={destination}
+                  onGoToItem={(itemId) => setFocusItemId(itemId)}
+                />
+              )}
+
               {/* F1: the format registry picks the structure; client:default = the existing
                   PlanCard day-list, rendered exactly as before. */}
               {buildFormat.grouping === "days" && trip && (
@@ -2804,6 +3031,8 @@ export default function ExpertWorkspace() {
                   maxDay={maxDay}
                   onDayMoved={triggerEnergyRecalc}
                   onOpenBookingBrief={(network) => setBookingBrief({ provider: network, bookingUrl: resolvePartnerBookingUrl(network) })}
+                  focusItemId={focusItemId}
+                  onFocusHandled={() => setFocusItemId(null)}
                 />
               )}
 
