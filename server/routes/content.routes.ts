@@ -5747,10 +5747,18 @@ router.get("/api/search/experiences", async (req, res) => {
           return { lat, lng };
         };
         for (const p of platformProviders) {
+          // W-3/QA fix: when a free-text query is present it must actually filter (name or
+          // description match required) — previously `nameMatch || destMatch` let destMatch
+          // alone satisfy the predicate, so a query matching almost every row in the searched
+          // city (which is basically all of them) made the text box a no-op. Destination stays
+          // an AND filter in both cases; an empty query keeps returning the destination's full
+          // catalog exactly as before (other callers/behavior unaffected — see grep note above).
           const nameMatch = p.serviceName?.toLowerCase().includes(qLower);
+          const descMatch = p.description?.toLowerCase().includes(qLower);
           const catMatch = !catLower || catLower === "all" || p.serviceType?.toLowerCase().includes(catLower) || (p as any).category?.toLowerCase().includes(catLower);
           const destMatch = !dest || p.location?.toLowerCase().includes(dest);
-          if ((nameMatch || destMatch) && catMatch) {
+          const textMatch = !qLower || nameMatch || descMatch;
+          if (textMatch && destMatch && catMatch) {
             results.push({
               id: `pl_${p.id}`,
               source: "platform",

@@ -215,9 +215,10 @@ function parseApiErrorMessage(err: unknown, fallback: string): string {
  *  `insertItineraryItemSchema` (drizzle-zod) expects a STRING for decimal columns, so a raw
  *  `parseFloat` JS number 400s with "invalid_type expected string received number" (the same
  *  drift `server/routes.ts:1271,7793` already guard against via `String(...)`). */
-function InlineAddItemForm({ tripId, dayNumber, onAdded }: { tripId: string; dayNumber: number; onAdded: () => void }) {
+function InlineAddItemForm({ tripId, dayNumber, destination, onAdded }: { tripId: string; dayNumber: number; destination?: string; onAdded: () => void }) {
   const { toast } = useToast();
   const [form, setForm] = useState({ title: "", itemType: "activity", startTime: "", estimatedCost: "", locationName: "" });
+  const [geocoding, setGeocoding] = useState(false);
   const createMutation = useMutation({
     mutationFn: async (data: any) => { const res = await apiRequest("POST", `/api/trips/${tripId}/itinerary-items`, data); return res.json(); },
     onSuccess: () => {
@@ -229,9 +230,41 @@ function InlineAddItemForm({ tripId, dayNumber, onAdded }: { tripId: string; day
     },
     onError: (err: any) => toast({ title: "Failed to add item", description: parseApiErrorMessage(err, "Please check the fields and try again."), variant: "destructive" }),
   });
-  const handleSubmit = () => {
+  // FIX 4 (QA pass): geocode-on-add, never fabricate. A custom item previously carried no
+  // coordinates at all — this leaves it unroutable (no transport legs, no map pin) forever.
+  // We now try the existing /api/geocode rail (same one the destination map-center lookup
+  // above uses) with "<locationName>, <destination>" when a location name was typed. On
+  // success we attach real latitude/longitude (as STRINGS — decimal DB columns, matching the
+  // platform-services add path). On any failure/miss we submit exactly as before: no coords,
+  // honest null — never a city-center guess. Geocoding is best-effort and must never block
+  // the add.
+  const handleSubmit = async () => {
     if (!form.title.trim()) return;
-    createMutation.mutate({ ...form, dayNumber, estimatedCost: form.estimatedCost ? String(parseFloat(form.estimatedCost)) : undefined });
+    let coords: { latitude: string; longitude: string } | undefined;
+    const locationName = form.locationName.trim();
+    if (locationName) {
+      setGeocoding(true);
+      try {
+        const address = destination ? `${locationName}, ${destination}` : locationName;
+        const res = await fetch(`/api/geocode?address=${encodeURIComponent(address)}`);
+        if (res.ok) {
+          const j = await res.json();
+          if (Number.isFinite(j?.lat) && Number.isFinite(j?.lng)) {
+            coords = { latitude: String(j.lat), longitude: String(j.lng) };
+          }
+        }
+      } catch {
+        // Geocode failure must not block the add — submit without coords, exactly as today.
+      } finally {
+        setGeocoding(false);
+      }
+    }
+    createMutation.mutate({
+      ...form,
+      dayNumber,
+      estimatedCost: form.estimatedCost ? String(parseFloat(form.estimatedCost)) : undefined,
+      ...(coords ?? {}),
+    });
   };
   const labelStyle: React.CSSProperties = { fontSize: 12, fontWeight: 600, color: MID, display: "block", marginBottom: 4 };
   const inputStyle: React.CSSProperties = { width: "100%", padding: "8px 10px", borderRadius: 8, border: `1.5px solid ${LINE}`, fontSize: 13, outline: "none", boxSizing: "border-box" as any, background: CARD, color: INK };
@@ -267,8 +300,8 @@ function InlineAddItemForm({ tripId, dayNumber, onAdded }: { tripId: string; day
           <input type="number" value={form.estimatedCost} onChange={e => setForm(f => ({ ...f, estimatedCost: e.target.value }))} placeholder="0" data-testid="input-inline-add-cost" style={inputStyle} />
         </div>
       </div>
-      <button onClick={handleSubmit} disabled={!form.title.trim() || createMutation.isPending} data-testid="button-inline-add-confirm" style={{ ...btnPrimaryStyle, padding: "9px", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, opacity: !form.title.trim() || createMutation.isPending ? 0.6 : 1 }}>
-        {createMutation.isPending ? <Loader2 style={{ width: 13, height: 13 }} className="animate-spin" /> : <Plus style={{ width: 13, height: 13 }} />} Add to Day {dayNumber}
+      <button onClick={handleSubmit} disabled={!form.title.trim() || createMutation.isPending || geocoding} data-testid="button-inline-add-confirm" style={{ ...btnPrimaryStyle, padding: "9px", fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, opacity: !form.title.trim() || createMutation.isPending || geocoding ? 0.6 : 1 }}>
+        {(createMutation.isPending || geocoding) ? <Loader2 style={{ width: 13, height: 13 }} className="animate-spin" /> : <Plus style={{ width: 13, height: 13 }} />} Add to Day {dayNumber}
       </button>
     </div>
   );
@@ -338,6 +371,26 @@ function ItemsEditorPanel({
       }
     },
     onError: () => toast({ title: "Failed to update item", variant: "destructive" }),
+  });
+
+  // FIX 2 (QA pass): item-level delete. Must use the TRIP-SCOPED endpoint — the bare
+  // DELETE /api/itinerary-items/:id gates on trips.userId only (verifyTripOwnership), which 403s
+  // on authored builds (userId=NULL); the trip-scoped route carries the parallel isTripAuthor
+  // branch, the same reason move-item's PATCH above uses it. Mirrors the move-item mutation's
+  // invalidation set (itinerary-items + plancard) and also triggers the same energy recalc a
+  // day-move does via onDayMoved, since removing an item changes a day's load too.
+  const deleteMutation = useMutation({
+    mutationFn: async (itemId: string) => {
+      await apiRequest("DELETE", `/api/trips/${tripId}/itinerary-items/${itemId}`);
+    },
+    onSuccess: (_res, itemId) => {
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/itinerary-items`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+      onDayMoved();
+      if (expandedId === itemId) setExpandedId(null);
+      toast({ title: "Item removed" });
+    },
+    onError: () => toast({ title: "Failed to remove item", variant: "destructive" }),
   });
 
   const allItems = days.flatMap(d => d.items);
@@ -412,6 +465,17 @@ function ItemsEditorPanel({
                         Save note
                       </button>
                     </div>
+                    <button
+                      onClick={() => {
+                        if (!window.confirm(`Remove "${item.title}" from this build?`)) return;
+                        deleteMutation.mutate(item.id);
+                      }}
+                      disabled={deleteMutation.isPending}
+                      data-testid={`button-delete-item-${item.id}`}
+                      style={{ ...btnQuietStyle, alignSelf: "flex-start", padding: "5px 12px", fontSize: 11.5, color: DANGER, display: "flex", alignItems: "center", gap: 5, opacity: deleteMutation.isPending ? 0.6 : 1 }}
+                    >
+                      <Trash2 style={{ width: 12, height: 12 }} /> Remove item
+                    </button>
                   </div>
                 )}
               </div>
@@ -1751,7 +1815,14 @@ export default function ExpertWorkspace() {
           title: b.title || "Untitled build",
           sub: (
             <>
-              {b.destination || "—"}{durationDays ? ` · ${durationDays} days` : ""}{" "}
+              {/* FIX 6 (QA pass): this is the calendar-span duration (start/end date window — the
+                  same figure "Days" on the store listing reads) — kept as the honest ship-to-store
+                  number rather than re-derived. It disagreed in wording with the build header's
+                  "N items · N days" chip, which counts days that actually HAVE content once items
+                  exist — a genuinely different number once a build's content doesn't fill its
+                  whole date window. Cheapest honest fix: relabel here ("N-day trip") rather than
+                  invent a third derivation or fetch each build's item count just for this list. */}
+              {b.destination || "—"}{durationDays ? ` · ${durationDays}-day trip` : ""}{" "}
               <StateChip tone={chip.tone}>{chip.label}</StateChip>
             </>
           ),
@@ -2078,7 +2149,11 @@ export default function ExpertWorkspace() {
               <FileText style={{ width: 40, height: 40, color: FAINT, margin: "0 auto 12px" }} />
               <div style={{ fontSize: 16, fontWeight: 600, color: INK, marginBottom: 8 }}>No itinerary items yet</div>
               <div style={{ fontSize: 13, color: MID, marginBottom: 20 }}>Build the itinerary from the Add panel — DMO places, platform services, or your own items.</div>
-              <button onClick={() => { setRightTab("add"); setAddSource("custom"); }} data-testid="button-add-first-item" style={{ ...btnPrimaryStyle, padding: "9px 20px", fontSize: 14, display: "inline-flex", alignItems: "center", gap: 6 }}>
+              {/* FIX 3 (QA pass): the Add panel's default source pill is already "dmo" (line ~1160) —
+                  this CTA used to override that to "custom" (the hand-entry form), pushing every
+                  first-time builder past the platform's DMO catalog. Just open the panel; let the
+                  existing default stand. */}
+              <button onClick={() => { setRightTab("add"); setAddSource("dmo"); }} data-testid="button-add-first-item" style={{ ...btnPrimaryStyle, padding: "9px 20px", fontSize: 14, display: "inline-flex", alignItems: "center", gap: 6 }}>
                 <Plus style={{ width: 14, height: 14 }} /> Add your first item
               </button>
             </div>
@@ -2264,7 +2339,7 @@ export default function ExpertWorkspace() {
           {/* Add · Custom — the add-item form, inline; day-aware. */}
           {rightTab === "add" && addSource === "custom" && (
             <div style={{ flex: 1, overflowY: "auto", padding: "12px 12px" }}>
-              <InlineAddItemForm tripId={tripId!} dayNumber={focusDay} onAdded={triggerEnergyRecalc} />
+              <InlineAddItemForm tripId={tripId!} dayNumber={focusDay} destination={destination} onAdded={triggerEnergyRecalc} />
             </div>
           )}
 
