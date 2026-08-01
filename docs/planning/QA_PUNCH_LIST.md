@@ -31,6 +31,24 @@ Items are struck through when merged to main (with the PR). Decision-maker calls
 - ~~Items 11 + 13 + 14b (delivery handshake, ratified approval mode-flip, reverse notification)~~
   (#368 — migration 164; post-approval expert edits 409 into suggest-mode; owner/author never gated)
 
+## Fixed (Wave 3, Aug 1 — PRs #369 / #371 / #372)
+
+- ~~Item 14(a) (email channel for trip lifecycle events)~~ (#369 — delivered/approved/changes-requested
+  /post-approval-suggestion emails via the existing Resend cluster; key-gated honest skip; also closed
+  a TOCTOU on the delivered transition with an atomic conditional guard)
+- ~~Item 10 tiers (a)+(c) (partner catalog drawer + customer-approval gate on the Booking Brief)~~
+  (#371 — §16 proven: all five feeds' affiliate URLs stripped before display. **Platform-wide fix
+  riding along: suggestion approval now MATERIALIZES a real `itinerary_items` row** — previously it
+  only wrote the legacy `generated_itineraries` blob nothing renders, so approved suggestions never
+  appeared on the actual plan; + §15 atomic-conditional suggestion decision. Tier (b) per-partner
+  availability APIs stays [DM]-gated.)
+- ~~Item 12 (per-item comment threads)~~ (#372 — migration 165; owner ‖ canonical-advisor ‖ author
+  gates; counterpart bell notifications; threads on Trip Card + Workstation editor)
+
+**New [DM] (found by W3-C):** a pre-existing `activity_comments` backend (plancard.routes.ts,
+owner-only, denormalized names) has ZERO client callers — retire as dead code or fold into the new
+`trip_item_comments` system; do not build on it meanwhile.
+
 ## Open — build items
 
 1. **Partner drawer: close the book-off-site loop.** The pill promises "book off-site, log it here",
