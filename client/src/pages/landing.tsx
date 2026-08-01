@@ -53,6 +53,59 @@ function formatStat(n: number): string {
   return `${n}+`;
 }
 
+// §13: real, admin-curated testimonials only — see GET /api/platform/featured-testimonials
+// (server/services/content-query.service.ts:getFeaturedTestimonials). No invented names,
+// no invented savings/earnings claims. Renders only fields the API actually returns.
+interface FeaturedTestimonial {
+  id: string;
+  rating: number;
+  reviewText: string | null;
+  reviewerName: string;
+  serviceName: string;
+  createdAt: string | null;
+}
+
+function TestimonialCard({ testimonial, delay = 0 }: { testimonial: FeaturedTestimonial; delay?: number }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true }}
+      transition={{ delay }}
+    >
+      <Card
+        className="h-full border border-border bg-background dark:bg-muted/50 shadow-card"
+        data-testid={`card-testimonial-${testimonial.id}`}
+      >
+        <CardContent className="p-6 flex flex-col h-full">
+          <div className="flex items-center gap-1 mb-3">
+            {[1, 2, 3, 4, 5].map((s) => (
+              <Star
+                key={s}
+                className={cn(
+                  "w-4 h-4",
+                  s <= testimonial.rating ? "text-amber-500 fill-amber-500" : "text-muted-foreground",
+                )}
+              />
+            ))}
+          </div>
+          {testimonial.reviewText && (
+            <p className="text-sm text-foreground leading-relaxed flex-1 mb-4" data-testid={`text-testimonial-body-${testimonial.id}`}>
+              "{testimonial.reviewText}"
+            </p>
+          )}
+          <div className="mt-auto">
+            <p className="text-sm font-semibold text-foreground" data-testid={`text-testimonial-name-${testimonial.id}`}>
+              {testimonial.reviewerName}
+            </p>
+            <p className="text-xs text-muted-foreground">{testimonial.serviceName}</p>
+          </div>
+        </CardContent>
+      </Card>
+    </motion.div>
+  );
+}
+
 const experienceTemplates = [
   { icon: Plane, label: "Travel", slug: "travel", color: "text-blue-500", bgColor: "bg-blue-500/10 dark:bg-blue-500/20" },
   { icon: Heart, label: "Wedding", slug: "wedding", color: "text-pink-500", bgColor: "bg-pink-500/10 dark:bg-pink-500/20" },
@@ -211,6 +264,14 @@ export default function LandingPage() {
   const { data: platformStats } = useQuery<{
     totalTrips: number; totalUsers: number; totalExperts: number; totalReviews: number; totalCountries: number; avgRating: string;
   }>({ queryKey: ["/api/platform/stats"] });
+
+  // §13 curated testimonial rail: admin-picked real reviews only. Empty (the
+  // default, pre-curation state) hides the section entirely — no placeholder,
+  // no invented social proof.
+  const { data: testimonialsData } = useQuery<{ testimonials: FeaturedTestimonial[] }>({
+    queryKey: ["/api/platform/featured-testimonials"],
+  });
+  const testimonials = testimonialsData?.testimonials ?? [];
 
   const impactStats = [
     {
@@ -592,6 +653,39 @@ export default function LandingPage() {
           </div>
         </div>
       </section>
+
+      {/* ── Testimonials (§13 curated rail — admin-picked real reviews only; ─ */}
+      {/* ── hidden entirely until at least one review is featured) ────────── */}
+      {testimonials.length > 0 && (
+        <section className="py-16 lg:py-20 bg-card dark:bg-card" data-testid="section-testimonials">
+          <div className="container mx-auto px-4 max-w-6xl">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              className="mb-12"
+            >
+              <div className="flex items-center gap-2 mb-2">
+                <div className="w-10 h-10 rounded-full bg-primary flex items-center justify-center">
+                  <Star className="w-5 h-5 text-white" />
+                </div>
+                <h2 className="text-3xl md:text-4xl font-bold text-foreground">
+                  What Travelers <span className="text-primary">Are Saying</span>
+                </h2>
+              </div>
+              <p className="text-muted-foreground max-w-xl">
+                Real reviews from travelers after a completed booking on Traveloure.
+              </p>
+            </motion.div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {testimonials.map((testimonial, idx) => (
+                <TestimonialCard key={testimonial.id} testimonial={testimonial} delay={idx * 0.1} />
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* ── Earn / Partner dual-path CTA ──────────────────────────────────── */}
       <section className="py-16 lg:py-20 bg-gradient-to-br from-teal-700 to-emerald-800 text-white" data-testid="section-earn-cta">
