@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MapPin, Plus, Check, Search } from "lucide-react";
 import { envelopeFromProviderService, envelopeToItineraryItemFields } from "@shared/content-logistics";
+import { usePublishMapCandidates, isRealLatLng } from "@/lib/map-candidates";
 
 /** Full provider_services row shape, as returned by GET /api/expert/services (the owner console —
  *  intentionally ungated on approval, D1a/§1, so it can show the whole pipeline). We client-filter
@@ -115,6 +116,29 @@ export function MyServicesPickerCore({
 
   const services = approvedActive.filter((s) =>
     !q.trim() || s.serviceName.toLowerCase().includes(q.trim().toLowerCase()),
+  );
+
+  // W5-A (QA_PUNCH_LIST item 19) — publish the SAME filtered (approved+active, search) list as
+  // discovery-layer candidate pins. Unlike the write-path's `locationPrecision === 'exact'` gate
+  // (which decides whether a NEW plan item's own location can claim this coordinate), a candidate
+  // PREVIEW pin may honestly show a neighborhood-centroid coordinate too — it's real, not
+  // fabricated (§13), just approximate; the write-path gate is untouched.
+  usePublishMapCandidates(
+    "mine",
+    "My services",
+    services
+      .filter((s) => isRealLatLng(s.latitude, s.longitude) && !added.has(s.id))
+      .map((s) => ({
+        id: s.id,
+        title: s.serviceName,
+        lat: typeof s.latitude === "number" ? s.latitude : parseFloat(String(s.latitude)),
+        lng: typeof s.longitude === "number" ? s.longitude : parseFloat(String(s.longitude)),
+        price: s.price ? `$${s.price}` : null,
+      })),
+    (id) => {
+      const s = services.find((x) => x.id === id);
+      if (s) addMutation.mutate(s);
+    },
   );
 
   return (

@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MapPin, Plus, Check, Search } from "lucide-react";
+import { usePublishMapCandidates } from "@/lib/map-candidates";
 
 /**
  * Teaser-safe row shape returned by GET /api/expert-workspace/platform-content
@@ -110,6 +111,27 @@ export function PlatformContentPickerCore({
   });
 
   const items = data?.items ?? [];
+
+  // W5-A (QA_PUNCH_LIST item 19) — publish the SAME server-filtered (destination + query) list as
+  // discovery-layer candidate pins. Excludes already-`added` rows and anything without real
+  // coords (§13).
+  usePublishMapCandidates(
+    "content",
+    "Platform content",
+    items
+      .filter((it) => hasRealCoords(it) && !added.has(it.id))
+      .map((it) => ({
+        id: it.id,
+        title: it.title || "Untitled",
+        lat: parseFloat(String(it.latitude)),
+        lng: parseFloat(String(it.longitude)),
+        price: null,
+      })),
+    (id) => {
+      const it = items.find((i) => i.id === id);
+      if (it) addMutation.mutate(it);
+    },
+  );
 
   return (
     <div className="space-y-3">

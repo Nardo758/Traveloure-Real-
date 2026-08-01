@@ -34,6 +34,10 @@ import {
 import { CHAUFFEURED_MODES, isChauffeuredMode } from "@shared/trip-plan";
 import { TRANSPORT_MODE_ICONS, TRANSPORT_MODE_LABELS } from "@/lib/maps-platform";
 import { parseApiErrorMessage } from "@/lib/api-error";
+// W5-A (QA_PUNCH_LIST item 19) — the discovery-layer candidate-pin publish/subscribe store. Every
+// Add-panel source drawer publishes its own current results here; CanvasMapSection reads the
+// single active publisher. See client/src/lib/map-candidates.ts for the full contract.
+import { usePublishMapCandidates, useMapCandidates, type MapCandidate } from "@/lib/map-candidates";
 
 const MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
 
@@ -966,26 +970,53 @@ function PlanMapFitBounds({ items }: { items: ItineraryItem[] }) {
   return null;
 }
 
-/** QA_PUNCH_LIST item 16 — the plan map ON the build canvas. PLAN LAYER ONLY: item 19's
- *  candidate/discovery layer (pins from an open Add-panel source drawer) is NOT yet
- *  decision-maker-ratified, so this renders only pins for items already IN the plan. Structured
- *  so that layer can be added later without rework — plan-pin rendering is isolated in its own
- *  child render pass inside `<Map>`, so a sibling candidate-pins pass could mount alongside it
- *  (same `<Map>` instance, same `<APIProvider>`) without touching this component's contract.
+/** W5-A (QA_PUNCH_LIST item 19) — thin mount/unmount publisher for the Platform-services drawer,
+ *  which (unlike the other five Add-panel sources) is inline JSX in this file rather than its own
+ *  component. Rendered ONLY inside the `addSource === "platform"` block, so its mount lifetime is
+ *  the same "is this drawer open" signal `usePublishMapCandidates` relies on everywhere else. */
+function MapCandidatesPublisher({
+  source, sourceLabel, items, onAdd,
+}: {
+  source: string;
+  sourceLabel: string;
+  items: MapCandidate[];
+  onAdd: (id: string) => void;
+}) {
+  usePublishMapCandidates(source, sourceLabel, items, onAdd);
+  return null;
+}
+
+/** QA_PUNCH_LIST item 16 (plan layer) + item 19 (discovery layer) — the plan map ON the build
+ *  canvas.
+ *
+ *  PLAN layer (always on, unchanged from #374): pins for items already IN the plan, filtered by
+ *  `mapDayFilter`. Never fabricates a pin (§13): only items passing `isLocatedItem` are ever
+ *  rendered; the unlocated count below the map is real.
+ *
+ *  DISCOVERY layer (item 19, ratified): whenever an Add-panel source drawer is open, that
+ *  drawer's CURRENT results render as candidate pins on this SAME map, in a visually distinct
+ *  (hollow) style — read from the single active publisher via `useMapCandidates`. ONE filter
+ *  state drives both the drawer's list and its pins (no separate map filter bar — see
+ *  map-candidates.ts). Clicking a candidate opens a preview InfoWindow with an "Add to Day N"
+ *  action that calls back into the SAME add handler the drawer's own list button uses — never a
+ *  duplicated write path. Only items with real coords ever publish as candidates (§13); the
+ *  drawer's list remains the complete view regardless of what the map can show.
  *
  *  Collapsible (closed→open persisted per-trip in sessionStorage, mirroring the "closed by
  *  default" convention ItemsEditorPanel/TransportLegsPanel already use for canvas sections).
  *  Reuses the file's existing @vis.gl/react-google-maps imports and the MapSectionErrorBoundary
  *  pattern verbatim (a Maps billing/key failure collapses to a one-line notice, never blanks the
- *  canvas — see that class's doc comment above). Never fabricates a pin (§13): only items
- *  passing `isLocatedItem` are ever rendered; the unlocated count below the map is real. */
+ *  canvas — see that class's doc comment above). */
 function CanvasMapSection({
-  tripId, days, destination, onGoToItem,
+  tripId, days, destination, onGoToItem, discoveryDayNumber,
 }: {
   tripId: string;
   days: { dayNumber: number; items: ItineraryItem[] }[];
   destination: string;
   onGoToItem: (itemId: string) => void;
+  /** The Add panel's current day-focus (item 19) — labels/targets the discovery layer's
+   *  "Add to Day N" action. Purely a label/target for candidates; never affects plan pins. */
+  discoveryDayNumber: number;
 }) {
   const storageKey = `workstation-map-open-${tripId}`;
   const [open, setOpen] = useState<boolean>(() => {
@@ -1000,6 +1031,15 @@ function CanvasMapSection({
   // `focusDay`: that control picks WHERE a new item is added; this picks WHICH pins show.
   const [mapDayFilter, setMapDayFilter] = useState<number | "all">("all");
   const [selectedPinItem, setSelectedPinItem] = useState<ItineraryItem | null>(null);
+  // Item 19 — the discovery layer's own selection, kept separate from the plan layer's so
+  // opening one InfoWindow never closes/overrides the other's state by accident.
+  const [selectedCandidate, setSelectedCandidate] = useState<MapCandidate | null>(null);
+  const { source: candidateSource, sourceLabel: candidateSourceLabel, items: candidateItems, onAdd: onAddCandidate } = useMapCandidates();
+  // Drawer switched (or its filter narrowed the set to nothing) — drop any stale selection
+  // rather than leave an InfoWindow open referencing a candidate that's no longer published.
+  useEffect(() => {
+    setSelectedCandidate(null);
+  }, [candidateSource, candidateSourceLabel]);
 
   const allItems = days.flatMap(d => d.items);
   const locatedItems = allItems.filter(isLocatedItem);
@@ -1082,7 +1122,7 @@ function CanvasMapSection({
                     gestureHandling="greedy"
                     disableDefaultUI={true}
                     style={{ width: "100%", height: "100%" }}
-                    onClick={() => setSelectedPinItem(null)}
+                    onClick={() => { setSelectedPinItem(null); setSelectedCandidate(null); }}
                   >
                     <PlanMapFitBounds items={visibleItems} />
                     {visibleItems.map(item => (
@@ -1121,6 +1161,53 @@ function CanvasMapSection({
                             style={{ ...btnPrimaryStyle, width: "100%", padding: "5px 8px", borderRadius: 7, fontSize: 12 }}
                           >
                             Go to item
+                          </button>
+                        </div>
+                      </InfoWindow>
+                    )}
+
+                    {/* Item 19 — DISCOVERY layer: candidate pins from whichever Add-panel source
+                        drawer is currently open (empty when none is), hollow/secondary style to
+                        stay visually distinct from the plan layer's solid brand-filled pins. */}
+                    {candidateItems.map(cand => (
+                      <AdvancedMarker
+                        key={`candidate-${cand.id}`}
+                        position={{ lat: cand.lat, lng: cand.lng }}
+                        onClick={() => setSelectedCandidate(cand)}
+                      >
+                        <div
+                          data-testid={`map-candidate-pin-${cand.id}`}
+                          title={cand.title}
+                          style={{
+                            width: 20, height: 20, borderRadius: "50%",
+                            background: "var(--console-card)",
+                            border: `2.5px solid var(--console-brand)`,
+                            boxShadow: "0 2px 6px rgba(0,0,0,0.3)",
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                          }}
+                        >
+                          <Plus style={{ width: 10, height: 10, color: "var(--console-brand)" }} />
+                        </div>
+                      </AdvancedMarker>
+                    ))}
+
+                    {selectedCandidate && (
+                      <InfoWindow
+                        position={{ lat: selectedCandidate.lat, lng: selectedCandidate.lng }}
+                        onCloseClick={() => setSelectedCandidate(null)}
+                      >
+                        <div style={{ fontFamily: "'Inter',-apple-system,sans-serif", minWidth: 160, maxWidth: 220 }}>
+                          <div style={{ fontSize: 13, fontWeight: 700, color: INK, marginBottom: 2 }}>{selectedCandidate.title}</div>
+                          <div style={{ fontSize: 11.5, color: MID, marginBottom: selectedCandidate.price ? 2 : 8 }}>{candidateSourceLabel}</div>
+                          {selectedCandidate.price && (
+                            <div style={{ fontSize: 11.5, color: MID, marginBottom: 8 }}>{selectedCandidate.price}</div>
+                          )}
+                          <button
+                            onClick={() => { const id = selectedCandidate.id; setSelectedCandidate(null); onAddCandidate(id); }}
+                            data-testid={`button-add-candidate-${selectedCandidate.id}`}
+                            style={{ ...btnPrimaryStyle, width: "100%", padding: "5px 8px", borderRadius: 7, fontSize: 12 }}
+                          >
+                            Add to Day {discoveryDayNumber}
                           </button>
                         </div>
                       </InfoWindow>
@@ -2986,14 +3073,15 @@ export default function ExpertWorkspace() {
             </div>
           ) : (
             <>
-              {/* Item 16: the plan map — PLAN LAYER ONLY (item 19's discovery layer is not yet
-                  ratified). Sits above the day list per the punch-list spec. */}
+              {/* Item 16 (plan layer) + item 19 (discovery layer, ratified) — the plan map.
+                  Sits above the day list per the punch-list spec. */}
               {tripId && (
                 <CanvasMapSection
                   tripId={tripId}
                   days={days}
                   destination={destination}
                   onGoToItem={(itemId) => setFocusItemId(itemId)}
+                  discoveryDayNumber={focusDay}
                 />
               )}
 
@@ -3197,6 +3285,21 @@ export default function ExpertWorkspace() {
                approved-catalog picker. Both write through POST /api/trips/:tripId/itinerary-items. */}
           {rightTab === "add" && addSource === "platform" && (
             <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+
+              {/* Item 19 — publish this SAME search+category-filtered `searchResults` list (the
+                  exact set already rendered as pins on this drawer's OWN local browse map below)
+                  as candidate pins for the canvas map's discovery layer too. */}
+              <MapCandidatesPublisher
+                source="platform"
+                sourceLabel="Platform services"
+                items={searchResults
+                  .filter((r: any) => Number.isFinite(r.location?.lat) && Number.isFinite(r.location?.lng))
+                  .map((r: any) => ({ id: r.id, title: r.name, lat: r.location.lat, lng: r.location.lng, price: r.priceLabel ?? null }))}
+                onAdd={(id) => {
+                  const result = searchResults.find((r: any) => r.id === id);
+                  if (result) addFromSearchMutation.mutate(result);
+                }}
+              />
 
               {/* Search bar + category chips */}
               <div style={{ padding: "10px 12px 8px", borderBottom: `1px solid ${LINE}`, background: CARD, flexShrink: 0 }}>
