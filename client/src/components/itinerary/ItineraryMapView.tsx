@@ -1,5 +1,6 @@
 import { useState, useCallback, Component, ReactNode } from "react";
-import { APIProvider, Map, AdvancedMarker, InfoWindow, useMap } from "@vis.gl/react-google-maps";
+import { APIProvider, Map, InfoWindow, useMap } from "@vis.gl/react-google-maps";
+import { MapMarker, GOOGLE_MAPS_MAP_ID } from "@/components/ui/map-marker";
 import { Polyline } from "@/components/ui/map-polyline";
 import { cn } from "@/lib/utils";
 import { MapPin } from "lucide-react";
@@ -178,9 +179,10 @@ function ItineraryMapContent({
         })}
 
       {showGhostPins && validActivities.filter(a => a.isGhost).map(ghost => (
-        <AdvancedMarker
+        <MapMarker
           key={`ghost-${ghost.id}`}
           position={{ lat: ghost.lat!, lng: ghost.lng! }}
+          title={`Previous position ${ghost.pinIndex}`}
         >
           <div style={{
             width: 28, height: 28, borderRadius: "50%",
@@ -191,7 +193,7 @@ function ItineraryMapContent({
           }}>
             {ghost.pinIndex}
           </div>
-        </AdvancedMarker>
+        </MapMarker>
       ))}
 
       {validActivities
@@ -202,9 +204,10 @@ function ItineraryMapContent({
           const isExpertMoved = activity.isExpertMoved;
 
           return (
-            <AdvancedMarker
+            <MapMarker
               key={activity.id}
               position={{ lat: activity.lat!, lng: activity.lng! }}
+              title={activity.name}
               draggable={isExpertMode}
               onDragStart={() => setDraggingIdx(activity.pinIndex)}
               onDragEnd={(e) => handleMarkerDragEnd(activity, e)}
@@ -232,7 +235,7 @@ function ItineraryMapContent({
               >
                 {activity.pinIndex}
               </div>
-            </AdvancedMarker>
+            </MapMarker>
           );
         })}
 
@@ -325,8 +328,8 @@ export function ItineraryMapView({
       >
         <div className="text-center p-4">
           <MapPin className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
-          <p className="text-sm text-muted-foreground">Map view unavailable</p>
-          <p className="text-xs text-muted-foreground mt-1">Configure Google Maps to enable</p>
+          <p className="text-sm text-muted-foreground">Map unavailable</p>
+          <p className="text-xs text-muted-foreground mt-1">Add VITE_GOOGLE_MAPS_API_KEY to enable</p>
         </div>
       </div>
     );
@@ -406,7 +409,7 @@ export function ItineraryMapView({
           <Map
             defaultCenter={{ lat: centerLat, lng: centerLng }}
             defaultZoom={13}
-            mapId="itinerary-map"
+            mapId={GOOGLE_MAPS_MAP_ID}
             gestureHandling="cooperative"
             disableDefaultUI={false}
             style={{ width: "100%", height: "100%" }}
