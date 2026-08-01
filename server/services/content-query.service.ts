@@ -473,6 +473,78 @@ export async function getContentRegistryByLocation(params: {
   return db.select().from(contentRegistry).where(and(...conditions)).limit(20);
 }
 
+/**
+ * W1-A: the Workstation Add panel's "Platform content" pill — a read-only search over the
+ * central content_registry, scoped to the build's destination + an optional free-text query.
+ * Mirrors the traveler resolver's read-gates (getContentRegistryByLocation above): only
+ * `status = 'published'` rows (the same gate every content type's own approval queue funnels
+ * into before it can be marked published), and the §12/DMO invariant — 'sourced' (dmo_content)
+ * origin rows are HARD-EXCLUDED, exactly like the traveler resolver, so DMO content never
+ * leaves its own pill through this surface either. Returns teaser-safe fields only (never the
+ * full metadata blob) — id/type/title/description/image/city/lat/lng, and only when present in
+ * the row's own metadata (§13: never fabricate a coordinate or image that isn't really there).
+ */
+export async function searchWorkstationPlatformContent(params: {
+  city?: string;
+  query?: string;
+  limit?: number;
+}): Promise<Array<{
+  id: string;
+  type: string;
+  title: string | null;
+  description: string | null;
+  image: string | null;
+  city: string | null;
+  latitude?: string;
+  longitude?: string;
+}>> {
+  const limit = Math.min(50, Math.max(1, params.limit ?? 30));
+  const conditions = [eq(contentRegistry.status, "published")];
+
+  const city = (params.city ?? "").trim();
+  if (city) {
+    conditions.push(sql`(
+      ${contentRegistry.metadata}->>'city' ILIKE ${"%" + city + "%"}
+      OR ${contentRegistry.metadata}->>'location' ILIKE ${"%" + city + "%"}
+      OR ${contentRegistry.metadata}->>'destination' ILIKE ${"%" + city + "%"}
+    )`);
+  }
+
+  const q = (params.query ?? "").trim();
+  if (q) {
+    conditions.push(or(
+      ilike(contentRegistry.title, `%${q}%`),
+      ilike(contentRegistry.description, `%${q}%`),
+    ) as any);
+  }
+
+  const rows = await db.select().from(contentRegistry)
+    .where(and(...conditions))
+    .limit(limit);
+
+  // Hard invariant (§12/DMO model): 'sourced' content never leaves the DMO pill — even here,
+  // even though it's read-only, even if a future placement rule ever pointed at one.
+  return rows
+    .filter(r => contentOriginFor(r.contentType) !== "sourced")
+    .map(r => {
+      const meta: any = r.metadata || {};
+      const rawLat = meta.lat ?? meta.latitude;
+      const rawLng = meta.lng ?? meta.longitude;
+      const lat = rawLat == null ? NaN : Number(rawLat);
+      const lng = rawLng == null ? NaN : Number(rawLng);
+      const hasCoords = Number.isFinite(lat) && Number.isFinite(lng);
+      return {
+        id: r.id,
+        type: r.contentType,
+        title: r.title,
+        description: r.description,
+        image: meta.cover_image || meta.imageUrl || meta.image_url || meta.image || null,
+        city: meta.city || meta.location || null,
+        ...(hasCoords ? { latitude: String(lat), longitude: String(lng) } : {}),
+      };
+    });
+}
+
 // ─── Affiliate Click Tracking ─────────────────────────────────────────────────
 
 export async function insertAffiliateClick(values: Record<string, any>): Promise<void> {
