@@ -630,6 +630,10 @@ export const providerServices = pgTable("provider_services", {
   // 3-value so "not applicable" (remote/self-guided) is distinct from an explicit "no transport".
   // DB CHECK enforced in migration 119. Default not_applicable so grandfathered rows make no claim.
   transportProvided: varchar("transport_provided", { length: 20 }).default("not_applicable"), // yes, no, not_applicable
+  // Content logistics envelope (migration 166, QA_PUNCH_LIST item 20) — the one logistics field
+  // with no prior home: meetingPoint/pickupAddress cover arrival, nothing structurally captured
+  // departure. Additive nullable, no DB CHECK. NULL = never captured (§13, not "no drop-off").
+  dropOffPoint: text("drop_off_point"),
   // Neighborhood tag (v2 spec §5.1) — soft reference into city_neighborhoods.slug.
   neighborhood: varchar("neighborhood", { length: 100 }),
 
@@ -3372,6 +3376,17 @@ export const itineraryItems = pgTable("itinerary_items", {
   // tip PlanCard renders per activity. Distinct from notes (traveler's own) and privateNotes
   // (organizer-only): this is the EXPERT's voice on the item. Nullable; NULL = no note.
   expertNote: text("expert_note"),
+  // Content logistics envelope (migration 166, QA_PUNCH_LIST item 20) — what the ADDING SOURCE
+  // knew about transport at add-time, carried onto the plan item so it survives independent of
+  // the source row (a partner-feed or DMO item has nothing else to carry it in). transportProvided
+  // mirrors provider_services.transportProvided's app-layer vocabulary (yes|no|not_applicable,
+  // no DB CHECK here — see migration 166 header). durationMinutes above already served the
+  // "duration" leg of the envelope pre-166. Nullable; NULL = the source never captured that fact
+  // (§13 — never fabricated, never defaulted to "not provided" at the DATA layer; the transport-gap
+  // checker (21) is the layer that treats unknown as "not provided" for FLAGGING purposes only).
+  transportProvided: varchar("transport_provided", { length: 20 }),
+  pickupPoint: text("pickup_point"),
+  dropOffPoint: text("drop_off_point"),
   attachments: jsonb("attachments").default([]), // [{name, url, type}]
   
   // Suggestion tracking

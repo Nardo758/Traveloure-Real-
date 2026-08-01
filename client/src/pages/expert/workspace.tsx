@@ -1561,6 +1561,26 @@ interface AnchorImpact { type: string; message: string; severity: 'warning' | 'c
 interface AnchorConflict { anchorId: string; anchorType: string; description: string; impacts: AnchorImpact[]; }
 interface EnergyRecord { id?: string; dayNumber: number; startingEnergy: number; activityDepletion: number; endingEnergy: number; recoveryNeeded: boolean; recoveryReason?: string | null; createdAt?: string | null; }
 
+// QA_PUNCH_LIST item 21 — transport-gap checker (server/services/transport-gap.service.ts).
+type TransportGapFlag = "transport_gap" | "timing_infeasible" | "missing_pickup_detail";
+interface TransportGapPair {
+  dayNumber: number; fromItemId: string; fromTitle: string; toItemId: string; toTitle: string;
+  flags: TransportGapFlag[]; assumedPrevDuration: boolean; availableGapMinutes: number;
+  estimatedTravelMinutes: number; estimatedTravelMode: string;
+}
+interface TransportGapSkip {
+  dayNumber: number; fromItemId: string; fromTitle: string; toItemId: string; toTitle: string;
+  reason: "insufficient_data"; detail: "missing_coordinates" | "missing_start_time";
+}
+interface TransportGapDayResult { dayNumber: number; pairs: TransportGapPair[]; skipped: TransportGapSkip[]; }
+interface TransportGapAnalysis { tripId: string; days: TransportGapDayResult[]; }
+
+const TRANSPORT_GAP_FLAG_COPY: Record<TransportGapFlag, string> = {
+  transport_gap: "No confirmed transport arranged for this leg.",
+  timing_infeasible: "The estimated travel time doesn't fit in the gap between these stops.",
+  missing_pickup_detail: "Transport is provided, but no pickup point is recorded yet.",
+};
+
 // calculate-energy INSERTS a fresh energy_tracking row per day on every recalculation
 // (triggered on every itinerary edit) rather than upserting — so a trip edited N times
 // accumulates N rows per day, all returned by the API. Collapse to the latest row per
@@ -2181,6 +2201,28 @@ export default function ExpertWorkspace() {
     queryKey: [`/api/trips/${tripId}/workspace-constraints`],
     enabled: !!tripId,
     staleTime: 30 * 1000,
+  });
+
+  // QA_PUNCH_LIST item 21 — lazy-loaded only when the AI Gaps tab is actually open, mirroring
+  // TransportLegsPanel's own `enabled: open` gating (the underlying analysis calls the travel-time
+  // estimator per same-day pair — no reason to pay for it on every workspace load).
+  const { data: transportGaps, isLoading: transportGapsLoading } = useQuery<TransportGapAnalysis>({
+    queryKey: [`/api/trips/${tripId}/transport-gaps`],
+    enabled: !!tripId && rightTab === "gaps",
+  });
+
+  const proposeLegsMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/trips/${tripId}/transport-legs/generate`, {});
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/transport-gaps`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/transport-legs`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+      toast({ title: "Transport legs proposed", description: "Review them in Transport legs on the canvas." });
+    },
+    onError: (e: any) => toast({ title: "Couldn't propose transport legs", description: e?.message, variant: "destructive" }),
   });
 
   const tripExperienceType = workspaceConstraints?.tripExperienceType ?? null;
@@ -3597,6 +3639,88 @@ export default function ExpertWorkspace() {
                         </div>
                       );
                     })}
+                  </div>
+                )}
+              </div>
+
+              {/* Transport Gaps (QA_PUNCH_LIST item 21) — rules-first checker over the content
+                  logistics envelope (item 20). "Propose leg" calls the EXISTING §18 L4
+                  leg-proposal engine (POST .../transport-legs/generate, the same action
+                  TransportLegsPanel's "Generate transport" button triggers below on the canvas). */}
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                  <div style={sectionLabelStyle}>Transport Gaps</div>
+                  {transportGaps && transportGaps.days.some(d => d.pairs.length > 0) && (
+                    <button
+                      onClick={() => proposeLegsMutation.mutate()}
+                      disabled={proposeLegsMutation.isPending}
+                      data-testid="button-propose-transport-legs-gaps"
+                      style={{ ...btnQuietStyle, padding: "4px 10px", fontSize: 11, display: "flex", alignItems: "center", gap: 5, opacity: proposeLegsMutation.isPending ? 0.6 : 1 }}
+                    >
+                      {proposeLegsMutation.isPending ? <Loader2 style={{ width: 11, height: 11 }} className="animate-spin" /> : <Route style={{ width: 11, height: 11 }} />}
+                      Propose all
+                    </button>
+                  )}
+                </div>
+                {transportGapsLoading ? (
+                  <Skeleton className="h-16 rounded-lg" />
+                ) : !transportGaps || transportGaps.days.every(d => d.pairs.length === 0 && d.skipped.length === 0) ? (
+                  <div style={{ background: OK_SOFT, border: `1px solid ${LINE}`, borderRadius: 8, padding: "8px 10px", display: "flex", alignItems: "center", gap: 6 }}>
+                    <CheckCircle style={{ width: 12, height: 12, color: OK }} />
+                    <span style={{ fontSize: 12, color: OK, fontWeight: 500 }}>No transport gaps flagged</span>
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                    {transportGaps.days.map(day => (
+                      <div key={day.dayNumber}>
+                        <span style={{ fontSize: 10, fontWeight: 700, color: FAINT, textTransform: "uppercase", letterSpacing: "0.06em" }}>Day {day.dayNumber}</span>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 5, marginTop: 4 }}>
+                          {day.pairs.map(pair => {
+                            const critical = pair.flags.includes("timing_infeasible");
+                            return (
+                              <div
+                                key={`${pair.fromItemId}-${pair.toItemId}`}
+                                data-testid={`transport-gap-card-${pair.fromItemId}-${pair.toItemId}`}
+                                style={{ border: `1px solid ${LINE}`, borderRadius: 8, padding: "8px 10px", background: critical ? DANGER_SOFT : WARN_SOFT }}
+                              >
+                                <div style={{ fontSize: 12, fontWeight: 600, color: INK, marginBottom: 4 }}>{pair.fromTitle} → {pair.toTitle}</div>
+                                {pair.flags.map(flag => (
+                                  <div key={flag} data-testid={`transport-gap-flag-${flag}-${pair.fromItemId}-${pair.toItemId}`} style={{ display: "flex", gap: 5, marginBottom: 2 }}>
+                                    <AlertTriangle style={{ width: 10, height: 10, color: flag === "timing_infeasible" ? DANGER : WARN, marginTop: 2, flexShrink: 0 }} />
+                                    <span style={{ fontSize: 11, color: flag === "timing_infeasible" ? DANGER : WARN }}>{TRANSPORT_GAP_FLAG_COPY[flag]}</span>
+                                  </div>
+                                ))}
+                                <div style={{ fontSize: 10, color: MID, marginTop: 3 }}>
+                                  ~{pair.estimatedTravelMinutes} min by {pair.estimatedTravelMode} needed · {pair.availableGapMinutes} min available
+                                  {pair.assumedPrevDuration && (
+                                    <span> (assumed "{pair.fromTitle}" lasts 60 min — no recorded duration)</span>
+                                  )}
+                                </div>
+                                {pair.flags.includes("transport_gap") && (
+                                  <button
+                                    onClick={() => proposeLegsMutation.mutate()}
+                                    disabled={proposeLegsMutation.isPending}
+                                    data-testid={`button-propose-leg-${pair.fromItemId}-${pair.toItemId}`}
+                                    style={{ ...btnQuietStyle, marginTop: 6, padding: "4px 10px", fontSize: 11, display: "flex", alignItems: "center", gap: 5, opacity: proposeLegsMutation.isPending ? 0.6 : 1 }}
+                                  >
+                                    <Route style={{ width: 10, height: 10 }} /> Propose leg
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          })}
+                          {day.skipped.map(skip => (
+                            <div
+                              key={`${skip.fromItemId}-${skip.toItemId}`}
+                              data-testid={`transport-gap-skip-${skip.fromItemId}-${skip.toItemId}`}
+                              style={{ fontSize: 11, color: FAINT, padding: "4px 0" }}
+                            >
+                              {skip.fromTitle} → {skip.toTitle}: not enough data to check ({skip.detail === "missing_coordinates" ? "missing location" : "missing start time"})
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>

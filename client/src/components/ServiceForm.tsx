@@ -131,6 +131,10 @@ interface ServiceFormData {
   locationPrecision: string | null;
   pickupAvailable: boolean;
   pickupAddress: string;
+  // Content logistics envelope (migration 166, QA_PUNCH_LIST item 20) — the one logistics field
+  // provider_services had no home for. Sibling of pickupAddress/meetingPoint (arrival); this is
+  // departure. "" = never captured, matches meetingPoint's own optional-string convention.
+  dropOffPoint: string;
   serviceRadius: number;
   transportProvided: "yes" | "no" | "not_applicable";
   // Booking terms
@@ -203,6 +207,7 @@ function buildEmptyForm(role: "expert" | "provider"): ServiceFormData {
     locationPrecision: null,
     pickupAvailable: false,
     pickupAddress: "",
+    dropOffPoint: "",
     serviceRadius: 0,
     transportProvided: "not_applicable",
     cancellationPolicy: "",
@@ -286,6 +291,7 @@ function mapServiceToForm(s: any, role: "expert" | "provider"): ServiceFormData 
     locationPrecision: s.locationPrecision ?? null,
     pickupAvailable: Boolean(s.pickupAvailable),
     pickupAddress: s.pickupAddress || "",
+    dropOffPoint: s.dropOffPoint || "",
     serviceRadius: Number(s.serviceRadius || 0),
     transportProvided: (s.transportProvided === "yes" || s.transportProvided === "no" ? s.transportProvided : "not_applicable"),
     cancellationPolicy: s.cancellationPolicy || "",
@@ -715,6 +721,9 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         meetingPoint: formData.meetingPoint || null,
         pickupAvailable: formData.pickupAvailable,
         pickupAddress: formData.pickupAvailable ? (formData.pickupAddress || null) : null,
+        // Content logistics envelope (migration 166, QA_PUNCH_LIST item 20) — mirrors
+        // pickupAddress's own pickupAvailable gate; drop-off only means something alongside pickup.
+        dropOffPoint: formData.pickupAvailable ? (formData.dropOffPoint || null) : null,
         serviceRadius: formData.pickupAvailable && formData.serviceRadius > 0 ? formData.serviceRadius : null,
         // Transport disclosure only carries meaning for an in-person/hybrid meeting; remote → not_applicable.
         transportProvided: isInPerson ? formData.transportProvided : "not_applicable",
@@ -1696,6 +1705,20 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                       onChange={(e) => set("pickupAddress", e.target.value)}
                       placeholder="e.g., Main train station, Airport terminal 2"
                       className="mt-2"
+                    />
+                  </div>
+                  <div>
+                    {/* Content logistics envelope (migration 166, QA_PUNCH_LIST item 20) — the
+                        one logistics field with no prior home. Optional: "" stays honest NULL
+                        (never fabricated as "same as pickup"). */}
+                    <Label htmlFor="dropOffPoint">Drop-off Point</Label>
+                    <Input
+                      id="dropOffPoint"
+                      value={formData.dropOffPoint}
+                      onChange={(e) => set("dropOffPoint", e.target.value)}
+                      placeholder="e.g., Hotel lobby, Same as pickup location"
+                      className="mt-2"
+                      data-testid="input-drop-off-point"
                     />
                   </div>
                   <div>
