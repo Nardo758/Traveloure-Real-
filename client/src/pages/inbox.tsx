@@ -20,6 +20,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useSearch } from "wouter";
 import { DashboardLayout } from "@/components/dashboard-layout";
 import { useConversationThreads } from "@/hooks/use-conversation-threads";
+import { useUnreadMessageCount } from "@/hooks/use-message-read";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -90,18 +91,30 @@ function MessagesTab() {
                 <AvatarFallback>{(thread.displayName || "E")[0]}</AvatarFallback>
               </Avatar>
               <div className="flex-1 min-w-0">
-                <p className="font-medium text-foreground truncate">
+                <p className={`text-foreground truncate ${thread.unreadCount > 0 ? "font-semibold" : "font-medium"}`}>
                   {thread.displayName || "Expert"}
                 </p>
                 {thread.lastMessage && (
                   <p className="text-sm text-muted-foreground truncate">{thread.lastMessage}</p>
                 )}
               </div>
-              {thread.lastMessageAt && (
-                <span className="text-xs text-muted-foreground flex-shrink-0">
-                  {formatDistanceToNow(new Date(thread.lastMessageAt), { addSuffix: true })}
-                </span>
-              )}
+              <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                {thread.lastMessageAt && (
+                  <span className="text-xs text-muted-foreground">
+                    {formatDistanceToNow(new Date(thread.lastMessageAt), { addSuffix: true })}
+                  </span>
+                )}
+                {/* W5-E: real per-thread unread count (readAt-derived, use-conversation-threads).
+                    Clears once /chat marks the thread read. */}
+                {thread.unreadCount > 0 && (
+                  <span
+                    className="min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-white text-[10px] font-semibold flex items-center justify-center"
+                    data-testid={`inbox-thread-unread-${thread.counterpartId}`}
+                  >
+                    {thread.unreadCount > 9 ? "9+" : thread.unreadCount}
+                  </span>
+                )}
+              </div>
             </CardContent>
           </Card>
         </Link>
@@ -314,6 +327,12 @@ export default function InboxPage() {
   const tabParam = new URLSearchParams(search).get("tab") ?? "messages";
   const initialTab = INBOX_TABS.includes(tabParam) ? tabParam : "messages";
 
+  // W5-E: real per-tab unread counts — messages from the new GET /api/messages/unread/count,
+  // updates from the same GET /api/notifications the Updates tab itself renders (no fabrication).
+  const { data: unreadMessages } = useUnreadMessageCount();
+  const { data: notifications } = useQuery<{ isRead: boolean }[]>({ queryKey: ["/api/notifications"] });
+  const unreadUpdatesCount = (notifications ?? []).filter((n) => !n.isRead).length;
+
   return (
     <DashboardLayout>
       <div className="p-6 max-w-3xl mx-auto space-y-6">
@@ -331,8 +350,22 @@ export default function InboxPage() {
 
         <Tabs defaultValue={initialTab} className="space-y-4">
           <TabsList>
-            <TabsTrigger value="messages" data-testid="tab-inbox-messages">Messages</TabsTrigger>
-            <TabsTrigger value="updates" data-testid="tab-inbox-updates">Updates</TabsTrigger>
+            <TabsTrigger value="messages" data-testid="tab-inbox-messages">
+              Messages
+              {!!unreadMessages?.count && (
+                <span className="ml-1.5 min-w-[16px] h-4 px-1 rounded-full bg-primary text-white text-[10px] font-semibold inline-flex items-center justify-center">
+                  {unreadMessages.count > 9 ? "9+" : unreadMessages.count}
+                </span>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="updates" data-testid="tab-inbox-updates">
+              Updates
+              {unreadUpdatesCount > 0 && (
+                <span className="ml-1.5 min-w-[16px] h-4 px-1 rounded-full bg-primary text-white text-[10px] font-semibold inline-flex items-center justify-center">
+                  {unreadUpdatesCount > 9 ? "9+" : unreadUpdatesCount}
+                </span>
+              )}
+            </TabsTrigger>
           </TabsList>
           <TabsContent value="messages">
             <MessagesTab />
