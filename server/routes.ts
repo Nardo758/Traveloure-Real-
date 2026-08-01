@@ -3506,18 +3506,23 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const isZeroDecimal = currency === 'jpy';
       const stripeAmount = isZeroDecimal ? Math.round(price) : Math.round(price * 100);
 
-      const paymentIntent = await stripeClient.paymentIntents.create({
-        amount: stripeAmount,
-        currency,
-        metadata: {
-          purchaseId: purchase.id,
-          templateId: req.params.id,
-          buyerId: userId,
-          expertId: template.expertId,
+      const paymentIntent = await stripeClient.paymentIntents.create(
+        {
+          amount: stripeAmount,
+          currency,
+          metadata: {
+            purchaseId: purchase.id,
+            templateId: req.params.id,
+            buyerId: userId,
+            expertId: template.expertId,
+          },
+          description: `Traveloure template: ${template.title}`,
+          automatic_payment_methods: { enabled: true },
         },
-        description: `Traveloure template: ${template.title}`,
-        automatic_payment_methods: { enabled: true },
-      });
+        // §15 (MONEY_MAP F-3): deterministic key — a retried purchase click can't mint a second
+        // uncaptured PI for the same template+buyer.
+        { idempotencyKey: `tpl-buy-${req.params.id}-${userId}` },
+      );
 
       // 202 Accepted — payment not yet captured; client must call /confirm.
       // Template is content-REDACTED here: payment hasn't succeeded yet, so the buyer
