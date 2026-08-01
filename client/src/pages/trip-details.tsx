@@ -299,6 +299,10 @@ export default function TripDetails() {
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${id}/suggestions`] });
       if (data?.suggestion?.status === "approved") {
         queryClient.invalidateQueries({ queryKey: ["/api/generated-itineraries", id] });
+        // W3-A: approval now also materializes a real itinerary_items row (booking-actions.ts) —
+        // refresh the canonical reads so the item shows up without a manual reload.
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${id}/itinerary-items`] });
+        queryClient.invalidateQueries({ queryKey: [`/api/trips/${id}/plancard`] });
       }
       toast({ title: "Suggestion reviewed", description: "Your response has been saved." });
     },
