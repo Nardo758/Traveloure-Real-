@@ -151,12 +151,13 @@ export default function Chat() {
     enabled: !!clientIdFromUrl,
   });
 
-  // Real conversation partners for earners, grouped from the same /api/chats rows the
-  // provider/expert Inbox "Recent conversations" list already reads (server enriches each row
-  // with `participant.displayName`, role-agnostic — no new endpoint). Mapped onto the existing
-  // DisplayExpert shape so the rest of the thread UI (selection, header, messages) is unchanged.
+  // Real conversation partners, grouped from the same /api/chats rows the provider/expert Inbox
+  // "Recent conversations" list reads (server enriches each row with `participant.displayName`,
+  // role-agnostic — no new endpoint). Mapped onto the existing DisplayExpert shape so the rest of
+  // the thread UI (selection, header, messages) is unchanged. Computed for BOTH roles: an earner's
+  // counterpart is a client, a traveler's counterpart is the expert they messaged (W1-B) — the
+  // grouping logic itself is symmetric, only the counterpart's real-world role differs.
   const conversationPartners = useMemo<DisplayExpert[]>(() => {
-    if (!isEarner) return [];
     const byCounterpart = new Map<string, { row: any; latest: number }>();
     for (const c of (chats as any[] | null | undefined) ?? []) {
       const counterpartId = c.senderId === user?.id ? c.receiverId : c.senderId;
@@ -171,8 +172,8 @@ export default function Chat() {
       .sort((a, b) => b[1].latest - a[1].latest)
       .map(([counterpartId, { row }]) => ({
         id: counterpartId,
-        name: row.participant?.displayName || "Client",
-        location: "Client",
+        name: row.participant?.displayName || (isEarner ? "Client" : "Expert"),
+        location: isEarner ? "Client" : "Expert",
         avatar: row.participant?.profileImageUrl || row.participant?.profileImage || "",
         rating: null,
         reviews: 0,
@@ -183,6 +184,18 @@ export default function Chat() {
         isConversationPartner: true,
       }));
   }, [isEarner, chats, user?.id]);
+
+  // Traveler-mode browse directory (real experts + any deep-linked expert not already in the
+  // list). Kept separate from conversationPartners so the two can render as distinct groups
+  // (threads first, directory below) while still sharing one search box.
+  const directoryExperts = useMemo<DisplayExpert[]>(() => {
+    if (isEarner) return [];
+    if (effectiveLinkedExpert) {
+      const exists = expertList.some(e => String(e.id) === String(effectiveLinkedExpert.id));
+      if (!exists) return [effectiveLinkedExpert, ...expertList];
+    }
+    return expertList;
+  }, [isEarner, effectiveLinkedExpert, expertList]);
 
   const allExperts = useMemo(() => {
     if (isEarner) {
@@ -211,12 +224,13 @@ export default function Chat() {
       }
       return conversationPartners;
     }
-    if (effectiveLinkedExpert) {
-      const exists = expertList.some(e => String(e.id) === String(effectiveLinkedExpert.id));
-      if (!exists) return [effectiveLinkedExpert, ...expertList];
-    }
-    return expertList;
-  }, [isEarner, conversationPartners, linkedClient, effectiveLinkedExpert, expertList]);
+    // Traveler mode: real conversation threads first, then the browse directory — a directory
+    // entry already covered by a real thread is dropped so the same expert doesn't render twice.
+    const dedupedDirectory = directoryExperts.filter(
+      e => !conversationPartners.some(p => String(p.id) === String(e.id)),
+    );
+    return [...conversationPartners, ...dedupedDirectory];
+  }, [isEarner, conversationPartners, linkedClient, directoryExperts]);
 
   // F3 (workstation-flows audit): for expert users, cross-reference the conversation partner
   // against assigned trips so the thread header can offer "Open trip workspace". Client-side
@@ -355,10 +369,74 @@ export default function Chat() {
     }
   };
 
-  const filteredExperts = allExperts.filter(expert => 
+  const filteredExperts = allExperts.filter(expert =>
     expert.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     expert.location.toLowerCase().includes(searchQuery.toLowerCase()) ||
     expert.specialties.some((s: string) => s.toLowerCase().includes(searchQuery.toLowerCase()))
+  );
+  // Traveler mode renders two groups (real threads first, browse directory below) — split the
+  // already-searched list back out by the flag conversationPartners/directoryExperts stamp.
+  const filteredConversations = filteredExperts.filter(expert => expert.isConversationPartner);
+  const filteredDirectory = filteredExperts.filter(expert => !expert.isConversationPartner);
+
+  const renderExpertCard = (expert: DisplayExpert, index: number) => (
+    <motion.div
+      key={expert.id}
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ delay: index * 0.05 }}
+    >
+      <Card
+        className={`cursor-pointer transition-all hover:shadow-md ${selectedExpert?.id === expert.id ? 'ring-2 ring-primary' : ''}`}
+        onClick={() => setSelectedExpert(expert)}
+        data-testid={`card-expert-${expert.id}`}
+      >
+        <CardContent className="p-4">
+          <div className="flex items-start gap-3">
+            <Avatar className="w-12 h-12">
+              <AvatarImage src={expert.avatar} alt={expert.name} />
+              <AvatarFallback>{expert.name[0]}</AvatarFallback>
+            </Avatar>
+            <div className="flex-1 min-w-0">
+              <h3 className="font-semibold text-slate-900 dark:text-white truncate">
+                {expert.name}
+              </h3>
+              {expert.isConversationPartner ? (
+                expert.lastMessage && (
+                  <p className="text-sm text-muted-foreground truncate mt-1">
+                    {expert.lastMessage}
+                  </p>
+                )
+              ) : (
+                <>
+                  <div className="flex items-center justify-between gap-2">
+                    {expert.rating !== null ? (
+                      <div className="flex items-center gap-1 text-amber-500 text-sm shrink-0">
+                        <Star className="w-3 h-3 fill-current" />
+                        {expert.rating.toFixed(1)}
+                      </div>
+                    ) : (
+                      <span className="text-xs text-muted-foreground shrink-0">New</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
+                    <MapPin className="w-3 h-3" />
+                    {expert.location}
+                  </div>
+                  <div className="flex flex-wrap gap-1 mt-2">
+                    {expert.specialties.slice(0, 2).map(spec => (
+                      <Badge key={spec} variant="secondary" className="text-xs">
+                        {spec}
+                      </Badge>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </motion.div>
   );
 
   if (isLoading) {
@@ -408,76 +486,57 @@ export default function Chat() {
             </div>
 
             <ScrollArea className="h-[calc(100vh-280px)]">
-              {isEarner && filteredExperts.length === 0 ? (
-                <div className="text-center py-12 px-2">
-                  <MessageSquare className="w-8 h-8 text-muted-foreground mx-auto mb-3" />
-                  <h3 className="font-semibold text-slate-900 dark:text-white mb-1">No conversations yet</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Messages clients send you will land here.
-                  </p>
-                </div>
+              {isEarner ? (
+                filteredExperts.length === 0 ? (
+                  <div className="text-center py-12 px-2">
+                    <MessageSquare className="w-8 h-8 text-muted-foreground mx-auto mb-3" />
+                    <h3 className="font-semibold text-slate-900 dark:text-white mb-1">No conversations yet</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Messages clients send you will land here.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3 pr-4">
+                    {filteredExperts.map((expert, index) => renderExpertCard(expert, index))}
+                  </div>
+                )
               ) : (
-              <div className="space-y-3 pr-4">
-                {filteredExperts.map((expert, index) => (
-                  <motion.div
-                    key={expert.id}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: index * 0.05 }}
-                  >
-                    <Card 
-                      className={`cursor-pointer transition-all hover:shadow-md ${selectedExpert?.id === expert.id ? 'ring-2 ring-primary' : ''}`}
-                      onClick={() => setSelectedExpert(expert)}
-                      data-testid={`card-expert-${expert.id}`}
-                    >
-                      <CardContent className="p-4">
-                        <div className="flex items-start gap-3">
-                          <Avatar className="w-12 h-12">
-                            <AvatarImage src={expert.avatar} alt={expert.name} />
-                            <AvatarFallback>{expert.name[0]}</AvatarFallback>
-                          </Avatar>
-                          <div className="flex-1 min-w-0">
-                            <h3 className="font-semibold text-slate-900 dark:text-white truncate">
-                              {expert.name}
-                            </h3>
-                            {expert.isConversationPartner ? (
-                              expert.lastMessage && (
-                                <p className="text-sm text-muted-foreground truncate mt-1">
-                                  {expert.lastMessage}
-                                </p>
-                              )
-                            ) : (
-                              <>
-                                <div className="flex items-center justify-between gap-2">
-                                  {expert.rating !== null ? (
-                                    <div className="flex items-center gap-1 text-amber-500 text-sm shrink-0">
-                                      <Star className="w-3 h-3 fill-current" />
-                                      {expert.rating.toFixed(1)}
-                                    </div>
-                                  ) : (
-                                    <span className="text-xs text-muted-foreground shrink-0">New</span>
-                                  )}
-                                </div>
-                                <div className="flex items-center gap-1 text-sm text-muted-foreground mt-1">
-                                  <MapPin className="w-3 h-3" />
-                                  {expert.location}
-                                </div>
-                                <div className="flex flex-wrap gap-1 mt-2">
-                                  {expert.specialties.slice(0, 2).map(spec => (
-                                    <Badge key={spec} variant="secondary" className="text-xs">
-                                      {spec}
-                                    </Badge>
-                                  ))}
-                                </div>
-                              </>
-                            )}
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  </motion.div>
-                ))}
-              </div>
+                <div className="space-y-5 pr-4">
+                  {/* Your conversations — real threads first (W1-B) */}
+                  <div>
+                    <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground px-1 mb-2">
+                      Your conversations
+                    </h4>
+                    {conversationPartners.length === 0 ? (
+                      <div className="text-center py-6 px-2" data-testid="empty-conversations">
+                        <MessageSquare className="w-6 h-6 text-muted-foreground mx-auto mb-2" />
+                        <p className="text-sm text-muted-foreground">
+                          No conversations yet. Message an expert below to get started.
+                        </p>
+                      </div>
+                    ) : filteredConversations.length === 0 ? (
+                      <p className="text-sm text-muted-foreground px-1">No conversations match your search.</p>
+                    ) : (
+                      <div className="space-y-3">
+                        {filteredConversations.map((expert, index) => renderExpertCard(expert, index))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Browse directory — how a traveler starts a NEW conversation */}
+                  <div>
+                    <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground px-1 mb-2">
+                      Experts
+                    </h4>
+                    {filteredDirectory.length === 0 ? (
+                      <p className="text-sm text-muted-foreground px-1">No experts match your search.</p>
+                    ) : (
+                      <div className="space-y-3">
+                        {filteredDirectory.map((expert, index) => renderExpertCard(expert, index))}
+                      </div>
+                    )}
+                  </div>
+                </div>
               )}
             </ScrollArea>
           </div>
