@@ -11,6 +11,7 @@ import { db } from "../db";
 import { affiliateEarnings, affiliateClicks, affiliatePartners } from "@shared/schema";
 import { eq, and, gte, lte, sql } from "drizzle-orm";
 import { getConversionReport, getPartnerizeCredentials } from "./partnerize/partnerize-client";
+import { fetchTravelpayoutsActions } from "./travelpayouts/statistics.service";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -84,28 +85,27 @@ async function fetchTravelpayoutsCommissions(
     return [];
   }
   try {
-    const params = new URLSearchParams({
-      token,
-      start_date: start.toISOString().slice(0, 10),
-      end_date: end.toISOString().slice(0, 10),
-      limit: "200",
-    });
-    const url = `https://api.travelpayouts.com/v1/statistics/payments?${params}`;
-    const res = await fetch(url, { headers: { Accept: "application/json" } });
-    if (!res.ok) {
-      console.warn(`[Reconciliation] Travelpayouts stats API ${res.status}`);
-      return [];
-    }
-    const json = await res.json();
-    const rows: ExternalCommission[] = (json.data || []).map((item: any) => ({
-      partnerReferenceId: String(item.id || item.booking_id || item.order_id || ""),
-      partner: "travelpayouts",
-      amount: parseFloat(item.amount || item.commission || "0"),
-      currency: item.currency || "USD",
-      reportedAt: item.date || item.created_at || start.toISOString(),
-      rawData: item,
-    }));
-    return rows.filter((r) => r.partnerReferenceId);
+    // Raw action rows across ALL Travelpayouts campaigns on the account (incl.
+    // WeGoTrip, campaign #150) via the real statistics API. The legacy
+    // /v1/statistics/payments endpoint returns 404 and must not be used.
+    const rows = await fetchTravelpayoutsActions(
+      start.toISOString().slice(0, 10),
+      end.toISOString().slice(0, 10)
+    );
+    return rows
+      .map((item) => {
+        const paid = parseFloat(String(item.paid_profit_usd || "0")) || 0;
+        const processing = parseFloat(String(item.processing_profit_usd || "0")) || 0;
+        return {
+          partnerReferenceId: String(item.action_id || ""),
+          partner: "travelpayouts",
+          amount: paid + processing,
+          currency: "USD",
+          reportedAt: item.created_at_day || start.toISOString(),
+          rawData: item as unknown as Record<string, unknown>,
+        } as ExternalCommission;
+      })
+      .filter((r) => r.partnerReferenceId);
   } catch (err) {
     console.error("[Reconciliation] Travelpayouts fetch error:", err);
     return [];
