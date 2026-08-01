@@ -1,6 +1,7 @@
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
+import { useUnreadMessageCount } from "@/hooks/use-message-read";
 import {
   Sidebar,
   SidebarContent,
@@ -54,10 +55,10 @@ const menuGroups = [
   {
     label: "Inbox",
     items: [
-      // W5-E: unified Messages + Updates. Badge is sourced from the SAME real
-      // /api/notifications/unread-count the bell reads (GET, no fabrication) — there is no
-      // unread-message concept in the chats schema, so the badge counts unread notifications
-      // only, never a fabricated messages count.
+      // W5-E: unified Messages + Updates. Badge is the SUM of two real, independently-fetched
+      // counts — unread notifications (GET /api/notifications/unread-count, the same source the
+      // bell reads) and unread received messages (GET /api/messages/unread/count, the real
+      // read-tracking API wired up in this lane) — never a fabricated number.
       { title: "Inbox", href: "/inbox", icon: Inbox },
     ],
   },
@@ -77,16 +78,17 @@ export function DashboardSidebar() {
 
   const initials = ((user?.firstName?.[0] || "") + (user?.lastName?.[0] || "")).toUpperCase() || "U";
 
-  // W5-E: the SAME real unread-notification count the bell (notification-bell.tsx) reads —
-  // no separate/fabricated count. There is no unread-message field on the chats schema, so
-  // the Inbox badge counts unread notifications only.
+  // W5-E: the SAME real unread-notification count the bell (notification-bell.tsx) reads,
+  // summed with the real unread-message count (GET /api/messages/unread/count) — two real
+  // sources, never a fabricated total.
   const { data: unreadNotifications } = useQuery<{ count: number }>({
     queryKey: ["/api/notifications/unread-count"],
     enabled: !!user,
     staleTime: 30_000,
     refetchInterval: 30000,
   });
-  const inboxUnreadCount = unreadNotifications?.count ?? 0;
+  const { data: unreadMessages } = useUnreadMessageCount(!!user);
+  const inboxUnreadCount = (unreadNotifications?.count ?? 0) + (unreadMessages?.count ?? 0);
 
   return (
     <Sidebar collapsible="icon" className="bg-white" style={{ borderRight: "1px solid #E8E8E2" }}>
