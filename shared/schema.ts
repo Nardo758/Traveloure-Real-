@@ -180,6 +180,23 @@ export const tripSuggestions = pgTable("trip_suggestions", {
 export type TripSuggestion = typeof tripSuggestions.$inferSelect;
 export type InsertTripSuggestion = typeof tripSuggestions.$inferInsert;
 
+// === Per-item plan comments (migration 165, QA_PUNCH_LIST W3-C item 12) ===
+// The communication half of the delivery loop: "can we do this earlier?" lives on the item,
+// not in detached chat. Declared here (deploy-push durability rule) even though the FK targets
+// (trips/itineraryItems/users) are declared elsewhere in this file — the `() => x.id` callback
+// form Drizzle uses for references is resolved lazily, so declaration order doesn't matter.
+export const tripItemComments = pgTable("trip_item_comments", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  tripId: varchar("trip_id").notNull().references(() => trips.id, { onDelete: "cascade" }),
+  itemId: varchar("item_id").notNull().references(() => itineraryItems.id, { onDelete: "cascade" }),
+  authorId: varchar("author_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  body: text("body").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type TripItemComment = typeof tripItemComments.$inferSelect;
+export type InsertTripItemComment = typeof tripItemComments.$inferInsert;
+
 export const reviewRatings = pgTable("review_ratings", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   localExpertId: varchar("local_expert_id").notNull().references(() => users.id, { onDelete: "cascade" }),

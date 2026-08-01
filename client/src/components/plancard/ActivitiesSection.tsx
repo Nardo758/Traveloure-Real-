@@ -4,7 +4,7 @@ import { Link } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import {
-  MapPin, History, MessageSquare, Activity,
+  MapPin, History, Activity,
   CheckCircle2, Circle, Navigation2, ChevronDown, ChevronUp, Map, Phone, BadgeCheck,
   Users, ShoppingCart, Undo2, type LucideIcon,
 } from "lucide-react";
@@ -12,6 +12,7 @@ import {
   TYPE_COLORS, STATUS_STYLES,
   type TemplateConfig, type PlanCardDay, type PlanCardActivity, type RoutingStatus,
 } from "./plancard-types";
+import { ItemComments } from "./ItemComments";
 import { TRANSPORT_MODE_ICONS, TRANSPORT_MODE_LABELS } from "@/lib/maps-platform";
 import { openInMaps, type TraveloureMode } from "@/lib/navigate";
 import type { InlineTransportLegData } from "@/components/itinerary/InlineTransportSelector";
@@ -701,18 +702,6 @@ export function ActivitiesSection({
                   })()}
 
                   <div className="flex gap-2.5 mt-2">
-                    {/* Mobile-lens audit #6: this was styled cursor-pointer/hover:underline with
-                        no onClick — a dead-looking-live control. No comments panel exists at this
-                        layer to open, so it's a plain (non-interactive) count, honestly styled. */}
-                    {a.comments > 0 && (
-                      <span
-                        className="text-[11px] text-blue-600 dark:text-blue-400 flex items-center gap-1"
-                        data-testid={`link-comments-${a.id}`}
-                      >
-                        <MessageSquare className="w-3 h-3" /> {a.comments} comment
-                        {a.comments > 1 ? "s" : ""}
-                      </span>
-                    )}
                     {(a.changes?.length ?? 0) > 0 && (
                       <span
                         className="text-[11px] text-amber-600 dark:text-amber-400 flex items-center gap-1"
@@ -722,6 +711,15 @@ export function ActivitiesSection({
                       </span>
                     )}
                   </div>
+
+                  {/* QA_PUNCH_LIST W3-C item 12 — the real thread the mobile-lens audit #6 note
+                      above (now removed) said didn't exist yet. Owner and the trip's assigned
+                      expert both have server-side access (server/routes/booking-actions.ts); a
+                      share/collaborator/friend viewer is neither, so this renders nothing for
+                      them rather than a component that would just 403. */}
+                  {(isOwner || isExpertViewer) && (
+                    <ItemComments tripId={tripId} itemId={a.id} className="mt-2" />
+                  )}
                 </div>
               </div>
             )}
