@@ -149,6 +149,45 @@ Items are struck through when merged to main (with the PR). Decision-maker calls
     approved plan. Add the advisor-only `isPlanApprovedForExpert` 409 to both (same pattern as
     the item-write gates; owner/author unaffected).
 
+19. **Canvas map interaction model — LAYERED (recommended, [DM] ratify; refines item 16).**
+    Decision-maker question (Aug 1): pins-as-the-expert-adds vs all-content-shown-and-select —
+    "each has downstream effects on the category filters." Recommendation: ONE map, TWO layers,
+    which dissolves the filter problem instead of picking a side:
+    - **Plan layer (always on):** pins of what's IN the plan, filtered by the day-focus control.
+      No category filters needed — it shows the build.
+    - **Discovery layer (contextual):** whenever an Add-panel source drawer is open, that drawer's
+      RESULTS render as candidate pins (distinct style) on the same map; the drawer's own
+      search/category filters ARE the map filters — one filter state driving both the list and
+      the pins (never a separate all-sources filter bar, and never every piece of Kyoto content
+      at once). Click candidate pin → preview card → "Add to Day N" (then it flips to a plan pin).
+    This gives both behaviors: build-awareness always, select-from-map whenever any source is open.
+20. **Content logistics envelope (decision-maker directive Aug 1: tag every piece of content with
+    location, time available/start, duration, transport-provided incl. pickup + dropoff).**
+    Ground truth — most homes EXIST on `provider_services`: coords/city (129/162), `meetingPoint`,
+    `transportProvided` (yes|no|not_applicable), `pickupAvailable`, `availability` jsonb +
+    `vendor_availability_slots` (real windows), duration. Gaps: no structured DROP-OFF point
+    anywhere; external/partner-feed, registry, DMO and custom content carry none of the transport
+    fields structurally. Build: ONE shared TS type (`shared/content-logistics.ts`):
+    `{ coords, availabilityWindows, durationMinutes, transport: { provided, pickupPoint,
+    dropoffPoint } }` — every Add-panel source maps its native fields into the envelope at read
+    time (services map their columns; partner feed maps feed fields; DMO/custom/registry map what
+    they honestly have — unknown = NULL, never fabricated, §13). Additive nullable columns ONLY
+    where a source has no home for a field (e.g. `drop_off_point` on provider_services; envelope
+    fields on itinerary_items so the plan retains what the source knew). The envelope is what the
+    canvas map, the gap-checker (21), and the Trip Card's §18 mode-aware CTA all consume — one
+    vocabulary, no per-surface re-derivation.
+21. **Transport-gap checker (decision-maker directive Aug 1: "AI should catch transport gaps",
+    external-source emphasis).** Rules-FIRST, deterministic (honest + free), LLM later if needed:
+    for each consecutive pair of LOCATED items in a day, compute the needed travel window
+    (existing `/api/itinerary/estimate-travel` rail) vs the actual gap (prev end/duration → next
+    start) and flag: ① no confirmed transport leg AND the arriving item's envelope isn't
+    transport-provided → **transport gap** (external-source content with UNKNOWN transport
+    defaults to flagged — never assumed covered); ② arrival-after-start → **timing infeasible**;
+    ③ pickup-provided but no pickup point recorded → **missing pickup detail**. Surfaced as
+    per-day cards in the EXISTING AI Gaps tab, each with one-click "Propose leg" riding the
+    ratified §18 L4 engine (engine proposes, expert confirms — machine transport never reaches
+    the traveler unconfirmed). Depends on 20 (the envelope is the signal source).
+
 ## Open — decision-maker calls [DM]
 
 - **Partner-drawer commission attribution.** "Open →" opens the partner's plain `websiteUrl`
