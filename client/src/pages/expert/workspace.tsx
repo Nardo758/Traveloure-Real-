@@ -373,13 +373,15 @@ function ItemsEditorPanel({
     onError: () => toast({ title: "Failed to update item", variant: "destructive" }),
   });
 
-  // FIX 2 (QA pass): item-level delete. DELETE /api/itinerary-items/:id already exists and works
-  // server-side (server/routes.ts:8969) — this was just never wired into the build UI. Mirrors the
-  // move-item mutation's invalidation set (itinerary-items + plancard) and also triggers the same
-  // energy recalc a day-move does via onDayMoved, since removing an item changes a day's load too.
+  // FIX 2 (QA pass): item-level delete. Must use the TRIP-SCOPED endpoint — the bare
+  // DELETE /api/itinerary-items/:id gates on trips.userId only (verifyTripOwnership), which 403s
+  // on authored builds (userId=NULL); the trip-scoped route carries the parallel isTripAuthor
+  // branch, the same reason move-item's PATCH above uses it. Mirrors the move-item mutation's
+  // invalidation set (itinerary-items + plancard) and also triggers the same energy recalc a
+  // day-move does via onDayMoved, since removing an item changes a day's load too.
   const deleteMutation = useMutation({
     mutationFn: async (itemId: string) => {
-      await apiRequest("DELETE", `/api/itinerary-items/${itemId}`);
+      await apiRequest("DELETE", `/api/trips/${tripId}/itinerary-items/${itemId}`);
     },
     onSuccess: (_res, itemId) => {
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/itinerary-items`] });
