@@ -48,6 +48,7 @@ class CacheSchedulerService {
   private partnerizeSyncTimer: NodeJS.Timeout | null = null;
   private partnerizeReportTimer: NodeJS.Timeout | null = null;
   private travelpayoutsReportTimer: NodeJS.Timeout | null = null;
+  private travelpayoutsInitialPollTimer: NodeJS.Timeout | null = null;
   private isRefreshing: boolean = false;
   private lastStats: CacheRefreshStats | null = null;
 
@@ -102,9 +103,12 @@ class CacheSchedulerService {
     // Travelpayouts commission polling — fetches action rows (incl. WeGoTrip)
     // via fetchTravelpayoutsActions and runs reconciliation auto-matching.
     // Gracefully no-ops (logs + skips) when TRAVELPAYOUTS_TOKEN is missing.
-    setTimeout(() => this.pollTravelpayoutsReports().catch((err) =>
-      console.error("[CacheScheduler] Initial Travelpayouts report poll failed:", err)
-    ), 4 * 60 * 1000);
+    this.travelpayoutsInitialPollTimer = setTimeout(() => {
+      this.travelpayoutsInitialPollTimer = null;
+      this.pollTravelpayoutsReports().catch((err) =>
+        console.error("[CacheScheduler] Initial Travelpayouts report poll failed:", err)
+      );
+    }, 4 * 60 * 1000);
 
     this.travelpayoutsReportTimer = setInterval(() => {
       this.pollTravelpayoutsReports().catch((err) =>
@@ -160,6 +164,10 @@ class CacheSchedulerService {
     if (this.travelpayoutsReportTimer) {
       clearInterval(this.travelpayoutsReportTimer);
       this.travelpayoutsReportTimer = null;
+    }
+    if (this.travelpayoutsInitialPollTimer) {
+      clearTimeout(this.travelpayoutsInitialPollTimer);
+      this.travelpayoutsInitialPollTimer = null;
     }
   }
 
