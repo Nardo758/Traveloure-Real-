@@ -4,6 +4,52 @@ Permanent, self-contained repo harnesses for the multi-role browser flows that m
 most, per `docs/EXECUTION_MAP.md` §4b ("Testing protocol — Fable-minimized"). Read §4b
 first — it is the spec this directory implements.
 
+## The suite
+
+| Journey | File | What it proves | Steps | Typical runtime |
+|---|---|---|---|---|
+| J1 expert-loop | `expert-loop.mjs` | Traveler↔expert item-routing loop (Trip-Canon Lane 1): send-to-expert, expert workspace access, custom add, per-item note, draft→in_review→delivered, the expert-return edge, delivered signal, add-to-checkout, cart projection, Distribute panel state. | 10 | ~2-3 min (browser-heavy — two authenticated Playwright contexts driving real page navigations) |
+| J2 plan-lifecycle | `plan-lifecycle.mjs` | The delivery handshake + mode-flip (QA_PUNCH_LIST W2-A): deliver → customer approve → the SAME expert's direct item POST/PATCH/DELETE 409s `plan_approved_suggest_instead` → suggestion → approval materializes a REAL `itinerary_items` row (#371) → a concurrent double-approve never double-materializes (§15) → request-changes unlocks direct-edit again → re-deliver → re-approve. | 13 | a few seconds (fully API-driven, no browser pages) |
+| J3 workstation-build | `workstation-build.mjs` | An authored build (`POST /api/expert/ready-made`) plus one item from EVERY Add-panel source — DMO (after refine-and-submit, the W5-C overlay), Platform content (with the `sourced`/dmo_content exclusion proven), an owned Platform service (the content-logistics envelope carry, migration 166), a Custom item (the honest geocode-fallback null), a Partner-catalog item (§16 no-URL-leak write shape) — then reorder + "Suggest best order" (optimize-order), the transport-gap checker flagging then clearing, and the canvas Plan map's honest environment-gated rendering. | 11 | ~25-30 s (one browser step; the rest are API calls) |
+| J4 store-lifecycle | `store-lifecycle.mjs` | Ready Made Trips build→store lifecycle: ship-to-store, PATCH price/plan, submit → admin pending queue, admin approve, all three public reads (feed/detail/storefront) return it, withdraw hides it from all three, resubmit re-enters the queue, and the delete matrix (submitted→409, withdrawn+unsold→204, withdrawn+sold→409 permanent). | 10 | a few seconds (fully API-driven) |
+| J5 traveler-comms | `traveler-comms.mjs` | The traveler `/inbox` (Messages tab = real conversation threads, Updates tab = real notifications, deep-link navigation, mark-read persistence) and per-item plan comments (migration 165): owner↔expert bell notifications both directions, a REJECTED advisor refused (403, the canonical `isTripAdvisor` allow-list), an unrelated user refused (403), and the thread rendering on both the traveler's Trip Card and the expert's Workstation editor. | 10 | ~1-2 min (four browser steps across two-plus contexts) |
+| J6 partner-gate | `partner-gate.mjs` | The tier-(c) customer-approval gate on partner-catalog content, on an ASSIGNMENT trip: an expert's partner add files a SUGGESTION (zero `itinerary_items` rows — genuinely locked) rather than writing the item directly; customer approval materializes it with the "Partner: `<Network>`" marker (unlocked); the §16 sweep scans every written column for a raw URL. | 3 | a few seconds (fully API-driven) |
+
+Re-running any of these is a Haiku job ("run `scripts/journeys/<name>.mjs`, report the
+verdict table") — never re-brief a journey that already exists as a script.
+
+## Running the whole suite: `run-all.mjs`
+
+```
+node scripts/journeys/run-all.mjs \
+  --base-url http://localhost:5601 \
+  --db-url "postgresql://postgres@localhost:55442/expws?host=/var/tmp/expws-pg"
+```
+
+Runs every journey **sequentially** (never in parallel — see docs/EXECUTION_MAP.md L25
+"Verification-integrity landmine") against the same booted app/DB, streams each
+journey's own full log as it runs, then prints one combined verdict table (steps /
+PASS / KNOWN_DEFECT / EXTERNAL / FAIL / exit code / wall time per journey, plus
+totals). Exit code is 0 iff every journey exited 0 — a single journey's failure
+doesn't stop the rest from running, so the whole suite's verdicts always get printed.
+
+- `--only <name[,name...]>` restricts the run to a subset, e.g.
+  `--only plan-lifecycle,store-lifecycle` (names are the `journey` field each script
+  reports, i.e. the table's left column above without the `J<n>` prefix).
+- `--out <dir>` is forwarded as each journey's own `--out`, with a per-journey
+  subdirectory appended automatically (`<dir>/<journey-name>/`) so screenshots from
+  different journeys never collide.
+- `--headed` / `--skip-external` are forwarded to every child journey unchanged.
+
+**IMPORTANT — set `RATE_LIMIT_LOOPBACK_SKIP=1` when booting the app before running
+`run-all.mjs`** (or several journeys back to back by hand). Six journeys' worth of
+`/api/*` calls from the same loopback IP inside one minute WILL trip
+`generalRateLimiter` (100 req/60s per IP, `server/infrastructure/rate-limiter.ts`) and
+429 subsequent journeys' `/api/auth/login` calls — proven live while building this
+suite (`traveler-comms` and `partner-gate` both crashed at login on an unskipped run).
+`RATE_LIMIT_LOOPBACK_SKIP=1` is the rate limiter's own documented CI escape hatch
+(loopback-only, never set it in production) — see each journey's cold-boot recipe.
+
 ## Why journeys are scripts, not prompts
 
 Writing a journey (working out the right selectors, endpoints, fixtures, and
@@ -21,7 +67,28 @@ Postgres under `/var/tmp` on a dedicated port/socket, boot the app with dummy ex
 keys (`STRIPE_SECRET_KEY=sk_test_x`, etc. — journeys are structural by default, see
 "Two tracks" below), and invoke the script itself. Read the top of the journey file you
 want to run — do not guess the recipe from a different journey or an old memory; each
-file is self-contained on purpose (§4b rule 1: "a self-contained driver").
+file is self-contained on purpose (§4b rule 1: "a self-contained driver"). Every
+journey in this suite shares the exact same recipe (same sandbox Postgres, same app
+port, same dummy keys) — `expert-loop.mjs`'s header is the canonical copy; the other
+five journeys' headers say "IDENTICAL to expert-loop.mjs's" rather than repeat it.
+
+## `lib/journey-lib.mjs` — the shared mechanics
+
+Every journey in this suite imports its plumbing from `lib/journey-lib.mjs` rather than
+re-deriving it: CLI/env config resolution (`resolveConfig`), the reachability
+`preflight` check + boot-recipe printer, a Postgres connection helper (`connectDb`,
+`dbOne`, `dbAll`, `resolveUserIdByEmail`), idempotent fixture-upsert helpers for the
+shapes every journey reuses (`upsertTrip`, `upsertCollaboratorOwner`, `upsertAdvisor`,
+`upsertItem`, `deleteItemsNotIn`), the Playwright launcher (`launchBrowser`,
+`executablePath` from `/opt/pw-browsers`, `--no-sandbox`), the `login` pattern
+(`page.request.post /api/auth/login`), DOM wait helpers (`waitVisible`, `notVisible`),
+and the step-runner (`createStepRunner` → `runStep` + `printReport`, the verdict-table
+collector + JSON/table/summary report + screenshot-on-FAIL + exit code). **Extend this
+module, don't fork it** — if a new journey needs a fixture shape none of the existing
+helpers cover, add a narrowly-scoped helper here (or, if it's genuinely one journey's
+own domain object — e.g. J3's `provider_services` fixture row, J4's
+`ready_made_purchases` seed — write it directly in that journey file; not everything
+belongs in the shared lib).
 
 The scripts themselves **check reachability and fail fast with the recipe printed** —
 they never try to boot Postgres or the app for you. That keeps a run deterministic: it
@@ -59,9 +126,20 @@ different starting conditions. Read the `resetAndSeedFixtures()` function (or
 equivalent) at the top of any journey before adding one of your own; copy its shape,
 don't invent a new one.
 
-Pick a new prefix per journey (`jrny-` is taken by `expert-loop.mjs`) and never reuse
-another journey's ids, even for "the same trip" — cross-journey coupling makes both
-journeys' resets fight each other.
+Pick a new prefix per journey and never reuse another journey's ids, even for "the
+same trip" — cross-journey coupling makes both journeys' resets fight each other.
+Prefixes taken so far: `jrny-` (expert-loop), `jrny2-` (plan-lifecycle), `jrny3-`
+(workstation-build), `jrny4-` (store-lifecycle), `jrny5-` (traveler-comms), `jrny6-`
+(partner-gate).
+
+A journey whose fixture has no caller-supplied id (e.g. `POST /api/expert/ready-made`
+mints its own trip id server-side — J3 and J4's authored builds) can't upsert-by-id;
+its reset step instead **deletes by a stable marker** (author id + a fixed title, e.g.
+`"Journey: Workstation Build"`) before calling the real creation endpoint fresh every
+run — still idempotent (a second run finds nothing to delete on a clean re-run of the
+SAME marker, or cleans up the prior run's row before minting a new one), just not an
+upsert. See `workstation-build.mjs`'s or `store-lifecycle.mjs`'s
+`resetAndSeedFixtures()` for the exact shape.
 
 ## The report contract
 
@@ -137,10 +215,13 @@ journey that needs one doesn't reinvent it.
 
 ## Adding a new journey
 
-1. Copy the shape of an existing journey (header comment: cold-boot recipe, known
-   defects if any, external-step note; CONFIG block; fixture ids + reset-and-seed;
-   `runStep`/`waitVisible`/`dbOne` helpers; numbered steps; JSON + table report).
-2. Pick a fixture id prefix nobody else uses.
+1. Copy the shape of an existing journey (header comment: cold-boot recipe — say
+   "IDENTICAL to expert-loop.mjs's" if it really is, don't repeat it verbatim — known
+   defects if any, external-step note; CONFIG via `resolveConfig()`; fixture ids +
+   `resetAndSeedFixtures()`; import `runStep`/`waitVisible`/`dbOne`/etc. from
+   `lib/journey-lib.mjs` rather than reimplementing them; numbered steps; call
+   `printReport(journeyName)` at the end for the JSON + table + summary report).
+2. Pick a fixture id prefix nobody else uses (see the list above).
 3. Every mutation step: UI assertion + DB assertion, both returned as human-readable
    strings in the step's `{ ui, db }` result — these strings ARE the report, so write
    them for a reader who has never seen the code.
@@ -148,6 +229,10 @@ journey that needs one doesn't reinvent it.
    from `expert-loop.mjs` Step 3 (self-detecting, not a hardcoded "expect failure") so
    it stops being KNOWN_DEFECT automatically the moment the bug is fixed.
 5. If a step needs a real external service, mark it `{ external: true }`.
-6. Prove the whole thing green (or green-with-only-known-defects) against a live
+6. Add the journey to `run-all.mjs`'s `JOURNEYS` array (`{ name, file }`) and to the
+   table + prefix list in this README.
+7. Prove the whole thing green (or green-with-only-known-defects) against a live
    booted server before committing — a journey that has never actually passed is not
-   a journey, it's an untested guess about selectors.
+   a journey, it's an untested guess about selectors. Re-run it a second time in place
+   (no DB reset in between) to prove the reset-and-seed is actually idempotent, not
+   just "worked once on a clean DB."
