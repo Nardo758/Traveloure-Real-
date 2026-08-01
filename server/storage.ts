@@ -544,7 +544,7 @@ export interface IStorage {
 
   // Expert Workspace Status
   getExpertAssignment(assignmentId: string): Promise<any>;
-  updateExpertAssignmentWorkspaceStatus(assignmentId: string, workspaceStatus: string): Promise<any>;
+  updateExpertAssignmentWorkspaceStatus(assignmentId: string, workspaceStatus: string, expectedCurrentStatus?: string): Promise<any>;
 
   // Expert/Provider Logistics
   getProviderAvailability(providerId: string): Promise<ProviderAvailabilitySchedule[]>;
@@ -4925,10 +4925,21 @@ export class DatabaseStorage implements IStorage {
     return row ?? null;
   }
 
-  async updateExpertAssignmentWorkspaceStatus(assignmentId: string, workspaceStatus: string): Promise<any> {
+  // W3-B: `expectedCurrentStatus` re-asserts the pre-transition value in the WHERE clause (§15
+  // atomic-conditional posture — mirrors the plan-review handler's `workspaceStatus='delivered'`
+  // re-assert). The route's earlier JS-level `validTransitions` check is TOCTOU-vulnerable on its
+  // own (two concurrent requests can both read the same starting status); the guard here is what
+  // actually makes a duplicate/racing transition lose (0 rows updated -> caller 409s), which now
+  // matters because a `delivered` transition also fires a customer email. Omitting the param keeps
+  // the prior unconditional-update behavior for any other caller.
+  async updateExpertAssignmentWorkspaceStatus(assignmentId: string, workspaceStatus: string, expectedCurrentStatus?: string): Promise<any> {
     const [updated] = await db.update(tripExpertAdvisors)
       .set({ workspaceStatus })
-      .where(eq(tripExpertAdvisors.id, assignmentId))
+      .where(
+        expectedCurrentStatus !== undefined
+          ? and(eq(tripExpertAdvisors.id, assignmentId), eq(tripExpertAdvisors.workspaceStatus, expectedCurrentStatus))
+          : eq(tripExpertAdvisors.id, assignmentId)
+      )
       .returning();
     return updated;
   }
