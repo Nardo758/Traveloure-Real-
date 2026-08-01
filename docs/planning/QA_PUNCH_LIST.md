@@ -63,6 +63,26 @@ Items are struck through when merged to main (with the PR). Decision-maker calls
     Folding this feed into the central registry stays the separately-filed §16 architectural item —
     this lane READS the existing feeds, it does not build a third content home.
 
+11. **Plan-level review step at delivery.** The expert's `draft → in_review → delivered` status is
+    workflow state, not a content gate — the customer's Trip Card shows items live as the expert
+    adds them, and delivery today triggers no customer action. Add the delivery handshake: on
+    `delivered`, the customer's Trip Card offers "Approve plan / Request changes" (the §18
+    delivered handshake's natural home). Ties to item 13's mode flip.
+12. **Per-item comments for the customer** — today the only channels are the suggestion
+    rejection-note and chat; there is no comment thread on the plan or its items.
+13. **[DM] Approval flips the editing mode (the "planning object vs final product" lifecycle).**
+    Decision-maker clarification (Aug 1): the planning object and the Trip Card are ONE object
+    (§18 circulate-by-reference — do NOT split into two artifacts; two copies = drift + the
+    paid-product-contradicts-plan class). The phase distinction the decision-maker wants is a
+    LIFECYCLE STATE on that one object: during planning the expert edits directly and the card
+    renders in "in planning" dress (draft banner, suggestion/approval controls prominent); once
+    the customer APPROVES (item 11), the card renders as the polished final Trip Card AND the
+    expert's direct-edit mode flips to suggest-mode — post-approval changes enter as suggestions
+    requiring customer approval, instead of silently mutating an approved plan. This gives the
+    "send the planning object around, then the Trip Card once final" behavior without a second
+    object or snapshots (snapshots stay money-events-only per §18). [DM: ratify the mode-flip
+    rule + whether pre-approval direct adds also need a suggest-by-default option.]
+
 ## Open — decision-maker calls [DM]
 
 - **Partner-drawer commission attribution.** "Open →" opens the partner's plain `websiteUrl`
