@@ -1404,6 +1404,21 @@ export default function ExpertWorkspace() {
     onError: (e: any) => toast({ title: "Couldn't rename the build", description: e.message, variant: "destructive" }),
   });
 
+  // W-5: delete a never-shipped draft build (Workstation home "Your builds" list). Only rows
+  // with no listing yet expose the control (server refuses shipped builds with 409 regardless —
+  // this is UI-side scoping, not the real gate). Id from the path, no body.
+  const deleteBuildMutation = useMutation({
+    mutationFn: async (buildId: string) => {
+      await apiRequest("DELETE", `/api/expert/ready-made/build/${buildId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/expert/ready-made/builds"] });
+      toast({ title: "Draft deleted" });
+    },
+    onError: (e: any) =>
+      toast({ title: "Couldn't delete this build", description: parseApiErrorMessage(e, "Something went wrong."), variant: "destructive" }),
+  });
+
   const assignedTrip = assignedTrips?.find(t => t.trip_id === tripId);
   // Authoring trips carry userId=NULL and no traveler, so they cannot come from assigned-trips.
   // Shape the context's trip row into the same view model the whole page already reads.
@@ -1786,7 +1801,7 @@ export default function ExpertWorkspace() {
   // ── Screen 1: workspace home — ONE create action + ONE "Your builds" list (v9 :208-224).
   if (!tripId) {
     const builds = myBuildsData?.builds ?? [];
-    type BuildRow = { key: string; title: string; sub: React.ReactNode; open: () => void; sortKey: string };
+    type BuildRow = { key: string; title: string; sub: React.ReactNode; open: () => void; sortKey: string; deleteId?: string };
     const rows: BuildRow[] = [
       ...(assignedTrips ?? []).map((t): BuildRow => ({
         key: `trip-${t.trip_id}`,
@@ -1799,6 +1814,7 @@ export default function ExpertWorkspace() {
         ),
         open: () => setLocation(`/expert/workspace/${t.trip_id}`),
         sortKey: t.assigned_at ?? "",
+        // No delete control: assigned-client rows are never author-deletable here.
       })),
       // W-3 task 3: authored lane = the builds endpoint — unshipped builds (no listing)
       // appear too, badged "Draft — not distributed"; shipped ones keep the Store badge
@@ -1828,6 +1844,8 @@ export default function ExpertWorkspace() {
           ),
           open: () => setLocation(`/expert/workspace/${b.id}`),
           sortKey: b.createdAt ?? "",
+          // Delete control only for never-shipped drafts (v1 scope): no listing row yet.
+          deleteId: b.listingId ? undefined : b.id,
         };
       }),
     ].sort((a, b) => (b.sortKey || "").localeCompare(a.sortKey || ""));
@@ -1905,9 +1923,12 @@ export default function ExpertWorkspace() {
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
             {rows.map((r) => (
-              <button
+              <div
                 key={r.key}
                 onClick={r.open}
+                role="button"
+                tabIndex={0}
+                onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") r.open(); }}
                 data-testid={`workspace-open-${r.key}`}
                 style={{
                   textAlign: "left", cursor: "pointer", padding: "10px 14px", borderRadius: 10,
@@ -1921,8 +1942,31 @@ export default function ExpertWorkspace() {
                   </span>
                   <span style={{ fontSize: 11.5, color: MID }}>{r.sub}</span>
                 </span>
-                <span style={{ fontSize: 11.5, fontWeight: 700, color: BRAND, whiteSpace: "nowrap" }}>Open →</span>
-              </button>
+                <span style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
+                  {/* W-5: never-shipped drafts only (deleteId is unset for assigned/shipped rows). */}
+                  {r.deleteId && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (window.confirm(`Delete "${r.title}"? This can't be undone.`)) {
+                          deleteBuildMutation.mutate(r.deleteId!);
+                        }
+                      }}
+                      disabled={deleteBuildMutation.isPending}
+                      data-testid={`button-delete-build-${r.deleteId}`}
+                      title="Delete draft"
+                      style={{
+                        background: "none", border: "none", padding: 4, display: "flex",
+                        alignItems: "center", color: DANGER,
+                        cursor: deleteBuildMutation.isPending ? "wait" : "pointer",
+                      }}
+                    >
+                      <Trash2 style={{ width: 14, height: 14 }} />
+                    </button>
+                  )}
+                  <span style={{ fontSize: 11.5, fontWeight: 700, color: BRAND, whiteSpace: "nowrap" }}>Open →</span>
+                </span>
+              </div>
             ))}
           </div>
         )}
