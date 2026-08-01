@@ -23,3 +23,8 @@ playwright/.auth/
 # Same rule, for the ad-hoc screenshot harnesses lanes drop at the repo root
 # (a running lane may still be using one, so ignore rather than delete).
 .shots-*.mjs
+
+# scripts/journeys/*.mjs output (§4b) — failing-step screenshots only, written to
+# ./journey-out by default (overridable via --out / JOURNEY_OUT_DIR). Never commit;
+# the verdict JSON/table in the run's stdout is the artifact that matters.
+journey-out/
