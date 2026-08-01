@@ -1,4 +1,4 @@
-import { tpFetch, getTravelpayoutsToken } from "./travelpayouts-client";
+import { tpFetch, getTravelpayoutsToken, getTravelpayoutsMarker } from "./travelpayouts-client";
 import type { CatalogItem } from "../experience-catalog.service";
 
 export interface AviasalesFlightParams {
@@ -50,8 +50,8 @@ export async function searchAviasalesFlights(params: AviasalesFlightParams): Pro
           duration: f.duration ? `${Math.floor(f.duration / 60)}h ${f.duration % 60}m` : null,
           categories: ["flight"],
           tags: f.airline ? [f.airline] : [],
-          bookingUrl: `https://www.aviasales.com/search/${params.origin}${f.depart_date?.replace(/-/g, "") || ""}${dest}1?marker=${getTravelpayoutsToken()}`,
-          affiliateUrl: `https://www.aviasales.com/search/${params.origin}${f.depart_date?.replace(/-/g, "") || ""}${dest}1?marker=${getTravelpayoutsToken()}`,
+          bookingUrl: `https://www.aviasales.com/search/${params.origin}${f.depart_date?.replace(/-/g, "") || ""}${dest}1?marker=${getTravelpayoutsMarker()}`,
+          affiliateUrl: `https://www.aviasales.com/search/${params.origin}${f.depart_date?.replace(/-/g, "") || ""}${dest}1?marker=${getTravelpayoutsMarker()}`,
           source: "travelpayouts/aviasales",
           lastUpdated: new Date(),
         } as CatalogItem);
