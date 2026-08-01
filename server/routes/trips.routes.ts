@@ -67,11 +67,6 @@ import { getTripTransportLegs, isTripScopedLeg } from "../services/trip-transpor
 import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant, type TripPreferences } from "../itinerary-optimizer";
 import { complexityTier } from "../services/smart-sequencing.service";
 import { getFee } from "../services/optimization-fee.service";
-import Stripe from "stripe";
-
-const stripeForOptimization = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
-  apiVersion: "2024-12-18.acacia" as any,
-});
 import { amadeusService } from "../services/amadeus.service";
 import { viatorService } from "../services/viator.service";
 import { cacheService } from "../services/cache.service";
