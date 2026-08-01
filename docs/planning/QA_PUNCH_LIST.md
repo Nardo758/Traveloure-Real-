@@ -24,6 +24,13 @@ Items are struck through when merged to main (with the PR). Decision-maker calls
 - ~~Item 5 (expert Return-to-planning button)~~, ~~item 7 (+Day persistence)~~, ~~item 8 (dashboard
   trip chip persists)~~, ~~item 9 (rating||4.5 + metrics buckets)~~ (#365)
 
+## Fixed (Wave 2, Aug 1 — PRs #367 / #368)
+
+- ~~Item 4 (withdraw-from-store + delete withdrawn unsold shipped builds)~~ (#367 — migration 163
+  CHECK-widen; resubmit re-enters the admin queue; sold history never deletable)
+- ~~Items 11 + 13 + 14b (delivery handshake, ratified approval mode-flip, reverse notification)~~
+  (#368 — migration 164; post-approval expert edits 409 into suggest-mode; owner/author never gated)
+
 ## Open — build items
 
 1. **Partner drawer: close the book-off-site loop.** The pill promises "book off-site, log it here",
@@ -123,6 +130,70 @@ Items are struck through when merged to main (with the PR). Decision-maker calls
     [DM, bigger design call: whether the traveler gets a unified INBOX (chat threads + the item-14
     trip-event notifications in one place, mirroring the earner console's Inbox module) — or chat
     stays chat and the bell stays the bell.]
+
+16. **Canvas lane (decision-maker raised Aug 1: "location, surface, and order"): plan map ON the
+    build canvas.** Ground truth: the only map in the Workstation is inside the Platform-services
+    browse drawer — the build canvas (the day list) renders no map of the plan's own items, so
+    experts sequence days with zero spatial awareness even though items now carry real coords
+    (W1/162). Build: a collapsible plan-map section on the canvas (mirrors the Trip Card's map
+    peer) — pins for located items, colored/filtered by the day-focus control, click-pin →
+    scroll-to-item; reuse the file's existing @vis.gl components + `MapSectionErrorBoundary`
+    pattern (a Maps billing/key failure collapses to a one-line notice, never blanks the canvas);
+    unlocated items listed honestly under the map ("no location yet"), never fabricated pins (§13).
+17. **Canvas lane: location autocomplete.** No Places autocomplete exists anywhere in the client —
+    Custom-form location and new-build destination are plain text with silent submit-time geocode.
+    Wire Google Places autocomplete on both (the Maps JS provider is already mounted in the
+    workspace; the key setup includes Places). On pick: store the text + lat/lng (exact precision).
+    Fallback: Places unavailable → plain text + the existing submit-geocode, unchanged.
+18. **Canvas lane: reorder UI (server already done) + a mode-flip gap it exposed.**
+    `POST /api/trips/:tripId/itinerary/reorder` (+ `optimize-order`) exist, properly
+    `authorizeTripLogistics`-gated, with `sort_order` on items — no Workstation UI calls them.
+    Build: within-day reorder controls (up/down per item in the day list; drag optional later)
+    calling the existing endpoint; surface `optimize-order` as a per-day "Suggest best order"
+    action (applies only via the same reorder call — expert confirms, §18 D1a posture).
+    **MUST also close the gap this audit found: the reorder + optimize-order endpoints are NOT
+    covered by the W2-A mode-flip** — a post-approval expert could silently resequence an
+    approved plan. Add the advisor-only `isPlanApprovedForExpert` 409 to both (same pattern as
+    the item-write gates; owner/author unaffected).
+
+19. **Canvas map interaction model — LAYERED (recommended, [DM] ratify; refines item 16).**
+    Decision-maker question (Aug 1): pins-as-the-expert-adds vs all-content-shown-and-select —
+    "each has downstream effects on the category filters." Recommendation: ONE map, TWO layers,
+    which dissolves the filter problem instead of picking a side:
+    - **Plan layer (always on):** pins of what's IN the plan, filtered by the day-focus control.
+      No category filters needed — it shows the build.
+    - **Discovery layer (contextual):** whenever an Add-panel source drawer is open, that drawer's
+      RESULTS render as candidate pins (distinct style) on the same map; the drawer's own
+      search/category filters ARE the map filters — one filter state driving both the list and
+      the pins (never a separate all-sources filter bar, and never every piece of Kyoto content
+      at once). Click candidate pin → preview card → "Add to Day N" (then it flips to a plan pin).
+    This gives both behaviors: build-awareness always, select-from-map whenever any source is open.
+20. **Content logistics envelope (decision-maker directive Aug 1: tag every piece of content with
+    location, time available/start, duration, transport-provided incl. pickup + dropoff).**
+    Ground truth — most homes EXIST on `provider_services`: coords/city (129/162), `meetingPoint`,
+    `transportProvided` (yes|no|not_applicable), `pickupAvailable`, `availability` jsonb +
+    `vendor_availability_slots` (real windows), duration. Gaps: no structured DROP-OFF point
+    anywhere; external/partner-feed, registry, DMO and custom content carry none of the transport
+    fields structurally. Build: ONE shared TS type (`shared/content-logistics.ts`):
+    `{ coords, availabilityWindows, durationMinutes, transport: { provided, pickupPoint,
+    dropoffPoint } }` — every Add-panel source maps its native fields into the envelope at read
+    time (services map their columns; partner feed maps feed fields; DMO/custom/registry map what
+    they honestly have — unknown = NULL, never fabricated, §13). Additive nullable columns ONLY
+    where a source has no home for a field (e.g. `drop_off_point` on provider_services; envelope
+    fields on itinerary_items so the plan retains what the source knew). The envelope is what the
+    canvas map, the gap-checker (21), and the Trip Card's §18 mode-aware CTA all consume — one
+    vocabulary, no per-surface re-derivation.
+21. **Transport-gap checker (decision-maker directive Aug 1: "AI should catch transport gaps",
+    external-source emphasis).** Rules-FIRST, deterministic (honest + free), LLM later if needed:
+    for each consecutive pair of LOCATED items in a day, compute the needed travel window
+    (existing `/api/itinerary/estimate-travel` rail) vs the actual gap (prev end/duration → next
+    start) and flag: ① no confirmed transport leg AND the arriving item's envelope isn't
+    transport-provided → **transport gap** (external-source content with UNKNOWN transport
+    defaults to flagged — never assumed covered); ② arrival-after-start → **timing infeasible**;
+    ③ pickup-provided but no pickup point recorded → **missing pickup detail**. Surfaced as
+    per-day cards in the EXISTING AI Gaps tab, each with one-click "Propose leg" riding the
+    ratified §18 L4 engine (engine proposes, expert confirms — machine transport never reaches
+    the traveler unconfirmed). Depends on 20 (the envelope is the signal source).
 
 ## Open — decision-maker calls [DM]
 
