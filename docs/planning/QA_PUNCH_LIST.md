@@ -49,6 +49,14 @@ Items are struck through when merged to main (with the PR). Decision-maker calls
 owner-only, denormalized names) has ZERO client callers — retire as dead code or fold into the new
 `trip_item_comments` system; do not build on it meanwhile.
 
+## Fixed (Wave 4, Aug 1 — PR #374)
+
+- ~~Items 16 + 17 + 18 (the canvas lane: plan map ON the build canvas — plan layer, day-filtered,
+  error-bounded, honest unlocated count; Places autocomplete on Custom location + new-build
+  destination with proven plain-text fallback; per-item reorder + confirm-gated "Suggest best
+  order" + the mode-flip 409 extended to reorder/optimize-order advisor paths)~~ (#374 — the
+  item-19 DISCOVERY layer stays pending [DM] ratification of the layered-map model)
+
 ## Open — build items
 
 1. **Partner drawer: close the book-off-site loop.** The pill promises "book off-site, log it here",
