@@ -7,6 +7,15 @@ export function getTravelpayoutsToken(): string | null {
   return process.env.TRAVELPAYOUTS_TOKEN || null;
 }
 
+/**
+ * The Travelpayouts affiliate marker (partner id) — NOT the API token. Used as the
+ * attribution parameter on outbound partner links (e.g. WeGoTrip's `?sub_id=<marker>`,
+ * hotel widgets' `?marker=<marker>`). Same account marker as booking/agoda services.
+ */
+export function getTravelpayoutsMarker(): string {
+  return process.env.TRAVELPAYOUTS_MARKER || "405110";
+}
+
 export function assertToken(): string {
   const token = getTravelpayoutsToken();
   if (!token) {
