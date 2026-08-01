@@ -16,6 +16,14 @@ Items are struck through when merged to main (with the PR). Decision-maker calls
 - ~~Seeded provider_services rows had NULL coordinates → no map pins~~ (#360 — migration 162 re-backfill
   + seeders born-coordinated; needs a Replit publish to apply on prod)
 
+## Fixed (Wave 1, Aug 1 — PRs #363 / #364 / #365)
+
+- ~~Items 1+2+3 (partner log-booking loop; Platform-content pill; My-services pill)~~ (#364 — all six
+  Add-panel pills live; the "Soon pills" [DM] is RESOLVED, both got real reads)
+- ~~Item 15 minimal (traveler /chat conversation-threads list)~~ (#363; the unified-Inbox [DM] stays open)
+- ~~Item 5 (expert Return-to-planning button)~~, ~~item 7 (+Day persistence)~~, ~~item 8 (dashboard
+  trip chip persists)~~, ~~item 9 (rating||4.5 + metrics buckets)~~ (#365)
+
 ## Open — build items
 
 1. **Partner drawer: close the book-off-site loop.** The pill promises "book off-site, log it here",
