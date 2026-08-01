@@ -795,29 +795,20 @@ export const customVenues = pgTable("custom_venues", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-// === Activity Bookings (Viator/external provider bookings) ===
-// NOTE: This table exists in production with real user booking data (including live
-// Stripe PaymentIntents). Kept in schema so Drizzle does not propose DROP TABLE.
-// The one real prod booking (Segway Paris, user 79cdafd1) must not be lost.
-// Future work: migrate real rows to service_bookings and remove this table.
-
-export const activityBookings = pgTable("activity_bookings", {
-  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
-  userId: varchar("user_id").notNull(),
-  provider: varchar("provider", { length: 50 }).notNull(),
-  productCode: varchar("product_code", { length: 255 }),
-  productTitle: text("product_title").notNull(),
-  imageUrl: text("image_url"),
-  priceAmount: decimal("price_amount").notNull(),
-  priceCurrency: varchar("price_currency", { length: 10 }).default("USD").notNull(),
-  bookingUrl: text("booking_url"),
-  stripePaymentIntentId: varchar("stripe_payment_intent_id", { length: 255 }),
-  status: varchar("status", { length: 20 }).default("pending").notNull(),
-  createdAt: timestamp("created_at").defaultNow(),
-  productOptionCode: varchar("product_option_code", { length: 100 }),
-  providerBookingRef: varchar("provider_booking_ref", { length: 100 }),
-  travelDate: varchar("travel_date", { length: 20 }),
-  travelerCount: integer("traveler_count").default(1),
+// === Legacy Archives (generic durable archive for retired tables with real rows) ===
+// Migration 168 (CLAUDE.md Coordination Prevention record): a generic archive for the class of
+// problem "a table has zero code consumers but holds real user data, so it can't simply be
+// dropped." Declared here per the deploy-push-durability rule -- an UNDECLARED archive table is
+// itself the next drop target on a Replit publish, which would defeat the entire point of
+// archiving into it. First (and so far only) tenant: `activity_bookings`, archived then dropped
+// by migration 168 (one real prod row -- Segway Paris, user 79cdafd1, a live Stripe
+// PaymentIntent -- preserved verbatim as a jsonb row here, source_table='activity_bookings').
+export const legacyArchives = pgTable("legacy_archives", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sourceTable: varchar("source_table").notNull(),
+  archivedAt: timestamp("archived_at").defaultNow(),
+  reason: text("reason"),
+  rowData: jsonb("row_data").notNull(),
 });
 
 // === Service Bookings ===

@@ -1460,6 +1460,23 @@ when rows are absent; seeding them makes the knobs DISCOVERABLE/editable in the 
 list (which shows only existing rows). Idempotent `ON CONFLICT (setting_key) DO NOTHING` — never
 overwrites an admin-tuned value, mirroring the 033 seed pattern.
 
+**Migration 168 (Aug 1, 2026; registered in `migration-files.ts`) — archive-then-drop `activity_bookings`:**
+closes the QA_PUNCH_LIST "activity_bookings [DM, re-framed]" item (W5-D PR #377 follow-on). The
+`shared/schema.ts` `activityBookings` pgTable declaration existed only as a DROP-guard: the table has zero
+code consumers (no route, no storage method, no client caller — re-verified by a whole-repo grep before this
+change), but it holds ONE real production row (Segway Paris, user `79cdafd1`, a live Stripe PaymentIntent), so
+deleting the declaration outright would let the next Replit publish-push drop the table and lose that row (the
+"undeclared table is a drop target" trap documented above). Decision-maker ratified: ARCHIVE then DROP. 168
+① creates a new generic, durable archive table `legacy_archives` (`id`/`source_table`/`archived_at`/`reason`/
+`row_data` jsonb; no CHECK) for exactly this class of problem — a retired table that still holds real rows;
+② guarded, idempotent copy: every `activity_bookings` row is inserted as `row_data = to_jsonb(t.*)` with
+`source_table='activity_bookings'`, skipped on re-run if already archived; ③ `DROP TABLE activity_bookings`.
+No-ops cleanly (just ensures `legacy_archives` exists) if the table is already absent, e.g. fresh/dev DBs.
+`legacyArchives` is declared in `shared/schema.ts` in the SAME commit that removes the `activityBookings`
+declaration (the deploy-push-durability rule — an undeclared archive table would itself become the next drop
+target, defeating the point). The one real prod booking survives queryably as a `legacy_archives` jsonb row;
+the publish prompt this declaration caused ends. No other code paths touched.
+
 **Previous Coordination Failure (Jun 3, 2026):**
 - Commit bfc3db2 made ESO canonical without accounting for booking-FK fact
 - This was uncoordinated and left the transaction path orphaned
