@@ -1,4 +1,4 @@
-import { getTravelpayoutsToken, getTravelpayoutsMarker } from "./travelpayouts-client";
+import { getTravelpayoutsMarker } from "./travelpayouts-client";
 import type { CatalogItem } from "../experience-catalog.service";
 import { getCachedFeed, setCachedFeed } from "./travelpayouts-cache";
 
@@ -76,8 +76,9 @@ export interface WeGoTripSearchParams {
 }
 
 export async function searchWeGoTripProducts(params: WeGoTripSearchParams): Promise<CatalogItem[]> {
-  if (!getTravelpayoutsToken()) return [];
-
+  // NOTE: the WeGoTrip catalog API is public — no Travelpayouts API token is needed to fetch
+  // products. Attribution comes solely from the ?sub_id=<marker> link parameter (see header),
+  // and getTravelpayoutsMarker() always has a value. So no token gate here.
   const cityName = (params.city || params.destination || "").trim();
   if (!cityName) return [];
   const lang = params.lang || "en";
@@ -114,14 +115,14 @@ export async function searchWeGoTripProducts(params: WeGoTripSearchParams): Prom
  * Build the tracked outbound product URL (verified Travelpayouts format):
  *   https://wegotrip.com/{city-slug}-d{cityId}/{product-slug}-p{productId}/?sub_id=<MARKER>
  */
-function buildWeGoTripUrl(p: any): string | null {
+export function buildWeGoTripUrl(p: any): string | null {
   const citySlug = p?.city?.slug;
   const cityId = p?.city?.id;
   if (!p?.slug || !p?.id || !citySlug || !cityId) return null;
   return `https://wegotrip.com/${citySlug}-d${cityId}/${p.slug}-p${p.id}/?sub_id=${encodeURIComponent(getTravelpayoutsMarker())}`;
 }
 
-function mapWeGoTripProducts(products: any[], params: WeGoTripSearchParams): CatalogItem[] {
+export function mapWeGoTripProducts(products: any[], params: WeGoTripSearchParams): CatalogItem[] {
   return products.map((p: any): CatalogItem => {
     const url = buildWeGoTripUrl(p);
     return {
@@ -159,7 +160,7 @@ export async function getWeGoTripCities(): Promise<{ id: number; name: string; c
       return cached.map((c: any) => ({
         id: c.id,
         name: c.name || c.title,
-        country: c.country_name || c.country || "",
+        country: typeof c.country === "string" ? c.country : c.country?.name || c.country_name || "",
       }));
     }
 
