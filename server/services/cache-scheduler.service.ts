@@ -124,9 +124,12 @@ class CacheSchedulerService {
   // logs a warning and returns an empty array when the token isn't configured.
   private async pollTravelpayoutsReports(): Promise<void> {
     try {
-      await affiliateReconciliationService.fetchExternalReports("this_month", "travelpayouts");
-      await affiliateReconciliationService.matchRecords("this_month", "travelpayouts");
-      console.log("[CacheScheduler] Travelpayouts report poll + auto-match complete");
+      // Rolling 35-day window (instead of "this_month") so commissions the
+      // partner reports in the first days of a new month still match internal
+      // earnings created near the end of the previous month. matchRecords is
+      // idempotent for already-matched rows, so overlapping runs are safe.
+      await affiliateReconciliationService.matchRecords("last_35_days", "travelpayouts");
+      console.log("[CacheScheduler] Travelpayouts report poll + auto-match complete (last_35_days)");
     } catch (err) {
       console.error("[CacheScheduler] Travelpayouts report poll error:", err);
     }
@@ -138,9 +141,12 @@ class CacheSchedulerService {
   // array when Partnerize credentials aren't configured.
   private async pollPartnerizeReports(): Promise<void> {
     try {
-      await affiliateReconciliationService.fetchExternalReports("this_month", "partnerize");
-      await affiliateReconciliationService.matchRecords("this_month", "partnerize");
-      console.log("[CacheScheduler] Partnerize report poll + auto-match complete");
+      // Rolling 35-day window (instead of "this_month") so commissions the
+      // partner reports in the first days of a new month still match internal
+      // earnings created near the end of the previous month. matchRecords is
+      // idempotent for already-matched rows, so overlapping runs are safe.
+      await affiliateReconciliationService.matchRecords("last_35_days", "partnerize");
+      console.log("[CacheScheduler] Partnerize report poll + auto-match complete (last_35_days)");
     } catch (err) {
       console.error("[CacheScheduler] Partnerize report poll error:", err);
     }

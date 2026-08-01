@@ -58,6 +58,15 @@ function getPeriodDates(period: string): { start: Date; end: Date } {
       end: new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59),
     };
   }
+  if (period === "last_35_days") {
+    // Rolling window used by background polls: wide enough to span a month
+    // boundary so commissions reported in the first days of a new month still
+    // match internal earnings created near the end of the previous month.
+    return {
+      start: new Date(now.getTime() - 35 * 24 * 60 * 60 * 1000),
+      end: now,
+    };
+  }
   if (period === "last_90_days") {
     return {
       start: new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000),
