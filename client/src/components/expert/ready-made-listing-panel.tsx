@@ -152,6 +152,10 @@ export default function ReadyMadeListingPanel({
     onSuccess: (body) => {
       qc.invalidateQueries({ queryKey: [`/api/expert/workspace-context/${tripId}`] });
       qc.invalidateQueries({ queryKey: [`/api/expert/ready-made/${listing.id}/earnings-preview`] });
+      // FIX 5 (QA pass): the Distribute→Social caption (SocialKitCard, promo-text engine) reads
+      // duration/price/title off this same listing — without this invalidation the caption query
+      // stayed cached and showed stale copy until a full reload. Same query key SocialKitCard uses.
+      qc.invalidateQueries({ queryKey: [`/api/promo-text?targetType=ready_made&targetId=${listing.id}`] });
       toast(
         body.reReviewRequired
           ? { title: "Saved — back in review", description: "That change affects what a buyer sees, so the listing re-enters the approval queue." }
