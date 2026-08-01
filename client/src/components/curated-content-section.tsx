@@ -230,6 +230,10 @@ function CuratedCard({
     }
   };
 
+  // §13/MONEY_MAP F-1: /api/content/checkout is gated off server-side (501,
+  // code "content_checkout_unavailable") — no fulfillment path exists for a curated-item
+  // purchase yet. This mutation is kept for when that leg lands, but onError surfaces the
+  // server's honest message rather than a generic failure.
   const stripeCheckoutMutation = useMutation({
     mutationFn: async () => {
       // Only send itemId + itemType — price/title/currency resolved server-side
@@ -246,21 +250,34 @@ function CuratedCard({
         toast({ title: "Checkout unavailable", description: "Could not open checkout. Try Add to Trip instead.", variant: "destructive" });
       }
     },
-    onError: () => {
+    onError: (err: unknown) => {
+      const message =
+        err instanceof Error && err.message.includes("content_checkout_unavailable")
+          ? "Checkout for curated content isn't available yet."
+          : "Unable to start checkout. Please sign in or try again.";
       toast({
-        title: "Checkout failed",
-        description: "Unable to start checkout. Please sign in or try again.",
+        title: "Checkout unavailable",
+        description: message,
         variant: "destructive",
       });
     },
   });
 
+  // Non-affiliate curated items with a price have NO fulfillment path today (F-1) — the "Book
+  // Now" button would only lead to the 501 above. Rather than let a traveler click into that
+  // dead end, this case is surfaced as a disabled, honestly-labeled control below.
+  const isCuratedCheckoutUnavailable = !isAffiliate && !!item.price && parseFloat(item.price) > 0;
+
   const handleBookNow = () => {
     if (isAffiliate) {
       handleBookViaTraveloure();
-    } else if (item.price && parseFloat(item.price) > 0) {
-      // Non-affiliate curated items with a price → Stripe Checkout Session
-      stripeCheckoutMutation.mutate();
+    } else if (isCuratedCheckoutUnavailable) {
+      // Do not fabricate an alternative flow — this path has no working checkout yet.
+      toast({
+        title: "Checkout unavailable",
+        description: "Checkout for curated content isn't available yet.",
+        variant: "destructive",
+      });
     } else {
       // No price available → navigate to experience planner with destination
       const dest = item.city || item.country || "";
@@ -372,8 +389,21 @@ function CuratedCard({
                   </>
                 )}
               </Button>
+            ) : isCuratedCheckoutUnavailable ? (
+              // F-1: no fulfillment path exists for a priced curated item yet — disabled with an
+              // honest label instead of a "Book Now" that only leads to a dead-end 501.
+              <Button
+                size="sm"
+                variant="outline"
+                className="flex-1 text-xs h-8"
+                disabled
+                title="Checkout for curated content isn't available yet."
+                data-testid={`button-book-now-${item.id}`}
+              >
+                Not available yet
+              </Button>
             ) : (
-              // Non-affiliate curated item — Stripe checkout or trip planner
+              // Non-affiliate curated item with no price — trip planner
               <Button
                 size="sm"
                 className="flex-1 text-xs h-8"
