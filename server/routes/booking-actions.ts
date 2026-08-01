@@ -5,6 +5,7 @@
 
 import { Router } from 'express';
 import crypto from 'crypto';
+import { z } from 'zod';
 import { stripePaymentService } from '../services/stripe-payment.service';
 import { isAuthenticated } from '../replit_integrations/auth';
 import { trackFunnelEvent } from '../utils/funnelTracker';
@@ -12,13 +13,14 @@ import { bookingService } from '../services/booking.service';
 import { verifyTripOwnership } from '../utils/trip-ownership';
 import { authorizeTripLogistics } from '../utils/trip-logistics-auth';
 import { isTripAuthor } from '../utils/trip-authorship';
+import { isTripAdvisor, TRIP_ADVISOR_ACCESS_STATUSES } from '../utils/trip-advisor';
 import { getUserId } from '../utils/auth';
 import { storage } from '../storage';
 import { db } from '../db';
 import { and, desc, eq, inArray } from 'drizzle-orm';
 // Aliased: this router already uses `itineraryItems` as a local variable name in more than one
 // handler, and shadowing the table import would be a silent footgun.
-import { notifications, itineraryItems as itineraryItemsTable, tripCollaborators, tripExpertAdvisors, PLAN_APPROVAL_STATUSES } from '@shared/schema';
+import { notifications, itineraryItems as itineraryItemsTable, tripCollaborators, tripExpertAdvisors, tripItemComments, users, PLAN_APPROVAL_STATUSES } from '@shared/schema';
 import { EXPERT_SHARE_RATE } from '../services/commission';
 import {
   sendPlanDeliveredEmail,
@@ -1248,6 +1250,157 @@ router.post('/trips/:id/plan-review', isAuthenticated, async (req, res) => {
     });
   } catch (error: any) {
     console.error('Plan review error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ─── Per-item plan comments (QA_PUNCH_LIST W3-C item 12, migration 165) ────────────────────
+// The communication half of the delivery loop: "can we do this earlier?" lives on the item,
+// not in detached chat.
+
+/**
+ * FABLE-REVIEW: access gate. Same tri-predicate as the rest of this file — trip OWNER
+ * (`isTripOwner`, trips.userId only), OR assigned advisor via the CANONICAL allow-list
+ * predicate (`isTripAdvisor` from server/utils/trip-advisor.ts — pending|accepted|assigned
+ * grant, rejected denies; NEVER `storage.isExpertAssignedToTrip`/the stale
+ * `getExistingAdvisorRecord`-style `status IN ('pending','accepted')` filters, which
+ * under-grant admin-confirmed 'assigned' experts), OR trip AUTHOR (`isTripAuthor` —
+ * authored/speculative builds). Never `getTripRole` (CLAUDE.md L10: it never reads `trips`
+ * and under-grants the owner).
+ */
+async function resolveItemCommentRole(tripId: string, userId: string): Promise<'owner' | 'expert' | 'author' | null> {
+  if (await isTripOwner(tripId, userId)) return 'owner';
+  if (await isTripAdvisor(tripId, userId)) return 'expert';
+  if (await isTripAuthor(tripId, userId)) return 'author';
+  return null;
+}
+
+const itemCommentBodySchema = z.object({
+  body: z.string().trim().min(1).max(2000),
+});
+
+/** Shared read: comment rows for an item, joined to the real author name (§13 — never fabricated). */
+async function loadItemComments(itemId: string) {
+  const rows = await db
+    .select({
+      id: tripItemComments.id,
+      body: tripItemComments.body,
+      createdAt: tripItemComments.createdAt,
+      authorId: tripItemComments.authorId,
+      authorFirstName: users.firstName,
+      authorLastName: users.lastName,
+    })
+    .from(tripItemComments)
+    .innerJoin(users, eq(users.id, tripItemComments.authorId))
+    .where(eq(tripItemComments.itemId, itemId))
+    .orderBy(tripItemComments.createdAt);
+
+  return rows.map((r) => ({
+    id: r.id,
+    body: r.body,
+    createdAt: r.createdAt,
+    authorId: r.authorId,
+    authorName: [r.authorFirstName, r.authorLastName].filter(Boolean).join(' ') || 'Member',
+  }));
+}
+
+router.get('/trips/:tripId/items/:itemId/comments', isAuthenticated, async (req, res) => {
+  try {
+    const userId = getUserId(req);
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+    const { tripId, itemId } = req.params;
+
+    const role = await resolveItemCommentRole(tripId, userId);
+    if (!role) return res.status(403).json({ error: 'Access denied' });
+
+    const item = await storage.getItineraryItemByIdAndTrip(itemId, tripId);
+    if (!item) return res.status(404).json({ error: 'Item not found in this trip' });
+
+    const comments = await loadItemComments(itemId);
+    res.json({ comments });
+  } catch (error: any) {
+    console.error('Get item comments error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/trips/:tripId/items/:itemId/comments', isAuthenticated, async (req, res) => {
+  try {
+    // §14: author is the SESSION user — never a body-supplied id.
+    const userId = getUserId(req);
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+    const { tripId, itemId } = req.params;
+
+    const parsed = itemCommentBodySchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: 'body must be a string of 1-2000 characters' });
+    }
+
+    const role = await resolveItemCommentRole(tripId, userId);
+    if (!role) return res.status(403).json({ error: 'Access denied' });
+
+    const item = await storage.getItineraryItemByIdAndTrip(itemId, tripId);
+    if (!item) return res.status(404).json({ error: 'Item not found in this trip' });
+
+    const [inserted] = await db
+      .insert(tripItemComments)
+      .values({ tripId, itemId, authorId: userId, body: parsed.data.body })
+      .returning({ id: tripItemComments.id });
+
+    // Reverse notification, mirroring the plan-review/suggestion notification inserts above
+    // exactly (type, data shape). Owner comments -> notify the assigned expert at their
+    // workspace path; expert comments -> notify the trip owner at their trip path. Author-mode
+    // comments (authored/speculative builds) have no traveler owner and no guaranteed advisor —
+    // skip silently, never fabricate a recipient. Best-effort: a notification failure never
+    // fails the comment already committed above.
+    try {
+      if (role === 'owner') {
+        const [advisor] = await db
+          .select({ localExpertId: tripExpertAdvisors.localExpertId })
+          .from(tripExpertAdvisors)
+          .where(
+            and(
+              eq(tripExpertAdvisors.tripId, tripId),
+              inArray(tripExpertAdvisors.status, [...TRIP_ADVISOR_ACCESS_STATUSES]),
+            ),
+          )
+          .orderBy(desc(tripExpertAdvisors.assignedAt))
+          .limit(1);
+        if (advisor) {
+          await db.insert(notifications).values({
+            userId: advisor.localExpertId,
+            type: 'itinerary_update',
+            title: 'New comment on the plan',
+            message: `Your client commented: "${parsed.data.body.slice(0, 140)}"`,
+            relatedId: itemId,
+            relatedType: 'trip',
+            data: { tripId, itemId, workspacePath: `/expert/workspace/${tripId}` },
+          } as any);
+        }
+      } else if (role === 'expert') {
+        const trip = await storage.getTrip(tripId);
+        if (trip?.userId) {
+          await db.insert(notifications).values({
+            userId: trip.userId,
+            type: 'itinerary_update',
+            title: 'New comment from your expert',
+            message: `Your expert commented: "${parsed.data.body.slice(0, 140)}"`,
+            relatedId: itemId,
+            relatedType: 'trip',
+            data: { tripId, itemId, workspacePath: `/trip/${tripId}?tab=itinerary` },
+          } as any);
+        }
+      }
+      // role === 'author': no counterpart to notify — skip silently.
+    } catch (notifyErr) {
+      console.error('[ItemComments] notify failed (non-fatal):', notifyErr);
+    }
+
+    const comments = await loadItemComments(itemId);
+    const comment = comments.find((c) => c.id === inserted.id) ?? comments[comments.length - 1];
+    res.status(201).json({ comment });
+  } catch (error: any) {
+    console.error('Create item comment error:', error);
     res.status(500).json({ error: error.message });
   }
 });

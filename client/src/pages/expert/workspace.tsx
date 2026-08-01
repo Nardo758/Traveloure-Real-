@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, Component, type ReactNode, type ErrorInfo } from "react";
 import { PlanCard } from "@/components/plancard/PlanCard";
+import { ItemComments } from "@/components/plancard/ItemComments";
 import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -566,6 +567,12 @@ function ItemsEditorPanel({
                     >
                       <Trash2 style={{ width: 12, height: 12 }} /> Remove item
                     </button>
+
+                    {/* QA_PUNCH_LIST W3-C item 12 — the expert-side half of the per-item thread.
+                        Shared component with the Trip Card's ActivitiesSection; plain shadcn
+                        tokens read fine inside this console-scoped panel (same posture as the
+                        other shared Add-panel pickers on this page). */}
+                    <ItemComments tripId={tripId} itemId={item.id} />
                   </div>
                 )}
               </div>
