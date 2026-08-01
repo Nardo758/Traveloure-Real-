@@ -7,7 +7,7 @@ import { sharedCache } from "./shared-cache.service";
 import { bookingComService } from "./booking-com.service";
 import { openTableService } from "./opentable.service";
 import { partnerizeSyncService } from "./partnerize/partnerize-sync.service";
-import { affiliateReconciliationService } from "./affiliate-reconciliation.service";
+import { affiliateReconciliationService, LATE_REPORT_TOLERANCE_DAYS } from "./affiliate-reconciliation.service";
 
 // Partnerize campaign catalog changes infrequently — sync every 12 hours,
 // separate from the 24h stale-data refresh loop above.
@@ -128,7 +128,11 @@ class CacheSchedulerService {
       // partner reports in the first days of a new month still match internal
       // earnings created near the end of the previous month. matchRecords is
       // idempotent for already-matched rows, so overlapping runs are safe.
-      await affiliateReconciliationService.matchRecords("last_35_days", "travelpayouts");
+      // The wider date tolerance (LATE_REPORT_TOLERANCE_DAYS) covers the gap
+      // between a booking's created_at and the partner's later report date.
+      await affiliateReconciliationService.matchRecords("last_35_days", "travelpayouts", {
+        dateToleranceDays: LATE_REPORT_TOLERANCE_DAYS,
+      });
       console.log("[CacheScheduler] Travelpayouts report poll + auto-match complete (last_35_days)");
     } catch (err) {
       console.error("[CacheScheduler] Travelpayouts report poll error:", err);
@@ -145,7 +149,11 @@ class CacheSchedulerService {
       // partner reports in the first days of a new month still match internal
       // earnings created near the end of the previous month. matchRecords is
       // idempotent for already-matched rows, so overlapping runs are safe.
-      await affiliateReconciliationService.matchRecords("last_35_days", "partnerize");
+      // The wider date tolerance (LATE_REPORT_TOLERANCE_DAYS) covers the gap
+      // between a booking's created_at and the partner's later report date.
+      await affiliateReconciliationService.matchRecords("last_35_days", "partnerize", {
+        dateToleranceDays: LATE_REPORT_TOLERANCE_DAYS,
+      });
       console.log("[CacheScheduler] Partnerize report poll + auto-match complete (last_35_days)");
     } catch (err) {
       console.error("[CacheScheduler] Partnerize report poll error:", err);

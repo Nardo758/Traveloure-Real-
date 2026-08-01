@@ -225,6 +225,68 @@ async function fetchPartnerizeCommissions(
 }
 
 // ---------------------------------------------------------------------------
+// Pure matching helper (exported for deterministic tests)
+// ---------------------------------------------------------------------------
+
+export const DEFAULT_MATCH_TOLERANCE_DAYS = 3;
+
+// Late-reporting tolerance used by the background polls: a booking made near
+// the end of a month can be reported by the partner in the first days of the
+// next month, so the created_at ↔ reportedAt delta can exceed the default
+// ±3 days. This is deliberately independent of the retrieval window
+// ("last_35_days") — the window controls which rows are considered, this
+// controls how far apart the two dates may be and still count as a match.
+export const LATE_REPORT_TOLERANCE_DAYS = 10;
+
+/**
+ * Pick the best internal candidate for one external commission row.
+ * Criteria: same resolved partner (when resolvable), date delta within
+ * toleranceDays, amount within 5%. Returns the candidate with the smallest
+ * absolute date delta, or null.
+ */
+export function selectMatchCandidate(
+  ext: ExternalCommission,
+  internalRows: Array<Record<string, any>>,
+  resolvedPartnerId: string | undefined,
+  consumed: Set<string>,
+  toleranceDays: number = DEFAULT_MATCH_TOLERANCE_DAYS
+): Record<string, any> | null {
+  const extDate = new Date(ext.reportedAt).getTime();
+  const toleranceMs = toleranceDays * 24 * 60 * 60 * 1000;
+
+  const candidates = internalRows.filter((row) => {
+    if (consumed.has(row.id)) return false;
+    if (row.reconciliation_status === "matched") return false;
+
+    // Strict partner match: when we can resolve the external partner to an
+    // internal partner_id, both sides MUST agree. Rows with a null partner_id
+    // are excluded to prevent cross-partner false positives.
+    if (resolvedPartnerId) {
+      if (!row.partner_id || row.partner_id !== resolvedPartnerId) return false;
+    }
+
+    // Date within tolerance
+    const rowDate = new Date(row.created_at).getTime();
+    if (Math.abs(rowDate - extDate) > toleranceMs) return false;
+
+    // Amount within 5% tolerance
+    const internalAmt = parseFloat(row.total_commission);
+    if (internalAmt === 0) return false;
+    const tolerance = internalAmt * 0.05;
+    return Math.abs(internalAmt - ext.amount) <= tolerance;
+  });
+
+  if (candidates.length === 0) return null;
+
+  candidates.sort((a, b) => {
+    const da = Math.abs(new Date(a.created_at).getTime() - extDate);
+    const db2 = Math.abs(new Date(b.created_at).getTime() - extDate);
+    return da - db2;
+  });
+  return candidates[0];
+}
+
+// ---------------------------------------------------------------------------
 // Reconciliation service
 // ---------------------------------------------------------------------------
 
@@ -269,9 +331,13 @@ class AffiliateReconciliationService {
    *
    * Matched rows are updated in place; already-matched rows are skipped.
    */
-  async matchRecords(period: string, partner?: string): Promise<void> {
+  async matchRecords(
+    period: string,
+    partner?: string,
+    options?: { dateToleranceDays?: number }
+  ): Promise<void> {
     const { start, end } = getPeriodDates(period);
-    const THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000;
+    const toleranceDays = options?.dateToleranceDays ?? DEFAULT_MATCH_TOLERANCE_DAYS;
 
     // Build a lookup: external partner key → internal partner_id
     const partnerMapResult = await db.execute(sql`
@@ -308,44 +374,12 @@ class AffiliateReconciliationService {
     const consumed = new Set<string>();
 
     for (const ext of external) {
-      const extDate = new Date(ext.reportedAt).getTime();
-
       // Resolve the internal partner_id for this external partner key
       const resolvedPartnerId = partnerKeyToId[ext.partner.toLowerCase()] ??
         partnerKeyToId[ext.partner.toLowerCase().split(/[\s.]/)[0]];
 
-      // Collect all candidates that satisfy date + amount + partnerId
-      const candidates = internalRows.filter((row) => {
-        if (consumed.has(row.id)) return false;
-        if (row.reconciliation_status === "matched") return false;
-
-        // Strict partner match: when we can resolve the external partner to an
-        // internal partner_id, both sides MUST agree. Rows with a null partner_id
-        // are excluded to prevent cross-partner false positives.
-        if (resolvedPartnerId) {
-          if (!row.partner_id || row.partner_id !== resolvedPartnerId) return false;
-        }
-
-        // Date within ±3 days
-        const rowDate = new Date(row.created_at).getTime();
-        if (Math.abs(rowDate - extDate) > THREE_DAYS_MS) return false;
-
-        // Amount within 5% tolerance
-        const internalAmt = parseFloat(row.total_commission);
-        if (internalAmt === 0) return false;
-        const tolerance = internalAmt * 0.05;
-        return Math.abs(internalAmt - ext.amount) <= tolerance;
-      });
-
-      if (candidates.length === 0) continue;
-
-      // Pick the candidate with the smallest absolute date delta (closest match)
-      candidates.sort((a, b) => {
-        const da = Math.abs(new Date(a.created_at).getTime() - extDate);
-        const db2 = Math.abs(new Date(b.created_at).getTime() - extDate);
-        return da - db2;
-      });
-      const best = candidates[0];
+      const best = selectMatchCandidate(ext, internalRows, resolvedPartnerId, consumed, toleranceDays);
+      if (!best) continue;
 
       // Mark as matched in memory and in DB
       best.reconciliation_status = "matched";
