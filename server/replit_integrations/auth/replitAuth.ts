@@ -148,12 +148,20 @@ export async function setupAuth(app: Express) {
   const ensureStrategy = (domain: string) => {
     const strategyName = `replitauth:${domain}`;
     if (!registeredStrategies.has(strategyName)) {
+      // Local dev access (127.0.0.1 / localhost) serves plain HTTP on $PORT;
+      // an https, port-less callback would point at nothing and break login.
+      const isLocalDev =
+        process.env.NODE_ENV !== "production" &&
+        (domain === "127.0.0.1" || domain === "localhost");
+      const callbackURL = isLocalDev
+        ? `http://${domain}:${process.env.PORT || "5000"}/api/callback`
+        : `https://${domain}/api/callback`;
       const strategy = new Strategy(
         {
           name: strategyName,
           config,
           scope: "openid email profile offline_access",
-          callbackURL: `https://${domain}/api/callback`,
+          callbackURL,
         },
         verify
       );

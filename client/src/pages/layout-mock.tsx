@@ -5,7 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
-import { APIProvider, Map, AdvancedMarker } from "@vis.gl/react-google-maps";
+import { APIProvider, Map } from "@vis.gl/react-google-maps";
+import { MapMarker, GOOGLE_MAPS_MAP_ID } from "@/components/ui/map-marker";
 
 const GOOGLE_MAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
 
@@ -176,24 +177,24 @@ export default function LayoutMock() {
               <Map
                 defaultCenter={{ lat: 48.8566, lng: 2.3522 }}
                 defaultZoom={12}
-                mapId="layout-mock-map"
+                mapId={GOOGLE_MAPS_MAP_ID}
                 className="w-full h-full"
                 gestureHandling="greedy"
                 disableDefaultUI={false}
               >
-                <AdvancedMarker position={{ lat: 48.8566, lng: 2.3522 }}>
+                <MapMarker position={{ lat: 48.8566, lng: 2.3522 }} title="Paris">
                   <div className="w-8 h-8 bg-primary rounded-full flex items-center justify-center shadow-lg">
                     <MapPin className="w-4 h-4 text-white" />
                   </div>
-                </AdvancedMarker>
+                </MapMarker>
               </Map>
             </APIProvider>
           ) : (
             <div className="w-full h-full flex items-center justify-center bg-muted">
               <div className="text-center text-muted-foreground">
                 <MapPin className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                <p>Map View</p>
-                <p className="text-sm">(Google Maps API key required)</p>
+                <p>Map unavailable</p>
+                <p className="text-sm">Add VITE_GOOGLE_MAPS_API_KEY to enable</p>
               </div>
             </div>
           )}
