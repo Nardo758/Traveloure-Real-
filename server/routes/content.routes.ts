@@ -25,7 +25,7 @@ import {
   getExpertUserIds, getAiDiscoveredGemById,
   getAffiliateProductsByIds, getContentRegistryByIds,
   getAffiliateProductsByLocation, getContentRegistryByLocation,
-  insertAffiliateClick, getPlatformStats,
+  insertAffiliateClick, getPlatformStats, getFeaturedTestimonials,
   insertSearchAnalytics, insertPageViewAnalytics, insertBookingFunnelAnalytics,
   insertActivityBookingAnalytics, insertTripAnalyticsEnhanced,
   getTripAnalyticsEnhancedByTripId, updateTripAnalyticsEnhanced,
@@ -7912,6 +7912,20 @@ router.get("/api/platform/stats", async (_req, res) => {
     } catch (err) {
       console.error("Platform stats error:", err);
       res.status(500).json({ message: "Failed to fetch platform stats" });
+    }
+  });
+
+  // GET /api/platform/featured-testimonials — the §13 curated testimonial rail.
+  // Public, unauthenticated (the landing page is public). Returns ONLY real,
+  // admin-curated, booking-gated service_reviews — never fabricated content.
+  // Empty featured list → { testimonials: [] }; the client hides the section.
+  router.get("/api/platform/featured-testimonials", async (_req, res) => {
+    try {
+      const testimonials = await getFeaturedTestimonials();
+      res.json({ testimonials });
+    } catch (err) {
+      console.error("Featured testimonials error:", err);
+      res.status(500).json({ message: "Failed to fetch featured testimonials" });
     }
   });
 

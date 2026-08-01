@@ -5042,6 +5042,59 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
     }
   });
 
+  // ─── Featured testimonials (curated rail, §13) ───────────────────────────
+  // The landing page's testimonial rail is admin-curated, never fabricated:
+  // an admin picks real service_reviews ids here; storage is the existing
+  // platform_settings key/value store (no new table) — see CLAUDE.md §13.
+  // GET returns the raw curated id list (for the review-moderation "featured"
+  // toggle to know what's already picked); PUT replaces the whole list.
+  const featuredTestimonialIdsSchema = z.object({
+    ids: z.array(z.string().min(1)).max(12),
+  });
+
+  router.get("/api/admin/testimonials/featured", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const user = await getAdminRole(userId);
+      if (!user || user.role !== "admin") return res.status(403).json({ message: "Admin access required" });
+
+      const raw = await getPlatformSettingValue("featured_testimonial_review_ids");
+      let ids: string[] = [];
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) ids = parsed.filter((x): x is string => typeof x === "string");
+        } catch {
+          ids = []; // malformed setting → honest empty, never throw
+        }
+      }
+      res.json({ ids });
+    } catch (err) {
+      console.error("Admin get featured testimonials error:", err);
+      res.status(500).json({ message: "Failed to fetch featured testimonials" });
+    }
+  });
+
+  router.put("/api/admin/testimonials/featured", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const user = await getAdminRole(userId);
+      if (!user || user.role !== "admin") return res.status(403).json({ message: "Admin access required" });
+
+      const parsed = featuredTestimonialIdsSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Invalid body", errors: parsed.error.errors });
+
+      // Dedupe while preserving the admin's chosen (display) order.
+      const ids = Array.from(new Set(parsed.data.ids));
+
+      await upsertPlatformSetting("featured_testimonial_review_ids", JSON.stringify(ids), userId);
+      res.json({ ok: true, ids });
+    } catch (err) {
+      console.error("Admin set featured testimonials error:", err);
+      res.status(500).json({ message: "Failed to update featured testimonials" });
+    }
+  });
+
   // Hook into itinerary generation to auto-capture analytics
 
   // ─── Phase 8.1: fee_bands + platform_settings admin CRUD ─────────────────────

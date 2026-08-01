@@ -589,6 +589,89 @@ export async function getPlatformStats(): Promise<{
   };
 }
 
+// ─── Featured Testimonials (curated rail, CLAUDE.md §13 trust-claims cluster) ─
+//
+// The landing page previously carried fabricated testimonials (invented names,
+// invented "$2,400 saved" claims). §13 mandates removal with no replacement
+// fabrication; the decision-maker ratified an admin-curated rail instead: an
+// admin picks real, booking-gated `service_reviews` to feature, stored as a
+// `platform_settings` JSON array of review ids (`featured_testimonial_review_ids`).
+// This reader resolves those ids against the real table — unknown/deleted ids
+// and reviews that aren't (or are no longer) 'approved' are silently skipped,
+// never invented, never a fallback fabrication. Empty setting → empty array,
+// and the landing page hides the section entirely (see PublicTestimonial type
+// mirrored client-side).
+export async function getFeaturedTestimonials(): Promise<Array<{
+  id: string;
+  rating: number;
+  reviewText: string | null;
+  reviewerName: string;
+  serviceName: string;
+  createdAt: Date | string | null;
+}>> {
+  const settingResult = await db.execute(sql`
+    SELECT setting_value FROM platform_settings
+    WHERE setting_key = 'featured_testimonial_review_ids'
+    LIMIT 1
+  `);
+  const raw = (settingResult.rows?.[0] as any)?.setting_value as string | undefined;
+  if (!raw) return [];
+
+  let ids: string[] = [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      ids = parsed.filter((x): x is string => typeof x === "string" && x.length > 0);
+    }
+  } catch {
+    return []; // malformed setting → honest empty, never throw into a public surface
+  }
+  if (ids.length === 0) return [];
+
+  const rows = await db
+    .select({
+      id: serviceReviews.id,
+      rating: serviceReviews.rating,
+      reviewText: serviceReviews.reviewText,
+      createdAt: serviceReviews.createdAt,
+      status: serviceReviews.status,
+      serviceName: providerServices.serviceName,
+      reviewerFirst: users.firstName,
+      reviewerLast: users.lastName,
+    })
+    .from(serviceReviews)
+    .leftJoin(providerServices, eq(serviceReviews.serviceId, providerServices.id))
+    .leftJoin(users, eq(serviceReviews.travelerId, users.id))
+    .where(inArray(serviceReviews.id, ids));
+
+  // Only 'approved' reviews may surface — the same moderation gate the public
+  // rating aggregate honors. A review an admin featured before it cleared
+  // moderation, or one later flagged/removed, must never leak onto the
+  // landing page just because its id is still sitting in the curated list.
+  const byId = new Map(rows.filter((r) => r.status === "approved").map((r) => [r.id, r]));
+
+  // Preserve the admin's curated order; unknown/deleted/unapproved ids are
+  // silently skipped (never surfaced, never substituted with anything invented).
+  const ordered = ids
+    .map((id) => byId.get(id))
+    .filter((r): r is NonNullable<typeof r> => !!r);
+
+  return ordered.map((r) => {
+    const first = (r.reviewerFirst || "").trim();
+    const lastInitial = (r.reviewerLast || "").trim().charAt(0);
+    // Same privacy posture as GET /api/experts/:id/reviews: first name + last initial.
+    const reviewerName = first ? (lastInitial ? `${first} ${lastInitial}.` : first) : "Traveler";
+    return {
+      id: r.id,
+      rating: r.rating,
+      reviewText: r.reviewText,
+      reviewerName,
+      serviceName: r.serviceName ?? "Traveloure",
+      createdAt: r.createdAt,
+    };
+  });
+}
+
 // ─── Analytics Tracking ───────────────────────────────────────────────────────
 
 /**
