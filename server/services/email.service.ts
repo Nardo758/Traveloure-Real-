@@ -1256,3 +1256,271 @@ export async function sendProviderApplicationApprovalEmail(
     console.error("[email] Provider application approval email failed (non-fatal):", err);
   }
 }
+
+// ─── Trip lifecycle emails (QA_PUNCH_LIST item 14 / Build map W3-B) ──────────────────────────
+//
+// A logged-out customer previously learned about a delivered plan / approval / suggestion ONLY
+// via the in-app bell notification — these four functions are the email channel for the same
+// four ratified events. Same transport/from-address/reply-to/honest-failure posture as every
+// function above: no RESEND_API_KEY -> silent skip (never a crash, never a fake "sent"); a send
+// failure is caught and logged, never thrown, so it can never fail the state transition it rides
+// beside. Deep links point at the exact same in-app surface the bell notification's
+// `data.workspacePath` already uses, so email and bell always agree on where "view" goes.
+//
+// Subject/body/deep-link are computed BEFORE the RESEND_API_KEY check (unlike the earlier
+// functions in this file, which build content only once a client exists) so that the no-key skip
+// log line still carries the rendered subject and link — this is what makes the deep-link content
+// provable in an environment with no key configured (see docs/planning/QA_PUNCH_LIST.md item 14).
+
+interface PlanDeliveredEmailParams {
+  toEmail: string;
+  firstName?: string | null;
+  tripId: string;
+}
+
+/**
+ * W3-B ①: plan DELIVERED -> customer email. Fired once, beside the existing bell-notification
+ * insert, only on the workspace-status `-> delivered` transition (never `in_review`).
+ */
+export async function sendPlanDeliveredEmail(params: PlanDeliveredEmailParams): Promise<void> {
+  const greeting = params.firstName ? `Hi ${escHtml(params.firstName)},` : "Hi,";
+  const tripUrl = `${getAppBaseUrl()}/trip/${params.tripId}?tab=itinerary`;
+  const subject = "Your itinerary has been delivered";
+
+  console.log(`[email] sendPlanDeliveredEmail reached — tripId=${params.tripId} subject="${subject}" link=${tripUrl}`);
+
+  const client = getClient();
+  if (!client) {
+    console.log("[email] RESEND_API_KEY not set — skipping plan-delivered email for", params.toEmail);
+    return;
+  }
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
+      <h2 style="color: #FF385C; margin-bottom: 8px;">Your itinerary has been delivered</h2>
+      <p style="color: #374151;">${greeting}</p>
+      <p style="color: #374151;">
+        Your expert marked your itinerary as complete. Take a look and let them know if it's
+        everything you wanted, or if you'd like any changes.
+      </p>
+      <a href="${tripUrl}"
+         style="display: inline-block; background: #FF385C; color: #ffffff; text-decoration: none;
+                padding: 12px 24px; border-radius: 6px; font-weight: 600; margin-top: 8px;">
+        View Your Itinerary
+      </a>
+      <p style="color: #9CA3AF; font-size: 12px; margin-top: 32px;">
+        You're receiving this because your Traveloure trip plan was delivered by your expert.<br>
+        View it at <a href="${tripUrl}" style="color: #FF385C;">${tripUrl}</a>.
+      </p>
+    </div>
+  `;
+
+  const text = [
+    subject,
+    ``,
+    greeting,
+    ``,
+    `Your expert marked your itinerary as complete. Take a look and let them know if it's everything you wanted, or if you'd like any changes.`,
+    ``,
+    `View your itinerary: ${tripUrl}`,
+  ].join("\n");
+
+  try {
+    await client.emails.send({ from: getFromAddress(), to: params.toEmail, subject, html, text });
+    console.log(`[email] Plan-delivered email sent to ${params.toEmail} for trip ${params.tripId}`);
+  } catch (err) {
+    console.error("[email] Plan-delivered email failed (non-fatal):", err);
+  }
+}
+
+interface PlanApprovedEmailParams {
+  toEmail: string;
+  firstName?: string | null;
+  tripId: string;
+}
+
+/**
+ * W3-B ④: plan APPROVED -> expert email. Symmetric with sendPlanChangesRequestedEmail below —
+ * both ride the same /trips/:id/plan-review decision endpoint, just the opposite branch.
+ */
+export async function sendPlanApprovedEmail(params: PlanApprovedEmailParams): Promise<void> {
+  const greeting = params.firstName ? `Hi ${escHtml(params.firstName)},` : "Hi,";
+  const workspaceUrl = `${getAppBaseUrl()}/expert/workspace/${params.tripId}`;
+  const subject = "Your delivered plan was approved";
+
+  console.log(`[email] sendPlanApprovedEmail reached — tripId=${params.tripId} subject="${subject}" link=${workspaceUrl}`);
+
+  const client = getClient();
+  if (!client) {
+    console.log("[email] RESEND_API_KEY not set — skipping plan-approved email for", params.toEmail);
+    return;
+  }
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
+      <h2 style="color: #16A34A; margin-bottom: 8px;">Your delivered plan was approved</h2>
+      <p style="color: #374151;">${greeting}</p>
+      <p style="color: #374151;">
+        Your client approved the plan you delivered for their trip. No further action is needed
+        unless they reach out with new requests.
+      </p>
+      <a href="${workspaceUrl}"
+         style="display: inline-block; background: #FF385C; color: #ffffff; text-decoration: none;
+                padding: 12px 24px; border-radius: 6px; font-weight: 600; margin-top: 8px;">
+        Open Workspace
+      </a>
+      <p style="color: #9CA3AF; font-size: 12px; margin-top: 32px;">
+        You're receiving this because you're an expert on Traveloure.<br>
+        Open the trip workspace at <a href="${workspaceUrl}" style="color: #FF385C;">${workspaceUrl}</a>.
+      </p>
+    </div>
+  `;
+
+  const text = [
+    subject,
+    ``,
+    greeting,
+    ``,
+    `Your client approved the plan you delivered for their trip. No further action is needed unless they reach out with new requests.`,
+    ``,
+    `Open workspace: ${workspaceUrl}`,
+  ].join("\n");
+
+  try {
+    await client.emails.send({ from: getFromAddress(), to: params.toEmail, subject, html, text });
+    console.log(`[email] Plan-approved email sent to ${params.toEmail} for trip ${params.tripId}`);
+  } catch (err) {
+    console.error("[email] Plan-approved email failed (non-fatal):", err);
+  }
+}
+
+interface PlanChangesRequestedEmailParams {
+  toEmail: string;
+  firstName?: string | null;
+  tripId: string;
+  note?: string | null;
+}
+
+/**
+ * W3-B ②: CHANGES REQUESTED -> expert email.
+ */
+export async function sendPlanChangesRequestedEmail(params: PlanChangesRequestedEmailParams): Promise<void> {
+  const greeting = params.firstName ? `Hi ${escHtml(params.firstName)},` : "Hi,";
+  const workspaceUrl = `${getAppBaseUrl()}/expert/workspace/${params.tripId}`;
+  const subject = "Changes requested on your delivered plan";
+  const note = params.note?.trim() || null;
+
+  console.log(`[email] sendPlanChangesRequestedEmail reached — tripId=${params.tripId} subject="${subject}" link=${workspaceUrl}`);
+
+  const client = getClient();
+  if (!client) {
+    console.log("[email] RESEND_API_KEY not set — skipping plan-changes-requested email for", params.toEmail);
+    return;
+  }
+
+  const noteBlock = note
+    ? `<p style="color:#374151;"><strong>Client note:</strong> ${escHtml(note)}</p>`
+    : "";
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
+      <h2 style="color: #DC2626; margin-bottom: 8px;">Changes requested on your delivered plan</h2>
+      <p style="color: #374151;">${greeting}</p>
+      <p style="color: #374151;">
+        Your client sent your delivered plan back for changes.
+      </p>
+      ${noteBlock}
+      <a href="${workspaceUrl}"
+         style="display: inline-block; background: #FF385C; color: #ffffff; text-decoration: none;
+                padding: 12px 24px; border-radius: 6px; font-weight: 600; margin-top: 8px;">
+        Open Workspace
+      </a>
+      <p style="color: #9CA3AF; font-size: 12px; margin-top: 32px;">
+        You're receiving this because you're an expert on Traveloure.<br>
+        Open the trip workspace at <a href="${workspaceUrl}" style="color: #FF385C;">${workspaceUrl}</a>.
+      </p>
+    </div>
+  `;
+
+  const text = [
+    subject,
+    ``,
+    greeting,
+    ``,
+    `Your client sent your delivered plan back for changes.`,
+    note ? `\nClient note: ${note}` : "",
+    ``,
+    `Open workspace: ${workspaceUrl}`,
+  ].filter((l) => l !== "").join("\n");
+
+  try {
+    await client.emails.send({ from: getFromAddress(), to: params.toEmail, subject, html, text });
+    console.log(`[email] Plan-changes-requested email sent to ${params.toEmail} for trip ${params.tripId}`);
+  } catch (err) {
+    console.error("[email] Plan-changes-requested email failed (non-fatal):", err);
+  }
+}
+
+interface NewSuggestionEmailParams {
+  toEmail: string;
+  firstName?: string | null;
+  tripId: string;
+  suggestionTitle: string;
+}
+
+/**
+ * W3-B ③: POST-APPROVAL suggestion created -> customer email. The caller is responsible for
+ * only invoking this when the advisor row's `planApprovalStatus === 'approved'` — an
+ * in-planning (pre-approval) suggestion stays bell-only, deliberately (see the call site in
+ * server/routes/booking-actions.ts). This function itself does not re-check that gate.
+ */
+export async function sendNewSuggestionEmail(params: NewSuggestionEmailParams): Promise<void> {
+  const greeting = params.firstName ? `Hi ${escHtml(params.firstName)},` : "Hi,";
+  const tripUrl = `${getAppBaseUrl()}/trip/${params.tripId}?tab=itinerary`;
+  const subject = "New suggestion from your expert";
+
+  console.log(`[email] sendNewSuggestionEmail reached — tripId=${params.tripId} subject="${subject}" link=${tripUrl}`);
+
+  const client = getClient();
+  if (!client) {
+    console.log("[email] RESEND_API_KEY not set — skipping new-suggestion email for", params.toEmail);
+    return;
+  }
+
+  const html = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px;">
+      <h2 style="color: #FF385C; margin-bottom: 8px;">New suggestion from your expert</h2>
+      <p style="color: #374151;">${greeting}</p>
+      <p style="color: #374151;">
+        Your expert suggested "${escHtml(params.suggestionTitle)}" for your trip.
+      </p>
+      <a href="${tripUrl}"
+         style="display: inline-block; background: #FF385C; color: #ffffff; text-decoration: none;
+                padding: 12px 24px; border-radius: 6px; font-weight: 600; margin-top: 8px;">
+        View Suggestion
+      </a>
+      <p style="color: #9CA3AF; font-size: 12px; margin-top: 32px;">
+        You're receiving this because your Traveloure trip has an approved plan and your expert
+        added a new suggestion.<br>
+        View it at <a href="${tripUrl}" style="color: #FF385C;">${tripUrl}</a>.
+      </p>
+    </div>
+  `;
+
+  const text = [
+    subject,
+    ``,
+    greeting,
+    ``,
+    `Your expert suggested "${params.suggestionTitle}" for your trip.`,
+    ``,
+    `View it: ${tripUrl}`,
+  ].join("\n");
+
+  try {
+    await client.emails.send({ from: getFromAddress(), to: params.toEmail, subject, html, text });
+    console.log(`[email] New-suggestion email sent to ${params.toEmail} for trip ${params.tripId}`);
+  } catch (err) {
+    console.error("[email] New-suggestion email failed (non-fatal):", err);
+  }
+}
