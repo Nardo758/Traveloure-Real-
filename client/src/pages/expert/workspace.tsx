@@ -594,9 +594,19 @@ class MapSectionErrorBoundary extends Component<{ children: ReactNode }, { hasEr
  *  (C-1b — the traveler-visible tip, distinct from the private Build notes sidebar). Both
  *  write through the existing PATCH /api/trips/:tripId/itinerary-items/:itemId endpoint
  *  (trips.routes.ts) — no new server surface for A-2; C-1's server change is the read-side
- *  column preference in plancard.routes.ts. */
+ *  column preference in plancard.routes.ts.
+ *
+ *  QA_PUNCH_LIST item 18: also the within-day reorder UI (up/down arrows per item calling the
+ *  existing POST .../itinerary/reorder with the day's full ordered id list — properly
+ *  authorizeTripLogistics- AND now plan-approval-mode-flip-gated server-side, see routes.ts) and
+ *  a per-day "Suggest best order" action (POST .../itinerary/optimize-order) that stages the
+ *  machine's proposed order for an explicit "Apply this order?" confirm — never auto-applied
+ *  (D1a posture: the machine proposes, the expert confirms). This panel is also item 16's
+ *  "Go to item" scroll target (see focusItemId/onFocusHandled below) — the only per-item,
+ *  DOM-addressable list the canvas renders (the day list itself is the shared PlanCard, a
+ *  read-mostly component this lane deliberately does not modify). */
 function ItemsEditorPanel({
-  tripId, days, maxDay, onDayMoved, onOpenBookingBrief,
+  tripId, days, maxDay, onDayMoved, onOpenBookingBrief, focusItemId, onFocusHandled,
 }: {
   tripId: string;
   days: { dayNumber: number; items: ItineraryItem[] }[];
@@ -608,11 +618,75 @@ function ItemsEditorPanel({
   // item directly there), so any row this panel can show is already either author-owned or
   // client-approved. Nothing here needs to re-check approval state.
   onOpenBookingBrief: (network: string) => void;
+  // Item 16's "Go to item": when set, this panel opens (if closed), expands that item's row,
+  // and scrolls it into view, then reports back via onFocusHandled so the caller clears the
+  // request (a one-shot signal, not a controlled/sticky prop).
+  focusItemId?: string | null;
+  onFocusHandled?: () => void;
 }) {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
+  // dayNumber → machine-suggested id order, staged from optimize-order and applied only on
+  // explicit confirm (never auto-applied).
+  const [suggestedOrder, setSuggestedOrder] = useState<Record<number, string[]>>({});
+
+  useEffect(() => {
+    if (!focusItemId) return;
+    setOpen(true);
+    setExpandedId(focusItemId);
+    // Wait one paint for the (possibly just-opened) panel to render the row before scrolling.
+    const t = setTimeout(() => {
+      const el = document.querySelector(`[data-testid="item-editor-row-${focusItemId}"]`);
+      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+      onFocusHandled?.();
+    }, 60);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusItemId]);
+
+  const reorderMutation = useMutation({
+    mutationFn: async ({ dayNumber, itemIds }: { dayNumber: number; itemIds: string[] }) => {
+      const res = await apiRequest("POST", `/api/trips/${tripId}/itinerary/reorder`, { dayNumber, itemIds });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/itinerary-items`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+    },
+    // Same mode-flip 409 as the other item mutations above — surfaced honestly, not generically.
+    onError: (err: any) => toast({ title: "Failed to reorder", description: parseApiErrorMessage(err, "Please try again."), variant: "destructive" }),
+  });
+
+  const moveWithinDay = (day: { dayNumber: number; items: ItineraryItem[] }, index: number, direction: -1 | 1) => {
+    const target = index + direction;
+    if (target < 0 || target >= day.items.length) return;
+    const itemIds = day.items.map(i => i.id);
+    [itemIds[index], itemIds[target]] = [itemIds[target], itemIds[index]];
+    reorderMutation.mutate({ dayNumber: day.dayNumber, itemIds });
+  };
+
+  const optimizeMutation = useMutation({
+    mutationFn: async (dayNumber: number) => {
+      const res = await apiRequest("POST", `/api/trips/${tripId}/itinerary/optimize-order`, { dayNumber });
+      const json = await res.json();
+      return { dayNumber, optimizedOrder: (json.optimizedOrder ?? []) as string[] };
+    },
+    onSuccess: ({ dayNumber, optimizedOrder }) => {
+      setSuggestedOrder(s => ({ ...s, [dayNumber]: optimizedOrder }));
+    },
+    onError: (err: any) => toast({ title: "Couldn't suggest an order", description: parseApiErrorMessage(err, "Please try again."), variant: "destructive" }),
+  });
+
+  const applySuggestedOrder = (dayNumber: number) => {
+    const itemIds = suggestedOrder[dayNumber];
+    if (!itemIds) return;
+    reorderMutation.mutate({ dayNumber, itemIds }, {
+      onSuccess: () => setSuggestedOrder(s => { const next = { ...s }; delete next[dayNumber]; return next; }),
+    });
+  };
+  const discardSuggestedOrder = (dayNumber: number) => setSuggestedOrder(s => { const next = { ...s }; delete next[dayNumber]; return next; });
 
   const updateMutation = useMutation({
     mutationFn: async ({ itemId, data }: { itemId: string; data: Record<string, any> }) => {
@@ -677,29 +751,93 @@ function ItemsEditorPanel({
         </span>
       </button>
       {open && (
-        <div style={{ padding: "0 14px 12px", display: "flex", flexDirection: "column", gap: 6 }}>
-          {allItems.map(item => {
-            const isExpanded = expandedId === item.id;
-            const draftNote = noteDrafts[item.id] ?? (item.expertNote ?? "");
-            // W3-A: an item carrying the "Partner: <Network>" marker (written by
-            // partner-catalog-picker.tsx) gets a Booking Brief entry point. Its presence in
-            // `days`/`allItems` at all IS the gate — see the prop comment above.
-            const partnerSource = parsePartnerSource(item.description);
+        <div style={{ padding: "0 14px 12px", display: "flex", flexDirection: "column", gap: 10 }}>
+          {days.filter(d => d.items.length > 0).map(day => {
+            const suggestion = suggestedOrder[day.dayNumber];
             return (
-              <div key={item.id} data-testid={`item-editor-row-${item.id}`} style={{ border: `1px solid ${LINE}`, borderRadius: 8, padding: "8px 10px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <StateChip tone="mut">Day {item.dayNumber}</StateChip>
-                  {partnerSource && <StateChip tone="brand">{partnerSource.network}</StateChip>}
-                  <span style={{ fontSize: 12.5, fontWeight: 600, color: INK, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</span>
+              <div key={day.dayNumber} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "2px 0" }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: FAINT, textTransform: "uppercase", letterSpacing: "0.05em" }}>Day {day.dayNumber}</span>
                   <button
-                    onClick={() => setExpandedId(isExpanded ? null : item.id)}
-                    data-testid={`button-expand-item-${item.id}`}
-                    style={{ ...btnQuietStyle, padding: "3px 9px", fontSize: 11 }}
+                    onClick={() => optimizeMutation.mutate(day.dayNumber)}
+                    disabled={day.items.length < 2 || (optimizeMutation.isPending && optimizeMutation.variables === day.dayNumber)}
+                    data-testid={`button-suggest-order-day-${day.dayNumber}`}
+                    title="Compute a suggested order for this day — nothing changes until you apply it"
+                    style={{ ...btnQuietStyle, marginLeft: "auto", padding: "2px 8px", fontSize: 10.5, display: "flex", alignItems: "center", gap: 4, opacity: day.items.length < 2 ? 0.5 : 1 }}
                   >
-                    {isExpanded ? "Close" : "Edit"}
+                    {(optimizeMutation.isPending && optimizeMutation.variables === day.dayNumber)
+                      ? <Loader2 style={{ width: 10, height: 10 }} className="animate-spin" />
+                      : <Sparkles style={{ width: 10, height: 10 }} />}
+                    Suggest best order
                   </button>
                 </div>
-                {isExpanded && (
+
+                {suggestion && (
+                  <div data-testid={`panel-suggested-order-day-${day.dayNumber}`} style={{ background: BRAND_SOFT, border: `1px dashed ${BRAND}`, borderRadius: 8, padding: "8px 10px", display: "flex", flexDirection: "column", gap: 6 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: INK }}>Suggested order for Day {day.dayNumber}</div>
+                    <ol style={{ margin: 0, paddingLeft: 18, fontSize: 11.5, color: MID, display: "flex", flexDirection: "column", gap: 2 }}>
+                      {suggestion.map(id => (
+                        <li key={id}>{day.items.find(i => i.id === id)?.title ?? id}</li>
+                      ))}
+                    </ol>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <button onClick={() => discardSuggestedOrder(day.dayNumber)} data-testid={`button-discard-order-day-${day.dayNumber}`} style={{ ...btnQuietStyle, flex: 1, padding: "5px", fontSize: 11 }}>Discard</button>
+                      <button
+                        onClick={() => applySuggestedOrder(day.dayNumber)}
+                        disabled={reorderMutation.isPending}
+                        data-testid={`button-apply-order-day-${day.dayNumber}`}
+                        style={{ ...btnPrimaryStyle, flex: 2, padding: "5px", fontSize: 11, opacity: reorderMutation.isPending ? 0.6 : 1 }}
+                      >
+                        Apply this order?
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {day.items.map((item, index) => {
+                  const isExpanded = expandedId === item.id;
+                  const draftNote = noteDrafts[item.id] ?? (item.expertNote ?? "");
+                  // W3-A: an item carrying the "Partner: <Network>" marker (written by
+                  // partner-catalog-picker.tsx) gets a Booking Brief entry point. Its presence in
+                  // `days` at all IS the gate — see the prop comment above.
+                  const partnerSource = parsePartnerSource(item.description);
+                  return (
+                    <div key={item.id} data-testid={`item-editor-row-${item.id}`} style={{ border: `1px solid ${LINE}`, borderRadius: 8, padding: "8px 10px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        {/* Item 18: within-day reorder — swaps this item with its neighbor and
+                            sends the day's full ordered id list to the existing reorder endpoint.
+                            Disabled at the day's edges. */}
+                        <div style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                          <button
+                            onClick={() => moveWithinDay(day, index, -1)}
+                            disabled={index === 0 || reorderMutation.isPending}
+                            data-testid={`button-move-up-${item.id}`}
+                            title="Move earlier"
+                            style={{ background: "none", border: "none", cursor: index === 0 ? "default" : "pointer", padding: 1, color: index === 0 ? FAINT : MID, opacity: index === 0 ? 0.4 : 1, display: "flex" }}
+                          >
+                            <ChevronUp style={{ width: 12, height: 12 }} />
+                          </button>
+                          <button
+                            onClick={() => moveWithinDay(day, index, 1)}
+                            disabled={index === day.items.length - 1 || reorderMutation.isPending}
+                            data-testid={`button-move-down-${item.id}`}
+                            title="Move later"
+                            style={{ background: "none", border: "none", cursor: index === day.items.length - 1 ? "default" : "pointer", padding: 1, color: index === day.items.length - 1 ? FAINT : MID, opacity: index === day.items.length - 1 ? 0.4 : 1, display: "flex" }}
+                          >
+                            <ChevronDown style={{ width: 12, height: 12 }} />
+                          </button>
+                        </div>
+                        {partnerSource && <StateChip tone="brand">{partnerSource.network}</StateChip>}
+                        <span style={{ fontSize: 12.5, fontWeight: 600, color: INK, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</span>
+                        <button
+                          onClick={() => setExpandedId(isExpanded ? null : item.id)}
+                          data-testid={`button-expand-item-${item.id}`}
+                          style={{ ...btnQuietStyle, padding: "3px 9px", fontSize: 11 }}
+                        >
+                          {isExpanded ? "Close" : "Edit"}
+                        </button>
+                      </div>
+                      {isExpanded && (
                   <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 8 }}>
                     <div>
                       <label style={labelStyle}>Move to day</label>
@@ -761,6 +899,9 @@ function ItemsEditorPanel({
                     <ItemComments tripId={tripId} itemId={item.id} />
                   </div>
                 )}
+              </div>
+                  );
+                })}
               </div>
             );
           })}
