@@ -18,6 +18,11 @@ const PARTNERIZE_SYNC_INTERVAL_MS = 12 * 60 * 60 * 1000;
 // same fetch+match pipeline the admin "run now" reconciliation button uses.
 const PARTNERIZE_REPORT_POLL_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
+// Travelpayouts commission polling — same cadence and pipeline shape as the
+// Partnerize report poll so WeGoTrip/other Travelpayouts commissions reconcile
+// without an admin opening the dashboard.
+const TRAVELPAYOUTS_REPORT_POLL_INTERVAL_MS = 6 * 60 * 60 * 1000;
+
 // Configuration
 const REFRESH_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const STALE_THRESHOLD_HOURS = 20; // Consider data stale after 20 hours (refresh before 24h expiry)
@@ -42,6 +47,8 @@ class CacheSchedulerService {
   private refreshTimer: NodeJS.Timeout | null = null;
   private partnerizeSyncTimer: NodeJS.Timeout | null = null;
   private partnerizeReportTimer: NodeJS.Timeout | null = null;
+  private travelpayoutsReportTimer: NodeJS.Timeout | null = null;
+  private travelpayoutsInitialPollTimer: NodeJS.Timeout | null = null;
   private isRefreshing: boolean = false;
   private lastStats: CacheRefreshStats | null = null;
 
@@ -92,6 +99,37 @@ class CacheSchedulerService {
     }, PARTNERIZE_REPORT_POLL_INTERVAL_MS);
 
     console.log(`[CacheScheduler] Partnerize report polling scheduled every ${PARTNERIZE_REPORT_POLL_INTERVAL_MS / (60 * 60 * 1000)} hours`);
+
+    // Travelpayouts commission polling — fetches action rows (incl. WeGoTrip)
+    // via fetchTravelpayoutsActions and runs reconciliation auto-matching.
+    // Gracefully no-ops (logs + skips) when TRAVELPAYOUTS_TOKEN is missing.
+    this.travelpayoutsInitialPollTimer = setTimeout(() => {
+      this.travelpayoutsInitialPollTimer = null;
+      this.pollTravelpayoutsReports().catch((err) =>
+        console.error("[CacheScheduler] Initial Travelpayouts report poll failed:", err)
+      );
+    }, 4 * 60 * 1000);
+
+    this.travelpayoutsReportTimer = setInterval(() => {
+      this.pollTravelpayoutsReports().catch((err) =>
+        console.error("[CacheScheduler] Travelpayouts report poll failed:", err)
+      );
+    }, TRAVELPAYOUTS_REPORT_POLL_INTERVAL_MS);
+
+    console.log(`[CacheScheduler] Travelpayouts report polling scheduled every ${TRAVELPAYOUTS_REPORT_POLL_INTERVAL_MS / (60 * 60 * 1000)} hours`);
+  }
+
+  // Poll Travelpayouts for commission action rows and auto-match them against
+  // internal affiliate_earnings. Safe on an interval; the underlying fetcher
+  // logs a warning and returns an empty array when the token isn't configured.
+  private async pollTravelpayoutsReports(): Promise<void> {
+    try {
+      await affiliateReconciliationService.fetchExternalReports("this_month", "travelpayouts");
+      await affiliateReconciliationService.matchRecords("this_month", "travelpayouts");
+      console.log("[CacheScheduler] Travelpayouts report poll + auto-match complete");
+    } catch (err) {
+      console.error("[CacheScheduler] Travelpayouts report poll error:", err);
+    }
   }
 
   // Poll Partnerize for conversion/commission reports and auto-match them
@@ -122,6 +160,14 @@ class CacheSchedulerService {
     if (this.partnerizeReportTimer) {
       clearInterval(this.partnerizeReportTimer);
       this.partnerizeReportTimer = null;
+    }
+    if (this.travelpayoutsReportTimer) {
+      clearInterval(this.travelpayoutsReportTimer);
+      this.travelpayoutsReportTimer = null;
+    }
+    if (this.travelpayoutsInitialPollTimer) {
+      clearTimeout(this.travelpayoutsInitialPollTimer);
+      this.travelpayoutsInitialPollTimer = null;
     }
   }
 
