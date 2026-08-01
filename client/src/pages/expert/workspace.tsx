@@ -373,6 +373,24 @@ function ItemsEditorPanel({
     onError: () => toast({ title: "Failed to update item", variant: "destructive" }),
   });
 
+  // FIX 2 (QA pass): item-level delete. DELETE /api/itinerary-items/:id already exists and works
+  // server-side (server/routes.ts:8969) — this was just never wired into the build UI. Mirrors the
+  // move-item mutation's invalidation set (itinerary-items + plancard) and also triggers the same
+  // energy recalc a day-move does via onDayMoved, since removing an item changes a day's load too.
+  const deleteMutation = useMutation({
+    mutationFn: async (itemId: string) => {
+      await apiRequest("DELETE", `/api/itinerary-items/${itemId}`);
+    },
+    onSuccess: (_res, itemId) => {
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/itinerary-items`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+      onDayMoved();
+      if (expandedId === itemId) setExpandedId(null);
+      toast({ title: "Item removed" });
+    },
+    onError: () => toast({ title: "Failed to remove item", variant: "destructive" }),
+  });
+
   const allItems = days.flatMap(d => d.items);
   if (allItems.length === 0) return null;
 
@@ -445,6 +463,17 @@ function ItemsEditorPanel({
                         Save note
                       </button>
                     </div>
+                    <button
+                      onClick={() => {
+                        if (!window.confirm(`Remove "${item.title}" from this build?`)) return;
+                        deleteMutation.mutate(item.id);
+                      }}
+                      disabled={deleteMutation.isPending}
+                      data-testid={`button-delete-item-${item.id}`}
+                      style={{ ...btnQuietStyle, alignSelf: "flex-start", padding: "5px 12px", fontSize: 11.5, color: DANGER, display: "flex", alignItems: "center", gap: 5, opacity: deleteMutation.isPending ? 0.6 : 1 }}
+                    >
+                      <Trash2 style={{ width: 12, height: 12 }} /> Remove item
+                    </button>
                   </div>
                 )}
               </div>
