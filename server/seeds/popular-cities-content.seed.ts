@@ -25,6 +25,7 @@ import { db } from "../db";
 import { travelPulseHiddenGems, providerServices, users } from "@shared/schema";
 import { and, eq, ilike, isNull, or } from "drizzle-orm";
 import { logger } from "../infrastructure";
+import { resolveNeighborhoodCentroid } from "./lib/neighborhood-centroid";
 
 interface GemSeed {
   city: string;
@@ -718,6 +719,11 @@ export async function seedPopularCitiesContent(): Promise<{ gems: number; servic
 
     if (existing.length > 0) continue;
 
+    // Migration-129 pattern applied at insert time: resolve the neighborhood
+    // slug to its city_neighborhoods centroid so this row isn't born
+    // NULL-coordinate (never fabricates — a miss just leaves it NULL).
+    const centroid = await resolveNeighborhoodCentroid(svc.neighborhood);
+
     await db.insert(providerServices).values({
       userId,
       serviceName: svc.serviceName,
@@ -733,6 +739,12 @@ export async function seedPopularCitiesContent(): Promise<{ gems: number; servic
       averageRating: svc.averageRating,
       status: "active",
       isFeatured: true,
+      ...(centroid && {
+        latitude: centroid.latitude,
+        longitude: centroid.longitude,
+        city: centroid.city,
+        locationPrecision: centroid.locationPrecision,
+      }),
     });
     servicesCreated++;
   }

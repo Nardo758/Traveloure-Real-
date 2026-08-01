@@ -1350,6 +1350,27 @@ neighborhood). Ratified by the decision-maker (Lane A Phase 1). **Filed (later l
 readers onto these columns; add an `'exact'`-precision write path (geocoded addresses); optional CHECK on
 `location_precision` once the write paths are locked.
 
+**Migration 162 (Aug 1, 2026; registered in `migration-files.ts`) — provider_services coords re-backfill (post-129 rows):**
+**DATA-ONLY**, no schema change (the four migration-129 columns already exist and are already declared nullable in
+`shared/schema.ts` — verified, not touched). QA found every seeded `provider_services` row still NULL-coordinate
+despite carrying a resolvable `neighborhood`: migration 129's centroid backfill ran **once**, at the time it applied,
+so rows **inserted after 129** (the `phase-d-kyoto-vendors.seed.ts` / `phase-4-kyoto-fill.seed.ts` /
+`popular-cities-content.seed.ts` seeders, which set `neighborhood` but never wrote coordinates) were never touched and
+stayed born-NULL — so an expert dropping one of these onto a build via the Platform-services pill got no map pin.
+162 **re-runs migration 129's exact backfill UPDATE verbatim** (slug-first, then `LOWER(TRIM(name))` fallback match
+against `city_neighborhoods`, `DISTINCT ON` one neighborhood per row, guarded `WHERE latitude IS NULL`) against the
+table's CURRENT contents, catching everything 129 missed. **Same NEVER-FABRICATES rule:** a row whose `neighborhood`
+doesn't resolve to any `city_neighborhoods` row keeps all four columns NULL — no city-center fallback, no `'Unknown'`.
+Idempotent (a re-run after a clean pass is a no-op — proven: `UPDATE 0`). No CHECK constraint anywhere in this
+migration → nothing for the preflight `CONSTRAINT_MANIFEST`, no publish-time drizzle-push trap (a pure data UPDATE).
+**Companion code (same change, not a migration):** the three provider_services seeders that set `neighborhood` now
+resolve the same centroid **at INSERT time** via a shared helper (`server/seeds/lib/neighborhood-centroid.ts`, the
+129/162 slug-first-then-name match factored out), so newly seeded rows are born with coordinates instead of relying
+on a future re-backfill migration to catch them. Proven behaviorally against a local throwaway Postgres: synthetic
+pre-fix rows (neighborhood set, coords NULL) → 162 fills every resolvable one with the correct centroid and leaves
+unresolvable/neighborhood-less rows NULL → re-run is a no-op; the three seeders, run fresh with the fix, insert every
+row already fully coordinated (162 finds nothing left to do against seeder output).
+
 **Migration 136 (Jul 26, 2026; registered in `migration-files.ts`) — users.handle (backoffice Phase 1a):**
 adds **additive nullable** `users.handle` VARCHAR(30) + UNIQUE constraint (no CHECK, no DEFAULT → no publish-time
 drizzle-push trap; PG UNIQUE permits multiple NULLs so existing rows are untouched). Format + reserved-word rules are
