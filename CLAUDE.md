@@ -1475,7 +1475,7 @@ No-ops cleanly (just ensures `legacy_archives` exists) if the table is already a
 `legacyArchives` is declared in `shared/schema.ts` in the SAME commit that removes the `activityBookings`
 declaration (the deploy-push-durability rule — an undeclared archive table would itself become the next drop
 target, defeating the point). The one real prod booking survives queryably as a `legacy_archives` jsonb row;
-the publish prompt this declaration caused ends. No other code paths touched.
+the publish prompt this declaration caused ends. No other code paths touched. **TWO-DEPLOY SEQUENCING (Fable review addition — the push-ordering trap):** the Replit publish push runs BEFORE migrations and drops UNDECLARED tables, so the `activity_bookings` schema.ts declaration is KEPT in the same PR as 168 (step 1); removing it alongside 168 would have destroyed the prod row before the archive ran. After the first post-168 publish (verify `SELECT count(*) FROM legacy_archives WHERE source_table='activity_bookings'` ≥ 1 on prod), the step-2 PR removes the declaration; in between, the push may recreate the dropped table EMPTY — harmless and expected.
 
 **Previous Coordination Failure (Jun 3, 2026):**
 - Commit bfc3db2 made ESO canonical without accounting for booking-FK fact
