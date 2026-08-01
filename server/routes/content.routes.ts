@@ -1290,23 +1290,12 @@ router.get("/api/catalog/ground-transport", isAuthenticated, async (req, res) =>
     }
   });
 
-  // HotelLook hotel search (instant-connect ⚡)
+  // HotelLook RETIRED 2026-08 — Travelpayouts shut down the public Hotellook data API
+  // (engine.hotellook.com/api/v2/* return 404; see hotellook.service.ts). The endpoint
+  // stays as an explicit empty response so any stale clients don't see a broken 404/500.
 
-router.get("/api/catalog/hotels-look", isAuthenticated, async (req, res) => {
-    try {
-      const { searchHotellook } = await import("../services/travelpayouts/hotellook.service");
-      const { destination, currency, limit } = req.query;
-      if (!destination) return res.status(400).json({ message: "destination required" });
-      const items = await searchHotellook({
-        destination: destination as string,
-        currency: currency as string,
-        limit: limit ? parseInt(limit as string) : 20,
-      });
-      res.json({ items, total: items.length });
-    } catch (err) {
-      console.error("HotelLook error:", err);
-      res.status(500).json({ message: "Failed to search HotelLook" });
-    }
+router.get("/api/catalog/hotels-look", isAuthenticated, async (_req, res) => {
+    res.json({ items: [], total: 0, retired: true });
   });
 
   // Agoda hotels (instant-connect ⚡)

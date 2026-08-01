@@ -1,0 +1,389 @@
+# Suggested (Draft) Tasks by Category
+
+_As of Aug 1, 2026 — 353 draft tasks in the queue._
+
+## Payments, Stripe & Payouts (56)
+- #94 — Auto-clean expired Travelpayouts cache entries to keep the database lean
+- #95 — Add a cache status indicator so you can see when Travelpayouts data was last refreshed
+- #105 — Backfill booking counts and earnings for services that already have bookings
+- #106 — Show live booking counts and earnings on the provider and expert dashboards
+- #141 — Mark earnings as paid out when payout completes so balances stay accurate
+- #142 — Add a payout history and earnings breakdown page for experts and providers
+- #143 — Wire up STRIPE_CONNECT_WEBHOOK_SECRET in environment so the new webhook is verified in production
+- #148 — Apply period filtering to expert and provider earnings stats on the revenue dashboard
+- #151 — Let admins filter the revenue export by source type (Stripe, Viator, etc.)
+- #157 — Connect provider earnings summary to a real API endpoint
+- #241 — Make the Explore Spine filter chips scroll the feed to the right section on mobile
+- #279 — Teach the feed to recognise more gem types so fewer gems go missing
+- #317 — Pull real events into the location feed so the Events tab has live content
+- #320 — Protect tip payouts from silent rate drift by routing them through the central fee resolver
+- #324 — Show the expert recruitment card inside the main feed too, not just when the Experts tab is empty
+- #330 — Add heart icons to search results and the main Discover feed
+- #350 — Add a Stripe webhook to handle optimization payment failures and refunds
+- #351 — Show optimization fee pricing on the Pricing page so users know the cost upfront
+- #378 — Replace expired Stripe live key in dev so payment forms actually render during testing
+- #410 — Show Kyoto wedding & corporate vendors in the city feed and search results
+- #411 — Let wedding & corporate vendors receive real bookings and payments
+- #412 — Add Kyoto-specific neighborhoods to Paris and Tokyo feeds to match the seeded coverage
+- #493 — Track insurance fees per booking so reports show real per-transaction amounts
+- #494 — Show insurance tier status in the admin fee config summary cards
+- #495 — FEE-2 Phase 3: Per-market insurance rate overrides
+- #517 — Show a per-item fee breakdown in the checkout summary
+- #518 — Invalidate the fee preview cache when the cart changes
+- #533 — Show confirmation codes on the booking confirmation screen right after payment
+- #535 — Notify users by email when their payment fails
+- #542 — Add a React error boundary around the checkout UpsellSlot so slot failures never break payments
+- #551 — Show pricing tiers on service booking cards and in the checkout flow
+- #578 — Show the Booking Concierge fee on the booking detail and my-bookings pages
+- #579 — Make the Booking Concierge fee amount configurable from the admin panel
+- #580 — Keep the cart fee preview accurate when a booking-concierge service is removed
+- #584 — Make sure the price shown in the cart always matches what gets charged at checkout
+- #585 — Remove duplicate provider-role fee logic to keep pricing consistent
+- #632 — Stamp the removed 075 migration in the production ledger so it's not re-applied
+- #634 — Use content impression data to improve the Discover feed quality loop
+- #824 — Catch broken /admin/fee-config redirects if the fee-bands route is ever renamed
+- #846 — Prevent provider earnings from being counted twice if a booking confirmation is retried
+- #856 — Confirm credit scoping works correctly end-to-end so travelers aren't over- or under-charged
+- #857 — Prevent a traveler's remaining credits from disappearing if a payment fails mid-flow
+- #860 — Confirm provider checkout still charges the right commission after the routing change
+- #873 — Make sure the quick-start itinerary flow completes checkout end-to-end without errors
+- #874 — Prevent a refunded coordination fee from re-entering 'pending' via the webhook path
+- #875 — Confirm the coordination fee refund flow fully resets credits so they can be reused
+- #876 — Confirm the refund flow can't leave Stripe and the database out of sync after a retry
+- #877 — Let admins mark a ledger gap as reviewed so the warning doesn't stay red forever
+- #878 — Export reversed/refunded coordination fees to CSV so finance can reconcile offline
+- #879 — Alert admins when a new refund/reversal lands so nothing slips through unnoticed
+- #903 — Also email the applicant when their rejection feedback is updated
+- #904 — Show rejection feedback update notifications with a clear call-to-action in the notification bell
+- #918 — Show admins how many characters are left as they type rejection feedback
+- #923 — Send a similar email to experts when their rejection feedback is updated
+- #933 — Make sure providers can't keep receiving Stripe payout reminders after they complete setup
+- #968 — Keep the bookings table's double-charge guard from silently disappearing on the next publish
+
+## Bookings & Booking Flow (37)
+- #89 — Connect real Booking.com and OpenTable API keys to start fetching live hotels and restaurants
+- #90 — Show Booking.com hotel booking links on hotel search results
+- #91 — Add Booking.com and OpenTable results to the Experience Discovery page type filters
+- #101 — Protect expert booking-request notifications with a direct workspace link
+- #112 — Show a confirmation dialog before declining a booking
+- #113 — Let experts add a reason when they decline a booking
+- #114 — Let experts configure which email address receives booking alerts
+- #115 — Let experts opt out of email notifications for new bookings
+- #116 — Connect a real email provider so booking alerts actually reach experts
+- #121 — Add a Booking Brief button on each itinerary item so experts can pull client PII when completing vendor bookings
+- #127 — Let clients add passport and phone number to their profile for expert bookings
+- #128 — Remember which client details an expert has already seen to avoid repeated confirmations
+- #154 — Show which AI agent or advisor triggered each affiliate booking in the attribution report
+- #186 — Let users book directly inside the app without leaving for an external partner site
+- #206 — Show visa application details on provider booking cards
+- #230 — Wire booking-source data from transport-booking-options API into PlanCard transport legs
+- #242 — Connect real bookability data so marketplace cards show correct booking badges
+- #275 — Notify users when their partner booking is confirmed or fails
+- #276 — Show users a live list of their partner booking requests
+- #277 — Auto-assign partner booking requests to the most relevant expert
+- #282 — Fix broken display in the unified results card so all booking options show correctly
+- #332 — Show affinity tag chips on marketplace service cards so travellers understand what they're booking
+- #335 — Automatically mark bookings as cross-sell attributed when the buyer arrived via a cross-sell chip
+- #349 — Send users a confirmation email when they pay for AI optimization
+- #384 — Personalize suggestions using past booking history, not just trip profile
+- #503 — Scope EA client access so each EA only sees their own clients' bookings
+- #527 — Prevent duplicate bookings for the same activity on the same date
+- #528 — Extend double-confirmation protection to the service bookings flow
+- #534 — Email users their confirmation code when a booking is confirmed
+- #536 — Let users see their booking confirmation code in the app
+- #537 — Show auto-cancelled bookings on the admin dashboard with a status badge
+- #538 — Let the scheduler send an email when it auto-cancels a booking
+- #845 — Make sure provider notifications actually reach providers when a booking is confirmed
+- #847 — Show live booking notification count badge on the provider dashboard
+- #872 — Prevent itinerary booking from silently failing when no activities were generated
+- #930 — Confirm reminder scheduler fires correctly after a server restart
+- #934 — Prevent the 72-hour reminder cooldown from silently breaking if the notifications table grows large
+
+## Experts & Expert Workspace (52)
+- #99 — Replace placeholder client data in the expert client detail page with real information
+- #100 — Show client names and real trip IDs on the expert dashboard client cards
+- #109 — Let experts edit existing services after they've been published
+- #111 — Add a short description field to the expert service creation wizard
+- #119 — Let experts live-search restaurants and activities to add directly from the workspace Browse tab
+- #120 — Auto-save expert notes from the workspace so they persist across sessions
+- #129 — Show the last-saved timestamp for expert notes even after a page refresh
+- #156 — Wire up the EA and Expert consoles to real backend data
+- #167 — Show local expert knowledge nuggets when the AI builds an itinerary
+- #168 — Show the knowledge nugget count on each local expert's public profile
+- #169 — Let admins browse and filter nuggets across all local experts
+- #172 — Show neighbourhood chips on expert listing cards
+- #173 — Let travellers filter experts by neighbourhood
+- #174 — Show neighbourhood coverage on the expert public profile page
+- #175 — Let travellers filter expert search results by neighbourhood
+- #189 — Let users filter experts by language on the server, not just in the browser
+- #190 — Let users add more destinations to the expert filter dropdown
+- #195 — Show popular neighbourhood chips as quick-tap filters on the experts page
+- #196 — Let travellers click a neighbourhood chip on an expert card to instantly filter the grid
+- #207 — Show experts which documents travelers have already checked off
+- #214 — Add the missing 'In Review' and 'Notes' stages to the workspace so experts have a complete handoff flow
+- #218 — Notify experts when they're assigned a new trip through the routing queue
+- #222 — Show constraint badge count on the workspace trip cards in the Assigned Trips list
+- #225 — Let experts customize the auto-generated anchors before they're saved
+- #226 — Show a clear success message when anchors are auto-generated on workspace entry
+- #227 — Make sure presets don't re-generate if an expert manually deletes all anchors
+- #231 — Populate expertNote on itinerary activities so Expert Notes map pins appear
+- #234 — Notify the expert by email when an admin confirms their workspace assignment
+- #291 — Fully unify the expert shared-view into PlanCard so the expert edit mode also uses one renderer
+- #314 — Show review counts on the Expert profile page and marketplace listing
+- #323 — Track how many travellers click the expert and provider recruitment CTAs
+- #336 — Let experts claim ownership of gem cards they curated
+- #338 — Add expert profile deep-link and real photo to ExpertPickAttribution badges
+- #372 — Add tooltips to other plan card chips (Expert, Events) for consistency
+- #397 — Filter the Local Experts page by role so Trip Planners have their own view
+- #427 — Remember search filters and destination when navigating back to the Experts page
+- #428 — Show expert counts on the Experts & Services nav dropdown
+- #429 — Let users filter experts by rating and response time
+- #452 — Show the role callout on the expert onboarding checklist too
+- #453 — Seed at least one generic template so new experts always see the templates page
+- #485 — Build a UI for inviting friends and experts to collaborate on a trip
+- #523 — Let experts endorse services so travelers see trusted picks
+- #540 — Seed the platform's expert service tiers so the service menu shows real offerings
+- #606 — Show expert offering options immediately without a loading flash
+- #664 — Add slow-query warnings to the expert listing and AI chat endpoints
+- #679 — Prevent the role-band chips from looking empty when the expert API is slow or down
+- #839 — Audit the expert detail page for other hardcoded guarantee claims
+- #867 — Prevent email-auth experts from getting 401s on other expert routes that still use the old auth pattern
+- #880 — Make sure experts see fresh templates when they switch their expert type later
+- #888 — Prevent unapproved experts from re-submitting a rejected service for review
+- #892 — Confirm the expert application gate still works end-to-end after the pending-status fix
+- #978 — Reconnect the itinerary day map so experts can drag pins to reorder activities again
+
+## Providers & Applications (24)
+- #110 — Show the real provider name on marketplace service cards instead of a random placeholder
+- #159 — Let providers upload photos when creating or editing a service
+- #319 — Show assigned neighborhood on service edit so providers can see and correct it
+- #331 — Auto-suggest affinity tags when a provider creates a service
+- #390 — Apply the console theme to shared provider components (sidebar, layout, cards)
+- #498 — Let providers respond to reviews from their dashboard
+- #548 — Send providers an email when their background check is approved or rejected
+- #549 — Let providers check their own verification status and request a review
+- #552 — Let providers duplicate or bulk-edit their services
+- #667 — Prevent services from disappearing if a vendor is already in the database when categories change
+- #861 — Prevent non-early-adopter providers from getting the beta rate when the platform exits beta
+- #862 — Show the real provider name on marketplace service cards instead of a random placeholder
+- #863 — Prevent provider names from showing as 'Provider' when user accounts have no first/last name set
+- #881 — Confirm the service-templates page doesn't flash "Submit Application" briefly before loading after applying
+- #884 — Block rejected applicants from creating services too
+- #891 — Show pending applicants a clear status page instead of looping back to the apply form
+- #898 — Show a 'what changed' summary to admins when a rejected applicant resubmits
+- #899 — Prevent rejected provider applicants from submitting duplicate provider applications
+- #905 — Apply the same duplicate-email guard to approval notifications
+- #906 — Send the rejection email with the custom reason the admin typed
+- #907 — Prevent admins from accidentally confirming rejection with an empty reason
+- #919 — Prevent oversized rejection reasons from bypassing the limit via the status-change endpoint
+- #924 — Let rejected providers track their resubmission so they aren't left wondering again
+- #925 — Notify rejected providers by email when their resubmission is approved or rejected again
+
+## Admin & Reporting (22)
+- #152 — Add a scheduled weekly revenue report emailed to admins
+- #153 — Schedule automatic nightly reconciliation so admins don't have to trigger it manually
+- #155 — Persist partner report data locally so reconciliation works even when partner APIs are down
+- #219 — Show the routing queue count as a badge on the admin dashboard
+- #235 — Let admins see which leads have already been confirmed in the routing history
+- #283 — Surface demand-signal refresh status on the admin dashboard so staff know when data is stale
+- #285 — Make cache hit/miss metrics visible in the admin dashboard
+- #287 — Show live demand signal trends on the admin intelligence dashboard
+- #321 — Add an admin screen to view and edit all commission rates in one place
+- #329 — Let users share or export their saved places as a list
+- #333 — Add a bulk-tagging tool so admins can tag many services at once
+- #383 — Let admins see which upsell suggestions are driving the most cart adds
+- #418 — Show a summary of add-on click performance in the admin revenue dashboard
+- #496 — Email admin when a review is flagged
+- #502 — Add an EA invitation flow so admins can onboard new Executive Assistants
+- #539 — Keep a permanent log of auto-cancellation runs so admins can audit history
+- #610 — Export demand signal data to CSV so the team can share supply-gap reports
+- #613 — Also notify travelers when a service from routes.ts or admin flows goes active
+- #620 — Let admins edit filter chip labels and tag mappings without touching code
+- #621 — Show impression stats on each Discover card for admins
+- #622 — Send weekly Discover funnel report to admins by email
+- #850 — Make coordination stage visible on admin concierge-requests view
+
+## Trips, Itinerary & Cart (29)
+- #81 — Add events and transfers to the itinerary builder cart flow
+- #84 — Add "Add to cart" button on browse catalog cards
+- #229 — Fully migrate itinerary and shared-view pages to use the unified PlanCard
+- #292 — Fix the same Maps null-island bug on the itinerary comparison page
+- #293 — Fix Maps links on the server-side itinerary share navigator when activities have no coordinates
+- #334 — Show the 'Users also book' strip on service and experience pages to start collecting cross-sell data
+- #352 — Show 'In plan' state on browse catalog cards across the whole site
+- #354 — Keep cart items when a guest signs in
+- #355 — Show a mini cart preview when hovering the cart icon
+- #356 — Let users pick which day of their trip to schedule each saved item
+- #357 — Let users convert discover saves into a trip directly from the Discover page
+- #358 — Show a 'From Discover' label on itinerary items that came from cart saves
+- #367 — Let users click the AI Optimized banner to jump straight to the optimization details
+- #373 — Show a 'Re-optimize' nudge banner inside the itinerary tab when optimization is stale
+- #379 — Keep the optimization comparison fresh after the optimizer finishes so the 24h rerun resets properly
+- #396 — Add a 'Plan your event' entry point on the landing page
+- #487 — Apply trip collaborator role checks to all remaining write endpoints
+- #524 — Wire the upsell engine into the cart and discover surfaces
+- #741 — Catch blank EA trip cards when start or end date is missing from the database
+- #761 — Prevent the shared trip page from crashing on invalid or deleted share tokens
+- #762 — Catch broken shared itinerary links in smoke tests so they never reach production
+- #763 — Prevent itinerary page from getting stuck loading if data fails to arrive
+- #764 — Stop the shared itinerary view from looping on a broken share link
+- #804 — Catch any future broken cart-redirect before it ships to users
+- #805 — Make sure the 'Add to existing trip' path in the cart also lands on the right page
+- #825 — Make sure parameterised redirects (/itinerary/:id, /city/:slug) actually land on the right page, not just away from 404
+- #844 — Make sure the itinerary-comparison flow cannot silently fail again if a route is added but not mounted
+- #947 — Confirm trip details are restored correctly after signing in mid-session
+- #948 — Sync trip context to the server when a user signs in so their planning isn't lost
+
+## Marketplace, Browse & Discovery (17)
+- #82 — Show Events and Transfers tabs on other relevant experience types
+- #83 — Show real prices on browse cards instead of price-tier symbols
+- #85 — Keep browse results when the user switches tabs (avoid re-fetching)
+- #177 — Also search neighbourhood names in the main search bar
+- #278 — Show a 'no results' message when a filter tab has nothing to display
+- #288 — Wire no-results searches into the demand signal layer automatically
+- #316 — Show a neighborhood-filtered view when users tap 'Explore [Neighborhood]'
+- #328 — Group saved places by city so the wishlist is easier to browse
+- #353 — Let users remove saved items directly from the discover page
+- #398 — Show real photos on experience browse cards too
+- #500 — Show converted prices on service cards in the browse catalog
+- #619 — Seed catalog services for party & event templates so filter chips actually narrow results
+- #623 — Track how long users spend looking at each Discover card
+- #668 — Stop the services marketplace showing a blank page when there are fewer than 8 entries
+- #748 — Let EAs sort or filter executives by who has an upcoming birthday or milestone
+- #827 — Catch mobile viewport regressions on the /discover page before they ship
+- #961 — Give non-Kyoto builds real browse results by fixing the Google Places supplement
+
+## Events & Affiliate Integrations (2)
+- #80 — Load live Fever events for real destinations (not just cached ones)
+- #299 — Show Fever ticket events in the global calendar alongside destination events
+
+## Maps & Location (27)
+- #194 — Show a friendly error when you try to add too many neighbourhoods
+- #240 — Add neighborhood tags to hidden gems and activities so they show up in the right neighborhood section
+- #268 — Seed hidden gems and services for more cities (Barcelona, Bali, New York)
+- #269 — Auto-assign neighborhood slugs to hidden gems that already have coordinates but no neighborhood tag
+- #273 — Fill in neighborhood descriptions so the green vibe lines actually appear
+- #274 — Give each neighborhood container a unique icon that matches its character
+- #294 — Let users pick their preferred Maps app (Google, Apple, Waze) from Settings
+- #298 — Add a unique database constraint on destination_events to prevent duplicate event entries
+- #300 — Stop showing duplicate events when the TravelPulse city view and destination calendar cover the same city
+- #318 — Extend neighborhood backfill to also cover hidden gems
+- #325 — Show map pins for gems when exact coordinates aren't available
+- #326 — Add a legend and neighborhood boundary overlay to the location map
+- #327 — Persist the Map/List view preference across city pages
+- #399 — Add more cities to the destination photo library
+- #435 — Apply consistent capitalisation to city names across all other pages
+- #501 — Auto-detect the visitor's local currency based on their location
+- #515 — Fix the destination calendar seed so it doesn't log errors on every startup
+- #541 — Wire real-click navigation for UpsellSlot cards so tapping an offer takes users somewhere
+- #614 — Send a weekly digest to travelers still waiting for a service in their city
+- #673 — Prevent the loading spinner from hanging forever if the API never responds on /earn
+- #742 — Catch broken EA routes before they ship by keeping the smoke test list in sync automatically
+- #777 — Prevent broken auth-gated routes from shipping undetected
+- #787 — Promote the neighborhood gate to block merges before it's bypassed
+- #808 — Catch broken setLocation() calls from Wouter before they ship
+- #843 — Remove dead inline route copies so the same logic isn't maintained in two places
+- #962 — Make destination matching tolerant of 'Kyoto, Japan'-style variants
+- #979 — Fix the Google Maps 'can't load correctly' overlay by enabling billing on the Maps API key
+
+## Email & Notifications (7)
+- #483 — Add a live email preview so you can see exactly what users receive
+- #484 — Add a rate limit to the forgot-password endpoint to prevent email flooding
+- #612 — Let travelers unsubscribe from service availability alerts
+- #704 — Extend the sign-in intercept to cover the Replit/Social OAuth path, not just email login
+- #754 — Send EA an email or push notification when a client date is today or tomorrow
+- #848 — Notify the traveler when their coordinator advances the engagement stage
+- #866 — Prevent a claimed concierge request from vanishing if the user signs in via Replit OAuth instead of email
+
+## Auth & Sessions (4)
+- #703 — Confirm sign-in redirect lands on the right page after logging in from a gated deep link
+- #782 — Catch a broken seed-CI-users script before it blocks authenticated route tests
+- #788 — Prevent CI gate timeouts by parallelising auth-route checks across roles
+- #864 — Make sure the concierge sign-in prompt never appears for logged-in users after any server error
+
+## Concierge (1)
+- #865 — Make sure a guest concierge request can't be silently hijacked by another signed-in user
+
+## UI/UX Polish (23)
+- #147 — Make the 'This mo' and 'Last mo' labels on stream cards match the selected period
+- #198 — Show visa data confidence level based on how recently it was checked
+- #228 — Show a visual indicator while energy is recalculating after adding an item
+- #290 — Fix syntax error in unified-result-card that blocks TypeScript from passing cleanly
+- #337 — Show bundle deals (hotel + transfer) for real matching services, not just placeholder data
+- #382 — Show upsell suggestions as a persistent sidebar panel on the comparison page
+- #400 — Show a 'Refreshing deals...' hint when the deals page is serving cached data
+- #417 — Show live transfer options in the airport transfer add-on card
+- #437 — Show the Unsplash photographer's name on the credit badge
+- #442 — Show a placeholder image on hidden gems cards when no photo has loaded yet
+- #443 — Show how many gems are missing photos before running the backfill
+- #497 — Show review count accurately — exclude pending/removed reviews from totals
+- #516 — Add a startup health log showing which migrations ran vs. were already recorded
+- #611 — Add a 'Request this service' button to offering cards that aren't available yet
+- #674 — Make sure the /earn page error and empty states look right across all four role tabs
+- #714 — Catch broken links on static pages like /how-it-works and /blog before they go live
+- #715 — Catch navbar links pointing to missing pages before they ship
+- #749 — Prevent EA events and gifts pages from showing stale placeholder counts when real data is empty
+- #750 — Seed EA gift and event rows so all EA pages show real content during CI smoke tests
+- #756 — Confirm the executive card keeps its scroll position after saving a long profile edit
+- #757 — Confirm the X button on the edit dialog also leaves the executive card open
+- #759 — Prevent important dates from being saved without both a label and a date selected
+- #840 — Add a real support contact page so users know how to get help
+
+## Database & Data Integrity (15)
+- #185 — Pre-load curated items with real seed data so the section isn't empty on fresh installs
+- #216 — Update default commission rate in the database for existing services
+- #284 — Extend the shared cache to cover hotel, activity, and flight caches too
+- #286 — Add automated tests to catch cache regressions before they reach production
+- #289 — Add a database index on service_demand_signals to keep recommendations fast as data grows
+- #315 — Surface real review counts from the database on service and gem API responses
+- #401 — Warm up the deals cache on server start so the first visitor also gets fast results
+- #489 — Move startup seed code out of routes.ts into its own file
+- #525 — Verify migrations run clean on a fresh production database
+- #526 — Fix pre-existing TypeScript errors in the migration runner
+- #550 — Seed service categories with requiresBackgroundCheck and insuranceBand flags
+- #567 — Add an automated check that catches migration chain gaps before they reach production
+- #743 — Share the build cache across all three CI workflows to avoid rebuilding the same code twice
+- #791 — Cut CI wait time further by parallelising the three gate workflows' setup jobs into one shared cache
+- #967 — Catch database tables at risk of being silently deleted on publish before it happens
+
+## Testing, CI & DevOps (14)
+- #322 — Add automated tests to catch commission rate regressions before they reach production
+- #374 — Let the 30-day staleness threshold be configurable without a code deploy
+- #553 — Validate and preview pricing tiers before saving a service
+- #678 — Make sure the /earn error banner is caught by the smoke tests, not just the happy path
+- #712 — Catch stale nav/footer links before they reach production with a CI gate
+- #713 — Make the footer links CI gate a required branch-protection check
+- #786 — Promote the other Tier 2 CI checks to required so they can't be silently skipped
+- #789 — Promote the bundle build check to block broken deploys
+- #790 — Promote the remaining Tier 1 CI gates to block bad PRs
+- #800 — Catch a workflow that has a Postgres service but never calls the composite action at all
+- #807 — Catch broken navigate() and useNavigate() calls before they ship
+- #870 — Make sure the AI price guard test runs automatically on every code change
+- #871 — Catch broken server-price tests that silently never run because vitest is not installed
+- #980 — Restore the app preview on the public dev URL (currently returns 502)
+
+## Other (23)
+- #130 — Flush the pending note save before navigating away (instead of just warning)
+- #160 — Add a category dropdown to the service form instead of a free-text field
+- #197 — Auto-refresh stale visa data so users always see up-to-date info
+- #208 — Let travelers upload documents directly to their checklist items
+- #215 — Add more schedule checks beyond the dinner gap rule
+- #217 — Prevent bad commission rates from being saved in the first place
+- #301 — Fix leftover TypeScript errors in pre-existing route helpers and service files
+- #302 — Add route-level request validation and standardized error responses
+- #303 — Fix 174 pre-existing TypeScript errors so the build is clean
+- #438 — Store photo credit info on gem records so the badge always has a name
+- #441 — Add a nightly schedule so gem photos stay fresh even after new gems are added
+- #486 — Let friends suggest activity changes instead of being silently blocked
+- #490 — Add an automated route-coverage check to catch missing endpoints
+- #499 — Save your preferred currency to your account so it follows you across devices
+- #504 — Log EA data access for audit trail compliance
+- #633 — Wire up the demand request form so travelers can submit service needs
+- #635 — Add season_tag values to offering types so seasonal recommendations work
+- #665 — Make the slow-query threshold configurable per endpoint, not just globally
+- #755 — Let EAs manage important dates directly from the dashboard instead of only in the client profile
+- #758 — Apply the same date picker to the anniversary field in the EA onboarding wizard
+- #776 — Prevent broken app-routes from reaching production without a merge block
+- #806 — Catch broken navbar links before they ship to users
+- #849 — Let the traveler accept or reject coordinator-proposed status advances
+

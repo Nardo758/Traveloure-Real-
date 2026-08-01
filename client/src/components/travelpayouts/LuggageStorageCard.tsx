@@ -61,7 +61,7 @@ export function LuggageStorageCard({ item, className }: { item: CatalogItem; cla
             </Button>
           </div>
           <BookWithExpertButton
-            destination={item.destination}
+            destination={item.destination ?? undefined}
             topic="luggage-storage"
             className="w-full justify-center"
             data-testid={`button-expert-luggage-${item.id}`}
