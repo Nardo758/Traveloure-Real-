@@ -330,6 +330,13 @@ router.post('/apply-promo', isAuthenticated, async (req, res) => {
   }
 });
 
+// MONEY_MAP F-2: production guard — STRIPE_WEBHOOK_SECRET defaults to '' below, and passing an
+// empty secret into constructEvent just throws inside the try/catch on every delivery (a noisy,
+// per-request 400 that masks the real misconfiguration). In production specifically, refuse the
+// route outright instead. Logged once (not once-per-request) to avoid log-flooding a webhook
+// endpoint that Stripe will retry repeatedly while misconfigured.
+let loggedMissingWebhookSecretOnce = false;
+
 /**
  * POST /api/bookings/webhooks/stripe
  * Stripe webhook endpoint
@@ -346,6 +353,17 @@ router.post('/apply-promo', isAuthenticated, async (req, res) => {
 // this route now mirrors that established pattern — no new middleware, no change to body parsing
 // for any other route.
 router.post('/webhooks/stripe', async (req: any, res) => {
+  if (process.env.NODE_ENV === 'production' && !process.env.STRIPE_WEBHOOK_SECRET) {
+    if (!loggedMissingWebhookSecretOnce) {
+      console.error(
+        '[bookings webhook] STRIPE_WEBHOOK_SECRET is not set in production — refusing webhook deliveries ' +
+          'rather than attempting signature verification with an empty secret.'
+      );
+      loggedMissingWebhookSecretOnce = true;
+    }
+    return res.status(503).json({ error: 'Webhook not configured' });
+  }
+
   const sig = req.headers['stripe-signature'];
 
   if (!sig) {
