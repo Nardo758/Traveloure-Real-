@@ -12,6 +12,7 @@ import { Search, Plus, Check, Clock } from "lucide-react";
 // partner-source.ts (workspace.tsx and server-side/test code import from there directly — this
 // component's own `@/components/ui/*` + React imports don't resolve outside a bundler).
 import { PARTNER_NETWORKS, buildPartnerDescription } from "@/lib/partner-source";
+import { usePublishMapCandidates, isRealLatLng } from "@/lib/map-candidates";
 
 /**
  * PartnerCatalogPickerCore — W3-A, item 10 tiers (a)+(c).
@@ -161,6 +162,26 @@ export function PartnerCatalogPickerCore({
   const items = useMemo(
     () => (data?.items ?? []).filter((it) => !q.trim() || it.title.toLowerCase().includes(q.trim().toLowerCase())),
     [data, q],
+  );
+
+  // W5-A (QA_PUNCH_LIST item 19) — publish the SAME network+search-filtered list as discovery-
+  // layer candidate pins. §16 holds: only `latitude`/`longitude` (no URL) ever leave this file.
+  usePublishMapCandidates(
+    "partner",
+    `Partner: ${network.label}`,
+    items
+      .filter((it) => isRealLatLng(it.latitude, it.longitude) && !added.has(it.id))
+      .map((it) => ({
+        id: it.id,
+        title: it.title,
+        lat: it.latitude as number,
+        lng: it.longitude as number,
+        price: it.price != null ? `~${it.currency ?? "USD"} ${it.price}` : null,
+      })),
+    (id) => {
+      const it = items.find((i) => i.id === id);
+      if (it) addMutation.mutate(it);
+    },
   );
 
   return (

@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MapPin, Plus, Check, Library, Search, Pencil, Sparkles } from "lucide-react";
+import { usePublishMapCandidates } from "@/lib/map-candidates";
 
 interface DmoItem {
   id: string;
@@ -174,6 +175,28 @@ export function DmoPickerCore({
 
   const items = (data?.items ?? []).filter((it) =>
     !q.trim() || it.name.toLowerCase().includes(q.trim().toLowerCase()),
+  );
+
+  // W5-A (QA_PUNCH_LIST item 19) — publish this SAME filtered list (search already applied) as
+  // candidate pins for the canvas map's discovery layer. Excludes already-`added` rows (once
+  // added they become a real plan pin on the next refetch, so they shouldn't linger as a
+  // separate candidate at the same coordinate) and anything failing the real-coords check (§13).
+  usePublishMapCandidates(
+    "dmo",
+    "DMO Library",
+    items
+      .filter((it) => hasRealCoords(it) && !added.has(it.id))
+      .map((it) => ({
+        id: it.id,
+        title: it.name,
+        lat: typeof it.latitude === "number" ? it.latitude : parseFloat(String(it.latitude)),
+        lng: typeof it.longitude === "number" ? it.longitude : parseFloat(String(it.longitude)),
+        price: null,
+      })),
+    (id) => {
+      const it = items.find((i) => i.id === id);
+      if (it) addMutation.mutate(it);
+    },
   );
 
   return (
