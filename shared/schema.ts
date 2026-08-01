@@ -45,6 +45,13 @@ export const attendanceRequirementEnum = ["all", "subset", "optional"] as const;
 export const ROUTING_STATUSES = ["in_planning", "with_expert", "ready_for_checkout", "purchased"] as const;
 export type RoutingStatus = (typeof ROUTING_STATUSES)[number];
 
+// Plan-approval handshake on trip_expert_advisors (migration 164; QA_PUNCH_LIST W2-A, item 13
+// ratified Aug 1 2026). NULL = no decision yet (the honest pre-feature/pre-delivery state). Same
+// pre-109 posture as ROUTING_STATUSES above: plain varchar, canonical set lives HERE not in a DB
+// CHECK, so the publish-time drizzle push has no CHECK to enforce against un-remapped rows.
+export const PLAN_APPROVAL_STATUSES = ["approved", "changes_requested"] as const;
+export type PlanApprovalStatus = (typeof PLAN_APPROVAL_STATUSES)[number];
+
 // === Tables ===
 
 export const touristPlacesSearches = pgTable("tourist_places_searches", {
@@ -145,6 +152,12 @@ export const tripExpertAdvisors = pgTable("trip_expert_advisors", {
   message: text("message"),
   expertResponse: text("expert_response"),
   assignedAt: timestamp("assigned_at").defaultNow(),
+  // Plan-approval handshake (migration 164). NULL = no customer decision yet. Set only once the
+  // advisor row is `delivered` (server-enforced at the decision endpoint, not here). See
+  // PLAN_APPROVAL_STATUSES above for the canonical value set.
+  planApprovalStatus: varchar("plan_approval_status", { length: 20 }),
+  planApprovedAt: timestamp("plan_approved_at"),
+  planReviewNote: text("plan_review_note"),
 }, (table) => ({
   uniqueTripExpert: uniqueIndex("trip_expert_advisors_trip_expert_unique").on(table.tripId, table.localExpertId),
 }));

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { parseApiErrorMessage } from "@/lib/api-error";
 import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -93,8 +94,9 @@ export function MyServicesPickerCore({
       onAdded();
       toast({ title: "Added to itinerary", description: `${s.serviceName} → Day ${dayNumber}` });
     },
+    // Plan-approval mode flip (migration 164) — see dmo-picker-modal.tsx's addMutation.
     onError: (err: any) => {
-      toast({ title: "Couldn't add service", description: String(err?.message ?? err), variant: "destructive" });
+      toast({ title: "Couldn't add service", description: parseApiErrorMessage(err, "Please try again."), variant: "destructive" });
     },
   });
 
