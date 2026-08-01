@@ -75,7 +75,7 @@ function getPeriodDates(period: string): { start: Date; end: Date } {
 // Partner report fetchers (normalise to ExternalCommission[])
 // ---------------------------------------------------------------------------
 
-async function fetchTravelpayoutsCommissions(
+export async function fetchTravelpayoutsCommissions(
   start: Date,
   end: Date
 ): Promise<ExternalCommission[]> {

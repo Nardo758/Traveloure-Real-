@@ -114,10 +114,45 @@ test("WeGoTrip (campaign 150) actions appear in the per-partner breakdown with p
   assert.equal(stats.thisMonth, 14.7);
 });
 
-test("API failure degrades to zeros without throwing", async () => {
-  globalThis.fetch = (async () => new Response("nope", { status: 500 })) as typeof fetch;
+test("balance is fetched from GET /finance/v2/get_user_balance with X-Access-Token", async () => {
+  mockFetch((url) => {
+    if (url.includes("get_user_balance")) return { balance: { usd: "55.10" } };
+    return { results: [], total_rows: 0 };
+  });
+
   const stats = await getTravelpayoutsStatistics("this_month");
-  assert.equal(stats.configured, true);
-  assert.equal(stats.thisMonth, 0);
-  assert.deepEqual(stats.byPartner, []);
+  assert.equal(stats.balance, 55.1);
+
+  const balanceCall = calls.find((c) => c.url.includes("/finance/v2/get_user_balance"));
+  assert.ok(balanceCall, "must call /finance/v2/get_user_balance");
+  assert.equal((balanceCall!.init?.headers as any)["X-Access-Token"], "test-token");
+  assert.notEqual((balanceCall!.init?.method || "GET"), "POST");
+  // legacy 404 endpoints must never be used
+  assert.ok(!calls.some((c) => c.url.includes("/v1/statistics/")), "legacy /v1/statistics/* must not be called");
+});
+
+test("API failure degrades to zeros without throwing, and warn-logs the error", async () => {
+  globalThis.fetch = (async () => new Response("nope", { status: 500 })) as typeof fetch;
+  const warnings: string[] = [];
+  const realWarn = console.warn;
+  console.warn = (...args: unknown[]) => {
+    warnings.push(args.map(String).join(" "));
+  };
+  try {
+    const stats = await getTravelpayoutsStatistics("this_month");
+    assert.equal(stats.configured, true);
+    assert.equal(stats.thisMonth, 0);
+    assert.deepEqual(stats.byPartner, []);
+  } finally {
+    console.warn = realWarn;
+  }
+  // The $0 result must not be silent: both the stats query and balance fetch warn
+  assert.ok(
+    warnings.some((w) => w.includes("[TP Statistics] execute_query failed") && w.includes("500")),
+    `execute_query failure must be warn-logged with the API error; got: ${JSON.stringify(warnings)}`
+  );
+  assert.ok(
+    warnings.some((w) => w.includes("[TP Statistics] balance fetch failed")),
+    "balance fetch failure must be warn-logged"
+  );
 });
