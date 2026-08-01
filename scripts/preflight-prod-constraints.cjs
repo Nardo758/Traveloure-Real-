@@ -104,6 +104,13 @@ const CONSTRAINT_MANIFEST = [
     fallback: null, // NULL is the grandfathered legacy-variant-leg state — never guess-map a leg
     note: "migration 154 trip-scoped leg proposal lifecycle (§18 L4); NULL = legacy variant leg",
   },
+  {
+    table: "ready_made_trips", column: "status", nullable: false,
+    allowed: ["draft", "submitted", "approved", "rejected", "withdrawn"],
+    remap: {},
+    fallback: null, // a widen (127/163 pattern) never invalidates an existing row — nothing to remap
+    note: "migration 163 W2-B adds 'withdrawn' to the migration-133 CHECK",
+  },
 ];
 
 const url = process.argv[2] || process.env.PREFLIGHT_DATABASE_URL || process.env.DATABASE_URL;

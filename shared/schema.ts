@@ -7100,7 +7100,7 @@ export const readyMadeTrips = pgTable("ready_made_trips", {
   pricingMode: varchar("pricing_mode", { length: 20 }).notNull().default("fixed"), // CHECK fixed|per_traveler
   priceCents: integer("price_cents"), // display/charge base; USD-only v1; resolved with fee band
   feeBandKey: varchar("fee_band_key", { length: 100 }).notNull().default("ready_made_trip"),
-  status: varchar("status", { length: 20 }).notNull().default("draft"), // CHECK draft|submitted|approved|rejected
+  status: varchar("status", { length: 20 }).notNull().default("draft"), // CHECK draft|submitted|approved|rejected|withdrawn (migration 163)
   badge: varchar("badge", { length: 30 }),
   insideCounts: jsonb("inside_counts"), // snapshot derived ONLY at the approved transition
   buildReview: jsonb("build_review"),   // Phase 2.5 advisory verdict (score + findings), admin-queue visible

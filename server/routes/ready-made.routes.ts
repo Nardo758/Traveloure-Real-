@@ -20,7 +20,7 @@ import { z } from "zod";
 import { db } from "../db";
 import { storage } from "../storage";
 import { trips, readyMadeTrips, readyMadePurchases, tripExpertAdvisors, itineraryItems, users } from "@shared/schema";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import { READY_MADE_PLAN_TYPE_KEYS, type ReadyMadePlanTypeKey } from "@shared/ready-made-plan-types";
 import { LAUNCH_MARKETS, isLaunchMarket, STORE_GATE_MESSAGE } from "@shared/launch-markets";
 import { getAuthoredTrip } from "../utils/trip-authorship";
@@ -263,11 +263,12 @@ router.patch("/api/expert/ready-made/build/:tripId", isAuthenticated, async (req
   }
 });
 
-// ─── W-5: delete a NEVER-SHIPPED draft build (v1 scope — shipped builds are not deletable;
-// withdraw-from-store isn't built yet, see refusal (c) below). Id from the path, user from the
-// session — no req.body is ever read here (§14 posture; this isn't a money endpoint either way).
-// ROUTE ORDER: registered after PATCH .../build/:tripId, both under the literal "build" segment,
-// so :id here can't be shadowed by (nor shadow) any :id-style route above it.
+// ─── W-5/W2-B: delete a build (v1: never-shipped drafts; W2-B: also a shipped build whose
+// listing has been WITHDRAWN and never sold — see refusal (c)/(c2) below). Id from the path,
+// user from the session — no req.body is ever read here (§14 posture; this isn't a money
+// endpoint either way). ROUTE ORDER: registered after PATCH .../build/:tripId, both under the
+// literal "build" segment, so :id here can't be shadowed by (nor shadow) any :id-style route
+// above it.
 router.delete("/api/expert/ready-made/build/:id", isAuthenticated, async (req, res) => {
   try {
     const userId = sessionUserId(req);
@@ -281,16 +282,38 @@ router.delete("/api/expert/ready-made/build/:id", isAuthenticated, async (req, r
     const trip = await getAuthoredTrip(tripId, userId);
     if (!trip) return res.status(403).json({ message: "Not this build's author" });
 
-    // (c) REFUSE if this build has already shipped to the store — withdraw isn't built yet.
-    const [shipped] = await db
-      .select({ id: readyMadeTrips.id })
+    // (c) REFUSE if this build has a listing that hasn't been withdrawn — a live/pending listing
+    // (draft/submitted/approved/rejected) can't have its source trip pulled out from under it.
+    // W2-B: a WITHDRAWN listing no longer blocks deletion by itself — withdrawing already hid it
+    // from every public surface (see the /withdraw handler above), so nothing further is exposed
+    // by removing the trip too, UNLESS it carries sold history (c2 below).
+    const [listing] = await db
+      .select({ id: readyMadeTrips.id, status: readyMadeTrips.status })
       .from(readyMadeTrips)
       .where(eq(readyMadeTrips.sourceTripId, tripId))
       .limit(1);
-    if (shipped) {
+    if (listing && listing.status !== "withdrawn") {
       return res.status(409).json({
-        message: "Shipped builds can't be deleted — withdraw isn't built yet.",
+        message: "Shipped builds can't be deleted — withdraw the listing from the store first.",
       });
+    }
+
+    // (c2) Sold history is never deleted. `ready_made_purchases` has NO pre-payment state by
+    // design (migration 133 — a row is created only AFTER Stripe verifies `succeeded`), so
+    // existence of ANY purchase row for this listing — 'paid', 'cloned', or even 'refunded' —
+    // means a real completed transaction happened against it; an abandoned checkout leaves no
+    // row at all. So a bare existence check is the correct "was this ever sold?" test.
+    if (listing) {
+      const [sold] = await db
+        .select({ id: readyMadePurchases.id })
+        .from(readyMadePurchases)
+        .where(eq(readyMadePurchases.readyMadeTripId, listing.id))
+        .limit(1);
+      if (sold) {
+        return res.status(409).json({
+          message: "This build was sold — its history can't be deleted.",
+        });
+      }
     }
 
     // (d) REFUSE if a client assignment exists on this trip. Defensive: an authored build
@@ -324,9 +347,14 @@ router.delete("/api/expert/ready-made/build/:id", isAuthenticated, async (req, r
       });
     }
 
-    // (f) Delete. itinerary_items (and every other trip-scoped child table) cascade at the DB
-    // level (ON DELETE CASCADE on trip_id); ready_made_trips.source_trip_id has no cascade
-    // (refusal (c) above already guarantees no such row exists for this trip).
+    // (f) Delete. A withdrawn zero-purchase listing (if any — refusal (c)/(c2) above already
+    // guarantee it's withdrawn and unsold) is deleted FIRST: `ready_made_trips.source_trip_id`
+    // has no ON DELETE action, so deleting the trip while the listing row still references it
+    // would FK-violate. itinerary_items (and every other trip-scoped child table) cascade at the
+    // DB level (ON DELETE CASCADE on trip_id) once the trip delete runs.
+    if (listing) {
+      await db.delete(readyMadeTrips).where(eq(readyMadeTrips.id, listing.id));
+    }
     await storage.deleteTrip(tripId);
     res.status(204).send();
   } catch (err: any) {
@@ -528,10 +556,12 @@ router.patch("/api/expert/ready-made/:id", isAuthenticated, async (req, res) => 
  * refusal names each missing requirement so the author knows exactly what to fix — never a
  * bare 400.
  *
- * §15: the transition is an atomic conditional UPDATE (draft|rejected → submitted); a
+ * §15: the transition is an atomic conditional UPDATE (draft|rejected|withdrawn → submitted); a
  * double-click or a race with an admin decision matches 0 rows and returns 409 instead of
  * silently re-submitting. Approval itself stays admin-only (D1a) — this endpoint can never
- * set 'approved'.
+ * set 'approved'. W2-B: 'withdrawn' is not terminal — the author can re-list, and a
+ * withdrawn-then-resubmitted listing re-enters the admin queue exactly like a rejected one
+ * (D1a: never straight back to 'approved').
  */
 router.post("/api/expert/ready-made/:id/submit", isAuthenticated, async (req, res) => {
   try {
@@ -587,7 +617,7 @@ router.post("/api/expert/ready-made/:id/submit", isAuthenticated, async (req, re
       } as any)
       .where(and(
         eq(readyMadeTrips.id, listing.id),
-        inArray(readyMadeTrips.status, ["draft", "rejected"]),
+        inArray(readyMadeTrips.status, ["draft", "rejected", "withdrawn"]),
       ))
       .returning();
     if (!updated) {
@@ -598,6 +628,52 @@ router.post("/api/expert/ready-made/:id/submit", isAuthenticated, async (req, re
   } catch (err: any) {
     console.error("[ready-made] submit error:", err);
     res.status(500).json({ message: "Failed to submit listing", error: err.message });
+  }
+});
+
+/**
+ * W2-B: Withdraw from the store — the author's counterpart to /submit. Hides a listing from
+ * every public surface immediately, regardless of its current status (submitted OR approved):
+ * every public read (the store feed, the public detail page, the storefront lane, the share-image
+ * renderer) gates on `status === 'approved'`, so flipping to 'withdrawn' alone satisfies all of
+ * them — no `active` flag needed (leaving `active` untouched also avoids corrupting a future
+ * resubmit-then-approve cycle, since nothing else in this file ever flips `active` back to true).
+ *
+ * Existing purchases are UNAFFECTED: a ready-made purchase snapshots the source trip into the
+ * buyer's own clone at fulfillment time (`ready-made-purchase.service.ts`) and the buyer's
+ * purchased-trips read (`GET /api/ready-made/purchases/mine`) never filters on listing status —
+ * there is no live reference back to the listing's approval state once a purchase exists.
+ *
+ * Author gate FIRST, via the same `loadAuthorListing` every sibling endpoint uses (scoped to
+ * `author_id = caller` in the SELECT itself) — a non-author and a nonexistent id both get the
+ * identical 404 "Listing not found", so a non-author can never learn whether the listing exists,
+ * let alone its status (matches every sibling in this file: PATCH /:id, /submit, /build-review,
+ * /earnings-preview all use this same loader + 404).
+ *
+ * §15: the transition is an atomic conditional UPDATE (status <> 'withdrawn' -> 'withdrawn'); a
+ * double-click/retry matches 0 rows and returns 409 alreadyWithdrawn instead of a silent no-op.
+ */
+router.post("/api/expert/ready-made/:id/withdraw", isAuthenticated, async (req, res) => {
+  try {
+    const userId = sessionUserId(req);
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+    const listing = await loadAuthorListing(req.params.id, userId);
+    if (!listing) return res.status(404).json({ message: "Listing not found" });
+
+    const [updated] = await db
+      .update(readyMadeTrips)
+      .set({ status: "withdrawn", updatedAt: new Date() } as any)
+      .where(and(eq(readyMadeTrips.id, listing.id), ne(readyMadeTrips.status, "withdrawn")))
+      .returning();
+    if (!updated) {
+      return res.status(409).json({ message: "Listing is already withdrawn", status: "withdrawn" });
+    }
+
+    res.json({ listing: updated });
+  } catch (err: any) {
+    console.error("[ready-made] withdraw error:", err);
+    res.status(500).json({ message: "Failed to withdraw listing" });
   }
 });
 
