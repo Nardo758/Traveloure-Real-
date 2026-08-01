@@ -329,7 +329,7 @@ export default function DealsPage() {
               Exclusive Travel Deals
             </h1>
             <p className="text-lg text-white/90 max-w-2xl mx-auto mb-8">
-              Real prices from Aviasales, Hotellook, Agoda, GetYourGuide, Klook, Tiqets and DiscoverCars — book directly with our affiliate partners.
+              Real prices from Aviasales, Agoda, GetYourGuide, Klook, Tiqets and DiscoverCars — book directly with our affiliate partners.
             </p>
 
             {/* Search Bar */}

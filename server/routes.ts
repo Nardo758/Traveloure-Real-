@@ -2494,7 +2494,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     origin: string
   ): Promise<DealsPayload> {
     const { searchAviasalesFlights } = await import("./services/travelpayouts/aviasales.service");
-    const { searchHotellook } = await import("./services/travelpayouts/hotellook.service");
+    // Hotellook retired 2026-08 — Travelpayouts shut down the public data API (see hotellook.service.ts).
     const { searchAgoda } = await import("./services/travelpayouts/agoda.service");
     const { searchGetYourGuide } = await import("./services/travelpayouts/getyourguide.service");
     const { searchKlook } = await import("./services/travelpayouts/klook.service");
@@ -2546,12 +2546,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     if (type === "all" || type === "hotels") {
       for (const dest of popularHotelDests.slice(0, 2)) {
         tasks.push(
-          searchHotellook({ destination: dest, limit: 4 })
-            .then((r) => normalize(r, false))
-            .catch(() => [])
-        );
-        tasks.push(
-          searchAgoda({ destination: dest, checkIn: pickupDate, checkOut: dropoffDate, limit: 2 })
+          searchAgoda({ destination: dest, checkIn: pickupDate, checkOut: dropoffDate, limit: 6 })
             .then((r) => normalize(r, false))
             .catch(() => [])
         );
