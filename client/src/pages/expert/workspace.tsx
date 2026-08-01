@@ -1265,6 +1265,32 @@ function ClientSuggestPanel({ tripId }: { tripId: string }) {
   );
 }
 
+// FIX 2 (W1c polish): "+ Day" persistence. Per-trip sessionStorage so the extended day range
+// survives a reload instead of collapsing back to the real max day. Read/write are best-effort —
+// a storage failure (private mode, quota) must never break the workspace, so both fall back to
+// the pre-existing behavior (default 1 / silent no-op).
+function extraMaxDayStorageKey(tripId: string): string {
+  return `workspace-extra-day-${tripId}`;
+}
+
+function readExtraMaxDay(tripId: string): number {
+  try {
+    const raw = sessionStorage.getItem(extraMaxDayStorageKey(tripId));
+    const n = raw ? parseInt(raw, 10) : NaN;
+    return Number.isFinite(n) && n >= 1 ? n : 1;
+  } catch {
+    return 1;
+  }
+}
+
+function writeExtraMaxDay(tripId: string, value: number): void {
+  try {
+    sessionStorage.setItem(extraMaxDayStorageKey(tripId), String(value));
+  } catch {
+    // best-effort — never block the UI on a storage failure
+  }
+}
+
 export default function ExpertWorkspace() {
   const { tripId } = useParams<{ tripId: string }>();
   const [, setLocation] = useLocation();
@@ -1285,8 +1311,11 @@ export default function ExpertWorkspace() {
   const [extraMaxDay, setExtraMaxDay] = useState<number>(1);
   // Trip-scoped UI state must reset when navigating between trips in the same mounted
   // component instance, or Trip B inherits Trip A's expanded day range / focused day.
+  // FIX 2: "reset" for extraMaxDay means "restore this trip's own persisted value" (default 1
+  // when none was ever saved), not always 1 — so a reload of the SAME trip keeps its "+ Day"
+  // extension instead of losing it.
   useEffect(() => {
-    setExtraMaxDay(1);
+    setExtraMaxDay(tripId ? readExtraMaxDay(tripId) : 1);
     setFocusDay(1);
   }, [tripId]);
 
@@ -2431,7 +2460,7 @@ export default function ExpertWorkspace() {
                 {/* A-1 (Workstation audit): extend the selectable range by one day, client-side —
                     a day exists in the data model the moment an item lands with that dayNumber. */}
                 <button
-                  onClick={() => { const next = maxDay + 1; setExtraMaxDay(next); setFocusDay(next); }}
+                  onClick={() => { const next = maxDay + 1; setExtraMaxDay(next); setFocusDay(next); if (tripId) writeExtraMaxDay(tripId, next); }}
                   data-testid="button-add-day"
                   style={{
                     padding: "3px 9px", borderRadius: 99, fontSize: 11, fontWeight: 650, whiteSpace: "nowrap", cursor: "pointer",
