@@ -27,6 +27,17 @@ interface DmoItem {
   // coordinate, not a neighborhood substitute, so they're safe to carry through.
   latitude?: string | number | null;
   longitude?: string | number | null;
+  // W5-C: the server now overlays the requesting expert's OWN latest expert_dmo_edits row
+  // onto name/description/tags/etc — `name`/`description`/`tags` above are already the
+  // MERGED (refined-if-present) values. `isRefined` says whether an overlay actually
+  // happened; `raw` is the untouched original so the UI can show what changed, honestly.
+  isRefined?: boolean;
+  raw?: {
+    name: string;
+    description?: string | null;
+    shortDescription?: string | null;
+    tags?: string[] | null;
+  };
 }
 
 // Mirrors workspace.tsx's isLocatedItem: decimal columns arrive as strings over JSON;
@@ -200,6 +211,11 @@ export function DmoPickerCore({
                     <div className="flex items-center gap-2">
                       <span className="font-medium text-sm truncate">{it.name}</span>
                       <Badge variant="outline" className="capitalize shrink-0 text-xs">{it.contentType}</Badge>
+                      {it.isRefined && (
+                        <Badge className="shrink-0 text-xs gap-1" data-testid={`badge-refined-${it.id}`}>
+                          <Sparkles className="w-3 h-3" /> Refined
+                        </Badge>
+                      )}
                     </div>
                     {it.neighborhood && (
                       <span className="flex items-center gap-1 text-xs text-muted-foreground mt-0.5">
@@ -244,6 +260,12 @@ export function DmoPickerCore({
                       Refine the raw content below so it's ready to build into a Ready Made Trip or a
                       client itinerary.
                     </p>
+                    {it.isRefined && it.raw && (
+                      <p className="text-xs text-muted-foreground/80 rounded-md bg-background border px-2 py-1.5" data-testid={`dmo-refine-original-${it.id}`}>
+                        Original (unrefined): <span className="italic">{it.raw.name}</span>
+                        {it.raw.description ? ` — ${it.raw.description}` : ""}
+                      </p>
+                    )}
                     <div className="space-y-1">
                       <Label htmlFor={`dmo-refine-name-${it.id}`} className="text-xs">Name</Label>
                       <Input
