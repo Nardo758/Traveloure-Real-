@@ -1,7 +1,6 @@
 import { Router } from "express";
 import { storage } from "../storage";
 import {
-  insertActivityCommentSchema,
   insertItineraryChangeSchema,
 } from "@shared/schema";
 import { z } from "zod";
@@ -238,82 +237,10 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
   }
 });
 
-router.get("/api/activities/:activityId/comments", isAuthenticated, async (req, res) => {
-  try {
-    const { tripId } = req.query;
-    if (!tripId) {
-      return res.status(400).json({ error: "tripId query parameter required" });
-    }
-    const userId = (req.user as any)?.claims?.sub;
-    const trip = await storage.getTrip(tripId as string);
-    if (!trip || trip.userId !== userId) {
-      return res.status(403).json({ error: "Access denied" });
-    }
-    const comments = await storage.getActivityComments(req.params.activityId);
-    res.json(comments);
-  } catch (error) {
-    res.status(500).json({ error: "Failed to fetch comments" });
-  }
-});
-
-router.post("/api/activities/:activityId/comments", isAuthenticated, async (req, res) => {
-  try {
-    const { activityId } = req.params;
-    const userId = (req.user as any)?.claims?.sub;
-    const userName = (req.user as any)?.claims?.name || "User";
-    const { tripId, text, role } = req.body;
-
-    if (!tripId || !text || !role) {
-      return res.status(400).json({ error: "Missing required fields: tripId, text, role" });
-    }
-
-    const trip = await storage.getTrip(tripId);
-    if (!trip || trip.userId !== userId) {
-      return res.status(403).json({ error: "Access denied" });
-    }
-
-    const parsed = insertActivityCommentSchema.safeParse({
-      activityId,
-      tripId,
-      authorId: userId,
-      authorName: userName,
-      text,
-      role,
-    });
-
-    if (!parsed.success) {
-      return res.status(400).json({ error: "Invalid request body", details: parsed.error.flatten() });
-    }
-
-    const comment = await storage.createActivityComment(parsed.data);
-
-    await logChange(tripId, userName, `Commented on activity`, "edit", role, activityId);
-
-    res.status(201).json(comment);
-  } catch (error) {
-    res.status(500).json({ error: "Failed to create comment" });
-  }
-});
-
-router.delete("/api/comments/:id", isAuthenticated, async (req, res) => {
-  try {
-    const userId = (req.user as any)?.claims?.sub;
-    const comment = await storage.getActivityComment(req.params.id);
-    if (!comment) {
-      return res.status(404).json({ error: "Comment not found" });
-    }
-    if (comment.authorId !== userId) {
-      const trip = await storage.getTrip(comment.tripId);
-      if (!trip || trip.userId !== userId) {
-        return res.status(403).json({ error: "Access denied" });
-      }
-    }
-    await storage.deleteActivityComment(req.params.id);
-    res.json({ success: true });
-  } catch (error) {
-    res.status(500).json({ error: "Failed to delete comment" });
-  }
-});
+// NOTE (W5-D cleanup, Aug 1, 2026): GET/POST /api/activities/:activityId/comments and
+// DELETE /api/comments/:id were retired here — zero client callers ever existed. The live
+// per-item comment system is GET/POST /api/trips/:tripId/items/:itemId/comments
+// (server/routes/booking-actions.ts, backed by `trip_item_comments`, migration 165).
 
 router.get("/api/trips/:tripId/changes", isAuthenticated, async (req, res) => {
   try {

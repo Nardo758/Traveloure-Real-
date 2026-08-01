@@ -5363,25 +5363,15 @@ export const itineraryChanges = pgTable("itinerary_changes", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-export const activityComments = pgTable("activity_comments", {
-  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
-  activityId: varchar("activity_id").notNull(),
-  tripId: varchar("trip_id").notNull().references(() => trips.id, { onDelete: "cascade" }),
-  authorId: varchar("author_id").notNull(),
-  authorName: varchar("author_name", { length: 255 }).notNull(),
-  text: text("text").notNull(),
-  role: varchar("role", { length: 20 }).notNull(),
-  parentId: varchar("parent_id"),
-  createdAt: timestamp("created_at").defaultNow(),
-});
+// NOTE (W5-D cleanup, Aug 1, 2026): the `activity_comments` table + its schema were retired here —
+// zero client callers of GET/POST /api/activities/:activityId/comments or DELETE /api/comments/:id
+// ever existed. Per-item comments now live on `trip_item_comments` (migration 165). See migration
+// 167_drop_activity_comments.sql for the DROP TABLE rationale.
 
 export const insertItineraryChangeSchema = createInsertSchema(itineraryChanges).omit({ id: true, createdAt: true });
-export const insertActivityCommentSchema = createInsertSchema(activityComments).omit({ id: true, createdAt: true });
 
 export type ItineraryChange = typeof itineraryChanges.$inferSelect;
 export type InsertItineraryChange = z.infer<typeof insertItineraryChangeSchema>;
-export type ActivityComment = typeof activityComments.$inferSelect;
-export type InsertActivityComment = z.infer<typeof insertActivityCommentSchema>;
 
 // ============================================
 // DATA MONETIZATION & ANALYTICS INFRASTRUCTURE
