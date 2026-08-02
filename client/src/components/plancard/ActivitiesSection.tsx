@@ -20,6 +20,7 @@ import {
   type TemporalState, canonicalMode, hasValidCoords, nowHHMM,
   useLiveNow, useVisitedActivities, getUpNextInfo,
 } from "./plancard-temporal";
+import { BOOKED_TINT, ROUTING_TINTS, tintPillStyle } from "./slip-tokens";
 
 // ── W7 — per-item routing (Trip-Canon Lane 1, Phase 1d) ─────────────────────
 // Governing docs: docs/briefs/RECONCILE_PHASE1_SCOPE.md §1 W7, docs/briefs/ROUTING_STATE_CONTRACT.md.
@@ -38,38 +39,70 @@ import {
  * receipt treatment (ROUTING_STATE_CONTRACT §2: "presence is the booked state, never inferred from
  * routing_status alone").
  */
-function RoutingBadge({ activity }: { activity: PlanCardActivity }) {
+const PILL_BASE =
+  "inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide flex-shrink-0";
+
+/**
+ * EXPORTED (slip dispatch §4 global rules / ruling 8): the SlipView (Spec A/B) renders this
+ * same component, so an item keeps the SAME status pill on every surface. Tint values come
+ * from the ONE token layer (`slip-tokens.ts`) — no hex literals here.
+ *
+ * `showPlanning` (slip surfaces only): the slip's whole point is showing the four coexisting
+ * states, so it renders the neutral outline "Planning" pill for `in_planning`; the PlanCard
+ * full stage keeps its historical no-badge-noise default (nothing for `in_planning`).
+ */
+export function RoutingBadge({
+  activity,
+  showPlanning = false,
+}: {
+  activity: PlanCardActivity;
+  showPlanning?: boolean;
+}) {
   if (activity.booking) {
     return (
       <span
-        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide flex-shrink-0 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-300"
+        className={PILL_BASE}
+        style={tintPillStyle(BOOKED_TINT)}
         data-testid={`badge-routing-booked-${activity.id}`}
       >
-        <BadgeCheck className="w-3 h-3" /> Booked
+        <BadgeCheck className="w-3 h-3" /> {BOOKED_TINT.label}
       </span>
     );
   }
-  if (activity.routingStatus === "with_expert") {
+  const status = activity.routingStatus;
+  if (status == null) return null;
+  if (status === "in_planning") {
+    if (!showPlanning) return null;
+    // Neutral outline pill — theme classes, no tint (token layer's in_planning contract).
     return (
       <span
-        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide flex-shrink-0 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-800 dark:text-indigo-300"
-        data-testid={`badge-routing-with-expert-${activity.id}`}
+        className={`${PILL_BASE} border border-border text-muted-foreground bg-transparent`}
+        data-testid={`badge-routing-planning-${activity.id}`}
       >
-        <Users className="w-3 h-3" /> With your expert
+        {ROUTING_TINTS.in_planning.label}
       </span>
     );
   }
-  if (activity.routingStatus === "ready_for_checkout") {
-    return (
-      <span
-        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wide flex-shrink-0 bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300"
-        data-testid={`badge-routing-checkout-${activity.id}`}
-      >
-        <ShoppingCart className="w-3 h-3" /> In checkout
-      </span>
+  const tint = ROUTING_TINTS[status];
+  const icon =
+    status === "with_expert" ? (
+      <Users className="w-3 h-3" />
+    ) : status === "ready_for_checkout" ? (
+      <ShoppingCart className="w-3 h-3" />
+    ) : (
+      <BadgeCheck className="w-3 h-3" />
     );
-  }
-  return null;
+  const testKey =
+    status === "with_expert" ? "with-expert" : status === "ready_for_checkout" ? "checkout" : "purchased";
+  return (
+    <span
+      className={PILL_BASE}
+      style={tintPillStyle(tint)}
+      data-testid={`badge-routing-${testKey}-${activity.id}`}
+    >
+      {icon} {tint.label}
+    </span>
+  );
 }
 
 function RoutingActionButton({
@@ -115,8 +148,11 @@ function RoutingActionButton({
  *   purchased / booked → no actions for either actor (checkout is the sole forward writer, refund
  *                         the sole reverser)
  *   no routingStatus   → no actions (nothing real to route — §13, never a button that would 404)
+ *
+ * EXPORTED (slip dispatch §4): the SlipView (Spec A) reuses this exact component for its
+ * per-row routing actions — one implementation of the owner/expert edges, never duplicated.
  */
-function RoutingActions({
+export function RoutingActions({
   tripId,
   itemId,
   routingStatus,

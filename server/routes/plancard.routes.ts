@@ -280,6 +280,10 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
       // rides the unchanged `days` passthrough above; this is the list that also surfaces bookings
       // no plan item points at. This surface is owner/expert/author/admin-gated above.
       bookings: plan.bookings,
+      // Slip dispatch §4 (Spec A) — the slip's diary (last 20 item_transition_log rows, newest
+      // first). Additive; this surface is gated above, and the share/teaser channels never
+      // receive the field (owner diary, not public).
+      recentTransitions: plan.recentTransitions,
     });
   } catch (error) {
     if (error instanceof TripPlanNotFoundError) {

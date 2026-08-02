@@ -193,6 +193,25 @@ export interface TripPlanActivityChange {
   when: string;
 }
 
+/**
+ * One `item_transition_log` row — the slip's diary (Lane S §3; Slip dispatch §4 Spec A
+ * `<TransitionLogFooter>`). READ-ONLY pass-through of the append-only log: the assembler never
+ * writes the log, and nothing here is derived or invented (§13 — history starts when the log
+ * starts; a trip predating the log honestly has none).
+ */
+export interface TripPlanTransition {
+  id: string;
+  /** NULL = trip-scoped event (`variant_applied`, ruling 16). */
+  itemId: string | null;
+  /** `status_transition` | `variant_applied` (the log's eventType vocabulary). */
+  eventType: string;
+  fromStatus: string | null;
+  toStatus: string | null;
+  /** traveler | expert | checkout | refund | optimizer | system. */
+  actorType: string;
+  createdAt: string;
+}
+
 export interface TripPlanActivity {
   id: string;
 
@@ -529,6 +548,14 @@ export interface FullTripPlan {
    * elsewhere, so every pre-existing consumer is unaffected.
    */
   bookings?: TripPlanBooking[];
+  /**
+   * ADDITIVE (Slip dispatch §4, Spec A) — the last 20 `item_transition_log` rows for this trip,
+   * newest first (the slip's diary footer). Emitted by the TRIP producer at `full` ONLY: this is
+   * the OWNER'S diary — `teaser`/`preview` never carry it, and the share view (which strips the
+   * transition-log footer per the dispatch's share delta) must not render it. Absent key (not
+   * null) on producers/levels that don't emit it, so pre-existing consumers are unaffected.
+   */
+  recentTransitions?: TripPlanTransition[];
   plancard: TripPlanPlancardExtras;
 }
 

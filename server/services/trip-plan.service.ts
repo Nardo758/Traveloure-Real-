@@ -63,11 +63,12 @@ import {
   type TripPlanMeta,
   type TripPlanMetrics,
   type TripPlanPlanApproval,
+  type TripPlanTransition,
   type VariantFullTripPlan,
 } from "@shared/trip-plan";
 import { geocodeAddress } from "../utils/geocode";
 import { getTripTransportLegs } from "./trip-transport-legs.service";
-import { getTripTransitionCount } from "./item-transition-log.service";
+import { getRecentTripTransitions, getTripTransitionCount } from "./item-transition-log.service";
 
 /** Raised when a level is requested that v1 cannot honestly produce (`social`). */
 export class TripPlanLevelUnsupportedError extends Error {
@@ -888,6 +889,22 @@ export async function assembleTripPlan(
   // (no backfill was ratified) — null is the honest value, render nothing (Spec A global rules).
   const planVersion = await getTripTransitionCount(tripId);
 
+  // Slip dispatch §4 (Spec A `<TransitionLogFooter>`): the last 20 diary rows, newest first.
+  // FULL level only — this branch is already past the teaser/preview early-returns, so the
+  // owner's diary can never ride a public channel; the share surfaces (variant adapter /
+  // share delta) never receive this field at all. READ-only: the log module is append-only.
+  const recentTransitions: TripPlanTransition[] = (await getRecentTripTransitions(tripId, 20)).map(
+    (t) => ({
+      id: t.id,
+      itemId: t.itemId ?? null,
+      eventType: t.eventType,
+      fromStatus: t.fromStatus ?? null,
+      toStatus: t.toStatus ?? null,
+      actorType: t.actorType,
+      createdAt: String(t.createdAt),
+    }),
+  );
+
   const changeLog: TripPlanChange[] = changes.slice(0, 10).map((c) => ({
     id: c.id,
     who: c.who,
@@ -922,6 +939,8 @@ export async function assembleTripPlan(
     // has none, never omitted here, so a consumer can distinguish "no purchases" from "this
     // producer does not report purchases" (the variant snapshot omits the key entirely).
     bookings: tripBookings,
+    // Spec A: the slip's diary (owner surface only — see the field's contract in trip-plan.ts).
+    recentTransitions,
     plancard: {
       tripRole: options.tripRole ?? (trip.userId === options.viewerId ? "owner" : "expert"),
       trip: {

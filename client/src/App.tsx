@@ -150,6 +150,9 @@ const ContractViewPage = lazy(() => import("@/pages/contract-view"));
 const ServiceDetailPage = lazy(() => import("@/pages/service-detail"));
 const LayoutMock = lazy(() => import("@/pages/layout-mock"));
 const ItineraryComparisonPage = lazy(() => import("@/pages/itinerary-comparison"));
+// Slip dispatch §4 Spec A: the slip's canonical address (/plans/:tripId). Parameterised
+// route — deliberately NOT in role-routes-config.ts (that registry is static-paths-only).
+const SlipViewPage = lazy(() => import("@/pages/slip-view"));
 const GlobalCalendarPage = lazy(() => import("@/pages/global-calendar"));
 const HiddenGemsPage = lazy(() => import("@/pages/hidden-gems"));
 const TransportationBookingPage = lazy(() => import("@/pages/transportation-booking"));
@@ -514,6 +517,15 @@ function Router() {
       </Route>
       <Route path="/itinerary-comparison/:id">
         {() => <DashboardLayout><ProtectedRoute component={ItineraryComparisonPage} /></DashboardLayout>}
+      </Route>
+      {/* Slip (Spec A/B) — the ONE canonical slip address; messages/My Plans rows link here.
+          Auth is the session (server-side plancard gate) — the URL grants nothing. */}
+      <Route path="/plans/:tripId">
+        {() => (
+          <PageErrorBoundary fallbackHeading="Plan Not Found">
+            <DashboardLayout><ProtectedRoute component={SlipViewPage} /></DashboardLayout>
+          </PageErrorBoundary>
+        )}
       </Route>
 
       {/* Protected Dashboard Routes (use DashboardLayout - no global Layout) */}
