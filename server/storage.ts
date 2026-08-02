@@ -600,6 +600,11 @@ export interface IStorage {
   // confirm can't double-insert the affiliate earning it triggers. Returns undefined when the row
   // was already confirmed (lost the race) — caller must treat that as an idempotent no-op.
   confirmAffiliateBookingRequest(id: string, data: Partial<Pick<AffiliateBookingRequest, "expertNotes" | "confirmationRef" | "price" | "expertId" | "tripId">>): Promise<AffiliateBookingRequest | undefined>;
+  // AI booking copilot verification leg (migration 170). Persists ONLY the verification jsonb
+  // snapshot — never touches affiliateUrl or any other column. §16: the snapshot itself must never
+  // carry the URL; that's enforced by the caller (booking-verification.service.ts) never putting it
+  // in the object it hands here.
+  setAffiliateBookingRequestVerification(id: string, verification: Record<string, unknown>): Promise<AffiliateBookingRequest | undefined>;
 
   // Affiliate Content Registry helpers
   registerAffiliateProduct(product: {
@@ -1209,16 +1214,27 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateProviderService(id: string, updates: Partial<InsertProviderService>): Promise<ProviderService | undefined> {
-    // Same clamp as createProviderService (§14/§17): only when the field is present in this
-    // update — a client-sent id that doesn't resolve against the live catalog is dropped to
-    // null rather than trusted blind. Absent from `updates` entirely → leave untouched (a
-    // PATCH that isn't touching this field must not clear an existing valid linkage).
-    let patch: Partial<InsertProviderService> = updates;
+    // ── D1a/F2: the approval lifecycle is NOT self-settable on the update path ──────────────
+    // Found by the adversarial suite (scripts/journeys/adversarial-money-access.mjs, case C16b):
+    // `PATCH /api/provider/services/:id` parses the body with `insertProviderServiceSchema
+    // .partial()`, which INCLUDES `approvalStatus` — so an owner could PATCH
+    // {approvalStatus:"approved"} on their own `submitted` listing and publish it to the public
+    // marketplace, bypassing the admin queue entirely (verified live: row flipped, then surfaced
+    // on the public detail endpoint). CLAUDE.md §1's F2 clamp covered only createProviderService
+    // — the CREATE path — so this was the same mass-assign hole one door over.
+    // Stripped here in STORAGE (not the route) so every caller is covered. The real admin
+    // approve/reject path is unaffected: it uses its own dedicated `db.update(...).set({
+    // approvalStatus })` writers below, never this generic updater.
+    const {
+      approvalStatus: _as, submittedAt: _sa, reviewedAt: _ra, reviewedBy: _rb,
+      rejectionReason: _rr, userId: _uid, ...safeUpdates
+    } = updates as Record<string, unknown>;
+    let patch: Partial<InsertProviderService> = safeUpdates as Partial<InsertProviderService>;
     if (Object.prototype.hasOwnProperty.call(updates, 'serviceOfferingTypeId') && (updates as any).serviceOfferingTypeId) {
       const [known] = await db.select({ id: serviceOfferingTypes.id })
         .from(serviceOfferingTypes)
         .where(eq(serviceOfferingTypes.id, (updates as any).serviceOfferingTypeId));
-      if (!known) patch = { ...updates, serviceOfferingTypeId: null as any };
+      if (!known) patch = { ...safeUpdates, serviceOfferingTypeId: null as any } as Partial<InsertProviderService>;
     }
     const [updated] = await db.update(providerServices)
       .set(patch)
@@ -3130,20 +3146,18 @@ export class DatabaseStorage implements IStorage {
 
   // Location Cache
   async searchLocationCache(keyword: string, locationType?: string): Promise<LocationCache[]> {
+    const now = new Date();
     const searchPattern = `%${keyword.toLowerCase()}%`;
     
-    // NOTE: no expiresAt filter — the Amadeus API that refreshed this cache was
-    // shut down 2026-07-17 (see amadeus.service.ts), so every row is permanently
-    // "expired" and can never be re-fetched. IATA codes / city geo data are
-    // effectively static, so we deliberately serve stale rows rather than
-    // returning nothing forever.
+    // Build conditions including expiration check at SQL level
     const conditions = [
       or(
         ilike(locationCache.name, searchPattern),
         ilike(locationCache.cityName, searchPattern),
         ilike(locationCache.iataCode, searchPattern),
         ilike(locationCache.detailedName, searchPattern)
-      )
+      ),
+      gt(locationCache.expiresAt, now) // SQL-level expiration filtering
     ];
     
     if (locationType) {
@@ -5182,6 +5196,18 @@ export class DatabaseStorage implements IStorage {
       .update(affiliateBookingRequests)
       .set({ ...data, status: "confirmed", updatedAt: new Date() })
       .where(and(eq(affiliateBookingRequests.id, id), ne(affiliateBookingRequests.status, "confirmed")))
+      .returning();
+    return updated;
+  }
+
+  async setAffiliateBookingRequestVerification(
+    id: string,
+    verification: Record<string, unknown>,
+  ): Promise<AffiliateBookingRequest | undefined> {
+    const [updated] = await db
+      .update(affiliateBookingRequests)
+      .set({ verification, updatedAt: new Date() })
+      .where(eq(affiliateBookingRequests.id, id))
       .returning();
     return updated;
   }

@@ -107,10 +107,30 @@ export function AmadeusPOIs({
     );
   }
 
-  // The Amadeus POI API was retired (endpoint now returns 410) — hide the
-  // section entirely instead of showing a permanent error/empty card.
-  if (isError || !pois || pois.length === 0) {
-    return null;
+  if (isError) {
+    return (
+      <Card className={className}>
+        <CardContent className="p-6 text-center">
+          <AlertCircle className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+          <p className="text-sm text-muted-foreground">
+            Unable to load points of interest. Please try again later.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!pois || pois.length === 0) {
+    return (
+      <Card className={className}>
+        <CardContent className="p-6 text-center">
+          <MapPin className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+          <p className="text-sm text-muted-foreground">
+            No points of interest found in this area.
+          </p>
+        </CardContent>
+      </Card>
+    );
   }
 
   const groupedPOIs = pois.reduce((acc, poi) => {

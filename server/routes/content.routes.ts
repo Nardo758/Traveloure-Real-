@@ -11,6 +11,11 @@ import { isAuthenticated } from "../replit_integrations/auth";
 import { geocodeAddress } from "../utils/geocode";
 import { applyAttributionSubId } from "../services/travelpayouts/travelpayouts-client";
 import { getProviderHealth } from "../services/provider-health.service";
+import {
+  verifyBookingRequest,
+  VerificationInFlightError,
+  VerificationThrottledError,
+} from "../services/booking-verification.service";
 
 // Additive-only honesty seam (provider-health task): looks up a single provider's CURRENT registry
 // status for a per-source catalog response. Never restructures the response — callers spread the
@@ -92,7 +97,7 @@ import {
 } from "@shared/content-surface-map";
 import { contentOriginFor, CONTENT_ORIGIN_TRAVELER_LABEL } from "@shared/content-origin";
 import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant } from "../itinerary-optimizer";
-import { AMADEUS_RETIRED_MESSAGE } from "../services/amadeus.service";
+import { amadeusService } from "../services/amadeus.service";
 import { viatorService } from "../services/viator.service";
 import { cacheService } from "../services/cache.service";
 import { cacheSchedulerService } from "../services/cache-scheduler.service";
@@ -1171,8 +1176,7 @@ router.get("/api/catalog/transfers", isAuthenticated, async (req, res) => {
         currency: currency as string,
       });
 
-      // GetTransfer is retired (dead API host — see gettransfer.service.ts); items is always [].
-      res.json({ items, total: items.length, retired: true, ...sourceStatusField("gettransfer") });
+      res.json({ items, total: items.length, ...sourceStatusField("gettransfer") });
     } catch (error) {
       console.error("Transfers search error:", error);
       res.status(500).json({ message: "Failed to search transfers" });
@@ -2516,41 +2520,288 @@ router.get("/api/amadeus/locations", async (req, res) => {
         return res.json(formattedLocations);
       }
       
-      // Cache miss. The Amadeus API that used to backfill this cache was shut down
-      // 2026-07-17 (see amadeus.service.ts header), so there is nothing to fetch —
-      // return an honest empty list rather than a 500 from a dead upstream.
-      console.log(`[Amadeus Locations] Cache miss for "${keyword}" — Amadeus retired, returning []`);
-      res.json([]);
+      // If not in cache, fetch from API and cache the results
+      const locations = subType === 'CITY' 
+        ? await amadeusService.searchCitiesByKeyword(keyword)
+        : await amadeusService.searchAirportsByKeyword(keyword);
+      
+      // Store in cache for future use (expires in 30 days)
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + 30);
+      
+      for (const loc of locations) {
+        await storage.upsertLocationCache({
+          iataCode: loc.iataCode,
+          locationType: loc.subType || locationType,
+          name: loc.name,
+          detailedName: loc.detailedName,
+          cityName: loc.address?.cityName,
+          cityCode: loc.address?.cityCode,
+          countryName: loc.address?.countryName,
+          countryCode: loc.address?.countryCode,
+          regionCode: loc.address?.regionCode,
+          stateCode: loc.address?.stateCode,
+          latitude: loc.geoCode?.latitude?.toString(),
+          longitude: loc.geoCode?.longitude?.toString(),
+          timeZoneOffset: loc.timeZoneOffset,
+          travelerScore: loc.analytics?.travelers?.score,
+          rawData: loc,
+          expiresAt,
+        });
+      }
+      
+      // Sort by relevance: exact name match first, then by traveler score
+      locations.sort((a: any, b: any) => {
+        const keywordLower = keyword.toLowerCase();
+        const nameA = (a.name || '').toLowerCase();
+        const nameB = (b.name || '').toLowerCase();
+        const cityA = (a.address?.cityName || '').toLowerCase();
+        const cityB = (b.address?.cityName || '').toLowerCase();
+        
+        // Exact match on name or city name gets highest priority
+        const exactMatchA = nameA === keywordLower || cityA === keywordLower;
+        const exactMatchB = nameB === keywordLower || cityB === keywordLower;
+        
+        if (exactMatchA && !exactMatchB) return -1;
+        if (!exactMatchA && exactMatchB) return 1;
+        
+        // Then sort by traveler score (higher is better)
+        const scoreA = a.analytics?.travelers?.score ?? 0;
+        const scoreB = b.analytics?.travelers?.score ?? 0;
+        return scoreB - scoreA;
+      });
+      
+      res.json(locations);
     } catch (error: any) {
       console.error('Location search error:', error);
       res.status(500).json({ message: error.message || "Location search failed" });
     }
   });
 
-  // RETIRED — Amadeus shut down its Self-Service API on 2026-07-17 (see
-  // amadeus.service.ts header). Every /api/amadeus/* endpoint below returns an
-  // explicit 410 Gone instead of calling a dead upstream. /api/amadeus/locations
-  // above is the one exception: it still serves the DB location cache.
-  const amadeusRetired = (_req: any, res: any) =>
-    res.status(410).json({ message: AMADEUS_RETIRED_MESSAGE, retired: true });
+  // Search flights
 
-router.get("/api/amadeus/flights", isAuthenticated, amadeusRetired);
+router.get("/api/amadeus/flights", isAuthenticated, async (req, res) => {
+    try {
+      const { 
+        origin, destination, departureDate, returnDate, 
+        adults, children, infants, travelClass, nonStop, max 
+      } = req.query;
+      
+      if (!origin || !destination || !departureDate || !adults) {
+        return res.status(400).json({ 
+          message: "Required fields: origin, destination, departureDate, adults" 
+        });
+      }
+      
+      const flights = await amadeusService.searchFlights({
+        originLocationCode: origin as string,
+        destinationLocationCode: destination as string,
+        departureDate: departureDate as string,
+        returnDate: returnDate as string | undefined,
+        adults: parseInt(adults as string, 10),
+        children: children ? parseInt(children as string, 10) : undefined,
+        infants: infants ? parseInt(infants as string, 10) : undefined,
+        travelClass: travelClass as any,
+        nonStop: nonStop === 'true',
+        max: max ? parseInt(max as string, 10) : 10,
+      });
+      
+      res.json(flights);
+    } catch (error: any) {
+      console.error('Flight search error:', error);
+      res.status(500).json({ message: error.message || "Flight search failed" });
+    }
+  });
 
-router.get("/api/amadeus/hotels", isAuthenticated, amadeusRetired);
+  // Search hotels by city
 
-router.get("/api/amadeus/pois", isAuthenticated, amadeusRetired);
+router.get("/api/amadeus/hotels", isAuthenticated, async (req, res) => {
+    try {
+      const { cityCode, checkInDate, checkOutDate, adults, rooms, currency } = req.query;
+      
+      if (!cityCode || !checkInDate || !checkOutDate || !adults) {
+        return res.status(400).json({ 
+          message: "Required fields: cityCode, checkInDate, checkOutDate, adults" 
+        });
+      }
+      
+      const hotels = await amadeusService.searchHotels({
+        cityCode: cityCode as string,
+        checkInDate: checkInDate as string,
+        checkOutDate: checkOutDate as string,
+        adults: parseInt(adults as string, 10),
+        roomQuantity: rooms ? parseInt(rooms as string, 10) : 1,
+        currency: (currency as string) || 'USD',
+      });
+      
+      res.json(hotels);
+    } catch (error: any) {
+      console.error('Hotel search error:', error);
+      res.status(500).json({ message: error.message || "Hotel search failed" });
+    }
+  });
 
-router.get("/api/amadeus/pois/:id", isAuthenticated, amadeusRetired);
+  // Search Points of Interest by location
 
-router.get("/api/amadeus/activities", isAuthenticated, amadeusRetired);
+router.get("/api/amadeus/pois", isAuthenticated, async (req, res) => {
+    try {
+      const { latitude, longitude, radius, categories } = req.query;
+      
+      if (!latitude || !longitude) {
+        return res.status(400).json({ message: "latitude and longitude are required" });
+      }
+      
+      const pois = await amadeusService.searchPointsOfInterest({
+        latitude: parseFloat(latitude as string),
+        longitude: parseFloat(longitude as string),
+        radius: radius ? parseInt(radius as string, 10) : 5,
+        categories: categories ? (categories as string).split(',') : undefined,
+      });
+      
+      res.json(pois);
+    } catch (error: any) {
+      console.error('POI search error:', error);
+      res.status(500).json({ message: error.message || "POI search failed" });
+    }
+  });
 
-router.get("/api/amadeus/activities/:id", isAuthenticated, amadeusRetired);
+  // Get POI by ID
 
-router.post("/api/amadeus/transfers", isAuthenticated, amadeusRetired);
+router.get("/api/amadeus/pois/:id", isAuthenticated, async (req, res) => {
+    try {
+      const poi = await amadeusService.getPointOfInterestById(req.params.id);
+      if (!poi) {
+        return res.status(404).json({ message: "POI not found" });
+      }
+      res.json(poi);
+    } catch (error: any) {
+      console.error('POI get error:', error);
+      res.status(500).json({ message: error.message || "Failed to get POI" });
+    }
+  });
 
-router.get("/api/amadeus/safety", isAuthenticated, amadeusRetired);
+  // Search Amadeus Tours & Activities by location
 
-router.get("/api/amadeus/safety/:id", isAuthenticated, amadeusRetired);
+router.get("/api/amadeus/activities", isAuthenticated, async (req, res) => {
+    try {
+      const { latitude, longitude, radius } = req.query;
+      
+      if (!latitude || !longitude) {
+        return res.status(400).json({ message: "latitude and longitude are required" });
+      }
+      
+      const activities = await amadeusService.searchActivities({
+        latitude: parseFloat(latitude as string),
+        longitude: parseFloat(longitude as string),
+        radius: radius ? parseInt(radius as string, 10) : 20,
+      });
+      
+      res.json(activities);
+    } catch (error: any) {
+      console.error('Amadeus activities search error:', error);
+      res.status(500).json({ message: error.message || "Activities search failed" });
+    }
+  });
+
+  // Get Amadeus activity by ID
+
+router.get("/api/amadeus/activities/:id", isAuthenticated, async (req, res) => {
+    try {
+      const activity = await amadeusService.getActivityById(req.params.id);
+      if (!activity) {
+        return res.status(404).json({ message: "Activity not found" });
+      }
+      res.json(activity);
+    } catch (error: any) {
+      console.error('Amadeus activity get error:', error);
+      res.status(500).json({ message: error.message || "Failed to get activity" });
+    }
+  });
+
+  // Search airport transfers
+  const transferSearchSchema = z.object({
+    startLocationCode: z.string().min(3).max(4),
+    endAddressLine: z.string().optional(),
+    endCityName: z.string().optional(),
+    endGeoCode: z.object({
+      latitude: z.number(),
+      longitude: z.number()
+    }).optional(),
+    transferType: z.string(),
+    startDateTime: z.string(),
+    passengers: z.union([z.string(), z.number()]).transform((val) => 
+      typeof val === 'string' ? parseInt(val, 10) : val
+    ),
+  });
+
+
+router.post("/api/amadeus/transfers", isAuthenticated, async (req, res) => {
+    try {
+      const parseResult = transferSearchSchema.safeParse(req.body);
+      
+      if (!parseResult.success) {
+        return res.status(400).json({ 
+          message: "Invalid request body",
+          errors: parseResult.error.flatten().fieldErrors
+        });
+      }
+      
+      const { startLocationCode, endAddressLine, endCityName, endGeoCode, transferType, startDateTime, passengers } = parseResult.data;
+      
+      const transfers = await amadeusService.searchTransfers({
+        startLocationCode,
+        endAddressLine,
+        endCityName,
+        endGeoCode: endGeoCode as any,
+        transferType: transferType as any,
+        startDateTime,
+        passengers,
+      });
+      
+      res.json(transfers);
+    } catch (error: any) {
+      console.error('Transfers search error:', error);
+      res.status(500).json({ message: error.message || "Transfers search failed" });
+    }
+  });
+
+  // Get safety ratings for a location
+
+router.get("/api/amadeus/safety", isAuthenticated, async (req, res) => {
+    try {
+      const { latitude, longitude, radius } = req.query;
+      
+      if (!latitude || !longitude) {
+        return res.status(400).json({ message: "latitude and longitude are required" });
+      }
+      
+      const safetyRatings = await amadeusService.getSafetyRatings({
+        latitude: parseFloat(latitude as string),
+        longitude: parseFloat(longitude as string),
+        radius: radius ? parseInt(radius as string, 10) : 5,
+      });
+      
+      res.json(safetyRatings);
+    } catch (error: any) {
+      console.error('Safety ratings search error:', error);
+      res.status(500).json({ message: error.message || "Safety ratings search failed" });
+    }
+  });
+
+  // Get safety rating by ID
+
+router.get("/api/amadeus/safety/:id", isAuthenticated, async (req, res) => {
+    try {
+      const rating = await amadeusService.getSafetyRatingById(req.params.id);
+      if (!rating) {
+        return res.status(404).json({ message: "Safety rating not found" });
+      }
+      res.json(rating);
+    } catch (error: any) {
+      console.error('Safety rating get error:', error);
+      res.status(500).json({ message: error.message || "Failed to get safety rating" });
+    }
+  });
 
   // ============ VIATOR API ROUTES ============
 
@@ -6737,6 +6988,38 @@ router.patch("/api/affiliate-booking-requests/:id", isAuthenticated, async (req,
     } catch (err: any) {
       console.error("[AffiliateBooking] patch error:", err);
       return res.status(500).json({ message: "Failed to update booking request" });
+    }
+  });
+
+// AI booking copilot — verification leg (decision-maker ratified). Tavily-extracts the partner
+// product page + LLM-extracts current facts, diffs against the request, and persists a
+// verified-as-of-now snapshot the assigned expert can review before they make the (human) booking.
+// This lane never books anything itself — see server/services/booking-verification.service.ts.
+// Authorization mirrors the PATCH handler above EXACTLY (role-based: expert or admin — the same
+// pooled-expert-queue model the rest of this rail uses; no per-row expertId ownership check).
+router.post("/api/affiliate-booking-requests/:id/verify", isAuthenticated, async (req, res) => {
+    try {
+      const sessionUserId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      if (!sessionUserId) return res.status(401).json({ message: "Unauthorized" });
+      const dbUser = await storage.getUser(sessionUserId);
+      if (!dbUser || (!isExpertRole(dbUser.role ?? "") && dbUser.role !== "admin")) {
+        return res.status(403).json({ message: "Expert role required" });
+      }
+      const { id } = req.params;
+      const result = await verifyBookingRequest(id);
+      if (!result.available && result.reason === "request_not_found") {
+        return res.status(404).json({ message: "Request not found" });
+      }
+      return res.json(result);
+    } catch (err: any) {
+      if (err instanceof VerificationInFlightError) {
+        return res.status(409).json({ message: err.message });
+      }
+      if (err instanceof VerificationThrottledError) {
+        return res.status(429).json({ message: err.message, retryAfterMs: err.retryAfterMs });
+      }
+      console.error("[AffiliateBooking] verify error:", err);
+      return res.status(500).json({ message: "Failed to verify booking request" });
     }
   });
 

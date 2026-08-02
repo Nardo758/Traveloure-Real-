@@ -395,14 +395,6 @@ class CacheSchedulerService {
 
   // Refresh stale hotel data
   private async refreshStaleHotels(): Promise<{ refreshed: number; errors: string[] }> {
-    // RETIRED refresh path — this cache was populated by the Amadeus Self-Service
-    // API, which shut down 2026-07-17 (see amadeus.service.ts). The stubbed service
-    // returns [], so "refreshing" would revisit the same stale rows forever while
-    // reporting them as refreshed. Skip entirely; existing cache rows remain
-    // readable until cleanup expires them.
-    return { refreshed: 0, errors: [] };
-
-    // eslint-disable-next-line no-unreachable
     const errors: string[] = [];
     let refreshed = 0;
 
@@ -541,10 +533,6 @@ class CacheSchedulerService {
 
   // Refresh stale flight data (optional - flights change very frequently)
   private async refreshStaleFlights(): Promise<{ refreshed: number; errors: string[] }> {
-    // RETIRED refresh path — Amadeus-backed; see refreshStaleHotels note above.
-    return { refreshed: 0, errors: [] };
-
-    // eslint-disable-next-line no-unreachable
     const errors: string[] = [];
     let refreshed = 0;
 

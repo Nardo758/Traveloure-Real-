@@ -44,7 +44,6 @@ const allowlist = [
   "xlsx",
   "zod",
   "zod-validation-error",
-  "@tavily/core",
 ];
 
 async function buildAll() {

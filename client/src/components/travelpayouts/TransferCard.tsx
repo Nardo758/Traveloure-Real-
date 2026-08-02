@@ -11,14 +11,6 @@ interface TransferCardProps {
   className?: string;
 }
 
-// Was hard-coded "via GetTransfer"; transfer inventory now also comes from
-// Kiwitaxi + Welcome Pickups (GetTransfer itself is retired — dead API host).
-const PROVIDER_LABELS: Record<string, string> = {
-  gettransfer: "GetTransfer",
-  kiwitaxi: "Kiwitaxi",
-  welcomepickups: "Welcome Pickups",
-};
-
 export function TransferCard({ item, className }: TransferCardProps) {
   // §16: no raw outbound — partner fulfilment goes through the booking-agent rail.
   const { book: handleBook, isPending: bookPending, requested: bookRequested } = useAgentBooking(item, "transfers");
@@ -70,7 +62,7 @@ export function TransferCard({ item, className }: TransferCardProps) {
         <div className="mt-3">
           <div className="flex items-center justify-between mb-2">
             <Badge className="text-xs bg-blue-100 text-blue-700 hover:bg-blue-100">
-              via {PROVIDER_LABELS[item.provider] ?? item.provider}
+              via GetTransfer
             </Badge>
             <Button
               size="sm"
