@@ -1,5 +1,6 @@
 import { getTravelpayoutsToken } from "./travelpayouts-client";
 import type { CatalogItem } from "../experience-catalog.service";
+import { reportProviderResult, outcomeFromHttpStatus } from "../provider-health.service";
 
 const GYG_FEED_URL = "https://partner.getyourguide.com/api/v3/tours";
 
@@ -34,6 +35,7 @@ export async function searchGetYourGuide(params: GetYourGuideSearchParams): Prom
       const tours = data?.tours || data?.data || data?.activities || [];
 
       if (Array.isArray(tours) && tours.length > 0) {
+        reportProviderResult("getyourguide", "ok");
         return tours.map((t: any): CatalogItem => ({
           id: `gyg-${t.tour_id || t.id}`,
           type: "activity",
@@ -57,39 +59,17 @@ export async function searchGetYourGuide(params: GetYourGuideSearchParams): Prom
           lastUpdated: new Date(),
         } as CatalogItem));
       }
+      // Real API succeeded with zero tours — honest empty, not an error.
+      reportProviderResult("getyourguide", "empty");
+    } else {
+      reportProviderResult("getyourguide", outcomeFromHttpStatus(res.status), `HTTP ${res.status}`);
     }
-  } catch {
+  } catch (err) {
+    reportProviderResult("getyourguide", "error", err instanceof Error ? err.message : String(err));
   }
 
-  const categories = [
-    { cat: "City Tours", icon: "🏛️", basePrice: 25, desc: "Guided walking & sightseeing tours" },
-    { cat: "Food & Drink", icon: "🍽️", basePrice: 45, desc: "Cooking classes & food tasting experiences" },
-    { cat: "Outdoor & Adventure", icon: "🧗", basePrice: 55, desc: "Hiking, cycling & adventure activities" },
-    { cat: "Museums & Culture", icon: "🎭", basePrice: 30, desc: "Skip-the-line museum & cultural tickets" },
-    { cat: "Day Trips", icon: "🚌", basePrice: 75, desc: "Full-day excursions from " + city },
-    { cat: "Water Activities", icon: "🚢", basePrice: 40, desc: "Boat tours, kayaking & water sports" },
-  ];
-
-  return categories.slice(0, params.limit || 6).map((c, i): CatalogItem => ({
-    id: `gyg-${city.toLowerCase().replace(/\s+/g, "-")}-${c.cat.toLowerCase().replace(/[^a-z]/g, "-")}`,
-    type: "activity",
-    provider: "getyourguide",
-    externalId: `gyg-${i}`,
-    title: `${c.icon} ${c.cat} in ${city}`,
-    description: `${c.desc} · Book on GetYourGuide · Free cancellation available`,
-    imageUrl: null,
-    price: c.basePrice,
-    currency: "USD",
-    rating: 4.5 + (i % 3) * 0.1,
-    reviewCount: null,
-    destination: params.destination,
-    location: null,
-    duration: null,
-    categories: ["activity", c.cat.toLowerCase()],
-    tags: ["getyourguide", c.cat.toLowerCase()],
-    bookingUrl: `https://www.getyourguide.com/s/?q=${encodeURIComponent(city + " " + c.cat)}&partner_id=${token}`,
-    affiliateUrl: `https://www.getyourguide.com/s/?q=${encodeURIComponent(city + " " + c.cat)}&partner_id=${token}`,
-    source: "travelpayouts/getyourguide",
-    lastUpdated: new Date(),
-  } as CatalogItem));
+  // §13: the fabricated category-card fallback that used to live here (invented ratings/prices,
+  // rendered whenever the real call failed) is REMOVED — a failed or empty live call returns an
+  // honest empty list; the provider-health registry carries the failure status for the UI.
+  return [];
 }

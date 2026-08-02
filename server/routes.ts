@@ -7149,6 +7149,16 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (!state) return res.status(404).json({ message: "Coordination state not found" });
       if (state.userId !== userId) return res.status(403).json({ message: "Unauthorized" });
 
+      // #874 fix: a refunded state must stay refunded — Stripe's PaymentIntent.status stays
+      // "succeeded" after a refund (refunds live on the Charge/Refund objects, not the PI status),
+      // and refund never clears feePaymentIntentId, so without this early return the atomic
+      // transition below (which used to guard only `<> 'paid'`) would happily flip a refunded
+      // engagement back to "paid" on a stray/replayed confirm call. Mirrors the /pay endpoint's
+      // existing refunded early-return.
+      if (state.feePaymentStatus === "refunded") {
+        return res.json({ alreadyRefunded: true, feePaymentStatus: "refunded" });
+      }
+
       // §14 — take the PI from the SERVER record, not the client body.
       const paymentIntentId = state.feePaymentIntentId;
       if (!paymentIntentId) return res.status(400).json({ error: "no_payment", message: "No coordination payment has been started." });
@@ -7160,12 +7170,17 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (pi.metadata?.coordinationId !== coordinationId) return res.status(400).json({ error: "payment_coordination_mismatch" });
       if (pi.metadata?.userId && pi.metadata.userId !== userId) return res.status(403).json({ error: "payment_belongs_to_another_user" });
 
-      // §15 — atomic transition (pending/unpaid → paid). Record revenue ONLY if a row flipped, so a
-      // duplicate confirm is a no-op (no double revenue).
+      // §15 — atomic transition, restricted to `pending → paid` (the ONLY legitimate pre-confirm
+      // state — set by the /pay claim). #874 fix: this used to be `<> 'paid'`, which admitted BOTH
+      // "unpaid" (no real claim in flight) and "refunded" (terminal — must never move again) into
+      // the flip. Record revenue ONLY if a row flipped, so a duplicate confirm is a no-op (no
+      // double revenue); a call against any non-"pending" state (already paid, or the refunded
+      // case already returned above) is reported as alreadyPaid, matching prior behavior for the
+      // legitimate duplicate-confirm case.
       const flipped = await db
         .update(coordinationStates)
         .set({ feePaymentStatus: "paid", feePaidAt: new Date() })
-        .where(and(eq(coordinationStates.id, coordinationId), ne(coordinationStates.feePaymentStatus, "paid")))
+        .where(and(eq(coordinationStates.id, coordinationId), eq(coordinationStates.feePaymentStatus, "pending")))
         .returning({ id: coordinationStates.id });
       if (flipped.length === 0) return res.json({ alreadyPaid: true, feePaymentStatus: "paid" });
 

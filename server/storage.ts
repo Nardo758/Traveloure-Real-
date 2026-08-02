@@ -491,6 +491,12 @@ export interface IStorage {
   updateProviderPayoutStatus(id: string, status: string, notes?: string, payoutReference?: string): Promise<ProviderPayout>;
   claimExpertPayoutForProcessing(id: string): Promise<ExpertPayout | undefined>;
   claimProviderPayoutForProcessing(id: string): Promise<ProviderPayout | undefined>;
+  markEarningsPaidOutForPayout(
+    earnerType: 'expert' | 'provider',
+    earnerId: string,
+    payoutId: string,
+    amountDollars: number,
+  ): Promise<{ flippedCount: number; flippedAmount: number; shortfall: number }>;
 
   // Stripe Connect
   updateUserStripeAccount(userId: string, stripeAccountId: string, status: string): Promise<void>;
@@ -3124,18 +3130,20 @@ export class DatabaseStorage implements IStorage {
 
   // Location Cache
   async searchLocationCache(keyword: string, locationType?: string): Promise<LocationCache[]> {
-    const now = new Date();
     const searchPattern = `%${keyword.toLowerCase()}%`;
     
-    // Build conditions including expiration check at SQL level
+    // NOTE: no expiresAt filter — the Amadeus API that refreshed this cache was
+    // shut down 2026-07-17 (see amadeus.service.ts), so every row is permanently
+    // "expired" and can never be re-fetched. IATA codes / city geo data are
+    // effectively static, so we deliberately serve stale rows rather than
+    // returning nothing forever.
     const conditions = [
       or(
         ilike(locationCache.name, searchPattern),
         ilike(locationCache.cityName, searchPattern),
         ilike(locationCache.iataCode, searchPattern),
         ilike(locationCache.detailedName, searchPattern)
-      ),
-      gt(locationCache.expiresAt, now) // SQL-level expiration filtering
+      )
     ];
     
     if (locationType) {
@@ -3891,13 +3899,37 @@ export class DatabaseStorage implements IStorage {
     }));
   }
 
+  // Task #141 (MONEY_MAP escrow gap): nothing ever wrote `paid_out` — a completed payout left the
+  // earner's `releasable` sum ("available") unchanged, so the same money could be paid out twice
+  // (a second self-service request or a second admin payout). Flipping only happens on the
+  // pending/processing → 'completed' TRANSITION below (§15 — the atomic conditional UPDATE is the
+  // guard), so both call sites for a completed payout — PATCH /api/admin/payouts/:id (post-transfer)
+  // and the transfer.created/transfer.paid webhook — share this one choke point and only the first
+  // to actually flip the row runs the earnings flip; the other sees 0 rows updated and no-ops.
   async updateExpertPayoutStatus(id: string, status: string, notes?: string, transactionId?: string): Promise<ExpertPayout> {
     const updates: any = { status };
     if (status === 'completed' || status === 'failed') updates.processedAt = new Date();
     if (notes) updates.failureReason = notes;
     if (transactionId) updates.transactionId = transactionId;
-    const [updated] = await db.update(expertPayouts).set(updates).where(eq(expertPayouts.id, id)).returning();
-    return updated;
+
+    if (status !== 'completed') {
+      const [updated] = await db.update(expertPayouts).set(updates).where(eq(expertPayouts.id, id)).returning();
+      return updated;
+    }
+
+    return db.transaction(async (tx) => {
+      const [updated] = await tx.update(expertPayouts)
+        .set(updates)
+        .where(and(eq(expertPayouts.id, id), sqlOp`${expertPayouts.status} <> 'completed'`))
+        .returning();
+      if (!updated) {
+        // Already completed by the other call site / a retry — idempotent no-op, no re-flip.
+        const [existing] = await tx.select().from(expertPayouts).where(eq(expertPayouts.id, id));
+        return existing as ExpertPayout;
+      }
+      await this.markEarningsPaidOutForPayoutTx(tx, 'expert', updated.expertId, id, parseFloat(updated.amount));
+      return updated;
+    });
   }
 
   // Atomic claim before a Stripe transfer (money-safety idempotency): flip to 'processing' ONLY
@@ -3925,8 +3957,109 @@ export class DatabaseStorage implements IStorage {
     if (status === 'completed') updates.completedAt = new Date();
     if (notes) updates.notes = notes;
     if (payoutReference) updates.payoutReference = payoutReference;
-    const [updated] = await db.update(providerPayouts).set(updates).where(eq(providerPayouts.id, id)).returning();
-    return updated;
+
+    if (status !== 'completed') {
+      const [updated] = await db.update(providerPayouts).set(updates).where(eq(providerPayouts.id, id)).returning();
+      return updated;
+    }
+
+    return db.transaction(async (tx) => {
+      const [updated] = await tx.update(providerPayouts)
+        .set(updates)
+        .where(and(eq(providerPayouts.id, id), sqlOp`${providerPayouts.status} <> 'completed'`))
+        .returning();
+      if (!updated) {
+        const [existing] = await tx.select().from(providerPayouts).where(eq(providerPayouts.id, id));
+        return existing as ProviderPayout;
+      }
+      await this.markEarningsPaidOutForPayoutTx(tx, 'provider', updated.providerId, id, parseFloat(updated.amount));
+      return updated;
+    });
+  }
+
+  /**
+   * Task #141 — flip an earner's `releasable` earning rows to `paid_out`, oldest-created-first,
+   * until `amountDollars` is covered. Public entry point: opens its own transaction (for standalone/
+   * backfill callers); `markEarningsPaidOutForPayoutTx` below is the tx-taking variant composed into
+   * update{Expert,Provider}PayoutStatus's own transaction so the payout-completion flip and the
+   * earnings flip commit/roll back together.
+   *
+   * Never splits a row: a row is flipped only if doing so doesn't push the running total more than
+   * $0.01 (rounding tolerance) past amountDollars; once one row would overshoot, it — and everything
+   * after it (oldest-first) — stays releasable. If the releasable total is less than amountDollars
+   * (e.g. a reversal/dispute/concurrent payout consumed rows since this payout was requested), flips
+   * whatever exists and logs the shortfall loudly — never negative, never touches held/disputed rows.
+   * The atomic re-check UPDATE (`AND status = 'releasable'`) is the concurrency guard (§15 pattern):
+   * a row a concurrent caller already claimed loses the race cleanly instead of double-flipping.
+   */
+  async markEarningsPaidOutForPayout(
+    earnerType: 'expert' | 'provider',
+    earnerId: string,
+    payoutId: string,
+    amountDollars: number,
+  ): Promise<{ flippedCount: number; flippedAmount: number; shortfall: number }> {
+    return db.transaction((tx) => this.markEarningsPaidOutForPayoutTx(tx, earnerType, earnerId, payoutId, amountDollars));
+  }
+
+  private async markEarningsPaidOutForPayoutTx(
+    tx: any,
+    earnerType: 'expert' | 'provider',
+    earnerId: string,
+    payoutId: string,
+    amountDollars: number,
+  ): Promise<{ flippedCount: number; flippedAmount: number; shortfall: number }> {
+    const TOLERANCE = 0.01;
+    const now = new Date();
+
+    const candidates = earnerType === 'expert'
+      ? await tx.select({ id: expertEarnings.id, amount: expertEarnings.amount })
+          .from(expertEarnings)
+          .where(and(eq(expertEarnings.expertId, earnerId), eq(expertEarnings.status, 'releasable')))
+          .orderBy(asc(expertEarnings.createdAt))
+      : await tx.select({ id: providerEarnings.id, amount: providerEarnings.amount })
+          .from(providerEarnings)
+          .where(and(eq(providerEarnings.providerId, earnerId), eq(providerEarnings.status, 'releasable')))
+          .orderBy(asc(providerEarnings.createdAt));
+
+    // Oldest-first greedy walk: include a row only while doing so stays within tolerance of the
+    // payout amount. Never skip ahead / never split a row.
+    let running = 0;
+    const idsToFlip: string[] = [];
+    for (const row of candidates as Array<{ id: string; amount: string | null }>) {
+      const amt = parseFloat(row.amount || '0');
+      if (running + amt - amountDollars > TOLERANCE) break;
+      idsToFlip.push(row.id);
+      running += amt;
+      if (amountDollars - running <= TOLERANCE) break;
+    }
+
+    let flippedCount = 0;
+    let flippedAmount = 0;
+    if (idsToFlip.length > 0) {
+      const flipped = earnerType === 'expert'
+        ? await tx.update(expertEarnings)
+            .set({ status: 'paid_out', paidOutAt: now, payoutId })
+            .where(and(inArray(expertEarnings.id, idsToFlip), eq(expertEarnings.status, 'releasable')))
+            .returning({ id: expertEarnings.id, amount: expertEarnings.amount })
+        : await tx.update(providerEarnings)
+            .set({ status: 'paid_out', paidAt: now, payoutId, updatedAt: now })
+            .where(and(inArray(providerEarnings.id, idsToFlip), eq(providerEarnings.status, 'releasable')))
+            .returning({ id: providerEarnings.id, amount: providerEarnings.amount });
+      flippedCount = flipped.length;
+      flippedAmount = flipped.reduce((sum: number, r: { amount: string | null }) => sum + parseFloat(r.amount || '0'), 0);
+    }
+
+    const shortfall = Math.max(0, amountDollars - flippedAmount);
+    if (shortfall > TOLERANCE) {
+      console.error(
+        `[PAYOUT] ${earnerType} payout ${payoutId} (earner ${earnerId}): covered $${flippedAmount.toFixed(2)} of ` +
+        `$${amountDollars.toFixed(2)} from releasable earnings — shortfall $${shortfall.toFixed(2)}. Releasable ` +
+        `balance moved since this payout was requested/claimed (reversal, dispute, or a concurrent payout already ` +
+        `consumed these rows). No row was split; held/disputed earnings were never touched.`
+      );
+    }
+
+    return { flippedCount, flippedAmount, shortfall };
   }
 
   // Stripe Connect

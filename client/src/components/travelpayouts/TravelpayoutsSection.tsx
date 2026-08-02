@@ -19,7 +19,7 @@ import { GroundTransportCard } from "./GroundTransportCard";
 import { HotelCard } from "./HotelCard";
 import { InsuranceCard } from "./InsuranceCard";
 import { LuggageStorageCard } from "./LuggageStorageCard";
-import type { CatalogItem } from "@/types/catalog";
+import type { CatalogItem, CatalogSourceStatus } from "@/types/catalog";
 
 type ActiveTab =
   | "activities" | "flights" | "cars" | "transfers" | "esim" | "transport"
@@ -46,7 +46,24 @@ function LoadingGrid({ count = 6 }: { count?: number }) {
   );
 }
 
-function EmptyState({ label }: { label: string }) {
+/**
+ * Additive honesty seam (provider-health task): when a section's sole/primary source reports a real
+ * failure (error/auth/quota — never plain configuration-off), say so instead of the generic "no
+ * results" copy, which would otherwise read identically to "genuinely nothing here."
+ */
+function isSourceDown(status?: CatalogSourceStatus): boolean {
+  return !!status && (status.status === "error" || status.status === "auth" || status.status === "quota");
+}
+
+function EmptyState({ label, sourceStatus }: { label: string; sourceStatus?: CatalogSourceStatus }) {
+  if (isSourceDown(sourceStatus)) {
+    return (
+      <div className="text-center py-12 text-muted-foreground">
+        <p className="text-sm">This source is temporarily unavailable.</p>
+        <p className="text-xs mt-1">Try again later, or a different destination.</p>
+      </div>
+    );
+  }
   return (
     <div className="text-center py-12 text-muted-foreground">
       <p className="text-sm">No {label} found for this destination.</p>
@@ -68,21 +85,21 @@ export function TravelpayoutsSection({
 
   const enabled = (tab: ActiveTab) => !!destination && activeTab === tab;
 
-  const tiqetsQ   = useQuery<{ items: CatalogItem[] }>({ queryKey: ["/api/catalog/tiqets", destination],        enabled: enabled("activities") });
-  const wegoQ     = useQuery<{ items: CatalogItem[] }>({ queryKey: ["/api/catalog/wegotrip", destination],      enabled: enabled("activities") });
+  const tiqetsQ   = useQuery<{ items: CatalogItem[]; sourceStatus?: CatalogSourceStatus }>({ queryKey: ["/api/catalog/tiqets", destination],        enabled: enabled("activities") });
+  const wegoQ     = useQuery<{ items: CatalogItem[]; sourceStatus?: CatalogSourceStatus }>({ queryKey: ["/api/catalog/wegotrip", destination],      enabled: enabled("activities") });
   const viatorFQ  = useQuery<{ items: CatalogItem[] }>({ queryKey: ["/api/catalog/viator-feed", destination],   enabled: enabled("activities") });
-  const gygQ      = useQuery<{ items: CatalogItem[] }>({ queryKey: ["/api/catalog/activities-gyg", destination], enabled: enabled("activities") });
+  const gygQ      = useQuery<{ items: CatalogItem[]; sourceStatus?: CatalogSourceStatus }>({ queryKey: ["/api/catalog/activities-gyg", destination], enabled: enabled("activities") });
   const klookQ    = useQuery<{ items: CatalogItem[] }>({ queryKey: ["/api/catalog/klook", destination],         enabled: enabled("activities") });
 
-  const flightsQ  = useQuery<{ items: CatalogItem[] }>({ queryKey: ["/api/catalog/flights", flightOrigin, destination], enabled: !!flightOrigin && !!destination && activeTab === "flights" });
+  const flightsQ  = useQuery<{ items: CatalogItem[]; sourceStatus?: CatalogSourceStatus }>({ queryKey: ["/api/catalog/flights", flightOrigin, destination], enabled: !!flightOrigin && !!destination && activeTab === "flights" });
 
   // Hotellook query removed — Travelpayouts retired its public data API (2026-08); Agoda covers hotels.
   const agodaQ     = useQuery<{ items: CatalogItem[] }>({ queryKey: ["/api/catalog/agoda", destination],        enabled: enabled("hotels") });
 
-  const transfersQ = useQuery<{ items: CatalogItem[] }>({ queryKey: ["/api/catalog/transfers", destination],    enabled: enabled("transfers") });
+  const transfersQ = useQuery<{ items: CatalogItem[]; sourceStatus?: CatalogSourceStatus }>({ queryKey: ["/api/catalog/transfers", destination],    enabled: enabled("transfers") });
   const airportQ   = useQuery<{ items: CatalogItem[] }>({ queryKey: ["/api/catalog/airport-transfers", "", destination], enabled: enabled("transfers") });
 
-  const carsQ      = useQuery<{ items: CatalogItem[] }>({ queryKey: ["/api/catalog/cars", destination],         enabled: enabled("cars") });
+  const carsQ      = useQuery<{ items: CatalogItem[]; sourceStatus?: CatalogSourceStatus }>({ queryKey: ["/api/catalog/cars", destination],         enabled: enabled("cars") });
   const rentalcarsQ = useQuery<{ items: CatalogItem[] }>({ queryKey: ["/api/catalog/rentalcars", destination],  enabled: enabled("cars") });
 
   const transportQ = useQuery<{ items: CatalogItem[] }>({ queryKey: ["/api/catalog/ground-transport", destination], enabled: enabled("transport") });
@@ -109,6 +126,10 @@ export function TravelpayoutsSection({
 
   const allTransfers = [...(transfersQ.data?.items || []), ...(airportQ.data?.items || [])];
   const transfersLoading = transfersQ.isLoading || airportQ.isLoading;
+
+  /** First "temporarily down" status among several sources feeding one aggregated tab, if any. */
+  const firstDownStatus = (...statuses: (CatalogSourceStatus | undefined)[]): CatalogSourceStatus | undefined =>
+    statuses.find(isSourceDown);
 
   const handleSearch = () => setDestination(searchInput);
 
@@ -178,7 +199,7 @@ export function TravelpayoutsSection({
           ) : activitiesLoading ? (
             <LoadingGrid />
           ) : allActivities.length === 0 ? (
-            <EmptyState label="activities" />
+            <EmptyState label="activities" sourceStatus={firstDownStatus(tiqetsQ.data?.sourceStatus, wegoQ.data?.sourceStatus, gygQ.data?.sourceStatus)} />
           ) : (
             <ItemGrid>
               {allActivities.map(item => <ActivityCard key={item.id} item={item} />)}
@@ -201,7 +222,7 @@ export function TravelpayoutsSection({
           )}
         </TabsContent>
 
-        {/* Flights — Aviasales + Kiwi */}
+        {/* Flights — Aviasales (Kiwi retired 2026-08; see server/services/travelpayouts/kiwi.service.ts) */}
         <TabsContent value="flights">
           <div className="flex gap-2 mb-4">
             <Input value={flightOrigin} onChange={e => setFlightOrigin(e.target.value)} placeholder="From (e.g. NYC, LON)" className="flex-1" data-testid="input-tp-flight-origin" />
@@ -209,11 +230,11 @@ export function TravelpayoutsSection({
             <Input value={searchInput} onChange={e => setSearchInput(e.target.value)} placeholder="To (destination)" className="flex-1" data-testid="input-tp-flight-dest" />
           </div>
           {!flightOrigin || !destination ? (
-            <Alert><AlertDescription>Enter both origin and destination to search flights via Aviasales & Kiwi.com.</AlertDescription></Alert>
+            <Alert><AlertDescription>Enter both origin and destination to search flights via Aviasales.</AlertDescription></Alert>
           ) : flightsQ.isLoading ? (
             <LoadingGrid count={4} />
           ) : !flightsQ.data?.items?.length ? (
-            <EmptyState label="flights" />
+            <EmptyState label="flights" sourceStatus={flightsQ.data?.sourceStatus} />
           ) : (
             <ItemGrid>
               {flightsQ.data.items.map(item => <FlightCard key={item.id} item={item} />)}
@@ -228,7 +249,7 @@ export function TravelpayoutsSection({
           ) : transfersLoading ? (
             <LoadingGrid count={4} />
           ) : allTransfers.length === 0 ? (
-            <EmptyState label="transfers" />
+            <EmptyState label="transfers" sourceStatus={transfersQ.data?.sourceStatus} />
           ) : (
             <ItemGrid>
               {allTransfers.map(item => <TransferCard key={item.id} item={item} />)}
@@ -243,7 +264,7 @@ export function TravelpayoutsSection({
           ) : carsLoading ? (
             <LoadingGrid count={4} />
           ) : allCars.length === 0 ? (
-            <EmptyState label="car rentals" />
+            <EmptyState label="car rentals" sourceStatus={carsQ.data?.sourceStatus} />
           ) : (
             <ItemGrid>
               {allCars.map(item => <CarRentalCard key={item.id} item={item} />)}

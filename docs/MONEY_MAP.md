@@ -24,6 +24,116 @@
 > Travelpayouts' `marker.SubID` convention; the matcher's exact-token adoption pass is live
 > regardless (it simply never fires without a token-bearing sub_id to match against). See the
 > struck F-4/F-5 entries below.
+>
+> **Update (branch `claude/money-verify-cluster`) — verification lane, #846/#874/#875/#876/#877:**
+> - **#846 (booking confirm-payment double-earnings) — ALREADY-SAFE, proven, not a bug.**
+>   `bookingService.confirmBookingPayment` (`booking.service.ts` ~589-772) already claims the
+>   `bookings` row atomically (`UPDATE ... WHERE status='pending_payment'`) INSIDE the same
+>   `db.transaction` that writes `provider_earnings`/`platform_revenue` — a lost claim throws
+>   before either ledger write, rolling back the whole tx (the §15 pattern, already correct).
+>   Proven both sequentially and under real concurrency (`Promise.all`):
+>   `server/__tests__/booking-confirm-payment-idempotency.test.ts`.
+> - **#874 (refunded coordination fee re-entering 'paid') — REPRODUCED + FIXED.**
+>   `POST /api/coordination-states/:id/pay/confirm` (`routes.ts` ~7144-7170) claimed via
+>   `ne(feePaymentStatus, "paid")`, which ALSO matched `"refunded"` — Stripe leaves
+>   `PaymentIntent.status == 'succeeded'` after a refund (refunds live on the Charge/Refund
+>   objects, not the PI), and the refund endpoint never clears `feePaymentIntentId`, so a
+>   stray/replayed confirm call could flip a refunded engagement back to `"paid"`. Fixed: an
+>   explicit `refunded` early-return (mirroring `/pay`'s existing one) + the atomic UPDATE
+>   tightened to `eq(feePaymentStatus, "pending")` (the only legitimate pre-confirm state — was
+>   `ne(..., "paid")`, which also silently admitted `"unpaid"`). The claim (`/pay`,
+>   `unpaid→pending`) and rollback (`/pay` catch, `pending→unpaid`) guards were already correct
+>   (never touch `refunded`). Proven both pre-fix (bug reproduces) and post-fix (guard holds) +
+>   claim/rollback: `server/__tests__/coordination-fee-refund-guard.test.ts`.
+> - **#875 (coordination refund credit reuse) — ALREADY-SAFE, proven, not a bug.** The refund's
+>   credit-release UPDATE (`routes.ts` ~7261-7265,
+>   `SET consumed_by_coordination_id=NULL, consumed_at=NULL WHERE consumed_by_coordination_id=:id`)
+>   fully un-consumes every credit the refunded coordination claimed, and the released credit is
+>   then genuinely re-claimable by `claimCoordinationCredit` (`optimization-fee.service.ts` ~268)
+>   for a fresh engagement. Proven end-to-end (claim → refund-release → re-claim):
+>   `server/__tests__/coordination-refund-credit-release.test.ts`.
+> - **#876 (refund retry Stripe/DB desync) — ALREADY-SAFE at all three §1c refund sites, proven,
+>   not a bug.** Each site uses a DIFFERENT but individually sound ordering:
+>   `refundServiceBooking` (`stripe-payment.service.ts` ~757-830) is claim-then-revert (atomic
+>   claim first; the documented `~:804` revert on a Stripe throw returns the booking to its prior
+>   status so a retry's claim succeeds cleanly); the coordination-fee refund (`routes.ts`
+>   ~7205-7342) is Stripe-first (nothing is written to the DB until Stripe succeeds, so a Stripe
+>   throw leaves the DB — and any linked `platform_revenue` row — untouched, nothing to revert);
+>   the ready-made refund (`ready-made.routes.ts` ~1173-1205 +
+>   `refundReadyMadePurchaseLedger`/`ready-made-purchase.service.ts` ~189) is ledger-first
+>   (mirrors the dispute-uphold posture) with an idempotent, atomically-claimed ledger step, so a
+>   Stripe-throw retry re-runs ONLY the (idempotency-keyed) Stripe leg. All three simulated with a
+>   Stripe stub that throws once then succeeds, proving exactly one real Stripe refund + a
+>   converged, non-double-written DB state at each site:
+>   `server/__tests__/refund-retry-convergence.test.ts`.
+> - **#877 (mark a ledger gap reviewed) — BUILT, additive migration 169.** The only persistent,
+>   un-acknowledgeable "ledger gap" surface found was `coordination_states.revenue_reversal_missing`
+>   (migration 128) — rendered as a permanent "Ledger gap:" warning in
+>   `client/src/pages/admin/concierge-requests.tsx` with no way to dismiss it, even after manual
+>   review. (The OTHER "gap" surface, `stripeReconciliation.ts`'s `reconciliation_mismatch`
+>   `admin_notifications` rows, already has a working mark-read mechanism —
+>   `PATCH /api/admin/notifications/:id/read` + `admin/notifications.tsx` — so nothing to build
+>   there; the admin-digest webhook-gap check (§C) is ephemeral, recomputed per digest run, not a
+>   persisted queue, so "reviewed" doesn't apply.) Fix: migration 169 adds additive-nullable
+>   `revenue_reversal_reviewed_at`/`revenue_reversal_reviewed_by` to `coordination_states`
+>   (declared in `shared/schema.ts` in the same commit — deploy-push durability rule); new
+>   `POST /api/admin/coordination-states/:id/review-ledger-gap` (`admin.routes.ts`, admin-gated,
+>   mirrors the neighboring `assign-coordinator` endpoint) stamps them WITHOUT ever clearing
+>   `revenue_reversal_missing` — the underlying flag and its history are never deleted, only
+>   annotated. Client: a "Mark reviewed" button on the open-warning banner, a reviewed-state
+>   banner once stamped, and an "open ledger gaps only" filter toggle on the concierge-requests
+>   admin page. Proven: `server/__tests__/coordination-ledger-gap-review.test.ts`.
+
+---
+
+## 0. THE MONEY-FLOW BLUEPRINT (ratified Aug 2, 2026 — decision-maker directive)
+
+Every NEW charge rail — partner integration, product type, fee — follows this lifecycle. It composes
+the CLAUDE.md rules (§8/§14/§15) and the lessons this map's findings taught (F-1…F-8) into one
+template. The first instance is the Musement integration
+(`docs/briefs/MUSEMENT_INTEGRATION_BRIEF.md` §3); deviations from the blueprint are decision-maker
+calls, recorded here.
+
+1. **Amount:** server-derived from the server-side record/catalog, with a LIVE re-quote immediately
+   before the PaymentIntent when the price source is external/volatile; price drift → 409 re-quote,
+   never a silent charge at a stale price. Client-sent amounts never reach a money decision (§14).
+2. **Ordering:** atomic DB claim → Stripe charge → fulfillment. The claim is a conditional UPDATE on
+   the expected state (a check-then-update is the TOCTOU bug); the charge carries a deterministic
+   `idempotencyKey` derived from stable ids (§15, both layers always).
+3. **Fulfillment failure after a successful charge is automatically refunded** — a
+   paid-but-unfulfilled state must be impossible to leave standing (the F-1 lesson). If the
+   fulfillment leg doesn't exist yet, the endpoint is gated 501-honest; it never collects.
+4. **Rates/margins** resolve from `fee_bands`/config; code constants survive only as documented
+   `fee-literal-ok` fallbacks (§8).
+5. **Ledger writes** go through the canonical writers (`recordPlatformRevenue`,
+   `create{Expert,Provider}Earning` etc.); a raw INSERT is allowed only inside a transaction that
+   needs atomicity, with two-way pointer comments to the canonical twin (F-4 posture).
+6. **Refund/reversal:** ledger-first or claim-then-revert (site-appropriate, see §1c precedents),
+   Stripe refund with its own deterministic key, escrow reversal via the existing spine — and every
+   terminal state (`refunded`, `reversed`) is a one-way door: no later transition may leave it
+   (the #874 lesson — guard transitions on the EXACT expected prior state, never `<> target`).
+7. **Secrets** land in `.env.example` + `validate-env.ts` warnings in the SAME PR that introduces
+   them (F-2); missing credentials ⇒ the rail is honestly absent (§13), never a fabricated result.
+8. **This map is updated in the same PR** — every new charge/ledger/endpoint/webhook site gets its
+   row before merge.
+
+### §0a. Partner money-flow archetypes (researched Aug 2, 2026 — Viator/GYG/Klook/Tiqets/Musement)
+
+Every partner-inventory integration is one of THREE models; pick the model FIRST, then the
+blueprint rules apply as noted:
+
+- **Model A — we are merchant of record.** Traveler pays OUR Stripe; we settle with the partner
+  on invoice; margin ours; we own taxes/refunds/support. The full blueprint above applies
+  verbatim. New obligation to scope per-market: country-based tax.
+- **Model B — partner is MoR, booking fully in-platform.** UX stays on our surface; payment goes
+  to the partner's gateway via API; commission paid to us periodically. Blueprint deltas: rules
+  1–3 apply to the PARTNER's charge (we never touch the money), commission tracking rides the
+  affiliate_earnings + reconciliation rail (F-5 adopt-external-truth — never estimate), and there
+  is a **hard PCI gate**: if the partner's payment flow requires raw card data through our
+  servers (Viator-style passthrough), it breaks our SAQ-A posture and is REJECTED unless
+  ratified; client-side tokenization to the partner's gateway is the only acceptable shape.
+- **Model C — redirect affiliate.** §16: never a raw off-site booking CTA — only via the
+  agent-booking rail with server-side tracked links (the WeGoTrip pattern).
 
 ---
 
@@ -121,6 +231,20 @@ template sale (`:3371`, `routes.ts:3611`), tip (`:3514`), referral (`:3582`), af
 (`booking.service.ts:716`, **raw INSERT**). State machine (held→releasable→paid_out / reversed / dispute):
 release scheduler `storage.ts:3674/3683`, per-booking release `:3708/3700`, dispute set/clear `:3735-3745`,
 reversal `:3769/3765`, ready-made reversal `ready-made-purchase.service.ts:231`.
+**`releasable→paid_out` — CLOSED (task #141; was a real gap — no writer existed, so "available"
+(=sum of releasable) never dropped after a completed payout and the same money could be paid out
+twice).** Writer: `storage.ts:4002` (`markEarningsPaidOutForPayoutTx`, private; public entry point
+`storage.ts:3993` `markEarningsPaidOutForPayout`). Flips releasable rows oldest-`createdAt`-first,
+never splitting a row (flips only while running-sum stays within a $0.01 rounding tolerance of the
+payout amount); stamps `payoutId` + `paidOutAt`/`paidAt` on flipped rows (both columns already
+existed, unused until now); logs (never silently swallows) a shortfall when releasable balance is
+less than the payout amount. Composed — same DB transaction, not a separate call — into
+`updateExpertPayoutStatus` (`storage.ts:3907`) / `updateProviderPayoutStatus` (`storage.ts:3952`)
+ONLY on the atomic `<status> <> 'completed'` → `'completed'` TRANSITION (§15 pattern: the transition
+itself is the idempotency guard), so both real call sites for a completed payout —
+`PATCH /api/admin/payouts/:id` (`admin.routes.ts:3817-3819`, post-transfer) and the
+`transfer.created`/`transfer.paid` webhook (`webhooks.routes.ts:273-275`) — share one choke point;
+whichever invocation actually flips the row runs the earnings flip once, the other no-ops.
 
 ### `affiliate_earnings`
 Create: `storage.ts:3604`; from agent-booking confirm `content.routes.ts:6917` (**commission written "0.00"**
@@ -135,8 +259,12 @@ Insert on paid Event-optimize `optimization.routes.ts:459` (unique on `sourcePay
 
 ### Payout tables
 `expert_payouts` / `provider_payouts`: create `storage.ts:3461/:3824`; atomic processing claim
-`:3902/:3910` (§15 FIX 1); status update `:3894/:3923`. Callers: admin queue (`admin.routes.ts:3709-3856`),
-self-service request (`payments.routes.ts:1179-1180`), transfer webhook (`webhooks.routes.ts:273-275`).
+`:3936/:3944` (§15 FIX 1); status update `:3907/:3952` (now transaction-wrapped on the `completed`
+transition — see the `releasable→paid_out` entry above). Callers: admin queue
+(`admin.routes.ts:3709-3856`), self-service request (`payments.routes.ts:1179-1180`), transfer webhook
+(`webhooks.routes.ts:273-275`). Read: `GET /api/payouts` (`payments.routes.ts:1194`, task #142 — session-
+scoped, role-aware provider/expert via `storage.get{Provider,Expert}Payouts`; §14, earner from session
+only, no id/userId input at all, so no admin-data leakage is even expressible).
 
 ### Purchase/booking status machines
 - `template_purchases`: born `pending_payment` `routes.ts:3489`; atomic `→completed` `:3598`.
@@ -144,8 +272,14 @@ self-service request (`payments.routes.ts:1179-1180`), transfer webhook (`webhoo
   webhook `→confirmed` `webhooks.routes.ts:301` / `→failed` `:365`; transport confirm `stripe.service.ts:193`;
   refund claim `stripe-payment.service.ts:773`; completion side-effects `storage.ts:~1595`
   (`updateServiceBookingStatus`); expiry `booking-expiry-scheduler.service.ts:131`.
-- `coordination_states.fee_payment_status`: claim `routes.ts:6962`; paid `:7016/:7162`; rollback `:7128`;
-  refunded `:7302`.
+- `coordination_states.fee_payment_status`: claim `routes.ts:6962` (`unpaid→pending`); paid `:7016/:7162`
+  (`#874 fix`: `:7162`'s atomic UPDATE is now `eq(status,"pending")`, was `ne(status,"paid")` — the
+  looser guard admitted both `unpaid` and the terminal `refunded` state into the flip; an explicit
+  `refunded` early-return was also added, mirroring `/pay`'s existing one); rollback `:7128`
+  (`pending→unpaid`); refunded `:7302` (terminal — never re-enters `pending`/`paid` post-fix).
+  `revenue_reversal_missing` (bool, migration 128) flags a refund whose `platform_revenue` reversal
+  found nothing to reverse; `#877` (migration 169) adds `revenue_reversal_reviewed_at`/`_by` +
+  `POST /api/admin/coordination-states/:id/review-ledger-gap` so that flag can be acknowledged.
 - `ready_made_purchases`: insert `ready-made.routes.ts:1129`; `paid→cloned` `ready-made-purchase.service.ts:106`;
   `→refunded` `:219`.
 - Adjacent: `payment_intents` mirror rows (`stripe-payment.service.ts:485-709`, `webhooks.routes.ts:409`),
@@ -178,6 +312,7 @@ inline admin check) · admin dispute uphold/reject (`admin.routes.ts:884/856`).
 **Payout rail:**
 POST `/api/payouts/request` (`payments.routes.ts:1120`, earner self-request, server-capped) →
 POST/PATCH `/api/admin/payouts` (`admin.routes.ts:3666/3733`, adminApiGuard; PATCH executes the transfer).
+GET `/api/payouts` (`payments.routes.ts:1194`, task #142 — session-scoped own-payout history, read-only).
 
 **Connect onboarding:** `/api/stripe/connect/onboard|status|dashboard` (`payments.routes.ts:946/995/1030`).
 

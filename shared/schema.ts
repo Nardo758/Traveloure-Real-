@@ -800,36 +800,14 @@ export const customVenues = pgTable("custom_venues", {
 // problem "a table has zero code consumers but holds real user data, so it can't simply be
 // dropped." Declared here per the deploy-push-durability rule -- an UNDECLARED archive table is
 // itself the next drop target on a Replit publish, which would defeat the entire point of
-// archiving into it. First (and so far only) tenant: `activity_bookings`, archived then dropped
-// by migration 168 (one real prod row -- Segway Paris, user 79cdafd1, a live Stripe
-// PaymentIntent -- preserved verbatim as a jsonb row here, source_table='activity_bookings').
-// STEP-1 OF THE TWO-DEPLOY RETIREMENT (migration 168): this declaration is DELIBERATELY KEPT
-// until one prod publish has run migration 168's archive. The Replit deploy-push runs BEFORE
-// migrations and DROPS undeclared tables — removing this line in the same deploy as 168 would
-// destroy the one real prod booking BEFORE the archive could run. A follow-up PR (step 2)
-// removes this declaration AFTER the first post-168 publish confirms the archive row exists
-// (SELECT count(*) FROM legacy_archives WHERE source_table='activity_bookings' -> >=1).
-// NOTE: after 168 runs, the table is dropped while still declared, so the NEXT publish push
-// recreates it EMPTY — harmless, expected, and resolved by the step-2 declaration removal.
-export const activityBookings = pgTable("activity_bookings", {
-  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
-  userId: varchar("user_id").notNull(),
-  provider: varchar("provider", { length: 50 }).notNull(),
-  productCode: varchar("product_code", { length: 255 }),
-  productTitle: text("product_title").notNull(),
-  imageUrl: text("image_url"),
-  priceAmount: decimal("price_amount").notNull(),
-  priceCurrency: varchar("price_currency", { length: 10 }).default("USD").notNull(),
-  bookingUrl: text("booking_url"),
-  stripePaymentIntentId: varchar("stripe_payment_intent_id", { length: 255 }),
-  status: varchar("status", { length: 20 }).default("pending").notNull(),
-  createdAt: timestamp("created_at").defaultNow(),
-  productOptionCode: varchar("product_option_code", { length: 100 }),
-  providerBookingRef: varchar("provider_booking_ref", { length: 100 }),
-  travelDate: varchar("travel_date", { length: 20 }),
-  travelerCount: integer("traveler_count").default(1),
-});
-
+// archiving into it. First tenant: `activity_bookings` (dropped by migration 168; its
+// `activityBookings` declaration is now removed — step 2 of the two-deploy retirement).
+// INCIDENT (Aug 1, 2026, recorded + CLOSED in CLAUDE.md): the archive ran against an
+// already-empty table — a drizzle push executed while the declaration-removal (#386) was
+// merged un-gated dropped the table before migration 168 could archive it. A live-Stripe
+// check later showed the lost row was an UNPAID booking (no captured funds — the account's
+// live history holds no such charge), so nothing of financial substance was lost. See the
+// CLAUDE.md migration-168 entry for the sequencing lessons.
 export const legacyArchives = pgTable("legacy_archives", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   sourceTable: varchar("source_table").notNull(),
@@ -1911,6 +1889,10 @@ export const coordinationStates = pgTable("coordination_states", {
   // Set to true when a refund is processed but no platform_revenue rows are found to reverse.
   // This is an admin-visible flag indicating a ledger inconsistency that needs manual review.
   revenueReversalMissing: boolean("revenue_reversal_missing").notNull().default(false),
+  // #877 (migration 169): lets an admin mark the above ledger-gap warning reviewed instead of
+  // it warning forever in the admin concierge panel. NULL = not yet reviewed (open warning).
+  revenueReversalReviewedAt: timestamp("revenue_reversal_reviewed_at"),
+  revenueReversalReviewedBy: varchar("revenue_reversal_reviewed_by").references(() => users.id, { onDelete: "set null" }),
 
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),

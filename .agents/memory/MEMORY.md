@@ -12,7 +12,6 @@
 - [Stripe key misconfiguration](stripe-key-misconfiguration.md) — wrong key type (pk_ vs sk_) pasted into STRIPE_SECRET_KEY looks exactly like a platform secrets-sync bug across restarts; verify value/account first, add sk_ startup guard
 - [Prod verification constraints](prod-verification-constraints.md) — prod SQL is read-only (no role grants/cleanup); dispatch checks needing an expert session must run on dev at the same commit; MyBookings route is /bookings not /my-bookings.
 - [PlanCard item source](plancard-itinerary-items.md) — dashboard Trip Card reads itinerary_items not trip_items; routing actions need provider_service_id + routing_status
-- [Amadeus API discontinued](amadeus-api-discontinued.md) — Self-Service API shut down 2026-07-17; hostnames don't resolve by design, not an egress bug; all /api/amadeus/* is dead pending retire/replace.
 - [Playwright + Radix Dropdown](playwright-radix-dropdown.md) — auth mock via addInitScript only (not catch-all); re-focus before Enter/Escape cycles; href check not click+waitForURL; unauth testid is button-sign-in
 - [Travelpayouts partner API](travelpayouts-partner-api.md) — /v1/statistics/* endpoints don't exist (silent $0); use statistics/v1/execute_query + finance/v2 with X-Access-Token header.
 - [MapMarker fallback testing](map-marker-fallback-testing.md) — fallback mode drops map-pin-* testids (AdvancedMarker children); find pins by .gm-style [title]; ItineraryMapView is orphaned; Maps key lacks billing.

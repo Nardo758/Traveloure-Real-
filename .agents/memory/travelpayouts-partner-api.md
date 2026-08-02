@@ -14,8 +14,3 @@ Real endpoints (verified live against the account token, Aug 2026):
 **Why:** the account-wide (unfiltered) query covers every Travelpayouts program automatically, including WeGoTrip (campaign #150, attributed via `?sub_id=<marker>`), so no per-program polling is needed when new programs are added.
 
 **How to apply:** any new Travelpayouts stats/reconciliation code must hit these endpoints with header auth; never trust a $0 result from a hand-rolled URL without checking the HTTP status.
-
-Additional facts (verified Aug 2026, sub_id echo probe):
-- execute_query filters use singular `{"field","op","value"}` — a `values` array is rejected ("wrong value type"). Server auto-appends `type ne referral`.
-- The dataset contains **action (booking) rows only — clicks never create rows**, so click-only tests cannot verify sub_id echo; a real booking is required.
-- Row schema includes both `sub_id` and `long_sub_id` (strings), suggesting suffixed markers like `405110.token` are preserved, but this is unproven until a real action lands.

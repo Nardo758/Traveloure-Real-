@@ -104,30 +104,10 @@ export function AmadeusSafety({
     );
   }
 
-  if (isError) {
-    return (
-      <Card className={className}>
-        <CardContent className="p-6 text-center">
-          <AlertCircle className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-          <p className="text-sm text-muted-foreground">
-            Unable to load safety information. Please try again later.
-          </p>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  if (!safetyRatings || safetyRatings.length === 0) {
-    return (
-      <Card className={className}>
-        <CardContent className="p-6 text-center">
-          <Shield className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-          <p className="text-sm text-muted-foreground">
-            No safety data available for this location.
-          </p>
-        </CardContent>
-      </Card>
-    );
+  // The Amadeus safety API was retired (endpoint now returns 410) — hide the
+  // section entirely instead of showing a permanent error/empty card.
+  if (isError || !safetyRatings || safetyRatings.length === 0) {
+    return null;
   }
 
   const rating = safetyRatings[0];

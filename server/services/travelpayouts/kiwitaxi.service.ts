@@ -1,5 +1,6 @@
 import { getTravelpayoutsToken } from "./travelpayouts-client";
 import type { CatalogItem } from "../experience-catalog.service";
+import { reportProviderResult, outcomeFromHttpStatus } from "../provider-health.service";
 
 const KIWITAXI_API = "https://api.kiwitaxi.com";
 
@@ -32,6 +33,7 @@ export async function searchKiwiTaxi(params: KiwiTaxiSearchParams): Promise<Cata
       const transfers = data?.transfers || data?.results || data || [];
 
       if (Array.isArray(transfers) && transfers.length > 0) {
+        reportProviderResult("kiwitaxi", "ok");
         return transfers.slice(0, params.limit || 6).map((t: any): CatalogItem => ({
           id: `kiwitaxi-${t.id || Math.random().toString(36).slice(2)}`,
           type: "transfer",
@@ -42,7 +44,7 @@ export async function searchKiwiTaxi(params: KiwiTaxiSearchParams): Promise<Cata
           imageUrl: t.vehicle?.image || null,
           price: t.price ? parseFloat(t.price) : null,
           currency: params.currency || "USD",
-          rating: 4.6,
+          rating: null, // §13: Kiwitaxi's API returns no rating — never invent one
           reviewCount: null,
           destination: params.to,
           location: null,
@@ -55,36 +57,17 @@ export async function searchKiwiTaxi(params: KiwiTaxiSearchParams): Promise<Cata
           lastUpdated: new Date(),
         } as CatalogItem));
       }
+      // Real API succeeded with zero transfers — honest empty, not an error.
+      reportProviderResult("kiwitaxi", "empty");
+    } else {
+      reportProviderResult("kiwitaxi", outcomeFromHttpStatus(res.status), `HTTP ${res.status}`);
     }
-  } catch {
+  } catch (err) {
+    reportProviderResult("kiwitaxi", "error", err instanceof Error ? err.message : String(err));
   }
 
-  const vehicleClasses = [
-    { cls: "Economy", icon: "🚗", priceBase: 18, seats: "3", desc: "Sedan for up to 3 passengers" },
-    { cls: "Business", icon: "🚙", priceBase: 35, seats: "3", desc: "Premium sedan, bottled water included" },
-    { cls: "Minivan", icon: "🚐", priceBase: 45, seats: "6", desc: "Spacious van for groups of up to 6" },
-  ];
-
-  return vehicleClasses.slice(0, params.limit || 3).map((v): CatalogItem => ({
-    id: `kiwitaxi-${params.from}-${params.to}-${v.cls}`.replace(/\s+/g, "-").toLowerCase(),
-    type: "transfer",
-    provider: "kiwitaxi",
-    externalId: `kiwitaxi-${v.cls}`,
-    title: `${v.icon} ${v.cls} Transfer — ${params.from} → ${params.to}`,
-    description: `${v.desc} · Flight tracking · Free cancellation up to 24h`,
-    imageUrl: null,
-    price: v.priceBase,
-    currency: "USD",
-    rating: 4.6,
-    reviewCount: null,
-    destination: params.to,
-    location: null,
-    duration: null,
-    categories: ["transfer", "airport-transfer"],
-    tags: ["kiwitaxi", "transfer", v.cls.toLowerCase()],
-    bookingUrl: `https://kiwitaxi.com/transfer/${encodeURIComponent(params.from)}/${encodeURIComponent(params.to)}?api_key=${token}`,
-    affiliateUrl: `https://kiwitaxi.com/transfer/${encodeURIComponent(params.from)}/${encodeURIComponent(params.to)}?api_key=${token}`,
-    source: "travelpayouts/kiwitaxi",
-    lastUpdated: new Date(),
-  } as CatalogItem));
+  // §13: the fabricated vehicle-class fallback that used to live here (invented prices and a 4.6
+  // rating, rendered whenever the real call failed) is REMOVED — a failed or empty live call
+  // returns an honest empty list; the provider-health registry carries the failure status.
+  return [];
 }
