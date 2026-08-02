@@ -103,7 +103,7 @@ import { ESimCard } from "@/components/travelpayouts/ESimCard";
 import { HotelCard } from "@/components/travelpayouts/HotelCard";
 import type { CatalogItem } from "@/types/catalog";
 import { CuratedContentSection } from "@/components/curated-content-section";
-import { updateTripContext, useTripContext, switchTripContextPreservingId } from "@/lib/trip-context";
+import { updateTripContext, useTripContext, switchTripContextPreservingId, getTripContext } from "@/lib/trip-context";
 import { EditTripPanel } from "@/components/trip/edit-trip-panel";
 
 interface VenueResult {
@@ -1390,8 +1390,11 @@ export default function ExperienceTemplatePage() {
   // "Get Expert Help" clicks don't spam a new lead for an unchanged plan.
   const lastSharedPlanRef = useRef<string>("");
 
-  // Build a snapshot of everything the traveler has planned so far — the
-  // "itinerary preview" work — to hand to the expert.
+  // The traveler's ASK — correspondence, safe to freeze into the request (dispatch §4
+  // disposition table). Slip/cart CONTENT is deliberately NOT here: copying item
+  // names/prices/providers into the request jsonb was the class-B snapshot failure (an expert
+  // advising against stale data). The expert workspace reads the plan LIVE via the trip
+  // reference; item counts/totals appear only as prose in the notes (correspondence).
   const buildPlanSnapshot = () => ({
     source: "template" as const,
     experienceType: experienceType?.name,
@@ -1402,14 +1405,6 @@ export default function ExperienceTemplatePage() {
     endDate: endDate ? endDate.toISOString().split("T")[0] : undefined,
     travelers: adults + kids,
     interests: selectedInterests,
-    cartItems: cart.map((i) => ({
-      name: i.name,
-      category: i.type,
-      price: i.price,
-      provider: i.provider || "Provider",
-      quantity: i.quantity,
-    })),
-    cartTotal,
   });
 
   const openExpertChat = async () => {
@@ -1422,7 +1417,9 @@ export default function ExperienceTemplatePage() {
     // the plan changed since the last share.
     if (!user || !destination.trim()) return;
     const snapshot = buildPlanSnapshot();
-    const sig = JSON.stringify(snapshot);
+    // Dedup key includes the cart summary (count/total) so a changed plan still re-sends even
+    // though item content no longer rides the snapshot itself.
+    const sig = JSON.stringify({ ...snapshot, cartCount: cart.length, cartTotal });
     if (sig === lastSharedPlanRef.current) return;
     lastSharedPlanRef.current = sig;
     try {
@@ -1435,6 +1432,9 @@ export default function ExperienceTemplatePage() {
           requestType: "template_inquiry",
           notes: `Traveler is planning a ${experienceType?.name || "trip"} to ${destination}` +
             (cart.length ? ` with ${cart.length} selected item(s) (~$${cartTotal}).` : "."),
+          // The slip REFERENCE (when a trip is bound — Server-truth mode): the expert
+          // workspace reads the plan live through it; nothing is copied.
+          ...(getTripContext().tripId ? { tripId: getTripContext().tripId } : {}),
           optimizationContext: { planSnapshot: snapshot },
         }),
       });
