@@ -7,7 +7,7 @@ import {
   experienceUniversalFilters,
   experienceUniversalFilterOptions
 } from "@shared/schema";
-import { eq, inArray, and, sql } from "drizzle-orm";
+import { eq, inArray, and } from "drizzle-orm";
 import { SELECTION_CONTROL_SEED } from "@shared/selection-control-seed";
 
 interface FilterOption {
@@ -4774,37 +4774,46 @@ export async function seedExperienceTemplateTabs() {
   const typeIdBySlug = new Map(existingTypes.map((t) => [t.slug, t.id]));
 
   const typeIds = existingTypes.map((t) => t.id);
-  const tabCountByTypeId = new Map<string, number>();
-  const universalCountByTypeId = new Map<string, number>();
+  const tabSlugsByTypeId = new Map<string, Set<string>>();
+  const universalSlugsByTypeId = new Map<string, Set<string>>();
   if (typeIds.length > 0) {
-    const tabCounts = await db
+    const tabRows = await db
       .select({
         experienceTypeId: experienceTemplateTabs.experienceTypeId,
-        count: sql<number>`count(*)::int`,
+        slug: experienceTemplateTabs.slug,
       })
       .from(experienceTemplateTabs)
-      .where(inArray(experienceTemplateTabs.experienceTypeId, typeIds))
-      .groupBy(experienceTemplateTabs.experienceTypeId);
-    for (const row of tabCounts) tabCountByTypeId.set(row.experienceTypeId, row.count);
+      .where(inArray(experienceTemplateTabs.experienceTypeId, typeIds));
+    for (const row of tabRows) {
+      if (!tabSlugsByTypeId.has(row.experienceTypeId)) tabSlugsByTypeId.set(row.experienceTypeId, new Set());
+      tabSlugsByTypeId.get(row.experienceTypeId)!.add(row.slug);
+    }
 
-    const universalCounts = await db
+    const universalRows = await db
       .select({
         experienceTypeId: experienceUniversalFilters.experienceTypeId,
-        count: sql<number>`count(*)::int`,
+        slug: experienceUniversalFilters.slug,
       })
       .from(experienceUniversalFilters)
-      .where(inArray(experienceUniversalFilters.experienceTypeId, typeIds))
-      .groupBy(experienceUniversalFilters.experienceTypeId);
-    for (const row of universalCounts) universalCountByTypeId.set(row.experienceTypeId, row.count);
+      .where(inArray(experienceUniversalFilters.experienceTypeId, typeIds));
+    for (const row of universalRows) {
+      if (!universalSlugsByTypeId.has(row.experienceTypeId)) universalSlugsByTypeId.set(row.experienceTypeId, new Set());
+      universalSlugsByTypeId.get(row.experienceTypeId)!.add(row.slug);
+    }
   }
 
   let skipped = 0;
   for (const template of templates) {
     const existingId = typeIdBySlug.get(template.slug);
+    // Skip only when EVERY expected tab and universal-filter slug is already
+    // present for this type — set membership, not row counts, so a template
+    // gaining a new tab/filter in code still falls through to the seed path.
+    const existingTabSlugs = existingId !== undefined ? tabSlugsByTypeId.get(existingId) : undefined;
+    const existingUniversalSlugs = existingId !== undefined ? universalSlugsByTypeId.get(existingId) : undefined;
     const alreadySeeded =
       existingId !== undefined &&
-      (tabCountByTypeId.get(existingId) ?? 0) >= template.tabs.length &&
-      (universalCountByTypeId.get(existingId) ?? 0) >= template.universalFilters.length;
+      template.tabs.every((t) => existingTabSlugs?.has(t.slug)) &&
+      template.universalFilters.every((f) => existingUniversalSlugs?.has(f.slug));
 
     if (alreadySeeded) {
       skipped++;
