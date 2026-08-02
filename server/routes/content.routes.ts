@@ -10,6 +10,23 @@ import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { geocodeAddress } from "../utils/geocode";
 import { applyAttributionSubId } from "../services/travelpayouts/travelpayouts-client";
+import { getProviderHealth } from "../services/provider-health.service";
+
+// Additive-only honesty seam (provider-health task): looks up a single provider's CURRENT registry
+// status for a per-source catalog response. Never restructures the response — callers spread the
+// result into the existing `{items, total}` shape as an extra optional field a client can ignore.
+function sourceStatusField(provider: string): { sourceStatus: { status: string; configured: boolean; retired: boolean; detail: string | null } } | {} {
+  const entry = getProviderHealth().find((p) => p.provider === provider);
+  if (!entry) return {};
+  return {
+    sourceStatus: {
+      status: entry.status,
+      configured: entry.configured,
+      retired: entry.retired,
+      detail: entry.lastDetail,
+    },
+  };
+}
 import {
   dbHealthCheck, getServiceOfferingTypes, getExpertOfferingTypes,
   getFeedCompositionConfig, insertContactSubmission, getAdminUserIds,
@@ -1087,37 +1104,33 @@ router.get("/api/catalog/destinations", async (req, res) => {
   // === Travelpayouts Provider Routes ===
 
   // Flights: Aviasales
+  // Kiwi (Tequila) is RETIRED as a source — see server/services/travelpayouts/kiwi.service.ts for the
+  // evidence (401 against TRAVELPAYOUTS_TOKEN; Tequila closed to new partners in 2023). Aviasales is now
+  // the sole source; a `provider=kiwi` request still resolves cleanly to zero items, never an error.
 
 router.get("/api/catalog/flights", isAuthenticated, async (req, res) => {
     try {
       const { searchAviasalesFlights } = await import("../services/travelpayouts/aviasales.service");
-      const { searchKiwiFlights } = await import("../services/travelpayouts/kiwi.service");
       const { origin, destination, departDate, returnDate, currency, limit, provider } = req.query;
 
       if (!origin) return res.status(400).json({ message: "origin is required" });
 
-      const [aviasales, kiwi] = await Promise.allSettled([
-        !provider || provider === "aviasales"
-          ? searchAviasalesFlights({ origin: origin as string, destination: destination as string, departDate: departDate as string, returnDate: returnDate as string, currency: currency as string, limit: limit ? parseInt(limit as string) : 10 })
-          : Promise.resolve([]),
-        !provider || provider === "kiwi"
-          ? searchKiwiFlights({ flyFrom: origin as string, flyTo: destination as string, dateFrom: departDate as string, currency: currency as string, limit: limit ? parseInt(limit as string) : 10 })
-          : Promise.resolve([]),
-      ]);
+      const items = !provider || provider === "aviasales"
+        ? await searchAviasalesFlights({ origin: origin as string, destination: destination as string, departDate: departDate as string, returnDate: returnDate as string, currency: currency as string, limit: limit ? parseInt(limit as string) : 10 })
+        : [];
 
-      const items = [
-        ...(aviasales.status === "fulfilled" ? aviasales.value : []),
-        ...(kiwi.status === "fulfilled" ? kiwi.value : []),
-      ];
-
-      res.json({ items, total: items.length });
+      res.json({ items, total: items.length, ...sourceStatusField("kiwi") });
     } catch (error) {
       console.error("Flights search error:", error);
       res.status(500).json({ message: "Failed to search flights" });
     }
   });
 
-  // Flights: Kiwi Nomad routing
+  // Flights: Kiwi Nomad routing — RETIRED (Kiwi/Tequila is the only nomad source there is; see
+  // kiwi.service.ts). Still calls through to searchKiwiNomad so the KIWI_TEQUILA_API_KEY revival seam
+  // stays live end-to-end (not just inside the service) — it always returns [] today, so this is
+  // presently equivalent to the honest static retired shape, but a future partner key just works
+  // without a route change. `retired` reflects whether the seam is currently ACTIVE, not a hardcoded flag.
 
 router.get("/api/catalog/nomad", isAuthenticated, async (req, res) => {
     try {
@@ -1134,7 +1147,7 @@ router.get("/api/catalog/nomad", isAuthenticated, async (req, res) => {
         currency: currency as string,
       });
 
-      res.json({ items, total: items.length });
+      res.json({ items, total: items.length, retired: !process.env.KIWI_TEQUILA_API_KEY, ...sourceStatusField("kiwi") });
     } catch (error) {
       console.error("Nomad search error:", error);
       res.status(500).json({ message: "Failed to search nomad routes" });
@@ -1158,7 +1171,7 @@ router.get("/api/catalog/transfers", isAuthenticated, async (req, res) => {
         currency: currency as string,
       });
 
-      res.json({ items, total: items.length });
+      res.json({ items, total: items.length, ...sourceStatusField("gettransfer") });
     } catch (error) {
       console.error("Transfers search error:", error);
       res.status(500).json({ message: "Failed to search transfers" });
@@ -1185,7 +1198,7 @@ router.get("/api/catalog/cars", isAuthenticated, async (req, res) => {
         limit: limit ? parseInt(limit as string) : 10,
       });
 
-      res.json({ items, total: items.length });
+      res.json({ items, total: items.length, ...sourceStatusField("discovercars") });
     } catch (error) {
       console.error("Car rental search error:", error);
       res.status(500).json({ message: "Failed to search car rentals" });
@@ -1225,7 +1238,7 @@ router.get("/api/catalog/tiqets", isAuthenticated, async (req, res) => {
         limit: limit ? parseInt(limit as string) : 20,
       });
 
-      res.json({ items, total: items.length });
+      res.json({ items, total: items.length, ...sourceStatusField("tiqets") });
     } catch (error) {
       console.error("Tiqets search error:", error);
       res.status(500).json({ message: "Failed to search Tiqets products" });
@@ -1244,7 +1257,7 @@ router.get("/api/catalog/wegotrip", isAuthenticated, async (req, res) => {
         limit: limit ? parseInt(limit as string) : 20,
       });
 
-      res.json({ items, total: items.length });
+      res.json({ items, total: items.length, ...sourceStatusField("wegotrip") });
     } catch (error) {
       console.error("WeGoTrip search error:", error);
       res.status(500).json({ message: "Failed to search WeGoTrip products" });
@@ -1354,7 +1367,7 @@ router.get("/api/catalog/activities-gyg", isAuthenticated, async (req, res) => {
         currency: currency as string,
         limit: limit ? parseInt(limit as string) : 12,
       });
-      res.json({ items, total: items.length });
+      res.json({ items, total: items.length, ...sourceStatusField("getyourguide") });
     } catch (err) {
       console.error("GetYourGuide error:", err);
       res.status(500).json({ message: "Failed to search GetYourGuide" });

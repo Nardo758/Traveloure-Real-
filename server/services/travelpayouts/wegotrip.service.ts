@@ -1,6 +1,7 @@
 import { getTravelpayoutsMarker } from "./travelpayouts-client";
 import type { CatalogItem } from "../experience-catalog.service";
 import { getCachedFeed, setCachedFeed } from "./travelpayouts-cache";
+import { reportProviderResult } from "../provider-health.service";
 
 /**
  * WeGoTrip (tours & audio guides) — Travelpayouts program #150.
@@ -104,8 +105,11 @@ export async function searchWeGoTripProducts(params: WeGoTripSearchParams): Prom
     const items = Array.isArray(products) ? products : [];
 
     await setCachedFeed(BRAND, cacheKey, items);
-    return mapWeGoTripProducts(items, params).slice(0, limit);
+    const mapped = mapWeGoTripProducts(items, params).slice(0, limit);
+    reportProviderResult("wegotrip", mapped.length > 0 ? "ok" : "empty");
+    return mapped;
   } catch (err) {
+    reportProviderResult("wegotrip", "error", err instanceof Error ? err.message : String(err));
     console.warn("[WeGoTrip] Search failed:", err instanceof Error ? err.message : err);
     return [];
   }

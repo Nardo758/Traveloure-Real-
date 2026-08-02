@@ -68,6 +68,7 @@ import { feverService } from "../services/fever.service";
 import { partnerEventsCacheService } from "../services/partner-events-cache.service";
 import { ingestKyotoHeritage, ingestKyotoContentGaps, isDmoIngestReady } from "../services/dmo-ingestion.service";
 import { analyzeKyotoContentGaps, listOpenKyotoGaps } from "../services/content-gap.service";
+import { getProviderHealth } from "../services/provider-health.service";
 import { cityNeighborhoods, expertNeighborhoods, dmoRawContent } from "@shared/schema";
 import { isExpertRole, isProviderRole } from "@shared/roles";
 import { isReadyMadeBadge, READY_MADE_BADGE_VALUES } from "@shared/ready-made-badges";
@@ -1098,6 +1099,25 @@ router.post("/api/admin/dmo/ingest-gaps", isAuthenticated, async (req, res) => {
   } catch (err: any) {
     console.error("DMO gap-fill error:", err);
     res.status(500).json({ message: "Gap-fill ingestion failed", error: err.message });
+  }
+});
+
+// ── Provider health registry ──────────────────────────────────────────────────
+// In-memory, process-lifetime-only view of every /api/catalog/* source's last outcome — closes the
+// "silent 0 results" theme from the Aug 2026 live probe (Kiwi 401, Tiqets 404, Amadeus/GetTransfer DNS
+// failures, SerpAPI 429, Google Places REQUEST_DENIED, etc. all degraded to an indistinguishable empty
+// array before this). See server/services/provider-health.service.ts.
+
+router.get("/api/admin/provider-health", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    res.json({ providers: getProviderHealth() });
+  } catch (err: any) {
+    console.error("Provider health error:", err);
+    res.status(500).json({ message: "Failed to load provider health", error: err.message });
   }
 });
 
