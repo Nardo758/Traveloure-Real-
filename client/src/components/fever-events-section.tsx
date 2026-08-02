@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { optimizeUnsplashUrl, unsplashResponsiveProps } from "@/lib/unsplash";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -225,12 +226,18 @@ export function FeverEventsSection({ destination, startDate, endDate }: FeverEve
               <div className="w-36 shrink-0 relative">
                 {event.imageUrl ? (
                   <img
-                    src={event.imageUrl}
+                    src={optimizeUnsplashUrl(event.imageUrl, { w: 400 })}
+                    {...unsplashResponsiveProps(event.imageUrl, { widths: [300, 400], sizes: "144px" })}
                     alt={event.title}
+                    loading="lazy"
                     className="w-full h-full object-cover"
                     onError={(e) => {
-                      (e.target as HTMLImageElement).src =
-                        "https://picsum.photos/seed/event/300/200";
+                      const img = e.target as HTMLImageElement;
+                      // Clear responsive sources first, or the browser keeps
+                      // re-selecting the failing srcset candidate over the fallback.
+                      img.srcset = "";
+                      img.sizes = "";
+                      img.src = "https://picsum.photos/seed/event/300/200";
                     }}
                   />
                 ) : (
@@ -292,7 +299,7 @@ export function FeverEventsSection({ destination, startDate, endDate }: FeverEve
                       className="font-bold text-base text-primary"
                       data-testid={`text-event-price-${event.id}`}
                     >
-                      {formatPrice(event.price, event.currency, event.isFree)}
+                      {formatPrice(event.price, event.currency, event.isFree ?? false)}
                     </p>
                     {event.price && !event.isFree && (
                       <p className="text-xs text-muted-foreground">per person</p>
