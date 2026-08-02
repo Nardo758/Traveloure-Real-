@@ -481,10 +481,20 @@ export default function Chat() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    // Rendered inside a role shell (ConsoleAwareLayout → DashboardLayout / BackofficeShell /
+    // EALayout), NOT as a standalone page — those shells already supply the global chrome
+    // (sidebar + their own sticky h-[52px] header) and their own <main> scroll container. This
+    // page used to assume a nonexistent standalone header stack + its own page-level scroll,
+    // producing a dead band above the title, a clipped conversation header, and a second
+    // scrollbar. Fix: ONE viewport-anchored height here (h-[calc(100vh-52px)], matching the
+    // shell's own real, shared h-[52px] header — DashboardLayout/BackofficeShell/EALayout all
+    // use the identical value) establishes a single bounded frame for this page; every nested
+    // pane below derives its height from that frame via flex-1/min-h-0, never its own viewport
+    // arithmetic.
+    <div className="flex flex-col h-[calc(100vh-52px)] min-h-0 bg-background">
       {/* Header */}
-      <div className="bg-white dark:bg-slate-900 border-b border-border sticky top-16 z-40">
-        <div className="container mx-auto px-4 py-4">
+      <div className="bg-white dark:bg-slate-900 border-b border-border flex-shrink-0">
+        <div className="px-3 sm:px-6 py-4">
           <div className="flex items-center gap-4">
             <Link href={isEarner ? getRoleHomePath(user?.role ?? "user") : "/dashboard"}>
               <Button variant="ghost" size="icon" data-testid="button-back">
@@ -503,11 +513,11 @@ export default function Chat() {
         </div>
       </div>
 
-      <div className="container mx-auto px-4 py-6">
-        <div className="grid md:grid-cols-3 gap-6 h-[calc(100vh-200px)]">
+      <div className="flex-1 min-h-0 px-3 sm:px-6 py-4 md:py-6">
+        <div className="flex flex-col md:grid md:grid-cols-3 gap-4 md:gap-6 h-full min-h-0">
           {/* Expert List */}
-          <div className="md:col-span-1 space-y-4">
-            <div className="relative">
+          <div className="md:col-span-1 flex-1 md:flex-auto flex flex-col gap-4 min-h-0">
+            <div className="relative flex-shrink-0">
               <Input
                 placeholder={isEarner ? "Search conversations..." : "Search experts..."}
                 value={searchQuery}
@@ -518,7 +528,13 @@ export default function Chat() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             </div>
 
-            <ScrollArea className="h-[calc(100vh-280px)]">
+            {/* Radix ScrollArea's Viewport wraps children in an inner `display:table` div that
+                sizes to CONTENT (ignoring the parent's bounded width) — the `truncate` classes on
+                the card text below can never engage without this. Force that wrapper back to a
+                normal block so truncation actually applies (verified against the installed
+                @radix-ui/react-scroll-area DOM: Root > Viewport(div) > content-wrapper(div) — the
+                `[&>div>div]` target below is that content-wrapper, two levels under Root). */}
+            <ScrollArea className="flex-1 min-h-0 [&>div>div]:!block [&>div>div]:!w-full [&>div>div]:!min-w-0">
               {isEarner ? (
                 filteredExperts.length === 0 ? (
                   <div className="text-center py-12 px-2">
@@ -575,12 +591,12 @@ export default function Chat() {
           </div>
 
           {/* Chat Area */}
-          <div className="md:col-span-2">
-            <Card className="h-full flex flex-col">
+          <div className="md:col-span-2 flex-1 md:flex-auto min-h-0">
+            <Card className="h-full flex flex-col min-h-0">
               {selectedExpert ? (
                 <>
                   {/* Chat Header */}
-                  <div className="p-4 border-b border-border flex items-center gap-4">
+                  <div className="p-4 border-b border-border flex items-center gap-4 flex-shrink-0">
                     <Avatar className="w-10 h-10">
                       <AvatarImage src={selectedExpert.avatar} alt={selectedExpert.name} />
                       <AvatarFallback>{selectedExpert.name[0]}</AvatarFallback>
@@ -643,7 +659,7 @@ export default function Chat() {
                   </div>
 
                   {/* Messages */}
-                  <ScrollArea className="flex-1 p-4">
+                  <ScrollArea className="flex-1 min-h-0 p-4">
                     {chats && chats.length > 0 ? (
                       <div className="space-y-4">
                         {chats.map((chat) => (
@@ -691,7 +707,7 @@ export default function Chat() {
                   </ScrollArea>
 
                   {/* Input */}
-                  <div className="p-4 border-t border-border">
+                  <div className="p-4 border-t border-border flex-shrink-0">
                     <form 
                       onSubmit={(e) => { e.preventDefault(); handleSend(); }}
                       className="flex gap-3"
