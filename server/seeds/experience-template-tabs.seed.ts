@@ -7,7 +7,7 @@ import {
   experienceUniversalFilters,
   experienceUniversalFilterOptions
 } from "@shared/schema";
-import { eq, inArray, and } from "drizzle-orm";
+import { eq, inArray, and, sql } from "drizzle-orm";
 import { SELECTION_CONTROL_SEED } from "@shared/selection-control-seed";
 
 interface FilterOption {
@@ -5040,20 +5040,55 @@ async function updateExperienceTypeHeroConfigs() {
     },
   };
 
-  for (const [slug, cfg] of Object.entries(configs)) {
-    try {
-      await db
-        .update(experienceTypes)
-        .set({
-          headcountLabel: cfg.headcountLabel,
-          showKids: cfg.showKids,
-          showOriginCity: cfg.showOriginCity,
-          locationLabel: cfg.locationLabel,
-          ...(cfg.contextFields !== undefined ? { contextFields: cfg.contextFields } : {}),
-        })
-        .where(eq(experienceTypes.slug, slug));
-    } catch {
-      // Row may not exist yet in this environment; skip silently
+  // Deploy-speed fast path (hero configs): one query comparing sentinel
+  // columns; run the per-slug UPDATE loop only when some row is out of date.
+  let heroConfigsUpToDate = false;
+  try {
+    const heroRows = await db
+      .select({
+        slug: experienceTypes.slug,
+        headcountLabel: experienceTypes.headcountLabel,
+        showKids: experienceTypes.showKids,
+        showOriginCity: experienceTypes.showOriginCity,
+        locationLabel: experienceTypes.locationLabel,
+      })
+      .from(experienceTypes)
+      .where(inArray(experienceTypes.slug, Object.keys(configs)));
+    const heroBySlug = new Map(heroRows.map((r) => [r.slug, r]));
+    heroConfigsUpToDate =
+      heroRows.length > 0 &&
+      Object.entries(configs).every(([slug, cfg]) => {
+        const row = heroBySlug.get(slug);
+        if (!row) return true; // slug absent in this environment — nothing to update
+        return (
+          row.headcountLabel === (cfg.headcountLabel ?? null) &&
+          row.showKids === (cfg.showKids ?? null) &&
+          row.showOriginCity === (cfg.showOriginCity ?? null) &&
+          row.locationLabel === (cfg.locationLabel ?? null)
+        );
+      });
+  } catch {
+    // Columns may not exist yet — fall through to the per-row update path
+  }
+
+  if (heroConfigsUpToDate) {
+    console.log("Experience type hero configs already seeded — skipping.");
+  } else {
+    for (const [slug, cfg] of Object.entries(configs)) {
+      try {
+        await db
+          .update(experienceTypes)
+          .set({
+            headcountLabel: cfg.headcountLabel,
+            showKids: cfg.showKids,
+            showOriginCity: cfg.showOriginCity,
+            locationLabel: cfg.locationLabel,
+            ...(cfg.contextFields !== undefined ? { contextFields: cfg.contextFields } : {}),
+          })
+          .where(eq(experienceTypes.slug, slug));
+      } catch {
+        // Row may not exist yet in this environment; skip silently
+      }
     }
   }
 
@@ -5104,23 +5139,49 @@ async function updateExperienceTypeHeroConfigs() {
     "budget-planning": "planning-tools",
   };
 
-  // Explicitly deactivate templates that are not yet ready for public access
+  // Explicitly deactivate templates that are not yet ready for public access.
+  // Cheap guard: only issue UPDATEs for slugs that are still active.
   const INACTIVE_SLUGS = ["sports-event"];
-  for (const slug of INACTIVE_SLUGS) {
-    try {
-      await db.update(experienceTypes).set({ isActive: false }).where(eq(experienceTypes.slug, slug));
-    } catch {
-      // Skip silently if table/column not present
+  try {
+    const stillActive = await db
+      .select({ slug: experienceTypes.slug })
+      .from(experienceTypes)
+      .where(and(inArray(experienceTypes.slug, INACTIVE_SLUGS), eq(experienceTypes.isActive, true)));
+    for (const row of stillActive) {
+      await db.update(experienceTypes).set({ isActive: false }).where(eq(experienceTypes.slug, row.slug));
     }
+  } catch {
+    // Skip silently if table/column not present
   }
-  for (const [tabSlug, tabType] of Object.entries(TAB_SLUG_TO_TYPE)) {
-    try {
-      await db
-        .update(experienceTemplateTabs)
-        .set({ tabType })
-        .where(eq(experienceTemplateTabs.slug, tabSlug));
-    } catch {
-      // Column may not exist in older environments; skip silently
+
+  // Deploy-speed fast path (tabType backfill): one DISTINCT query finds the
+  // tab slugs whose tabType is out of date; only those get an UPDATE.
+  let tabTypePending: Set<string> | null = null;
+  try {
+    const tabTypeRows = await db
+      .selectDistinct({ slug: experienceTemplateTabs.slug, tabType: experienceTemplateTabs.tabType })
+      .from(experienceTemplateTabs)
+      .where(inArray(experienceTemplateTabs.slug, Object.keys(TAB_SLUG_TO_TYPE)));
+    tabTypePending = new Set(
+      tabTypeRows.filter((r) => r.tabType !== TAB_SLUG_TO_TYPE[r.slug]).map((r) => r.slug),
+    );
+  } catch {
+    // Column may not exist in older environments — fall back to full loop
+  }
+
+  if (tabTypePending !== null && tabTypePending.size === 0) {
+    console.log("Tab tabType backfill already seeded — skipping.");
+  } else {
+    for (const [tabSlug, tabType] of Object.entries(TAB_SLUG_TO_TYPE)) {
+      if (tabTypePending !== null && !tabTypePending.has(tabSlug)) continue;
+      try {
+        await db
+          .update(experienceTemplateTabs)
+          .set({ tabType })
+          .where(eq(experienceTemplateTabs.slug, tabSlug));
+      } catch {
+        // Column may not exist in older environments; skip silently
+      }
     }
   }
 
@@ -5150,17 +5211,34 @@ async function updateExperienceTypeHeroConfigs() {
   };
 
   try {
-    await db
-      .update(experienceTemplateTabs)
-      .set({ controlConfig: FLIGHT_CONTROL_CONFIG })
-      .where(inArray(experienceTemplateTabs.slug, ["flights"]));
+    // Deploy-speed fast path: sentinel check — only rewrite controlConfig when
+    // some flight/hotel tab is missing the 'priceRange' descriptor entirely.
+    const needsControlConfig = await db
+      .select({ id: experienceTemplateTabs.id })
+      .from(experienceTemplateTabs)
+      .where(and(
+        inArray(experienceTemplateTabs.slug, [
+          "flights", "hotels", "accommodations", "guest-accommodations", "romantic-accommodations",
+        ]),
+        sql`(${experienceTemplateTabs.controlConfig} IS NULL OR NOT jsonb_exists(${experienceTemplateTabs.controlConfig}, 'priceRange'))`,
+      ))
+      .limit(1);
 
-    await db
-      .update(experienceTemplateTabs)
-      .set({ controlConfig: HOTEL_CONTROL_CONFIG })
-      .where(inArray(experienceTemplateTabs.slug, [
-        "hotels", "accommodations", "guest-accommodations", "romantic-accommodations",
-      ]));
+    if (needsControlConfig.length === 0) {
+      console.log("Flight/hotel tab control configs already seeded — skipping.");
+    } else {
+      await db
+        .update(experienceTemplateTabs)
+        .set({ controlConfig: FLIGHT_CONTROL_CONFIG })
+        .where(inArray(experienceTemplateTabs.slug, ["flights"]));
+
+      await db
+        .update(experienceTemplateTabs)
+        .set({ controlConfig: HOTEL_CONTROL_CONFIG })
+        .where(inArray(experienceTemplateTabs.slug, [
+          "hotels", "accommodations", "guest-accommodations", "romantic-accommodations",
+        ]));
+    }
   } catch {
     // Column may not exist in older environments; skip silently
   }
