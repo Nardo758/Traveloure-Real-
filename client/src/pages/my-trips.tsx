@@ -105,14 +105,19 @@ export default function MyTrips() {
   const upcomingTrips = filteredTrips.filter(t => new Date(t.startDate) > now);
   const completedTrips = filteredTrips.filter(t => new Date(t.endDate) < now);
 
-  const getProgressValue = (trip: any) => {
+  // §13 honest-or-absent: progress is the trip's REAL elapsed-time fraction, and only once the
+  // trip has started. An upcoming trip has no measurable progress → null → no bar (this line
+  // used to be `Math.random() * 60 + 20`, rendered unrounded — a fabricated, per-render-changing
+  // number on the "My plans" list). A planning-completeness metric (confirmed/total items, the
+  // routing-status counts the slip already shows) is a separate design decision — do not invent
+  // one here.
+  const getProgressValue = (trip: any): number | null => {
     const start = new Date(trip.startDate);
     const end = new Date(trip.endDate);
     const total = differenceInDays(end, start);
-    if (total <= 0) return 100;
     const elapsed = differenceInDays(now, start);
-    if (elapsed < 0) return Math.min(Math.random() * 60 + 20, 95);
-    if (elapsed > total) return 100;
+    if (elapsed < 0) return null;
+    if (total <= 0 || elapsed > total) return 100;
     return Math.round((elapsed / total) * 100);
   };
 
@@ -161,10 +166,10 @@ export default function MyTrips() {
                 )}
               </div>
               
-              {!isCompleted && (
+              {!isCompleted && progress !== null && (
                 <div className="mb-3">
                   <div className="flex items-center justify-between text-sm mb-1">
-                    <span className="text-muted-foreground">Progress</span>
+                    <span className="text-muted-foreground">Trip progress</span>
                     <span className="font-medium text-foreground dark:text-white">{progress}%</span>
                   </div>
                   <Progress value={progress} className="h-2" />
