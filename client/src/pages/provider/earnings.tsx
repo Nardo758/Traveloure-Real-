@@ -21,14 +21,42 @@ import { StripeConnectCard } from "@/components/stripe-connect-card";
 import { EarningsBySourcePanel } from "@/components/backoffice/earnings-by-source-panel";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { StatCard, StatusBadge, EmptyState } from "@/components/backoffice/primitives";
 
 type BookingWithService = ServiceBooking & { service?: ProviderService };
+
+// Task #142: real escrow ledger + payout history, additive to the existing booking-derived stats
+// above (left untouched — those are a separate, real computation from live bookings, not fabricated,
+// and out of scope here). These two shapes render ONLY fields the API actually returns (§13 — never
+// invented) and use an honest empty state when there's nothing yet.
+interface ProviderPayoutRow {
+  id: string;
+  amount: string;
+  status: string; // pending | processing | completed | failed
+  requestedAt: string;
+}
+
+interface ProviderEarningsSummary {
+  total: number;
+  pending: number; // held in escrow, not yet releasable
+  available: number; // releasable — payable now
+  paidOut: number;
+}
 
 export default function ProviderEarnings() {
   const { toast } = useToast();
   const [requested, setRequested] = useState(false);
   const { data: bookings, isLoading } = useQuery<BookingWithService[]>({
     queryKey: ["/api/provider/bookings"],
+  });
+
+  // Task #142: payout history from the new dedicated endpoint, and the real escrow-ledger
+  // breakdown from the existing (already-live) summary endpoint — neither invents numbers.
+  const { data: payouts } = useQuery<ProviderPayoutRow[]>({
+    queryKey: ["/api/payouts"],
+  });
+  const { data: earningsSummary } = useQuery<ProviderEarningsSummary>({
+    queryKey: ["/api/provider/earnings/summary"],
   });
 
   // Self-service payout REQUEST. The amount is server-derived from the cleared
@@ -400,6 +428,78 @@ export default function ProviderEarnings() {
             )}
           </CardContent>
         </Card>
+
+        {/* Task #142: real escrow-ledger breakdown + payout history — additive, honest (§13), and
+            distinct from the booking-derived "Available"/"Pending" cards above (those are a real but
+            approximate read on live bookings; this section is the actual provider_earnings ledger). */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <Card className="border border-console-light">
+            <CardHeader>
+              <CardTitle className="text-lg">Earnings Ledger</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 gap-3">
+                <StatCard
+                  label="Available to pay out"
+                  value={`$${(earningsSummary?.available ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                  icon={CheckCircle}
+                  iconClassName="bg-green-100 text-green-600"
+                  testId="card-ledger-available"
+                />
+                <StatCard
+                  label="Held in escrow"
+                  value={`$${(earningsSummary?.pending ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                  icon={Clock}
+                  iconClassName="bg-amber-100 text-amber-600"
+                  testId="card-ledger-held"
+                />
+                <StatCard
+                  label="Paid out"
+                  value={`$${(earningsSummary?.paidOut ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                  icon={CheckCircle}
+                  iconClassName="bg-blue-100 text-blue-600"
+                  testId="card-ledger-paid-out"
+                />
+                <StatCard
+                  label="Total earned"
+                  value={`$${(earningsSummary?.total ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                  icon={DollarSign}
+                  iconClassName="bg-console-bg text-console-darkest"
+                  testId="card-ledger-total"
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border border-console-light">
+            <CardHeader>
+              <CardTitle className="text-lg">Payout History</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {payouts && payouts.length > 0 ? (
+                <div className="space-y-3">
+                  {payouts.map((payout) => (
+                    <div
+                      key={payout.id}
+                      className="flex items-center justify-between p-3 rounded-lg border border-console-light bg-console-bg"
+                      data-testid={`payout-${payout.id}`}
+                    >
+                      <div>
+                        <p className="font-medium text-console-darkest">
+                          ${parseFloat(payout.amount || "0").toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </p>
+                        <p className="text-sm text-console-mid">{new Date(payout.requestedAt).toLocaleDateString()}</p>
+                      </div>
+                      <StatusBadge status={payout.status} />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <EmptyState title="No payout requests yet" body="Request a payout from your available balance above." testId="empty-payouts" />
+              )}
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </ProviderLayout>
   );

@@ -1187,6 +1187,34 @@ router.get("/api/fee-bands/:bandKey", async (req, res) => {
     }
   });
 
+  // ─── Payout history (task #142) ───────────────────────────────────────────────
+  // §14: earner + role are derived from the session, never from a query/body param — this returns
+  // ONLY the caller's own payouts (role-aware provider/expert), reusing the existing storage reads
+  // that already back the admin queue. No admin data leakage — there is no id/userId input at all.
+  router.get("/api/payouts", isAuthenticated, async (req, res) => {
+    try {
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(401).json({ error: "Not authenticated" });
+
+      const isProvider = isProviderRole(user.role);
+      const isExpert = isExpertRole(user.role);
+      if (!isProvider && !isExpert) {
+        return res.status(403).json({ error: "Only providers and experts have payout history" });
+      }
+
+      const payouts = isProvider
+        ? await storage.getProviderPayouts(userId)
+        : await storage.getExpertPayouts(userId);
+
+      res.json(payouts.map((p: any) => ({ ...p, requesterType: isProvider ? "provider" : "expert" })));
+    } catch (error: any) {
+      console.error("Error fetching payout history:", error);
+      res.status(500).json({ error: "Failed to fetch payout history" });
+    }
+  });
+
   // ─── Smart Lead Routing ──────────────────────────────────────────────────────
   // POST /api/leads/route  — score experts and auto-assign
 
