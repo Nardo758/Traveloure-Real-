@@ -108,6 +108,106 @@ function Chip({ children, active = false, onClick }: any) {
   return <button data-testid={`chip-${String(children).toLowerCase().replace(/[^a-z0-9]/g, "-")}`} onClick={onClick} style={{ padding: "4px 10px", borderRadius: 99, fontSize: 12, fontWeight: 500, cursor: "pointer", border: active ? `1.5px solid ${BRAND}` : `1.5px solid ${LINE}`, background: active ? BRAND_SOFT : CARD, color: active ? BRAND : MID }}>{children}</button>;
 }
 
+// AI booking copilot — verification leg. Renders ONLY real snapshot data (§13: no verification
+// snapshot ⇒ an honest "Not verified" state, never invented values). Never renders a URL — the
+// server never sends the affiliateUrl in the snapshot to begin with (§16).
+const VERDICT_CHIP: Record<string, { tone: ChipTone; label: string }> = {
+  verified: { tone: "ok", label: "Verified" },
+  flagged: { tone: "warn", label: "Flagged" },
+  unclear: { tone: "mut", label: "Unclear" },
+};
+const FLAG_LABEL: Record<string, string> = {
+  price_drift: "Price changed since the traveler saw it",
+  possibly_sold_out: "May be sold out",
+  date_unavailable: "Requested date may not be available",
+  unclear: "Some details couldn't be confirmed from the page",
+};
+
+function VerificationPanel({ verification, testId }: { verification: any; testId: string }) {
+  const { toast } = useToast();
+  if (!verification) {
+    return (
+      <div data-testid={testId} style={{ fontSize: 11, color: FAINT, fontStyle: "italic", marginBottom: 8 }}>
+        Not verified — run "Verify with AI" before booking to confirm current price and availability.
+      </div>
+    );
+  }
+  const chip = VERDICT_CHIP[verification.verdict] ?? VERDICT_CHIP.unclear;
+  const flags: Array<{ type: string; seen?: number; current?: number }> = Array.isArray(verification.flags) ? verification.flags : [];
+  const hasPriceDrift = flags.some((f) => f.type === "price_drift");
+  const verifiedAt = verification.verifiedAt ? new Date(verification.verifiedAt) : null;
+
+  return (
+    <div data-testid={testId} style={{ border: `1px solid ${LINE}`, borderRadius: 8, padding: "8px 9px", marginBottom: 8, background: GROUND }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <ShieldCheck style={{ width: 12, height: 12, color: MID }} />
+          <span style={{ fontSize: 11, fontWeight: 700, color: INK }}>AI verification</span>
+          <StateChip tone={chip.tone}>{chip.label}</StateChip>
+        </div>
+        {verifiedAt && <span style={{ fontSize: 10, color: FAINT }}>{formatRelativeTime(verifiedAt)}</span>}
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 3, marginBottom: flags.length ? 6 : 0 }}>
+        <div style={{ fontSize: 11, color: MID }}>
+          Price:{" "}
+          {verification.price != null ? (
+            <span style={{ color: hasPriceDrift ? DANGER : INK, fontWeight: 600 }}>
+              {verification.currency ?? ""} {verification.price}
+            </span>
+          ) : (
+            <span style={{ fontStyle: "italic" }}>not clearly stated on the partner page</span>
+          )}
+          {hasPriceDrift && (() => {
+            const drift = flags.find((f) => f.type === "price_drift");
+            return drift ? (
+              <span style={{ color: DANGER, marginLeft: 6 }}>(traveler was quoted {drift.seen})</span>
+            ) : null;
+          })()}
+        </div>
+        <div style={{ fontSize: 11, color: MID }}>
+          Availability:{" "}
+          <span style={{ fontWeight: 600, color: verification.availability === "sold_out" ? DANGER : verification.availability === "bookable" ? OK : MID }}>
+            {verification.availability === "bookable" ? "Bookable" : verification.availability === "sold_out" ? "Possibly sold out" : "Unclear"}
+          </span>
+        </div>
+        {verification.cancellation && (
+          <div style={{ fontSize: 11, color: MID }}>Cancellation: {verification.cancellation}</div>
+        )}
+      </div>
+
+      {flags.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 3, marginBottom: 6 }}>
+          {flags.map((f, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10.5, color: f.type === "unclear" ? MID : WARN }}>
+              <AlertTriangle style={{ width: 10, height: 10, flexShrink: 0 }} />
+              {FLAG_LABEL[f.type] ?? f.type}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {verification.agentNote && (
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 6, background: CARD, border: `1px solid ${LINE}`, borderRadius: 6, padding: "6px 8px" }}>
+          <div style={{ flex: 1, fontSize: 10.5, color: MID, lineHeight: 1.5 }}>{verification.agentNote}</div>
+          <button
+            onClick={() => {
+              navigator.clipboard?.writeText(verification.agentNote).then(
+                () => toast({ title: "Copied", description: "Agent note copied to clipboard." }),
+                () => toast({ title: "Couldn't copy", variant: "destructive" }),
+              );
+            }}
+            data-testid={`${testId}-copy-note`}
+            style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 3, padding: "3px 7px", borderRadius: 6, fontSize: 10, fontWeight: 600, cursor: "pointer", background: CARD, color: MID, border: `1px solid ${LINE}` }}
+          >
+            <Copy style={{ width: 10, height: 10 }} />Copy
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function formatRelativeTime(date: Date): string {
   const diffMs = Date.now() - date.getTime();
   const diffMin = Math.floor(diffMs / 60000);
@@ -2395,6 +2495,40 @@ export default function ExpertWorkspace() {
     },
   });
 
+  // AI booking copilot — verification leg. Tracks which request card is mid-verify so only that
+  // row's button shows a spinner (the mutation object itself is shared across all rows).
+  const [verifyingBookingId, setVerifyingBookingId] = useState<string | null>(null);
+  const verifyBookingMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiRequest("POST", `/api/affiliate-booking-requests/${id}/verify`, {});
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/affiliate-booking-requests/expert"] });
+      if (data?.available === false) {
+        const reason =
+          data.reason === "verification_unavailable"
+            ? "AI verification isn't configured right now."
+            : data.reason === "partner_page_unreachable"
+              ? "Couldn't reach the partner's page to verify it."
+              : "Couldn't verify this request right now.";
+        toast({ title: "Not verified", description: reason, variant: "destructive" });
+      } else {
+        toast({ title: "Verified", description: "The AI checked the partner page — review the result below." });
+      }
+    },
+    onError: (err: any) => {
+      const message = String(err?.message ?? "");
+      const description = message.startsWith("429:")
+        ? "Please wait a bit before re-verifying this request."
+        : message.startsWith("409:")
+          ? "A verification is already in progress for this request."
+          : "Couldn't verify this request right now.";
+      toast({ title: "Verification failed", description, variant: "destructive" });
+    },
+    onSettled: () => setVerifyingBookingId(null),
+  });
+
   const energyCalcRef = useRef(false);
   const energyRecalcInFlight = useRef(false);
   const triggerEnergyRecalc = useCallback(() => {
@@ -4088,6 +4222,24 @@ export default function ExpertWorkspace() {
                                 <a href={req.affiliateUrl} target="_blank" rel="noopener noreferrer" data-testid={`link-booking-${req.id}`} style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, color: BRAND, fontWeight: 600, textDecoration: "none", padding: "4px 9px", border: `1px solid ${BRAND}`, background: BRAND_SOFT, borderRadius: 7, marginBottom: 8 }}>
                                   <ExternalLink style={{ width: 11, height: 11 }} />Open booking link
                                 </a>
+                              )}
+                              {req.status !== "confirmed" && req.status !== "failed" && (
+                                <>
+                                  <VerificationPanel verification={req.verification} testId={`verification-panel-${req.id}`} />
+                                  <button
+                                    onClick={() => { setVerifyingBookingId(req.id); verifyBookingMutation.mutate(req.id); }}
+                                    disabled={verifyingBookingId === req.id && verifyBookingMutation.isPending}
+                                    data-testid={`button-verify-${req.id}`}
+                                    style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "center", gap: 5, padding: "6px 0", borderRadius: 7, fontSize: 11, fontWeight: 600, cursor: "pointer", background: CARD, color: BRAND, border: `1px solid ${BRAND}`, marginBottom: 8, opacity: verifyingBookingId === req.id && verifyBookingMutation.isPending ? 0.7 : 1 }}
+                                  >
+                                    {verifyingBookingId === req.id && verifyBookingMutation.isPending ? (
+                                      <Loader2 style={{ width: 11, height: 11, animation: "spin 1s linear infinite" }} />
+                                    ) : (
+                                      <Sparkles style={{ width: 11, height: 11 }} />
+                                    )}
+                                    {req.verification ? "Re-verify with AI" : "Verify with AI"}
+                                  </button>
+                                </>
                               )}
                               {req.status !== "confirmed" && req.status !== "failed" && (
                                 <div style={{ display: "flex", gap: 6 }}>
