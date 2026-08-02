@@ -181,11 +181,13 @@ This document captures architectural decisions to maintain consistency across co
      (never raw `req.body`), so identity columns can't be mass-assigned. `payoutFrequency`/`minimumPayoutAmount` are
      provider *preferences*, not a charge/transfer amount — no Stripe/earning write. The money-endpoint guard passes
      (file is not money-named and the handler performs no money operation).
-   - **Provider earnings family — deliberately NOT mounted (scoping decision).** `GET /api/provider/earnings`,
-     `/earnings/summary`, `/earnings/details` and `/api/expert/earnings/details` are also dark, but **no client consumer
-     calls them** — the provider earnings page derives its numbers from the **live** `GET /api/provider/bookings`. Mounting
-     them would be a **backend without a surface** (the inverse of the settings bug). Left dark; **filed:** activate this
-     family only alongside a real consumer that needs the server-side earnings aggregate.
+   - **Provider earnings family — NOW LIVE (stale note corrected Aug 2, 2026; was "deliberately NOT mounted").**
+     `GET /api/provider/earnings`, `/earnings/summary`, `/earnings/details` and `/api/expert/earnings/details` became
+     live as a side effect of the Jul 23 route-shadow correction mounting `experts.routes.ts` in full (see the
+     "Route-shadow REVERSE landmine" entry above — "all three routers are mounted now"). The original scoping decision
+     ("activate only alongside a real consumer") is retroactively satisfied: the expert money page consumes
+     `/api/expert/earnings/details` (payout history + escrow breakdown), and the provider money page consumes
+     `/api/provider/earnings/summary` + the session-scoped `GET /api/payouts` (task #142). Do not re-darken.
    - **Expert workspace endpoints — REPAIRED (Jul 19, 2026).** `trips.routes.ts` is a **third** imported-but-unmounted
      router (alongside `experts.routes.ts`/`cross-sell.routes.ts`); the expert trip workspace (`workspace.tsx`) called 8
      handlers that lived only there / in the dark `experts.routes.ts`, so notes, commission, my-assignment,
