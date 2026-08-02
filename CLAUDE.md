@@ -576,7 +576,11 @@ This document captures architectural decisions to maintain consistency across co
 
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 
-- **🔴 P0 trip-data IDOR cluster — FOUND Jul 30, 2026 (L7 audit), fix in flight.** Three live holes, all
+- **P0 trip-data IDOR cluster — FIXED on main (re-verified Aug 2, 2026; the "fix in flight" note below is
+  historical).** All four holes are closed: apply-to-trip authorizes the TARGET TRIP via `authorizeTripLogistics`
+  (`plancard.routes.ts` — the IDOR closed in 4d26971b), and `itinerary/reorder` + `optimize-order` (`routes.ts`)
+  both run `authorizeTripLogistics` before any write. The durable lesson stands unchanged. Original record:
+  Three live holes, all
   orchestrator-verified in code, none previously documented: ① **destructive cross-trip IDOR** —
   `POST /api/itinerary-comparisons/:id/apply-to-trip` (`plancard.routes.ts:27`) gates ONLY on
   `comparison.userId`, then `deleteItineraryItemsByTrip(comparison.tripId)` + bulk-inserts; **the trip is never
@@ -608,6 +612,22 @@ This document captures architectural decisions to maintain consistency across co
   branch + write-side hardening + unify the advisor lookup), NOT a mechanical convergence — Option 3
   (converge model A onto `authorizeTripLogistics`) would inherit the status-blind over-grant and must not ship
   before that is fixed.
+  **STATUS UPDATE (Aug 2, 2026 — role-hygiene lane, slip-dispatch ruling 13): the L10 remediation is LANDED,
+  invariant-held.** ① The advisor lookup is UNIFIED on the canonical `isTripAdvisor`
+  (`server/utils/trip-advisor.ts` — closed allow-list `pending|accepted|assigned` pass, `rejected`/unknown/NULL
+  DENY, fail-closed); `storage.isExpertAssignedToTrip` now delegates to it and `getTripRole` consumes it, so the
+  status-blind over-grant and the `'assigned'`-excluded under-grant are both gone, and item create/PATCH/DELETE
+  agree on who an advisor is (the "expert can add but not edit" asymmetry no longer exists). ② All owner-bearing
+  trip mint paths write the owner `trip_collaborators` row in the same operation (`storage.createTrip`,
+  `ready-made-purchase.service.ts`, both `booking.service.ts` raw-SQL sites, and the e2e seed — fixed this lane);
+  the boot backfill (`trip-ownership.seed.ts`) remains a defensive repair, not the mechanism of record. ③ The
+  invariant is now CI-enforced: `scripts/check-trip-mint-owner-access.cjs` (`trip-mint-owner-guard` in
+  `build.yml`) fails any new trips-INSERT that skips the owner row, with a `trip-mint-owner-ok` annotation as the
+  escape hatch for deliberate NULL-owner authoring-mode inserts (which have no owner principal; access rides
+  `authorId`/`isTripAuthor`). **Owner access is still invariant-held, not architectural** — `getTripRole` never
+  reads `trips.userId`; the owner row-value branch inside `getTripRole` stays the NAMED FOLLOW-UP, and until it
+  lands the guard is the load-bearing protection. The ~12 bespoke `trip.userId !== userId` gates consolidation
+  is likewise a named follow-up (dispatch ruling 13).
 
 - **Shared-trip access (L20) — APPROVED Jul 30, 2026 by the decision-maker ("Yes, this would be a good feature"), with
   the ratified tier design below.** Phase-0 ground truth corrected the scope in three important ways: ① the ungated

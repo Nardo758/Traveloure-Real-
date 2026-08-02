@@ -415,6 +415,8 @@ router.post(
     const fmt = (d: Date) => d.toISOString().slice(0, 10);
 
     const result = await db.transaction(async (tx) => {
+      // trip-mint-owner-ok: authoring-mode build — userId NULL by design, no owner principal
+      // exists; access rides authorId via isTripAuthor, not a trip_collaborators row.
       const [trip] = await tx
         .insert(trips)
         .values({

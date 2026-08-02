@@ -54,6 +54,8 @@ export const expertRoutesConfig: RoleRouteConfig[] = [
   // AND the Catalog page it lands on. The ServiceForm routes (/new, /:id/edit) are
   // parameterised/creation surfaces and stay live.
   { href: '/expert/services',           description: 'Retired My Offerings -> redirects to Catalog (C2)' },
+  // Static creation surface (ServiceForm) — /:id/edit stays excluded (parameterised).
+  { href: '/expert/services/new',       description: 'ServiceForm — offering creation (single builder, §5)' },
   // /expert/share-promote redirects to /expert/catalog (C2 Share & Promote retirement) —
   // listed so the redirect is smoke-tested; C9 retired the provider twin the same way.
   { href: '/expert/share-promote',      description: 'Retired Share & Promote -> redirects to Catalog (C2)' },
@@ -104,6 +106,8 @@ export const providerRoutesConfig: RoleRouteConfig[] = [
   // search/filter lives on History.
   { href: '/provider/bookings',     description: 'Retired Bookings -> redirects to Inbox (C9)' },
   { href: '/provider/services',     description: 'Catalog — offerings + availability + share tools (C9)' },
+  // Static creation surface (ServiceForm) — /:id/edit stays excluded (parameterised).
+  { href: '/provider/services/new', description: 'ServiceForm — offering creation (single builder, §5)' },
   { href: '/provider/customers',    description: 'Customers — honest self-scoped aggregation (C9)' },
   { href: '/provider/performance',  description: 'Performance — hosts Analytics as a tab (C9)' },
   // /provider/analytics redirects to /provider/performance?tab=analytics (C9 Analytics
@@ -174,6 +178,8 @@ export const adminRoutesConfig: RoleRouteConfig[] = [
   { href: '/admin/content-tracking',    description: 'Content tracking & moderation' },
   { href: '/admin/content-mapping',     description: 'Content mapping' },
   { href: '/admin/services',            description: 'Service management' },
+  { href: '/admin/service-requests',    description: 'Traveler service-request triage queue (migration 123)' },
+  { href: '/admin/service-approvals',   description: 'Provider-service approval queue (F2/D1a)' },
   { href: '/admin/affiliate-partners',  description: 'Affiliate partner management' },
   { href: '/admin/tourism-analytics',   description: 'Tourism analytics' },
   { href: '/admin/neighborhood-backfill', description: 'Neighborhood backfill tool' },
