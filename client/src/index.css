@@ -231,7 +231,9 @@
   }
   html,
   body {
-    overflow-x: hidden;
+    /* `clip` (not `hidden`): overflow-x hidden on html/body creates a scroll
+       container, which silently breaks the navbar's position: sticky. */
+    overflow-x: clip;
   }
   body {
     @apply bg-background text-foreground antialiased font-body;
