@@ -2,12 +2,19 @@ import { Router } from "express";
 import { storage } from "../storage";
 import {
   insertItineraryChangeSchema,
+  itineraryItems,
+  itineraryComparisons,
+  itineraryVariants,
+  sharedItineraries,
 } from "@shared/schema";
+import { db } from "../db";
+import { and, count, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { getTripRole, canMutateTrip } from "../utils/trip-role";
 import { isTripAuthor } from "../utils/trip-authorship";
 import { authorizeTripLogistics } from "../utils/trip-logistics-auth";
+import { logItemTransition } from "../services/item-transition-log.service";
 import { assembleTripPlan, TripPlanNotFoundError } from "../services/trip-plan.service";
 
 const router = Router();
@@ -67,73 +74,7 @@ router.post("/api/itinerary-comparisons/:id/apply-to-trip", isAuthenticated, asy
 
     const variantItems = await storage.getOrderedVariantItemsByVariantId(variant.id);
 
-    // Replace itinerary items for this trip — ROUTING-STATUS-AWARE (Lane 5a Defect 2).
-    // This was an unconditional `deleteItineraryItemsByTrip`, which also destroyed `with_expert`,
-    // `ready_for_checkout` and `purchased` rows — the last of those carry `booking_id`
-    // (migration 159), so applying an optimizer variant silently severed real bookings from the
-    // plan. Only `in_planning` items are the optimizer's to replace; everything the traveler has
-    // routed onward survives untouched. The inserted variant items take the migration-159 default
-    // (`in_planning`), so a re-apply keeps replacing exactly the rows it created.
-    const { preserved: preservedRoutedItems } = await storage.deleteInPlanningItineraryItemsByTrip(comparison.tripId);
-
-    // ── Lane 5b: apply-time dedupe against the rows that SURVIVED the delete ──────────────────
-    // The two halves of Lane 5a/5b meet here. Since the re-point, `ready_for_checkout` items are
-    // optimizer INPUT (they are still plan), while the delete above deliberately spares them — so
-    // a variant can legitimately propose an item that is already sitting on the trip, and a naive
-    // insert would produce a second copy of it. (The sharpest case: the user selects the BASELINE
-    // variant, whose items literally ARE the trip's own items, and applies it.)
-    //
-    // Deduped against ALL survivors, not just `ready_for_checkout`: the rule is "never create a
-    // second copy of something already on this plan", and that is at its most important for a
-    // `purchased` row — the traveler has paid for it, and a duplicate would read as an unbought
-    // second booking.
-    //
-    // Predicate (ratified): `providerServiceId` first — the catalog identity, and the only
-    // trustworthy key — then an exact case-insensitive title match, which is all an AI-authored
-    // item offers. Same predicate the optimizer uses to refuse to emit a purchased item at all
-    // (`stripFixedCommitmentEchoes`), so the two ends cannot disagree on what "the same item" is.
-    const survivingItems = await storage.getItineraryItems(comparison.tripId);
-    const survivingServiceIds = new Set(
-      survivingItems.map((s: any) => s.providerServiceId).filter((v: any): v is string => !!v),
-    );
-    const survivingTitles = new Set(
-      survivingItems.map((s: any) => String(s.title ?? "").trim().toLowerCase()).filter(Boolean),
-    );
-    const applicableVariantItems = variantItems.filter((item: any) => {
-      if (item.providerServiceId && survivingServiceIds.has(item.providerServiceId)) return false;
-      const name = String(item.name ?? "").trim().toLowerCase();
-      if (name && survivingTitles.has(name)) return false;
-      return true;
-    });
-    const dedupedAgainstRoutedItems = variantItems.length - applicableVariantItems.length;
-
-    // W5 (H5): preserve the service link through the apply. `itinerary_variant_items` rows carry
-    // `providerServiceId` (shared/schema.ts:1166) and the itinerary item has had the matching
-    // column all along — the mapping simply omitted it, so every optimizer-applied plan arrived as
-    // unbuyable text (docs/E2E_ITEM_LIFECYCLE.md §3, the H1 bug written a second time by a second
-    // author because no invariant existed to stop it; the Lane G guard is that invariant now).
-    // `?? null` is the honest value for an AI-invented item with no catalog row behind it — the
-    // optimizer emits those alongside real ones, and NULL says "nothing to link", never a guess.
-    await storage.bulkInsertItineraryItems(applicableVariantItems.map((item: any) => ({
-      tripId: comparison.tripId,
-      providerServiceId: item.providerServiceId ?? null,
-      title: item.name,
-      description: item.description || "",
-      itemType: item.serviceType || "activity",
-      status: "planned",
-      dayNumber: item.dayNumber,
-      startTime: item.startTime || "",
-      durationMinutes: item.duration || 60,
-      locationName: item.location || "",
-      estimatedCost: item.price ? String(item.price) : null,
-      currency: "USD",
-      sortOrder: item.sortOrder ?? 0,
-      suggestedBy: "AI Optimizer",
-      latitude: item.latitude ? String(item.latitude) : null,
-      longitude: item.longitude ? String(item.longitude) : null,
-    })));
-
-    // Read metrics for delta computation
+    // Read metrics for delta computation — a read, deliberately BEFORE the transaction below.
     const metrics = await storage.getVariantMetricsAllByVariantId(variant.id);
 
     const rawMetrics: Record<string, number> = {};
@@ -150,24 +91,136 @@ router.post("/api/itinerary-comparisons/:id/apply-to-trip", isAuthenticated, asy
       optimizationScore: variant.optimizationScore ?? null,
     };
 
-    // Insert AI changelog entry
-    await storage.createItineraryChange({
-      tripId: comparison.tripId,
-      activityId: null,
-      who: "AI Optimizer",
-      action: `Applied optimized itinerary${delta.savings != null ? ` — saved $${Math.round(delta.savings)}` : ""}${delta.savingsPercent != null ? `, ${Math.round(delta.savingsPercent)}% tighter schedule` : ""}`,
-      changeType: "optimize",
-      role: "ai",
-      metadata: { comparisonId, variantId: variant.id, delta },
+    const tripId = comparison.tripId;
+
+    // ── Lane 6 residue R2: apply is ONE atomic action ─────────────────────────────────────────
+    // Before this transaction the four writes below ran as independent autocommit statements, and
+    // the insert was a per-row loop — a mid-loop failure left the trip with its `in_planning` rows
+    // already deleted and only PART of the variant applied (the sharpest data-loss window in the
+    // whole flow). Now the delete, the batch insert, the changelog entry, the comparison stamp,
+    // and the R3 variant discard commit together or not at all.
+    const applied = await db.transaction(async (tx) => {
+      // Replace itinerary items for this trip — ROUTING-STATUS-AWARE (Lane 5a Defect 2).
+      // Only `in_planning` items are the optimizer's to replace; `with_expert` /
+      // `ready_for_checkout` / `purchased` rows survive untouched (a `purchased` row carries
+      // `booking_id`, migration 159). Inserted variant items take the migration-159 default
+      // (`in_planning`), so a re-apply keeps replacing exactly the rows it created.
+      await tx
+        .delete(itineraryItems)
+        .where(and(eq(itineraryItems.tripId, tripId), eq(itineraryItems.routingStatus, "in_planning")));
+      const [remaining] = await tx
+        .select({ n: count() })
+        .from(itineraryItems)
+        .where(eq(itineraryItems.tripId, tripId));
+      const preservedRoutedItems = Number(remaining?.n ?? 0);
+
+      // ── Lane 5b: apply-time dedupe against the rows that SURVIVED the delete ──────────────
+      // `ready_for_checkout` items are optimizer INPUT (still plan) while the delete spares
+      // them — so a variant can propose an item already sitting on the trip, and a naive insert
+      // would duplicate it. Deduped against ALL survivors ("never create a second copy of
+      // something already on this plan" — most important for a `purchased` row). Predicate
+      // (ratified): `providerServiceId` first, then exact case-insensitive title — the same
+      // predicate `stripFixedCommitmentEchoes` uses, so the two ends cannot disagree.
+      const survivingItems = await tx
+        .select()
+        .from(itineraryItems)
+        .where(eq(itineraryItems.tripId, tripId));
+      const survivingServiceIds = new Set(
+        survivingItems.map((s: any) => s.providerServiceId).filter((v: any): v is string => !!v),
+      );
+      const survivingTitles = new Set(
+        survivingItems.map((s: any) => String(s.title ?? "").trim().toLowerCase()).filter(Boolean),
+      );
+      const applicableVariantItems = variantItems.filter((item: any) => {
+        if (item.providerServiceId && survivingServiceIds.has(item.providerServiceId)) return false;
+        const name = String(item.name ?? "").trim().toLowerCase();
+        if (name && survivingTitles.has(name)) return false;
+        return true;
+      });
+      const dedupedAgainstRoutedItems = variantItems.length - applicableVariantItems.length;
+
+      // W5 (H5): preserve the service link through the apply — `?? null` is the honest value for
+      // an AI-invented item with no catalog row behind it. ONE batch insert (was a per-row loop).
+      if (applicableVariantItems.length > 0) {
+        await tx.insert(itineraryItems).values(applicableVariantItems.map((item: any) => ({
+          tripId,
+          providerServiceId: item.providerServiceId ?? null,
+          title: item.name,
+          description: item.description || "",
+          itemType: item.serviceType || "activity",
+          status: "planned",
+          dayNumber: item.dayNumber,
+          startTime: item.startTime || "",
+          durationMinutes: item.duration || 60,
+          locationName: item.location || "",
+          estimatedCost: item.price ? String(item.price) : null,
+          currency: "USD",
+          sortOrder: item.sortOrder ?? 0,
+          suggestedBy: "AI Optimizer",
+          latitude: item.latitude ? String(item.latitude) : null,
+          longitude: item.longitude ? String(item.longitude) : null,
+        })));
+      }
+
+      // Diary entry — Lane S rulings 11/16: the apply event now lives in the append-only
+      // `item_transition_log` as a TRIP-SCOPED row (itemId NULL; the eventType design working as
+      // intended), written in the SAME transaction as the apply so the diary can't record an
+      // apply that rolled back. `itinerary_changes` STOPS writing this event in the same change —
+      // one truth per event type; it keeps content-change display semantics only. (Deriving the
+      // traveler-facing feed from this log is the named follow-up, not this lane.)
+      await logItemTransition(tx, {
+        tripId,
+        itemId: null,
+        eventType: "variant_applied",
+        actorType: "optimizer",
+        actorId: userId,
+      });
+
+      // Mark comparison with optimizedAt timestamp + the applied variant.
+      await tx
+        .update(itineraryComparisons)
+        .set({ optimizedAt: new Date(), selectedVariantId: variant.id } as any)
+        .where(eq(itineraryComparisons.id, comparisonId));
+
+      // ── Lane 6 residue R3 (ruling 14): discard UNSHARED LOSING variants ────────────────────
+      // The applied/selected variant + its metrics are KEPT — the plancard, dashboard
+      // trip-scores, and Spec B's move-rationale all read them after apply (it is the sanctioned
+      // §0 copy: it equals the slip by construction while this transaction stays atomic). A
+      // losing variant referenced by `shared_itineraries` is also kept (a share is
+      // correspondence; `variantId` is ON DELETE CASCADE, so deleting it would destroy the live
+      // share link — the "outdated proposal" treatment for those is a named follow-up). Everything
+      // else — losing AI variants and the baseline copy — is discarded; `itinerary_variant_items`,
+      // `itinerary_variant_metrics`, and variant-scoped `transport_legs` follow by CASCADE.
+      const comparisonVariants = await tx
+        .select({ id: itineraryVariants.id })
+        .from(itineraryVariants)
+        .where(eq(itineraryVariants.comparisonId, comparisonId));
+      const losingIds = comparisonVariants.map((v) => v.id).filter((vid) => vid !== variant.id);
+      let discardedVariants = 0;
+      if (losingIds.length > 0) {
+        const sharedRows = await tx
+          .select({ id: sharedItineraries.variantId })
+          .from(sharedItineraries)
+          .where(inArray(sharedItineraries.variantId, losingIds));
+        const sharedSet = new Set(sharedRows.map((r) => r.id));
+        const deletable = losingIds.filter((vid) => !sharedSet.has(vid));
+        if (deletable.length > 0) {
+          const deleted = await tx
+            .delete(itineraryVariants)
+            .where(inArray(itineraryVariants.id, deletable))
+            .returning({ id: itineraryVariants.id });
+          discardedVariants = deleted.length;
+        }
+      }
+
+      return { preservedRoutedItems, dedupedAgainstRoutedItems, discardedVariants };
     });
 
-    // Mark comparison with optimizedAt timestamp
-    await storage.updateComparisonOptimizedAt(comparisonId, variant.id);
-
     // ADDITIVE fields (§13 honest reporting): how many already-routed items the apply left in
-    // place, and how many proposed items were dropped because the plan already held them.
-    // Existing consumers read `tripId`/`delta` and are unaffected; no UI is built on these yet.
-    res.json({ tripId: comparison.tripId, delta, preservedRoutedItems, dedupedAgainstRoutedItems });
+    // place, how many proposed items were dropped because the plan already held them, and how
+    // many losing variants were discarded. Existing consumers read `tripId`/`delta` and are
+    // unaffected; no UI is built on these yet.
+    res.json({ tripId, delta, ...applied });
   } catch (error) {
     console.error("Error applying variant to trip:", error);
     res.status(500).json({ error: "Failed to apply variant to trip" });

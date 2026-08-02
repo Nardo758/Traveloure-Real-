@@ -204,6 +204,29 @@ const INVARIANTS = [
     `,
   },
   {
+    id: "bookings-have-purchased-items",
+    severity: "DATA-HYGIENE",
+    rule:
+      "Lane S ruling 18 (docs/briefs/SLIP_EXPERIENCE_DISPATCH.md) — checkout writes the " +
+      "ready_for_checkout→purchased flip + its diary row as an atomic pair whose failure is " +
+      "swallowed (a plan flag must never fail a checkout). This is the detection half of that " +
+      "contract: a live booking that recorded the plan item it intended to flip " +
+      "(booking_details->>'itineraryItemId') but has no itinerary_items row carrying its " +
+      "booking_id means the pair rolled back and was swallowed — re-run the flip " +
+      "(markItemPurchased is idempotent and re-runnable).",
+    sql: `
+      SELECT b.id AS booking_id, b.booking_details->>'itineraryItemId' AS intended_item_id,
+             b.status, b.created_at
+      FROM service_bookings b
+      WHERE b.booking_details->>'itineraryItemId' IS NOT NULL
+        AND b.status NOT IN ('cancelled', 'refunded', 'payment_failed')
+        AND NOT EXISTS (
+          SELECT 1 FROM itinerary_items i WHERE i.booking_id = b.id
+        )
+      ORDER BY b.created_at DESC;
+    `,
+  },
+  {
     id: "approved-provider-services-have-owner",
     severity: "DATA-HYGIENE",
     rule:

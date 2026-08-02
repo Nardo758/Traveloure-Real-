@@ -79,6 +79,10 @@ router.post("/api/expert/ready-made", isAuthenticated, async (req, res) => {
 
     // W-1 (§17 build-first): the build is born WITHOUT a listing — "decide where it ships later."
     // The store listing is created from this trip via /from-trip/:tripId (ship to store).
+    // Lane S ruling 17: authoring builds mint identity at birth too (they become Ready Mades).
+    const trackingNumber = await storage.generateTrackingNumber("TRV");
+    // trip-mint-owner-ok: authoring-mode build — userId NULL by design, no owner principal
+    // exists; access rides authorId via isTripAuthor, not a trip_collaborators row.
     const [trip] = await db
       .insert(trips)
       .values({
@@ -86,6 +90,7 @@ router.post("/api/expert/ready-made", isAuthenticated, async (req, res) => {
         authorId: userId,      // authoring-mode scope key
         title,
         destination,
+        trackingNumber,
         startDate: fmt(start),
         endDate: fmt(end),
         status: "draft",

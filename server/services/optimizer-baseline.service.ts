@@ -204,6 +204,9 @@ export async function loadTripOptimizerInputs(tripId: string): Promise<TripOptim
       // REAL day number — a NOT NULL column. The cart read invented this.
       dayNumber: item.dayNumber,
       timeSlot: deriveTimeSlot(item.startTime, index),
+      // Drop policy a (Lane 6 residue): an in-checkout item is schedule-movable but never
+      // droppable — the generator rejects any variant that omits it (fail-closed, ruling 15).
+      mustRetain: item.routingStatus === "ready_for_checkout",
     });
   }
 

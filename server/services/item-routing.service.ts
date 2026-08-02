@@ -34,6 +34,7 @@ import { and, eq } from "drizzle-orm";
 import { db } from "../db";
 import { itineraryItems } from "@shared/schema";
 import { logger } from "../infrastructure/logger";
+import { logItemTransition } from "./item-transition-log.service";
 
 /**
  * FORWARD EDGE — `ready_for_checkout → purchased`, stamping the booking that bought the item.
@@ -50,16 +51,35 @@ export async function markItemPurchased(
   bookingId: string,
 ): Promise<{ flipped: boolean }> {
   try {
-    const updated = await db
-      .update(itineraryItems)
-      .set({ routingStatus: "purchased", bookingId, updatedAt: new Date() })
-      .where(
-        and(
-          eq(itineraryItems.id, itemId),
-          eq(itineraryItems.routingStatus, "ready_for_checkout"),
-        ),
-      )
-      .returning({ id: itineraryItems.id });
+    // Lane S ruling 18 (amending ruling 12): the flip and its diary row are an ATOMIC PAIR inside
+    // this helper's own transaction — a diary insert that fails rolls the flip back with it, so a
+    // `purchased` row whose diary entry silently dropped cannot exist. The outer swallow below is
+    // retained: the pair may fail TOGETHER without ever failing the checkout (the booking is the
+    // money truth). NO transaction spans the booking insert itself.
+    const updated = await db.transaction(async (tx) => {
+      const rows = await tx
+        .update(itineraryItems)
+        .set({ routingStatus: "purchased", bookingId, updatedAt: new Date() })
+        .where(
+          and(
+            eq(itineraryItems.id, itemId),
+            eq(itineraryItems.routingStatus, "ready_for_checkout"),
+          ),
+        )
+        .returning({ id: itineraryItems.id, tripId: itineraryItems.tripId });
+
+      if (rows.length > 0) {
+        await logItemTransition(tx, {
+          tripId: rows[0].tripId,
+          itemId,
+          eventType: "status_transition",
+          fromStatus: "ready_for_checkout",
+          toStatus: "purchased",
+          actorType: "checkout",
+        });
+      }
+      return rows;
+    });
 
     if (updated.length === 0) {
       logger.warn(
@@ -70,9 +90,11 @@ export async function markItemPurchased(
     }
     return { flipped: true };
   } catch (err) {
-    // Never fail a checkout over a plan flag. Re-runnable: the booking carries the tripId, so a
-    // reconciliation pass can always find the item again.
-    logger.error({ err, itemId, bookingId }, "routing: markItemPurchased failed (booking unaffected)");
+    // Never fail a checkout over a plan flag — but never silent-silent either (ruling 18): this
+    // ops-visible error carries itemId + bookingId, and the `bookings-have-purchased-items`
+    // invariant (scripts/invariants.mjs) detects any booking whose flip+log pair rolled back, so
+    // the failure is repairable (re-runnable flip), not just survivable.
+    logger.error({ err, itemId, bookingId }, "routing: markItemPurchased flip+log pair failed (booking unaffected; detectable via invariants)");
     return { flipped: false };
   }
 }
@@ -96,21 +118,39 @@ export async function revertPurchasedItemsForBooking(
   bookingId: string,
 ): Promise<{ reverted: number }> {
   try {
-    const updated = await db
-      .update(itineraryItems)
-      .set({ routingStatus: "in_planning", updatedAt: new Date() })
-      .where(
-        and(
-          eq(itineraryItems.bookingId, bookingId),
-          eq(itineraryItems.routingStatus, "purchased"),
-        ),
-      )
-      .returning({ id: itineraryItems.id });
+    // Ruling 18: reversal flips + their diary rows are one atomic pair (one per item), same
+    // posture as the forward edge above — outer swallow retained, no transaction spanning the
+    // refund itself.
+    const updated = await db.transaction(async (tx) => {
+      const rows = await tx
+        .update(itineraryItems)
+        .set({ routingStatus: "in_planning", updatedAt: new Date() })
+        .where(
+          and(
+            eq(itineraryItems.bookingId, bookingId),
+            eq(itineraryItems.routingStatus, "purchased"),
+          ),
+        )
+        .returning({ id: itineraryItems.id, tripId: itineraryItems.tripId });
+
+      for (const row of rows) {
+        await logItemTransition(tx, {
+          tripId: row.tripId,
+          itemId: row.id,
+          eventType: "status_transition",
+          fromStatus: "purchased",
+          toStatus: "in_planning",
+          actorType: "refund",
+        });
+      }
+      return rows;
+    });
 
     return { reverted: updated.length };
   } catch (err) {
-    // The refund already happened; a plan flag must never surface as a refund failure.
-    logger.error({ err, bookingId }, "routing: revertPurchasedItemsForBooking failed (refund unaffected)");
+    // The refund already happened; a plan flag must never surface as a refund failure — but the
+    // swallowed pair is ops-visible (ruling 18) and re-runnable.
+    logger.error({ err, bookingId }, "routing: revertPurchasedItemsForBooking flip+log pair failed (refund unaffected)");
     return { reverted: 0 };
   }
 }
