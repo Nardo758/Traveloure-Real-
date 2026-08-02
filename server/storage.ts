@@ -3660,6 +3660,11 @@ export class DatabaseStorage implements IStorage {
     return this.summarizeEscrowEarnings(await this.getProviderEarnings(providerId) as any);
   }
 
+  // MONEY_MAP F-4: the cart-confirm transaction in server/services/booking.service.ts (~:716,
+  // inside the atomic db.transaction) deliberately bypasses this canonical writer with a raw
+  // `INSERT INTO provider_earnings` for transactional atomicity (booking confirm + earnings write
+  // + revenue write must commit/roll back together). When changing this writer's columns or
+  // side-effects, also update that raw tx INSERT in booking.service.ts — MONEY_MAP F-4.
   async createProviderEarning(earning: InsertProviderEarning): Promise<ProviderEarning> {
     const [newEarning] = await db.insert(providerEarnings).values(earning).returning();
     return newEarning;
@@ -3953,6 +3958,13 @@ export class DatabaseStorage implements IStorage {
     return !!row;
   }
 
+  // MONEY_MAP F-4: the cart-confirm transaction in server/services/booking.service.ts (~:735,
+  // inside the atomic db.transaction) deliberately bypasses this canonical writer with a raw
+  // `INSERT INTO platform_revenue` for transactional atomicity (see the pointer comment on
+  // createProviderEarning above for why). NOTE: that raw tx INSERT does NOT call
+  // updateDailyRevenueSummary below — a pre-existing divergence, out of scope for F-4. When
+  // changing this writer's columns or side-effects, also update the raw tx INSERT in
+  // booking.service.ts — MONEY_MAP F-4.
   async recordPlatformRevenue(revenue: InsertPlatformRevenue): Promise<PlatformRevenue> {
     const [newRevenue] = await db.insert(platformRevenue).values(revenue).returning();
     

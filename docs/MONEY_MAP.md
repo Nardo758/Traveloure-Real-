@@ -17,6 +17,13 @@
 > **Update (branch `claude/money-hardening-r1`):** F-1, F-2, F-3, F-6, F-7, F-8 closed — see the
 > struck FINDINGS entries below for what changed and where. F-4/F-5 untouched (need a design
 > decision, out of scope for this pass).
+>
+> **Update (branch `claude/money-hardening-r2`):** F-4 closed via pointer comments (no behavior
+> change, tx-aware refactor filed). F-5 machinery landed **dormant** — the outbound sub_id rewrite
+> stays behind `TP_SUBID_ATTRIBUTION` (unset by default) until a live echo test confirms
+> Travelpayouts' `marker.SubID` convention; the matcher's exact-token adoption pass is live
+> regardless (it simply never fires without a token-bearing sub_id to match against). See the
+> struck F-4/F-5 entries below.
 
 ---
 
@@ -116,8 +123,11 @@ release scheduler `storage.ts:3674/3683`, per-booking release `:3708/3700`, disp
 reversal `:3769/3765`, ready-made reversal `ready-made-purchase.service.ts:231`.
 
 ### `affiliate_earnings`
-Create: `storage.ts:3604`; from agent-booking confirm `content.routes.ts:6917` (**commission written "0.00"** — F-8).
-Reconciliation matcher UPDATE `affiliate-reconciliation.service.ts:402`; admin status PATCH `:509`.
+Create: `storage.ts:3604`; from agent-booking confirm `content.routes.ts:6917` (**commission written "0.00"**
+— F-5; corrected mislabel, was previously miscited here as F-8, which is the unrelated `.env.example` finding).
+Reconciliation matcher: fuzzy UPDATE `affiliate-reconciliation.service.ts:~412`; **exact-token adoption UPDATE
+`:~370-390` (F-5, new in `claude/money-hardening-r2`, dormant until `TP_SUBID_ATTRIBUTION=1`)**; admin status
+PATCH `:~509`.
 
 ### `coordination_fee_credits`
 Insert on paid Event-optimize `optimization.routes.ts:459` (unique on `sourcePaymentIntentId`); claim
@@ -275,15 +285,65 @@ Publishable key `VITE_STRIPE_PUBLISHABLE_KEY` — also absent from `.env.example
   `opt-fee-<userId>-<target>-<YYYY-MM-DD>` format the saved-card path already used, factored into a shared
   `buildOptimizationFeeIdempotencyKey` helper so the two paths can't drift). The three
   `checkout.sessions.create` sites remain keyless — out of scope this round, unchanged.
-- **F-4 🟡 Two raw ledger INSERTs bypass the canonical writers** (`booking.service.ts:716/735` inside the
-  cart-confirm tx). Deliberate (transactionality) but undocumented — any change to
-  `createProviderEarning`/`recordPlatformRevenue` semantics (e.g. new default column) silently misses them.
-  Either route through the canonical writers inside the tx or mark both sites with a pointer comment.
-  **NOT touched this round — needs a design decision.**
-- **F-5 🟡 Agent-booking affiliate earnings recorded as `"0.00"`** (`content.routes.ts:6917`) — the
-  reconciliation matcher can never amount-match them (5% band of 0). Real commissions from Travelpayouts
-  polling will stay `unmatched` for this rail. Needs an expected-commission estimate at write time or a
-  matcher rule for zero-amount internal rows. **NOT touched this round — needs a design decision.**
+- ~~**F-4 🟡 Two raw ledger INSERTs bypass the canonical writers.**~~ **CLOSED via two-way pointer
+  comments (`claude/money-hardening-r2`; decision-maker ratified: comments now, tx-aware refactor
+  filed, no behavior change).** `booking.service.ts:~716` (provider_earnings) and `~735`
+  (platform_revenue), inside the cart-confirm `db.transaction`, each now carry a comment stating
+  they deliberately mirror the canonical writer for transactional atomicity and that any
+  column/side-effect change to the canonical writer must be mirrored here. The canonical writers
+  themselves — `storage.ts` `createProviderEarning` (~:3663) and `recordPlatformRevenue` (~:3956) —
+  each gained a matching back-pointer comment naming the raw tx INSERT they must stay in sync
+  with. Also recorded: the raw platform_revenue INSERT does **not** call
+  `updateDailyRevenueSummary` the way the canonical writer does — a pre-existing divergence, called
+  out in both comments, **not fixed here** (still needs the filed tx-aware refactor to resolve
+  correctly, since the daily-summary write would need to run inside the same tx). **Filed (not
+  built): the tx-aware refactor** — route the cart-confirm tx through the canonical writers
+  directly (they'd need a `tx` param) instead of maintaining two hand-synced copies.
+- ~~**F-5 🟡 Agent-booking affiliate earnings recorded as `"0.00"`.**~~ **Machinery LANDED, adoption
+  DORMANT (`claude/money-hardening-r2`; decision-maker ratified design: never estimate a
+  commission, adopt only on an exact attribution match).** `content.routes.ts:~6917` still writes
+  `"0.00"` honestly at agent-booking confirm — unchanged, that part is correct (§13: the real
+  commission is genuinely unknown until the partner reports it). What's new:
+  - **Token helpers** (`travelpayouts-client.ts`): `buildAttributionSubId(token)` →
+    `<marker>.<token>`; `parseAttributionSubId(subId)` → `{marker, token}` (first-dot split, no dot
+    → `token: null`); `applyAttributionSubId(url, token, enabled)` — the pure, directly-testable
+    rewrite helper (`enabled=false` returns `url` unchanged, byte-identical).
+  - **Flag-gated outbound rewrite** (`content.routes.ts` `/api/affiliate-booking-requests/from-catalog`,
+    ~:6685-6740): when `TP_SUBID_ATTRIBUTION=1` (unset by default) AND the resolved affiliate URL
+    carries a `sub_id` param, it's rewritten to `buildAttributionSubId(<bookingRequestId>)` — the
+    booking-request id is pre-generated (`crypto.randomUUID()`) so it can be baked into the URL
+    **before** the row is written once (never patched after). Flag unset → `applyAttributionSubId`
+    is a no-op → current behavior is byte-identical (unit-tested both flag states).
+  - **Linkage found (item 3, no migration needed):** `affiliate_earnings.external_report_data` (jsonb,
+    written at `content.routes.ts:~6917`) already carries `{affiliateBookingRequestId: <id>}` — that's
+    the discoverable link between an `affiliate_earnings` row and its `affiliate_booking_requests`
+    row. The expert-earning side link is also discoverable: `storage.ts` `createAffiliateEarning`
+    (~:3612) credits the expert's share via `expert_earnings.referenceType='affiliate_earning'`,
+    `referenceId=<affiliate_earnings.id>`.
+  - **Exact-token adoption matcher** (`affiliate-reconciliation.service.ts`, private
+    `adoptExactTokenMatches`, runs **before** the existing fuzzy pass in `matchRecords`): for each
+    external row whose `sub_id` parses to a non-null token, finds the internal `unmatched` row
+    whose `external_report_data.affiliateBookingRequestId` equals that token and adopts the
+    partner-REPORTED amount verbatim (`total_commission`, `platform_share`/`expert_share` split via
+    the existing `resolveCommissionRates({source:"affiliate"})` — §8, no new literal),
+    `reconciliation_status='matched'`, `partner_reference_id`. Also updates the linked
+    `expert_earnings` row's `amount` when found; when no linked row is found, adopts only the
+    affiliate_earnings amount and appends a `reconciliation_notes` note flagging manual review
+    (this path is exercised in test but not hit in practice today, since the create-time chain
+    always creates the linked row when `expertId` is set). Idempotent (atomic
+    `WHERE reconciliation_status <> 'matched'` claim; a second run updates 0 rows). External rows
+    consumed here are skipped in the fuzzy pass (one partner report row is never credited twice).
+    The fuzzy pass's pre-existing `internalAmt === 0 → reject` guard is untouched and still the
+    only thing stopping a zero-amount row from being fuzzy-matched — exact-token adoption is the
+    ONLY path a zero-amount row can ever be matched through.
+  - **Still gated on:** a live echo test (Replit-side, separate — not part of this branch)
+    confirming Travelpayouts actually returns the suffixed `sub_id` verbatim on `execute_query`
+    action rows, before `TP_SUBID_ATTRIBUTION` is ever set to `1` anywhere real.
+    `.env.example` documents this explicitly.
+  - Tests: `server/__tests__/affiliate-reconciliation-token-adoption.test.ts` (11 cases — token
+    round-trip incl. no-dot/trailing-dot; `applyAttributionSubId` both flag states incl. malformed
+    URL; exact-token adoption incl. linked expert-earning; idempotent re-run; tokenless zero-row
+    never matches; nonzero fuzzy matching regression-proofed unaffected).
 - ~~**F-6 🟢 Dead code.**~~ **FIXED (`claude/money-hardening-r1`).** `verifyStripeWebhookSignature`
   (`stripe.service.ts:240`, zero callers) and the `trips.routes.ts:72` Stripe client (zero call sites in that
   file) are both deleted.

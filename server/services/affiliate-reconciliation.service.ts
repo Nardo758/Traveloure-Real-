@@ -12,6 +12,8 @@ import { affiliateEarnings, affiliateClicks, affiliatePartners } from "@shared/s
 import { eq, and, gte, lte, sql } from "drizzle-orm";
 import { getConversionReport, getPartnerizeCredentials } from "./partnerize/partnerize-client";
 import { fetchTravelpayoutsActions } from "./travelpayouts/statistics.service";
+import { parseAttributionSubId } from "./travelpayouts/travelpayouts-client";
+import { resolveCommissionRates } from "./commission";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -24,6 +26,9 @@ export interface ExternalCommission {
   currency: string;
   reportedAt: string; // ISO date string
   rawData: Record<string, unknown>;
+  // MONEY_MAP F-5: raw partner sub_id, when the source API surfaces one (Travelpayouts
+  // execute_query rows carry it natively). Undefined for partners with no sub_id concept.
+  subId?: string | null;
 }
 
 export interface ReconciliationSummary {
@@ -112,6 +117,7 @@ export async function fetchTravelpayoutsCommissions(
           currency: "USD",
           reportedAt: item.created_at_day || start.toISOString(),
           rawData: item as unknown as Record<string, unknown>,
+          subId: item.sub_id ?? null,
         } as ExternalCommission;
       })
       .filter((r) => r.partnerReferenceId);
@@ -319,6 +325,118 @@ class AffiliateReconciliationService {
   }
 
   /**
+   * MONEY_MAP F-5 — exact-token adoption pass. Runs BEFORE the fuzzy (date+amount) pass so
+   * an external row whose sub_id echoes our own attribution token (`marker.<bookingRequestId>`,
+   * only produced when TP_SUBID_ATTRIBUTION=1 rewrote the outbound link — see
+   * travelpayouts-client.ts buildAttributionSubId) is matched with certainty, and the
+   * partner-reported commission is ADOPTED verbatim — never estimated. This is exactly why
+   * zero-amount internal rows exist in the first place (agent-booking confirm writes "0.00"
+   * pending reconciliation, content.routes.ts ~:6917) and exactly why the fuzzy pass's
+   * `internalAmt === 0 → reject` guard in selectMatchCandidate must stay: a zero-amount row can
+   * ONLY be matched here, on an exact token, never by amount-proximity guessing.
+   *
+   * Returns the set of external partnerReferenceIds consumed here, so the caller's fuzzy pass
+   * skips them (one external report row must never be credited to two internal rows).
+   */
+  private async adoptExactTokenMatches(
+    external: ExternalCommission[],
+    internalRows: Array<Record<string, any>>,
+    consumed: Set<string>
+  ): Promise<Set<string>> {
+    const matchedExternalRefIds = new Set<string>();
+
+    for (const ext of external) {
+      const subId = ext.subId ?? (ext.rawData as any)?.sub_id;
+      if (typeof subId !== "string" || !subId) continue;
+      const { token } = parseAttributionSubId(subId);
+      if (!token) continue;
+
+      // Linkage (MONEY_MAP F-5 item 3): affiliate_earnings.external_report_data carries
+      // {affiliateBookingRequestId: <affiliate_booking_requests.id>} at write time
+      // (content.routes.ts ~:6929) — the same id we suffixed into the outbound sub_id.
+      const candidate = internalRows.find((row) =>
+        !consumed.has(row.id) &&
+        row.reconciliation_status === "unmatched" &&
+        (row.external_report_data as any)?.affiliateBookingRequestId === token
+      );
+      if (!candidate) continue;
+
+      // §8: same config-resolved split used at write time — never a new literal.
+      const splitRates = await resolveCommissionRates({ source: "affiliate" });
+      const adoptedTotal = ext.amount;
+      const adoptedPlatformShare = Math.round(adoptedTotal * splitRates.platformFeeRate * 100) / 100;
+      const adoptedExpertShare = Math.round(adoptedTotal * splitRates.expertShareRate * 100) / 100;
+
+      // Look up content_tracking_number from the affiliate_products row linked via the click —
+      // mirrors the existing fuzzy-match update below.
+      let contentTrackingNumber: string | null = null;
+      try {
+        const clickRow = await db.execute(sql`
+          SELECT ap.tracking_number
+          FROM affiliate_clicks ac
+          JOIN affiliate_products ap ON ac.product_id = ap.id
+          WHERE ac.id = ${candidate.click_id}
+          LIMIT 1
+        `);
+        contentTrackingNumber = (clickRow.rows[0] as any)?.tracking_number ?? null;
+      } catch (_) {}
+
+      // Idempotent atomic claim (§15 posture): a row already matched by a concurrent/duplicate
+      // pass updates 0 rows here instead of being re-adopted.
+      const result = await db.execute(sql`
+        UPDATE affiliate_earnings
+        SET reconciliation_status    = 'matched',
+            partner_reference_id     = ${ext.partnerReferenceId},
+            total_commission         = ${String(adoptedTotal)},
+            platform_share           = ${String(adoptedPlatformShare)},
+            expert_share             = ${String(adoptedExpertShare)},
+            reconciled_at            = NOW(),
+            external_report_data     = ${JSON.stringify(ext.rawData)}::jsonb,
+            content_tracking_number  = ${contentTrackingNumber}
+        WHERE id = ${candidate.id}
+          AND reconciliation_status <> 'matched'
+      `);
+      if (!result.rowCount) continue; // lost the race — leave it for the next pass, never double-adopt
+
+      candidate.reconciliation_status = "matched";
+      consumed.add(candidate.id);
+      matchedExternalRefIds.add(ext.partnerReferenceId);
+
+      // Adopt the linked expert-earning row. server/storage.ts createAffiliateEarning (~:3612)
+      // credits the expert's share as a held expert_earnings row with
+      // referenceType='affiliate_earning', referenceId=<this affiliate_earnings row's id> — that's
+      // the discoverable linkage this adoption follows.
+      try {
+        const linked = await db.execute(sql`
+          SELECT id FROM expert_earnings
+          WHERE reference_type = 'affiliate_earning' AND reference_id = ${candidate.id}
+          LIMIT 1
+        `);
+        const linkedId = (linked.rows[0] as any)?.id;
+        if (linkedId) {
+          await db.execute(sql`
+            UPDATE expert_earnings SET amount = ${String(adoptedExpertShare)} WHERE id = ${linkedId}
+          `);
+        } else {
+          // No linked expert-earning row found (e.g. the booking had no expert counterpart at
+          // confirm time) — adopt only the affiliate_earnings amount and leave a durable note
+          // rather than silently under-crediting an expert who should have one.
+          await db.execute(sql`
+            UPDATE affiliate_earnings
+            SET reconciliation_notes = COALESCE(reconciliation_notes || ' | ', '')
+              || 'F-5 exact-token adoption: no linked expert_earnings row found — expert share needs manual review'
+            WHERE id = ${candidate.id}
+          `);
+        }
+      } catch (linkErr) {
+        console.error(`[Reconciliation] F-5 expert-earning adoption failed for affiliate_earnings ${candidate.id}:`, linkErr);
+      }
+    }
+
+    return matchedExternalRefIds;
+  }
+
+  /**
    * Auto-match external commission rows against internal affiliate_earnings.
    * Matching criteria (all must be satisfied):
    *   1. Same partnerId — looked up by matching the external `partner` key
@@ -373,7 +491,15 @@ class AffiliateReconciliationService {
     // Track which internal rows have been consumed in this pass
     const consumed = new Set<string>();
 
+    // MONEY_MAP F-5: exact-token adoption runs FIRST — it's the only way a zero-amount internal
+    // row (agent-booking confirm's honest "unknown yet") can ever be matched, and it adopts the
+    // partner's real amount instead of estimating one. External rows it consumes are skipped
+    // below so one partner-reported commission is never credited to two internal rows.
+    const exactMatchedExternalRefIds = await this.adoptExactTokenMatches(external, internalRows, consumed);
+
     for (const ext of external) {
+      if (exactMatchedExternalRefIds.has(ext.partnerReferenceId)) continue;
+
       // Resolve the internal partner_id for this external partner key
       const resolvedPartnerId = partnerKeyToId[ext.partner.toLowerCase()] ??
         partnerKeyToId[ext.partner.toLowerCase().split(/[\s.]/)[0]];
