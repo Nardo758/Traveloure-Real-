@@ -58,6 +58,12 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { TransportLeg, type TransportLegData, type TransportAlternative } from "@/components/itinerary/TransportLeg";
+import { Anchor } from "lucide-react";
+// Spec C (SLIP_EXPERIENCE_DISPATCH §4): variant columns render through the CANONICAL
+// PlanCard family's proposal stage — never a parallel renderer.
+import { PlanCard } from "@/components/plancard/PlanCard";
+import type { ProposalAnchorItem, ProposalLegsSummary } from "@/components/plancard/plancard-types";
+import type { SlipData } from "@/components/plancard/SlipView";
 
 interface VariantItem {
   id: string;
@@ -381,6 +387,84 @@ function OpenInMapsButton({ items, destination }: { items: VariantItem[]; destin
   );
 }
 
+/**
+ * One Spec C column = `<PlanCard stage="proposal" />`. This container owns the column's ONE
+ * data fetch (the variant's server-computed transport legs, for the muted count + cost line)
+ * and hands everything to the canonical renderer. Anchored (purchased) items arrive from the
+ * CANONICAL trip rows (the plancard DTO) — the same array for every column, identical by
+ * construction; with_expert items are excluded upstream and never reach any column.
+ */
+function ProposalColumnContainer({
+  variant,
+  comparison,
+  anchoredItems,
+  recommended,
+  applying,
+  onApply,
+}: {
+  variant: Variant;
+  comparison: Comparison;
+  anchoredItems: ProposalAnchorItem[];
+  recommended: boolean;
+  applying: boolean;
+  onApply: () => void;
+}) {
+  const { data: legs } = useQuery<TransportLegApiResponse[]>({
+    queryKey: ["/api/itinerary-variants", variant.id, "transport-legs"],
+    queryFn: async () => {
+      const res = await fetch(`/api/itinerary-variants/${variant.id}/transport-legs`, {
+        credentials: "include",
+      });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    retry: false,
+    staleTime: 120_000,
+  });
+
+  // Server-computed leg values only (§4 Spec C): count + the sum of the legs' own
+  // estimatedCostUsd. All-null costs → null (never a guessed figure).
+  let legsSummary: ProposalLegsSummary | null = null;
+  if (legs && legs.length > 0) {
+    const costs = legs
+      .map((l) => (l.estimatedCostUsd != null ? parseFloat(String(l.estimatedCostUsd)) : null))
+      .filter((c): c is number => c != null && !isNaN(c));
+    legsSummary = {
+      count: legs.length,
+      totalCostUsd: costs.length > 0 ? costs.reduce((s, c) => s + c, 0) : null,
+    };
+  }
+
+  return (
+    <PlanCard
+      stage="proposal"
+      trip={{
+        id: comparison.tripId || comparison.id,
+        destination: comparison.destination || "",
+        numberOfTravelers: comparison.travelers || 1,
+      }}
+      proposal={{
+        variantId: variant.id,
+        name: variant.name,
+        tagline: variant.description || null,
+        recommended,
+        anchoredItems,
+        items: variant.items.map((it) => ({
+          id: it.id,
+          dayNumber: it.dayNumber,
+          startTime: it.startTime || it.timeSlot || null,
+          name: it.name,
+          price: it.price ?? null,
+        })),
+        legsSummary,
+        applyLabel: `Apply ${variant.name}`,
+        onApply,
+        applying,
+      }}
+    />
+  );
+}
+
 export default function ItineraryComparisonPage() {
   const { id } = useParams<{ id: string }>();
   const { user, isLoading: authLoading } = useAuth();
@@ -486,6 +570,53 @@ export default function ItineraryComparisonPage() {
       }
       return false;
     },
+  });
+
+  // ── Spec C canonical reads (SLIP_EXPERIENCE_DISPATCH §4) ──────────────────────────────
+  // The slip-backed comparison renders through the plancard family; anchors and exclusion
+  // counts come from the CANONICAL trip rows (the same plancard DTO every slip surface reads),
+  // never from variant copies. A comparison with no trip (guest/cart flow) has no slip — the
+  // legacy rendering below stays for that flow (Lane 5b's cart→trip re-point is gated).
+  const slipTripId = data?.comparison?.tripId || null;
+  const { data: slipPlancard } = useQuery<SlipData>({
+    queryKey: [`/api/trips/${slipTripId}/plancard`],
+    enabled: !!slipTripId && !!user,
+    staleTime: 30000,
+  });
+
+  const canonicalRows = (slipPlancard?.days ?? []).flatMap((d) =>
+    d.activities.map((a) => ({ a, dayNum: d.dayNum })),
+  );
+  const anchoredItems: ProposalAnchorItem[] = canonicalRows
+    .filter(({ a }) => !!a.booking || a.routingStatus === "purchased")
+    .map(({ a, dayNum }) => ({ id: a.id, dayNum, time: a.time || "", name: a.name }));
+  const withExpertRows = canonicalRows.filter(({ a }) => a.routingStatus === "with_expert");
+  const remainingCount = canonicalRows.filter(
+    ({ a }) => a.routingStatus === "in_planning" || a.routingStatus === "ready_for_checkout",
+  ).length;
+  const slipTrackingNumber = slipPlancard?.trip?.trackingNumber ?? null;
+  const slipExpertFirstName = slipPlancard?.meta?.deliveredBy?.name?.split(" ")[0] ?? null;
+
+  // Apply = the EXISTING endpoints: select the variant, then the atomic apply-to-trip, then
+  // navigate to the slip (/plans/:tripId). Nothing is purchased by applying.
+  const [applyingVariantId, setApplyingVariantId] = useState<string | null>(null);
+  const applyVariantMutation = useMutation({
+    mutationFn: async (variantId: string) => {
+      await apiRequest("POST", `/api/itinerary-comparisons/${id}/select`, { variantId });
+      const res = await apiRequest("POST", `/api/itinerary-comparisons/${id}/apply-to-trip`);
+      const result = await res.json();
+      return { tripId: result.tripId as string };
+    },
+    onSuccess: (r) => {
+      toast({ title: "Variant applied", description: "Your slip has been updated in place." });
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${r.tripId}/plancard`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/itinerary-comparisons", id] });
+      setLocation(`/plans/${r.tripId}`);
+    },
+    onError: () => {
+      toast({ variant: "destructive", title: "Failed to apply variant", description: "Please try again" });
+    },
+    onSettled: () => setApplyingVariantId(null),
   });
 
   const destination = data?.comparison?.destination;
@@ -724,6 +855,17 @@ export default function ItineraryComparisonPage() {
   const hasVariants = data?.variants && data.variants.length > 0;
   const userVariant = data?.variants?.find((v) => v.source === "user");
   const aiVariants = data?.variants?.filter((v) => v.source === "ai_optimized") || [];
+
+  // Spec C column set + the "Recommended" chip: exactly one or zero — derived from optimizer
+  // output (the strictly-highest optimizationScore among AI variants; a tie marks none).
+  const specColumns: Variant[] = [userVariant, ...aiVariants].filter((v): v is Variant => !!v);
+  const recommendedVariantId = (() => {
+    const scored = aiVariants.filter((v) => v.optimizationScore != null);
+    if (scored.length === 0) return null;
+    const max = Math.max(...scored.map((v) => v.optimizationScore));
+    const top = scored.filter((v) => v.optimizationScore === max);
+    return top.length === 1 ? top[0].id : null;
+  })();
 
   const getMetricIcon = (key: string) => {
     switch (key) {
@@ -1045,6 +1187,83 @@ export default function ItineraryComparisonPage() {
               </Card>
             )}
 
+            {/* ── Spec C (SLIP_EXPERIENCE_DISPATCH §4): a slip-backed comparison renders through
+                the canonical PlanCard proposal stage — CompareHeader (exclusions stated HERE
+                ONCE, never as grayed rows inside columns) + three equal columns + the verbatim
+                footer sentence. NO routing actions, NO per-item apply, NO save-for-later. ── */}
+            {slipTripId && (
+              <>
+                <div className="flex flex-col md:flex-row md:items-start justify-between gap-3 mb-4" data-testid="compare-header">
+                  <p className="font-mono text-sm text-muted-foreground">
+                    {slipTrackingNumber ? `Slip ${slipTrackingNumber} · ` : ""}
+                    {specColumns.length} proposal{specColumns.length === 1 ? "" : "s"}
+                    {slipPlancard ? ` for your remaining ${remainingCount} item${remainingCount === 1 ? "" : "s"}` : ""}
+                  </p>
+                  {(anchoredItems.length > 0 || withExpertRows.length > 0) && (
+                    <div className="text-sm text-muted-foreground md:text-right space-y-0.5" data-testid="compare-header-right">
+                      {anchoredItems.length > 0 && (
+                        <p className="flex items-center gap-1.5 md:justify-end">
+                          <Anchor className="w-3.5 h-3.5" />
+                          {anchoredItems.length === 1
+                            ? `${anchoredItems[0].name} pinned in all`
+                            : `${anchoredItems.length} purchased items pinned in all`}
+                        </p>
+                      )}
+                      {withExpertRows.length > 0 && (
+                        <p data-testid="compare-exclusion-note">
+                          {withExpertRows.length === 1
+                            ? `${withExpertRows[0].a.name} excluded`
+                            : `${withExpertRows.length} items excluded`}{" "}
+                          ({slipExpertFirstName ? `with ${slipExpertFirstName}` : "with your expert"})
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-4">
+                  {specColumns.map((variant) => (
+                    <ProposalColumnContainer
+                      key={variant.id}
+                      variant={variant}
+                      comparison={data.comparison}
+                      anchoredItems={anchoredItems}
+                      recommended={variant.id === recommendedVariantId}
+                      applying={applyingVariantId === variant.id}
+                      onApply={() => {
+                        setApplyingVariantId(variant.id);
+                        applyVariantMutation.mutate(variant.id);
+                      }}
+                    />
+                  ))}
+                  {isGenerating &&
+                    Array.from({ length: Math.max(0, 3 - specColumns.length) }).map((_, idx) => (
+                      <Card key={`proposal-skeleton-${idx}`} className="border-dashed opacity-80">
+                        <CardHeader className="pt-6">
+                          <Skeleton className="h-5 w-32" />
+                          <Skeleton className="h-4 w-48 mt-1" />
+                        </CardHeader>
+                        <CardContent>
+                          <div className="flex items-center justify-center gap-3 py-10">
+                            <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                            <span className="text-sm text-muted-foreground">Optimizing…</span>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                </div>
+
+                {/* Verbatim, load-bearing copy (§4 Spec C). */}
+                <p className="text-sm text-muted-foreground text-center mb-6" data-testid="compare-footer">
+                  Applying a variant updates the slip in place — the other two are discarded.
+                  Nothing is purchased by applying.
+                </p>
+              </>
+            )}
+
+            {/* Legacy rendering — comparisons with NO trip behind them (guest/cart flow): no
+                slip to anchor from or navigate to. The cart→trip re-point is Lane 5b (gated). */}
+            {!slipTripId && (
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
               {/* Skeleton for user variant if still loading */}
               {isGenerating && !userVariant && (
@@ -1453,6 +1672,7 @@ export default function ItineraryComparisonPage() {
                 </Card>
               ))}
             </div>
+            )}
 
             {data?.upsellSuggestions && data.upsellSuggestions.length > 0 && (
               <div className="mb-6" data-testid="section-upsell-suggestions">
@@ -1563,7 +1783,9 @@ export default function ItineraryComparisonPage() {
               </div>
             )}
 
-            {data?.comparison?.selectedVariantId && (
+            {/* Legacy no-trip flow only — the Spec C branch applies per-column and navigates
+                to the slip; nothing goes to cart from a slip-backed comparison here. */}
+            {!slipTripId && data?.comparison?.selectedVariantId && (
               <Card className="border-primary bg-primary/5">
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between">
