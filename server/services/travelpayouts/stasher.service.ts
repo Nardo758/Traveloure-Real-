@@ -48,7 +48,7 @@ export async function searchStasher(params: StasherSearchParams): Promise<Catalo
           imageUrl: null,
           price: (l.daily_rate || 6) * bags * days,
           currency: "USD",
-          rating: l.rating ? parseFloat(l.rating) : 4.7,
+          rating: l.rating ? parseFloat(l.rating) : null, // §13: no invented rating when the API omits one
           reviewCount: l.review_count || null,
           destination: params.destination,
           location: l.lat && l.lng ? { lat: parseFloat(l.lat), lng: parseFloat(l.lng) } : null,
@@ -70,38 +70,8 @@ export async function searchStasher(params: StasherSearchParams): Promise<Catalo
     reportProviderResult("stasher", "error", err instanceof Error ? err.message : String(err));
   }
 
-  // NOTE (§13, pre-existing, out of scope for this change): the fallback below fabricates spot cards
-  // with invented ratings/prices when the live call above fails or returns nothing.
-  const city = params.destination.split(",")[0].trim();
-  const bags = params.bags || 1;
-  const days = params.days || 1;
-
-  const spotsNear = [
-    { near: "City Centre", icon: "🏙️", dailyRate: 6 },
-    { near: "Train Station", icon: "🚉", dailyRate: 7 },
-    { near: "Airport", icon: "✈️", dailyRate: 9 },
-  ];
-
-  return spotsNear.slice(0, params.limit || 3).map((s, i): CatalogItem => ({
-    id: `stasher-${city.toLowerCase().replace(/\s+/g, "-")}-${i}`,
-    type: "activity",
-    provider: "stasher",
-    externalId: `stasher-${i}`,
-    title: `${s.icon} Luggage Storage near ${s.near} — ${city}`,
-    description: `Stasher-certified storage · ${bags} bag${bags > 1 ? "s" : ""} · ${days} day${days > 1 ? "s" : ""} · Available daily`,
-    imageUrl: null,
-    price: s.dailyRate * bags * days,
-    currency: "USD",
-    rating: 4.7,
-    reviewCount: null,
-    destination: params.destination,
-    location: null,
-    duration: `${days} day${days > 1 ? "s" : ""}`,
-    categories: ["luggage-storage", "service"],
-    tags: ["stasher", "luggage", "storage"],
-    bookingUrl: `https://stasher.com/city/${encodeURIComponent(city.toLowerCase())}?partner=travelpayouts`,
-    affiliateUrl: `https://stasher.com/city/${encodeURIComponent(city.toLowerCase())}?partner=travelpayouts`,
-    source: "travelpayouts/stasher",
-    lastUpdated: new Date(),
-  } as CatalogItem));
+  // §13: the fabricated spot-card fallback that used to live here (invented $-rates and a 4.7
+  // rating) is REMOVED — a failed or empty live call returns an honest empty list; the
+  // provider-health registry carries the failure status for the UI.
+  return [];
 }
