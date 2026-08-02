@@ -5051,6 +5051,7 @@ async function updateExperienceTypeHeroConfigs() {
         showKids: experienceTypes.showKids,
         showOriginCity: experienceTypes.showOriginCity,
         locationLabel: experienceTypes.locationLabel,
+        contextFields: experienceTypes.contextFields,
       })
       .from(experienceTypes)
       .where(inArray(experienceTypes.slug, Object.keys(configs)));
@@ -5064,7 +5065,11 @@ async function updateExperienceTypeHeroConfigs() {
           row.headcountLabel === (cfg.headcountLabel ?? null) &&
           row.showKids === (cfg.showKids ?? null) &&
           row.showOriginCity === (cfg.showOriginCity ?? null) &&
-          row.locationLabel === (cfg.locationLabel ?? null)
+          row.locationLabel === (cfg.locationLabel ?? null) &&
+          // contextFields is only backfilled when the config defines it, so
+          // only compare in that case (deep-compare via JSON stringify).
+          (cfg.contextFields === undefined ||
+            JSON.stringify(row.contextFields ?? null) === JSON.stringify(cfg.contextFields))
         );
       });
   } catch {
