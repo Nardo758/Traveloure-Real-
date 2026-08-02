@@ -1,0 +1,23 @@
+LANDING DISPATCH — migration 172 fixture-earnings purge (branch claude/sync-local-repo-2j7ghv, single commit a7f1baac)
+
+Before anything: git fetch origin main claude/sync-local-repo-2j7ghv and reason from the fetched state, not memory. (Last dispatch, stale state produced an attempt to re-open an already-merged PR.)
+
+What this is: one DATA-ONLY commit — decision-maker-ratified cleanup of the 20 paid_out/NULL-payout_id earnings rows (~$4,240), all belonging to the 5 @example.com seed personas. Migration 172_purge_fixture_paid_out_earnings.sql archives each row into legacy_archives (source-tagged, with the ratification reason) then deletes it. Predicate is exactly status='paid_out' AND payout_id IS NULL AND owner email LIKE '%@example.com' — nothing broader. Plus the registry entry and a CLAUDE.md test-email-filter note (%@example.com added). No schema change, no CHECK, nothing for the constraint preflight, no publish-push exposure.
+
+1. Verify the branch shape (should be exactly one commit ahead of main):
+
+Expect only a7f1baac. If you see more or fewer, STOP and report — do not merge.
+
+2. Open the PR — from claude/sync-local-repo-2j7ghv into main, title: Migration 172: purge fixture paid_out earnings (ratified) + extend test-email filter. If the API rate limit is still active, the human can use the compare URL — it will work this time because there IS a diff. Merge only on green CI (all existing jobs incl. trip-mint-owner-guard; this change adds no new ones).
+
+3. Apply it — after merge, in the workspace:
+
+then start the app once (npm run dev, wait for boot, Ctrl-C). Boot runs runMigrations(), which applies 172 against the shared DB. Do NOT use db:push as a substitute — a schema push cannot apply a data-only migration; only the migration runner can.
+
+4. Verify (all three, paste results back):
+
+If the archived counts differ slightly from 12/8 but the invariant reads 0, that's acceptable (rows may have changed between triage and merge) — report the actual numbers, don't "fix" anything. If the invariant is still red, STOP and report; do not edit the migration or delete rows by hand.
+
+5. Do NOT: run npm run seed:beta against this DB (it mints completed bookings without payment intents — that's the Finding-B fixture noise source); edit or re-run migration 172 manually (it's idempotent — a second boot is a no-op by design); touch item_transition_log (append-only; no UPDATE/DELETE anywhere, ever).
+
+Once it reports 14/14, the ledger is clean and the only open items on the whole program are the three click-through checks in a live session (route an item → diary row + version tick, /plans/:tripId ref on a new trip, one optimize→apply).
