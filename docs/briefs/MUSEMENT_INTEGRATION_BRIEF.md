@@ -34,10 +34,36 @@ creation at the supplier).
 
 ## 2. The three decisions to ratify (in order)
 
-**D1 — Accept the merchant-of-record obligations?** This is a business commitment, not a code
-choice: we charge the traveler, we owe Musement, we own refunds/taxes/support for these
-bookings. If NO → stop here; there is no affiliate fallback worth building (that's what the
-Travelpayouts lane already covers for other partners). If YES → D2/D3.
+**D1 — Which money-flow model? (CORRECTED Aug 2 after the provider-landscape research — the
+choice is NOT binary.)** Musement offers TWO API integrations, and the wider market (Viator,
+GetYourGuide, Klook, Tiqets — researched Aug 2) shows the same three archetypes everywhere:
+
+- **Model A — WE are merchant of record ("merchant"):** traveler pays our Stripe; we owe the
+  provider on periodic invoice; margin is ours; we own taxes/refunds/support. (Musement
+  merchant, Viator Merchant API, GYG full integration.)
+- **Model B — PROVIDER is MoR, booking stays fully in-platform ("affiliate-full"):** whole UX
+  on our surface; payment flows to the provider's gateway via API; they own refunds/support;
+  we earn a periodic commission. (Musement affiliate-full via their Stripe; Viator
+  "Full + Booking access"; Klook's API model; Tiqets Distributor w/ monthly margin-share
+  invoice.) **Per-provider trap:** HOW payment data reaches them — Viator's variant requires
+  PCI-compliant card passthrough, which would destroy our SAQ-A posture (Stripe Elements keeps
+  card data off our servers) and can be a HEAVIER burden than Model A on our own Stripe.
+  Whether Musement's payment flow is client-side-tokenized (SAQ-A-preserving) is verifiable
+  only in their sandbox. Model B's commission side rides the EXISTING affiliate-earnings +
+  reconciliation machinery (the F-5 adopt-external-truth pattern) — no new ledger.
+- **Model C — redirect affiliate:** §16-hostile; tolerable only via the agent-booking rail
+  (WeGoTrip's current model). Not an option for Musement.
+
+**Recommendation: pursue Model A (merchant), with Model B as the explicit fallback requested
+in the SAME application.** Rationale: Traveloure already IS an MoR platform — checkout, escrow,
+dispute, refund, and support rails all exist and are hardened; a unified cart (activities
+bundled with our services in one checkout) is the §17/Trip-canon direction; and Model B's
+payment-data posture is an unknown that could cost more than Model A's one genuinely new
+obligation — **country-based tax calculation (Japanese consumption tax for Kyoto inventory),
+which must be scoped in P2 regardless**. Ask Musement for both tracks in the sandbox so the
+affiliate payment flow's PCI posture can be verified before final commitment. If Model A
+approval stalls, Model B (verified SAQ-A-safe) proceeds instead. If ratifying differently,
+say so on the PR.
 
 **D2 — Which booking rail carries a Musement order?** Recommendation: **the
 transport-commerce pattern** — a `service_bookings` row with NULL `service_id` and
@@ -57,6 +83,11 @@ most, the cities a trip being built actually targets) — not the worldwide cata
 integration is an inventory deepening for the wedge, not a breadth play.
 
 ## 3. Money-path design (§14/§15/MONEY_MAP obligations — binding on the build)
+
+> **This section is the FIRST INSTANCE of the ratified money-flow blueprint** (decision-maker,
+> Aug 2, 2026) — the canonical lifecycle every new charge rail follows, now codified as
+> `docs/MONEY_MAP.md` §0. Future integrations copy the blueprint, not this brief; this brief adds
+> only the Musement-specific bindings.
 
 - **Charge:** traveler pays via the EXISTING `/api/checkout` Stripe rail — amount
   server-derived from a server-side re-quote of the Musement price at checkout time (never
