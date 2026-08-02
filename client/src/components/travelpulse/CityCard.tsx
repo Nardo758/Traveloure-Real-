@@ -106,6 +106,17 @@ export function CityCard(props: CityCardProps) {
         {imageUrl ? (
           <img
             src={imageUrl}
+            {...(imageUrl.includes("images.unsplash.com") && /[?&]w=\d+/.test(imageUrl)
+              ? {
+                  // Unsplash serves arbitrary widths via the `w` param; without a
+                  // srcset a phone downloads the full 1080px asset for a ~330px slot.
+                  srcSet: [400, 640, 1080]
+                    .map((w) => `${imageUrl.replace(/([?&]w=)\d+/, `$1${w}`)} ${w}w`)
+                    .join(", "),
+                  sizes: "(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw",
+                }
+              : {})}
+            loading="lazy"
             alt={cityName}
             className="w-full h-full object-cover transition-transform duration-500 motion-reduce:transition-none group-hover:scale-105"
           />

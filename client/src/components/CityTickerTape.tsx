@@ -29,7 +29,7 @@ export function CityTickerTape() {
 
           <Link
             href="/experiences/travel"
-            className="flex items-center gap-1 font-semibold whitespace-nowrap bg-white/20 hover-elevate px-3 py-1 rounded-full text-xs flex-shrink-0"
+            className="flex items-center gap-1 font-semibold whitespace-nowrap bg-white/20 hover-elevate px-3 py-1 rounded-full text-xs flex-shrink-0 min-h-[44px] sm:min-h-0"
             data-testid="link-apply-now"
           >
             Start planning
