@@ -1889,6 +1889,10 @@ export const coordinationStates = pgTable("coordination_states", {
   // Set to true when a refund is processed but no platform_revenue rows are found to reverse.
   // This is an admin-visible flag indicating a ledger inconsistency that needs manual review.
   revenueReversalMissing: boolean("revenue_reversal_missing").notNull().default(false),
+  // #877 (migration 169): lets an admin mark the above ledger-gap warning reviewed instead of
+  // it warning forever in the admin concierge panel. NULL = not yet reviewed (open warning).
+  revenueReversalReviewedAt: timestamp("revenue_reversal_reviewed_at"),
+  revenueReversalReviewedBy: varchar("revenue_reversal_reviewed_by").references(() => users.id, { onDelete: "set null" }),
 
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
