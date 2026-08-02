@@ -146,6 +146,11 @@ export interface ItineraryItem {
    *  `id` above is the CART ITEM id, not a `provider_services.id` — they are not interchangeable.
    *  Undefined for an external/AI item with no catalog row (the honest value, §13). */
   providerServiceId?: string;
+  /** Lane 6 residue (drop policy a): true for a `ready_for_checkout` trip item — schedule-movable
+   *  but NEVER droppable by a variant. A generated variant that omits one is invalid and is
+   *  rejected before persistence (fail-closed, ruling 15). Only the trip-backed baseline loader
+   *  sets this; cart/inline baselines have no routing status and leave it undefined. */
+  mustRetain?: boolean;
 }
 
 /**
@@ -996,12 +1001,23 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
       return isKeyword || isHighValueExperience;
     });
 
+    // Drop policy a (Lane 6 residue): in-checkout (`ready_for_checkout`) items are protected
+    // regardless of price or commodity-ness — the traveler has expressed purchase intent. They
+    // join the PROTECTED prompt section (schedule-movable, never droppable); the server-side
+    // rejection below the AI call is the enforcement, this is just steering to keep false
+    // rejections rare.
+    const mustRetainItems = baselineItems.filter(item => item.mustRetain);
+    const protectedPromptItems = [
+      ...marqueeItems,
+      ...mustRetainItems.filter(item => !marqueeItems.includes(item)),
+    ];
+
     let marqueeSection = '';
-    if (marqueeItems.length > 0) {
-      const marqueeList = marqueeItems
+    if (protectedPromptItems.length > 0) {
+      const marqueeList = protectedPromptItems
         .map(item => `- Day ${item.dayNumber || 1} ${item.timeSlot || ''} | ${item.name} | $${item.price || 0}`)
         .join('\n');
-      marqueeSection = `\n\nPROTECTED ITEMS (must appear in EVERY variant — do NOT replace, remove, or substitute these):\n${marqueeList}\n\nBudget savings MUST come only from non-protected activities and accommodation. Never touch the protected items.`;
+      marqueeSection = `\n\nPROTECTED ITEMS (must appear in EVERY variant — do NOT replace, remove, or substitute these; you MAY move their day/time):\n${marqueeList}\n\nBudget savings MUST come only from non-protected activities and accommodation. Never touch the protected items.`;
     }
 
     // ── Lane 5b: already-purchased items as immovable constraints ─────────────
@@ -1199,6 +1215,27 @@ Respond with valid JSON in this exact format:
           anchorAdjusted.push(...adjusted);
         }
         reorderedItems = anchorAdjusted;
+      }
+
+      // Lane 6 residue R1 (drop policy a, rulings 4/15): a variant that omits any in-checkout
+      // (`ready_for_checkout`) baseline item is INVALID — rejected here, before any row is
+      // persisted. Match is the same two-key predicate the strip/dedupe use (`providerServiceId`
+      // first, then case-insensitive title). FAIL-CLOSED: no match ⇒ rejection — the fuzzy
+      // match's failure mode must be a false rejection (regenerate), never a false acceptance.
+      if (mustRetainItems.length > 0) {
+        const omitted = mustRetainItems.filter(retained => {
+          const retainedName = retained.name.trim().toLowerCase();
+          return !reorderedItems.some(item =>
+            (retained.providerServiceId && item.providerServiceId === retained.providerServiceId) ||
+            item.name.trim().toLowerCase() === retainedName,
+          );
+        });
+        if (omitted.length > 0) {
+          console.error(
+            `[optimizer] variant "${variant.name}" REJECTED (drop policy a): omits ${omitted.length} in-checkout item(s): ${omitted.map(o => o.name).join(", ")}`,
+          );
+          return; // not persisted — an invalid variant cannot be generated, selected, or applied
+        }
       }
 
       // Calculate enhanced metrics

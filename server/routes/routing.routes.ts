@@ -74,6 +74,7 @@ import { isAuthenticated } from "../replit_integrations/auth";
 import { verifyTripOwnership } from "../utils/trip-ownership";
 import { isTripAdvisor } from "../utils/trip-advisor";
 import { syncItemProjection } from "../services/cart-projection.service";
+import { logItemTransition } from "../services/item-transition-log.service";
 import { logger } from "../infrastructure/logger";
 
 const router = Router();
@@ -198,19 +199,37 @@ router.post("/api/trips/:tripId/items/:itemId/route", isAuthenticated, async (re
       });
     }
 
-    // ── Atomic conditional flip. `expectedFrom` is the state we validated against; if the
-    // row moved underneath us the UPDATE matches 0 rows and we 409 rather than clobber.
-    const updated = await db
-      .update(itineraryItems)
-      .set({ routingStatus: to, updatedAt: new Date() })
-      .where(
-        and(
-          eq(itineraryItems.id, itemId),
-          eq(itineraryItems.tripId, tripId),
-          eq(itineraryItems.routingStatus, from),
-        ),
-      )
-      .returning({ id: itineraryItems.id, routingStatus: itineraryItems.routingStatus });
+    // ── Atomic conditional flip + diary row, ONE transaction (Lane S, ruling 18). The
+    // `expectedFrom` CAS is unchanged: if the row moved underneath us the UPDATE matches 0 rows
+    // and we 409 rather than clobber (and write no diary row — no edge was traversed). On a
+    // traveler/expert edge a diary failure MAY fail the request (500, transition rolled back) —
+    // the money-path swallow contract applies only to checkout/refund, not here.
+    const updated = await db.transaction(async (tx) => {
+      const rows = await tx
+        .update(itineraryItems)
+        .set({ routingStatus: to, updatedAt: new Date() })
+        .where(
+          and(
+            eq(itineraryItems.id, itemId),
+            eq(itineraryItems.tripId, tripId),
+            eq(itineraryItems.routingStatus, from),
+          ),
+        )
+        .returning({ id: itineraryItems.id, routingStatus: itineraryItems.routingStatus });
+
+      if (rows.length > 0) {
+        await logItemTransition(tx, {
+          tripId,
+          itemId,
+          eventType: "status_transition",
+          fromStatus: from,
+          toStatus: to,
+          actorType: actor === "owner" ? "traveler" : "expert",
+          actorId: userId,
+        });
+      }
+      return rows;
+    });
 
     if (updated.length === 0) {
       return res.status(409).json({

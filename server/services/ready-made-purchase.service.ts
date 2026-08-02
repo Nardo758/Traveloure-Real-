@@ -66,6 +66,8 @@ export async function fulfillReadyMadePurchase(purchaseId: string): Promise<Fulf
   const end = new Date(start.getTime() + Math.max(0, listing.durationDays - 1) * 24 * 60 * 60 * 1000);
   const fmt = (d: Date) => d.toISOString().slice(0, 10);
 
+  // Lane S ruling 17: every trip mints its identity at birth — one scheme, no exceptions.
+  const trackingNumber = await storage.generateTrackingNumber("TRV");
   const [cloneTrip] = await db
     .insert(trips)
     .values({
@@ -73,6 +75,7 @@ export async function fulfillReadyMadePurchase(purchaseId: string): Promise<Fulf
       authorId: null,             // a clone is a normal traveler trip, never authoring-mode
       title: listing.title,
       destination: listing.market,
+      trackingNumber,
       // Placeholder window sized to the plan; the buyer re-dates it in their own planner.
       startDate: fmt(start),
       endDate: fmt(end),

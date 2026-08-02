@@ -58,6 +58,21 @@ jobs:
       - name: Unmounted-router guard
         run: node scripts/check-unmounted-routers.cjs
 
+  trip-mint-owner-guard:
+    name: trip-mint-owner-guard (CLAUDE.md §13 L10)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # Fails if a trips-INSERT site doesn't mint the owner's trip_collaborators row (or carry a
+      # trip-mint-owner-ok annotation for deliberate NULL-owner authoring builds). getTripRole
+      # resolves access by assignment only, so an owner-less mint locks the owner out of their own
+      # trip. Node built-ins only — no npm ci needed. See §13 L10.
+      - name: Trip-mint owner-access guard
+        run: node scripts/check-trip-mint-owner-access.cjs
+
   linkage-preservation-guard:
     name: linkage-preservation-guard (Trip-Canon Lane G / E2E_ITEM_LIFECYCLE.md §3)
     runs-on: ubuntu-latest

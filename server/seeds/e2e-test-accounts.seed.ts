@@ -10,8 +10,9 @@
  */
 
 import { db } from "../db";
+import { storage } from "../storage";
 import { users } from "@shared/models/auth";
-import { trips } from "@shared/schema";
+import { trips, tripCollaborators } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import crypto from "crypto";
 
@@ -121,9 +122,13 @@ async function seedE2EAccounts() {
       const pad = (n: number) => String(n).padStart(2, "0");
       const fmt = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
+      const tripId = crypto.randomUUID();
+      // Lane S ruling 17: every trip mints its identity at birth — seeds included.
+      const trackingNumber = await storage.generateTrackingNumber("TRV");
       await db.insert(trips).values({
-        id: crypto.randomUUID(),
+        id: tripId,
         userId: traveler.id,
+        trackingNumber,
         title: "Kyoto Discovery Trip",
         destination: "Kyoto, Japan",
         startDate: fmt(start),
@@ -134,6 +139,12 @@ async function seedE2EAccounts() {
         adults: 2,
         kids: 0,
       });
+      // L10: getTripRole resolves access by assignment only — without this row the seeded
+      // traveler 403s on assignment-gated surfaces of their own trip until the boot backfill runs.
+      await db
+        .insert(tripCollaborators)
+        .values({ tripId, userId: traveler.id, role: "owner" })
+        .onConflictDoNothing();
       console.log(`  + Seeded Kyoto trip for ${traveler.email}`);
     } else {
       console.log(`  ✓ Traveler already has ${existingTrips.length} trip(s)`);
