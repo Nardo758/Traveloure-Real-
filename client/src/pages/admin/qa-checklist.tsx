@@ -265,6 +265,29 @@ const BLOCKS: Block[] = [
       { id: "R4", label: "No console.log in payment code", detail: "All payment/stripe/webhook logs converted to console.info", verifyMethod: "server" },
     ],
   },
+  {
+    // Runtime layer (H1–H6) — the only checks here that actually talk to the running app.
+    // Everything above is static (grep/file-existence); these self-HTTP the live routes, read
+    // real env-var presence, and roll up provider/invariant/scheduler signal. See
+    // server/services/runtime-health.service.ts. Same "server" verifyMethod as the static
+    // checks — the detail note below is overwritten by the live server response on Verify.
+    id: "runtime",
+    title: "Runtime Health",
+    icon: RefreshCw,
+    color: "#B45309",
+    items: [
+      { id: "H1a", label: "Route liveness: /api/health", detail: "Self-HTTP GET — asserts real JSON, not the Vite SPA catch-all", verifyMethod: "server" },
+      { id: "H1b", label: "Route liveness: /api/discover", detail: "Self-HTTP GET — asserts a real {services:[...]} shape", verifyMethod: "server" },
+      { id: "H1c", label: "Route liveness: /api/experience-types", detail: "Self-HTTP GET — asserts a real JSON array shape", verifyMethod: "server" },
+      { id: "H1d", label: "Route liveness: /api/fee-bands/:key", detail: "Self-HTTP GET — asserts a real band or an honest {error} JSON body", verifyMethod: "server" },
+      { id: "H1e", label: "Route liveness: public page (\"/\")", detail: "Self-HTTP GET — asserts real HTML with the app-root marker", verifyMethod: "server" },
+      { id: "H2", label: "Money-secret presence", detail: "Reports which STRIPE_*/VITE_STRIPE_* vars are set; fails if a webhook secret is missing while STRIPE_SECRET_KEY is set", verifyMethod: "server" },
+      { id: "H3", label: "Live-key sanity", detail: "In production, STRIPE_SECRET_KEY must carry the sk_live_ prefix (reuses validate-env.ts's rule)", verifyMethod: "server" },
+      { id: "H4", label: "Provider health rollup", detail: "Summarizes server/services/provider-health.service.ts by status; SKIPs honestly if absent", verifyMethod: "server" },
+      { id: "H5", label: "Data invariants", detail: "Runs scripts/invariants.mjs if present; SKIPs honestly if absent", verifyMethod: "server" },
+      { id: "H6", label: "Scheduler startup wiring", detail: "STATIC assertion that server/index.ts calls .start() on the tracked schedulers", verifyMethod: "server" },
+    ],
+  },
 ];
 
 const STATUS_CONFIG: Record<ItemStatus, { label: string; icon: React.ElementType; bg: string; border: string; text: string }> = {
