@@ -177,6 +177,12 @@ export default function MyTrips() {
                     View
                   </Button>
                 </Link>
+                {/* Slip dispatch §4 Spec A: unobtrusive link to the slip's canonical address. */}
+                <Link href={`/plans/${trip.id}`} onClick={(e) => e.stopPropagation()}>
+                  <Button size="sm" variant="ghost" className="text-muted-foreground" data-testid={`button-open-slip-${trip.id}`}>
+                    Open slip
+                  </Button>
+                </Link>
                 <Link href="/chat" onClick={(e) => e.stopPropagation()}>
                   <Button size="sm" variant="ghost" className="text-muted-foreground" data-testid={`button-chat-${trip.id}`}>
                     Chat

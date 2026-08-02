@@ -5,9 +5,11 @@ PlanCard, used as the **must-not-regress baseline** for the PlanCard build. Phas
 gate against this list (see "Phase gate" below).
 
 **Scope:** `client/src/components/plancard/` — `PlanCard.tsx` and its sub-components.
-`PlanCard` renders two stages off the `stage` prop: `summary` (compact dashboard card →
-`PlanCardSummary`, `PlanCard.tsx:752`) and `full` (control center, `PlanCard.tsx:836`).
-Primary data source for both: `useQuery(['/api/trips/${id}/plancard'])` → `PlanCardData`
+`PlanCard` renders three stages off the `stage` prop: `summary` (compact dashboard card →
+`PlanCardSummary`, `PlanCard.tsx:752`), `full` (control center, `PlanCard.tsx:836`), and
+`proposal` (Spec C variant-comparison column → `ProposalColumn.tsx`; renders entirely from
+the `proposal` prop, fires NO plancard query of its own — see "Stage C" below).
+Primary data source for summary/full: `useQuery(['/api/trips/${id}/plancard'])` → `PlanCardData`
 (`PlanCard.tsx:745`; shape in `plancard-types.tsx:192`). Role resolves from
 `plancardData.tripRole ?? role` (`PlanCard.tsx:832`).
 
@@ -92,6 +94,22 @@ The manifest must keep rendering against this trip, and the summary/stats metric
 | B24 | View Itinerary | `PlanCard.tsx` (bottom bar) | Link `/itinerary/:id` |
 | B25 💰 | **Upsell slot — pre-trip** ("Complete your plan") | `PlanCardUpsellSlot.tsx` (mount `PlanCard.tsx:972`) | `POST /api/upsell/plancard-pretrip`; Explore → `/discover?categoryKey=…` + `POST /api/upsell/click` |
 | B26 💰 | **Upsell slot — on-trip** ("Near you on this trip") | `PlanCardUpsellSlot.tsx` (mount `PlanCard.tsx:1017`) | `POST /api/upsell/plancard-ontrip`; same Explore + click attribution. **Renders when the app is open; on-trip delivery gated on an unbuilt push channel — see [`plancard-mobile-delivery-model.md`](./plancard-mobile-delivery-model.md).** Still must-not-regress (the slot itself). |
+
+---
+
+## Stage C — Proposal column (`stage="proposal"` → `ProposalColumn.tsx`) + Slip surfaces (Aug 2, 2026)
+
+Added by the Slip rendering-specs lane (`docs/briefs/SLIP_EXPERIENCE_DISPATCH.md` §4 — Specs A/B/C).
+All three are DERIVATIONS of the canonical family (extend-never-fork); status tints live ONCE in
+`slip-tokens.ts` (teal `with_expert` / gold `ready_for_checkout` / green `purchased`; neutral outline
+`in_planning`; muted outline "logistics") and `RoutingBadge` (`ActivitiesSection.tsx`, now exported)
+consumes them — so one canonical trip renders the SAME status pill on every surface (ruling 8).
+
+| Surface | Component / route | Data source |
+|---|---|---|
+| **Slip view (Spec A)** | `SlipView.tsx`, page `pages/slip-view.tsx`, route `/plans/:tripId` (parameterised — NOT in role-routes-config) | The same `GET /api/trips/:tripId/plancard` DTO (same query key → shared cache). Header: `plancard.trip.trackingNumber` (NULL → renders nothing) + `planVersion` (= transition-log count); phase chip date-derived (never `trips.status`). Item rows: `days[].activities[]` (`routingStatus`, `booking`, `expertNote`, `confirmationNumber`); logistics rows: `days[].transports[]`. Reuses `RoutingBadge` + `RoutingActions` (owner/expert edges — never duplicated). Diary footer: `recentTransitions` (last 20 `item_transition_log` rows, threaded by the assembler at `full` only — owner diary, never on share/teaser). `?item=<itemId>` scrolls to + briefly highlights the row. Entry link: "Open slip" on the My Plans list (`my-trips.tsx`). |
+| **Slip post-optimize (Spec B)** | same `SlipView.tsx` — presentational additions only, NOT a second view | `OptimizedBadge` when `recentTransitions` contains a real `variant_applied` event; anchor glyph + "fixed point" secondary on purchased rows (only post-optimize); logistics "added by optimizer" from the leg's real `suggestedBy === "ai"` marker. Per-item move annotations render NOTHING — apply does not persist variant move metadata onto `itinerary_items` (no source → no render, §13). |
+| **Proposal column (Spec C)** | `<PlanCard stage="proposal" proposal={…}/>` → `ProposalColumn.tsx`; consumed by `pages/itinerary-comparison.tsx` (slip-backed comparisons only) | Anchored (purchased) items from the CANONICAL trip rows (the plancard DTO — identical across columns by construction, anchor glyph + the same purchased pill); optimizable items from the variant's own rows; muted transport line from the variant's server-computed legs (`GET /api/itinerary-variants/:id/transport-legs`); "Recommended" chip only when exactly one AI variant holds the strictly-highest `optimizationScore`; ApplyButton → existing `select` + `apply-to-trip` endpoints → navigate `/plans/:tripId`. NO routing actions, NO per-item apply, NO save-for-later. `with_expert` items appear in NO column — exclusion stated once in the CompareHeader. Comparisons with no `tripId` (guest/cart flow) keep the legacy rendering pending Lane 5b. |
 
 ---
 

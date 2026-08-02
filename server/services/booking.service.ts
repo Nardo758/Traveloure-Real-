@@ -5,6 +5,7 @@
 
 import { db } from '../db';
 import { sql } from 'drizzle-orm';
+import { storage } from '../storage';
 import Stripe from 'stripe';
 import { stripePaymentService } from './stripe-payment.service';
 import { availabilityService } from './availability.service';
@@ -89,10 +90,12 @@ class BookingService {
     
     // Use UUID format for consistency with the rest of the application
     const tripId = this.generateUUID();
-    
+
+    // Lane S ruling 17: every trip mints its identity at birth — one scheme, no exceptions.
+    const trackingNumber = await storage.generateTrackingNumber('TRV');
     await db.execute(sql`
-      INSERT INTO trips (id, user_id, title, destination, start_date, end_date, status, created_at)
-      VALUES (${tripId}, ${userId}, ${'AI Generated Trip'}, ${destination}, ${startDate}::date, ${endDate}::date, 'draft', NOW())
+      INSERT INTO trips (id, user_id, title, destination, start_date, end_date, status, tracking_number, created_at)
+      VALUES (${tripId}, ${userId}, ${'AI Generated Trip'}, ${destination}, ${startDate}::date, ${endDate}::date, 'draft', ${trackingNumber}, NOW())
     `);
 
     // L10 owner row: getTripRole()/canMutateTrip() resolve access by collaborator
@@ -1011,14 +1014,16 @@ class BookingService {
     const budget = saved.budget || null;
     const tripId = crypto.randomUUID();
 
+    // Lane S ruling 17: every trip mints its identity at birth — one scheme, no exceptions.
+    const trackingNumber = await storage.generateTrackingNumber('TRV');
     await db.execute(sql`
       INSERT INTO trips (
         id, user_id, title, destination, start_date, end_date,
-        number_of_travelers, budget, status, created_at, updated_at
+        number_of_travelers, budget, status, tracking_number, created_at, updated_at
       ) VALUES (
         ${tripId}, ${userId}, ${`Trip to ${destination}`}, ${destination},
         ${startDate}, ${endDate}, ${travelers}, ${budget},
-        'planning', NOW(), NOW()
+        'planning', ${trackingNumber}, NOW(), NOW()
       )
     `);
 

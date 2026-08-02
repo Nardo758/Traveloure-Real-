@@ -63,10 +63,12 @@ import {
   type TripPlanMeta,
   type TripPlanMetrics,
   type TripPlanPlanApproval,
+  type TripPlanTransition,
   type VariantFullTripPlan,
 } from "@shared/trip-plan";
 import { geocodeAddress } from "../utils/geocode";
 import { getTripTransportLegs } from "./trip-transport-legs.service";
+import { getRecentTripTransitions, getTripTransitionCount } from "./item-transition-log.service";
 
 /** Raised when a level is requested that v1 cannot honestly produce (`social`). */
 export class TripPlanLevelUnsupportedError extends Error {
@@ -855,12 +857,53 @@ export async function assembleTripPlan(
     }
   }
 
-  // optimizationDelta from the AI optimize changelog entry (set by apply-to-trip)
+  // optimizationDelta — Lane S ruling 11 moved the apply event to `item_transition_log`, so new
+  // applies no longer write the `itinerary_changes` optimize entry this used to read. The delta
+  // now derives from the SELECTED variant's own metrics rows (kept through apply BY DESIGN —
+  // ruling 14's discard spares the selected variant + metrics precisely for post-apply readers
+  // like this one). The historical changelog entry remains the fallback for pre-Lane-S trips.
   const optimizeEntry = changes.find((c) => c.role === "ai" && c.changeType === "optimize");
-  const optimizationDelta = optimizeEntry?.metadata
+  const legacyDelta = optimizeEntry?.metadata
     ? ((optimizeEntry.metadata as any).delta ?? null)
     : null;
+  let optimizationDelta = legacyDelta;
+  if (!optimizationDelta && comparison?.optimizedAt && variantMetrics.length > 0) {
+    const metricNumbers: Record<string, number> = {};
+    for (const m of variantMetrics) {
+      const v = parseFloat(m.value?.toString() ?? "");
+      if (!isNaN(v)) metricNumbers[m.metricKey] = v;
+    }
+    optimizationDelta = {
+      savings: metricNumbers["savings"] ?? null,
+      savingsPercent: metricNumbers["savings_percent"] ?? null,
+      starRatingDelta: metricNumbers["star_rating_delta"] ?? null,
+      travelDistanceMinutes: metricNumbers["travel_distance_minutes"] ?? null,
+      optimizationScore: null,
+    };
+  }
   const lastOptimizedAt = comparison?.optimizedAt ?? null;
+
+  // Lane S §3: the slip's identity + version. Version = diary row count (display-only, never a
+  // stored column); pre-existing trips honestly count from zero — history starts when the log
+  // starts (§13, no synthetic backfill). trackingNumber may still be NULL on pre-Lane-S rows
+  // (no backfill was ratified) — null is the honest value, render nothing (Spec A global rules).
+  const planVersion = await getTripTransitionCount(tripId);
+
+  // Slip dispatch §4 (Spec A `<TransitionLogFooter>`): the last 20 diary rows, newest first.
+  // FULL level only — this branch is already past the teaser/preview early-returns, so the
+  // owner's diary can never ride a public channel; the share surfaces (variant adapter /
+  // share delta) never receive this field at all. READ-only: the log module is append-only.
+  const recentTransitions: TripPlanTransition[] = (await getRecentTripTransitions(tripId, 20)).map(
+    (t) => ({
+      id: t.id,
+      itemId: t.itemId ?? null,
+      eventType: t.eventType,
+      fromStatus: t.fromStatus ?? null,
+      toStatus: t.toStatus ?? null,
+      actorType: t.actorType,
+      createdAt: String(t.createdAt),
+    }),
+  );
 
   const changeLog: TripPlanChange[] = changes.slice(0, 10).map((c) => ({
     id: c.id,
@@ -896,6 +939,8 @@ export async function assembleTripPlan(
     // has none, never omitted here, so a consumer can distinguish "no purchases" from "this
     // producer does not report purchases" (the variant snapshot omits the key entirely).
     bookings: tripBookings,
+    // Spec A: the slip's diary (owner surface only — see the field's contract in trip-plan.ts).
+    recentTransitions,
     plancard: {
       tripRole: options.tripRole ?? (trip.userId === options.viewerId ? "owner" : "expert"),
       trip: {
@@ -908,6 +953,10 @@ export async function assembleTripPlan(
         endDate: trip.endDate as any,
         travelers: trip.numberOfTravelers || 1,
         budget: trip.budget ? `$${parseFloat(trip.budget.toString()).toLocaleString()}` : null,
+        // Lane S §3: slip identity (existing TRV- scheme, ruling 10) + version (= diary row
+        // count). Additive — existing consumers ignore unknown keys.
+        trackingNumber: (trip as any).trackingNumber ?? null,
+        planVersion,
       },
       changeLog,
       metrics: metricsMap,

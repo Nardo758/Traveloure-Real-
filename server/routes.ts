@@ -156,6 +156,7 @@ import {
 import { calculateCommission, BookingType } from "./utils/commissionCalculator";
 // Ready-made authoring mode (brief §2): explicit present-value author check. Never getTripRole.
 import { isTripAuthor } from "./utils/trip-authorship";
+import { verifyTripOwnership } from "./utils/trip-ownership";
 // Canonical per-trip mutation authorization: owner ‖ trip-assigned expert ‖ trip author ‖
 // audit-logged admin. Returns null when authorized, else the {status, message} to send.
 import { authorizeTripLogistics } from "./utils/trip-logistics-auth";
@@ -180,12 +181,9 @@ function serviceCategorySlugToFeeCategory(slug: string | null | undefined): stri
   return "default";
 }
 
-// Helper function to verify trip ownership
-async function verifyTripOwnership(tripId: string, userId: string): Promise<boolean> {
-  if (userId == null) return false;
-  const trip = await storage.getTrip(tripId);
-  return trip?.userId != null && trip.userId === userId;
-}
+// verifyTripOwnership now comes from ./utils/trip-ownership — the shared single source of
+// truth (it additionally handles raw-SQL snake_case rows and never throws). The local copy
+// this file used to carry was the "duplicate implementation" the role-config map flagged.
 
 /**
  * OWNER-tier gate for per-trip data an assigned expert must NEVER see or write

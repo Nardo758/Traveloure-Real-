@@ -749,4 +749,9 @@ export const MIGRATION_FILES = [
   // 170_affiliate_booking_verification.sql for the full rationale; §16 (no affiliateUrl in the
   // snapshot) is enforced in server/services/booking-verification.service.ts, not the DB.
   "170_affiliate_booking_verification.sql",
+  // 171: Lane S — item_transition_log (the slip's append-only diary; rulings 11/12/16/18).
+  // New table + index, both declared in shared/schema.ts same commit; no CHECK → no push trap.
+  // Numbering note (ruling 19): 171 verified free on this branch at merge time; the
+  // chain-integrity test is the arbiter if a concurrent lane also claims it.
+  "171_item_transition_log.sql",
 ] as const;
