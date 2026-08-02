@@ -1,0 +1,414 @@
+<title>Chat redesign — Traveloure</title>
+<style>
+  :root {
+    --ink:#15171A; --paper:#FFFFFF; --canvas:#F6F7F9; --line:#E3E6EA; --muted:#6B7280;
+    --brand:#FF385C; --brand-soft:#FFF1F3; --ok:#0F7B57; --ok-soft:#E9F5F0;
+    --warn:#9A5B00; --warn-soft:#FDF3E4; --frame:#FFFFFF; --shadow:0 1px 2px rgba(15,17,20,.06), 0 8px 24px -12px rgba(15,17,20,.18);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --ink:#EEF0F3; --paper:#15171A; --canvas:#0F1114; --line:#2A2E34; --muted:#9AA1AB;
+      --brand:#FF5A75; --brand-soft:#2E1A20; --ok:#5DBF98; --ok-soft:#14261F; --warn:#DCA457; --warn-soft:#2A2113;
+      --frame:#1B1E22; --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6); }
+  }
+  :root[data-theme="dark"] { --ink:#EEF0F3; --paper:#15171A; --canvas:#0F1114; --line:#2A2E34; --muted:#9AA1AB;
+    --brand:#FF5A75; --brand-soft:#2E1A20; --ok:#5DBF98; --ok-soft:#14261F; --warn:#DCA457; --warn-soft:#2A2113;
+    --frame:#1B1E22; --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.6); }
+  :root[data-theme="light"] { --ink:#15171A; --paper:#FFFFFF; --canvas:#F6F7F9; --line:#E3E6EA; --muted:#6B7280;
+    --brand:#FF385C; --brand-soft:#FFF1F3; --ok:#0F7B57; --ok-soft:#E9F5F0; --warn:#9A5B00; --warn-soft:#FDF3E4;
+    --frame:#FFFFFF; --shadow:0 1px 2px rgba(15,17,20,.06), 0 8px 24px -12px rgba(15,17,20,.18); }
+
+  * { box-sizing: border-box; }
+  body { background: var(--canvas); color: var(--ink); margin:0; padding:0 20px 96px;
+    font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    line-height:1.55; -webkit-font-smoothing:antialiased; }
+  .wrap { max-width:1080px; margin:0 auto; }
+
+  h1,h2 { font-family:Georgia,"Times New Roman",serif; letter-spacing:-.01em; text-wrap:balance; }
+  h1 { font-size:36px; line-height:1.12; margin:56px 0 8px; }
+  h2 { font-size:23px; margin:0 0 6px; }
+  .eyebrow { text-transform:uppercase; letter-spacing:.14em; font-size:11px; font-weight:700; color:var(--brand); margin:0 0 10px; }
+  .sub { color:var(--muted); max-width:66ch; margin:0 0 4px; font-size:15px; }
+  .lede { font-size:17px; max-width:66ch; margin:0 0 8px; }
+  section { margin:64px 0 0; }
+  .head { margin-bottom:22px; }
+
+  .why { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:12px; margin-top:20px; }
+  .why div { background:var(--frame); border:1px solid var(--line); border-left:3px solid var(--brand);
+    border-radius:8px; padding:13px 15px; }
+  .why b { display:block; font-size:13.5px; margin-bottom:3px; }
+  .why p { margin:0; font-size:13px; color:var(--muted); }
+
+  /* ── shared UI-frame primitives (these mirror the real app, not this doc) ───── */
+  .frame { background:var(--frame); border:1px solid var(--line); border-radius:12px; overflow:hidden; box-shadow:var(--shadow); }
+  .framecap { display:flex; align-items:baseline; gap:10px; margin:0 0 9px; }
+  .framecap b { font-size:13px; }
+  .framecap span { font-size:12px; color:var(--muted); font-family:ui-monospace,Menlo,monospace; }
+
+  .ui { font-size:13px; }
+  .ui .topbar { display:flex; align-items:center; justify-content:space-between; gap:10px;
+    padding:11px 14px; border-bottom:1px solid var(--line); }
+  .ui .topbar h3 { margin:0; font-size:15px; font-weight:700; }
+  .ui .topbar p { margin:1px 0 0; font-size:12px; color:var(--muted); }
+
+  .split { display:grid; grid-template-columns:300px 1fr; min-height:430px; }
+  .pane-l { border-right:1px solid var(--line); display:flex; flex-direction:column; min-width:0; }
+  .pane-r { display:flex; flex-direction:column; min-width:0; background:var(--canvas); }
+
+  .listhead { padding:11px 12px; border-bottom:1px solid var(--line); display:flex; flex-direction:column; gap:9px; }
+  .search { display:flex; align-items:center; gap:7px; background:var(--canvas); border:1px solid var(--line);
+    border-radius:8px; padding:7px 9px; color:var(--muted); font-size:12.5px; }
+  .findbtn { display:flex; align-items:center; justify-content:center; gap:6px; width:100%;
+    background:var(--brand); color:#fff; border:0; border-radius:8px; padding:8px; font-size:12.5px; font-weight:650;
+    cursor:pointer; font-family:inherit; }
+  .findbtn:focus-visible { outline:2px solid var(--ink); outline-offset:2px; }
+
+  .threads { overflow:auto; flex:1; min-height:0; padding:6px; display:flex; flex-direction:column; gap:2px; }
+  .thread { display:flex; gap:9px; padding:9px; border-radius:9px; cursor:pointer; min-width:0; align-items:flex-start; }
+  .thread:hover { background:var(--canvas); }
+  .thread.on { background:var(--brand-soft); box-shadow:inset 2px 0 0 var(--brand); }
+  .av { width:34px; height:34px; border-radius:50%; flex:0 0 34px; display:grid; place-items:center;
+    font-size:12px; font-weight:700; background:var(--canvas); border:1px solid var(--line); color:var(--muted); }
+  .tmeta { min-width:0; flex:1; }
+  .trow { display:flex; align-items:baseline; gap:6px; }
+  .tname { font-weight:650; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .ttime { margin-left:auto; font-size:11px; color:var(--muted); flex:0 0 auto; }
+  .tprev { font-size:12px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; margin-top:1px; }
+  .dot { width:7px; height:7px; border-radius:50%; background:var(--brand); flex:0 0 7px; margin-top:5px; }
+
+  .thead { display:flex; align-items:center; gap:10px; padding:10px 14px; border-bottom:1px solid var(--line); background:var(--frame); }
+  .thead .nm { font-weight:700; font-size:13.5px; }
+  .thead .st { font-size:11.5px; color:var(--muted); }
+  .chip { font-size:10.5px; padding:2px 7px; border-radius:20px; border:1px solid var(--line); color:var(--muted); }
+  .chip.live { color:var(--ok); background:var(--ok-soft); border-color:transparent; }
+  .ghost { margin-left:auto; font-size:12px; border:1px solid var(--line); background:var(--frame); color:var(--ink);
+    border-radius:8px; padding:5px 10px; cursor:pointer; font-family:inherit; }
+
+  .msgs { flex:1; min-height:0; overflow:auto; padding:16px 14px; display:flex; flex-direction:column; gap:11px; }
+  .bub { max-width:74%; padding:9px 12px; border-radius:14px; font-size:12.5px; line-height:1.45; }
+  .bub .t { display:block; font-size:10.5px; opacity:.72; margin-top:4px; }
+  .them { background:var(--frame); border:1px solid var(--line); border-bottom-left-radius:4px; align-self:flex-start; }
+  .me { background:var(--brand); color:#fff; border-bottom-right-radius:4px; align-self:flex-end; }
+
+  /* the inline plan event — the "Light" option */
+  .ev { align-self:center; display:flex; align-items:center; gap:8px; max-width:82%;
+    background:var(--frame); border:1px dashed var(--line); border-radius:20px; padding:5px 12px; font-size:11.5px; color:var(--muted); }
+  .ev b { color:var(--ink); font-weight:650; }
+  .ev a { color:var(--brand); text-decoration:none; font-weight:650; }
+  .ev .ic { font-size:12px; }
+
+  .composer { display:flex; gap:8px; padding:10px 12px; border-top:1px solid var(--line); background:var(--frame); }
+  .composer .inp { flex:1; background:var(--canvas); border:1px solid var(--line); border-radius:9px;
+    padding:9px 11px; color:var(--muted); font-size:12.5px; }
+  .send { width:36px; border-radius:9px; background:var(--brand); color:#fff; border:0; display:grid; place-items:center; cursor:pointer; }
+
+  .empty { flex:1; display:grid; place-items:center; text-align:center; padding:30px; }
+  .empty b { display:block; font-size:15px; margin-bottom:4px; }
+  .empty p { margin:0; font-size:12.5px; color:var(--muted); max-width:34ch; }
+
+  /* mobile frames */
+  .phones { display:flex; gap:22px; flex-wrap:wrap; }
+  .phone { width:290px; flex:0 0 290px; }
+  .phone .frame { min-height:0; }
+  .phone .ui { display:flex; flex-direction:column; height:480px; }
+  .backrow { display:flex; align-items:center; gap:9px; padding:10px 12px; border-bottom:1px solid var(--line); }
+  .backrow .bk { font-size:15px; color:var(--muted); }
+
+  /* directory sheet */
+  .sheet { max-width:420px; }
+  .sheetrow { display:flex; gap:10px; padding:10px 12px; border-bottom:1px solid var(--line); align-items:flex-start; }
+  .sheetrow:last-child { border-bottom:0; }
+  .tags { display:flex; gap:5px; margin-top:5px; flex-wrap:wrap; }
+  .tag { font-size:10.5px; background:var(--canvas); border:1px solid var(--line); border-radius:5px; padding:2px 6px; color:var(--muted); }
+  .msgbtn { margin-left:auto; align-self:center; font-size:12px; font-weight:650; color:var(--brand);
+    background:var(--brand-soft); border:0; border-radius:8px; padding:6px 11px; cursor:pointer; font-family:inherit; }
+
+  .notes { margin-top:18px; display:grid; gap:9px; }
+  .note { display:flex; gap:11px; align-items:flex-start; font-size:13.5px; }
+  .note .k { flex:0 0 auto; font-family:ui-monospace,Menlo,monospace; font-size:11px; color:var(--brand);
+    border:1px solid var(--line); border-radius:5px; padding:2px 6px; margin-top:1px; }
+  .note p { margin:0; color:var(--muted); }
+  .note p b { color:var(--ink); font-weight:650; }
+
+  table { width:100%; border-collapse:collapse; font-size:13.5px; margin-top:14px; }
+  th,td { text-align:left; padding:9px 12px; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-size:11px; text-transform:uppercase; letter-spacing:.09em; color:var(--muted); font-weight:700; }
+  td b { font-weight:650; }
+  .status { font-size:11px; padding:2px 8px; border-radius:20px; white-space:nowrap; }
+  .status.built { background:var(--ok-soft); color:var(--ok); }
+  .status.new { background:var(--warn-soft); color:var(--warn); }
+  .tblwrap { overflow-x:auto; }
+
+  @media (max-width:820px) { .split { grid-template-columns:1fr; } .pane-l { border-right:0; border-bottom:1px solid var(--line); } }
+  @media (prefers-reduced-motion:reduce) { * { animation:none !important; transition:none !important; } }
+</style>
+
+<div class="wrap">
+
+  <p class="eyebrow" style="margin-top:56px">Design spec · awaiting ratification</p>
+  <h1>Chat, rebuilt around the conversation</h1>
+  <p class="lede">The messaging page currently asks one screen to be two things: an inbox and an expert directory. This spec separates them, gives the thread a real home at every width, and brings plan activity into the conversation where it belongs.</p>
+
+  <div class="why">
+    <div><b>The directory buries the inbox</b><p>Every expert on the platform renders inline beneath your conversations. Below ~1024px the panes stack, so the thread you opened sits far under the fold.</p></div>
+    <div><b>No master–detail on small screens</b><p>List and thread both try to exist at once instead of one replacing the other, which is what every messaging app does for a reason.</p></div>
+    <div><b>Plan activity is invisible here</b><p>Delivery, approval and suggestions all fire real notifications — but they surface one tab away, so the conversation goes silent at the exact moment it matters.</p></div>
+  </div>
+
+  <section>
+    <div class="head">
+      <h2>Desktop — two panes, two scrolls</h2>
+      <p class="sub">Conversations only on the left. Finding an expert is a deliberate action, not ambient page content.</p>
+    </div>
+
+    <div class="framecap"><b>≥1024px</b> <span>/chat · traveler</span></div>
+    <div class="frame">
+      <div class="ui">
+        <div class="topbar">
+          <div><h3>Messages</h3><p>Your experts and trip conversations</p></div>
+        </div>
+        <div class="split">
+          <div class="pane-l">
+            <div class="listhead">
+              <div class="search">⌕ Search conversations</div>
+              <button class="findbtn">＋ Find an expert</button>
+            </div>
+            <div class="threads">
+              <div class="thread on">
+                <div class="av">SC</div>
+                <div class="tmeta">
+                  <div class="trow"><span class="tname">Sofia Chen</span><span class="ttime">1:43 AM</span></div>
+                  <div class="tprev">I'm interested in Guided Tour — can you share any tips or help me plan this?</div>
+                </div>
+              </div>
+              <div class="thread">
+                <div class="av">AY</div>
+                <div class="tmeta">
+                  <div class="trow"><span class="tname">Aiko Yamamoto</span><span class="ttime">Yesterday</span></div>
+                  <div class="tprev">Your itinerary has been delivered</div>
+                </div>
+                <div class="dot"></div>
+              </div>
+              <div class="thread">
+                <div class="av">KT</div>
+                <div class="tmeta">
+                  <div class="trow"><span class="tname">Kenji Tanaka</span><span class="ttime">Tue</span></div>
+                  <div class="tprev">Let's swap the Fushimi Inari morning for a sunrise slot.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="pane-r">
+            <div class="thead">
+              <div class="av">SC</div>
+              <div>
+                <div class="nm">Sofia Chen</div>
+                <div class="st">Responds &lt; 2 hours · 106 reviews</div>
+              </div>
+              <span class="chip live">● Live</span>
+              <button class="ghost">View profile</button>
+            </div>
+            <div class="msgs">
+              <div class="bub them">Happy to help with Kyoto — what dates are you looking at?<span class="t">1:38 AM</span></div>
+              <div class="bub me">I'm interested in Guided Tour — can you share any tips or help me plan this?<span class="t">1:43 AM</span></div>
+              <div class="ev"><span class="ic">📋</span><span><b>Sofia delivered your plan</b> · 2:05 AM</span><a href="#">View plan</a></div>
+              <div class="bub them">Sent it over — 4 days, Higashiyama on day 2. Tell me what to change.<span class="t">2:06 AM</span></div>
+            </div>
+            <div class="composer">
+              <div class="inp">Type your message…</div>
+              <button class="send" aria-label="Send">➤</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="notes">
+      <div class="note"><span class="k">L</span><p><b>The left pane holds conversations only.</b> Bounded height, its own scroll — a long thread list never pushes the composer off screen.</p></div>
+      <div class="note"><span class="k">R</span><p><b>The thread scrolls independently</b> with the header fixed above and the composer pinned below, so the page itself never scrolls.</p></div>
+      <div class="note"><span class="k">＋</span><p><b>“Find an expert” replaces the inline directory.</b> Browsing is discovery; this page is correspondence.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="head">
+      <h2>Small screens — one thing at a time</h2>
+      <p class="sub">The list fills the screen; opening a conversation replaces it. Back returns. Never both at once.</p>
+    </div>
+
+    <div class="phones">
+      <div class="phone">
+        <div class="framecap"><b>List</b> <span>&lt;1024px</span></div>
+        <div class="frame">
+          <div class="ui">
+            <div class="topbar"><div><h3>Messages</h3></div></div>
+            <div class="listhead">
+              <div class="search">⌕ Search conversations</div>
+              <button class="findbtn">＋ Find an expert</button>
+            </div>
+            <div class="threads">
+              <div class="thread">
+                <div class="av">SC</div>
+                <div class="tmeta">
+                  <div class="trow"><span class="tname">Sofia Chen</span><span class="ttime">1:43 AM</span></div>
+                  <div class="tprev">I'm interested in Guided Tour — can you share any…</div>
+                </div>
+              </div>
+              <div class="thread">
+                <div class="av">AY</div>
+                <div class="tmeta">
+                  <div class="trow"><span class="tname">Aiko Yamamoto</span><span class="ttime">Yest.</span></div>
+                  <div class="tprev">Your itinerary has been delivered</div>
+                </div>
+                <div class="dot"></div>
+              </div>
+              <div class="thread">
+                <div class="av">KT</div>
+                <div class="tmeta">
+                  <div class="trow"><span class="tname">Kenji Tanaka</span><span class="ttime">Tue</span></div>
+                  <div class="tprev">Let's swap the Fushimi Inari morning…</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="phone">
+        <div class="framecap"><b>Thread</b> <span>after tap</span></div>
+        <div class="frame">
+          <div class="ui">
+            <div class="backrow">
+              <span class="bk">←</span>
+              <div class="av">SC</div>
+              <div><div class="nm">Sofia Chen</div><div class="st">Responds &lt; 2 hours</div></div>
+            </div>
+            <div class="msgs">
+              <div class="bub them">Happy to help with Kyoto — what dates?<span class="t">1:38 AM</span></div>
+              <div class="bub me">I'm interested in Guided Tour — can you help me plan this?<span class="t">1:43 AM</span></div>
+              <div class="ev"><span class="ic">📋</span><span><b>Plan delivered</b></span><a href="#">View</a></div>
+            </div>
+            <div class="composer">
+              <div class="inp">Type your message…</div>
+              <button class="send" aria-label="Send">➤</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="phone">
+        <div class="framecap"><b>No conversation open</b> <span>desktop right pane</span></div>
+        <div class="frame">
+          <div class="ui" style="height:480px">
+            <div class="pane-r" style="flex:1">
+              <div class="empty">
+                <div>
+                  <b>Pick a conversation</b>
+                  <p>Your messages with experts appear here. Nothing yet? Find an expert to start one.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="head">
+      <h2>Finding an expert becomes a sheet</h2>
+      <p class="sub">Launched from the button, dismissed on send. The directory keeps its filters and detail without competing with the inbox for the page.</p>
+    </div>
+
+    <div class="framecap"><b>Overlay</b> <span>triggered by “Find an expert”</span></div>
+    <div class="frame sheet">
+      <div class="ui">
+        <div class="topbar"><div><h3>Find an expert</h3><p>Message anyone to start a conversation</p></div></div>
+        <div class="listhead"><div class="search">⌕ Search by city, specialty or name</div></div>
+        <div>
+          <div class="sheetrow">
+            <div class="av">MS</div>
+            <div class="tmeta">
+              <div class="tname">Maria Santos</div>
+              <div class="tprev">New · Lisbon</div>
+              <div class="tags"><span class="tag">Cultural Tours</span><span class="tag">Food &amp; Wine</span></div>
+            </div>
+            <button class="msgbtn">Message</button>
+          </div>
+          <div class="sheetrow">
+            <div class="av">KT</div>
+            <div class="tmeta">
+              <div class="tname">Kenji Tanaka</div>
+              <div class="tprev">New · Tokyo</div>
+              <div class="tags"><span class="tag">Cultural Immersion</span><span class="tag">Traditional</span></div>
+            </div>
+            <button class="msgbtn">Message</button>
+          </div>
+          <div class="sheetrow">
+            <div class="av">IR</div>
+            <div class="tmeta">
+              <div class="tname">Isabella Rossi</div>
+              <div class="tprev">New · Rome</div>
+              <div class="tags"><span class="tag">Luxury Travel</span><span class="tag">Honeymoons</span></div>
+            </div>
+            <button class="msgbtn">Message</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="notes">
+      <div class="note"><span class="k">§13</span><p><b>“New” stays “New.”</b> An expert with no reviews shows no invented score — the honest-ratings rule already live on the cards carries into the sheet unchanged.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="head">
+      <h2>Plan activity, inline</h2>
+      <p class="sub">Read-only markers in chronological position, sourced from the notifications that already fire. They are a signal, not a second copy of the record.</p>
+    </div>
+
+    <div class="frame" style="max-width:560px">
+      <div class="ui">
+        <div class="msgs" style="background:var(--canvas)">
+          <div class="ev"><span class="ic">✦</span><span><b>Sofia sent a suggestion</b> · Mon 4:12 PM</span><a href="#">Review</a></div>
+          <div class="bub them">Added a tea ceremony before dinner — see what you think.<span class="t">4:13 PM</span></div>
+          <div class="ev"><span class="ic">📋</span><span><b>Plan delivered</b> · Tue 9:02 AM</span><a href="#">View plan</a></div>
+          <div class="bub me">This looks great, approving now.<span class="t">9:20 AM</span></div>
+          <div class="ev"><span class="ic">✓</span><span><b>You approved the plan</b> · Tue 9:21 AM</span><a href="#">Open trip</a></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="notes">
+      <div class="note"><span class="k">1</span><p><b>One home for the data.</b> These render from existing notification rows; marking-as-read stays owned by Inbox and the bell. Nothing is copied into the message table.</p></div>
+      <div class="note"><span class="k">2</span><p><b>No guessing.</b> An event renders only when its trip resolves to this conversation's partner through the real advisor link — otherwise it does not appear here at all.</p></div>
+      <div class="note"><span class="k">3</span><p><b>No dead links.</b> If a target can't be resolved, the row renders without the action rather than pointing somewhere broken.</p></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="head">
+      <h2>What this costs to build</h2>
+      <p class="sub">Most of the machinery exists. The redesign is mainly a rearrangement plus one new overlay.</p>
+    </div>
+    <div class="tblwrap">
+      <table>
+        <thead><tr><th>Piece</th><th>Status</th><th>Note</th></tr></thead>
+        <tbody>
+          <tr><td><b>Two bounded panes, independent scroll</b></td><td><span class="status built">Landed</span></td><td>Shipped in the layout fix — this spec keeps it and builds on it.</td></tr>
+          <tr><td><b>Inline plan events</b></td><td><span class="status built">In flight</span></td><td>Already being built against existing notification rows.</td></tr>
+          <tr><td><b>Master–detail below 1024px</b></td><td><span class="status new">New</span></td><td>One piece of view state: list or thread, never both.</td></tr>
+          <tr><td><b>Directory moved into a sheet</b></td><td><span class="status new">New</span></td><td>Same data and filters, relocated behind “Find an expert”.</td></tr>
+          <tr><td><b>Thread previews, timestamps, unread dots</b></td><td><span class="status built">Landed</span></td><td>Real unread counts already flow from the conversation-threads hook.</td></tr>
+          <tr><td><b>Empty state for no selection</b></td><td><span class="status new">New</span></td><td>Replaces the current blank right pane.</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="notes">
+      <div class="note"><span class="k">↔</span><p><b>Both roles share this page.</b> Travelers see “Messages” with Find an expert; earners see their client conversations with the same structure and no directory — the sheet is traveler-only.</p></div>
+      <div class="note"><span class="k">🎨</span><p><b>Traveler palette, per the ratified two-palette rule.</b> This surface stays on the traveler brand and cool greys; it does not adopt the warm console palette used by the earner back office.</p></div>
+    </div>
+  </section>
+
+</div>
