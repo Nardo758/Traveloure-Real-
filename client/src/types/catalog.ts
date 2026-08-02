@@ -34,3 +34,15 @@ export interface CatalogSearchResult {
     providers: string[];
   };
 }
+
+/**
+ * Optional per-source health, present on single-source /api/catalog/* endpoints when the server's
+ * provider-health registry has an entry for that source (server/services/provider-health.service.ts).
+ * Additive — existing consumers that only read `.items` are unaffected.
+ */
+export interface CatalogSourceStatus {
+  status: "ok" | "empty" | "error" | "quota" | "auth" | "retired" | "not_called";
+  configured: boolean;
+  retired: boolean;
+  detail: string | null;
+}

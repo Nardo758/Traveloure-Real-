@@ -1,5 +1,6 @@
 import { getTravelpayoutsToken } from "./travelpayouts-client";
 import type { CatalogItem } from "../experience-catalog.service";
+import { reportProviderResult, outcomeFromHttpStatus } from "../provider-health.service";
 
 const STASHER_API = "https://api.stasher.com/v2";
 
@@ -36,6 +37,7 @@ export async function searchStasher(params: StasherSearchParams): Promise<Catalo
         const bags = params.bags || 1;
         const days = params.days || 1;
 
+        reportProviderResult("stasher", "ok");
         return locations.slice(0, params.limit || 6).map((l: any): CatalogItem => ({
           id: `stasher-${l.id || l.place_id}`,
           type: "activity",
@@ -59,10 +61,17 @@ export async function searchStasher(params: StasherSearchParams): Promise<Catalo
           lastUpdated: new Date(),
         } as CatalogItem));
       }
+      // Real API succeeded with zero locations — honest empty, not an error.
+      reportProviderResult("stasher", "empty");
+    } else {
+      reportProviderResult("stasher", outcomeFromHttpStatus(res.status), `HTTP ${res.status}`);
     }
-  } catch {
+  } catch (err) {
+    reportProviderResult("stasher", "error", err instanceof Error ? err.message : String(err));
   }
 
+  // NOTE (§13, pre-existing, out of scope for this change): the fallback below fabricates spot cards
+  // with invented ratings/prices when the live call above fails or returns nothing.
   const city = params.destination.split(",")[0].trim();
   const bags = params.bags || 1;
   const days = params.days || 1;

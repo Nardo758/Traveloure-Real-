@@ -1,5 +1,6 @@
 // Google Places Photos Service for fetching real attraction photos
 // Uses Google Maps API that's already configured in the project
+import { reportProviderResult } from "./provider-health.service";
 
 interface PlaceSearchResult {
   place_id: string;
@@ -80,23 +81,46 @@ class GooglePlacesPhotosService {
 
       const searchResponse = await fetch(searchUrl.toString());
       if (!searchResponse.ok) {
+        reportProviderResult("google_places", "error", `HTTP ${searchResponse.status}`);
         throw new Error(`Google Places search failed: ${searchResponse.status}`);
       }
 
       const searchData = await searchResponse.json();
+
+      // Google Places returns 200 OK even on billing/quota failures — the real signal is the body's
+      // `status` field (OK / ZERO_RESULTS / REQUEST_DENIED / OVER_QUERY_LIMIT / INVALID_REQUEST). Not
+      // checking it is exactly how a billing-denied account silently looks like "no results" (§13 —
+      // the Google Places REQUEST_DENIED evidence this registry closes).
+      if (searchData.status === "REQUEST_DENIED") {
+        reportProviderResult("google_places", "auth", searchData.error_message || "REQUEST_DENIED");
+        return [];
+      }
+      if (searchData.status === "OVER_QUERY_LIMIT") {
+        reportProviderResult("google_places", "quota", searchData.error_message || "OVER_QUERY_LIMIT");
+        return [];
+      }
+      if (searchData.status && searchData.status !== "OK" && searchData.status !== "ZERO_RESULTS") {
+        reportProviderResult("google_places", "error", searchData.error_message || searchData.status);
+        return [];
+      }
+
       if (!searchData.results || searchData.results.length === 0) {
+        reportProviderResult("google_places", "empty");
         return [];
       }
 
       // Get first result's photos
       const place: PlaceSearchResult = searchData.results[0];
       if (!place.photos || place.photos.length === 0) {
+        reportProviderResult("google_places", "empty");
         return [];
       }
 
+      reportProviderResult("google_places", "ok");
       // Transform photos to our format
       return place.photos.slice(0, maxPhotos).map((photo) => this.transformPhoto(photo, place));
     } catch (error) {
+      reportProviderResult("google_places", "error", error instanceof Error ? error.message : String(error));
       console.error(`Google Places search error for "${query}":`, error);
       return [];
     }

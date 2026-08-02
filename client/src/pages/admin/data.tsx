@@ -19,7 +19,9 @@ import {
   Loader2,
   CheckCircle,
   AlertCircle,
-  TrendingUp
+  TrendingUp,
+  Activity,
+  ShieldAlert,
 } from "lucide-react";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
@@ -32,6 +34,18 @@ interface CacheStatus {
   supportedCities: number;
   cacheEnabled: boolean;
   cacheDurationHours: number;
+}
+
+interface ProviderHealthEntry {
+  provider: string;
+  label: string;
+  status: "ok" | "empty" | "error" | "quota" | "auth" | "retired" | "not_called";
+  configured: boolean;
+  retired: boolean;
+  retiredReason?: string;
+  lastSuccessAt: string | null;
+  lastErrorAt: string | null;
+  lastDetail: string | null;
 }
 
 interface LocationSummary {
@@ -99,6 +113,46 @@ export default function AdminData() {
       setRefreshingCity(null);
     }
   });
+
+  // ── Provider health (catalog sources) ─────────────────────────────────────
+  const { data: providerHealthData, isLoading: loadingProviderHealth } = useQuery<{ providers: ProviderHealthEntry[] }>({
+    queryKey: ["/api/admin/provider-health"],
+    refetchInterval: 30000,
+  });
+
+  const providerStatusBadge: Record<ProviderHealthEntry["status"], string> = {
+    ok: "bg-green-100 text-green-700 border-green-200",
+    empty: "bg-slate-100 text-slate-700 border-slate-200",
+    error: "bg-red-100 text-red-700 border-red-200",
+    quota: "bg-orange-100 text-orange-700 border-orange-200",
+    auth: "bg-red-100 text-red-700 border-red-200",
+    retired: "bg-gray-200 text-gray-600 border-gray-300",
+    not_called: "bg-blue-50 text-blue-600 border-blue-200",
+  };
+
+  const providerStatusLabel: Record<ProviderHealthEntry["status"], string> = {
+    ok: "OK",
+    empty: "Empty (no results)",
+    error: "Error",
+    quota: "Quota exhausted",
+    auth: "Auth failed",
+    retired: "Retired",
+    not_called: "Not yet called",
+  };
+
+  const formatTimeSince = (dateStr: string | null) => {
+    if (!dateStr) return "—";
+    const date = new Date(dateStr);
+    const now = new Date();
+    const seconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+    if (seconds < 60) return `${seconds}s ago`;
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    return `${days}d ago`;
+  };
 
   // ── DMO ingestion (D3, Kyoto-first, Tavily-only) ──────────────────────────
   const { data: dmoStatus } = useQuery<{ ready: boolean; reason?: string }>({
@@ -309,6 +363,75 @@ export default function AdminData() {
             </CardContent>
           </Card>
         </div>
+
+        <Card data-testid="card-provider-health">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Activity className="w-4 h-4 text-emerald-600" />
+              Provider health
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-gray-600">
+              Last outcome per catalog source for this server process (resets on restart/redeploy) — so a
+              broken or misconfigured provider is distinguishable from "genuinely no results."
+            </p>
+            {loadingProviderHealth ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+              </div>
+            ) : !providerHealthData?.providers?.length ? (
+              <p className="text-sm text-gray-500">No provider data yet.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm" data-testid="table-provider-health">
+                  <thead>
+                    <tr className="text-left text-gray-500 border-b">
+                      <th className="py-2 pr-4 font-medium">Provider</th>
+                      <th className="py-2 pr-4 font-medium">Status</th>
+                      <th className="py-2 pr-4 font-medium">Configured</th>
+                      <th className="py-2 pr-4 font-medium">Last success</th>
+                      <th className="py-2 pr-4 font-medium">Last error</th>
+                      <th className="py-2 font-medium">Detail</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {providerHealthData.providers.map((p) => (
+                      <tr key={p.provider} className="border-b last:border-0" data-testid={`provider-row-${p.provider}`}>
+                        <td className="py-2 pr-4 font-medium">{p.label}</td>
+                        <td className="py-2 pr-4">
+                          <div className="flex items-center gap-1">
+                            <Badge variant="outline" className={providerStatusBadge[p.status]}>
+                              {providerStatusLabel[p.status]}
+                            </Badge>
+                            {p.retired && (
+                              <ShieldAlert className="w-3.5 h-3.5 text-gray-400" aria-label={p.retiredReason} />
+                            )}
+                          </div>
+                          {p.retired && p.retiredReason && (
+                            <p className="text-xs text-gray-400 mt-1 max-w-xs">{p.retiredReason}</p>
+                          )}
+                        </td>
+                        <td className="py-2 pr-4">
+                          {p.configured ? (
+                            <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">yes</Badge>
+                          ) : (
+                            <Badge variant="outline" className="bg-gray-100 text-gray-500 border-gray-200">no</Badge>
+                          )}
+                        </td>
+                        <td className="py-2 pr-4 text-gray-500">{formatTimeSince(p.lastSuccessAt)}</td>
+                        <td className="py-2 pr-4 text-gray-500">{formatTimeSince(p.lastErrorAt)}</td>
+                        <td className="py-2 text-gray-600 text-xs max-w-xs truncate" title={p.lastDetail || undefined}>
+                          {p.lastDetail || "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         <Card data-testid="card-dmo-ingest">
           <CardHeader>

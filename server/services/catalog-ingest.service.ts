@@ -119,8 +119,9 @@ export const CATALOG_NETWORKS: NetworkDef[] = [
     category: "service",
     fetch: async (city) => (await import("./travelpayouts/stasher.service")).searchStasher({ destination: city, limit: 40 }),
   },
-  // NOT ingested (by design): route-computed networks — flights (aviasales/kiwi), transfers
-  // (gettransfer/kiwitaxi/welcomepickups/omio/busbud), cars (discovercars/rentalcars). These are
+  // NOT ingested (by design): route-computed networks — flights (aviasales; kiwi RETIRED 2026-08, see
+  // kiwi.service.ts), transfers (gettransfer/kiwitaxi/welcomepickups/omio/busbud), cars
+  // (discovercars/rentalcars). These are
   // per-query/per-route, not a browseable city catalog, so they stay the parallel live-passthrough.
   // Fever events flow through their own `destination_events` pipeline, not affiliate_products.
   // Viator-direct (viator.service.ts) is the U5 dedup target of this "viator-feed" path — not added.

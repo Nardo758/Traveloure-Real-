@@ -1,5 +1,6 @@
 import { getTravelpayoutsToken } from "./travelpayouts-client";
 import type { CatalogItem } from "../experience-catalog.service";
+import { reportProviderResult, outcomeFromHttpStatus } from "../provider-health.service";
 
 const GYG_FEED_URL = "https://partner.getyourguide.com/api/v3/tours";
 
@@ -34,6 +35,7 @@ export async function searchGetYourGuide(params: GetYourGuideSearchParams): Prom
       const tours = data?.tours || data?.data || data?.activities || [];
 
       if (Array.isArray(tours) && tours.length > 0) {
+        reportProviderResult("getyourguide", "ok");
         return tours.map((t: any): CatalogItem => ({
           id: `gyg-${t.tour_id || t.id}`,
           type: "activity",
@@ -57,10 +59,18 @@ export async function searchGetYourGuide(params: GetYourGuideSearchParams): Prom
           lastUpdated: new Date(),
         } as CatalogItem));
       }
+      // Real API succeeded with zero tours — honest empty, not an error.
+      reportProviderResult("getyourguide", "empty");
+    } else {
+      reportProviderResult("getyourguide", outcomeFromHttpStatus(res.status), `HTTP ${res.status}`);
     }
-  } catch {
+  } catch (err) {
+    reportProviderResult("getyourguide", "error", err instanceof Error ? err.message : String(err));
   }
 
+  // NOTE (§13, pre-existing, out of scope for this change): the fallback below fabricates category
+  // cards with invented ratings/prices when the live call above fails or returns nothing. Flagged, not
+  // fixed here — see the provider-health task's final report.
   const categories = [
     { cat: "City Tours", icon: "🏛️", basePrice: 25, desc: "Guided walking & sightseeing tours" },
     { cat: "Food & Drink", icon: "🍽️", basePrice: 45, desc: "Cooking classes & food tasting experiences" },
