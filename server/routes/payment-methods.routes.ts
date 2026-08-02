@@ -35,8 +35,14 @@ router.get("/api/me/payment-methods", isAuthenticated, async (req: any, res) => 
     const result = await stripePaymentService.listSavedPaymentMethods(sessionUserId(req));
     return res.json({ available: true, ...result });
   } catch (err: any) {
-    console.error("[payment-methods] list failed:", err);
-    return res.status(500).json({ message: "Failed to load payment methods" });
+    // A LIST failure must not break the page that embeds it (the cart's saved-card widget).
+    // The `available: false` shape above already models "we can't show saved cards right now",
+    // so a Stripe outage / bad key degrades into that same honest state instead of 500ing —
+    // found by the Aug 2 browser sweep, where a dev-dummy Stripe key made /cart surface a 500.
+    // Write paths (setup-intent, default, delete) deliberately keep their hard failures: a
+    // silent no-op there would be dishonest about whether the user's action took effect.
+    console.error("[payment-methods] list failed — degrading to unavailable:", err);
+    return res.json({ available: false, defaultPaymentMethodId: null, methods: [] });
   }
 });
 
