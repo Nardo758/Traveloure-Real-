@@ -674,6 +674,13 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
               scheduledDate: item.scheduledDate,
               notes: item.notes || notes,
               quantity: item.quantity || 1,
+              // Lane S ruling 18 (reconciliation key): the plan item this booking intends to flip
+              // to `purchased`. If the flip+log pair below ever rolls back, the
+              // `bookings-have-purchased-items` invariant joins on this to find the booking whose
+              // item was never flipped — making the swallowed failure detectable, not just logged.
+              ...((item as any).itineraryItemId
+                ? { itineraryItemId: (item as any).itineraryItemId }
+                : {}),
               // §17: component snapshot verified above — bundle contents locked at purchase.
               ...(bundleSnapshots.has(item.serviceId)
                 ? { bundleComponents: bundleSnapshots.get(item.serviceId) }
