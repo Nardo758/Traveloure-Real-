@@ -1,29 +1,19 @@
-import { getTravelpayoutsToken, getTravelpayoutsMarker } from "./travelpayouts-client";
 import type { CatalogItem } from "../experience-catalog.service";
-import { reportProviderResult, outcomeFromHttpStatus } from "../provider-health.service";
 
-const GT_BASE = "https://api.gettransfer.com/api";
-
-async function gtFetch(path: string, params: Record<string, string | number | undefined> = {}): Promise<any> {
-  const token = getTravelpayoutsToken();
-  if (!token) throw new Error("TRAVELPAYOUTS_TOKEN not configured");
-
-  const url = new URL(path, GT_BASE);
-  url.searchParams.set("marker", getTravelpayoutsMarker());
-  for (const [k, v] of Object.entries(params)) {
-    if (v !== undefined) url.searchParams.set(k, String(v));
-  }
-
-  const res = await fetch(url.toString(), {
-    headers: { "Accept": "application/json" },
-  });
-  if (!res.ok) {
-    const err = new Error(`GetTransfer API error ${res.status}`) as Error & { status?: number };
-    err.status = res.status;
-    throw err;
-  }
-  return res.json();
-}
+/**
+ * RETIRED SOURCE — do not re-enable against the old URLs.
+ *
+ * The GetTransfer affiliate API host is gone. Verified 2026-08-02:
+ *   - api.gettransfer.com → DNS does not resolve (NXDOMAIN)
+ *   - www.gettransfer.com / gettransfer.com still resolve, so the company is
+ *     alive but the partner API this integration used has been shut down.
+ * Every search since the shutdown silently returned 0 results; this stub makes
+ * that explicit and skips the dead network call entirely.
+ *
+ * Airport transfer inventory now comes from Kiwitaxi + Welcome Pickups via
+ * /api/catalog/airport-transfers. If GetTransfer ships a replacement partner
+ * API, wire it up here and un-retire the provider in provider-health.service.ts.
+ */
 
 export interface GetTransferSearchParams {
   from: string;
@@ -33,49 +23,7 @@ export interface GetTransferSearchParams {
   currency?: string;
 }
 
-export async function searchGetTransferOptions(params: GetTransferSearchParams): Promise<CatalogItem[]> {
-  if (!getTravelpayoutsToken()) return [];
-
-  try {
-    const marker = getTravelpayoutsMarker();
-    const data = await gtFetch("/transfers/search", {
-      from_address: params.from,
-      to_address: params.to,
-      date: params.date || new Date().toISOString().split("T")[0],
-      pax: params.passengers || 2,
-      currency: params.currency || "USD",
-    });
-
-    const offers = data?.offers || data?.transfers || data?.data || [];
-    const items = Array.isArray(offers) ? offers : [];
-    reportProviderResult("gettransfer", items.length > 0 ? "ok" : "empty");
-
-    return items.map((o: any): CatalogItem => ({
-      id: `gettransfer-${o.id || Math.random().toString(36).slice(2)}`,
-      type: "transfer",
-      provider: "gettransfer",
-      externalId: String(o.id || ""),
-      title: `Transfer: ${params.from} → ${params.to}`,
-      description: `${o.vehicle?.name || o.vehicle_class || "Private transfer"} · up to ${o.vehicle?.pax || params.passengers || 2} passengers`,
-      imageUrl: o.vehicle?.photo_url || null,
-      price: o.price?.amount ? parseFloat(o.price.amount) : o.price ? parseFloat(o.price) : null,
-      currency: o.price?.currency || params.currency || "USD",
-      rating: o.carrier?.rating ? parseFloat(o.carrier.rating) : null,
-      reviewCount: o.carrier?.reviews_count || null,
-      destination: params.to,
-      location: null,
-      duration: o.duration ? `${Math.round(o.duration / 60)} min` : null,
-      categories: ["transfer", "airport-transfer"],
-      tags: [o.vehicle?.class || "private", "door-to-door"],
-      bookingUrl: `https://www.gettransfer.com/en/transfers/new?from=${encodeURIComponent(params.from)}&to=${encodeURIComponent(params.to)}&marker=${marker}`,
-      affiliateUrl: `https://www.gettransfer.com/en/transfers/new?from=${encodeURIComponent(params.from)}&to=${encodeURIComponent(params.to)}&marker=${marker}`,
-      source: "travelpayouts/gettransfer",
-      lastUpdated: new Date(),
-    } as CatalogItem));
-  } catch (err) {
-    const status = (err as any)?.status;
-    reportProviderResult("gettransfer", status ? outcomeFromHttpStatus(status) : "error", err instanceof Error ? err.message : String(err));
-    console.warn("[GetTransfer] Search failed:", err instanceof Error ? err.message : err);
-    return [];
-  }
+/** Always returns [] — the upstream API host no longer exists (see header comment). */
+export async function searchGetTransferOptions(_params: GetTransferSearchParams): Promise<CatalogItem[]> {
+  return [];
 }

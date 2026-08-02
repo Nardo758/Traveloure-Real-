@@ -3130,18 +3130,20 @@ export class DatabaseStorage implements IStorage {
 
   // Location Cache
   async searchLocationCache(keyword: string, locationType?: string): Promise<LocationCache[]> {
-    const now = new Date();
     const searchPattern = `%${keyword.toLowerCase()}%`;
     
-    // Build conditions including expiration check at SQL level
+    // NOTE: no expiresAt filter — the Amadeus API that refreshed this cache was
+    // shut down 2026-07-17 (see amadeus.service.ts), so every row is permanently
+    // "expired" and can never be re-fetched. IATA codes / city geo data are
+    // effectively static, so we deliberately serve stale rows rather than
+    // returning nothing forever.
     const conditions = [
       or(
         ilike(locationCache.name, searchPattern),
         ilike(locationCache.cityName, searchPattern),
         ilike(locationCache.iataCode, searchPattern),
         ilike(locationCache.detailedName, searchPattern)
-      ),
-      gt(locationCache.expiresAt, now) // SQL-level expiration filtering
+      )
     ];
     
     if (locationType) {

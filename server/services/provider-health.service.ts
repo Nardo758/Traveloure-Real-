@@ -75,15 +75,29 @@ const STATIC_PROVIDERS: Record<string, StaticEntry> = {
   discovercars: { label: "DiscoverCars", isConfigured: () => !!process.env.TRAVELPAYOUTS_TOKEN },
   // server/services/travelpayouts/kiwitaxi.service.ts: getTravelpayoutsToken()
   kiwitaxi: { label: "Kiwitaxi", isConfigured: () => !!process.env.TRAVELPAYOUTS_TOKEN },
-  // server/services/travelpayouts/gettransfer.service.ts: getTravelpayoutsToken()
-  gettransfer: { label: "GetTransfer", isConfigured: () => !!process.env.TRAVELPAYOUTS_TOKEN },
+  // RETIRED — server/services/travelpayouts/gettransfer.service.ts. See that file's header.
+  gettransfer: {
+    label: "GetTransfer",
+    retired: {
+      reason:
+        "api.gettransfer.com no longer resolves in DNS (verified 2026-08-02) — the affiliate API is gone " +
+        "(www.gettransfer.com is still up, so this is an API shutdown, not a company closure). " +
+        "Airport transfers now come from Kiwitaxi + Welcome Pickups. See gettransfer.service.ts.",
+    },
+    isConfigured: () => !!process.env.TRAVELPAYOUTS_TOKEN,
+  },
   // server/services/travelpayouts/tiqets.service.ts: getTravelpayoutsToken()
   tiqets: { label: "Tiqets", isConfigured: () => !!process.env.TRAVELPAYOUTS_TOKEN },
   // server/services/pexels.service.ts: `process.env.PEXELS_API_KEY`
   pexels: { label: "Pexels", isConfigured: () => !!process.env.PEXELS_API_KEY },
-  // server/services/amadeus.service.ts: AMADEUS_API_KEY + AMADEUS_API_SECRET
+  // RETIRED — server/services/amadeus.service.ts. See that file's header for the evidence.
   amadeus: {
     label: "Amadeus",
+    retired: {
+      reason:
+        "Amadeus decommissioned its Self-Service API on 2026-07-17 — API hostnames no longer resolve " +
+        "(verified 2026-08-01). Only successor is an Amadeus Enterprise contract. See amadeus.service.ts.",
+    },
     isConfigured: () => !!(process.env.AMADEUS_API_KEY && process.env.AMADEUS_API_SECRET),
   },
   // server/services/serp.service.ts: `process.env.SERP_API_KEY`
