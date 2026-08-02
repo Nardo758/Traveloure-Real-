@@ -710,6 +710,11 @@ class BookingService {
 
       if (providerId) {
         // 2. Record provider earnings ledger entry (born held; released after clearance window)
+        //    MONEY_MAP F-4: this is a raw tx INSERT that deliberately mirrors the canonical writer
+        //    storage.createProviderEarning (server/storage.ts) for transactional atomicity — the
+        //    booking confirm + earnings write + revenue write must all commit or roll back together,
+        //    which the canonical writer (a separate `db.insert`) cannot guarantee inside this tx.
+        //    Any column/side-effect change to storage.createProviderEarning must be mirrored here.
         if (providerPayoutAmt > 0) {
           const earningId = crypto.randomUUID();
           await tx.execute(sql`
@@ -727,6 +732,11 @@ class BookingService {
         }
 
         // 3. Record platform revenue entry
+        //    MONEY_MAP F-4: this is a raw tx INSERT that deliberately mirrors the canonical writer
+        //    storage.recordPlatformRevenue (server/storage.ts, which also updates the daily summary)
+        //    for transactional atomicity within this cart-confirm tx. Any column/side-effect change
+        //    to storage.recordPlatformRevenue must be mirrored here (note: this raw INSERT does NOT
+        //    call updateDailyRevenueSummary — that divergence is pre-existing and out of scope for F-4).
         if (platformFeeAmt > 0) {
           const revenueId = crypto.randomUUID();
           const netAmount = platformFeeAmt * (1 - PROCESSING_FEE_RATE);
