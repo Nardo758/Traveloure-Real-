@@ -14,6 +14,7 @@ import { verifyTripOwnership } from '../utils/trip-ownership';
 import { authorizeTripLogistics } from '../utils/trip-logistics-auth';
 import { isTripAuthor } from '../utils/trip-authorship';
 import { isTripAdvisor, TRIP_ADVISOR_ACCESS_STATUSES } from '../utils/trip-advisor';
+import { logItemTransition } from '../services/item-transition-log.service';
 import { getUserId } from '../utils/auth';
 import { storage } from '../storage';
 import { db } from '../db';
@@ -54,6 +55,7 @@ import {
   createExpertAssignmentNotification,
   getTripLabel,
   getExpertAssignedTrips,
+  getTravelerTripAdvisors,
   isTripOwner,
   isExpertAssignedToTrip,
   tripExistsById,
@@ -177,6 +179,7 @@ router.post('/expert-requests', isAuthenticated, async (req, res) => {
       notes,
       optimizationContext,
       paymentIntentId,
+      itemIds,
     } = req.body;
 
     const resolvedUserId = authUserId || userId;
@@ -236,12 +239,67 @@ router.post('/expert-requests', isAuthenticated, async (req, res) => {
       if (!owns) return res.status(403).json({ error: 'You do not own this trip' });
     }
 
+    // ── Get Expert Help contract (dispatch §4 disposition table, ruling 13) ──────────────────
+    // The request carries REFERENCES + the traveler's ask; slip content is NEVER copied into the
+    // jsonb (the expert-advises-against-a-snapshot class-B failure — the workspace reads the trip
+    // LIVE). Enforced at THIS boundary regardless of client version: strip the item-content
+    // fields a legacy client may still send. The ask fields (destination/dates/travelers/
+    // interests) are correspondence — frozen is correct for those.
+    let sanitizedContext = optimizationContext;
+    if (sanitizedContext?.planSnapshot) {
+      const { cartItems: _cartItems, cartTotal: _cartTotal, ...askOnly } = sanitizedContext.planSnapshot;
+      sanitizedContext = { ...sanitizedContext, planSnapshot: askOnly };
+    }
+
+    // Selected-item routing (`in_planning → with_expert`, traveler actor): the transition half of
+    // the Get Expert Help contract. Same discipline as POST /route — per-item atomic CAS flip +
+    // diary row in ONE transaction (Lane S ruling 18); an item that is not `in_planning` on this
+    // trip is skipped, never clobbered. No cart-projection sync needed: this edge starts from
+    // `in_planning`, which never has a cart row (only `ready_for_checkout` materializes).
+    const routedItemIds: string[] = [];
+    if (tripId && Array.isArray(itemIds) && itemIds.length > 0) {
+      for (const rawId of itemIds.slice(0, 100)) {
+        const itemId = String(rawId);
+        const routed = await db.transaction(async (tx) => {
+          const rows = await tx
+            .update(itineraryItemsTable)
+            .set({ routingStatus: "with_expert", updatedAt: new Date() })
+            .where(
+              and(
+                eq(itineraryItemsTable.id, itemId),
+                eq(itineraryItemsTable.tripId, tripId),
+                eq(itineraryItemsTable.routingStatus, "in_planning"),
+              ),
+            )
+            .returning({ id: itineraryItemsTable.id });
+          if (rows.length > 0) {
+            await logItemTransition(tx, {
+              tripId,
+              itemId,
+              eventType: "status_transition",
+              fromStatus: "in_planning",
+              toStatus: "with_expert",
+              actorType: "traveler",
+              actorId: resolvedUserId,
+            });
+          }
+          return rows.length > 0;
+        });
+        if (routed) routedItemIds.push(itemId);
+      }
+    }
+    // The reference set the workspace resolves live: tripId rides its own column below; the
+    // routed item subset is ids only — never titles/prices/providers.
+    if (routedItemIds.length > 0) {
+      sanitizedContext = { ...(sanitizedContext ?? {}), routedItemIds };
+    }
+
     // R6: stamp the verified PI onto the request so completion can find the PAID signal and
     // credit the expert split from the LEDGER row (never from the client-writable expert_fee).
     const persistedContext =
       paymentIntentId && verifiedFee !== undefined
-        ? { ...(optimizationContext ?? {}), paymentIntentId }
-        : optimizationContext;
+        ? { ...(sanitizedContext ?? {}), paymentIntentId }
+        : sanitizedContext;
 
     const { requestId, queuePosition } = await bookingService.submitExpertRequest({
       userId: resolvedUserId, tripId, variantId, comparisonId,
@@ -644,6 +702,27 @@ router.get('/expert/assigned-trips', isAuthenticated, async (req, res) => {
     res.json(trips);
   } catch (error: any) {
     console.error('Get expert assigned trips error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * GET /api/trips/mine/advisors — traveler-side mirror of /api/expert/assigned-trips (above).
+ * Returns the SESSION traveler's own trips' real active advisor linkage
+ * ({ trip_id, expert_id, status }, pending|accepted). Built for chat.tsx's inline plan-events
+ * feature (claude/chat-plan-events) to resolve which trip is "shared" with a given expert
+ * conversation partner — the same real linkage getExpertAssignedTrips already gives the expert
+ * side, mirrored in reverse. Read-only, session-scoped (§14 — never a body-supplied userId).
+ */
+router.get('/trips/mine/advisors', isAuthenticated, async (req, res) => {
+  try {
+    const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const advisors = await getTravelerTripAdvisors(userId);
+    res.json(advisors);
+  } catch (error: any) {
+    console.error('Get traveler trip advisors error:', error);
     res.status(500).json({ error: error.message });
   }
 });

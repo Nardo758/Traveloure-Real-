@@ -5378,6 +5378,39 @@ export const itineraryChanges = pgTable("itinerary_changes", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// ── Item transition log — the slip's diary (Lane S, migration 171) ─────────────────────────────
+// APPEND-ONLY: no app code may UPDATE or DELETE rows here (unlike `itinerary_changes`, which is a
+// traveler display feed with a DELETE endpoint — ruling 11 keeps the two separate: one truth per
+// event type). Every `itinerary_items.routing_status` transition writes a row in the SAME
+// transaction as the flip (ruling 18); trip-scoped events (`variant_applied`) carry itemId NULL
+// (ruling 16). `item_id` deliberately has NO FK — a deleted item's history must survive it (the
+// same posture as itinerary_changes.activityId). Version = count of rows per trip, display-only —
+// never a stored column. NO DB CHECK on the vocab columns (the migration-159 posture): canonical
+// sets live here in code. This insert path is the future subscription hook for the expert
+// PULL→PUSH notification lane — do not build notifications on it yet.
+export const itemTransitionLog = pgTable(
+  "item_transition_log",
+  {
+    id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+    tripId: varchar("trip_id").notNull().references(() => trips.id, { onDelete: "cascade" }),
+    itemId: varchar("item_id"), // NULL = trip-scoped event (ruling 16); no FK — history outlives the item
+    eventType: varchar("event_type", { length: 30 }).notNull().default("status_transition"), // status_transition | variant_applied
+    fromStatus: varchar("from_status", { length: 20 }), // NULL for non-status events
+    toStatus: varchar("to_status", { length: 20 }),
+    actorType: varchar("actor_type", { length: 20 }).notNull(), // traveler | expert | checkout | refund | optimizer | system
+    actorId: varchar("actor_id"), // session user when there is one; NULL for system/checkout/refund actors
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => [
+    // The diary read (newest-first per trip) + the version count both ride this index.
+    // Declared here, not only in migration 171 — the deploy push drops undeclared indexes.
+    index("itl_trip_created_idx").on(table.tripId, table.createdAt),
+  ],
+);
+
+export type ItemTransitionLogEntry = typeof itemTransitionLog.$inferSelect;
+export type InsertItemTransitionLogEntry = typeof itemTransitionLog.$inferInsert;
+
 // NOTE (W5-D cleanup, Aug 1, 2026): the `activity_comments` table + its schema were retired here —
 // zero client callers of GET/POST /api/activities/:activityId/comments or DELETE /api/comments/:id
 // ever existed. Per-item comments now live on `trip_item_comments` (migration 165). See migration

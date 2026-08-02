@@ -28,6 +28,7 @@ import { UpNextHero } from "./UpNextHero";
 import { CollapsedSections } from "./CollapsedSections";
 import { BottomActionBar } from "./BottomActionBar";
 import { PlanApprovalBanner } from "./PlanApprovalBanner";
+import { ProposalColumn } from "./ProposalColumn";
 import {
   Dialog,
   DialogContent,
@@ -703,7 +704,7 @@ function PlanCardSummary({
 
 // ── Main PlanCard component ────────────────────────────────────────────────
 
-export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full", days: daysProp, embedded = false, initialSelectedDay }: PlanCardProps) {
+export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full", days: daysProp, embedded = false, initialSelectedDay, proposal }: PlanCardProps) {
   // Mobile-lens audit #1: seed from the page's already-computed "today" index (when given)
   // so a mid-flight trip opens on today's day, not always Day 1 — the temporal engine
   // (Up Next / now-line / Live today) is already correct once the right day is showing.
@@ -736,7 +737,9 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
   const { data: plancardData } = useQuery<PlanCardData>({
     queryKey: [`/api/trips/${trip.id}/plancard`],
     staleTime: 30000,
-    enabled: !daysProp,
+    // stage="proposal" renders entirely from the `proposal` prop (the page owns the canonical
+    // reads) — a variant column must never fire a plancard fetch keyed on a non-trip id.
+    enabled: !daysProp && stage !== "proposal",
   });
 
   // CLAUDE.md §18, item 3: the bottom action bar's "Message [expert]" slot needs to know
@@ -748,6 +751,12 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
     staleTime: 60000,
   });
   const advisor = advisorData?.advisor ?? null;
+
+  // Spec C (SLIP_EXPERIENCE_DISPATCH §4): the variant-comparison column. Pure presentational
+  // derivation of the `proposal` prop — no query of its own, no routing actions, apply-only.
+  if (stage === "proposal") {
+    return proposal ? <ProposalColumn proposal={proposal} /> : null;
+  }
 
   // Render summary stage (compact dashboard card)
   if (stage === "summary") {
