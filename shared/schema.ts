@@ -802,11 +802,12 @@ export const customVenues = pgTable("custom_venues", {
 // itself the next drop target on a Replit publish, which would defeat the entire point of
 // archiving into it. First tenant: `activity_bookings` (dropped by migration 168; its
 // `activityBookings` declaration is now removed — step 2 of the two-deploy retirement).
-// INCIDENT (Aug 1, 2026, recorded in CLAUDE.md): the archive ran against an already-empty
-// table — a drizzle push executed while the declaration-removal (#386) was merged un-gated
-// dropped the table (with its one real prod row) before migration 168 could archive it. The
-// booking's payment record survives on Stripe; see CLAUDE.md migration-168 entry for the
-// sequencing lesson.
+// INCIDENT (Aug 1, 2026, recorded + CLOSED in CLAUDE.md): the archive ran against an
+// already-empty table — a drizzle push executed while the declaration-removal (#386) was
+// merged un-gated dropped the table before migration 168 could archive it. A live-Stripe
+// check later showed the lost row was an UNPAID booking (no captured funds — the account's
+// live history holds no such charge), so nothing of financial substance was lost. See the
+// CLAUDE.md migration-168 entry for the sequencing lessons.
 export const legacyArchives = pgTable("legacy_archives", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   sourceTable: varchar("source_table").notNull(),
