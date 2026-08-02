@@ -58,6 +58,24 @@ calls, recorded here.
 8. **This map is updated in the same PR** — every new charge/ledger/endpoint/webhook site gets its
    row before merge.
 
+### §0a. Partner money-flow archetypes (researched Aug 2, 2026 — Viator/GYG/Klook/Tiqets/Musement)
+
+Every partner-inventory integration is one of THREE models; pick the model FIRST, then the
+blueprint rules apply as noted:
+
+- **Model A — we are merchant of record.** Traveler pays OUR Stripe; we settle with the partner
+  on invoice; margin ours; we own taxes/refunds/support. The full blueprint above applies
+  verbatim. New obligation to scope per-market: country-based tax.
+- **Model B — partner is MoR, booking fully in-platform.** UX stays on our surface; payment goes
+  to the partner's gateway via API; commission paid to us periodically. Blueprint deltas: rules
+  1–3 apply to the PARTNER's charge (we never touch the money), commission tracking rides the
+  affiliate_earnings + reconciliation rail (F-5 adopt-external-truth — never estimate), and there
+  is a **hard PCI gate**: if the partner's payment flow requires raw card data through our
+  servers (Viator-style passthrough), it breaks our SAQ-A posture and is REJECTED unless
+  ratified; client-side tokenization to the partner's gateway is the only acceptable shape.
+- **Model C — redirect affiliate.** §16: never a raw off-site booking CTA — only via the
+  agent-booking rail with server-side tracked links (the WeGoTrip pattern).
+
 ---
 
 ## 1. Stripe API call sites
