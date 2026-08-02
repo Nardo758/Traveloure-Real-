@@ -1,5 +1,6 @@
 import Amadeus from 'amadeus';
 import { apiUsageService } from './api-usage.service';
+import { reportProviderResult, outcomeFromHttpStatus } from './provider-health.service';
 
 const amadeus = new Amadeus({
   clientId: process.env.AMADEUS_API_KEY!,
@@ -247,15 +248,19 @@ export class AmadeusService {
         resultCount: results.length,
         metadata: { origin: params.originLocationCode, destination: params.destinationLocationCode },
       });
+      reportProviderResult("amadeus", results.length > 0 ? "ok" : "empty");
       return results;
     } catch (error: any) {
+      const detail = error?.response?.body?.errors?.[0]?.detail || 'Flight search failed';
       await apiUsageService.logAmadeusCall('flight_offers_search', 'search', {
         responseTimeMs: Date.now() - startTime,
         success: false,
-        errorMessage: error?.response?.body?.errors?.[0]?.detail || 'Flight search failed',
+        errorMessage: detail,
       });
+      const statusCode = error?.response?.statusCode;
+      reportProviderResult("amadeus", statusCode ? outcomeFromHttpStatus(statusCode) : "error", error?.message || detail);
       console.error('Amadeus flight search error:', error?.response?.body || error);
-      throw new Error(error?.response?.body?.errors?.[0]?.detail || 'Flight search failed');
+      throw new Error(detail);
     }
   }
 
@@ -274,8 +279,9 @@ export class AmadeusService {
       });
 
       const hotelIds = hotelListResponse.data?.slice(0, 20).map((h: any) => h.hotelId) || [];
-      
+
       if (hotelIds.length === 0) {
+        reportProviderResult("amadeus", "empty");
         return [];
       }
 
@@ -297,15 +303,19 @@ export class AmadeusService {
         resultCount: results.length,
         metadata: { cityCode: params.cityCode, hotelCount: hotelIds.length },
       });
+      reportProviderResult("amadeus", results.length > 0 ? "ok" : "empty");
       return results;
     } catch (error: any) {
+      const detail = error?.response?.body?.errors?.[0]?.detail || 'Hotel search failed';
       await apiUsageService.logAmadeusCall('hotel_search', 'search', {
         responseTimeMs: Date.now() - startTime,
         success: false,
-        errorMessage: error?.response?.body?.errors?.[0]?.detail || 'Hotel search failed',
+        errorMessage: detail,
       });
+      const statusCode = error?.response?.statusCode;
+      reportProviderResult("amadeus", statusCode ? outcomeFromHttpStatus(statusCode) : "error", error?.message || detail);
       console.error('Amadeus hotel search error:', error?.response?.body || error);
-      throw new Error(error?.response?.body?.errors?.[0]?.detail || 'Hotel search failed');
+      throw new Error(detail);
     }
   }
 

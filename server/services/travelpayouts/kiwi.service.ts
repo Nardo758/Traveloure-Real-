@@ -1,11 +1,37 @@
-import { getTravelpayoutsToken } from "./travelpayouts-client";
 import type { CatalogItem } from "../experience-catalog.service";
+import { reportProviderResult, outcomeFromHttpStatus } from "../provider-health.service";
+
+/**
+ * RETIRED SOURCE (flights + nomad) — do not re-enable against TRAVELPAYOUTS_TOKEN.
+ *
+ * Live probe, 2026-08-02 (production-adjacent Replit environment): every call to Kiwi's Tequila API
+ * (`https://api.tequila.kiwi.com/v2/search`) returns `401 Unauthorized` when sent the Travelpayouts
+ * token. That is not a transient outage: Tequila is a SEPARATE credential system from Travelpayouts —
+ * this code was sending the wrong kind of token — and Kiwi closed Tequila to new partner signups in
+ * 2023, so a correct Tequila API key is not currently obtainable to fix this the normal way (same class
+ * of dead-end as Hotellook's retired data API — see hotellook.service.ts).
+ *
+ * `/api/catalog/flights` and `/api/catalog/nomad` (server/routes/content.routes.ts) both silently
+ * degraded to 0 results from this source — indistinguishable from "no flights found." Both are now
+ * honest about it: `/api/catalog/flights` drops Kiwi from its fan-out (Aviasales-only); `/api/catalog/nomad`
+ * (Kiwi-only — nomad routing has no other source) returns `{items: [], total: 0, retired: true}` instead
+ * of a bare empty array.
+ *
+ * Config-pointable revival seam: if Kiwi ever reopens Tequila to new partners (or an existing partner
+ * key becomes available), set `KIWI_TEQUILA_API_KEY` — the functions below use it (NOT
+ * TRAVELPAYOUTS_TOKEN) and take the real fetch path. Until that env var is set, both functions return
+ * `[]` unconditionally and make zero network calls (§13 — never fabricate, never guess).
+ */
 
 const KIWI_BASE = "https://api.tequila.kiwi.com";
 
+function getKiwiTequilaKey(): string | null {
+  return process.env.KIWI_TEQUILA_API_KEY || null;
+}
+
 async function kiwiFetch(path: string, params: Record<string, string | number | undefined> = {}): Promise<any> {
-  const token = getTravelpayoutsToken();
-  if (!token) throw new Error("TRAVELPAYOUTS_TOKEN not configured");
+  const token = getKiwiTequilaKey();
+  if (!token) throw new Error("KIWI_TEQUILA_API_KEY not configured");
 
   const url = new URL(path, KIWI_BASE);
   for (const [k, v] of Object.entries(params)) {
@@ -20,7 +46,9 @@ async function kiwiFetch(path: string, params: Record<string, string | number | 
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(`Kiwi API error ${res.status}: ${text.slice(0, 200)}`);
+    const err = new Error(`Kiwi API error ${res.status}: ${text.slice(0, 200)}`) as Error & { status?: number };
+    err.status = res.status;
+    throw err;
   }
   return res.json();
 }
@@ -36,8 +64,10 @@ export interface KiwiSearchParams {
   limit?: number;
 }
 
+/** Retired — see header. Returns [] unconditionally unless KIWI_TEQUILA_API_KEY is set. */
 export async function searchKiwiFlights(params: KiwiSearchParams): Promise<CatalogItem[]> {
-  if (!getTravelpayoutsToken()) return [];
+  const token = getKiwiTequilaKey();
+  if (!token) return []; // retired: no reportProviderResult call — the registry's static map already marks this 'retired'.
 
   try {
     const queryParams: Record<string, string | number | undefined> = {
@@ -56,7 +86,7 @@ export async function searchKiwiFlights(params: KiwiSearchParams): Promise<Catal
     const data = await kiwiFetch("/v2/search", queryParams);
     const flights = data?.data || [];
 
-    return flights.map((f: any): CatalogItem => ({
+    const items = flights.map((f: any): CatalogItem => ({
       id: `kiwi-${f.id || f.booking_token?.slice(0, 16) || Math.random()}`,
       type: "flight",
       provider: "kiwi",
@@ -78,7 +108,11 @@ export async function searchKiwiFlights(params: KiwiSearchParams): Promise<Catal
       source: "travelpayouts/kiwi",
       lastUpdated: new Date(),
     } as CatalogItem));
+    reportProviderResult("kiwi", items.length > 0 ? "ok" : "empty");
+    return items;
   } catch (err) {
+    const status = (err as any)?.status;
+    reportProviderResult("kiwi", status ? outcomeFromHttpStatus(status) : "error", err instanceof Error ? err.message : String(err));
     console.warn("[Kiwi] Search failed:", err instanceof Error ? err.message : err);
     return [];
   }
@@ -92,8 +126,10 @@ export interface NomadParams {
   limit?: number;
 }
 
+/** Retired — see header. Returns [] unconditionally unless KIWI_TEQUILA_API_KEY is set. */
 export async function searchKiwiNomad(params: NomadParams): Promise<CatalogItem[]> {
-  if (!getTravelpayoutsToken()) return [];
+  const token = getKiwiTequilaKey();
+  if (!token) return []; // retired: no reportProviderResult call — the registry's static map already marks this 'retired'.
 
   try {
     const queryParams: Record<string, string | number | undefined> = {
@@ -112,7 +148,7 @@ export async function searchKiwiNomad(params: NomadParams): Promise<CatalogItem[
     const data = await kiwiFetch("/v2/search", queryParams);
     const flights = data?.data || [];
 
-    return flights.map((f: any): CatalogItem => ({
+    const items = flights.map((f: any): CatalogItem => ({
       id: `kiwi-nomad-${f.id || Math.random()}`,
       type: "flight",
       provider: "kiwi",
@@ -134,7 +170,11 @@ export async function searchKiwiNomad(params: NomadParams): Promise<CatalogItem[
       source: "travelpayouts/kiwi",
       lastUpdated: new Date(),
     } as CatalogItem));
+    reportProviderResult("kiwi", items.length > 0 ? "ok" : "empty");
+    return items;
   } catch (err) {
+    const status = (err as any)?.status;
+    reportProviderResult("kiwi", status ? outcomeFromHttpStatus(status) : "error", err instanceof Error ? err.message : String(err));
     console.warn("[Kiwi Nomad] Search failed:", err instanceof Error ? err.message : err);
     return [];
   }

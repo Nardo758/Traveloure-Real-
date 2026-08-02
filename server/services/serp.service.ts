@@ -15,6 +15,7 @@ import {
 } from "@shared/schema";
 import { eq, and, gte, desc, sql } from "drizzle-orm";
 import { logger } from "../infrastructure";
+import { reportProviderResult, outcomeFromHttpStatus } from "./provider-health.service";
 
 const CACHE_DURATION_HOURS = 24;
 const MIN_RATING_FILTER = 3.5;
@@ -411,21 +412,26 @@ class SerpService {
 
     try {
       const response = await fetch(`${this.baseUrl}?${searchParams.toString()}`);
-      
+
       if (!response.ok) {
         console.error(`[SERP] API error: ${response.status} ${response.statusText}`);
+        reportProviderResult("serpapi", outcomeFromHttpStatus(response.status), `HTTP ${response.status}`);
         return null;
       }
 
       const data = await response.json() as SerpApiResponse;
-      
+
       if (data.error) {
         console.error(`[SERP] API returned error: ${data.error}`);
+        reportProviderResult("serpapi", "error", data.error);
         return null;
       }
 
+      const resultCount = (data.local_results?.length ?? 0) + (data.organic_results?.length ?? 0);
+      reportProviderResult("serpapi", resultCount > 0 ? "ok" : "empty");
       return data;
     } catch (error) {
+      reportProviderResult("serpapi", "error", error instanceof Error ? error.message : String(error));
       console.error('[SERP] Request failed:', error);
       return null;
     }
