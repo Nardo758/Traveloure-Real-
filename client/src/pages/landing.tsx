@@ -358,7 +358,7 @@ export default function LandingPage() {
             <div className="mt-8 flex justify-center">
               <Button
                 size="lg"
-                className="bg-primary hover:bg-[#E0314F] text-white font-semibold px-8 shadow-xl gap-2"
+                className="bg-primary hover:bg-[#E0314F] text-white font-semibold px-8 shadow-xl gap-2 min-h-[44px]"
                 onClick={() => setPlanningOpen(true)}
                 data-testid="button-plan-trip"
               >
@@ -398,7 +398,7 @@ export default function LandingPage() {
                           <Button
                             size="sm"
                             variant="outline"
-                            className="bg-white/10 border-white/30 text-white gap-1.5 text-xs"
+                            className="bg-white/10 border-white/30 text-white gap-1.5 text-xs min-h-[44px] sm:min-h-0"
                             data-testid={`button-category-${cat.slug}`}
                           >
                             <cat.icon className={cn("w-3.5 h-3.5", cat.color)} />
