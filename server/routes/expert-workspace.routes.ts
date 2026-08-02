@@ -414,6 +414,10 @@ router.post(
     const end = new Date(start.getTime() + (durationDays - 1) * 24 * 60 * 60 * 1000);
     const fmt = (d: Date) => d.toISOString().slice(0, 10);
 
+    // Lane S ruling 17: authoring builds mint identity at birth too (they become Ready Mades).
+    // Generated OUTSIDE the transaction — the sequence bump is its own statement and a rollback
+    // only skips a number, never reuses one.
+    const trackingNumber = await storage.generateTrackingNumber("TRV");
     const result = await db.transaction(async (tx) => {
       // trip-mint-owner-ok: authoring-mode build — userId NULL by design, no owner principal
       // exists; access rides authorId via isTripAuthor, not a trip_collaborators row.
@@ -424,6 +428,7 @@ router.post(
           authorId: expertId,    // authoring-mode scope key
           title: draftTitle,
           destination: city,
+          trackingNumber,
           startDate: fmt(start),
           endDate: fmt(end),
           status: "draft",

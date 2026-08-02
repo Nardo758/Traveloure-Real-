@@ -10,6 +10,7 @@
  */
 
 import { db } from "../db";
+import { storage } from "../storage";
 import { users } from "@shared/models/auth";
 import { trips, tripCollaborators } from "@shared/schema";
 import { eq } from "drizzle-orm";
@@ -122,9 +123,12 @@ async function seedE2EAccounts() {
       const fmt = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
       const tripId = crypto.randomUUID();
+      // Lane S ruling 17: every trip mints its identity at birth — seeds included.
+      const trackingNumber = await storage.generateTrackingNumber("TRV");
       await db.insert(trips).values({
         id: tripId,
         userId: traveler.id,
+        trackingNumber,
         title: "Kyoto Discovery Trip",
         destination: "Kyoto, Japan",
         startDate: fmt(start),

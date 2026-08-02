@@ -471,6 +471,12 @@ export interface TripPlanPlancardExtras {
     travelers: number;
     /** Pre-formatted display string, e.g. "$4,500" — the existing contract. */
     budget: string | null;
+    /** Lane S §3 (ruling 10): the slip's identity — the existing TRV- scheme. NULL on
+     *  pre-Lane-S rows (no backfill was ratified); render nothing for NULL, never invent. */
+    trackingNumber?: string | null;
+    /** Lane S §3: version = `item_transition_log` row count for this trip. Display-only,
+     *  computed per read — never a stored column. 0 for trips predating the log (honest). */
+    planVersion?: number;
   };
   changeLog: TripPlanChange[];
   metrics: TripPlanMetrics;

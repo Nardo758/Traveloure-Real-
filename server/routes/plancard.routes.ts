@@ -3,7 +3,6 @@ import { storage } from "../storage";
 import {
   insertItineraryChangeSchema,
   itineraryItems,
-  itineraryChanges,
   itineraryComparisons,
   itineraryVariants,
   sharedItineraries,
@@ -15,6 +14,7 @@ import { isAuthenticated } from "../replit_integrations/auth";
 import { getTripRole, canMutateTrip } from "../utils/trip-role";
 import { isTripAuthor } from "../utils/trip-authorship";
 import { authorizeTripLogistics } from "../utils/trip-logistics-auth";
+import { logItemTransition } from "../services/item-transition-log.service";
 import { assembleTripPlan, TripPlanNotFoundError } from "../services/trip-plan.service";
 
 const router = Router();
@@ -162,16 +162,19 @@ router.post("/api/itinerary-comparisons/:id/apply-to-trip", isAuthenticated, asy
         })));
       }
 
-      // Changelog entry — same transaction, so the diary can't record an apply that rolled back.
-      await tx.insert(itineraryChanges).values({
+      // Diary entry — Lane S rulings 11/16: the apply event now lives in the append-only
+      // `item_transition_log` as a TRIP-SCOPED row (itemId NULL; the eventType design working as
+      // intended), written in the SAME transaction as the apply so the diary can't record an
+      // apply that rolled back. `itinerary_changes` STOPS writing this event in the same change —
+      // one truth per event type; it keeps content-change display semantics only. (Deriving the
+      // traveler-facing feed from this log is the named follow-up, not this lane.)
+      await logItemTransition(tx, {
         tripId,
-        activityId: null,
-        who: "AI Optimizer",
-        action: `Applied optimized itinerary${delta.savings != null ? ` — saved $${Math.round(delta.savings)}` : ""}${delta.savingsPercent != null ? `, ${Math.round(delta.savingsPercent)}% tighter schedule` : ""}`,
-        changeType: "optimize",
-        role: "ai",
-        metadata: { comparisonId, variantId: variant.id, delta },
-      } as any);
+        itemId: null,
+        eventType: "variant_applied",
+        actorType: "optimizer",
+        actorId: userId,
+      });
 
       // Mark comparison with optimizedAt timestamp + the applied variant.
       await tx
