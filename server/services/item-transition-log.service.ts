@@ -13,9 +13,9 @@
  * Future subscription hook: the expert PULL→PUSH notification lane will attach a listener to this
  * insert path. Do NOT build notifications here now.
  */
-import { count, eq } from "drizzle-orm";
+import { count, desc, eq } from "drizzle-orm";
 import { db } from "../db";
-import { itemTransitionLog } from "@shared/schema";
+import { itemTransitionLog, type ItemTransitionLogEntry } from "@shared/schema";
 
 /** Everything that can move the slip. Matches the dispatch §3 actor vocabulary. */
 export type TransitionActorType =
@@ -66,4 +66,20 @@ export async function getTripTransitionCount(tripId: string): Promise<number> {
     .from(itemTransitionLog)
     .where(eq(itemTransitionLog.tripId, tripId));
   return Number(row?.n ?? 0);
+}
+
+/** The slip's recent diary, newest first (Spec A `<TransitionLogFooter>` — dispatch §4).
+ *  READ ONLY — this module stays append-only (inserts + reads, never UPDATE/DELETE).
+ *  Rides the `itl_trip_created_idx` (tripId, createdAt) index. Empty array for trips
+ *  predating the log — honest, never synthesized (§13). */
+export async function getRecentTripTransitions(
+  tripId: string,
+  limit = 20,
+): Promise<ItemTransitionLogEntry[]> {
+  return db
+    .select()
+    .from(itemTransitionLog)
+    .where(eq(itemTransitionLog.tripId, tripId))
+    .orderBy(desc(itemTransitionLog.createdAt))
+    .limit(limit);
 }
