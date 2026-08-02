@@ -1,5 +1,6 @@
 import { MapPin, Zap, TrendingUp, TrendingDown, Users, Bell, Check, Sparkles, Gem, Plane, MessageCircle, Info, Calendar } from "lucide-react";
 import { Link } from "wouter";
+import { optimizeUnsplashUrl, unsplashResponsiveProps } from "@/lib/unsplash";
 
 /**
  * Shared city card — one component behind every "city" surface (Discover trending
@@ -105,17 +106,8 @@ export function CityCard(props: CityCardProps) {
       <div className="relative h-40 w-full overflow-hidden group">
         {imageUrl ? (
           <img
-            src={imageUrl}
-            {...(imageUrl.includes("images.unsplash.com") && /[?&]w=\d+/.test(imageUrl)
-              ? {
-                  // Unsplash serves arbitrary widths via the `w` param; without a
-                  // srcset a phone downloads the full 1080px asset for a ~330px slot.
-                  srcSet: [400, 640, 1080]
-                    .map((w) => `${imageUrl.replace(/([?&]w=)\d+/, `$1${w}`)} ${w}w`)
-                    .join(", "),
-                  sizes: "(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw",
-                }
-              : {})}
+            src={optimizeUnsplashUrl(imageUrl)}
+            {...unsplashResponsiveProps(imageUrl)}
             loading="lazy"
             alt={cityName}
             className="w-full h-full object-cover transition-transform duration-500 motion-reduce:transition-none group-hover:scale-105"

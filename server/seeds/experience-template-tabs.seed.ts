@@ -7,7 +7,7 @@ import {
   experienceUniversalFilters,
   experienceUniversalFilterOptions
 } from "@shared/schema";
-import { eq, inArray, and } from "drizzle-orm";
+import { eq, inArray, and, sql } from "drizzle-orm";
 import { SELECTION_CONTROL_SEED } from "@shared/selection-control-seed";
 
 interface FilterOption {
@@ -172,7 +172,7 @@ async function seedUniversalFilters(experienceTypeId: string, filters: Universal
   }
 }
 
-// ============ BACHELOR/BACHELORETTE PARTY TEMPLATE ============
+// ------------ BACHELOR/BACHELORETTE PARTY TEMPLATE ------------
 const bachelorTabs: TabDef[] = [
   {
     name: "Group Details",
@@ -944,7 +944,7 @@ const bachelorUniversalFilters: UniversalFilterDef[] = [
   },
 ];
 
-// ============ ANNIVERSARY TRIP TEMPLATE ============
+// ------------ ANNIVERSARY TRIP TEMPLATE ------------
 const anniversaryTabs: TabDef[] = [
   {
     name: "Destinations",
@@ -1595,7 +1595,7 @@ const anniversaryUniversalFilters: UniversalFilterDef[] = [
   },
 ];
 
-// ============ TRAVEL TEMPLATE ============
+// ------------ TRAVEL TEMPLATE ------------
 const travelTabs: TabDef[] = [
   {
     name: "Activities",
@@ -2129,7 +2129,7 @@ const travelUniversalFilters: UniversalFilterDef[] = [
   },
 ];
 
-// ============ WEDDING TEMPLATE ============
+// ------------ WEDDING TEMPLATE ------------
 const weddingTabs: TabDef[] = [
   {
     name: "Ceremony",
@@ -2446,7 +2446,7 @@ const weddingTabs: TabDef[] = [
   },
 ];
 
-// ============ DATE NIGHT TEMPLATE ============
+// ------------ DATE NIGHT TEMPLATE ------------
 const dateNightTabs: TabDef[] = [
   {
     name: "Dining",
@@ -2583,7 +2583,7 @@ const dateNightTabs: TabDef[] = [
   },
 ];
 
-// ============ BIRTHDAY TEMPLATE ============
+// ------------ BIRTHDAY TEMPLATE ------------
 const birthdayTabs: TabDef[] = [
   {
     name: "Birthday Person",
@@ -2782,7 +2782,7 @@ const birthdayTabs: TabDef[] = [
   },
 ];
 
-// ============ CORPORATE EVENTS TEMPLATE ============
+// ------------ CORPORATE EVENTS TEMPLATE ------------
 const corporateTabs: TabDef[] = [
   {
     name: "Approval & Budget",
@@ -3116,7 +3116,7 @@ const corporateTabs: TabDef[] = [
   },
 ];
 
-// ============ RETREATS TEMPLATE ============
+// ------------ RETREATS TEMPLATE ------------
 const retreatsTabs: TabDef[] = [
   {
     name: "Venues",
@@ -3321,7 +3321,7 @@ const standardUniversalFilters: UniversalFilterDef[] = [
   },
 ];
 
-// ============ WEDDING ANNIVERSARIES TEMPLATE (Party-focused, different from Anniversary Trip) ============
+// ------------ WEDDING ANNIVERSARIES TEMPLATE (Party-focused, different from Anniversary Trip) ------------
 const weddingAnniversariesTabs: TabDef[] = [
   {
     name: "Anniversary Date",
@@ -3448,7 +3448,7 @@ const weddingAnniversariesTabs: TabDef[] = [
   }
 ];
 
-// ============ PROPOSAL TEMPLATE ============
+// ------------ PROPOSAL TEMPLATE ------------
 const proposalTabs: TabDef[] = [
   {
     name: "Plan Secrecy",
@@ -3558,7 +3558,7 @@ const proposalTabs: TabDef[] = [
   }
 ];
 
-// ============ BOYS TRIP TEMPLATE ============
+// ------------ BOYS TRIP TEMPLATE ------------
 const boysTripTabs: TabDef[] = [
   {
     name: "Group Details",
@@ -3667,7 +3667,7 @@ const boysTripTabs: TabDef[] = [
   }
 ];
 
-// ============ GIRLS TRIP TEMPLATE ============
+// ------------ GIRLS TRIP TEMPLATE ------------
 const girlsTripTabs: TabDef[] = [
   {
     name: "Group Details",
@@ -3773,7 +3773,7 @@ const girlsTripTabs: TabDef[] = [
   }
 ];
 
-// ============ REUNIONS TEMPLATE ============
+// ------------ REUNIONS TEMPLATE ------------
 const reunionsTabs: TabDef[] = [
   {
     name: "Attendee Coordination",
@@ -3896,7 +3896,7 @@ const reunionsTabs: TabDef[] = [
   }
 ];
 
-// ============ BABY SHOWER TEMPLATE ============
+// ------------ BABY SHOWER TEMPLATE ------------
 const babyShowerTabs: TabDef[] = [
   {
     name: "Expectant Mom",
@@ -4003,7 +4003,7 @@ const babyShowerTabs: TabDef[] = [
   }
 ];
 
-// ============ GRADUATION PARTY TEMPLATE ============
+// ------------ GRADUATION PARTY TEMPLATE ------------
 const graduationTabs: TabDef[] = [
   {
     name: "Graduate",
@@ -4098,7 +4098,7 @@ const graduationTabs: TabDef[] = [
   }
 ];
 
-// ============ ENGAGEMENT PARTY TEMPLATE ============
+// ------------ ENGAGEMENT PARTY TEMPLATE ------------
 const engagementTabs: TabDef[] = [
   {
     name: "Couple",
@@ -4182,7 +4182,7 @@ const engagementTabs: TabDef[] = [
   }
 ];
 
-// ============ HOUSEWARMING PARTY TEMPLATE ============
+// ------------ HOUSEWARMING PARTY TEMPLATE ------------
 const housewarmingTabs: TabDef[] = [
   {
     name: "Homeowners",
@@ -4276,7 +4276,7 @@ const housewarmingTabs: TabDef[] = [
   }
 ];
 
-// ============ RETIREMENT PARTY TEMPLATE ============
+// ------------ RETIREMENT PARTY TEMPLATE ------------
 const retirementTabs: TabDef[] = [
   {
     name: "Retiree",
@@ -4370,7 +4370,7 @@ const retirementTabs: TabDef[] = [
   }
 ];
 
-// ============ CAREER ACHIEVEMENT PARTY TEMPLATE ============
+// ------------ CAREER ACHIEVEMENT PARTY TEMPLATE ------------
 const careerAchievementTabs: TabDef[] = [
   {
     name: "Achiever",
@@ -4440,7 +4440,7 @@ const careerAchievementTabs: TabDef[] = [
   }
 ];
 
-// ============ FAREWELL PARTY TEMPLATE ============
+// ------------ FAREWELL PARTY TEMPLATE ------------
 const farewellTabs: TabDef[] = [
   {
     name: "Person Leaving",
@@ -4534,7 +4534,7 @@ const farewellTabs: TabDef[] = [
   }
 ];
 
-// ============ HOLIDAY PARTY TEMPLATE ============
+// ------------ HOLIDAY PARTY TEMPLATE ------------
 const holidayPartyTabs: TabDef[] = [
   {
     name: "Host Preferences",
@@ -4646,7 +4646,7 @@ const holidayPartyTabs: TabDef[] = [
   }
 ];
 
-// ============ SPORTS EVENT TEMPLATE ============
+// ------------ SPORTS EVENT TEMPLATE ------------
 const sportsEventTabs: TabDef[] = [
   {
     name: "Tickets",
@@ -5040,20 +5040,60 @@ async function updateExperienceTypeHeroConfigs() {
     },
   };
 
-  for (const [slug, cfg] of Object.entries(configs)) {
-    try {
-      await db
-        .update(experienceTypes)
-        .set({
-          headcountLabel: cfg.headcountLabel,
-          showKids: cfg.showKids,
-          showOriginCity: cfg.showOriginCity,
-          locationLabel: cfg.locationLabel,
-          ...(cfg.contextFields !== undefined ? { contextFields: cfg.contextFields } : {}),
-        })
-        .where(eq(experienceTypes.slug, slug));
-    } catch {
-      // Row may not exist yet in this environment; skip silently
+  // Deploy-speed fast path (hero configs): one query comparing sentinel
+  // columns; run the per-slug UPDATE loop only when some row is out of date.
+  let heroConfigsUpToDate = false;
+  try {
+    const heroRows = await db
+      .select({
+        slug: experienceTypes.slug,
+        headcountLabel: experienceTypes.headcountLabel,
+        showKids: experienceTypes.showKids,
+        showOriginCity: experienceTypes.showOriginCity,
+        locationLabel: experienceTypes.locationLabel,
+        contextFields: experienceTypes.contextFields,
+      })
+      .from(experienceTypes)
+      .where(inArray(experienceTypes.slug, Object.keys(configs)));
+    const heroBySlug = new Map(heroRows.map((r) => [r.slug, r]));
+    heroConfigsUpToDate =
+      heroRows.length > 0 &&
+      Object.entries(configs).every(([slug, cfg]) => {
+        const row = heroBySlug.get(slug);
+        if (!row) return true; // slug absent in this environment — nothing to update
+        return (
+          row.headcountLabel === (cfg.headcountLabel ?? null) &&
+          row.showKids === (cfg.showKids ?? null) &&
+          row.showOriginCity === (cfg.showOriginCity ?? null) &&
+          row.locationLabel === (cfg.locationLabel ?? null) &&
+          // contextFields is only backfilled when the config defines it, so
+          // only compare in that case (deep-compare via JSON stringify).
+          (cfg.contextFields === undefined ||
+            JSON.stringify(row.contextFields ?? null) === JSON.stringify(cfg.contextFields))
+        );
+      });
+  } catch {
+    // Columns may not exist yet — fall through to the per-row update path
+  }
+
+  if (heroConfigsUpToDate) {
+    console.log("Experience type hero configs already seeded — skipping.");
+  } else {
+    for (const [slug, cfg] of Object.entries(configs)) {
+      try {
+        await db
+          .update(experienceTypes)
+          .set({
+            headcountLabel: cfg.headcountLabel,
+            showKids: cfg.showKids,
+            showOriginCity: cfg.showOriginCity,
+            locationLabel: cfg.locationLabel,
+            ...(cfg.contextFields !== undefined ? { contextFields: cfg.contextFields } : {}),
+          })
+          .where(eq(experienceTypes.slug, slug));
+      } catch {
+        // Row may not exist yet in this environment; skip silently
+      }
     }
   }
 
@@ -5104,23 +5144,49 @@ async function updateExperienceTypeHeroConfigs() {
     "budget-planning": "planning-tools",
   };
 
-  // Explicitly deactivate templates that are not yet ready for public access
+  // Explicitly deactivate templates that are not yet ready for public access.
+  // Cheap guard: only issue UPDATEs for slugs that are still active.
   const INACTIVE_SLUGS = ["sports-event"];
-  for (const slug of INACTIVE_SLUGS) {
-    try {
-      await db.update(experienceTypes).set({ isActive: false }).where(eq(experienceTypes.slug, slug));
-    } catch {
-      // Skip silently if table/column not present
+  try {
+    const stillActive = await db
+      .select({ slug: experienceTypes.slug })
+      .from(experienceTypes)
+      .where(and(inArray(experienceTypes.slug, INACTIVE_SLUGS), eq(experienceTypes.isActive, true)));
+    for (const row of stillActive) {
+      await db.update(experienceTypes).set({ isActive: false }).where(eq(experienceTypes.slug, row.slug));
     }
+  } catch {
+    // Skip silently if table/column not present
   }
-  for (const [tabSlug, tabType] of Object.entries(TAB_SLUG_TO_TYPE)) {
-    try {
-      await db
-        .update(experienceTemplateTabs)
-        .set({ tabType })
-        .where(eq(experienceTemplateTabs.slug, tabSlug));
-    } catch {
-      // Column may not exist in older environments; skip silently
+
+  // Deploy-speed fast path (tabType backfill): one DISTINCT query finds the
+  // tab slugs whose tabType is out of date; only those get an UPDATE.
+  let tabTypePending: Set<string> | null = null;
+  try {
+    const tabTypeRows = await db
+      .selectDistinct({ slug: experienceTemplateTabs.slug, tabType: experienceTemplateTabs.tabType })
+      .from(experienceTemplateTabs)
+      .where(inArray(experienceTemplateTabs.slug, Object.keys(TAB_SLUG_TO_TYPE)));
+    tabTypePending = new Set(
+      tabTypeRows.filter((r) => r.tabType !== TAB_SLUG_TO_TYPE[r.slug]).map((r) => r.slug),
+    );
+  } catch {
+    // Column may not exist in older environments — fall back to full loop
+  }
+
+  if (tabTypePending !== null && tabTypePending.size === 0) {
+    console.log("Tab tabType backfill already seeded — skipping.");
+  } else {
+    for (const [tabSlug, tabType] of Object.entries(TAB_SLUG_TO_TYPE)) {
+      if (tabTypePending !== null && !tabTypePending.has(tabSlug)) continue;
+      try {
+        await db
+          .update(experienceTemplateTabs)
+          .set({ tabType })
+          .where(eq(experienceTemplateTabs.slug, tabSlug));
+      } catch {
+        // Column may not exist in older environments; skip silently
+      }
     }
   }
 
@@ -5150,17 +5216,47 @@ async function updateExperienceTypeHeroConfigs() {
   };
 
   try {
-    await db
-      .update(experienceTemplateTabs)
-      .set({ controlConfig: FLIGHT_CONTROL_CONFIG })
-      .where(inArray(experienceTemplateTabs.slug, ["flights"]));
+    // Deploy-speed fast path: sentinel check — only rewrite controlConfig when
+    // some flight/hotel tab is missing the 'priceRange' descriptor entirely.
+    const needsControlConfig = await db
+      .select({ id: experienceTemplateTabs.id })
+      .from(experienceTemplateTabs)
+      .where(and(
+        inArray(experienceTemplateTabs.slug, [
+          "flights", "hotels", "accommodations", "guest-accommodations", "romantic-accommodations",
+        ]),
+        sql`(${experienceTemplateTabs.controlConfig} IS NULL OR NOT jsonb_exists(${experienceTemplateTabs.controlConfig}, 'priceRange'))`,
+      ))
+      .limit(1);
 
-    await db
-      .update(experienceTemplateTabs)
-      .set({ controlConfig: HOTEL_CONTROL_CONFIG })
-      .where(inArray(experienceTemplateTabs.slug, [
-        "hotels", "accommodations", "guest-accommodations", "romantic-accommodations",
-      ]));
+    // Merge (never replace) into existing controlConfig so keys written by other
+    // seed steps — e.g. selectionControls from backfillSelectionControls — survive.
+    const mergeControlConfig = async (
+      slugs: string[],
+      config: Record<string, unknown>,
+    ) => {
+      const tabs = await db
+        .select()
+        .from(experienceTemplateTabs)
+        .where(inArray(experienceTemplateTabs.slug, slugs));
+      for (const tab of tabs) {
+        const existing = (tab.controlConfig as Record<string, unknown> | null) ?? {};
+        await db
+          .update(experienceTemplateTabs)
+          .set({ controlConfig: { ...existing, ...config } })
+          .where(eq(experienceTemplateTabs.id, tab.id));
+      }
+    };
+
+    if (needsControlConfig.length === 0) {
+      console.log("Flight/hotel tab control configs already seeded — skipping.");
+    } else {
+      await mergeControlConfig(["flights"], FLIGHT_CONTROL_CONFIG);
+      await mergeControlConfig(
+        ["hotels", "accommodations", "guest-accommodations", "romantic-accommodations"],
+        HOTEL_CONTROL_CONFIG,
+      );
+    }
   } catch {
     // Column may not exist in older environments; skip silently
   }

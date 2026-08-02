@@ -1,4 +1,5 @@
 import { Card, CardContent } from "@/components/ui/card";
+import { optimizeUnsplashUrl } from "@/lib/unsplash";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -192,7 +193,7 @@ export function UnifiedResultCard({
           {imageUrl ? (
             <div 
               className="h-40 bg-cover bg-center"
-              style={{ backgroundImage: `url(${imageUrl})` }}
+              style={{ backgroundImage: `url(${optimizeUnsplashUrl(imageUrl, { w: 800 })})` }}
             />
           ) : (
             <div className="h-40 bg-gradient-to-br from-gray-200 to-gray-300 dark:from-gray-700 dark:to-gray-800 flex items-center justify-center">

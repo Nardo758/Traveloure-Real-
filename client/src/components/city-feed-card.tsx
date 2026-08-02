@@ -26,8 +26,12 @@ function buildSrcSet(url: string | null | undefined): { srcSet?: string; sizes: 
     const [base, qs = ""] = url.split("?");
     const p1 = new URLSearchParams(qs);
     p1.set("w", "800");
+    p1.set("auto", "format"); // AVIF/WebP for capable browsers
+    p1.delete("fm");
     const p2 = new URLSearchParams(qs);
     p2.set("w", "1600");
+    p2.set("auto", "format");
+    p2.delete("fm");
     return { srcSet: `${base}?${p1} 800w, ${base}?${p2} 1600w`, sizes };
   }
   return { sizes };

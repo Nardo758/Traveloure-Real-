@@ -1,6 +1,6 @@
 import { db } from "./db";
 import { expertServiceCategories, expertServiceOfferings, users, localExpertForms } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 
 const expertServiceData = [
   {
@@ -77,6 +77,30 @@ const expertServiceData = [
 
 export async function seedExpertServices() {
   console.log("Seeding expert service categories and offerings...");
+
+  // Deploy-speed fast path: two aggregate queries decide whether the
+  // per-category / per-service existence loops can be skipped entirely.
+  const expectedCategoryNames = expertServiceData.map((c) => c.name);
+  const expectedServiceNames = expertServiceData.flatMap((c) => c.subServices.map((s) => s.name));
+  const [existingCategoryRows, existingServiceRows] = await Promise.all([
+    db
+      .select({ name: expertServiceCategories.name })
+      .from(expertServiceCategories)
+      .where(inArray(expertServiceCategories.name, expectedCategoryNames)),
+    db
+      .select({ name: expertServiceOfferings.name })
+      .from(expertServiceOfferings)
+      .where(inArray(expertServiceOfferings.name, expectedServiceNames)),
+  ]);
+  const existingCategoryNames = new Set(existingCategoryRows.map((r) => r.name));
+  const existingServiceNames = new Set(existingServiceRows.map((r) => r.name));
+  if (
+    expectedCategoryNames.every((n) => existingCategoryNames.has(n)) &&
+    expectedServiceNames.every((n) => existingServiceNames.has(n))
+  ) {
+    console.log("Expert service categories and offerings already seeded — skipping.");
+    return;
+  }
 
   for (const category of expertServiceData) {
     // Check if category exists
@@ -397,6 +421,30 @@ const mockExperts = [
 
 export async function seedMockExperts() {
   console.log("Seeding mock experts for testing...");
+
+  // Deploy-speed fast path: skip the per-expert loops when every mock expert
+  // already has a user AND an expert form with neighbourhood data backfilled
+  // (the only per-row update the loop would otherwise perform).
+  const expectedEmails = mockExperts.map((e) => e.email);
+  const existingUserRows = await db
+    .select({ id: users.id, email: users.email })
+    .from(users)
+    .where(inArray(users.email, expectedEmails));
+  if (existingUserRows.length === expectedEmails.length) {
+    const formRows = await db
+      .select({ userId: localExpertForms.userId, neighborhoods: localExpertForms.neighborhoods })
+      .from(localExpertForms)
+      .where(inArray(localExpertForms.userId, existingUserRows.map((u) => u.id)));
+    const formByUser = new Map(formRows.map((f) => [f.userId, f]));
+    const allSeeded = existingUserRows.every((u) => {
+      const form = formByUser.get(u.id);
+      return form && Array.isArray(form.neighborhoods) && (form.neighborhoods as unknown[]).length > 0;
+    });
+    if (allSeeded) {
+      console.log("Mock experts already seeded — skipping.");
+      return;
+    }
+  }
 
   let created = 0;
   let existed = 0;
