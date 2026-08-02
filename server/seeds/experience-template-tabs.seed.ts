@@ -172,7 +172,7 @@ async function seedUniversalFilters(experienceTypeId: string, filters: Universal
   }
 }
 
-// ============ BACHELOR/BACHELORETTE PARTY TEMPLATE ============
+// ------------ BACHELOR/BACHELORETTE PARTY TEMPLATE ------------
 const bachelorTabs: TabDef[] = [
   {
     name: "Group Details",
@@ -944,7 +944,7 @@ const bachelorUniversalFilters: UniversalFilterDef[] = [
   },
 ];
 
-// ============ ANNIVERSARY TRIP TEMPLATE ============
+// ------------ ANNIVERSARY TRIP TEMPLATE ------------
 const anniversaryTabs: TabDef[] = [
   {
     name: "Destinations",
@@ -1595,7 +1595,7 @@ const anniversaryUniversalFilters: UniversalFilterDef[] = [
   },
 ];
 
-// ============ TRAVEL TEMPLATE ============
+// ------------ TRAVEL TEMPLATE ------------
 const travelTabs: TabDef[] = [
   {
     name: "Activities",
@@ -2129,7 +2129,7 @@ const travelUniversalFilters: UniversalFilterDef[] = [
   },
 ];
 
-// ============ WEDDING TEMPLATE ============
+// ------------ WEDDING TEMPLATE ------------
 const weddingTabs: TabDef[] = [
   {
     name: "Ceremony",
@@ -2446,7 +2446,7 @@ const weddingTabs: TabDef[] = [
   },
 ];
 
-// ============ DATE NIGHT TEMPLATE ============
+// ------------ DATE NIGHT TEMPLATE ------------
 const dateNightTabs: TabDef[] = [
   {
     name: "Dining",
@@ -2583,7 +2583,7 @@ const dateNightTabs: TabDef[] = [
   },
 ];
 
-// ============ BIRTHDAY TEMPLATE ============
+// ------------ BIRTHDAY TEMPLATE ------------
 const birthdayTabs: TabDef[] = [
   {
     name: "Birthday Person",
@@ -2782,7 +2782,7 @@ const birthdayTabs: TabDef[] = [
   },
 ];
 
-// ============ CORPORATE EVENTS TEMPLATE ============
+// ------------ CORPORATE EVENTS TEMPLATE ------------
 const corporateTabs: TabDef[] = [
   {
     name: "Approval & Budget",
@@ -3116,7 +3116,7 @@ const corporateTabs: TabDef[] = [
   },
 ];
 
-// ============ RETREATS TEMPLATE ============
+// ------------ RETREATS TEMPLATE ------------
 const retreatsTabs: TabDef[] = [
   {
     name: "Venues",
@@ -3321,7 +3321,7 @@ const standardUniversalFilters: UniversalFilterDef[] = [
   },
 ];
 
-// ============ WEDDING ANNIVERSARIES TEMPLATE (Party-focused, different from Anniversary Trip) ============
+// ------------ WEDDING ANNIVERSARIES TEMPLATE (Party-focused, different from Anniversary Trip) ------------
 const weddingAnniversariesTabs: TabDef[] = [
   {
     name: "Anniversary Date",
@@ -3448,7 +3448,7 @@ const weddingAnniversariesTabs: TabDef[] = [
   }
 ];
 
-// ============ PROPOSAL TEMPLATE ============
+// ------------ PROPOSAL TEMPLATE ------------
 const proposalTabs: TabDef[] = [
   {
     name: "Plan Secrecy",
@@ -3558,7 +3558,7 @@ const proposalTabs: TabDef[] = [
   }
 ];
 
-// ============ BOYS TRIP TEMPLATE ============
+// ------------ BOYS TRIP TEMPLATE ------------
 const boysTripTabs: TabDef[] = [
   {
     name: "Group Details",
@@ -3667,7 +3667,7 @@ const boysTripTabs: TabDef[] = [
   }
 ];
 
-// ============ GIRLS TRIP TEMPLATE ============
+// ------------ GIRLS TRIP TEMPLATE ------------
 const girlsTripTabs: TabDef[] = [
   {
     name: "Group Details",
@@ -3773,7 +3773,7 @@ const girlsTripTabs: TabDef[] = [
   }
 ];
 
-// ============ REUNIONS TEMPLATE ============
+// ------------ REUNIONS TEMPLATE ------------
 const reunionsTabs: TabDef[] = [
   {
     name: "Attendee Coordination",
@@ -3896,7 +3896,7 @@ const reunionsTabs: TabDef[] = [
   }
 ];
 
-// ============ BABY SHOWER TEMPLATE ============
+// ------------ BABY SHOWER TEMPLATE ------------
 const babyShowerTabs: TabDef[] = [
   {
     name: "Expectant Mom",
@@ -4003,7 +4003,7 @@ const babyShowerTabs: TabDef[] = [
   }
 ];
 
-// ============ GRADUATION PARTY TEMPLATE ============
+// ------------ GRADUATION PARTY TEMPLATE ------------
 const graduationTabs: TabDef[] = [
   {
     name: "Graduate",
@@ -4098,7 +4098,7 @@ const graduationTabs: TabDef[] = [
   }
 ];
 
-// ============ ENGAGEMENT PARTY TEMPLATE ============
+// ------------ ENGAGEMENT PARTY TEMPLATE ------------
 const engagementTabs: TabDef[] = [
   {
     name: "Couple",
@@ -4182,7 +4182,7 @@ const engagementTabs: TabDef[] = [
   }
 ];
 
-// ============ HOUSEWARMING PARTY TEMPLATE ============
+// ------------ HOUSEWARMING PARTY TEMPLATE ------------
 const housewarmingTabs: TabDef[] = [
   {
     name: "Homeowners",
@@ -4276,7 +4276,7 @@ const housewarmingTabs: TabDef[] = [
   }
 ];
 
-// ============ RETIREMENT PARTY TEMPLATE ============
+// ------------ RETIREMENT PARTY TEMPLATE ------------
 const retirementTabs: TabDef[] = [
   {
     name: "Retiree",
@@ -4370,7 +4370,7 @@ const retirementTabs: TabDef[] = [
   }
 ];
 
-// ============ CAREER ACHIEVEMENT PARTY TEMPLATE ============
+// ------------ CAREER ACHIEVEMENT PARTY TEMPLATE ------------
 const careerAchievementTabs: TabDef[] = [
   {
     name: "Achiever",
@@ -4440,7 +4440,7 @@ const careerAchievementTabs: TabDef[] = [
   }
 ];
 
-// ============ FAREWELL PARTY TEMPLATE ============
+// ------------ FAREWELL PARTY TEMPLATE ------------
 const farewellTabs: TabDef[] = [
   {
     name: "Person Leaving",
@@ -4534,7 +4534,7 @@ const farewellTabs: TabDef[] = [
   }
 ];
 
-// ============ HOLIDAY PARTY TEMPLATE ============
+// ------------ HOLIDAY PARTY TEMPLATE ------------
 const holidayPartyTabs: TabDef[] = [
   {
     name: "Host Preferences",
@@ -4646,7 +4646,7 @@ const holidayPartyTabs: TabDef[] = [
   }
 ];
 
-// ============ SPORTS EVENT TEMPLATE ============
+// ------------ SPORTS EVENT TEMPLATE ------------
 const sportsEventTabs: TabDef[] = [
   {
     name: "Tickets",
@@ -5224,20 +5224,33 @@ async function updateExperienceTypeHeroConfigs() {
       ))
       .limit(1);
 
+    // Merge (never replace) into existing controlConfig so keys written by other
+    // seed steps — e.g. selectionControls from backfillSelectionControls — survive.
+    const mergeControlConfig = async (
+      slugs: string[],
+      config: Record<string, unknown>,
+    ) => {
+      const tabs = await db
+        .select()
+        .from(experienceTemplateTabs)
+        .where(inArray(experienceTemplateTabs.slug, slugs));
+      for (const tab of tabs) {
+        const existing = (tab.controlConfig as Record<string, unknown> | null) ?? {};
+        await db
+          .update(experienceTemplateTabs)
+          .set({ controlConfig: { ...existing, ...config } })
+          .where(eq(experienceTemplateTabs.id, tab.id));
+      }
+    };
+
     if (needsControlConfig.length === 0) {
       console.log("Flight/hotel tab control configs already seeded — skipping.");
     } else {
-      await db
-        .update(experienceTemplateTabs)
-        .set({ controlConfig: FLIGHT_CONTROL_CONFIG })
-        .where(inArray(experienceTemplateTabs.slug, ["flights"]));
-
-      await db
-        .update(experienceTemplateTabs)
-        .set({ controlConfig: HOTEL_CONTROL_CONFIG })
-        .where(inArray(experienceTemplateTabs.slug, [
-          "hotels", "accommodations", "guest-accommodations", "romantic-accommodations",
-        ]));
+      await mergeControlConfig(["flights"], FLIGHT_CONTROL_CONFIG);
+      await mergeControlConfig(
+        ["hotels", "accommodations", "guest-accommodations", "romantic-accommodations"],
+        HOTEL_CONTROL_CONFIG,
+      );
     }
   } catch {
     // Column may not exist in older environments; skip silently
