@@ -234,24 +234,3 @@ export async function getStripeSessionDetails(sessionId: string) {
   }
 }
 
-/**
- * Verifies Stripe webhook signature
- */
-export function verifyStripeWebhookSignature(
-  body: string,
-  signature: string
-): Stripe.Event {
-  if (!process.env.STRIPE_WEBHOOK_SECRET) {
-    throw new Error("STRIPE_WEBHOOK_SECRET is not set");
-  }
-
-  try {
-    return stripe.webhooks.constructEvent(
-      body,
-      signature,
-      process.env.STRIPE_WEBHOOK_SECRET
-    );
-  } catch (error) {
-    throw new Error(`Webhook signature verification failed: ${(error as Error).message}`);
-  }
-}

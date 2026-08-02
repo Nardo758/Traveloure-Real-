@@ -57,4 +57,27 @@ if (key) {
         `Update the STRIPE_SECRET_KEY secret.`
     );
   }
+
+  /**
+   * ── WEBHOOK SECRET DISCOVERABILITY (MONEY_MAP F-2) ──────────────────────────
+   * A configured-payments app (STRIPE_SECRET_KEY present) whose webhook secrets
+   * are missing can accept charges but can't verify the webhooks that confirm/
+   * fail/dispute them — a real but easy-to-miss hazard. Non-fatal WARN only:
+   * dev/CI routinely runs without webhook delivery configured at all, and the
+   * three webhook ROUTES themselves already refuse unsafely (bookings.ts's
+   * production guard below; webhooks.routes.ts's existing non-prod fallback).
+   */
+  const webhookSecretVars = [
+    "STRIPE_WEBHOOK_SECRET",
+    "STRIPE_CONNECT_WEBHOOK_SECRET",
+    "STRIPE_IDENTITY_WEBHOOK_SECRET",
+  ];
+  for (const varName of webhookSecretVars) {
+    if (!process.env[varName]) {
+      console.warn(
+        `[validate-env] WARN: STRIPE_SECRET_KEY is set but ${varName} is not — its webhook ` +
+          `cannot verify signed deliveries until it's configured. See .env.example.`
+      );
+    }
+  }
 }
