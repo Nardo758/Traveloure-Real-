@@ -346,9 +346,17 @@ class AffiliateReconciliationService {
     const matchedExternalRefIds = new Set<string>();
 
     for (const ext of external) {
+      // The 2026-08-01 live probe showed execute_query rows carry BOTH sub_id and long_sub_id;
+      // long_sub_id is presumed to hold the full `marker.token` value where sub_id may be
+      // shortened. Check sub_id first, fall back to long_sub_id — whichever yields a token.
       const subId = ext.subId ?? (ext.rawData as any)?.sub_id;
-      if (typeof subId !== "string" || !subId) continue;
-      const { token } = parseAttributionSubId(subId);
+      let token = typeof subId === "string" && subId ? parseAttributionSubId(subId).token : null;
+      if (!token) {
+        const longSubId = (ext.rawData as any)?.long_sub_id;
+        if (typeof longSubId === "string" && longSubId) {
+          token = parseAttributionSubId(longSubId).token;
+        }
+      }
       if (!token) continue;
 
       // Linkage (MONEY_MAP F-5 item 3): affiliate_earnings.external_report_data carries
