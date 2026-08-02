@@ -6663,6 +6663,10 @@ export const affiliateBookingRequests = pgTable("affiliate_booking_requests", {
   confirmationRef: varchar("confirmation_ref", { length: 255 }),
   price: decimal("price", { precision: 10, scale: 2 }),
   status: varchar("status", { length: 30 }).default("pending"),
+  // Migration 170 — AI booking copilot verification leg. Additive nullable jsonb snapshot written
+  // by server/services/booking-verification.service.ts (Tavily-extract + LLM-extract, key-gated,
+  // §13 never-fabricates). NEVER holds the affiliateUrl (§16 — enforced in the service layer).
+  verification: jsonb("verification"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

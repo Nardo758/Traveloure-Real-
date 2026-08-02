@@ -11,6 +11,11 @@ import { isAuthenticated } from "../replit_integrations/auth";
 import { geocodeAddress } from "../utils/geocode";
 import { applyAttributionSubId } from "../services/travelpayouts/travelpayouts-client";
 import { getProviderHealth } from "../services/provider-health.service";
+import {
+  verifyBookingRequest,
+  VerificationInFlightError,
+  VerificationThrottledError,
+} from "../services/booking-verification.service";
 
 // Additive-only honesty seam (provider-health task): looks up a single provider's CURRENT registry
 // status for a per-source catalog response. Never restructures the response — callers spread the
@@ -6983,6 +6988,38 @@ router.patch("/api/affiliate-booking-requests/:id", isAuthenticated, async (req,
     } catch (err: any) {
       console.error("[AffiliateBooking] patch error:", err);
       return res.status(500).json({ message: "Failed to update booking request" });
+    }
+  });
+
+// AI booking copilot — verification leg (decision-maker ratified). Tavily-extracts the partner
+// product page + LLM-extracts current facts, diffs against the request, and persists a
+// verified-as-of-now snapshot the assigned expert can review before they make the (human) booking.
+// This lane never books anything itself — see server/services/booking-verification.service.ts.
+// Authorization mirrors the PATCH handler above EXACTLY (role-based: expert or admin — the same
+// pooled-expert-queue model the rest of this rail uses; no per-row expertId ownership check).
+router.post("/api/affiliate-booking-requests/:id/verify", isAuthenticated, async (req, res) => {
+    try {
+      const sessionUserId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      if (!sessionUserId) return res.status(401).json({ message: "Unauthorized" });
+      const dbUser = await storage.getUser(sessionUserId);
+      if (!dbUser || (!isExpertRole(dbUser.role ?? "") && dbUser.role !== "admin")) {
+        return res.status(403).json({ message: "Expert role required" });
+      }
+      const { id } = req.params;
+      const result = await verifyBookingRequest(id);
+      if (!result.available && result.reason === "request_not_found") {
+        return res.status(404).json({ message: "Request not found" });
+      }
+      return res.json(result);
+    } catch (err: any) {
+      if (err instanceof VerificationInFlightError) {
+        return res.status(409).json({ message: err.message });
+      }
+      if (err instanceof VerificationThrottledError) {
+        return res.status(429).json({ message: err.message, retryAfterMs: err.retryAfterMs });
+      }
+      console.error("[AffiliateBooking] verify error:", err);
+      return res.status(500).json({ message: "Failed to verify booking request" });
     }
   });
 
