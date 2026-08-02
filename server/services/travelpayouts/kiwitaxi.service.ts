@@ -1,5 +1,6 @@
 import { getTravelpayoutsToken } from "./travelpayouts-client";
 import type { CatalogItem } from "../experience-catalog.service";
+import { reportProviderResult, outcomeFromHttpStatus } from "../provider-health.service";
 
 const KIWITAXI_API = "https://api.kiwitaxi.com";
 
@@ -32,6 +33,7 @@ export async function searchKiwiTaxi(params: KiwiTaxiSearchParams): Promise<Cata
       const transfers = data?.transfers || data?.results || data || [];
 
       if (Array.isArray(transfers) && transfers.length > 0) {
+        reportProviderResult("kiwitaxi", "ok");
         return transfers.slice(0, params.limit || 6).map((t: any): CatalogItem => ({
           id: `kiwitaxi-${t.id || Math.random().toString(36).slice(2)}`,
           type: "transfer",
@@ -55,8 +57,13 @@ export async function searchKiwiTaxi(params: KiwiTaxiSearchParams): Promise<Cata
           lastUpdated: new Date(),
         } as CatalogItem));
       }
+      // Real API succeeded with zero transfers — honest empty, not an error.
+      reportProviderResult("kiwitaxi", "empty");
+    } else {
+      reportProviderResult("kiwitaxi", outcomeFromHttpStatus(res.status), `HTTP ${res.status}`);
     }
-  } catch {
+  } catch (err) {
+    reportProviderResult("kiwitaxi", "error", err instanceof Error ? err.message : String(err));
   }
 
   const vehicleClasses = [

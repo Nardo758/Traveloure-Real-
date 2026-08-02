@@ -1,6 +1,7 @@
 import { db } from "../db";
 import { hotelCache } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import { reportProviderResult, outcomeFromHttpStatus } from "./provider-health.service";
 
 export interface BookingComHotel {
   hotel_id: number;
@@ -73,13 +74,16 @@ class BookingComService {
 
       if (!response.ok) {
         console.error(`[BookingCom] API error: ${response.status} ${response.statusText}`);
+        reportProviderResult("booking_com", outcomeFromHttpStatus(response.status), `HTTP ${response.status}`);
         return [];
       }
 
       const data = await response.json() as any;
       const hotels: BookingComHotel[] = Array.isArray(data) ? data : (data.result || []);
+      reportProviderResult("booking_com", hotels.length > 0 ? "ok" : "empty");
       return hotels;
     } catch (error: any) {
+      reportProviderResult("booking_com", "error", error?.message);
       console.error("[BookingCom] Search error:", error.message);
       return [];
     }
