@@ -251,6 +251,49 @@ test("exact-token match adopts the real amount and marks matched (incl. linked e
   }
 });
 
+test("truncated sub_id: token recovered from long_sub_id (live-probe schema hint)", async () => {
+  const expertId = await createTestUser();
+  const bookingRequestId = crypto.randomUUID();
+  const affiliateEarningId = await createAffiliateEarning({
+    expertId,
+    totalCommission: "0.00",
+    externalReportData: { affiliateBookingRequestId: bookingRequestId },
+  });
+  const expertEarningId = await createLinkedExpertEarning(expertId, affiliateEarningId);
+
+  try {
+    mockActionRows([
+      {
+        campaign_id: 150,
+        campaign_name_en: "WeGoTrip",
+        action_id: "150:8888",
+        created_at_day: todayIso(),
+        // Travelpayouts may shorten sub_id; long_sub_id preserves the full marker.token value.
+        sub_id: "405110",
+        long_sub_id: buildAttributionSubId(bookingRequestId),
+        state: "processing",
+        type: "action",
+        paid_profit_usd: "5.00",
+        processing_profit_usd: "0.00",
+        price_usd: "50.00",
+      },
+    ]);
+
+    await affiliateReconciliationService.matchRecords("this_month", "travelpayouts");
+
+    const row = await getAffiliateEarning(affiliateEarningId);
+    assert.equal(row.reconciliation_status, "matched");
+    assert.equal(row.partner_reference_id, "150:8888");
+    assert.equal(parseFloat(row.total_commission), 5.0);
+  } finally {
+    await cleanup({
+      expertEarnings: [expertEarningId],
+      affiliateEarnings: [affiliateEarningId],
+      users: [expertId],
+    });
+  }
+});
+
 test("second run is a no-op — an already-matched row is never re-adopted", async () => {
   const expertId = await createTestUser();
   const bookingRequestId = crypto.randomUUID();

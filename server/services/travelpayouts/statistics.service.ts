@@ -96,6 +96,10 @@ export interface TpActionRow {
   action_id: string;
   created_at_day: string;
   sub_id: string | null;
+  // Full-length sub_id counterpart. The 2026-08-01 live probe of execute_query's schema showed
+  // both fields; long_sub_id is presumed to preserve the complete `marker.token` value where
+  // sub_id may hold a shortened form — the F-5 matcher checks both.
+  long_sub_id?: string | null;
   state: string;
   type: string;
   paid_profit_usd: string | number;
@@ -123,6 +127,7 @@ export async function fetchTravelpayoutsActions(from: string, to: string): Promi
           "action_id",
           "created_at_day",
           "sub_id",
+          "long_sub_id",
           "state",
           "type",
           "paid_profit_usd",
