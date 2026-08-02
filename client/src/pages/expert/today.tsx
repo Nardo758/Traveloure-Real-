@@ -150,6 +150,29 @@ interface CoordinationEngagement {
 interface AffiliateBookingRequest {
   id: string;
   status: string;
+  itemName?: string;
+  // AI booking copilot verification snapshot (migration 170) — present only once an expert has
+  // run "Verify with AI" in the workspace. Absent/undefined ⇒ genuinely never verified.
+  verification?: {
+    verdict?: "verified" | "flagged" | "unclear";
+    flags?: Array<{ type: string }>;
+  } | null;
+}
+
+// Read-only status chip per pending agent-booking request — Today REFERENCES the workspace's real
+// verification snapshot (never re-derives or invents one, §13). Only three honest states:
+// "Verified ✓" (verdict verified), "Flags ⚠ n" (verdict flagged/unclear — something needs a look),
+// or "Not verified" (no snapshot exists yet — the expert hasn't run it).
+function agentRequestVerificationChip(req: AffiliateBookingRequest): { label: string; className: string } {
+  const v = req.verification;
+  if (!v) {
+    return { label: "Not verified", className: "bg-console-light text-console-mid" };
+  }
+  if (v.verdict === "verified") {
+    return { label: "Verified ✓", className: "bg-green-100 text-green-700" };
+  }
+  const flagCount = Array.isArray(v.flags) ? v.flags.length : 0;
+  return { label: `Flags ⚠ ${flagCount}`, className: "bg-amber-100 text-amber-700" };
 }
 
 function NeedsResponseSection() {
@@ -177,7 +200,8 @@ function NeedsResponseSection() {
   const coordinationCount = (coordinationData?.engagements ?? []).filter(
     (e) => e.status !== "completed" && e.status !== "cancelled",
   ).length;
-  const pendingAgentRequestsCount = (agentRequests ?? []).filter((r) => r.status === "pending").length;
+  const pendingAgentRequests = (agentRequests ?? []).filter((r) => r.status === "pending");
+  const pendingAgentRequestsCount = pendingAgentRequests.length;
 
   const rows = [
     { key: "bookings", count: pendingBookingsCount, label: "booking request", icon: CalendarDays },
@@ -210,24 +234,49 @@ function NeedsResponseSection() {
             {rows.map((row) => (
               <div
                 key={row.key}
-                className="flex items-center justify-between gap-3 py-2 border-b border-console-light last:border-0 last:pb-0"
+                className="py-2 border-b border-console-light last:border-0 last:pb-0"
                 data-testid={`row-today-needs-${row.key}`}
               >
-                <div className="flex items-center gap-2 min-w-0">
-                  <row.icon className="w-4 h-4 text-console-mid flex-shrink-0" />
-                  <span className="text-sm text-console-darkest">
-                    {row.count} {row.label}
-                    {row.count === 1 ? "" : "s"}
-                  </span>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <row.icon className="w-4 h-4 text-console-mid flex-shrink-0" />
+                    <span className="text-sm text-console-darkest">
+                      {row.count} {row.label}
+                      {row.count === 1 ? "" : "s"}
+                    </span>
+                  </div>
+                  <Link href="/expert/inbox">
+                    <span
+                      className="text-xs font-medium text-primary hover:underline flex-shrink-0 cursor-pointer"
+                      data-testid={`link-today-open-inbox-${row.key}`}
+                    >
+                      Open Inbox →
+                    </span>
+                  </Link>
                 </div>
-                <Link href="/expert/inbox">
-                  <span
-                    className="text-xs font-medium text-primary hover:underline flex-shrink-0 cursor-pointer"
-                    data-testid={`link-today-open-inbox-${row.key}`}
-                  >
-                    Open Inbox →
-                  </span>
-                </Link>
+                {/* AI booking copilot — read-only per-request verification chip strip. Today still
+                    references (never re-renders) the actual list — Inbox/the workspace own the
+                    confirm/fail/verify actions; this is only a status glance sourced from the same
+                    query the count above already uses, leading into the same Inbox link. */}
+                {row.key === "agent" && pendingAgentRequests.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-1.5 mt-1.5 pl-6" data-testid="strip-today-agent-verification">
+                    {pendingAgentRequests.map((req) => {
+                      const chip = agentRequestVerificationChip(req);
+                      return (
+                        <Link key={req.id} href="/expert/inbox">
+                          <span
+                            className={`inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full cursor-pointer ${chip.className}`}
+                            data-testid={`chip-today-agent-verification-${req.id}`}
+                            title={req.itemName ?? undefined}
+                          >
+                            {req.itemName ? `${req.itemName.slice(0, 22)}${req.itemName.length > 22 ? "…" : ""} · ` : ""}
+                            {chip.label}
+                          </span>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             ))}
           </div>
