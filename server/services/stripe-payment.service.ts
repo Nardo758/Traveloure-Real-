@@ -873,24 +873,30 @@ class StripePaymentService {
       const isZeroDecimal = effectiveCurrency === 'jpy';
       const stripeAmount = isZeroDecimal ? Math.round(amount) : Math.round(amount * 100);
 
-      const paymentIntent = await stripe.paymentIntents.create({
-        amount: stripeAmount,
-        currency: effectiveCurrency,
-        metadata: {
-          type: 'expert_service',
-          userId,
-          variantId: variantId.toString(),
-          comparisonId: comparisonId.toString(),
-          destination,
-          serviceType,
-          notes: notes.substring(0, 450),
+      const paymentIntent = await stripe.paymentIntents.create(
+        {
+          amount: stripeAmount,
+          currency: effectiveCurrency,
+          metadata: {
+            type: 'expert_service',
+            userId,
+            variantId: variantId.toString(),
+            comparisonId: comparisonId.toString(),
+            destination,
+            serviceType,
+            notes: notes.substring(0, 450),
+          },
+          description: `Expert ${serviceTitles[serviceType]} - ${destination}`,
+          receipt_email: userEmail,
+          automatic_payment_methods: {
+            enabled: true,
+          },
         },
-        description: `Expert ${serviceTitles[serviceType]} - ${destination}`,
-        receipt_email: userEmail,
-        automatic_payment_methods: {
-          enabled: true,
-        },
-      });
+        // §15 (MONEY_MAP F-3): deterministic key — variantId+comparisonId+serviceType+userId is
+        // the stable identity of this logical charge (a retry can't mint a second uncaptured PI;
+        // a different serviceType/variant for the same user is a genuinely different charge).
+        { idempotencyKey: `expert-svc-${variantId}-${comparisonId}-${serviceType}-${userId}` },
+      );
 
       return {
         clientSecret: paymentIntent.client_secret,

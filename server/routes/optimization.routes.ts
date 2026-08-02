@@ -35,6 +35,16 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
   apiVersion: "2024-12-18.acacia" as any,
 });
 
+// §15: deterministic per-target-per-day idempotency key, shared by BOTH optimization-fee
+// charge paths below (the saved-card one-click path and the Elements/sheet path) so they
+// can't drift apart (MONEY_MAP F-3). A double-click on either path can't double-charge.
+function buildOptimizationFeeIdempotencyKey(
+  userId: string,
+  target: string | number | undefined | null,
+): string {
+  return `opt-fee-${userId}-${target}-${new Date().toISOString().slice(0, 10)}`;
+}
+
 /**
  * POST /api/optimization-preview
  * Body: { items: [{serviceType, price?, duration?, dayNumber?}[]], eventType?, travelers? }
@@ -295,7 +305,7 @@ router.post("/api/optimization-payments", isAuthenticated, async (req, res) => {
         },
         description: `Traveloure AI Optimization (${tier})`,
         // §15: deterministic per-target-per-day key — a double-click can't double-charge.
-        idempotencyKey: `opt-fee-${userId}-${tripId ?? userExperienceId}-${new Date().toISOString().slice(0, 10)}`,
+        idempotencyKey: buildOptimizationFeeIdempotencyKey(userId, tripId ?? userExperienceId),
       });
       if (oneClick.status === "succeeded") {
         return res.json({
@@ -329,22 +339,27 @@ router.post("/api/optimization-payments", isAuthenticated, async (req, res) => {
     // #973: attaching the customer is OPTIONAL (falls back to a customer-less PI), but if the
     // stored id has gone stale, recover once via the shared #973 helper rather than 500ing.
     const buildOptimizationPaymentIntent = (customerId?: string) =>
-      stripe.paymentIntents.create({
-        amount: priceCents,
-        currency: currency.toLowerCase(),
-        ...(customerId ? { customer: customerId } : {}),
-        setup_future_usage: "off_session",
-        metadata: {
-          type: "optimization_fee",
-          userId,
-          complexityTier: tier,
-          eventType: dbEventType ?? "",
-          targetTripId: tripId ?? "",
-          targetExperienceId: userExperienceId ?? "",
-          context: JSON.stringify(comparisonContext || {}),
+      stripe.paymentIntents.create(
+        {
+          amount: priceCents,
+          currency: currency.toLowerCase(),
+          ...(customerId ? { customer: customerId } : {}),
+          setup_future_usage: "off_session",
+          metadata: {
+            type: "optimization_fee",
+            userId,
+            complexityTier: tier,
+            eventType: dbEventType ?? "",
+            targetTripId: tripId ?? "",
+            targetExperienceId: userExperienceId ?? "",
+            context: JSON.stringify(comparisonContext || {}),
+          },
+          description: `Traveloure AI Optimization (${tier})`,
         },
-        description: `Traveloure AI Optimization (${tier})`,
-      });
+        // §15 (MONEY_MAP F-3): same deterministic key format as the saved-card path above —
+        // a retried/duplicate Elements-path request can't mint a second uncaptured PI.
+        { idempotencyKey: buildOptimizationFeeIdempotencyKey(userId, tripId ?? userExperienceId) },
+      );
     const paymentIntent = stripeCustomerId
       ? await stripePaymentService.runWithCustomerRecovery(userId, stripeCustomerId, (cid) =>
           buildOptimizationPaymentIntent(cid),
