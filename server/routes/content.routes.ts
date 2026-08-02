@@ -9,6 +9,7 @@ import { api } from "@shared/routes";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { geocodeAddress } from "../utils/geocode";
+import { applyAttributionSubId } from "../services/travelpayouts/travelpayouts-client";
 import {
   dbHealthCheck, getServiceOfferingTypes, getExpertOfferingTypes,
   getFeedCompositionConfig, insertContactSubmission, getAdminUserIds,
@@ -6719,17 +6720,32 @@ router.post("/api/affiliate-booking-requests/from-catalog", isAuthenticated, asy
       const expertIds3 = await getExpertUserIds(10);
       const expertId = expertIds3.length > 0 ? expertIds3[0] : null;
       const status = expertId ? "assigned" : "pending";
+
+      // MONEY_MAP F-5 (dormant): stamp the booking-request id onto the outbound link's sub_id so a
+      // future Travelpayouts commission report echoes it back and the reconciliation matcher can
+      // adopt a REAL amount on an exact match instead of ever estimating one. Pre-generate the id
+      // (rather than reading it back post-insert) so the token can be baked into affiliateUrl BEFORE
+      // it is stored — the record is written once, never patched. Flag OFF (default) → the pure
+      // applyAttributionSubId helper returns the URL unchanged — byte-identical current behavior.
+      const bookingRequestId = crypto.randomUUID();
+      const affiliateUrlToStore = applyAttributionSubId(
+        resolved.affiliateUrl,
+        bookingRequestId,
+        process.env.TP_SUBID_ATTRIBUTION === "1"
+      );
+
       const record = await storage.createAffiliateBookingRequest({
+        id: bookingRequestId,
         userId, expertId,
         itemName: resolved.title, itemDescription: resolved.description,
         partnerName: resolved.partnerName, partnerCategory: resolved.partnerCategory,
-        affiliateUrl: resolved.affiliateUrl,
+        affiliateUrl: affiliateUrlToStore,
         travelDate: typeof travelDate === "string" ? travelDate : null,
         travelers: Number.isInteger(travelers) && travelers > 0 ? travelers : 1,
         userNotes: typeof userNotes === "string" ? userNotes.slice(0, 2000) : null,
         expertNotes: null, confirmationRef: null, price: null,
         status,
-      });
+      } as any);
       // Never return affiliateUrl to client
       const { affiliateUrl: _url2, ...safe } = record;
       return res.json(safe);
