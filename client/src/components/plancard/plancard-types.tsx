@@ -376,7 +376,55 @@ export interface PlanCardTrip {
 }
 
 export type PlanCardRole = "owner" | "expert" | "friend" | "viewer";
-export type PlanCardStage = "summary" | "full";
+/** `proposal` — Spec C variant-comparison column (SLIP_EXPERIENCE_DISPATCH §4): a compact,
+ *  day-ordered, read-only rendering of ONE optimizer variant, with the trip's purchased items
+ *  rendered from CANONICAL trip rows (identical across columns by construction). */
+export type PlanCardStage = "summary" | "full" | "proposal";
+
+// ── stage="proposal" data (Spec C) ─────────────────────────────────────────────
+
+/** An anchored (purchased) item — sourced from the CANONICAL trip rows (the plancard DTO),
+ *  never from variant copies, so every column renders it identically by construction. */
+export interface ProposalAnchorItem {
+  id: string;
+  dayNum: number;
+  time: string;
+  name: string;
+}
+
+/** An optimizable item from the VARIANT's own rows — day/time as proposed. */
+export interface ProposalVariantItem {
+  id: string;
+  dayNumber: number;
+  startTime?: string | null;
+  name: string;
+  price?: string | null;
+}
+
+/** Muted transport summary — count + cost from SERVER-computed leg values only. */
+export interface ProposalLegsSummary {
+  count: number;
+  totalCostUsd: number | null;
+}
+
+export interface PlanCardProposalData {
+  variantId: string;
+  /** Variant name ("Variant A" / "Your Plan"). */
+  name: string;
+  /** Strategy tagline (variant.description). Null → renders nothing (§13). */
+  tagline?: string | null;
+  /** Exactly one or zero recommended per comparison — derived from optimizer output. */
+  recommended?: boolean;
+  /** Canonical-trip purchased rows (see ProposalAnchorItem). */
+  anchoredItems: ProposalAnchorItem[];
+  /** The variant's own proposed items. */
+  items: ProposalVariantItem[];
+  /** Null/undefined while legs are loading or when the variant has none. */
+  legsSummary?: ProposalLegsSummary | null;
+  applyLabel: string;
+  onApply: () => void;
+  applying?: boolean;
+}
 
 export interface PlanCardProps {
   trip: PlanCardTrip;
@@ -392,6 +440,12 @@ export interface PlanCardProps {
    * default behavior).
    */
   initialSelectedDay?: number;
+  /**
+   * stage="proposal" only (Spec C): the variant column's data + apply wiring. Ignored on
+   * the summary/full stages; stage="proposal" renders nothing without it (§13 — no column
+   * is invented from a trip alone).
+   */
+  proposal?: PlanCardProposalData;
   /**
    * True when the card renders INSIDE the expert Workstation builder (decision-maker,
    * Jul 27 2026): suppresses the traveler-facing chrome that duplicates or contradicts

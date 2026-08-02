@@ -623,6 +623,29 @@ export async function getExpertAssignedTrips(expertId: string): Promise<any[]> {
   }));
 }
 
+/**
+ * Traveler-side mirror of getExpertAssignedTrips above: for the SESSION traveler (trip owner),
+ * return each of their own trips' real advisor linkage (`trip_expert_advisors`, pending|accepted
+ * — the canonical "is there an active advisor on this trip" predicate this file already uses
+ * elsewhere, e.g. isTripAdvisor / getExpertAssignedTrips). Built for chat.tsx's plan-events feature
+ * (claude/chat-plan-events): the existing `partnerAssignedTrip` logic in chat.tsx resolves the
+ * shared trip for an EXPERT viewing a traveler counterpart via `/api/expert/assigned-trips`; there
+ * is no reverse read for a TRAVELER viewing an expert counterpart, and `trips.expertId` is a dead
+ * fallback column no assignment path writes (see resolveDeliveredBy's comment + a repo-wide grep —
+ * only trip_expert_advisors is truly written), so it cannot serve as the real link. This is that
+ * real, minimal, read-only reverse.
+ */
+export async function getTravelerTripAdvisors(userId: string): Promise<Array<{ trip_id: string; expert_id: string; status: string }>> {
+  const result = await db.execute(sql`
+    SELECT t.id as trip_id, tea.local_expert_id as expert_id, tea.status
+    FROM trip_expert_advisors tea
+    JOIN trips t ON t.id = tea.trip_id
+    WHERE t.user_id = ${userId} AND tea.status IN ('pending', 'accepted')
+    ORDER BY tea.assigned_at DESC
+  `);
+  return (result.rows || []) as any[];
+}
+
 // ─── Trip Suggestions ─────────────────────────────────────────────────────────
 
 export async function isTripOwner(tripId: string, userId: string): Promise<boolean> {

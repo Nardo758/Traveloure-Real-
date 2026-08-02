@@ -6,8 +6,11 @@ import { getRoleHomePath } from "@/lib/role-utils";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Send, Loader2, MessageSquare, Search, Star, MapPin, ArrowLeft, User, Clock, Wifi, WifiOff } from "lucide-react";
-import { format } from "date-fns";
+import {
+  Send, Loader2, MessageSquare, Search, Star, MapPin, ArrowLeft, User, Clock, Wifi, WifiOff,
+  PackageCheck, Eye, Lightbulb, CheckCircle2, AlertCircle, MessageCircle, FileText,
+} from "lucide-react";
+import { format, formatDistanceToNow } from "date-fns";
 import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -47,6 +50,72 @@ interface DisplayExpert {
   /** W5-E: unread-received-message count for this thread (from useConversationThreads),
    *  cleared once the thread is opened and read-all is confirmed. */
   unreadCount?: number;
+}
+
+/**
+ * A single trip plan-lifecycle event, sourced from GET /api/notifications (the exact endpoint
+ * the bell page / Inbox "Updates" tab already read — see client/src/pages/inbox.tsx's
+ * ApiNotification). Only the fields this feature reads are declared here; the real writers are
+ * server/routes/booking-actions.ts's four `type: 'itinerary_update'` inserts (suggestion,
+ * delivery status advance, plan-review decision, per-item comments both directions) — every one
+ * of them stamps `data.tripId` + `data.workspacePath` already resolved for the notification's
+ * OWN recipient/role, so this feature reads that verbatim rather than re-deriving a link.
+ */
+interface PlanEventNotification {
+  id: string;
+  type: string;
+  title: string;
+  message: string;
+  createdAt: string;
+  data?: {
+    tripId?: string;
+    itemId?: string;
+    workspacePath?: string;
+    [key: string]: unknown;
+  };
+}
+
+/** Icon per event, chosen from the real, fixed set of titles the server writes (see the four
+ *  insert sites above) — never a generic/ambiguous default beyond the honest fallback. */
+function planEventIcon(title: string) {
+  const t = title.toLowerCase();
+  if (t.includes("delivered")) return PackageCheck;
+  if (t.includes("ready for review")) return Eye;
+  if (t.includes("suggestion")) return Lightbulb;
+  if (t.includes("approved")) return CheckCircle2;
+  if (t.includes("changes requested")) return AlertCircle;
+  if (t.includes("comment")) return MessageCircle;
+  return FileText;
+}
+
+/**
+ * A single inline, read-only system row for a trip plan-lifecycle event (claude/chat-plan-events,
+ * ratified "Light" scope). Centered/muted/small — visually distinct from a chat bubble, matching
+ * the page's existing muted-token language (bg-muted / text-muted-foreground, no raw hex). No
+ * mutation, no mark-as-read — that stays owned by /notifications + Inbox "Updates" (one-home
+ * rule). The "View" link is exactly the server-resolved `data.workspacePath` (already correct for
+ * THIS notification's own recipient/role) — never re-derived, and omitted entirely when absent
+ * rather than rendering a broken link (§13).
+ */
+function PlanEventRow({ event }: { event: PlanEventNotification }) {
+  const Icon = planEventIcon(event.title);
+  const href = event.data?.workspacePath;
+  return (
+    <div className="flex justify-center py-1" data-testid={`plan-event-${event.id}`}>
+      <div className="flex items-center gap-2 max-w-[90%] px-3 py-1.5 rounded-full bg-muted/70 text-muted-foreground text-xs">
+        <Icon className="w-3.5 h-3.5 flex-shrink-0" />
+        <span className="truncate">{event.title}</span>
+        <span className="flex-shrink-0 opacity-70">
+          · {formatDistanceToNow(new Date(event.createdAt), { addSuffix: true })}
+        </span>
+        {href && (
+          <Link href={href} className="flex-shrink-0 font-medium underline underline-offset-2 hover:text-foreground">
+            View
+          </Link>
+        )}
+      </div>
+    </div>
+  );
 }
 
 /** Map a raw /api/experts row to the chat display shape. Ratings stay honest —
@@ -251,6 +320,69 @@ export default function Chat() {
         : null,
     [selectedExpert, expertAssignedTrips],
   );
+
+  // ── Plan-lifecycle events (claude/chat-plan-events) ─────────────────────────────────────────
+  // Traveler-side mirror of expertAssignedTrips above: which of MY OWN trips has this expert as
+  // an active advisor. Real linkage via GET /api/trips/mine/advisors (new, session-scoped —
+  // server/routes/booking-actions.ts), the reverse of the existing /api/expert/assigned-trips
+  // read this page already uses for the earner side. Skipped for earners (no traveler-owned
+  // trips to look up).
+  const { data: travelerTripAdvisors } = useQuery<Array<{ trip_id: string; expert_id: string; status: string }>>({
+    queryKey: ["/api/trips/mine/advisors"],
+    enabled: !isEarner,
+    staleTime: 60_000,
+  });
+
+  // The trip actually shared with the OPEN conversation partner, resolved from real assignment
+  // data only (never guessed — §13). Earner (expert) side reuses partnerAssignedTrip above
+  // (already resolved from /api/expert/assigned-trips, accepted-only); a provider earner has no
+  // assigned-trip concept at all and correctly resolves to null. Traveler side looks up the
+  // reverse via travelerTripAdvisors, same accepted-only bar.
+  const sharedTripId = useMemo(() => {
+    if (!selectedExpert) return null;
+    if (isEarner) return isExpertUser ? (partnerAssignedTrip?.trip_id ?? null) : null;
+    const match = (travelerTripAdvisors ?? []).find(
+      (a) => String(a.expert_id) === String(selectedExpert.id) && a.status === "accepted",
+    );
+    return match?.trip_id ?? null;
+  }, [selectedExpert, isEarner, isExpertUser, partnerAssignedTrip, travelerTripAdvisors]);
+
+  // The same GET /api/notifications the bell page (notifications.tsx) and Inbox "Updates" tab
+  // (inbox.tsx) already read — no new endpoint for the events themselves, only for the
+  // shared-trip resolution above. Filtered to itinerary_update rows whose `data.tripId` matches
+  // the resolved shared trip; when no shared trip resolves, this is always empty (never a guess).
+  const { data: allNotifications } = useQuery<PlanEventNotification[]>({
+    queryKey: ["/api/notifications"],
+  });
+  const planEvents = useMemo(() => {
+    if (!sharedTripId) return [];
+    return (allNotifications ?? []).filter(
+      (n) => n.type === "itinerary_update" && n.data?.tripId === sharedTripId,
+    );
+  }, [allNotifications, sharedTripId]);
+
+  // Merge messages + plan events into one chronological timeline. Read-only: this never mutates
+  // either source, never marks anything read (that stays owned by /notifications + Inbox
+  // "Updates" — the one-home rule), and never touches the message-send/WebSocket/typing/
+  // unread-badge logic above. `chats` (the existing, unfiltered-by-thread query — unchanged
+  // here) supplies messages; planEvents (already trip-scoped, above) supplies events.
+  type TimelineEntry =
+    | { kind: "message"; ts: number; chat: NonNullable<typeof chats>[number] }
+    | { kind: "event"; ts: number; event: PlanEventNotification };
+  const timelineItems = useMemo<TimelineEntry[]>(() => {
+    const msgItems: TimelineEntry[] = (chats ?? []).map((chat) => ({
+      kind: "message",
+      ts: chat.createdAt ? new Date(chat.createdAt).getTime() : 0,
+      chat,
+    }));
+    const eventItems: TimelineEntry[] = planEvents.map((event) => ({
+      kind: "event",
+      ts: new Date(event.createdAt).getTime(),
+      event,
+    }));
+    return [...msgItems, ...eventItems].sort((a, b) => a.ts - b.ts);
+  }, [chats, planEvents]);
+
   const [searchQuery, setSearchQuery] = useState("");
 
   // Pre-fill message when arriving from "Ask expert" on a gem/activity card
@@ -660,36 +792,40 @@ export default function Chat() {
 
                   {/* Messages */}
                   <ScrollArea className="flex-1 min-h-0 p-4">
-                    {chats && chats.length > 0 ? (
+                    {timelineItems.length > 0 ? (
                       <div className="space-y-4">
-                        {chats.map((chat) => (
-                          <div
-                            key={chat.id}
-                            className={`flex ${chat.senderId === user?.id ? 'justify-end' : 'justify-start'}`}
-                          >
-                            <div className="flex items-end gap-2 max-w-[70%]">
-                              {chat.senderId !== user?.id && (
-                                <Avatar className="w-8 h-8">
-                                  <AvatarImage src={selectedExpert.avatar} />
-                                  <AvatarFallback>{selectedExpert.name[0]}</AvatarFallback>
-                                </Avatar>
-                              )}
-                              <div
-                                className={`
-                                  rounded-2xl p-4 shadow-sm
-                                  ${chat.senderId === user?.id 
-                                    ? 'bg-primary text-white rounded-br-none' 
-                                    : 'bg-muted text-foreground rounded-bl-none'}
-                                `}
-                              >
-                                <p>{chat.message}</p>
-                                <div className={`text-xs mt-2 ${chat.senderId === user?.id ? 'text-white/70' : 'text-muted-foreground'}`}>
-                                  {chat.createdAt && format(new Date(chat.createdAt), "h:mm a")}
+                        {timelineItems.map((item) =>
+                          item.kind === "event" ? (
+                            <PlanEventRow key={`event-${item.event.id}`} event={item.event} />
+                          ) : (
+                            <div
+                              key={`msg-${item.chat.id}`}
+                              className={`flex ${item.chat.senderId === user?.id ? 'justify-end' : 'justify-start'}`}
+                            >
+                              <div className="flex items-end gap-2 max-w-[70%]">
+                                {item.chat.senderId !== user?.id && (
+                                  <Avatar className="w-8 h-8">
+                                    <AvatarImage src={selectedExpert.avatar} />
+                                    <AvatarFallback>{selectedExpert.name[0]}</AvatarFallback>
+                                  </Avatar>
+                                )}
+                                <div
+                                  className={`
+                                    rounded-2xl p-4 shadow-sm
+                                    ${item.chat.senderId === user?.id
+                                      ? 'bg-primary text-white rounded-br-none'
+                                      : 'bg-muted text-foreground rounded-bl-none'}
+                                  `}
+                                >
+                                  <p>{item.chat.message}</p>
+                                  <div className={`text-xs mt-2 ${item.chat.senderId === user?.id ? 'text-white/70' : 'text-muted-foreground'}`}>
+                                    {item.chat.createdAt && format(new Date(item.chat.createdAt), "h:mm a")}
+                                  </div>
                                 </div>
                               </div>
                             </div>
-                          </div>
-                        ))}
+                          ),
+                        )}
                       </div>
                     ) : (
                       <div className="h-full flex flex-col items-center justify-center text-center py-12">
