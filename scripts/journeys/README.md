@@ -14,9 +14,38 @@ first — it is the spec this directory implements.
 | J4 store-lifecycle | `store-lifecycle.mjs` | Ready Made Trips build→store lifecycle: ship-to-store, PATCH price/plan, submit → admin pending queue, admin approve, all three public reads (feed/detail/storefront) return it, withdraw hides it from all three, resubmit re-enters the queue, and the delete matrix (submitted→409, withdrawn+unsold→204, withdrawn+sold→409 permanent). | 10 | a few seconds (fully API-driven) |
 | J5 traveler-comms | `traveler-comms.mjs` | The traveler `/inbox` (Messages tab = real conversation threads, Updates tab = real notifications, deep-link navigation, mark-read persistence) and per-item plan comments (migration 165): owner↔expert bell notifications both directions, a REJECTED advisor refused (403, the canonical `isTripAdvisor` allow-list), an unrelated user refused (403), and the thread rendering on both the traveler's Trip Card and the expert's Workstation editor. | 10 | ~1-2 min (four browser steps across two-plus contexts) |
 | J6 partner-gate | `partner-gate.mjs` | The tier-(c) customer-approval gate on partner-catalog content, on an ASSIGNMENT trip: an expert's partner add files a SUGGESTION (zero `itinerary_items` rows — genuinely locked) rather than writing the item directly; customer approval materializes it with the "Partner: `<Network>`" marker (unlocked); the §16 sweep scans every written column for a raw URL. | 3 | a few seconds (fully API-driven) |
+| J7 adversarial-money-access | `adversarial-money-access.mjs` | **Adversarial** — every case is an ATTACK, expected verdict PASS ("refused correctly"): the §13 P0 destructive cross-trip IDOR cluster (comparison create/apply-to-trip against another user's trip, reorder/optimize-order, a REJECTED advisor's item write + plan comment, a stranger's plancard/transport-legs/budget reads), §14/§15 money surfaces (client-supplied `amount` ignored on the expert-review payment-intent, non-owner refund/confirm-completion/dispute, the 7-day dispute-window cutoff, payout self-service capped to the real releasable balance + duplicate-request refusal, terminal-state replay on a refunded coordination fee — plus two `{external:true}` replay probes on `template_purchases`/`ready_made_purchases` that need a live Stripe key), and §10/§16 approval+content gates (an unapproved `provider_services` row and ready-made listing absent from every public read, a non-purchaser's expert-template detail redacted to a teaser, the partner-suggestion §16 URL-leak sweep, and mass-assignment probes on the provider-service create/update + ready-made update endpoints). **Found ONE real, previously-undocumented FAIL**: `PATCH /api/provider/services/:id` applies a client-sent `approvalStatus` with no clamp — a provider/expert can self-approve their own listing in one call, bypassing the F2/D1a admin queue (the CREATE path is correctly clamped; the PATCH path was missed). See the step's own comment (`C16b`) for the exact mechanism and `server/storage.ts` line reference. | 28 | ~10-15 s (fully API-driven, no browser pages) |
 
 Re-running any of these is a Haiku job ("run `scripts/journeys/<name>.mjs`, report the
 verdict table") — never re-brief a journey that already exists as a script.
+
+## `scripts/invariants.mjs` — standalone SQL-assertion runner
+
+A separate, smaller sibling to the journey suite: no app boot needed, just a reachable
+Postgres. Runs a fixed list of money-integrity + data-hygiene invariants derived from
+`docs/MONEY_MAP.md` and CLAUDE.md (§8/§14/§15, the escrow spine, D1a, Trip-Canon Lane 1/6),
+each a single SQL query returning the OFFENDING rows (never a bare pass/fail count). Exit
+code 1 iff any invariant without a documented `expectedFindings` label is violated.
+
+```
+node scripts/invariants.mjs --db-url "postgresql://postgres@localhost:55442/expws?host=/var/tmp/expws-pg"
+node scripts/invariants.mjs --db-url "..." --json   # machine-readable report only
+```
+
+Invariants checked (severity-grouped in the output): paid-out earnings always carry a
+`payout_id`; a completed payout never exceeds the sum of the earnings it claims to have paid
+out; every `platform_revenue` row carries a `source_type`, and every `reversed` row has a
+compensating negative row (double-entry); a paid-equivalent `service_bookings` row always
+carries a `stripe_payment_intent_id`; `cart_items.itinerary_item_id` is never orphaned
+(migration 160's CASCADE); `itinerary_items.routing_status='purchased'` always carries a
+`booking_id`; an `approval_status='approved'` `provider_services` row always has an owner;
+a `coordination_states` row paid with a nonzero fee always carries a PI id; a `matched`
+`affiliate_earnings` row always carries a `partner_reference_id`; a `cloned` ready-made
+purchase always carries a `clone_trip_id`; a `completed` template purchase always has a
+linked `expert_earnings` row. One invariant (**`trips-have-owner-collaborator-row`**) is
+expected to legitimately find rows on a long-lived DB — it documents the L10 owner-under-grant
+hazard (CLAUDE.md §13) rather than presupposing it's fixed; a nonzero result there is reported,
+not treated as a harness failure.
 
 ## Running the whole suite: `run-all.mjs`
 
