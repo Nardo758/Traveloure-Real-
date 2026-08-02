@@ -530,6 +530,7 @@ router.get("/api/admin/concierge-requests", isAuthenticated, async (req, res) =>
         cs.status                      AS coordination_status,
         cs.fee_payment_status          AS fee_payment_status,
         cs.revenue_reversal_missing    AS revenue_reversal_missing,
+        cs.revenue_reversal_reviewed_at AS revenue_reversal_reviewed_at,
         cs.assigned_expert_id          AS assigned_expert_id,
         ce.first_name          AS coordinator_first_name,
         ce.last_name           AS coordinator_last_name,
@@ -681,6 +682,38 @@ router.post("/api/admin/coordination-states/:id/assign-coordinator", isAuthentic
     }
     console.error("Admin assign-coordinator error:", err);
     res.status(500).json({ message: "Failed to assign coordinator" });
+  }
+});
+
+// POST /api/admin/coordination-states/:id/review-ledger-gap — #877: acknowledge a coordination
+// "revenue_reversal_missing" ledger-gap warning (migration 128) so it stops rendering as an open
+// warning in the admin concierge panel forever. Additive-only (migration 169): stamps
+// revenue_reversal_reviewed_at/_by; NEVER touches revenue_reversal_missing itself or any other
+// ledger data — the underlying gap flag and its history are never deleted, only annotated as
+// reviewed. Idempotent: re-marking an already-reviewed gap just re-stamps the timestamp/reviewer,
+// no error, no duplicate side effect (there is nothing else to duplicate).
+router.post("/api/admin/coordination-states/:id/review-ledger-gap", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const [updated] = await db
+      .update(coordinationStates)
+      .set({ revenueReversalReviewedAt: new Date(), revenueReversalReviewedBy: user.id })
+      .where(eq(coordinationStates.id, req.params.id))
+      .returning({
+        id: coordinationStates.id,
+        revenueReversalMissing: coordinationStates.revenueReversalMissing,
+        revenueReversalReviewedAt: coordinationStates.revenueReversalReviewedAt,
+      });
+    if (!updated) {
+      return res.status(404).json({ message: "Coordination engagement not found" });
+    }
+    res.json({ success: true, ...updated });
+  } catch (err: any) {
+    console.error("Admin review-ledger-gap error:", err);
+    res.status(500).json({ message: "Failed to mark ledger gap reviewed" });
   }
 });
 
