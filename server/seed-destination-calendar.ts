@@ -1,6 +1,6 @@
 import { db } from "./db";
 import { destinationEvents, destinationSeasons } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 
 const destinationData = [
   {
@@ -296,6 +296,26 @@ const destinationData = [
 
 export async function seedDestinationCalendar() {
   console.log("Seeding destination calendar data...");
+
+  // Deploy-speed fast path: two DISTINCT-country queries decide whether the
+  // per-destination existence checks can be skipped entirely.
+  const countries = destinationData.map((d) => d.country);
+  const [seasonCountryRows, eventCountryRows] = await Promise.all([
+    db
+      .selectDistinct({ country: destinationSeasons.country })
+      .from(destinationSeasons)
+      .where(inArray(destinationSeasons.country, countries)),
+    db
+      .selectDistinct({ country: destinationEvents.country })
+      .from(destinationEvents)
+      .where(inArray(destinationEvents.country, countries)),
+  ]);
+  const seasonCountries = new Set(seasonCountryRows.map((r) => r.country));
+  const eventCountries = new Set(eventCountryRows.map((r) => r.country));
+  if (countries.every((c) => seasonCountries.has(c) && eventCountries.has(c))) {
+    console.log("Destination calendar already seeded — skipping.");
+    return;
+  }
 
   for (const destination of destinationData) {
     // Check if seasons already exist for this country
