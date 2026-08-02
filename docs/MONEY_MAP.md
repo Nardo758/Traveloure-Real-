@@ -27,6 +27,39 @@
 
 ---
 
+## 0. THE MONEY-FLOW BLUEPRINT (ratified Aug 2, 2026 — decision-maker directive)
+
+Every NEW charge rail — partner integration, product type, fee — follows this lifecycle. It composes
+the CLAUDE.md rules (§8/§14/§15) and the lessons this map's findings taught (F-1…F-8) into one
+template. The first instance is the Musement integration
+(`docs/briefs/MUSEMENT_INTEGRATION_BRIEF.md` §3); deviations from the blueprint are decision-maker
+calls, recorded here.
+
+1. **Amount:** server-derived from the server-side record/catalog, with a LIVE re-quote immediately
+   before the PaymentIntent when the price source is external/volatile; price drift → 409 re-quote,
+   never a silent charge at a stale price. Client-sent amounts never reach a money decision (§14).
+2. **Ordering:** atomic DB claim → Stripe charge → fulfillment. The claim is a conditional UPDATE on
+   the expected state (a check-then-update is the TOCTOU bug); the charge carries a deterministic
+   `idempotencyKey` derived from stable ids (§15, both layers always).
+3. **Fulfillment failure after a successful charge is automatically refunded** — a
+   paid-but-unfulfilled state must be impossible to leave standing (the F-1 lesson). If the
+   fulfillment leg doesn't exist yet, the endpoint is gated 501-honest; it never collects.
+4. **Rates/margins** resolve from `fee_bands`/config; code constants survive only as documented
+   `fee-literal-ok` fallbacks (§8).
+5. **Ledger writes** go through the canonical writers (`recordPlatformRevenue`,
+   `create{Expert,Provider}Earning` etc.); a raw INSERT is allowed only inside a transaction that
+   needs atomicity, with two-way pointer comments to the canonical twin (F-4 posture).
+6. **Refund/reversal:** ledger-first or claim-then-revert (site-appropriate, see §1c precedents),
+   Stripe refund with its own deterministic key, escrow reversal via the existing spine — and every
+   terminal state (`refunded`, `reversed`) is a one-way door: no later transition may leave it
+   (the #874 lesson — guard transitions on the EXACT expected prior state, never `<> target`).
+7. **Secrets** land in `.env.example` + `validate-env.ts` warnings in the SAME PR that introduces
+   them (F-2); missing credentials ⇒ the rail is honestly absent (§13), never a fabricated result.
+8. **This map is updated in the same PR** — every new charge/ledger/endpoint/webhook site gets its
+   row before merge.
+
+---
+
 ## 1. Stripe API call sites
 
 ### 1a. Client instantiations (`new Stripe(...)`)

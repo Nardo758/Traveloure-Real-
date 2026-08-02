@@ -58,6 +58,11 @@ integration is an inventory deepening for the wedge, not a breadth play.
 
 ## 3. Money-path design (§14/§15/MONEY_MAP obligations — binding on the build)
 
+> **This section is the FIRST INSTANCE of the ratified money-flow blueprint** (decision-maker,
+> Aug 2, 2026) — the canonical lifecycle every new charge rail follows, now codified as
+> `docs/MONEY_MAP.md` §0. Future integrations copy the blueprint, not this brief; this brief adds
+> only the Musement-specific bindings.
+
 - **Charge:** traveler pays via the EXISTING `/api/checkout` Stripe rail — amount
   server-derived from a server-side re-quote of the Musement price at checkout time (never
   client-sent, never a stale cached price; Musement prices/availability are live). Price is
