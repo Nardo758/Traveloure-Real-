@@ -121,6 +121,20 @@ template sale (`:3371`, `routes.ts:3611`), tip (`:3514`), referral (`:3582`), af
 (`booking.service.ts:716`, **raw INSERT**). State machine (held→releasable→paid_out / reversed / dispute):
 release scheduler `storage.ts:3674/3683`, per-booking release `:3708/3700`, dispute set/clear `:3735-3745`,
 reversal `:3769/3765`, ready-made reversal `ready-made-purchase.service.ts:231`.
+**`releasable→paid_out` — CLOSED (task #141; was a real gap — no writer existed, so "available"
+(=sum of releasable) never dropped after a completed payout and the same money could be paid out
+twice).** Writer: `storage.ts:4002` (`markEarningsPaidOutForPayoutTx`, private; public entry point
+`storage.ts:3993` `markEarningsPaidOutForPayout`). Flips releasable rows oldest-`createdAt`-first,
+never splitting a row (flips only while running-sum stays within a $0.01 rounding tolerance of the
+payout amount); stamps `payoutId` + `paidOutAt`/`paidAt` on flipped rows (both columns already
+existed, unused until now); logs (never silently swallows) a shortfall when releasable balance is
+less than the payout amount. Composed — same DB transaction, not a separate call — into
+`updateExpertPayoutStatus` (`storage.ts:3907`) / `updateProviderPayoutStatus` (`storage.ts:3952`)
+ONLY on the atomic `<status> <> 'completed'` → `'completed'` TRANSITION (§15 pattern: the transition
+itself is the idempotency guard), so both real call sites for a completed payout —
+`PATCH /api/admin/payouts/:id` (`admin.routes.ts:3817-3819`, post-transfer) and the
+`transfer.created`/`transfer.paid` webhook (`webhooks.routes.ts:273-275`) — share one choke point;
+whichever invocation actually flips the row runs the earnings flip once, the other no-ops.
 
 ### `affiliate_earnings`
 Create: `storage.ts:3604`; from agent-booking confirm `content.routes.ts:6917` (**commission written "0.00"**
@@ -135,8 +149,12 @@ Insert on paid Event-optimize `optimization.routes.ts:459` (unique on `sourcePay
 
 ### Payout tables
 `expert_payouts` / `provider_payouts`: create `storage.ts:3461/:3824`; atomic processing claim
-`:3902/:3910` (§15 FIX 1); status update `:3894/:3923`. Callers: admin queue (`admin.routes.ts:3709-3856`),
-self-service request (`payments.routes.ts:1179-1180`), transfer webhook (`webhooks.routes.ts:273-275`).
+`:3936/:3944` (§15 FIX 1); status update `:3907/:3952` (now transaction-wrapped on the `completed`
+transition — see the `releasable→paid_out` entry above). Callers: admin queue
+(`admin.routes.ts:3709-3856`), self-service request (`payments.routes.ts:1179-1180`), transfer webhook
+(`webhooks.routes.ts:273-275`). Read: `GET /api/payouts` (`payments.routes.ts:1194`, task #142 — session-
+scoped, role-aware provider/expert via `storage.get{Provider,Expert}Payouts`; §14, earner from session
+only, no id/userId input at all, so no admin-data leakage is even expressible).
 
 ### Purchase/booking status machines
 - `template_purchases`: born `pending_payment` `routes.ts:3489`; atomic `→completed` `:3598`.
@@ -178,6 +196,7 @@ inline admin check) · admin dispute uphold/reject (`admin.routes.ts:884/856`).
 **Payout rail:**
 POST `/api/payouts/request` (`payments.routes.ts:1120`, earner self-request, server-capped) →
 POST/PATCH `/api/admin/payouts` (`admin.routes.ts:3666/3733`, adminApiGuard; PATCH executes the transfer).
+GET `/api/payouts` (`payments.routes.ts:1194`, task #142 — session-scoped own-payout history, read-only).
 
 **Connect onboarding:** `/api/stripe/connect/onboard|status|dashboard` (`payments.routes.ts:946/995/1030`).
 
