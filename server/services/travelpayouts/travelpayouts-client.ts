@@ -16,6 +16,59 @@ export function getTravelpayoutsMarker(): string {
   return process.env.TRAVELPAYOUTS_MARKER || "405110";
 }
 
+/**
+ * MONEY_MAP F-5 — sub_id-based attribution token.
+ *
+ * Travelpayouts' `marker.SubID` convention returns a suffixed sub_id verbatim on
+ * `execute_query` action rows. Building `<marker>.<token>` lets us stamp a per-booking
+ * token (the `affiliate_booking_requests` row id) onto the outbound link so the partner
+ * report echoes it back and the reconciliation matcher can adopt the REAL commission on an
+ * exact match instead of ever estimating one. See docs/MONEY_MAP.md F-5.
+ *
+ * DORMANT: nothing calls buildAttributionSubId to rewrite an outbound link yet — that only
+ * happens behind the `TP_SUBID_ATTRIBUTION=1` env flag, itself gated on a live echo test
+ * confirming Travelpayouts actually returns the suffixed sub_id verbatim.
+ */
+export function buildAttributionSubId(token: string): string {
+  return `${getTravelpayoutsMarker()}.${token}`;
+}
+
+/**
+ * Inverse of buildAttributionSubId. Splits on the FIRST dot only (a token itself may
+ * contain dots — e.g. a UUID never does, but this stays defensive). No dot present (a
+ * plain marker or an unrelated sub_id format) → token is null, marker is the whole string.
+ */
+export function parseAttributionSubId(subId: string): { marker: string; token: string | null } {
+  const dotIndex = subId.indexOf(".");
+  if (dotIndex === -1) {
+    return { marker: subId, token: null };
+  }
+  return {
+    marker: subId.slice(0, dotIndex),
+    token: subId.slice(dotIndex + 1) || null,
+  };
+}
+
+/**
+ * MONEY_MAP F-5: rewrite `url`'s `sub_id` query param to the attribution token, but ONLY when
+ * `enabled` (the caller passes `TP_SUBID_ATTRIBUTION==='1'` explicitly rather than this function
+ * reading process.env itself) and the URL actually carries a `sub_id` param. Pure and directly
+ * unit-testable for both flag states without env mutation. `enabled=false` (the default/current
+ * behavior) always returns `url` unchanged — byte-identical to pre-F-5 behavior.
+ */
+export function applyAttributionSubId(url: string, token: string, enabled: boolean): string {
+  if (!enabled) return url;
+  try {
+    const parsed = new URL(url);
+    if (!parsed.searchParams.has("sub_id")) return url;
+    parsed.searchParams.set("sub_id", buildAttributionSubId(token));
+    return parsed.toString();
+  } catch {
+    // Malformed URL — never throw over an attribution nicety; return it unchanged.
+    return url;
+  }
+}
+
 export function assertToken(): string {
   const token = getTravelpayoutsToken();
   if (!token) {
