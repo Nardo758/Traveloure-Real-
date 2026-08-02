@@ -35,6 +35,7 @@ const JOURNEYS = [
   { name: "store-lifecycle", file: "store-lifecycle.mjs" },
   { name: "traveler-comms", file: "traveler-comms.mjs" },
   { name: "partner-gate", file: "partner-gate.mjs" },
+  { name: "adversarial-money-access", file: "adversarial-money-access.mjs" },
 ];
 
 const only = argValue("--only", null);
