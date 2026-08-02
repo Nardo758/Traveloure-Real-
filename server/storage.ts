@@ -600,6 +600,11 @@ export interface IStorage {
   // confirm can't double-insert the affiliate earning it triggers. Returns undefined when the row
   // was already confirmed (lost the race) — caller must treat that as an idempotent no-op.
   confirmAffiliateBookingRequest(id: string, data: Partial<Pick<AffiliateBookingRequest, "expertNotes" | "confirmationRef" | "price" | "expertId" | "tripId">>): Promise<AffiliateBookingRequest | undefined>;
+  // AI booking copilot verification leg (migration 170). Persists ONLY the verification jsonb
+  // snapshot — never touches affiliateUrl or any other column. §16: the snapshot itself must never
+  // carry the URL; that's enforced by the caller (booking-verification.service.ts) never putting it
+  // in the object it hands here.
+  setAffiliateBookingRequestVerification(id: string, verification: Record<string, unknown>): Promise<AffiliateBookingRequest | undefined>;
 
   // Affiliate Content Registry helpers
   registerAffiliateProduct(product: {
@@ -5180,6 +5185,18 @@ export class DatabaseStorage implements IStorage {
       .update(affiliateBookingRequests)
       .set({ ...data, status: "confirmed", updatedAt: new Date() })
       .where(and(eq(affiliateBookingRequests.id, id), ne(affiliateBookingRequests.status, "confirmed")))
+      .returning();
+    return updated;
+  }
+
+  async setAffiliateBookingRequestVerification(
+    id: string,
+    verification: Record<string, unknown>,
+  ): Promise<AffiliateBookingRequest | undefined> {
+    const [updated] = await db
+      .update(affiliateBookingRequests)
+      .set({ verification, updatedAt: new Date() })
+      .where(eq(affiliateBookingRequests.id, id))
       .returning();
     return updated;
   }
