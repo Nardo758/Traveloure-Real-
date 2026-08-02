@@ -35,25 +35,17 @@
  * no escape hatch on purpose.
  */
 
+import { isProdStrictEnv, checkStripeKeyPrefix } from "./utils/stripe-key-policy";
+
 const key = process.env.STRIPE_SECRET_KEY;
-const isProdStrict =
-  (process.env.NODE_ENV === "production" || process.env.ENVIRONMENT === "PROD") &&
-  process.env.ALLOW_TEST_ACCOUNTS !== "1";
+const isProdStrict = isProdStrictEnv();
 
 if (key) {
-  if (isProdStrict && !key.startsWith("sk_live_")) {
+  const prefixCheck = checkStripeKeyPrefix(key, isProdStrict);
+  if (!prefixCheck.ok) {
     throw new Error(
-      `STRIPE_SECRET_KEY must be a live secret key (sk_live_...) in production ` +
-        `(NODE_ENV=${process.env.NODE_ENV || "undefined"}, ENVIRONMENT=${process.env.ENVIRONMENT || "undefined"}). ` +
-        `Refusing to start with the current value's prefix "${key.slice(0, 8)}...".`
-    );
-  }
-  if (!isProdStrict && !key.startsWith("sk_test_")) {
-    throw new Error(
-      `STRIPE_SECRET_KEY must be a TEST secret key (sk_test_...) outside production ` +
-        `(NODE_ENV=${process.env.NODE_ENV || "undefined"}, ENVIRONMENT=${process.env.ENVIRONMENT || "undefined"}). ` +
-        `Live keys (sk_live_...) are a hard stop in dev/E2E — real Stripe objects would be created ` +
-        `against the live account. Current value's prefix is "${key.slice(0, 8)}...". ` +
+      `${prefixCheck.reason} (NODE_ENV=${process.env.NODE_ENV || "undefined"}, ` +
+        `ENVIRONMENT=${process.env.ENVIRONMENT || "undefined"}). Refusing to start. ` +
         `Update the STRIPE_SECRET_KEY secret.`
     );
   }
