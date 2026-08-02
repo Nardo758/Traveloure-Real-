@@ -737,4 +737,10 @@ export const MIGRATION_FILES = [
   // (skips the copy if already archived; no-ops cleanly on a fresh DB with no such table). See
   // 168_archive_activity_bookings.sql for the full guarded DO block.
   "168_archive_activity_bookings.sql",
+  // 169: #877 money-verify-cluster — lets an admin mark a coordination revenue-reversal
+  // "Ledger gap" warning (coordination_states.revenue_reversal_missing, migration 128)
+  // reviewed instead of it warning forever in the admin concierge panel. Additive nullable
+  // revenue_reversal_reviewed_at/_by columns; no CHECK, no backfill. See
+  // 169_coordination_revenue_reversal_reviewed.sql for the full rationale.
+  "169_coordination_revenue_reversal_reviewed.sql",
 ] as const;

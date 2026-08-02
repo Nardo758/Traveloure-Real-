@@ -42,6 +42,7 @@ interface ConciergeRequest {
   coordination_status: string | null;
   fee_payment_status: string | null;
   revenue_reversal_missing: boolean | null;
+  revenue_reversal_reviewed_at: string | null;
   assigned_expert_id: string | null;
   coordinator_first_name: string | null;
   coordinator_last_name: string | null;
@@ -146,6 +147,39 @@ function RefundFeeButton({ request }: { request: ConciergeRequest }) {
   );
 }
 
+// #877: acknowledge a "Ledger gap" warning (coordination_states.revenue_reversal_missing, migration
+// 128) so it stops warning forever once an admin has investigated. Never deletes the underlying
+// flag or its history — only stamps revenue_reversal_reviewed_at/_by (migration 169).
+function MarkLedgerGapReviewedButton({ request }: { request: ConciergeRequest }) {
+  const { toast } = useToast();
+
+  const review = useMutation({
+    mutationFn: () =>
+      apiRequest("POST", `/api/admin/coordination-states/${request.coordination_id}/review-ledger-gap`, {}),
+    onSuccess: () => {
+      toast({ title: "Ledger gap marked reviewed" });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/concierge-requests"] });
+    },
+    onError: (err: any) => {
+      toast({ title: "Failed to mark reviewed", description: err?.message || "Please try again.", variant: "destructive" });
+    },
+  });
+
+  return (
+    <Button
+      size="sm"
+      variant="outline"
+      className="h-7 text-xs border-amber-300 text-amber-800 hover:bg-amber-100"
+      disabled={review.isPending}
+      onClick={() => review.mutate()}
+      data-testid={`button-review-ledger-gap-${request.coordination_id}`}
+    >
+      {review.isPending ? <Loader2 className="w-3 h-3 mr-1 animate-spin" /> : null}
+      Mark reviewed
+    </Button>
+  );
+}
+
 function CoordinatorAssign({ request, coordinators }: { request: ConciergeRequest; coordinators: Coordinator[] }) {
   const { toast } = useToast();
   const [selected, setSelected] = useState<string>(request.assigned_expert_id || "");
@@ -177,14 +211,26 @@ function CoordinatorAssign({ request, coordinators }: { request: ConciergeReques
           <span className="text-muted-foreground">No coordinator assigned</span>
         )}
       </div>
-      {request.revenue_reversal_missing && (
+      {request.revenue_reversal_missing && !request.revenue_reversal_reviewed_at && (
         <div
           className="flex items-center gap-2 rounded-md bg-amber-50 border border-amber-200 px-3 py-2 text-xs text-amber-800"
           data-testid={`alert-revenue-reversal-missing-${request.coordination_id}`}
         >
           <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-amber-500" />
-          <span>
+          <span className="flex-1">
             <strong>Ledger gap:</strong> Fee was refunded but no platform revenue row was found to reverse. Manual review required.
+          </span>
+          <MarkLedgerGapReviewedButton request={request} />
+        </div>
+      )}
+      {request.revenue_reversal_missing && request.revenue_reversal_reviewed_at && (
+        <div
+          className="flex items-center gap-2 rounded-md bg-muted/50 border border-border px-3 py-2 text-xs text-muted-foreground"
+          data-testid={`alert-revenue-reversal-reviewed-${request.coordination_id}`}
+        >
+          <AlertTriangle className="w-3.5 h-3.5 shrink-0 opacity-50" />
+          <span>
+            Ledger gap reviewed on {new Date(request.revenue_reversal_reviewed_at).toLocaleDateString()}.
           </span>
         </div>
       )}
@@ -226,8 +272,19 @@ export default function AdminConciergeRequests() {
     queryKey: ["/api/admin/coordinators"],
   });
 
-  const requests = data?.requests ?? [];
+  // #877: reviewed-state filter — hide requests whose ledger gap has already been marked
+  // reviewed, so the open-warning queue doesn't get cluttered with resolved items. Off by
+  // default (shows everything, including reviewed gaps, for a full audit trail).
+  const [openLedgerGapsOnly, setOpenLedgerGapsOnly] = useState(false);
+
+  const allRequests = data?.requests ?? [];
   const coordinators = coordinatorData?.coordinators ?? [];
+  const openLedgerGapCount = allRequests.filter(
+    (r) => r.revenue_reversal_missing && !r.revenue_reversal_reviewed_at
+  ).length;
+  const requests = openLedgerGapsOnly
+    ? allRequests.filter((r) => r.revenue_reversal_missing && !r.revenue_reversal_reviewed_at)
+    : allRequests;
 
   return (
     <AdminLayout title="Concierge Requests">
@@ -244,8 +301,21 @@ export default function AdminConciergeRequests() {
         </div>
 
         <Card>
-          <CardHeader>
+          <CardHeader className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
             <CardTitle>Incoming requests ({requests.length})</CardTitle>
+            {openLedgerGapCount > 0 && (
+              <Button
+                size="sm"
+                variant={openLedgerGapsOnly ? "default" : "outline"}
+                onClick={() => setOpenLedgerGapsOnly((v) => !v)}
+                data-testid="button-filter-open-ledger-gaps"
+              >
+                <AlertTriangle className="w-3.5 h-3.5 mr-1.5" />
+                {openLedgerGapsOnly
+                  ? "Showing open ledger gaps only"
+                  : `Show open ledger gaps only (${openLedgerGapCount})`}
+              </Button>
+            )}
           </CardHeader>
           <CardContent className="space-y-3">
             {isLoading ? (

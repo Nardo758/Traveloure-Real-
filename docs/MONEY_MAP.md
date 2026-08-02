@@ -24,6 +24,65 @@
 > Travelpayouts' `marker.SubID` convention; the matcher's exact-token adoption pass is live
 > regardless (it simply never fires without a token-bearing sub_id to match against). See the
 > struck F-4/F-5 entries below.
+>
+> **Update (branch `claude/money-verify-cluster`) — verification lane, #846/#874/#875/#876/#877:**
+> - **#846 (booking confirm-payment double-earnings) — ALREADY-SAFE, proven, not a bug.**
+>   `bookingService.confirmBookingPayment` (`booking.service.ts` ~589-772) already claims the
+>   `bookings` row atomically (`UPDATE ... WHERE status='pending_payment'`) INSIDE the same
+>   `db.transaction` that writes `provider_earnings`/`platform_revenue` — a lost claim throws
+>   before either ledger write, rolling back the whole tx (the §15 pattern, already correct).
+>   Proven both sequentially and under real concurrency (`Promise.all`):
+>   `server/__tests__/booking-confirm-payment-idempotency.test.ts`.
+> - **#874 (refunded coordination fee re-entering 'paid') — REPRODUCED + FIXED.**
+>   `POST /api/coordination-states/:id/pay/confirm` (`routes.ts` ~7144-7170) claimed via
+>   `ne(feePaymentStatus, "paid")`, which ALSO matched `"refunded"` — Stripe leaves
+>   `PaymentIntent.status == 'succeeded'` after a refund (refunds live on the Charge/Refund
+>   objects, not the PI), and the refund endpoint never clears `feePaymentIntentId`, so a
+>   stray/replayed confirm call could flip a refunded engagement back to `"paid"`. Fixed: an
+>   explicit `refunded` early-return (mirroring `/pay`'s existing one) + the atomic UPDATE
+>   tightened to `eq(feePaymentStatus, "pending")` (the only legitimate pre-confirm state — was
+>   `ne(..., "paid")`, which also silently admitted `"unpaid"`). The claim (`/pay`,
+>   `unpaid→pending`) and rollback (`/pay` catch, `pending→unpaid`) guards were already correct
+>   (never touch `refunded`). Proven both pre-fix (bug reproduces) and post-fix (guard holds) +
+>   claim/rollback: `server/__tests__/coordination-fee-refund-guard.test.ts`.
+> - **#875 (coordination refund credit reuse) — ALREADY-SAFE, proven, not a bug.** The refund's
+>   credit-release UPDATE (`routes.ts` ~7261-7265,
+>   `SET consumed_by_coordination_id=NULL, consumed_at=NULL WHERE consumed_by_coordination_id=:id`)
+>   fully un-consumes every credit the refunded coordination claimed, and the released credit is
+>   then genuinely re-claimable by `claimCoordinationCredit` (`optimization-fee.service.ts` ~268)
+>   for a fresh engagement. Proven end-to-end (claim → refund-release → re-claim):
+>   `server/__tests__/coordination-refund-credit-release.test.ts`.
+> - **#876 (refund retry Stripe/DB desync) — ALREADY-SAFE at all three §1c refund sites, proven,
+>   not a bug.** Each site uses a DIFFERENT but individually sound ordering:
+>   `refundServiceBooking` (`stripe-payment.service.ts` ~757-830) is claim-then-revert (atomic
+>   claim first; the documented `~:804` revert on a Stripe throw returns the booking to its prior
+>   status so a retry's claim succeeds cleanly); the coordination-fee refund (`routes.ts`
+>   ~7205-7342) is Stripe-first (nothing is written to the DB until Stripe succeeds, so a Stripe
+>   throw leaves the DB — and any linked `platform_revenue` row — untouched, nothing to revert);
+>   the ready-made refund (`ready-made.routes.ts` ~1173-1205 +
+>   `refundReadyMadePurchaseLedger`/`ready-made-purchase.service.ts` ~189) is ledger-first
+>   (mirrors the dispute-uphold posture) with an idempotent, atomically-claimed ledger step, so a
+>   Stripe-throw retry re-runs ONLY the (idempotency-keyed) Stripe leg. All three simulated with a
+>   Stripe stub that throws once then succeeds, proving exactly one real Stripe refund + a
+>   converged, non-double-written DB state at each site:
+>   `server/__tests__/refund-retry-convergence.test.ts`.
+> - **#877 (mark a ledger gap reviewed) — BUILT, additive migration 169.** The only persistent,
+>   un-acknowledgeable "ledger gap" surface found was `coordination_states.revenue_reversal_missing`
+>   (migration 128) — rendered as a permanent "Ledger gap:" warning in
+>   `client/src/pages/admin/concierge-requests.tsx` with no way to dismiss it, even after manual
+>   review. (The OTHER "gap" surface, `stripeReconciliation.ts`'s `reconciliation_mismatch`
+>   `admin_notifications` rows, already has a working mark-read mechanism —
+>   `PATCH /api/admin/notifications/:id/read` + `admin/notifications.tsx` — so nothing to build
+>   there; the admin-digest webhook-gap check (§C) is ephemeral, recomputed per digest run, not a
+>   persisted queue, so "reviewed" doesn't apply.) Fix: migration 169 adds additive-nullable
+>   `revenue_reversal_reviewed_at`/`revenue_reversal_reviewed_by` to `coordination_states`
+>   (declared in `shared/schema.ts` in the same commit — deploy-push durability rule); new
+>   `POST /api/admin/coordination-states/:id/review-ledger-gap` (`admin.routes.ts`, admin-gated,
+>   mirrors the neighboring `assign-coordinator` endpoint) stamps them WITHOUT ever clearing
+>   `revenue_reversal_missing` — the underlying flag and its history are never deleted, only
+>   annotated. Client: a "Mark reviewed" button on the open-warning banner, a reviewed-state
+>   banner once stamped, and an "open ledger gaps only" filter toggle on the concierge-requests
+>   admin page. Proven: `server/__tests__/coordination-ledger-gap-review.test.ts`.
 
 ---
 
@@ -144,8 +203,14 @@ self-service request (`payments.routes.ts:1179-1180`), transfer webhook (`webhoo
   webhook `→confirmed` `webhooks.routes.ts:301` / `→failed` `:365`; transport confirm `stripe.service.ts:193`;
   refund claim `stripe-payment.service.ts:773`; completion side-effects `storage.ts:~1595`
   (`updateServiceBookingStatus`); expiry `booking-expiry-scheduler.service.ts:131`.
-- `coordination_states.fee_payment_status`: claim `routes.ts:6962`; paid `:7016/:7162`; rollback `:7128`;
-  refunded `:7302`.
+- `coordination_states.fee_payment_status`: claim `routes.ts:6962` (`unpaid→pending`); paid `:7016/:7162`
+  (`#874 fix`: `:7162`'s atomic UPDATE is now `eq(status,"pending")`, was `ne(status,"paid")` — the
+  looser guard admitted both `unpaid` and the terminal `refunded` state into the flip; an explicit
+  `refunded` early-return was also added, mirroring `/pay`'s existing one); rollback `:7128`
+  (`pending→unpaid`); refunded `:7302` (terminal — never re-enters `pending`/`paid` post-fix).
+  `revenue_reversal_missing` (bool, migration 128) flags a refund whose `platform_revenue` reversal
+  found nothing to reverse; `#877` (migration 169) adds `revenue_reversal_reviewed_at`/`_by` +
+  `POST /api/admin/coordination-states/:id/review-ledger-gap` so that flag can be acknowledged.
 - `ready_made_purchases`: insert `ready-made.routes.ts:1129`; `paid→cloned` `ready-made-purchase.service.ts:106`;
   `→refunded` `:219`.
 - Adjacent: `payment_intents` mirror rows (`stripe-payment.service.ts:485-709`, `webhooks.routes.ts:409`),
