@@ -54,6 +54,7 @@ import {
   createExpertAssignmentNotification,
   getTripLabel,
   getExpertAssignedTrips,
+  getTravelerTripAdvisors,
   isTripOwner,
   isExpertAssignedToTrip,
   tripExistsById,
@@ -644,6 +645,27 @@ router.get('/expert/assigned-trips', isAuthenticated, async (req, res) => {
     res.json(trips);
   } catch (error: any) {
     console.error('Get expert assigned trips error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * GET /api/trips/mine/advisors — traveler-side mirror of /api/expert/assigned-trips (above).
+ * Returns the SESSION traveler's own trips' real active advisor linkage
+ * ({ trip_id, expert_id, status }, pending|accepted). Built for chat.tsx's inline plan-events
+ * feature (claude/chat-plan-events) to resolve which trip is "shared" with a given expert
+ * conversation partner — the same real linkage getExpertAssignedTrips already gives the expert
+ * side, mirrored in reverse. Read-only, session-scoped (§14 — never a body-supplied userId).
+ */
+router.get('/trips/mine/advisors', isAuthenticated, async (req, res) => {
+  try {
+    const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
+    if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+
+    const advisors = await getTravelerTripAdvisors(userId);
+    res.json(advisors);
+  } catch (error: any) {
+    console.error('Get traveler trip advisors error:', error);
     res.status(500).json({ error: error.message });
   }
 });
