@@ -9,6 +9,7 @@ import { api } from "@shared/routes";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { geocodeAddress } from "../utils/geocode";
+import { applyAttributionSubId } from "../services/travelpayouts/travelpayouts-client";
 import {
   dbHealthCheck, getServiceOfferingTypes, getExpertOfferingTypes,
   getFeedCompositionConfig, insertContactSubmission, getAdminUserIds,
@@ -25,7 +26,7 @@ import {
   getExpertUserIds, getAiDiscoveredGemById,
   getAffiliateProductsByIds, getContentRegistryByIds,
   getAffiliateProductsByLocation, getContentRegistryByLocation,
-  insertAffiliateClick, getPlatformStats,
+  insertAffiliateClick, getPlatformStats, getFeaturedTestimonials,
   insertSearchAnalytics, insertPageViewAnalytics, insertBookingFunnelAnalytics,
   insertActivityBookingAnalytics, insertTripAnalyticsEnhanced,
   getTripAnalyticsEnhancedByTripId, updateTripAnalyticsEnhanced,
@@ -1290,23 +1291,12 @@ router.get("/api/catalog/ground-transport", isAuthenticated, async (req, res) =>
     }
   });
 
-  // HotelLook hotel search (instant-connect ⚡)
+  // HotelLook RETIRED 2026-08 — Travelpayouts shut down the public Hotellook data API
+  // (engine.hotellook.com/api/v2/* return 404; see hotellook.service.ts). The endpoint
+  // stays as an explicit empty response so any stale clients don't see a broken 404/500.
 
-router.get("/api/catalog/hotels-look", isAuthenticated, async (req, res) => {
-    try {
-      const { searchHotellook } = await import("../services/travelpayouts/hotellook.service");
-      const { destination, currency, limit } = req.query;
-      if (!destination) return res.status(400).json({ message: "destination required" });
-      const items = await searchHotellook({
-        destination: destination as string,
-        currency: currency as string,
-        limit: limit ? parseInt(limit as string) : 20,
-      });
-      res.json({ items, total: items.length });
-    } catch (err) {
-      console.error("HotelLook error:", err);
-      res.status(500).json({ message: "Failed to search HotelLook" });
-    }
+router.get("/api/catalog/hotels-look", isAuthenticated, async (_req, res) => {
+    res.json({ items: [], total: 0, retired: true });
   });
 
   // Agoda hotels (instant-connect ⚡)
@@ -6730,17 +6720,32 @@ router.post("/api/affiliate-booking-requests/from-catalog", isAuthenticated, asy
       const expertIds3 = await getExpertUserIds(10);
       const expertId = expertIds3.length > 0 ? expertIds3[0] : null;
       const status = expertId ? "assigned" : "pending";
+
+      // MONEY_MAP F-5 (dormant): stamp the booking-request id onto the outbound link's sub_id so a
+      // future Travelpayouts commission report echoes it back and the reconciliation matcher can
+      // adopt a REAL amount on an exact match instead of ever estimating one. Pre-generate the id
+      // (rather than reading it back post-insert) so the token can be baked into affiliateUrl BEFORE
+      // it is stored — the record is written once, never patched. Flag OFF (default) → the pure
+      // applyAttributionSubId helper returns the URL unchanged — byte-identical current behavior.
+      const bookingRequestId = crypto.randomUUID();
+      const affiliateUrlToStore = applyAttributionSubId(
+        resolved.affiliateUrl,
+        bookingRequestId,
+        process.env.TP_SUBID_ATTRIBUTION === "1"
+      );
+
       const record = await storage.createAffiliateBookingRequest({
+        id: bookingRequestId,
         userId, expertId,
         itemName: resolved.title, itemDescription: resolved.description,
         partnerName: resolved.partnerName, partnerCategory: resolved.partnerCategory,
-        affiliateUrl: resolved.affiliateUrl,
+        affiliateUrl: affiliateUrlToStore,
         travelDate: typeof travelDate === "string" ? travelDate : null,
         travelers: Number.isInteger(travelers) && travelers > 0 ? travelers : 1,
         userNotes: typeof userNotes === "string" ? userNotes.slice(0, 2000) : null,
         expertNotes: null, confirmationRef: null, price: null,
         status,
-      });
+      } as any);
       // Never return affiliateUrl to client
       const { affiliateUrl: _url2, ...safe } = record;
       return res.json(safe);
@@ -7611,102 +7616,19 @@ router.get("/api/content/discover", async (req, res) => {
     }
   });
 
-  // Content Hub Checkout — creates Stripe Checkout Session for non-affiliate curated items.
-  // Price, title, and currency are resolved server-side from the DB record; client-supplied
-  // values are ignored to prevent price-tampering attacks.
-
-router.post("/api/content/checkout", isAuthenticated, async (req, res) => {
-    try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
-      const user = await storage.getUser(userId);
-      const userEmail = user?.email || undefined;
-
-      const { itemId, itemType } = req.body;
-      if (!itemId || !itemType) {
-        return res.status(400).json({ message: "itemId and itemType are required" });
-      }
-
-      // --- Server-side item resolution (price is NOT trusted from client) ---
-      let resolvedTitle: string;
-      let resolvedPrice: number;       // in whole currency units, e.g. 49.99 // fee-literal-ok: comment example, fee resolves from config
-      let resolvedCurrency: string;
-      let resolvedDestination: string;
-
-      if (itemType === "affiliate") {
-        const [product] = await db
-          .select()
-          .from(affiliateProducts)
-          .where(eq(affiliateProducts.id, itemId))
-          .limit(1);
-        if (!product) return res.status(404).json({ message: "Item not found" });
-        if (!product.price || parseFloat(String(product.price)) <= 0) {
-          return res.status(400).json({ message: "This item is not available for direct purchase" });
-        }
-        resolvedTitle = product.name;
-        resolvedPrice = parseFloat(String(product.price));
-        resolvedCurrency = (product.currency || "USD").toLowerCase();
-        resolvedDestination = product.city || product.country || "";
-      } else {
-        // content_registry
-        const [item] = await db
-          .select()
-          .from(contentRegistry)
-          .where(eq(contentRegistry.id, itemId))
-          .limit(1);
-        if (!item) return res.status(404).json({ message: "Item not found" });
-        const meta = (item.metadata as any) || {};
-        if (!meta.price || parseFloat(String(meta.price)) <= 0) {
-          return res.status(400).json({ message: "This item is not available for direct purchase" });
-        }
-        resolvedTitle = item.title || "Curated Experience";
-        resolvedPrice = parseFloat(String(meta.price));
-        resolvedCurrency = (meta.currency || "USD").toLowerCase();
-        resolvedDestination = meta.city || meta.destination || meta.location || "";
-      }
-
-      const { getBaseUrl } = await import("../services/stripe.service");
-      const Stripe = (await import("stripe")).default;
-      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
-        apiVersion: '2024-12-18.acacia' as any,
-      });
-
-      const baseUrl = getBaseUrl();
-      const amountCents = Math.round(resolvedPrice * 100);
-
-      const session = await stripe.checkout.sessions.create({
-        payment_method_types: ['card'],
-        mode: 'payment',
-        customer_email: userEmail,
-        line_items: [
-          {
-            price_data: {
-              currency: resolvedCurrency,
-              product_data: {
-                name: resolvedTitle,
-                description: resolvedDestination
-                  ? `Curated experience in ${resolvedDestination}`
-                  : 'Curated Traveloure experience',
-              },
-              unit_amount: amountCents,
-            },
-            quantity: 1,
-          },
-        ],
-        metadata: {
-          type: 'content_hub_purchase',
-          userId,
-          itemId: String(itemId),
-          itemType,
-        },
-        success_url: `${baseUrl}/discover?purchase=success`,
-        cancel_url: `${baseUrl}/discover?purchase=cancelled`,
-      });
-
-      res.json({ sessionId: session.id, url: session.url });
-    } catch (err: any) {
-      console.error("Content checkout error:", err);
-      res.status(500).json({ message: "Failed to create checkout session" });
-    }
+  // Content Hub Checkout — GATED OFF (MONEY_MAP F-1).
+  // This used to create a real Stripe Checkout Session for non-affiliate curated items (tagged
+  // with a dedicated content-hub-purchase metadata type), but NO webhook branch, ledger write, or
+  // fulfillment path exists for that metadata type anywhere in the codebase — a traveler could pay
+  // and nothing would be recorded or delivered. Per the W0.4 tip-endpoint 501 pattern, this now
+  // refuses honestly instead of collecting money it can't fulfill. The Stripe-session code is
+  // removed (not commented out — git history has it) pending a decision-maker call on whether to
+  // build the fulfillment leg or retire this surface. See docs/MONEY_MAP.md F-1.
+  router.post("/api/content/checkout", isAuthenticated, async (_req, res) => {
+    res.status(501).json({
+      message: "Checkout for curated content isn't available yet.",
+      code: "content_checkout_unavailable",
+    });
   });
 
   // Content Hub Affiliate Redirect — unified intermediary for ALL affiliate-linked content hub items.
@@ -7912,6 +7834,20 @@ router.get("/api/platform/stats", async (_req, res) => {
     } catch (err) {
       console.error("Platform stats error:", err);
       res.status(500).json({ message: "Failed to fetch platform stats" });
+    }
+  });
+
+  // GET /api/platform/featured-testimonials — the §13 curated testimonial rail.
+  // Public, unauthenticated (the landing page is public). Returns ONLY real,
+  // admin-curated, booking-gated service_reviews — never fabricated content.
+  // Empty featured list → { testimonials: [] }; the client hides the section.
+  router.get("/api/platform/featured-testimonials", async (_req, res) => {
+    try {
+      const testimonials = await getFeaturedTestimonials();
+      res.json({ testimonials });
+    } catch (err) {
+      console.error("Featured testimonials error:", err);
+      res.status(500).json({ message: "Failed to fetch featured testimonials" });
     }
   });
 

@@ -2494,7 +2494,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     origin: string
   ): Promise<DealsPayload> {
     const { searchAviasalesFlights } = await import("./services/travelpayouts/aviasales.service");
-    const { searchHotellook } = await import("./services/travelpayouts/hotellook.service");
+    // Hotellook retired 2026-08 — Travelpayouts shut down the public data API (see hotellook.service.ts).
     const { searchAgoda } = await import("./services/travelpayouts/agoda.service");
     const { searchGetYourGuide } = await import("./services/travelpayouts/getyourguide.service");
     const { searchKlook } = await import("./services/travelpayouts/klook.service");
@@ -2546,12 +2546,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     if (type === "all" || type === "hotels") {
       for (const dest of popularHotelDests.slice(0, 2)) {
         tasks.push(
-          searchHotellook({ destination: dest, limit: 4 })
-            .then((r) => normalize(r, false))
-            .catch(() => [])
-        );
-        tasks.push(
-          searchAgoda({ destination: dest, checkIn: pickupDate, checkOut: dropoffDate, limit: 2 })
+          searchAgoda({ destination: dest, checkIn: pickupDate, checkOut: dropoffDate, limit: 6 })
             .then((r) => normalize(r, false))
             .catch(() => [])
         );
@@ -3511,18 +3506,23 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const isZeroDecimal = currency === 'jpy';
       const stripeAmount = isZeroDecimal ? Math.round(price) : Math.round(price * 100);
 
-      const paymentIntent = await stripeClient.paymentIntents.create({
-        amount: stripeAmount,
-        currency,
-        metadata: {
-          purchaseId: purchase.id,
-          templateId: req.params.id,
-          buyerId: userId,
-          expertId: template.expertId,
+      const paymentIntent = await stripeClient.paymentIntents.create(
+        {
+          amount: stripeAmount,
+          currency,
+          metadata: {
+            purchaseId: purchase.id,
+            templateId: req.params.id,
+            buyerId: userId,
+            expertId: template.expertId,
+          },
+          description: `Traveloure template: ${template.title}`,
+          automatic_payment_methods: { enabled: true },
         },
-        description: `Traveloure template: ${template.title}`,
-        automatic_payment_methods: { enabled: true },
-      });
+        // §15 (MONEY_MAP F-3): deterministic key — a retried purchase click can't mint a second
+        // uncaptured PI for the same template+buyer.
+        { idempotencyKey: `tpl-buy-${req.params.id}-${userId}` },
+      );
 
       // 202 Accepted — payment not yet captured; client must call /confirm.
       // Template is content-REDACTED here: payment hasn't succeeded yet, so the buyer

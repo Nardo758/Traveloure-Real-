@@ -101,7 +101,7 @@ export function ActivityCard({ item, className }: ActivityCardProps) {
             </Button>
           </div>
           <BookWithExpertButton
-            destination={item.destination}
+            destination={item.destination ?? undefined}
             topic="activities"
             className="w-full justify-center"
             data-testid={`button-expert-activity-${item.id}`}

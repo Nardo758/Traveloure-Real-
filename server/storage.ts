@@ -851,13 +851,15 @@ export class DatabaseStorage implements IStorage {
 
   // Chats
   async getChats(userId: string): Promise<UserAndExpertChat[]> {
-    // Get chats where user is sender or receiver
-    // Drizzle OR logic needed here, for simplicity return all for now or filter in memory if volume low
-    // Implementing proper OR
-    // return await db.select().from(userAndExpertChats).where(or(eq(userAndExpertChats.senderId, userId), eq(userAndExpertChats.receiverId, userId)));
-    
-    // Simplification for MVP: get all chats
-    return await db.select().from(userAndExpertChats);
+    // FABLE-REVIEW (W5-E mark-read lane): was `db.select().from(userAndExpertChats)` with NO
+    // WHERE clause — every authenticated user's GET /api/chats returned EVERY message in the
+    // entire system (every other user's private conversations, full content). §14-class gate
+    // that was simply never written. Fixed to the sender-or-receiver scope the surrounding code
+    // (and messages.service.ts's getConversationList) already assumes.
+    return await db
+      .select()
+      .from(userAndExpertChats)
+      .where(or(eq(userAndExpertChats.senderId, userId), eq(userAndExpertChats.receiverId, userId)));
   }
 
   async createChat(chat: any): Promise<UserAndExpertChat> {
@@ -3658,6 +3660,11 @@ export class DatabaseStorage implements IStorage {
     return this.summarizeEscrowEarnings(await this.getProviderEarnings(providerId) as any);
   }
 
+  // MONEY_MAP F-4: the cart-confirm transaction in server/services/booking.service.ts (~:716,
+  // inside the atomic db.transaction) deliberately bypasses this canonical writer with a raw
+  // `INSERT INTO provider_earnings` for transactional atomicity (booking confirm + earnings write
+  // + revenue write must commit/roll back together). When changing this writer's columns or
+  // side-effects, also update that raw tx INSERT in booking.service.ts — MONEY_MAP F-4.
   async createProviderEarning(earning: InsertProviderEarning): Promise<ProviderEarning> {
     const [newEarning] = await db.insert(providerEarnings).values(earning).returning();
     return newEarning;
@@ -3951,6 +3958,13 @@ export class DatabaseStorage implements IStorage {
     return !!row;
   }
 
+  // MONEY_MAP F-4: the cart-confirm transaction in server/services/booking.service.ts (~:735,
+  // inside the atomic db.transaction) deliberately bypasses this canonical writer with a raw
+  // `INSERT INTO platform_revenue` for transactional atomicity (see the pointer comment on
+  // createProviderEarning above for why). NOTE: that raw tx INSERT does NOT call
+  // updateDailyRevenueSummary below — a pre-existing divergence, out of scope for F-4. When
+  // changing this writer's columns or side-effects, also update the raw tx INSERT in
+  // booking.service.ts — MONEY_MAP F-4.
   async recordPlatformRevenue(revenue: InsertPlatformRevenue): Promise<PlatformRevenue> {
     const [newRevenue] = await db.insert(platformRevenue).values(revenue).returning();
     

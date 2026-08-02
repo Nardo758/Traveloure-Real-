@@ -795,12 +795,22 @@ export const customVenues = pgTable("custom_venues", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-// === Activity Bookings (Viator/external provider bookings) ===
-// NOTE: This table exists in production with real user booking data (including live
-// Stripe PaymentIntents). Kept in schema so Drizzle does not propose DROP TABLE.
-// The one real prod booking (Segway Paris, user 79cdafd1) must not be lost.
-// Future work: migrate real rows to service_bookings and remove this table.
-
+// === Legacy Archives (generic durable archive for retired tables with real rows) ===
+// Migration 168 (CLAUDE.md Coordination Prevention record): a generic archive for the class of
+// problem "a table has zero code consumers but holds real user data, so it can't simply be
+// dropped." Declared here per the deploy-push-durability rule -- an UNDECLARED archive table is
+// itself the next drop target on a Replit publish, which would defeat the entire point of
+// archiving into it. First (and so far only) tenant: `activity_bookings`, archived then dropped
+// by migration 168 (one real prod row -- Segway Paris, user 79cdafd1, a live Stripe
+// PaymentIntent -- preserved verbatim as a jsonb row here, source_table='activity_bookings').
+// STEP-1 OF THE TWO-DEPLOY RETIREMENT (migration 168): this declaration is DELIBERATELY KEPT
+// until one prod publish has run migration 168's archive. The Replit deploy-push runs BEFORE
+// migrations and DROPS undeclared tables — removing this line in the same deploy as 168 would
+// destroy the one real prod booking BEFORE the archive could run. A follow-up PR (step 2)
+// removes this declaration AFTER the first post-168 publish confirms the archive row exists
+// (SELECT count(*) FROM legacy_archives WHERE source_table='activity_bookings' -> >=1).
+// NOTE: after 168 runs, the table is dropped while still declared, so the NEXT publish push
+// recreates it EMPTY — harmless, expected, and resolved by the step-2 declaration removal.
 export const activityBookings = pgTable("activity_bookings", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   userId: varchar("user_id").notNull(),
@@ -818,6 +828,14 @@ export const activityBookings = pgTable("activity_bookings", {
   providerBookingRef: varchar("provider_booking_ref", { length: 100 }),
   travelDate: varchar("travel_date", { length: 20 }),
   travelerCount: integer("traveler_count").default(1),
+});
+
+export const legacyArchives = pgTable("legacy_archives", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sourceTable: varchar("source_table").notNull(),
+  archivedAt: timestamp("archived_at").defaultNow(),
+  reason: text("reason"),
+  rowData: jsonb("row_data").notNull(),
 });
 
 // === Service Bookings ===

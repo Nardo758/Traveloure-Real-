@@ -21,6 +21,7 @@ import {
   RotateCcw,
   MessageSquare,
   Eraser,
+  Sparkles,
 } from "lucide-react";
 
 type ReviewStatus = "pending" | "approved" | "flagged" | "removed";
@@ -56,9 +57,11 @@ const STATUS_ICONS: Record<ReviewStatus, typeof Clock> = {
   removed: Trash2,
 };
 
-function ReviewRow({ review, onAction }: {
+function ReviewRow({ review, onAction, isFeatured, onToggleFeature }: {
   review: ModerationReview;
   onAction: (id: string, status: string, reason?: string) => void;
+  isFeatured: boolean;
+  onToggleFeature: (id: string) => void;
 }) {
   const [reason, setReason] = useState("");
   const [showReason, setShowReason] = useState(false);
@@ -182,6 +185,20 @@ function ReviewRow({ review, onAction }: {
               Clear response
             </Button>
           )}
+          {review.status === "approved" && (
+            <Button
+              size="sm"
+              variant="outline"
+              className={isFeatured
+                ? "text-violet-700 border-violet-300 bg-violet-50 hover:bg-violet-100"
+                : "text-violet-700 border-violet-200 hover:bg-violet-50"}
+              onClick={() => onToggleFeature(review.id)}
+              data-testid={`button-toggle-featured-${review.id}`}
+            >
+              <Sparkles className="w-3.5 h-3.5 mr-1.5" />
+              {isFeatured ? "Featured on landing page" : "Feature on landing page"}
+            </Button>
+          )}
         </div>
       )}
 
@@ -233,6 +250,37 @@ export default function AdminReviewModeration() {
     },
     onError: () => toast({ title: "Failed to update review", variant: "destructive" }),
   });
+
+  // The §13 curated testimonial rail: which review ids are currently featured
+  // on the public landing page. Toggling calls the same PUT with the full
+  // (deduped) array — the admin endpoint replaces the whole curated list.
+  const featuredQueryKey = ["/api/admin/testimonials/featured"];
+  const { data: featuredData } = useQuery<{ ids: string[] }>({
+    queryKey: featuredQueryKey,
+    queryFn: async () => {
+      const r = await fetch("/api/admin/testimonials/featured", { credentials: "include" });
+      if (!r.ok) throw new Error(`GET /api/admin/testimonials/featured failed: ${r.status}`);
+      return r.json();
+    },
+  });
+  const featuredIds = featuredData?.ids ?? [];
+
+  const toggleFeaturedMutation = useMutation({
+    mutationFn: (nextIds: string[]) =>
+      apiRequest("PUT", "/api/admin/testimonials/featured", { ids: nextIds }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: featuredQueryKey });
+      toast({ title: "Landing page testimonials updated" });
+    },
+    onError: () => toast({ title: "Failed to update featured testimonials", variant: "destructive" }),
+  });
+
+  function handleToggleFeature(reviewId: string) {
+    const next = featuredIds.includes(reviewId)
+      ? featuredIds.filter(id => id !== reviewId)
+      : [...featuredIds, reviewId];
+    toggleFeaturedMutation.mutate(next);
+  }
 
   const pending = reviews?.filter(r => r.status === "pending").length ?? 0;
   const flagged = reviews?.filter(r => r.status === "flagged").length ?? 0;
@@ -306,6 +354,8 @@ export default function AdminReviewModeration() {
                   key={review.id}
                   review={review}
                   onAction={(id, status, reason) => moderateMutation.mutate({ id, status, reason })}
+                  isFeatured={featuredIds.includes(review.id)}
+                  onToggleFeature={handleToggleFeature}
                 />
               ))
             )}

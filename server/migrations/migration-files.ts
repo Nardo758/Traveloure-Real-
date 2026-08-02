@@ -725,4 +725,16 @@ export const MIGRATION_FILES = [
   // `trip_item_comments`, migration 165). See 167_drop_activity_comments.sql for the full
   // rationale + the guarded DROP.
   "167_drop_activity_comments.sql",
+  // 168: QA_PUNCH_LIST "activity_bookings [DM, re-framed]" / W5-D PR #377 follow-on —
+  // archive-then-drop `activity_bookings`. The shared/schema.ts `activityBookings` pgTable
+  // declaration existed only to stop the Replit deploy-push from proposing DROP TABLE on a
+  // table with zero code consumers, but the table holds ONE real prod row (Segway Paris, user
+  // 79cdafd1, a live Stripe PaymentIntent) — so the declaration could not simply be deleted.
+  // Decision-maker ratified: archive queryably into a new generic `legacy_archives` table
+  // (jsonb row_data, source_table-tagged; declared in shared/schema.ts in the same commit so
+  // IT doesn't become the next undeclared-table drop target), then DROP TABLE
+  // activity_bookings and remove its now-pointless schema.ts declaration. Guarded + idempotent
+  // (skips the copy if already archived; no-ops cleanly on a fresh DB with no such table). See
+  // 168_archive_activity_bookings.sql for the full guarded DO block.
+  "168_archive_activity_bookings.sql",
 ] as const;
