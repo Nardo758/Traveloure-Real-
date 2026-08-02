@@ -743,4 +743,10 @@ export const MIGRATION_FILES = [
   // revenue_reversal_reviewed_at/_by columns; no CHECK, no backfill. See
   // 169_coordination_revenue_reversal_reviewed.sql for the full rationale.
   "169_coordination_revenue_reversal_reviewed.sql",
+  // 170: AI booking copilot verification leg (decision-maker ratified). Additive nullable
+  // `affiliate_booking_requests.verification` jsonb — the AI pre-booking verification snapshot
+  // (Tavily-extract + LLM-extract, key-gated, §13 never-fabricates). See
+  // 170_affiliate_booking_verification.sql for the full rationale; §16 (no affiliateUrl in the
+  // snapshot) is enforced in server/services/booking-verification.service.ts, not the DB.
+  "170_affiliate_booking_verification.sql",
 ] as const;
