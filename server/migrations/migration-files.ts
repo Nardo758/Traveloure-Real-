@@ -754,4 +754,8 @@ export const MIGRATION_FILES = [
   // Numbering note (ruling 19): 171 verified free on this branch at merge time; the
   // chain-integrity test is the arbiter if a concurrent lane also claims it.
   "171_item_transition_log.sql",
+  // 172: DATA-ONLY fixture purge — the 20 paid_out/NULL-payout_id earnings rows belonging to
+  // @example.com seed personas, archive-then-delete via legacy_archives (migration-168 pattern).
+  // Decision-maker ratified Aug 2, 2026 after invariant triage. Idempotent; no schema change.
+  "172_purge_fixture_paid_out_earnings.sql",
 ] as const;
