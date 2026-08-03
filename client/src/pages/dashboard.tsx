@@ -16,6 +16,8 @@ import { ActiveExpertsPanel } from "@/components/dashboard/ActiveExpertsPanel";
 import { TopExpertsPanel } from "@/components/dashboard/TopExpertsPanel";
 import { RecommendedServices } from "@/components/dashboard/RecommendedServices";
 import { PlanSlipStrip } from "@/components/dashboard/PlanSlipStrip";
+import { WhileYouWereAway } from "@/components/dashboard/WhileYouWereAway";
+import { TodaysMove } from "@/components/dashboard/TodaysMove";
 import { IntakePanel } from "@/components/intake-panel";
 import { syncActiveTripToContext } from "@/lib/trip-selection";
 
@@ -216,6 +218,22 @@ export default function Dashboard() {
         <div className="flex gap-5">
           {/* LEFT: Main content */}
           <div className="flex-1 min-w-0">
+            {/* R-H: Today's move (single highest-urgency real item on the active trip) +
+                While you were away (real-data digest since the last visit). Additive —
+                the CTA row / saved trips / active plans layout below is unchanged (R-A). */}
+            <TodaysMove
+              tripId={selectedTrip?.id ?? null}
+              destination={selectedTrip?.destination}
+              startDate={selectedTrip?.startDate}
+              endDate={selectedTrip?.endDate}
+            />
+            <WhileYouWereAway
+              userId={user?.id}
+              notifications={notifications}
+              activePlans={activePlans}
+              selectedTrip={selectedTrip}
+            />
+
             {/* CTA Row */}
             <div className="flex gap-2.5 mb-[18px]">
               {CTA_CARDS.map((card) => {
