@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useSearch } from "wouter";
 import { motion } from "framer-motion";
@@ -6,12 +7,13 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { 
+import {
   Plane, Heart, Gem, Diamond, HeartHandshake, Cake, Briefcase, Users, Sparkles, Calendar,
   ArrowRight, Star, MapPin, Clock, ChevronRight
 } from "lucide-react";
 import type { ExperienceType } from "@shared/schema";
 import { SEOHead } from "@/components/seo-head";
+import { IntakePanel } from "@/components/intake-panel";
 
 // Step counts per experience type
 const stepCounts: Record<string, number> = {
@@ -58,7 +60,12 @@ export default function Experiences() {
   const countryParam = searchParams.get("country");
   const multiCityParam = searchParams.get("multiCity");
   const destinationsParam = searchParams.get("destinations");
-  
+
+  // R-C: /experiences is now a host for the intake panel — it opens automatically on
+  // arrival; the grid below (still a real, routed browse surface) stays reachable if the
+  // traveler closes the panel instead of creating a plan.
+  const [intakeOpen, setIntakeOpen] = useState(true);
+
   const { data: experienceTypes, isLoading } = useQuery<ExperienceType[]>({
     queryKey: ["/api/experience-types"],
   });
@@ -220,6 +227,8 @@ export default function Experiences() {
           </div>
         </div>
       </div>
+
+      <IntakePanel open={intakeOpen} onOpenChange={setIntakeOpen} />
     </DashboardLayout>
   );
 }

@@ -8,6 +8,7 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { DashboardLayout } from "@/components/dashboard-layout";
+import { IntakePanel } from "@/components/intake-panel";
 import { format, differenceInDays } from "date-fns";
 import { useState } from "react";
 import { useLocation } from "wouter";
@@ -52,6 +53,9 @@ export default function MyTrips() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [, setLocation] = useLocation();
+  // R-C: both "+ New plan" CTAs on this page open the intake panel instead of navigating
+  // to /experiences (CONSOLE_REALIGN_BRIEF.md).
+  const [intakeOpen, setIntakeOpen] = useState(false);
 
   if (isLoading) {
     return (
@@ -211,12 +215,14 @@ export default function MyTrips() {
           <h1 className="text-2xl font-bold text-foreground dark:text-white" data-testid="text-page-title">
             My plans
           </h1>
-          <Link href="/experiences">
-            <Button className="bg-primary hover:bg-primary/90 text-white" data-testid="button-create-new">
-              <Plus className="w-4 h-4 mr-2" />
-              Create New
-            </Button>
-          </Link>
+          <Button
+            className="bg-primary hover:bg-primary/90 text-white"
+            data-testid="button-create-new"
+            onClick={() => setIntakeOpen(true)}
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Create New
+          </Button>
         </div>
 
         {/* Filters */}
@@ -365,17 +371,21 @@ export default function MyTrips() {
                   : "Start planning your next adventure!"}
               </p>
               {!searchQuery && typeFilter === "all" && statusFilter === "all" && (
-                <Link href="/experiences">
-                  <Button className="bg-primary hover:bg-primary/90 text-white" data-testid="button-create-first">
-                    <Plus className="w-4 h-4 mr-2" />
-                    Create Your First Plan
-                  </Button>
-                </Link>
+                <Button
+                  className="bg-primary hover:bg-primary/90 text-white"
+                  data-testid="button-create-first"
+                  onClick={() => setIntakeOpen(true)}
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Create Your First Plan
+                </Button>
               )}
             </CardContent>
           </Card>
         )}
       </div>
+
+      <IntakePanel open={intakeOpen} onOpenChange={setIntakeOpen} />
     </DashboardLayout>
   );
 }
