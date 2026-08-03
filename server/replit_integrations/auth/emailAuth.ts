@@ -6,6 +6,7 @@ import { users, passwordResetTokens, emailVerificationTokens } from "@shared/mod
 import { and, eq, gt, isNull, sql as drizzleSql } from "drizzle-orm";
 import { sendPasswordResetEmail, sendEmailVerificationEmail, sendWelcomeEmail, getAppBaseUrl } from "../../services/email.service";
 import { trackFunnelEvent } from "../../utils/funnelTracker";
+import { getPlatformFlag, FLAG_REGISTRATION_ENABLED } from "../../services/platform-flags";
 
 // Simple password hashing using Node's built-in crypto
 // For production, consider using bcrypt or argon2
@@ -59,6 +60,15 @@ export function setupEmailAuth(app: Express): void {
   // Register new user with email/password
   app.post("/api/auth/register", async (req, res) => {
     try {
+      // Admin-controlled kill switch (/admin/system → "New User Registration").
+      // platform_settings.new_user_registration_enabled = 'false' blocks signups.
+      const registrationEnabled = await getPlatformFlag(FLAG_REGISTRATION_ENABLED, true);
+      if (!registrationEnabled) {
+        return res.status(403).json({
+          message: "New user registration is temporarily disabled. Please try again later.",
+        });
+      }
+
       const validation = registerSchema.safeParse(req.body);
       if (!validation.success) {
         return res.status(400).json({

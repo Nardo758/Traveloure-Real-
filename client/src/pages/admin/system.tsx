@@ -19,13 +19,70 @@ import {
   RefreshCw,
   Loader2
 } from "lucide-react";
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+
+interface PlatformSettingRow {
+  setting_key: string;
+  setting_value: string;
+  description: string | null;
+  updated_by: string | null;
+  updated_at: string | null;
+}
+
+// Keys + defaults must match the server-side enforcement in
+// server/services/platform-flags.ts (missing row = default).
+const FLAG_DEFAULTS: Record<string, boolean> = {
+  maintenance_mode: false,
+  new_user_registration_enabled: true,
+  email_notifications_enabled: true,
+};
 
 export default function AdminSystem() {
-  const [maintenanceMode, setMaintenanceMode] = useState(false);
-  const [newUserRegistration, setNewUserRegistration] = useState(true);
-  const [emailNotifications, setEmailNotifications] = useState(true);
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  const { data: settingsRows, isLoading: settingsLoading } = useQuery<PlatformSettingRow[]>({
+    queryKey: ["/api/admin/platform-settings"],
+  });
+
+  const flagValue = (key: string): boolean => {
+    const row = settingsRows?.find((r) => r.setting_key === key);
+    if (!row) return FLAG_DEFAULTS[key] ?? false;
+    return row.setting_value === "true";
+  };
+
+  const updateFlag = useMutation({
+    mutationFn: async ({ key, value }: { key: string; value: boolean }) => {
+      await apiRequest("PATCH", `/api/admin/platform-settings/${key}`, {
+        settingValue: value ? "true" : "false",
+      });
+      return { key, value };
+    },
+    onSuccess: ({ key, value }) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/platform-settings"] });
+      const labels: Record<string, string> = {
+        maintenance_mode: "Maintenance mode",
+        new_user_registration_enabled: "New user registration",
+        email_notifications_enabled: "Email notifications",
+      };
+      toast({
+        title: `${labels[key] ?? key} ${value ? "enabled" : "disabled"}`,
+        description:
+          key === "maintenance_mode" && value
+            ? "Non-admin API access is now blocked. Toggle off to restore access."
+            : undefined,
+      });
+    },
+    onError: (err: Error) => {
+      toast({
+        title: "Failed to update setting",
+        description: err.message,
+        variant: "destructive",
+      });
+    },
+  });
 
   const { data: healthData, isLoading } = useQuery<{
     services: Array<{ service: string; status: string; uptime: string }>;
@@ -36,7 +93,7 @@ export default function AdminSystem() {
     };
   }>({ queryKey: ["/api/admin/system/health"] });
 
-  if (isLoading) {
+  if (isLoading || settingsLoading) {
     return (
       <AdminLayout title="System Settings">
         <div className="flex items-center justify-center h-96">
@@ -98,12 +155,18 @@ export default function AdminSystem() {
                 </div>
               ))}
             </div>
+            {/* "View System Logs" was removed — there is no admin logs page to
+                link to yet, and a dead button is worse than no button. */}
             <div className="flex gap-2 mt-4">
-              <Button variant="outline" size="sm" data-testid="button-refresh-status">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  queryClient.invalidateQueries({ queryKey: ["/api/admin/system/health"] })
+                }
+                data-testid="button-refresh-status"
+              >
                 <RefreshCw className="w-4 h-4 mr-2" /> Refresh Status
-              </Button>
-              <Button variant="outline" size="sm" data-testid="button-view-logs">
-                View System Logs
               </Button>
             </div>
           </CardContent>
@@ -127,8 +190,9 @@ export default function AdminSystem() {
                   </p>
                 </div>
                 <Switch
-                  checked={maintenanceMode}
-                  onCheckedChange={setMaintenanceMode}
+                  checked={flagValue("maintenance_mode")}
+                  disabled={updateFlag.isPending}
+                  onCheckedChange={(v) => updateFlag.mutate({ key: "maintenance_mode", value: v })}
                   data-testid="switch-maintenance"
                 />
               </div>
@@ -141,8 +205,9 @@ export default function AdminSystem() {
                   </p>
                 </div>
                 <Switch
-                  checked={newUserRegistration}
-                  onCheckedChange={setNewUserRegistration}
+                  checked={flagValue("new_user_registration_enabled")}
+                  disabled={updateFlag.isPending}
+                  onCheckedChange={(v) => updateFlag.mutate({ key: "new_user_registration_enabled", value: v })}
                   data-testid="switch-registration"
                 />
               </div>
@@ -155,8 +220,9 @@ export default function AdminSystem() {
                   </p>
                 </div>
                 <Switch
-                  checked={emailNotifications}
-                  onCheckedChange={setEmailNotifications}
+                  checked={flagValue("email_notifications_enabled")}
+                  disabled={updateFlag.isPending}
+                  onCheckedChange={(v) => updateFlag.mutate({ key: "email_notifications_enabled", value: v })}
                   data-testid="switch-emails"
                 />
               </div>

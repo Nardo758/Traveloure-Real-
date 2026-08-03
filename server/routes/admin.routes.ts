@@ -7,6 +7,7 @@ import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { db } from "../db";
 import { bookingExpiryScheduler } from "../services/booking-expiry-scheduler.service";
+import { invalidatePlatformFlagCache } from "../services/platform-flags";
 import { MIN_PAYOUT_CENTS, MIN_PAYOUT_DOLLARS } from "../config/payout.config";
 import { stripePaymentService } from "../services/stripe-payment.service";
 import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, isNull, asc } from "drizzle-orm";
@@ -5426,6 +5427,13 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
       if (!settingKey) return res.status(400).json({ error: "Invalid settingKey" });
       if (typeof settingValue !== "string") return res.status(400).json({ error: "settingValue must be a string" });
 
+      // Boolean flags from /admin/system must be exactly "true"/"false" so the
+      // enforcement middleware never misreads a junk value.
+      const BOOLEAN_FLAG_KEYS = ["maintenance_mode", "new_user_registration_enabled", "email_notifications_enabled"];
+      if (BOOLEAN_FLAG_KEYS.includes(settingKey) && !["true", "false"].includes(settingValue)) {
+        return res.status(400).json({ error: `${settingKey} must be 'true' or 'false'`, got: settingValue });
+      }
+
       // Footgun guard: validate the policy enum at the boundary so an admin
       // can't set active_provider_commission_policy to a junk string that
       // would route every provider through the default fallback band.
@@ -5468,6 +5476,9 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
         ipAddress: req.ip ?? null,
         userAgent: req.get("user-agent") ?? null,
       }).catch(err => console.error("[platform-settings] audit log failed (non-fatal):", err));
+
+      // Apply toggles immediately in-process (flag reads are otherwise TTL-cached).
+      invalidatePlatformFlagCache(settingKey);
 
       res.json({ ok: true, settingKey, settingValue });
     } catch (error: any) {
