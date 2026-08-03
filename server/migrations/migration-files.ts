@@ -758,4 +758,9 @@ export const MIGRATION_FILES = [
   // @example.com seed personas, archive-then-delete via legacy_archives (migration-168 pattern).
   // Decision-maker ratified Aug 2, 2026 after invariant triage. Idempotent; no schema change.
   "172_purge_fixture_paid_out_earnings.sql",
+  // 173: Console Realign Lane E5 (R-F, Trip Card delivery: Finalize) — additive nullable
+  // `trips.finalized_at` TIMESTAMP. No CHECK, no DEFAULT, no backfill; NOT a revival of the dead
+  // `trips.status` (Lane 3 Option B stands) — a narrow rendering-handover signal read only by the
+  // primary-surface rule. See 173_trips_finalized_at.sql for the full rationale.
+  "173_trips_finalized_at.sql",
 ] as const;

@@ -29,6 +29,7 @@ import {
   Plane,
   FileText,
   Star,
+  CheckCircle2,
   type LucideIcon,
 } from "lucide-react";
 
@@ -49,6 +50,9 @@ export const NOTIFICATION_TYPE_ICONS: Record<string, LucideIcon> = {
   itinerary_update: FileText,
   itinerary_shared: FileText,
   expert_suggestion: FileText,
+  // R-F (Console Realign, Trip Card delivery): fired on Finalize and on the T-48h auto-nudge —
+  // both mean "the Trip Card is ready to view".
+  trip_card_ready: CheckCircle2,
 };
 
 export function getNotificationIcon(type: string): LucideIcon {

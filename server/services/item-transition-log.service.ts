@@ -26,7 +26,12 @@ export type TransitionActorType =
   | "optimizer"
   | "system";
 
-export type TransitionEventType = "status_transition" | "variant_applied";
+export type TransitionEventType =
+  | "status_transition"
+  | "variant_applied"
+  // R-F (Console Realign, Trip Card delivery): trip-scoped (itemId null) Finalize/reopen events.
+  | "plan_finalized"
+  | "plan_reopened";
 
 /** The executor shape both `db` and a drizzle `tx` satisfy — callers inside a transaction MUST
  *  pass their `tx` (ruling 18: same-transaction pair), everything else may pass `db`. */
