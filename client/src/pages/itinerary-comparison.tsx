@@ -668,6 +668,11 @@ export default function ItineraryComparisonPage() {
       const baselineItems = stored ? JSON.parse(stored) : [];
       // Sprint-1 dislike loop: the selected chips steer the re-run — the server
       // maps them onto the variant-strategy matrix with top priority.
+      // Ground-truth note (E2/R-B): this regenerates variants for the EXISTING comparison via
+      // POST /api/itinerary-comparisons/:id/generate — a different endpoint from the
+      // POST /api/itinerary-comparisons CREATE call the client/src/lib/create-comparison.ts
+      // helper centralizes. Not one of the four create-comparison call sites despite an earlier
+      // audit grouping it with them; left as-is.
       return apiRequest("POST", `/api/itinerary-comparisons/${id}/generate`, {
         baselineItems,
         ...(feedbackChips.length > 0 ? { feedback: feedbackChips } : {}),
@@ -818,7 +823,7 @@ export default function ItineraryComparisonPage() {
           title: "Your optimized plan is ready!",
           description: "Redirecting to your trip…",
         });
-        setLocation(`/trip/${result.tripId}?optimized=1`);
+        setLocation(`/plans/${result.tripId}`);
       } catch (err: any) {
         console.error("Auto-apply failed:", err);
         toast({

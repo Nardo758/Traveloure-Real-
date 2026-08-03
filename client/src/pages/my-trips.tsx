@@ -134,7 +134,7 @@ export default function MyTrips() {
       <Card
         className="border border-border hover:shadow-md transition-shadow cursor-pointer"
         data-testid={`trip-card-${trip.id}`}
-        onClick={() => setLocation(`/trip/${trip.id}`)}
+        onClick={() => setLocation(`/plans/${trip.id}`)}
       >
         <CardContent className={viewMode === "list" ? "p-5" : "p-4"}>
           <div className={viewMode === "list" ? "flex items-start gap-4" : "space-y-4"}>
@@ -177,15 +177,10 @@ export default function MyTrips() {
               )}
 
               <div className="flex items-center gap-2 flex-wrap">
-                <Link href={`/trip/${trip.id}`} onClick={(e) => e.stopPropagation()}>
+                {/* R-E: "View" lands on the slip (/plans/:tripId) — the merged former "Open slip" action. */}
+                <Link href={`/plans/${trip.id}`} onClick={(e) => e.stopPropagation()}>
                   <Button size="sm" variant="outline" data-testid={`button-view-${trip.id}`}>
                     View
-                  </Button>
-                </Link>
-                {/* Slip dispatch §4 Spec A: unobtrusive link to the slip's canonical address. */}
-                <Link href={`/plans/${trip.id}`} onClick={(e) => e.stopPropagation()}>
-                  <Button size="sm" variant="ghost" className="text-muted-foreground" data-testid={`button-open-slip-${trip.id}`}>
-                    Open slip
                   </Button>
                 </Link>
                 <Link href="/chat" onClick={(e) => e.stopPropagation()}>
@@ -196,7 +191,7 @@ export default function MyTrips() {
                 {!isCompleted && (
                   <Link href={`/trip/${trip.id}`} onClick={(e) => e.stopPropagation()}>
                     <Button size="sm" variant="ghost" className="text-muted-foreground" data-testid={`button-edit-${trip.id}`}>
-                      Edit
+                      Trip Card
                     </Button>
                   </Link>
                 )}
@@ -214,7 +209,7 @@ export default function MyTrips() {
         {/* Header */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <h1 className="text-2xl font-bold text-foreground dark:text-white" data-testid="text-page-title">
-            My Plans & Events
+            My plans
           </h1>
           <Link href="/experiences">
             <Button className="bg-primary hover:bg-primary/90 text-white" data-testid="button-create-new">

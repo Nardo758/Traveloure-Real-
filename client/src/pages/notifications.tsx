@@ -68,6 +68,7 @@ interface ApiNotification {
     amount?: string;
     tripId?: string;
     workspacePath?: string;
+    itemId?: string;
     chatId?: string;
     clientId?: string;
   };
@@ -86,7 +87,18 @@ interface MappedNotification {
   bookingId?: string;
   tripId?: string;
   workspacePath?: string;
+  itemId?: string;
   clientId?: string;
+}
+
+// R-E: traveler-facing itinerary deep-links prefer the slip (/plans/:tripId), anchored to the
+// changed item when one is known. Expert workspacePath links (/expert/workspace/...) are left
+// untouched — this only re-targets the traveler side of the same notification data shape.
+function resolveWorkspaceLink(n: Pick<MappedNotification, "workspacePath" | "tripId" | "itemId">): string | undefined {
+  if (n.workspacePath?.startsWith("/trip/") && n.tripId) {
+    return n.itemId ? `/plans/${n.tripId}?item=${n.itemId}` : `/plans/${n.tripId}`;
+  }
+  return n.workspacePath;
 }
 
 export default function Notifications() {
@@ -112,6 +124,7 @@ export default function Notifications() {
         bookingId: n.data?.bookingId ?? n.relatedId,
         tripId: n.data?.tripId,
         workspacePath: n.data?.workspacePath,
+        itemId: n.data?.itemId,
         clientId: n.data?.clientId,
       }));
       setNotifications(mapped);
@@ -267,7 +280,7 @@ export default function Notifications() {
                                 </Link>
                               </div>
                             ) : notification.tripId ? (
-                              <Link href={notification.workspacePath || `/expert/workspace/${notification.tripId}`}>
+                              <Link href={resolveWorkspaceLink(notification) || `/expert/workspace/${notification.tripId}`}>
                                 <Button
                                   size="sm"
                                   className="mt-2 h-7 px-3 text-xs bg-primary hover:bg-[#e0314f] text-white"
