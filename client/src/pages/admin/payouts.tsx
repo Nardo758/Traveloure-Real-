@@ -368,7 +368,7 @@ export default function AdminPayouts() {
                                       variant="outline"
                                       className="text-green-600 border-green-200 hover:bg-green-50"
                                       onClick={() => handleAction(payout, "approve")}
-                                      data-testid={`button-approve-${payout.id}`}
+                                      data-testid={`button-approve-payout-${payout.id}`}
                                     >
                                       <CheckCircle className="w-4 h-4 mr-1" />
                                       Approve
@@ -378,7 +378,7 @@ export default function AdminPayouts() {
                                       variant="outline"
                                       className="text-red-600 border-red-200 hover:bg-red-50"
                                       onClick={() => handleAction(payout, "reject")}
-                                      data-testid={`button-reject-${payout.id}`}
+                                      data-testid={`button-reject-payout-${payout.id}`}
                                     >
                                       <XCircle className="w-4 h-4 mr-1" />
                                       Reject
@@ -390,7 +390,7 @@ export default function AdminPayouts() {
                                     size="sm"
                                     className="bg-green-600 hover:bg-green-700 text-white"
                                     onClick={() => handleAction(payout, "execute")}
-                                    data-testid={`button-execute-${payout.id}`}
+                                    data-testid={`button-execute-payout-${payout.id}`}
                                   >
                                     <Send className="w-4 h-4 mr-1" />
                                     Execute Payout
@@ -492,7 +492,7 @@ export default function AdminPayouts() {
             <Button
               variant="outline"
               onClick={() => setActionDialog({ open: false, payout: null, action: "approve" })}
-              data-testid="button-cancel-action"
+              data-testid="button-cancel-payout-action"
             >
               Cancel
             </Button>
@@ -504,7 +504,7 @@ export default function AdminPayouts() {
                   ? "bg-red-600 hover:bg-red-700"
                   : "bg-green-600 hover:bg-green-700"
               }
-              data-testid="button-confirm-action"
+              data-testid="button-confirm-payout-action"
             >
               {updatePayoutMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               {actionDialog.action === "approve" && "Approve"}
