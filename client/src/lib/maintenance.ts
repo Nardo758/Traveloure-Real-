@@ -8,8 +8,14 @@
 
 export const MAINTENANCE_EVENT = "app:maintenance-mode";
 
+/** How often (ms) to ping the server while the maintenance screen is up. */
+export const MAINTENANCE_POLL_INTERVAL_MS = 30_000;
+/** Lightweight public endpoint used to probe whether maintenance has ended. */
+const MAINTENANCE_PROBE_PATH = "/api/health";
+
 let active = false;
 let message: string | null = null;
+let pollTimer: ReturnType<typeof setInterval> | null = null;
 
 export function isMaintenanceActive(): boolean {
   return active;
@@ -24,6 +30,43 @@ function activate(msg?: string) {
   if (active) return;
   active = true;
   window.dispatchEvent(new Event(MAINTENANCE_EVENT));
+  startMaintenancePolling();
+}
+
+/**
+ * While the maintenance screen is shown, periodically ping a lightweight
+ * endpoint. As soon as the server stops answering 503 { maintenance: true },
+ * reload the page so the visitor resumes automatically — no manual refresh.
+ * Idempotent: repeated calls won't stack timers.
+ */
+function startMaintenancePolling(): void {
+  if (pollTimer !== null) return;
+  const probe = async () => {
+    try {
+      const res = await fetch(MAINTENANCE_PROBE_PATH, {
+        cache: "no-store",
+        credentials: "same-origin",
+      });
+      if (res.status === 503) {
+        try {
+          const body = await res.clone().json();
+          if (body && body.maintenance === true) return; // still down
+        } catch {
+          // Non-JSON 503 — not the maintenance gate; treat as recovered.
+        }
+      }
+      // Any non-maintenance response (200, or an unrelated error) means the
+      // gate has lifted — reload to resume the app with fresh state.
+      if (pollTimer !== null) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+      }
+      window.location.reload();
+    } catch {
+      // Network error (server restarting mid-maintenance) — keep polling.
+    }
+  };
+  pollTimer = setInterval(() => void probe(), MAINTENANCE_POLL_INTERVAL_MS);
 }
 
 /**

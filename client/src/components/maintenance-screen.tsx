@@ -49,6 +49,12 @@ export function MaintenanceGate({ children }: { children: React.ReactNode }) {
         <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />
         Try again
       </Button>
+      <p
+        className="mt-4 text-xs text-muted-foreground/70"
+        data-testid="text-maintenance-autocheck"
+      >
+        We'll check automatically and bring you back as soon as we're ready.
+      </p>
       <p className="mt-10 text-sm font-medium text-muted-foreground/70">Traveloure</p>
     </div>
   );
