@@ -47,16 +47,11 @@ function startMaintenancePolling(): void {
         cache: "no-store",
         credentials: "same-origin",
       });
-      if (res.status === 503) {
-        try {
-          const body = await res.clone().json();
-          if (body && body.maintenance === true) return; // still down
-        } catch {
-          // Non-JSON 503 — not the maintenance gate; treat as recovered.
-        }
-      }
-      // Any non-maintenance response (200, or an unrelated error) means the
-      // gate has lifted — reload to resume the app with fresh state.
+      // Only an explicitly healthy (2xx) response counts as recovered.
+      // Anything else — the maintenance 503, a DB-unhealthy 503 from
+      // /api/health, a 5xx while the server restarts — means keep waiting,
+      // otherwise a flapping backend would cause a 30s reload loop.
+      if (!res.ok) return;
       if (pollTimer !== null) {
         clearInterval(pollTimer);
         pollTimer = null;
