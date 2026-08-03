@@ -15,6 +15,8 @@ import { ActionItemsPanel } from "@/components/dashboard/ActionItemsPanel";
 import { ActiveExpertsPanel } from "@/components/dashboard/ActiveExpertsPanel";
 import { TopExpertsPanel } from "@/components/dashboard/TopExpertsPanel";
 import { RecommendedServices } from "@/components/dashboard/RecommendedServices";
+import { PlanSlipStrip } from "@/components/dashboard/PlanSlipStrip";
+import { IntakePanel } from "@/components/intake-panel";
 import { syncActiveTripToContext } from "@/lib/trip-selection";
 
 interface Notification {
@@ -88,6 +90,9 @@ export default function Dashboard() {
     queryKey: ["/api/conversations"],
   });
   const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
+  // R-A/R-C: the "New experience" CTA keeps its exact look but opens the intake panel
+  // instead of navigating to /experiences (CONSOLE_REALIGN_BRIEF.md).
+  const [intakeOpen, setIntakeOpen] = useState(false);
   // Only attempt the localStorage restore once per mount — subsequent trips-list refetches
   // (e.g. after a mutation) must not fight a since-made explicit selection.
   const hasAttemptedRestore = useRef(false);
@@ -215,31 +220,48 @@ export default function Dashboard() {
             <div className="flex gap-2.5 mb-[18px]">
               {CTA_CARDS.map((card) => {
                 const sub = card.sub;
+                const cardBody = (
+                  <div
+                    className="rounded-xl px-3 py-4 cursor-pointer text-center transition-colors hover:opacity-80"
+                    style={{ background: "#F3F3EE" }}
+                    data-testid={card.testId}
+                  >
+                    <div className="text-[18px] mb-1">{card.icon}</div>
+                    <div
+                      className="text-[13px] font-medium"
+                      style={{ color: "#1A1A18" }}
+                    >
+                      {card.label}
+                    </div>
+                    <div
+                      className="text-[11px] mt-0.5"
+                      style={{ color: "#7A7A72" }}
+                    >
+                      {sub}
+                    </div>
+                  </div>
+                );
+                // R-C: "New experience" keeps its look but opens the intake panel instead
+                // of navigating to /experiences.
+                if (card.href === "/experiences") {
+                  return (
+                    <button
+                      key={card.testId}
+                      type="button"
+                      className="flex-1 text-left"
+                      onClick={() => setIntakeOpen(true)}
+                    >
+                      {cardBody}
+                    </button>
+                  );
+                }
                 return (
                   <Link
                     key={card.testId}
                     href={card.href}
                     className="flex-1"
                   >
-                    <div
-                      className="rounded-xl px-3 py-4 cursor-pointer text-center transition-colors hover:opacity-80"
-                      style={{ background: "#F3F3EE" }}
-                      data-testid={card.testId}
-                    >
-                      <div className="text-[18px] mb-1">{card.icon}</div>
-                      <div
-                        className="text-[13px] font-medium"
-                        style={{ color: "#1A1A18" }}
-                      >
-                        {card.label}
-                      </div>
-                      <div
-                        className="text-[11px] mt-0.5"
-                        style={{ color: "#7A7A72" }}
-                      >
-                        {sub}
-                      </div>
-                    </div>
+                    {cardBody}
                   </Link>
                 );
               })}
@@ -344,14 +366,18 @@ export default function Dashboard() {
                   </div>
                 )}
 
-                {/* Single full PlanCard for the selected/soonest trip */}
+                {/* Single full PlanCard for the selected/soonest trip, capped by the R-A
+                    compact slip strip (tracking ref + routing-status counts + "Open slip"). */}
                 {selectedTrip && (
-                  <PlanCard
-                    trip={selectedTrip as any}
-                    index={0}
-                    role="owner"
-                    stage="full"
-                  />
+                  <>
+                    <PlanSlipStrip tripId={selectedTrip.id} />
+                    <PlanCard
+                      trip={selectedTrip as any}
+                      index={0}
+                      role="owner"
+                      stage="full"
+                    />
+                  </>
                 )}
               </div>
             ) : (
@@ -409,6 +435,8 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      <IntakePanel open={intakeOpen} onOpenChange={setIntakeOpen} />
     </DashboardLayout>
   );
 }
