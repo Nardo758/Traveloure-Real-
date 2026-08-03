@@ -2353,9 +2353,12 @@ router.get("/api/notifications/unread-count", isAuthenticated, async (req, res) 
 
 router.patch("/api/notifications/:id/read", isAuthenticated, async (req, res) => {
     const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
-    const notification = await storage.markAsRead(req.params.id);
-    if (notification && notification.userId !== userId) {
-      return res.status(403).json({ message: "Not your notification" });
+    // Ownership enforced IN the update's WHERE (id + userId) — the old shape mutated first and
+    // checked after, so a cross-user write landed before the 403. 404 for missing-or-not-yours
+    // alike (no id-space oracle).
+    const notification = await storage.markAsRead(req.params.id, userId);
+    if (!notification) {
+      return res.status(404).json({ message: "Notification not found" });
     }
     res.json(notification);
   });
@@ -2371,7 +2374,13 @@ router.post("/api/notifications/mark-all-read", isAuthenticated, async (req, res
   // Delete notification
 
 router.delete("/api/notifications/:id", isAuthenticated, async (req, res) => {
-    await storage.deleteNotification(req.params.id);
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    // Ownership enforced IN the delete's WHERE — audit A1 proved any authenticated user could
+    // delete any other user's notification (IDOR). 404 for missing-or-not-yours alike.
+    const deleted = await storage.deleteNotification(req.params.id, userId);
+    if (!deleted) {
+      return res.status(404).json({ message: "Notification not found" });
+    }
     res.json({ success: true });
   });
 
