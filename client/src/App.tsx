@@ -20,7 +20,6 @@ import { PageErrorBoundary } from "@/components/page-error-boundary";
 const LandingPage = lazy(() => import("@/pages/landing"));
 const LandingMockups = lazy(() => import("@/pages/landing-mockups"));
 const Dashboard = lazy(() => import("@/pages/dashboard"));
-const CreateTrip = lazy(() => import("@/pages/create-trip"));
 const TripDetails = lazy(() => import("@/pages/trip-details"));
 const MyTrips = lazy(() => import("@/pages/my-trips"));
 const Profile = lazy(() => import("@/pages/profile"));

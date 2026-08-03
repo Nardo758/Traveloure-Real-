@@ -123,7 +123,8 @@ export function DashboardSidebar() {
                     (item.href === "/my-trips" && (
                       location.startsWith("/my-trips") ||
                       location.startsWith("/itinerary") ||
-                      location.startsWith("/my-itinerary")
+                      location.startsWith("/my-itinerary") ||
+                      location.startsWith("/plans")
                     )) ||
                     (item.href !== "/dashboard" && item.href !== "/my-trips" && location.startsWith(item.href));
 

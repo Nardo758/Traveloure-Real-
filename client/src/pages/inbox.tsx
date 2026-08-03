@@ -178,9 +178,20 @@ function getNotificationIcon(type: string) {
  */
 function resolveNotificationLink(n: ApiNotification): { href: string; label: string } | null {
   if (n.data?.tripId) {
+    // R-E: traveler-facing itinerary links (workspacePath starting "/trip/") prefer the slip
+    // (/plans/:tripId), anchored to the changed item when the notification carries one. Expert
+    // workspacePath links (/expert/workspace/...) and other shapes (e.g. /itinerary-view/) are
+    // left untouched.
+    const isTravelerTripLink = n.data.workspacePath?.startsWith("/trip/");
+    const itemId = typeof n.data.itemId === "string" ? n.data.itemId : undefined;
+    const href = isTravelerTripLink
+      ? itemId
+        ? `/plans/${n.data.tripId}?item=${itemId}`
+        : `/plans/${n.data.tripId}`
+      : n.data.workspacePath || `/expert/workspace/${n.data.tripId}`;
     return {
-      href: n.data.workspacePath || `/expert/workspace/${n.data.tripId}`,
-      label: n.data.workspacePath?.startsWith("/trip/") || n.data.workspacePath?.startsWith("/itinerary-view/")
+      href,
+      label: isTravelerTripLink || n.data.workspacePath?.startsWith("/itinerary-view/")
         ? "View Itinerary"
         : "Open",
     };
