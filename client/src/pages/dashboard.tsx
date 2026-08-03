@@ -158,8 +158,18 @@ export default function Dashboard() {
   // mismatch) and every notification counts as unread forever, even after being
   // marked read via the bell popover or the /notifications page.
   const notifications = (notificationsData ?? []).map(n => ({ ...n, read: n.isRead ?? false }));
+  // R-I(2): "urgent"/"action" are notification `type`s no server code ever writes (grepped
+  // every createNotification/insertNotification/db.insert(notifications) call site), so this
+  // count was structurally always 0. The real, actually-written types that call a traveler to
+  // act are booking_request, expert_suggestion, itinerary_update, and booking_confirmed.
+  const ACTIONABLE_NOTIFICATION_TYPES = new Set([
+    "booking_request",
+    "expert_suggestion",
+    "itinerary_update",
+    "booking_confirmed",
+  ]);
   const actionsNeeded = notifications.filter(
-    n => !n.read && (n.type === "urgent" || n.type === "action")
+    n => !n.read && n.type && ACTIONABLE_NOTIFICATION_TYPES.has(n.type)
   ).length;
 
   const greetingSub =
