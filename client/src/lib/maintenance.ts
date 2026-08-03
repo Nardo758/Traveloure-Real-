@@ -8,8 +8,14 @@
 
 export const MAINTENANCE_EVENT = "app:maintenance-mode";
 
+/** How often (ms) to ping the server while the maintenance screen is up. */
+export const MAINTENANCE_POLL_INTERVAL_MS = 30_000;
+/** Lightweight public endpoint used to probe whether maintenance has ended. */
+const MAINTENANCE_PROBE_PATH = "/api/health";
+
 let active = false;
 let message: string | null = null;
+let pollTimer: ReturnType<typeof setInterval> | null = null;
 
 export function isMaintenanceActive(): boolean {
   return active;
@@ -24,6 +30,38 @@ function activate(msg?: string) {
   if (active) return;
   active = true;
   window.dispatchEvent(new Event(MAINTENANCE_EVENT));
+  startMaintenancePolling();
+}
+
+/**
+ * While the maintenance screen is shown, periodically ping a lightweight
+ * endpoint. As soon as the server stops answering 503 { maintenance: true },
+ * reload the page so the visitor resumes automatically — no manual refresh.
+ * Idempotent: repeated calls won't stack timers.
+ */
+function startMaintenancePolling(): void {
+  if (pollTimer !== null) return;
+  const probe = async () => {
+    try {
+      const res = await fetch(MAINTENANCE_PROBE_PATH, {
+        cache: "no-store",
+        credentials: "same-origin",
+      });
+      // Only an explicitly healthy (2xx) response counts as recovered.
+      // Anything else — the maintenance 503, a DB-unhealthy 503 from
+      // /api/health, a 5xx while the server restarts — means keep waiting,
+      // otherwise a flapping backend would cause a 30s reload loop.
+      if (!res.ok) return;
+      if (pollTimer !== null) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+      }
+      window.location.reload();
+    } catch {
+      // Network error (server restarting mid-maintenance) — keep polling.
+    }
+  };
+  pollTimer = setInterval(() => void probe(), MAINTENANCE_POLL_INTERVAL_MS);
 }
 
 /**
