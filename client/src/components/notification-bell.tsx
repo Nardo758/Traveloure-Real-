@@ -1,50 +1,33 @@
+import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import {
   Popover,
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
-import { 
-  Bell, 
-  Check, 
-  CheckCheck, 
-  ShoppingCart, 
-  MessageSquare, 
-  Star,
-  FileText,
-  X
-} from "lucide-react";
+import { Bell, CheckCheck } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+import { useLocation } from "wouter";
+import {
+  getNotificationIcon,
+  resolveNotificationLink,
+  type ApiNotification,
+} from "@/lib/notification-icons";
 
-interface Notification {
-  id: string;
-  userId: string;
-  type: string;
-  title: string;
-  message: string;
-  relatedId: string | null;
-  relatedType: string | null;
-  isRead: boolean;
-  createdAt: string;
-}
-
-const typeIcons: Record<string, typeof Bell> = {
-  booking_created: ShoppingCart,
-  booking_confirmed: Check,
-  booking_completed: CheckCheck,
-  message_received: MessageSquare,
-  review_received: Star,
-  contract_created: FileText,
-};
+// R-G (Console Realign, Lane E4): icon map is now the shared client/src/lib/notification-icons
+// superset (bell + Inbox Updates tab are its only two consumers) — was a divergent 6-type local
+// copy that disagreed with inbox.tsx's icons for the same types (e.g. booking_created was
+// ShoppingCart here, Briefcase there).
+type Notification = ApiNotification;
 
 export function NotificationBell() {
   const { user } = useAuth();
+  const [, navigate] = useLocation();
+  const [isOpen, setIsOpen] = useState(false);
 
   const { data: unreadCount } = useQuery<{ count: number }>({
     queryKey: ["/api/notifications/unread-count"],
@@ -84,19 +67,19 @@ export function NotificationBell() {
   const count = unreadCount?.count || 0;
 
   return (
-    <Popover>
+    <Popover open={isOpen} onOpenChange={setIsOpen}>
       <PopoverTrigger asChild>
         {/* TEST 3 — icon-only button: aria-label announces purpose + unread count to SR */}
-        <Button 
-          variant="ghost" 
-          size="icon" 
+        <Button
+          variant="ghost"
+          size="icon"
           className="relative"
           aria-label={count > 0 ? `Notifications, ${count} unread` : "Notifications"}
           data-testid="button-notifications"
         >
           <Bell className="w-5 h-5" aria-hidden="true" />
           {count > 0 && (
-            <span 
+            <span
               className="absolute -top-1 -right-1 w-5 h-5 bg-destructive text-destructive-foreground text-xs rounded-full flex items-center justify-center"
               aria-hidden="true"
               data-testid="badge-unread-count"
@@ -110,8 +93,8 @@ export function NotificationBell() {
         <div className="flex items-center justify-between p-3 border-b">
           <h3 className="font-semibold">Notifications</h3>
           {count > 0 && (
-            <Button 
-              variant="ghost" 
+            <Button
+              variant="ghost"
               size="sm"
               onClick={() => markAllAsReadMutation.mutate()}
               disabled={markAllAsReadMutation.isPending}
@@ -122,7 +105,7 @@ export function NotificationBell() {
             </Button>
           )}
         </div>
-        
+
         <ScrollArea className="h-80">
           {!notifications || notifications.length === 0 ? (
             <div className="p-6 text-center text-muted-foreground">
@@ -132,37 +115,66 @@ export function NotificationBell() {
           ) : (
             <div>
               {notifications.map((notification) => (
-                <NotificationItem 
-                  key={notification.id} 
+                <NotificationItem
+                  key={notification.id}
                   notification={notification}
                   onMarkAsRead={() => markAsReadMutation.mutate(notification.id)}
+                  onNavigate={(href) => {
+                    setIsOpen(false);
+                    navigate(href);
+                  }}
                 />
               ))}
             </div>
           )}
         </ScrollArea>
+
+        {/* R-G: "View all" -> Inbox's Updates tab, the notifications page's replacement home. */}
+        <div className="border-t p-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full justify-center text-primary"
+            onClick={() => {
+              setIsOpen(false);
+              navigate("/inbox?tab=updates");
+            }}
+            data-testid="button-notifications-view-all"
+          >
+            View all
+          </Button>
+        </div>
       </PopoverContent>
     </Popover>
   );
 }
 
-function NotificationItem({ 
-  notification, 
-  onMarkAsRead 
-}: { 
+function NotificationItem({
+  notification,
+  onMarkAsRead,
+  onNavigate,
+}: {
   notification: Notification;
   onMarkAsRead: () => void;
+  onNavigate: (href: string) => void;
 }) {
-  const Icon = typeIcons[notification.type] || Bell;
+  const Icon = getNotificationIcon(notification.type);
+  // R-G: rows gain deep-link navigation (clicking navigates to the notification's target and
+  // marks it read), mirroring the Inbox Updates tab's resolveNotificationLink. A row with no
+  // resolvable target (§13: never invent one) still marks read on click, same as before.
+  const link = resolveNotificationLink(notification);
 
   return (
-    <div 
+    <div
       className={`p-3 border-b last:border-0 hover-elevate cursor-pointer ${
         !notification.isRead ? "bg-primary/5" : ""
       }`}
       onClick={() => {
         if (!notification.isRead) {
           onMarkAsRead();
+        }
+        if (link) {
+          onNavigate(link.href);
         }
       }}
       data-testid={`notification-${notification.id}`}
