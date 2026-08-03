@@ -8,6 +8,8 @@ import { verifyTripOwnership } from "../utils/trip-ownership";
 import { storage } from "../storage";
 import { chatStorage } from "../replit_integrations/chat/storage";
 import { eventTypeEnum } from "@shared/schema";
+import { aiRateLimit } from "../middleware/rateLimiter";
+import { trackAICost, calculateAnthropicCost } from "../services/ai-cost-tracker";
 
 /**
  * TripContext server persistence (migration 130, Trip-Strip program P2/E2; re-keyed by
@@ -220,7 +222,7 @@ function parseExtractionJson(raw: string): ExtractedTripFields | null {
   }
 }
 
-router.post("/api/trip-context/extract", isAuthenticated, async (req, res) => {
+router.post("/api/trip-context/extract", aiRateLimit, isAuthenticated, async (req, res) => {
   try {
     const userId = sessionUserId(req);
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
@@ -258,6 +260,21 @@ router.post("/api/trip-context/extract", isAuthenticated, async (req, res) => {
       system: EXTRACTION_SYSTEM_PROMPT,
       messages: [{ role: "user", content: `Transcript:\n\n${transcript}` }],
     });
+
+    // Track cost — ai_cost_tracking is documented load-bearing for the admin cost breakdown
+    // (CLAUDE.md publish-push trap note); same signature/fields as the chat route's tracker call.
+    const inputTokens = response.usage?.input_tokens ?? 0;
+    const outputTokens = response.usage?.output_tokens ?? 0;
+    if (inputTokens > 0 || outputTokens > 0) {
+      trackAICost({
+        sourceType: "trip_context_extract",
+        modelUsed: "claude-sonnet-4-5",
+        userId,
+        costUsd: calculateAnthropicCost(inputTokens, outputTokens),
+        tokensIn: inputTokens,
+        tokensOut: outputTokens,
+      }).catch((err) => console.error("[cost-tracker] trip_context_extract:", err));
+    }
 
     const textBlock = response.content.find((b) => b.type === "text");
     const raw = textBlock && "text" in textBlock ? textBlock.text : "";

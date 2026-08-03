@@ -67,9 +67,9 @@
  */
 import { Router } from "express";
 import { z } from "zod";
-import { and, count, eq, isNotNull, isNull } from "drizzle-orm";
+import { and, count, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { db } from "../db";
-import { itineraryItems, tripCollaborators, trips, ROUTING_STATUSES, type RoutingStatus } from "@shared/schema";
+import { itineraryItems, notifications, tripCollaborators, trips, ROUTING_STATUSES, type RoutingStatus } from "@shared/schema";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { storage } from "../storage";
 import { verifyTripOwnership } from "../utils/trip-ownership";
@@ -338,17 +338,36 @@ router.post("/api/trips/:tripId/finalize", isAuthenticated, async (req, res) => 
     // of the codebase uses (booking-actions.ts, trips.routes.ts): `workspacePath` starting
     // "/trip/" is what makes `resolveNotificationLink` (client/src/lib/notification-icons.tsx)
     // resolve to `/plans/:tripId` instead of the expert-workspace fallback.
+    //
+    // Dedup against the T-48h auto-handover scheduler (trip-card-handover-scheduler.service.ts):
+    // if that scheduler already nudged this trip, a later manual Finalize must not send a SECOND
+    // "Your Trip Card is ready" notification. Mirrors the scheduler's own NOT EXISTS predicate
+    // (same (userId, type, data->>'tripId') triple) exactly.
     if (trip.userId) {
       try {
-        await storage.createNotification({
-          userId: trip.userId,
-          type: "trip_card_ready",
-          title: "Your Trip Card is ready",
-          message: `Your Trip Card for ${trip.destination || "your trip"} is ready to view.`,
-          relatedId: tripId,
-          relatedType: "trip",
-          data: { tripId, workspacePath: `/trip/${tripId}?tab=itinerary` },
-        } as any);
+        const [existing] = await db
+          .select({ id: notifications.id })
+          .from(notifications)
+          .where(
+            and(
+              eq(notifications.userId, trip.userId),
+              eq(notifications.type, "trip_card_ready"),
+              sql`${notifications.data} ->> 'tripId' = ${tripId}`,
+            ),
+          )
+          .limit(1);
+
+        if (!existing) {
+          await storage.createNotification({
+            userId: trip.userId,
+            type: "trip_card_ready",
+            title: "Your Trip Card is ready",
+            message: `Your Trip Card for ${trip.destination || "your trip"} is ready to view.`,
+            relatedId: tripId,
+            relatedType: "trip",
+            data: { tripId, workspacePath: `/trip/${tripId}?tab=itinerary` },
+          } as any);
+        }
       } catch (err) {
         logger.error({ err, tripId }, "trip_card_ready notification failed after finalize (non-fatal)");
       }

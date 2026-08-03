@@ -23,9 +23,11 @@ import { sql } from "drizzle-orm";
 import { db } from "../db";
 import { storage } from "../storage";
 import { logger } from "../infrastructure/logger";
+import { TRIP_CARD_HANDOVER_WINDOW_MS } from "@shared/trip-primary-surface";
 
 const CHECK_INTERVAL_MS = 60 * 60 * 1000; // hourly — matches earningsReleaseScheduler's cadence
 const FIRST_RUN_DELAY_MS = 3 * 60 * 1000; // stagger slightly after the other startup schedulers
+const HANDOVER_WINDOW_HOURS = TRIP_CARD_HANDOVER_WINDOW_MS / (60 * 60 * 1000); // derived, not hand-rolled
 
 interface HandoverStats {
   nudged: number;
@@ -97,10 +99,17 @@ class TripCardHandoverSchedulerService {
   }
 
   /**
-   * Trips entering the T-48h window (start_date <= now + 48h) that haven't started too long ago
-   * (start_date >= now - 7d, a bound against scanning the whole historic table — not a
-   * correctness rule, just keeps the query cheap), never finalized, with a real owner, and with
-   * NO existing `trip_card_ready` notification for that (userId, tripId) pair yet (the dedup).
+   * Trips entering the T-48h window (start_date <= now + 48h, window derived from the SAME
+   * shared/trip-primary-surface.ts TRIP_CARD_HANDOVER_WINDOW_MS constant the client reads —
+   * never hand-rolled here) that haven't started too long ago (start_date >= now - 7d, a bound
+   * against scanning the whole historic table — not a correctness rule, just keeps the query
+   * cheap), never finalized, with a real owner, and with NO existing `trip_card_ready`
+   * notification for that (userId, tripId) pair yet (the dedup).
+   *
+   * `start_date` is pinned to UTC (`AT TIME ZONE 'UTC'`) to match the client's UTC-midnight
+   * parse of the same date string in trip-primary-surface.ts — without the pin, `::timestamp`
+   * is interpreted in the DB session's local zone, which can disagree with the client's UTC
+   * read by up to a day and drift which trips fall inside the window.
    */
   private async findUnnudgedCandidates(): Promise<HandoverCandidate[]> {
     const result = await db.execute(sql`
@@ -109,8 +118,8 @@ class TripCardHandoverSchedulerService {
       WHERE t.finalized_at IS NULL
         AND t.user_id IS NOT NULL
         AND t.start_date IS NOT NULL
-        AND t.start_date::timestamp <= now() + interval '48 hours'
-        AND t.start_date::timestamp >= now() - interval '7 days'
+        AND (t.start_date::timestamp AT TIME ZONE 'UTC') <= now() + (interval '1 hour' * ${HANDOVER_WINDOW_HOURS})
+        AND (t.start_date::timestamp AT TIME ZONE 'UTC') >= now() - interval '7 days'
         AND NOT EXISTS (
           SELECT 1 FROM notifications n
           WHERE n.user_id = t.user_id
