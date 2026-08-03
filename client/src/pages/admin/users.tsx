@@ -8,7 +8,6 @@ import {
   Search,
   Filter,
   Users,
-  UserPlus,
   MoreVertical,
   Mail,
   Ban,
@@ -175,9 +174,10 @@ export default function AdminUsers() {
               <Users className="w-5 h-5 text-blue-600" />
               All Users ({filteredUsers.length})
             </CardTitle>
-            <Button size="sm" data-testid="button-add-user">
-              <UserPlus className="w-4 h-4 mr-2" /> Add User
-            </Button>
+            {/* "Add User" button removed (task #1004 audit): it had no functional
+                wire-up (no onClick / dialog / route) — a dead write-affordance an
+                admin could click with zero effect. Re-add alongside a real
+                user-creation flow if/when one is built. */}
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">

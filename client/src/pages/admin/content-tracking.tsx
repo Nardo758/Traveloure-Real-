@@ -676,7 +676,7 @@ export default function ContentTracking() {
             )}
 
             <DialogFooter>
-              <Button variant="outline" onClick={() => setModerationDialogOpen(false)}>
+              <Button variant="outline" onClick={() => setModerationDialogOpen(false)} data-testid="button-cancel-moderation">
                 Cancel
               </Button>
               <Button
