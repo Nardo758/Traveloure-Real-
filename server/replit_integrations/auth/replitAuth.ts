@@ -8,6 +8,7 @@ import memoize from "memoizee";
 import connectPg from "connect-pg-simple";
 import { authStorage } from "./storage";
 import { sendWelcomeEmail } from "../../services/email.service";
+import { getPlatformFlag, FLAG_REGISTRATION_ENABLED } from "../../services/platform-flags";
 
 const getOidcConfig = memoize(
   async () => {
@@ -61,7 +62,9 @@ function updateUserSession(
   user.expires_at = user.claims?.exp;
 }
 
-async function upsertUser(claims: any): Promise<void> {
+// Exported for tests — the registration-flag gate is verified without a live
+// OIDC handshake.
+export async function upsertUser(claims: any): Promise<void> {
   const userId: string = claims["sub"];
   const email: string | undefined = claims["email"];
 
@@ -84,6 +87,13 @@ async function upsertUser(claims: any): Promise<void> {
       if (merged.isSuspended) throw new Error("ACCOUNT_SUSPENDED");
       return;
     }
+  }
+
+  // Admin-controlled registration kill switch (/admin/system): block first-time
+  // account creation only — existing accounts (any provider) still log in.
+  if (!existing) {
+    const registrationEnabled = await getPlatformFlag(FLAG_REGISTRATION_ENABLED, true);
+    if (!registrationEnabled) throw new Error("REGISTRATION_DISABLED");
   }
 
   const user = await authStorage.upsertUser({
@@ -135,6 +145,9 @@ export async function setupAuth(app: Express) {
     } catch (err: any) {
       if (err?.message === "ACCOUNT_SUSPENDED") {
         return verified(null, false, { message: "Your account has been suspended. Please contact support." } as any);
+      }
+      if (err?.message === "REGISTRATION_DISABLED") {
+        return verified(null, false, { message: "New user registration is temporarily disabled. Please try again later." } as any);
       }
       return verified(err as Error);
     }

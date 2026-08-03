@@ -3,6 +3,7 @@ import FacebookStrategy from "passport-facebook";
 import type { Express } from "express";
 import { authStorage } from "./storage";
 import { sendWelcomeEmail } from "../../services/email.service";
+import { getPlatformFlag, FLAG_REGISTRATION_ENABLED } from "../../services/platform-flags";
 
 interface InstagramAccount {
   id: string;
@@ -65,6 +66,107 @@ async function fetchInstagramData(accessToken: string): Promise<InstagramAccount
   }
 }
 
+// Passport verify callback for the Facebook strategy. Exported so the
+// registration-flag gate can be unit-tested without a live OAuth handshake.
+export async function facebookVerify(
+  accessToken: string,
+  refreshToken: string,
+  profile: FacebookStrategy.Profile,
+  done: (error: any, user?: any, info?: any) => void
+): Promise<void> {
+  try {
+    const email = profile.emails?.[0]?.value;
+    const profileImageUrl = profile.photos?.[0]?.value;
+
+    const instagramData = await fetchInstagramData(accessToken);
+
+    const fbUserId = `fb_${profile.id}`;
+
+    // Email-merge: if an existing account already owns this email (e.g. the
+    // user previously registered with email/password or Replit OIDC), attach
+    // the Facebook profile to that account rather than spawning a duplicate.
+    let user;
+    let isNewUser = false;
+
+    const emailOwner = email
+      ? await authStorage.getUserByEmail(email).catch(() => undefined)
+      : undefined;
+
+    if (emailOwner) {
+      // Merge: update the canonical account with any richer Facebook data.
+      const updatedOwner = await authStorage.updateUser(emailOwner.id, {
+        profileImageUrl:
+          instagramData?.profile_picture_url ||
+          profileImageUrl ||
+          emailOwner.profileImageUrl ||
+          undefined,
+        firstName: emailOwner.firstName || profile.name?.givenName || profile.displayName?.split(" ")[0] || undefined,
+        lastName: emailOwner.lastName || profile.name?.familyName || profile.displayName?.split(" ").slice(1).join(" ") || undefined,
+      });
+      user = updatedOwner ?? emailOwner;
+      console.log(`[Facebook Auth] Merged fb_${profile.id} into existing account ${emailOwner.id}`);
+    } else {
+      // No email collision — create/update the fb_xxx account as before.
+      const existingFb = await authStorage.getUser(fbUserId).catch(() => undefined);
+      isNewUser = !existingFb;
+
+      // Admin-controlled registration kill switch (/admin/system):
+      // block first-time account creation only — existing accounts
+      // (any provider) still log in.
+      if (isNewUser) {
+        const registrationEnabled = await getPlatformFlag(FLAG_REGISTRATION_ENABLED, true);
+        if (!registrationEnabled) {
+          return done(null, false, { message: "New user registration is temporarily disabled. Please try again later." } as any);
+        }
+      }
+
+      user = await authStorage.upsertUser({
+        id: fbUserId,
+        email: email || null,
+        firstName: profile.name?.givenName || profile.displayName?.split(" ")[0] || null,
+        lastName: profile.name?.familyName || profile.displayName?.split(" ").slice(1).join(" ") || null,
+        profileImageUrl: instagramData?.profile_picture_url || profileImageUrl || null,
+      });
+    }
+
+    if (isNewUser && email) {
+      sendWelcomeEmail({ toEmail: email, firstName: user.firstName ?? null }).catch(
+        (err) => console.error("[auth/facebook] welcome email failed (non-fatal):", err)
+      );
+    }
+
+    if (user.isSuspended) {
+      return done(null, false, { message: "Your account has been suspended. Please contact support." } as any);
+    }
+
+    const sessionUser = {
+      claims: {
+        sub: user.id,
+        email: user.email,
+        first_name: user.firstName,
+        last_name: user.lastName,
+        profile_image_url: user.profileImageUrl,
+      },
+      access_token: accessToken,
+      refresh_token: refreshToken,
+      expires_at: Math.floor(Date.now() / 1000) + 3600 * 24 * 7,
+      provider: "facebook",
+      instagram: instagramData ? {
+        id: instagramData.id,
+        username: instagramData.username,
+        followers_count: instagramData.followers_count,
+        media_count: instagramData.media_count,
+        account_type: instagramData.account_type,
+      } : null,
+    };
+
+    done(null, sessionUser);
+  } catch (error) {
+    console.error("[Facebook Auth] Error during authentication:", error);
+    done(error as Error);
+  }
+}
+
 export function setupFacebookAuth(app: Express) {
   const META_APP_ID = process.env.META_APP_ID;
   const META_APP_SECRET = process.env.META_APP_SECRET;
@@ -89,89 +191,7 @@ export function setupFacebookAuth(app: Express) {
             profileFields: ["id", "emails", "name", "displayName", "photos"],
             enableProof: true,
           },
-          async (accessToken: string, refreshToken: string, profile: FacebookStrategy.Profile, done: (error: any, user?: any) => void) => {
-            try {
-              const email = profile.emails?.[0]?.value;
-              const profileImageUrl = profile.photos?.[0]?.value;
-
-              const instagramData = await fetchInstagramData(accessToken);
-
-              const fbUserId = `fb_${profile.id}`;
-
-              // Email-merge: if an existing account already owns this email (e.g. the
-              // user previously registered with email/password or Replit OIDC), attach
-              // the Facebook profile to that account rather than spawning a duplicate.
-              let user;
-              let isNewUser = false;
-
-              const emailOwner = email
-                ? await authStorage.getUserByEmail(email).catch(() => undefined)
-                : undefined;
-
-              if (emailOwner) {
-                // Merge: update the canonical account with any richer Facebook data.
-                const updatedOwner = await authStorage.updateUser(emailOwner.id, {
-                  profileImageUrl:
-                    instagramData?.profile_picture_url ||
-                    profileImageUrl ||
-                    emailOwner.profileImageUrl ||
-                    undefined,
-                  firstName: emailOwner.firstName || profile.name?.givenName || profile.displayName?.split(" ")[0] || undefined,
-                  lastName: emailOwner.lastName || profile.name?.familyName || profile.displayName?.split(" ").slice(1).join(" ") || undefined,
-                });
-                user = updatedOwner ?? emailOwner;
-                console.log(`[Facebook Auth] Merged fb_${profile.id} into existing account ${emailOwner.id}`);
-              } else {
-                // No email collision — create/update the fb_xxx account as before.
-                const existingFb = await authStorage.getUser(fbUserId).catch(() => undefined);
-                isNewUser = !existingFb;
-
-                user = await authStorage.upsertUser({
-                  id: fbUserId,
-                  email: email || null,
-                  firstName: profile.name?.givenName || profile.displayName?.split(" ")[0] || null,
-                  lastName: profile.name?.familyName || profile.displayName?.split(" ").slice(1).join(" ") || null,
-                  profileImageUrl: instagramData?.profile_picture_url || profileImageUrl || null,
-                });
-              }
-
-              if (isNewUser && email) {
-                sendWelcomeEmail({ toEmail: email, firstName: user.firstName ?? null }).catch(
-                  (err) => console.error("[auth/facebook] welcome email failed (non-fatal):", err)
-                );
-              }
-
-              if (user.isSuspended) {
-                return done(null, false, { message: "Your account has been suspended. Please contact support." } as any);
-              }
-
-              const sessionUser = {
-                claims: {
-                  sub: user.id,
-                  email: user.email,
-                  first_name: user.firstName,
-                  last_name: user.lastName,
-                  profile_image_url: user.profileImageUrl,
-                },
-                access_token: accessToken,
-                refresh_token: refreshToken,
-                expires_at: Math.floor(Date.now() / 1000) + 3600 * 24 * 7,
-                provider: "facebook",
-                instagram: instagramData ? {
-                  id: instagramData.id,
-                  username: instagramData.username,
-                  followers_count: instagramData.followers_count,
-                  media_count: instagramData.media_count,
-                  account_type: instagramData.account_type,
-                } : null,
-              };
-
-              done(null, sessionUser);
-            } catch (error) {
-              console.error("[Facebook Auth] Error during authentication:", error);
-              done(error as Error);
-            }
-          }
+          facebookVerify
         )
       );
       registeredStrategies.add(strategyName);
