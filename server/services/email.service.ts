@@ -19,6 +19,7 @@
  */
 
 import { Resend } from "resend";
+import { getPlatformFlag, FLAG_EMAIL_NOTIFICATIONS_ENABLED } from "./platform-flags";
 
 let cachedClient: Resend | null = null;
 function getClient(): Resend | null {
@@ -99,6 +100,18 @@ export interface SendEmailResult {
  * it never throws into the caller.
  */
 export async function sendEmail(params: SendEmailParams): Promise<SendEmailResult> {
+  // Admin-controlled kill switch (/admin/system → "Email Notifications").
+  // Gates all system notification emails sent through this generic sender.
+  // Auth-critical emails (password reset, email verification) call Resend
+  // directly and are intentionally NOT gated by this flag.
+  const notificationsEnabled = await getPlatformFlag(FLAG_EMAIL_NOTIFICATIONS_ENABLED, true);
+  if (!notificationsEnabled) {
+    console.log(
+      `[email] sendEmail skipped — email_notifications_enabled=false (subject="${params.subject}")`
+    );
+    return { ok: false, error: "Email notifications are disabled by platform settings" };
+  }
+
   const apiKey = process.env.RESEND_API_KEY;
   const from = process.env.EMAIL_FROM_NOREPLY ?? process.env.EMAIL_FROM;
   const defaultReplyTo = process.env.EMAIL_REPLY_TO;
