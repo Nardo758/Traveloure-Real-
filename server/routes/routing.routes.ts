@@ -67,10 +67,11 @@
  */
 import { Router } from "express";
 import { z } from "zod";
-import { and, eq } from "drizzle-orm";
+import { and, count, eq, isNotNull, isNull } from "drizzle-orm";
 import { db } from "../db";
-import { itineraryItems, tripCollaborators, ROUTING_STATUSES, type RoutingStatus } from "@shared/schema";
+import { itineraryItems, tripCollaborators, trips, ROUTING_STATUSES, type RoutingStatus } from "@shared/schema";
 import { isAuthenticated } from "../replit_integrations/auth";
+import { storage } from "../storage";
 import { verifyTripOwnership } from "../utils/trip-ownership";
 import { isTripAdvisor } from "../utils/trip-advisor";
 import { syncItemProjection } from "../services/cart-projection.service";
@@ -267,5 +268,149 @@ async function safeSync(itemId: string) {
     return { action: "error" as const };
   }
 }
+
+/**
+ * ─────────────────────────────────────────────────────────────────────────────
+ * TRIP CARD DELIVERY — FINALIZE / REOPEN (Console Realign ruling R-F)
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Governing doc: docs/briefs/CONSOLE_REALIGN_BRIEF.md, R-F.
+ *
+ * `POST /api/trips/:tripId/finalize` — owner-gated (the canonical `verifyTripOwnership`, per
+ * R-F, not the extended owner-or-collaborator check above — Finalize is a traveler-only handover,
+ * not a shared routing edge). Atomic conditional flip `finalized_at: NULL -> now()`; already-set
+ * is NOT an error — idempotent 200 `{ alreadyFinalized: true }`. Writes a trip-scoped
+ * (`itemId: null`) diary row `plan_finalized` in the SAME transaction as the flip (Lane S ruling
+ * 18/16 pattern — mirrors `variant_applied` in plancard.routes.ts). Fires a best-effort
+ * `trip_card_ready` notification (never fails the already-committed finalize). Reports
+ * `stagedCount` — items in `ready_for_checkout` — for the client to WARN on, never to block: this
+ * is a rendering flip, not a money event (R-F).
+ *
+ * `POST /api/trips/:tripId/reopen` — same owner gate; atomic conditional flip `finalized_at: SET
+ * -> NULL`; already-open is idempotent 200. Diary row `plan_reopened`. No notification (R-F).
+ *
+ * Both use the SAME diary vocabulary/module as the per-item routing edges above (one append-only
+ * log), but neither touches `itinerary_items.routing_status` — this is trip-level state only.
+ */
+
+router.post("/api/trips/:tripId/finalize", isAuthenticated, async (req, res) => {
+  try {
+    const userId = sessionUserId(req);
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+    const { tripId } = req.params;
+
+    const trip = await storage.getTrip(tripId);
+    if (!trip) return res.status(404).json({ message: "Trip not found" });
+
+    if (!(await verifyTripOwnership(tripId, userId))) {
+      return res.status(403).json({ message: "Only the trip owner can finalize this plan" });
+    }
+
+    const updated = await db.transaction(async (tx) => {
+      const rows = await tx
+        .update(trips)
+        .set({ finalizedAt: new Date() })
+        .where(and(eq(trips.id, tripId), isNull(trips.finalizedAt)))
+        .returning({ id: trips.id, finalizedAt: trips.finalizedAt });
+
+      if (rows.length > 0) {
+        await logItemTransition(tx, {
+          tripId,
+          itemId: null,
+          eventType: "plan_finalized",
+          actorType: "traveler",
+          actorId: userId,
+        });
+      }
+      return rows;
+    });
+
+    if (updated.length === 0) {
+      // Already finalized — double-click / retry. Idempotent, not an error (R-F).
+      return res.json({
+        alreadyFinalized: true,
+        finalizedAt: trip.finalizedAt ? String(trip.finalizedAt as any) : null,
+      });
+    }
+
+    // Best-effort notification — the finalize above already committed; a notify failure must
+    // never turn a successful finalize into a 500. Same traveler-facing deep-link shape the rest
+    // of the codebase uses (booking-actions.ts, trips.routes.ts): `workspacePath` starting
+    // "/trip/" is what makes `resolveNotificationLink` (client/src/lib/notification-icons.tsx)
+    // resolve to `/plans/:tripId` instead of the expert-workspace fallback.
+    if (trip.userId) {
+      try {
+        await storage.createNotification({
+          userId: trip.userId,
+          type: "trip_card_ready",
+          title: "Your Trip Card is ready",
+          message: `Your Trip Card for ${trip.destination || "your trip"} is ready to view.`,
+          relatedId: tripId,
+          relatedType: "trip",
+          data: { tripId, workspacePath: `/trip/${tripId}?tab=itinerary` },
+        } as any);
+      } catch (err) {
+        logger.error({ err, tripId }, "trip_card_ready notification failed after finalize (non-fatal)");
+      }
+    }
+
+    // Staged-items warning surface (R-F: WARN, never block). Read after the commit — this trip's
+    // own items, no cross-trip leak.
+    const [stagedRow] = await db
+      .select({ n: count() })
+      .from(itineraryItems)
+      .where(and(eq(itineraryItems.tripId, tripId), eq(itineraryItems.routingStatus, "ready_for_checkout")));
+
+    return res.json({
+      alreadyFinalized: false,
+      finalizedAt: String(updated[0].finalizedAt),
+      stagedCount: Number(stagedRow?.n ?? 0),
+    });
+  } catch (err) {
+    logger.error({ err }, "trip finalize failed");
+    return res.status(500).json({ message: "Failed to finalize plan" });
+  }
+});
+
+router.post("/api/trips/:tripId/reopen", isAuthenticated, async (req, res) => {
+  try {
+    const userId = sessionUserId(req);
+    if (!userId) return res.status(401).json({ message: "Not authenticated" });
+
+    const { tripId } = req.params;
+
+    const trip = await storage.getTrip(tripId);
+    if (!trip) return res.status(404).json({ message: "Trip not found" });
+
+    if (!(await verifyTripOwnership(tripId, userId))) {
+      return res.status(403).json({ message: "Only the trip owner can reopen this plan" });
+    }
+
+    const updated = await db.transaction(async (tx) => {
+      const rows = await tx
+        .update(trips)
+        .set({ finalizedAt: null })
+        .where(and(eq(trips.id, tripId), isNotNull(trips.finalizedAt)))
+        .returning({ id: trips.id });
+
+      if (rows.length > 0) {
+        await logItemTransition(tx, {
+          tripId,
+          itemId: null,
+          eventType: "plan_reopened",
+          actorType: "traveler",
+          actorId: userId,
+        });
+      }
+      return rows;
+    });
+
+    // Idempotent either way — already-open (never finalized, or already reopened) is not an error.
+    return res.json({ alreadyOpen: updated.length === 0, finalizedAt: null });
+  } catch (err) {
+    logger.error({ err }, "trip reopen failed");
+    return res.status(500).json({ message: "Failed to reopen plan" });
+  }
+});
 
 export default router;

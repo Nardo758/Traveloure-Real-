@@ -29,6 +29,7 @@ import { adminDigestScheduler } from "./services/admin-digest-scheduler.service"
 import { earningsReleaseScheduler } from "./services/earnings-release-scheduler.service";
 import { dmoIngestScheduler } from "./services/dmo-ingest-scheduler.service";
 import { stripeConnectReminderScheduler } from "./services/stripe-connect-reminder.service";
+import { tripCardHandoverScheduler } from "./services/trip-card-handover-scheduler.service";
 import { runDailyAdminDigest } from "./jobs/dailyAdminDigest";
 import { runNightlyQA } from "./jobs/nightlyQA";
 import { runStripeReconciliation } from "./jobs/stripeReconciliation";
@@ -556,6 +557,10 @@ if (process.env.NODE_ENV === "production") {
 
     stripeConnectReminderScheduler.start();
     logger.info("Stripe Connect reminder scheduler started");
+
+    // R-F: T-48h Trip Card auto-handover nudge (Console Realign, docs/briefs/CONSOLE_REALIGN_BRIEF.md).
+    tripCardHandoverScheduler.start();
+    logger.info("Trip Card handover scheduler started");
 
     // DMO ingestion scheduler — OFF unless DMO_INGEST_ENABLED=1 AND TAVILY_API_KEY set (D3).
     dmoIngestScheduler.start();

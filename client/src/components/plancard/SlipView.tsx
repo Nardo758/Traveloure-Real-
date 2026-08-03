@@ -19,16 +19,21 @@ import { format, isValid } from "date-fns";
 import {
   Anchor,
   CalendarDays,
+  CheckCircle2,
   ChevronDown,
   ChevronUp,
   Share2,
   Sparkles,
+  Undo2,
   Users,
 } from "lucide-react";
+import { useMutation } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { TripPlanTransition } from "@shared/trip-plan";
+import { tripCardForcedPrimaryByDateAlone, tripCardIsPrimary } from "@shared/trip-primary-surface";
 import {
   type PlanCardActivity,
   type PlanCardData,
@@ -59,6 +64,8 @@ export interface SlipTrip {
   trackingNumber?: string | null;
   /** Version = item_transition_log row count (display-only, server-computed). */
   planVersion?: number;
+  /** R-F: set once by POST .../finalize, cleared by POST .../reopen. NULL = never finalized. */
+  finalizedAt?: string | null;
 }
 
 export interface SlipData extends PlanCardData {
@@ -424,10 +431,108 @@ function TransitionLogFooter({
   );
 }
 
+// ── Finalize / Reopen (ruling R-F) ───────────────────────────────────────────────────────
+
+/** Primary-surface inputs read straight off the DTO — same helper the server-side rule (R-F)
+ *  uses, so client and scheduler agree on when Trip Card becomes primary. */
+function primaryInputFromTrip(trip: SlipTrip | undefined) {
+  return { finalizedAt: trip?.finalizedAt ?? null, startDate: trip?.startDate ?? null, endDate: trip?.endDate ?? null };
+}
+
+function useFinalizeMutation(tripId: string) {
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/trips/${tripId}/finalize`);
+      return (await res.json()) as { alreadyFinalized: boolean; finalizedAt: string | null; stagedCount?: number };
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+      if (data.alreadyFinalized) return;
+      // Warn, never block (R-F): finalize has already committed by the time we know the staged
+      // count, so this is an informational note, not a gate.
+      if (data.stagedCount && data.stagedCount > 0) {
+        toast({
+          title: "Trip Card is ready",
+          description: `${data.stagedCount} staged item${data.stagedCount > 1 ? "s" : ""} ${
+            data.stagedCount > 1 ? "aren't" : "isn't"
+          } booked yet. You can finalize now and book them later.`,
+        });
+      } else {
+        toast({ title: "Trip Card is ready", description: "Your plan is finalized." });
+      }
+    },
+    onError: (err: any) => {
+      toast({ title: "Couldn't finalize plan", description: err?.message || "Please try again", variant: "destructive" });
+    },
+  });
+}
+
+function useReopenMutation(tripId: string) {
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/trips/${tripId}/reopen`);
+      return (await res.json()) as { alreadyOpen: boolean };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+    },
+    onError: (err: any) => {
+      toast({ title: "Couldn't reopen plan", description: err?.message || "Please try again", variant: "destructive" });
+    },
+  });
+}
+
+// ── TripCardPrimaryBanner ─────────────────────────────────────────────────────────────
+
+/** Renders only when the R-F primary rule says so (finalized ∨ T-48h window ∨ underway). Trip
+ *  Card is presented as the primary surface here; "Back to planning" only shows when reopening
+ *  would actually change anything — i.e. NOT when the date arm alone already forces primacy
+ *  (reopen only clears `finalizedAt`; inside the window/underway the Trip Card stays primary
+ *  regardless, so offering a reversal there would be dishonest — R-F). */
+function TripCardPrimaryBanner({ trip, isOwner }: { trip: SlipTrip; isOwner: boolean }) {
+  const reopenMutation = useReopenMutation(trip.id);
+  const forcedByDateAlone = tripCardForcedPrimaryByDateAlone({ startDate: trip.startDate, endDate: trip.endDate });
+  // Reopen is owner-gated server-side (verifyTripOwnership) — never render the control for a
+  // non-owner viewer (e.g. the assigned expert), who would only get a 403.
+  const showBackToPlanning = isOwner && !!trip.finalizedAt && !forcedByDateAlone;
+
+  return (
+    <Card className="border-primary/30 bg-primary/5" data-testid="slip-trip-card-primary-banner">
+      <CardContent className="p-4 flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-2 min-w-0">
+          <CheckCircle2 className="w-4 h-4 text-primary flex-shrink-0" />
+          <p className="text-sm font-medium text-foreground">Your Trip Card is ready</p>
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <Link href={`/trip/${trip.id}`}>
+            <Button size="sm" data-testid="slip-action-view-trip-card">
+              View Trip Card
+            </Button>
+          </Link>
+          {showBackToPlanning && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => reopenMutation.mutate()}
+              disabled={reopenMutation.isPending}
+              data-testid="slip-action-reopen"
+            >
+              <Undo2 className="w-3.5 h-3.5 mr-1.5" /> Back to planning
+            </Button>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 // ── SlipActions ────────────────────────────────────────────────────────────────────────
 
-function SlipActions({ trip }: { trip: SlipTrip }) {
+function SlipActions({ trip, isOwner }: { trip: SlipTrip; isOwner: boolean }) {
   const { toast } = useToast();
+  const finalizeMutation = useFinalizeMutation(trip.id);
 
   // Same share affordance the trip pages already use (HeroSection.handleShare):
   // clipboard copy + navigator.share of the itinerary link.
@@ -441,7 +546,7 @@ function SlipActions({ trip }: { trip: SlipTrip }) {
   }
 
   return (
-    <div className="flex items-center gap-2" data-testid="slip-actions">
+    <div className="flex items-center gap-2 flex-wrap" data-testid="slip-actions">
       <Button variant="outline" size="sm" onClick={handleShare} data-testid="slip-action-share">
         <Share2 className="w-3.5 h-3.5 mr-1.5" /> Share
       </Button>
@@ -450,6 +555,19 @@ function SlipActions({ trip }: { trip: SlipTrip }) {
           Preview Trip Card
         </Button>
       </Link>
+      {/* Finalize is owner-gated server-side (verifyTripOwnership) — never render it for a
+          non-owner viewer. Once finalized, the primary banner (above) owns the finalize/reopen
+          affordance — no duplicate control here. */}
+      {isOwner && !trip.finalizedAt && (
+        <Button
+          size="sm"
+          onClick={() => finalizeMutation.mutate()}
+          disabled={finalizeMutation.isPending}
+          data-testid="slip-action-finalize"
+        >
+          <CheckCircle2 className="w-3.5 h-3.5 mr-1.5" /> Finalize plan
+        </Button>
+      )}
     </div>
   );
 }
@@ -472,6 +590,9 @@ export function SlipView({
   const transitions = data.recentTransitions ?? [];
   const hasOptimized = transitions.some((t) => t.eventType === "variant_applied");
   const planVersion = data.trip?.planVersion ?? transitions.length;
+  // R-F: `finalized_at ∨ now ≥ startDate−48h ∨ underway → Trip Card is primary` — the SAME rule
+  // the server-side T-48h scheduler applies, read straight off this DTO's real fields.
+  const isPrimary = data.trip ? tripCardIsPrimary(primaryInputFromTrip(data.trip)) : false;
 
   const allActivities = useMemo(() => days.flatMap((d) => d.activities), [days]);
   const itemTitleById = useMemo(
@@ -498,9 +619,13 @@ export function SlipView({
 
   return (
     <div className="max-w-2xl mx-auto space-y-5" data-testid={`slip-view-${tripId}`}>
+      {/* R-F: Trip Card presented as the primary surface once the rule fires. The slip itself
+          stays fully reachable below — this is a presentation flip, not a navigation away. */}
+      {isPrimary && data.trip && <TripCardPrimaryBanner trip={data.trip} isOwner={isOwner} />}
+
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <SlipHeader data={data} hasOptimized={hasOptimized} />
-        {data.trip && <SlipActions trip={data.trip} />}
+        {data.trip && <SlipActions trip={data.trip} isOwner={isOwner} />}
       </div>
 
       <SlipStatusStrip activities={allActivities} />
