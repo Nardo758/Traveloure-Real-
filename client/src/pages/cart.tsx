@@ -1201,17 +1201,30 @@ export default function CartPage() {
           }
         }
       }
-      return "Your destination";
+      return null;
     };
-    
+
+    // §13 honest-or-absent (mirrors discover.tsx's createComparison): don't invent
+    // "Your destination" — if nothing real resolves, block with a toast instead.
+    const knownDestination = getComparisonDestination();
+    if (!knownDestination) {
+      toast({
+        title: "Tell us where you're headed",
+        description: "Add an item with a location, or start from a trip with a destination, so we know where to plan for.",
+      });
+      setCreatingComparison(false);
+      return;
+    }
+
     try {
       const comparison = await createComparisonRequest({
         title: experienceContext?.title || "My Trip",
-        destination: getComparisonDestination(),
+        destination: knownDestination,
         startDate: experienceContext?.startDate || new Date().toISOString().split('T')[0],
         endDate: experienceContext?.endDate || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
         budget: String(combinedTotal),
-        travelers: experienceContext?.travelers || 2,
+        // Real traveler count when known; otherwise omitted — server defaults to 1 (§13, no invented "2").
+        ...(typeof experienceContext?.travelers === "number" ? { travelers: experienceContext.travelers } : {}),
         baselineItems,
         tripId: experienceContext?.tripId,
         userExperienceId: experienceContext?.userExperienceId || experienceContext?.id,
