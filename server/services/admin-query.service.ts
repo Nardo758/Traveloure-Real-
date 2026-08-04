@@ -1499,7 +1499,26 @@ export async function recalcServiceRating(serviceId: string) {
   await updateProviderServiceRating(serviceId, avgRating, reviewCount);
 }
 
-export async function getAdminUsersPage(whereClause: any, limit: number, offset: number) {
+/**
+ * Returns true only for IANA timezone names the JS runtime recognizes
+ * (e.g. "America/New_York"). Prevents passing arbitrary strings into SQL
+ * AT TIME ZONE, which would raise a Postgres error on unknown zones.
+ */
+export function isValidTimezone(tz: string): boolean {
+  if (!tz || typeof tz !== "string" || tz.length > 64) return false;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: tz });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function getAdminUsersPage(whereClause: any, limit: number, offset: number, timezone?: string) {
+  // "New Today" uses the *admin's* local day boundary, not the server's UTC
+  // CURRENT_DATE, so the count matches what the admin sees on their own clock.
+  // Falls back to UTC when no (valid) timezone is supplied.
+  const tz = timezone && isValidTimezone(timezone) ? timezone : "UTC";
   const [allUsers, totalResult, statsResult] = await Promise.all([
     db.select().from(users).where(whereClause).limit(limit).offset(offset).orderBy(desc(users.createdAt)),
     db.select({ count: count() }).from(users).where(whereClause).then(r => r[0] ?? { count: 0 }),
@@ -1508,7 +1527,9 @@ export async function getAdminUsersPage(whereClause: any, limit: number, offset:
     db.select({
       active: sql<number>`COUNT(*) FILTER (WHERE ${users.isSuspended} IS NOT TRUE)`,
       suspended: sql<number>`COUNT(*) FILTER (WHERE ${users.isSuspended} IS TRUE)`,
-      newToday: sql<number>`COUNT(*) FILTER (WHERE ${users.createdAt} >= CURRENT_DATE)`,
+            // created_at is timestamp WITHOUT time zone stored as UTC, so first tag it
+      // as UTC, then convert to the admin's zone before taking the date.
+      newToday: sql<number>`COUNT(*) FILTER (WHERE ((${users.createdAt} AT TIME ZONE 'UTC') AT TIME ZONE ${tz})::date = (now() AT TIME ZONE ${tz})::date)`,
     }).from(users).where(whereClause).then(r => r[0] ?? { active: 0, suspended: 0, newToday: 0 }),
   ]);
   return {
