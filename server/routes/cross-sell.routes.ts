@@ -179,15 +179,10 @@ router.get("/api/admin/cross-sell/funnel", isAuthenticated, async (req, res) => 
         .where(eq(crossSellEvents.city, cityFilter));
       const cityServiceIds = cityServiceRows.map((r) => r.sid);
       if (cityServiceIds.length > 0) {
-        const csBookingRows = await db
-          .select({ cnt: count() })
-          .from(serviceBookings)
-          .where(
-            and(
-              inArray(serviceBookings.serviceId, cityServiceIds),
-              eq(serviceBookings.source, "cross_sell")
-            )
-          );
+      const csBookingRows = await db
+        .select({ cnt: count() })
+        .from(serviceBookings)
+        .where(eq(serviceBookings.source, "cross_sell"));
         bookingsCount = Number(csBookingRows[0]?.cnt ?? 0);
       }
     } else {

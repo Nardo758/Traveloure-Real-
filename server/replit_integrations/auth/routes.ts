@@ -40,7 +40,7 @@ export function registerAuthRoutes(app: Express): void {
       return res.json({ authenticated: false, user: null });
     }
     try {
-      const userId = req.user?.claims?.sub;
+      const userId = req.user?.claims?.sub ?? req.user?.id;
       if (!userId) {
         return res.json({ authenticated: false, user: null });
       }
