@@ -97,6 +97,7 @@ export default function AdminUsers() {
   const { data: usersData, isLoading } = useQuery<{
     users: AdminUserRow[];
     total: number;
+    stats?: { active: number; suspended: number; newToday: number };
     page: number;
     limit: number;
   }>({
@@ -157,10 +158,14 @@ export default function AdminUsers() {
   const totalPages = Math.max(1, Math.ceil((usersData?.total ?? 0) / pageLimit));
   const currentPage = usersData?.page ?? page;
 
+  // Active/Suspended/New Today come from server-side aggregates over the WHOLE
+  // filtered set, so the numbers stay stable across pages (previously they were
+  // computed from just the visible 50-row page).
   const stats = {
     total: usersData?.total ?? users.length,
-    active: users.filter(u => u.status === "active").length,
-    suspended: users.filter(u => u.status === "suspended").length,
+    active: usersData?.stats?.active ?? 0,
+    suspended: usersData?.stats?.suspended ?? 0,
+    newToday: usersData?.stats?.newToday ?? 0,
   };
 
   return (
@@ -188,13 +193,7 @@ export default function AdminUsers() {
           </Card>
           <Card data-testid="card-stat-new">
             <CardContent className="p-4 text-center">
-              <p className="text-2xl font-bold text-blue-600">
-                {usersData?.users?.filter(u => {
-                  const joined = new Date(u.joined);
-                  const today = new Date();
-                  return joined.toDateString() === today.toDateString();
-                }).length ?? 0}
-              </p>
+              <p className="text-2xl font-bold text-blue-600">{stats.newToday}</p>
               <p className="text-sm text-gray-500">New Today</p>
             </CardContent>
           </Card>

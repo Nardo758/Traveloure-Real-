@@ -3961,7 +3961,7 @@ router.get("/api/admin/users", isAuthenticated, async (req, res) => {
 
       const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
 
-      const { allUsers, totalResult } = await withQueryTimer(
+      const { allUsers, totalResult, stats } = await withQueryTimer(
         "admin-users-paginated",
         () => getAdminUsersPage(whereClause, limit, offset),
         (req.user as any)?.claims?.role
@@ -3987,6 +3987,8 @@ router.get("/api/admin/users", isAuthenticated, async (req, res) => {
       res.json({
         users: enrichedUsers,
         total: totalResult?.count || 0,
+        // Whole-filtered-set aggregates so the stat cards don't change per page.
+        stats,
         page,
         limit,
       });
