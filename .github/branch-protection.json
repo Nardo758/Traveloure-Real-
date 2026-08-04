@@ -6,6 +6,7 @@
     "contexts": [
       "build (vite + esbuild bundle)",
       "money-endpoint-guard (CLAUDE.md §14)",
+      "claims-only-lookup-guard (session-user extraction)",
       "navbar-links-smoke (Playwright DOM gate)",
       "hardcoded-links-check (static analysis)",
       "app-routes-smoke (Playwright DOM gate)",

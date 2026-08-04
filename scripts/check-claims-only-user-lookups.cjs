@@ -15,17 +15,17 @@
  *
  * Preferred fix: use getUserId()/requireUserId() from server/utils/auth.ts.
  *
- * Run standalone:  npx tsx scripts/check-claims-only-user-lookups.ts
+ * Run standalone:  node scripts/check-claims-only-user-lookups.cjs
  * Exits 0 when no violations are found; exits 1 otherwise.
  */
 
-import { readdirSync, readFileSync, statSync } from "fs";
-import { join, relative } from "path";
+const { readdirSync, readFileSync, statSync } = require("fs");
+const { join, relative } = require("path");
 
 const SERVER_DIR = join(process.cwd(), "server");
 
 /** Files where a bare claims.sub read is legitimate. */
-const ALLOWLIST = new Set<string>([
+const ALLOWLIST = new Set([
   // The shared helper itself implements the fallback.
   "server/utils/auth.ts",
   // OIDC handshake: operates on raw token claims (not a session user object),
@@ -40,7 +40,7 @@ const CLAIMS_SUB_READ = /claims(\?\.|\.)sub\b|claims\s*\[\s*["']sub["']\s*\]/;
 // possibly with optional chaining / casts in between.
 const ID_FALLBACK = /(\?\?|\|\|)[^;\n]*\bid\b/;
 
-function walk(dir: string, out: string[] = []): string[] {
+function walk(dir, out = []) {
   for (const entry of readdirSync(dir)) {
     const full = join(dir, entry);
     const st = statSync(full);
@@ -54,7 +54,7 @@ function walk(dir: string, out: string[] = []): string[] {
   return out;
 }
 
-function stripComments(line: string): string {
+function stripComments(line) {
   const trimmed = line.trimStart();
   if (trimmed.startsWith("//") || trimmed.startsWith("*") || trimmed.startsWith("/*")) {
     return "";
@@ -63,9 +63,9 @@ function stripComments(line: string): string {
   return line.replace(/\/\/.*$/, "");
 }
 
-function main(): void {
+function main() {
   const files = walk(SERVER_DIR);
-  const violations: { file: string; line: number; text: string }[] = [];
+  const violations = [];
 
   for (const file of files) {
     const rel = relative(process.cwd(), file).replace(/\\/g, "/");
@@ -112,7 +112,7 @@ function main(): void {
       "Fix: use getUserId()/requireUserId() from server/utils/auth.ts, or add an\n" +
       "explicit fallback: `user.claims?.sub ?? user.id`.\n" +
       "If a bare claims.sub read is truly legitimate (raw OIDC token claims, not a\n" +
-      "session user), add the file to ALLOWLIST in scripts/check-claims-only-user-lookups.ts\n" +
+      "session user), add the file to ALLOWLIST in scripts/check-claims-only-user-lookups.cjs\n" +
       "with a justification comment.",
   );
   process.exit(1);

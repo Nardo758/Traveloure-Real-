@@ -45,6 +45,21 @@ jobs:
       - name: Client-trusted amount/identity guard
         run: node scripts/check-money-endpoints.cjs
 
+  claims-only-lookup-guard:
+    name: claims-only-lookup-guard (session-user extraction)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # Fails if a server/ file reads a session user id via claims.sub without an `.id`
+      # fallback (or the shared getUserId helper). Email-login sessions only carry
+      # claims.sub; OAuth sessions may only carry .id — a claims-only read causes false
+      # 403s (~120 routes were fixed for this once). Node built-ins only — no npm ci needed.
+      - name: Claims-only session-user lookup guard
+        run: node scripts/check-claims-only-user-lookups.cjs
+
   unmounted-router-guard:
     name: unmounted-router-guard (CLAUDE.md §9)
     runs-on: ubuntu-latest

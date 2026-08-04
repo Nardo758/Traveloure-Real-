@@ -25,6 +25,7 @@ Add all of them to branch protection now.
 |---|---|---|
 | `build (vite + esbuild bundle)` | `build.yml` | JS syntax / bundling errors — app cannot start |
 | `money-endpoint-guard (CLAUDE.md §14)` | `build.yml` | Client-trusted amounts/identity in money handlers |
+| `claims-only-lookup-guard (session-user extraction)` | `build.yml` | Claims-only `claims.sub` session-user reads under server/ without an `.id` fallback (false 403s for OAuth users) |
 | `navbar-links-smoke (Playwright DOM gate)` | `navbar-links-gate.yml` | Broken nav links; href in nav-config with no matching Route |
 | `hardcoded-links-check (static analysis)` | `navbar-links-gate.yml` | Hardcoded `href`/`to` literals in components pointing at deleted routes |
 | `app-routes-smoke (Playwright DOM gate)` | `app-routes-gate.yml` | Every `<Route>` in App.tsx renders content (not 404 / blank) |

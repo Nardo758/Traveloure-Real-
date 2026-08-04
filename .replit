@@ -34,10 +34,6 @@ args = "check-noop-migrations"
 task = "workflow.run"
 args = "check-claims-only-lookups"
 
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "claims-only-lookups"
-
 [[workflows.workflow]]
 name = "Start application"
 author = "agent"
@@ -65,23 +61,12 @@ isValidation = true
 name = "check-claims-only-lookups"
 author = "agent"
 
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "npx tsx scripts/check-claims-only-user-lookups.ts"
-
 [workflows.workflow.metadata]
 outputType = "console"
 
-[[workflows.workflow]]
-name = "claims-only-lookups"
-author = "agent"
-
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "npx tsx scripts/check-claims-only-user-lookups.ts"
-
-[workflows.workflow.metadata]
-isValidation = true
+args = "node scripts/check-claims-only-user-lookups.cjs"
 
 [agent]
 integrations = ["javascript_log_in_with_replit:2.0.0", "javascript_openai_ai_integrations:2.0.0", "javascript_anthropic:1.0.0", "javascript_xai:1.0.0", "javascript_stripe:1.0.0"]
