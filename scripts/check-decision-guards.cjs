@@ -22,23 +22,63 @@ const ROOT = path.resolve(__dirname, "..");
 const LEDGER = path.join(ROOT, "docs", "DECISIONS.md");
 const WORKFLOW_DIR = path.join(ROOT, ".github", "workflows");
 
+/**
+ * Extract ONLY `run:` command text from workflow YAML (inline scalars and
+ * `run: |` / `run: >` block scalars). A guard name appearing in a comment,
+ * job name, or prose must NOT count as "in CI" — only an actual command does.
+ */
+function extractRunCommands(yamlText) {
+  const out = [];
+  const lines = yamlText.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(/^(\s*)(?:-\s+)?run:\s*(.*)$/);
+    if (!m) continue;
+    const [, indent, rest] = m;
+    const stripped = rest.replace(/#.*$/, "").trim();
+    if (stripped === "|" || stripped === ">" || stripped === "|-" || stripped === ">-" || stripped === "") {
+      // block scalar: consume subsequent lines more indented than `run:`
+      for (let j = i + 1; j < lines.length; j++) {
+        if (lines[j].trim() === "") continue;
+        const lead = lines[j].match(/^(\s*)/)[1];
+        if (lead.length <= indent.length) break;
+        out.push(lines[j].trim());
+      }
+    } else {
+      out.push(stripped);
+    }
+  }
+  return out.join("\n");
+}
+
 function collectWorkflowText(dir) {
   if (!fs.existsSync(dir)) return "";
   return fs
     .readdirSync(dir)
     .filter((f) => f.endsWith(".yml") || f.endsWith(".yaml"))
-    .map((f) => fs.readFileSync(path.join(dir, f), "utf8"))
+    .map((f) => extractRunCommands(fs.readFileSync(path.join(dir, f), "utf8")))
     .join("\n");
 }
 
 function parseLedger(text) {
   const entries = [];
   const ids = [];
+  const malformed = [];
   for (const line of text.split("\n")) {
     // Table rows: | <id> | <date> | [tag] | ...
     const row = line.match(/^\|\s*(\d+|R-[A-Z])\s*\|\s*[\d-]+\s*\|\s*(\[[^\]]+\])\s*\|/);
-    if (!row) continue;
+    if (!row) {
+      // A table-ish line mentioning guarded/advisory that failed to parse is a
+      // malformed ledger row — reject loudly rather than silently skipping it.
+      if (/^\|\s*(\d+|R-[A-Z])\s*\|/.test(line) && /\[(guarded|advisory)/i.test(line) === false && /guarded|advisory/i.test(line)) {
+        malformed.push(line.trim().slice(0, 120));
+      }
+      continue;
+    }
     const [, id, tag] = row;
+    if (!/^\[(guarded:\s*[^\]]+|advisory)\]$/i.test(tag)) {
+      malformed.push(line.trim().slice(0, 120));
+      continue;
+    }
     ids.push(id);
     const guarded = tag.match(/^\[guarded:\s*([^\]]+)\]$/i);
     if (guarded) {
@@ -48,13 +88,15 @@ function parseLedger(text) {
       entries.push({ id, guards, deferred: deferred ? deferred.slice("deferred:".length) : null });
     }
   }
-  return { entries, ids };
+  return { entries, ids, malformed };
 }
 
 function lint({ ledgerText, workflowText }) {
   const failures = [];
   const warnings = [];
-  const { entries, ids } = parseLedger(ledgerText);
+  const { entries, ids, malformed } = parseLedger(ledgerText);
+
+  for (const m of malformed) failures.push(`Malformed ledger row (unparseable tag — fix, don't skip): ${m}`);
 
   const numeric = ids.filter((i) => /^\d+$/.test(i));
   const dupes = numeric.filter((v, i) => numeric.indexOf(v) !== i);
@@ -93,11 +135,31 @@ function selfTest() {
     warnings[0].includes("matrix-lint");
   const dupe = lint({ ledgerText: ledgerText + "\n| 2 | 2026-01-01 | [advisory] | x | y |", workflowText });
   const ok2 = dupe.failures.some((f) => f.includes("Duplicate"));
-  if (!ok || !ok2) {
-    console.error("SELF-TEST FAILED", { failures, warnings, dupe: dupe.failures });
+  // Negative: guard name only in a comment / job name must NOT count as in-CI.
+  const yamlCommentOnly = [
+    "jobs:",
+    "  real-guard:",
+    "    name: real-guard (prose mention of comment-guard)",
+    "    steps:",
+    "      # comment-guard is mentioned here but never run",
+    "      - run: echo hello",
+  ].join("\n");
+  const runsOnly = require("module") && extractRunCommands(yamlCommentOnly);
+  const ok3 = runsOnly.includes("echo hello") && !runsOnly.includes("comment-guard") && !runsOnly.includes("real-guard");
+  // Block scalar extraction.
+  const yamlBlock = ["      - run: |", "          node scripts/block-guard.cjs", "          echo done", "      - name: after"].join("\n");
+  const ok4 = extractRunCommands(yamlBlock).includes("block-guard");
+  // Malformed guarded row must FAIL, not be skipped.
+  const bad = lint({
+    ledgerText: ledgerText + "\n| 9 | 2026-01-01 | guarded: naked-tag | x | y |",
+    workflowText,
+  });
+  const ok5 = bad.failures.some((f) => f.includes("Malformed"));
+  if (!ok || !ok2 || !ok3 || !ok4 || !ok5) {
+    console.error("SELF-TEST FAILED", { ok, ok2, ok3, ok4, ok5, failures, warnings, dupe: dupe.failures, bad: bad.failures });
     process.exit(1);
   }
-  console.log("self-test OK");
+  console.log("self-test OK (incl. comment/job-name negatives, block scalars, malformed-row rejection)");
   process.exit(0);
 }
 

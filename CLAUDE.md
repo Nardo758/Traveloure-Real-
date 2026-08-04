@@ -48,6 +48,10 @@ This document captures architectural decisions to maintain consistency across co
 
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 
+Defect state is VOLATILE and no longer lives in this file (ruling 26 §5): open defects live in findings/audit docs
+with `as-of` SHAs (see `docs/findings/CLAUDE_MD_ARCHIVE.md` for the §13 history archived 2026-08-04). Governing
+invariants that grew out of §13 defects remain here as §14–§16 below.
+
 
 ### §14 — Money-endpoint server-derivation rule (client-trusted amount/identity cluster)
 
@@ -112,10 +116,10 @@ per the same directive):** fold the parallel `/api/catalog/*` Travelpayouts feed
 
 **What This Means:**
 - All **service** creation (expert custom, provider, and the `service_templates` seed catalog) writes to `provider_services`.
-  **Do not conflate with expert *itinerary* templates:** those are a separate product living in the `expert_templates` table (marketplace), **not** `provider_services` — see Known Decisions & Divergences §10.
+  **Do not conflate with expert *itinerary* templates:** those are a separate product living in the `expert_templates` table (marketplace), **not** `provider_services` — sunset decision archived in `docs/findings/CLAUDE_MD_ARCHIVE.md` (§10 block; canonical in `docs/DECISIONS.md`).
 - The approval workflow (draft → submitted → approved) is stored as `approval_status` on `provider_services`, not elsewhere.
   **F2-CLOSED (migration 111):** offerings are now born `submitted` — `provider_services.approval_status` defaults `"submitted"`
-  at both the ORM (`shared/schema.ts:578`) and the DB column; existing rows grandfathered `approved` (no backfill). See §1 (D1a).
+  at both the ORM (`shared/schema.ts:578`) and the DB column; existing rows grandfathered `approved` (no backfill). Approval-lifecycle history (§1/D1a) archived in `docs/findings/CLAUDE_MD_ARCHIVE.md`.
 - `expert_service_offerings` (ESO) remains a read-only template/offerings catalog for the signup flow
 - ESO is NOT a transaction source; it's a convenience catalog for onboarding
 
@@ -147,7 +151,7 @@ All service creation routes converge on one destination: `POST /api/provider/ser
   all **public** `provider_services` surfaces (they filter `approval_status = 'approved'`). `GET /api/expert/services`
   (`server/routes.ts` → `storage.getProviderServicesByStatus`) is the **owner console** and stays **intentionally ungated**
   — it filters by `userId` + the active/paused `status` param so an owner sees their own `submitted`/unapproved listings.
-  Admin reads (the review queue) are likewise ungated. Only public/non-owner reads gate on `approved`. See §1 (D1a).
+  Admin reads (the review queue) are likewise ungated. Only public/non-owner reads gate on `approved`. Approval-lifecycle history (§1/D1a) archived in `docs/findings/CLAUDE_MD_ARCHIVE.md`.
 - No separate tables; no separate approval workflows
 
 ## Coordination Prevention
