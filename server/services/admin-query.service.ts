@@ -1500,11 +1500,26 @@ export async function recalcServiceRating(serviceId: string) {
 }
 
 export async function getAdminUsersPage(whereClause: any, limit: number, offset: number) {
-  const [allUsers, totalResult] = await Promise.all([
+  const [allUsers, totalResult, statsResult] = await Promise.all([
     db.select().from(users).where(whereClause).limit(limit).offset(offset).orderBy(desc(users.createdAt)),
     db.select({ count: count() }).from(users).where(whereClause).then(r => r[0] ?? { count: 0 }),
+    // Aggregates over the WHOLE filtered set (not just the current page) so the
+    // admin stat cards stay stable while paging (task: page-local counts were misleading).
+    db.select({
+      active: sql<number>`COUNT(*) FILTER (WHERE ${users.isSuspended} IS NOT TRUE)`,
+      suspended: sql<number>`COUNT(*) FILTER (WHERE ${users.isSuspended} IS TRUE)`,
+      newToday: sql<number>`COUNT(*) FILTER (WHERE ${users.createdAt} >= CURRENT_DATE)`,
+    }).from(users).where(whereClause).then(r => r[0] ?? { active: 0, suspended: 0, newToday: 0 }),
   ]);
-  return { allUsers, totalResult };
+  return {
+    allUsers,
+    totalResult,
+    stats: {
+      active: Number(statsResult.active) || 0,
+      suspended: Number(statsResult.suspended) || 0,
+      newToday: Number(statsResult.newToday) || 0,
+    },
+  };
 }
 
 export async function getAdminTrips(whereClause?: any) {
