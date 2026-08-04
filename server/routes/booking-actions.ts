@@ -22,7 +22,7 @@ import { and, desc, eq, inArray } from 'drizzle-orm';
 // Aliased: this router already uses `itineraryItems` as a local variable name in more than one
 // handler, and shadowing the table import would be a silent footgun.
 import { notifications, itineraryItems as itineraryItemsTable, tripCollaborators, tripExpertAdvisors, tripItemComments, users, PLAN_APPROVAL_STATUSES } from '@shared/schema';
-import { EXPERT_SHARE_RATE } from '../services/commission';
+import { getExpertSplitRates } from '../services/commission';
 import {
   sendPlanDeliveredEmail,
   sendPlanApprovedEmail,
@@ -1576,16 +1576,18 @@ router.get("/trips/:tripId/commission", isAuthenticated, async (req, res) => {
       item.bookingStatus !== "cancelled"
     );
 
-    // Expert-favorable split policy: EXPERT_SHARE_RATE (75%) floor. Do NOT lower
-    // without a product decision — it inverts the split in experts' disfavor.
+    // Expert-favorable split policy: expert_standard band (75% default) floor. Do NOT
+    // lower without a product decision — it inverts the split in experts' disfavor.
+    // Ruling 25: the fallback share resolves from fee_bands so admin edits apply live.
     const safeParseRate = (value: any, fallback: number): number => {
       const n = parseFloat(value);
       return Number.isFinite(n) && n >= 0 && n <= 1 ? n : fallback;
     };
+    const { expertShareRate: fallbackExpertShare } = await getExpertSplitRates();
     const expertServices = await storage.getProviderServicesByStatus(userId, "active");
     const expertRate = expertServices.length > 0
-      ? expertServices.reduce((sum: number, svc: any) => sum + safeParseRate(svc.revenueShareRate, EXPERT_SHARE_RATE), 0) / expertServices.length
-      : EXPERT_SHARE_RATE;
+      ? expertServices.reduce((sum: number, svc: any) => sum + safeParseRate(svc.revenueShareRate, fallbackExpertShare), 0) / expertServices.length
+      : fallbackExpertShare;
 
     let totalGross = 0;
     let expertShare = 0;
