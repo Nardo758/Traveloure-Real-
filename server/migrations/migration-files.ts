@@ -763,4 +763,9 @@ export const MIGRATION_FILES = [
   // `trips.status` (Lane 3 Option B stands) — a narrow rendering-handover signal read only by the
   // primary-surface rule. See 173_trips_finalized_at.sql for the full rationale.
   "173_trips_finalized_at.sql",
+  // 174: last hardcoded commission rates → fee_bands (ruling 25 / standing fee-literal follow-up).
+  // Seeds experience_cart_checkout (0.30, EXPERIENCE_CART display breakdown) and idempotently
+  // re-seeds expert_standard (0.25) so the 75/25 safety net lives in the single source of truth.
+  // Behavior-neutral: ON CONFLICT DO NOTHING; no schema change.
+  "174_seed_experience_cart_band.sql",
 ] as const;
