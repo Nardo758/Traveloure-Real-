@@ -47,8 +47,14 @@ function mapSlugToEventType(slug: string | null): (typeof eventTypeEnum)[number]
  * ORDER only — the list itself stays 100% sourced from GET /api/experience-types
  * (§13: real data only; nothing hardcoded, nothing dropped). A featured slug that
  * the API doesn't return simply doesn't render.
+ *
+ * These are EXPERIENCE-TYPE slugs (the /api/experience-types vocabulary), NOT
+ * eventTypeEnum values — the same two-vocabularies trap as EVENT_TYPE_SLUG_MAP
+ * above. "vacation" was listed here originally but is an eventTypeEnum value, not
+ * a real catalog slug, so it silently never rendered (runtime audit, Aug 4). The
+ * three real featured slugs + the "Plan it with AI" card fill the 2×2 grid exactly.
  */
-const FEATURED_SLUGS = ["anniversary-trip", "travel", "vacation", "wedding"];
+const FEATURED_SLUGS = ["anniversary-trip", "travel", "wedding"];
 
 /** "Oct 12 – 17, 2026" / "Oct 12 – Nov 2, 2026" — recap pill from the exact step-1 values. */
 function formatDateRange(start: string, end: string): string {
