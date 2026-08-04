@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -42,6 +42,55 @@ function mapSlugToEventType(slug: string | null): (typeof eventTypeEnum)[number]
 }
 
 /**
+ * Entry Surfaces Redesign (ratification mockup): the common shapes are featured as
+ * prominent cards; everything else sits behind "More types". This is presentation
+ * ORDER only — the list itself stays 100% sourced from GET /api/experience-types
+ * (§13: real data only; nothing hardcoded, nothing dropped). A featured slug that
+ * the API doesn't return simply doesn't render.
+ */
+const FEATURED_SLUGS = ["anniversary-trip", "travel", "vacation", "wedding"];
+
+/** "Oct 12 – 17, 2026" / "Oct 12 – Nov 2, 2026" — recap pill from the exact step-1 values. */
+function formatDateRange(start: string, end: string): string {
+  const s = new Date(`${start}T00:00:00`);
+  const e = new Date(`${end}T00:00:00`);
+  if (isNaN(s.getTime()) || isNaN(e.getTime())) return `${start} – ${end}`;
+  const month = (d: Date) => d.toLocaleDateString("en-US", { month: "short" });
+  const sameMonth = s.getFullYear() === e.getFullYear() && s.getMonth() === e.getMonth();
+  const left = `${month(s)} ${s.getDate()}`;
+  const right = sameMonth ? `${e.getDate()}` : `${month(e)} ${e.getDate()}`;
+  return `${left} – ${right}, ${e.getFullYear()}`;
+}
+
+const STEP_LABELS = ["Where & when", "What kind of trip", "Your slip"] as const;
+
+/** 3-step rail. Step 3 ("Your slip") is the outcome — reached by landing on /plans/:tripId,
+ *  never highlighted inside the panel. */
+function StepRail({ current }: { current: 1 | 2 }) {
+  return (
+    <div className="flex items-center gap-1.5" data-testid="intake-step-rail">
+      {STEP_LABELS.map((label, i) => {
+        const n = i + 1;
+        const active = n === current;
+        return (
+          <div
+            key={label}
+            data-testid={`intake-step-${n}`}
+            className={`flex-1 text-center rounded-full px-2 py-1.5 text-xs font-medium truncate ${
+              active
+                ? "bg-primary/10 text-primary"
+                : "bg-muted text-muted-foreground"
+            }`}
+          >
+            {n} · {label}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
  * IntakePanel — R-C: the one create-panel behind every "Plan new" / "New experience" /
  * "+ New plan" CTA (CONSOLE_REALIGN_BRIEF.md). Two steps:
  *   1. where / when / travelers (only what the user actually enters — §13, never invented)
@@ -72,6 +121,15 @@ export function IntakePanel({
   });
 
   const createTrip = useCreateTrip();
+  const [showAllTypes, setShowAllTypes] = useState(false);
+
+  // Presentation split only — both halves come straight from the API response.
+  const { featured, more } = useMemo(() => {
+    const all = experienceTypes ?? [];
+    const featured = all.filter((t) => FEATURED_SLUGS.includes(t.slug));
+    const more = all.filter((t) => !FEATURED_SLUGS.includes(t.slug));
+    return { featured, more };
+  }, [experienceTypes]);
 
   const canContinue = destination.trim().length > 0 && !!startDate && !!endDate;
 
@@ -82,6 +140,7 @@ export function IntakePanel({
     setEndDate("");
     setTravelers(2);
     setSelectedSlug(null);
+    setShowAllTypes(false);
   }
 
   function handleClose(next: boolean) {
@@ -134,9 +193,11 @@ export function IntakePanel({
         {step === 1 ? (
           <>
             <DialogHeader>
-              <DialogTitle>Start a new plan</DialogTitle>
+              <DialogTitle>New plan</DialogTitle>
               <DialogDescription>Where and when — we'll figure out the shape next.</DialogDescription>
             </DialogHeader>
+
+            <StepRail current={1} />
 
             <div className="space-y-4">
               <div className="space-y-1.5">
@@ -207,47 +268,128 @@ export function IntakePanel({
               >
                 <ArrowLeft className="w-3.5 h-3.5 mr-1" /> Back
               </Button>
-              <DialogTitle>What are you planning?</DialogTitle>
+              <DialogTitle>What kind of trip</DialogTitle>
               <DialogDescription>Pick a shape, or let AI build it with you.</DialogDescription>
             </DialogHeader>
 
-            <div className="grid grid-cols-2 gap-2.5 max-h-[360px] overflow-y-auto pr-1">
+            <StepRail current={2} />
+
+            {/* Step-1 recap pills — render the EXACT values entered on step 1; "edit"
+                returns to step 1 without clearing anything (no reset()). */}
+            <div className="flex flex-wrap items-center gap-1.5" data-testid="intake-recap-pills">
+              {/* Pills mirror the values the create payload actually uses (destination is
+                  trimmed in handleCreate/handlePlanWithAI too — same contract). */}
+              <span
+                className="rounded-full border border-border bg-muted/50 px-2.5 py-1 text-xs text-foreground"
+                data-testid="pill-recap-destination"
+              >
+                {destination.trim()}
+              </span>
+              <span
+                className="rounded-full border border-border bg-muted/50 px-2.5 py-1 text-xs text-foreground"
+                data-testid="pill-recap-dates"
+              >
+                {formatDateRange(startDate, endDate)}
+              </span>
+              <span
+                className="rounded-full border border-border bg-muted/50 px-2.5 py-1 text-xs text-foreground"
+                data-testid="pill-recap-travelers"
+              >
+                {travelers} traveler{travelers === 1 ? "" : "s"}
+              </span>
               <button
                 type="button"
-                onClick={handlePlanWithAI}
-                className="flex flex-col items-start gap-1 rounded-xl border border-border p-3 text-left hover:border-primary hover:bg-primary/5 transition-colors"
-                data-testid="button-intake-plan-with-ai"
+                onClick={() => setStep(1)}
+                className="px-1.5 py-1 text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                data-testid="button-recap-edit"
               >
-                <Sparkles className="w-5 h-5 text-primary" />
-                <span className="text-sm font-medium text-foreground">Plan it with AI</span>
-                <span className="text-xs text-muted-foreground">Chat it out — we'll build the plan</span>
+                edit
               </button>
+            </div>
 
-              {typesLoading && (
-                <div className="col-span-2 flex items-center justify-center py-6 text-muted-foreground">
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                </div>
-              )}
+            <div className="max-h-[360px] overflow-y-auto pr-1 space-y-2.5">
+              <div className="grid grid-cols-2 gap-2.5">
+                {typesLoading && (
+                  <div className="col-span-2 flex items-center justify-center py-6 text-muted-foreground">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  </div>
+                )}
 
-              {(experienceTypes ?? []).map((type) => {
-                const isSelected = selectedSlug === type.slug;
-                return (
+                {featured.map((type) => {
+                  const isSelected = selectedSlug === type.slug;
+                  return (
+                    <button
+                      key={type.id}
+                      type="button"
+                      aria-pressed={isSelected}
+                      onClick={() => setSelectedSlug(type.slug)}
+                      className={`flex flex-col items-start gap-1 rounded-xl border p-3.5 text-left transition-colors ${
+                        isSelected
+                          ? "border-primary ring-1 ring-primary bg-primary/5"
+                          : "border-border hover:border-primary hover:bg-primary/5"
+                      }`}
+                      data-testid={`button-intake-shape-${type.slug}`}
+                    >
+                      <span className="text-sm font-semibold text-foreground">{type.name}</span>
+                      {type.description && (
+                        <span className="text-xs text-muted-foreground line-clamp-2">{type.description}</span>
+                      )}
+                    </button>
+                  );
+                })}
+
+                <button
+                  type="button"
+                  onClick={handlePlanWithAI}
+                  className="flex flex-col items-start gap-1 rounded-xl border border-border p-3.5 text-left hover:border-primary hover:bg-primary/5 transition-colors"
+                  data-testid="button-intake-plan-with-ai"
+                >
+                  <Sparkles className="w-5 h-5 text-primary" />
+                  <span className="text-sm font-semibold text-foreground">Plan it with AI</span>
+                  <span className="text-xs text-muted-foreground">Describe it in your words → AI planner</span>
+                </button>
+              </div>
+
+              {more.length > 0 && (
+                <>
                   <button
-                    key={type.id}
                     type="button"
-                    onClick={() => setSelectedSlug(type.slug)}
-                    className={`flex flex-col items-start gap-1 rounded-xl border p-3 text-left transition-colors ${
-                      isSelected ? "border-primary bg-primary/5" : "border-border hover:border-primary hover:bg-primary/5"
-                    }`}
-                    data-testid={`button-intake-shape-${type.slug}`}
+                    aria-expanded={showAllTypes}
+                    onClick={() => setShowAllTypes((v) => !v)}
+                    className="w-full text-left text-xs font-medium text-muted-foreground hover:text-foreground py-1"
+                    data-testid="button-intake-more-types"
                   >
-                    <span className="text-sm font-medium text-foreground">{type.name}</span>
-                    {type.description && (
-                      <span className="text-xs text-muted-foreground line-clamp-2">{type.description}</span>
-                    )}
+                    {showAllTypes ? "− Fewer types" : `+ More types (${more.length})`}
                   </button>
-                );
-              })}
+
+                  {showAllTypes && (
+                    <div className="grid grid-cols-2 gap-2.5">
+                      {more.map((type) => {
+                        const isSelected = selectedSlug === type.slug;
+                        return (
+                          <button
+                            key={type.id}
+                            type="button"
+                            aria-pressed={isSelected}
+                            onClick={() => setSelectedSlug(type.slug)}
+                            className={`flex flex-col items-start gap-1 rounded-xl border p-3 text-left transition-colors ${
+                              isSelected
+                                ? "border-primary ring-1 ring-primary bg-primary/5"
+                                : "border-border hover:border-primary hover:bg-primary/5"
+                            }`}
+                            data-testid={`button-intake-shape-${type.slug}`}
+                          >
+                            <span className="text-sm font-medium text-foreground">{type.name}</span>
+                            {type.description && (
+                              <span className="text-xs text-muted-foreground line-clamp-2">{type.description}</span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
+              )}
             </div>
 
             <div className="flex justify-end pt-2">
