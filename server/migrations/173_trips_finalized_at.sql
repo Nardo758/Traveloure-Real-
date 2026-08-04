@@ -1,0 +1,24 @@
+-- 173_trips_finalized_at.sql — Console Realign Lane E5, ruling R-F (Trip Card delivery: Finalize).
+-- Governing doc: docs/briefs/CONSOLE_REALIGN_BRIEF.md, R-F.
+--
+-- WHAT: additive nullable `trips.finalized_at` TIMESTAMP. NULL = never finalized (the born state
+-- for every trip, existing and new — no backfill). Set once by `POST /api/trips/:tripId/finalize`
+-- (atomic conditional: only flips NULL -> now()), cleared by `POST /api/trips/:tripId/reopen`
+-- (only flips set -> NULL). Read by the primary-surface rule (shared/trip-primary-surface.ts):
+-- `finalized_at ∨ now ≥ startDate−48h ∨ underway → Trip Card is primary`.
+--
+-- NOT A REVIVAL OF `trips.status` (CLAUDE.md §13 / Lane 3 Option B, ratified Jul 31, 2026):
+-- `trips.status` is documented DEAD — write-once at creation, nothing ever advances it, and trip
+-- PHASE stays date-derived everywhere. `finalized_at` is a SEPARATE, narrow signal — "has the
+-- traveler explicitly handed this plan over to Trip Card rendering" — not a lifecycle/status field,
+-- has no enum, and does not feed `derivePhase`/any phase computation. It is read ONLY by the R-F
+-- primary-surface rule as one OR-branch alongside the (unchanged) date-derived branches.
+--
+-- NO CHECK, NO DEFAULT, NO BACKFILL: a brand-new nullable timestamp column with no legacy rows to
+-- remap and no canonical value set to enforce — nothing for the preflight CONSTRAINT_MANIFEST, no
+-- publish-time drizzle-push trap. Declared on the `trips` pgTable in shared/schema.ts in the same
+-- commit (the deploy-push durability rule).
+--
+-- Idempotent-ALTER pattern per the migration-159/161 house style.
+
+ALTER TABLE trips ADD COLUMN IF NOT EXISTS finalized_at TIMESTAMP;

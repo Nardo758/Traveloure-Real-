@@ -126,6 +126,7 @@ import { ALL_DMO_SOURCES, getMarketGapSummary } from "./content/providers/DMOSou
 import savedItemsRoutes from "./routes/saved-items.routes";
 import serviceRequestsRoutes from "./routes/service-requests.routes";
 import tripContextRoutes from "./routes/trip-context.routes";
+import planActivityRoutes from "./routes/plan-activity.routes";
 import routingRoutes from "./routes/routing.routes";
 import guestInvitesRoutes from "./routes/guest-invites";
 import shareImagesRoutes from "./routes/share-images.routes";
@@ -902,6 +903,10 @@ export async function registerRoutes(
   // (inherits the blanket adminApiGuard registered above). New table, migration 123.
   app.use(serviceRequestsRoutes);
   app.use(tripContextRoutes);
+  // "While you were away" digest (Console Realign R-H, Lane E7): GET /api/me/plan-activity —
+  // read-only, session-scoped, cross-trip read of item_transition_log for non-traveler actors
+  // (expert/agent/checkout). Zero writes. Mounted per §9.
+  app.use(planActivityRoutes);
 
   // Per-item routing transitions (Trip-Canon Lane 1 W1, Phase 1b):
   // POST /api/trips/:tripId/items/:itemId/route — the four traveler/expert edges of the

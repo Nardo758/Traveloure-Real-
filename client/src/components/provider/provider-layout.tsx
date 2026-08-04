@@ -14,6 +14,7 @@ export function ProviderLayout({ children, title }: ProviderLayoutProps) {
       title={title}
       sidebarToggleTestId="button-provider-sidebar-toggle"
       notificationsTestId="button-provider-notifications"
+      notificationsHref="/provider/inbox"
       statusBadge={
         <div
           className="hidden sm:flex items-center gap-1.5 h-[28px] px-2.5 rounded-full"

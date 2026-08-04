@@ -957,6 +957,10 @@ export async function assembleTripPlan(
         // count). Additive — existing consumers ignore unknown keys.
         trackingNumber: (trip as any).trackingNumber ?? null,
         planVersion,
+        // R-F (migration 173): additive — null on every trip until Finalize is pressed. The
+        // client derives Trip Card primacy from this + startDate/endDate via
+        // shared/trip-primary-surface.ts, never from `status`.
+        finalizedAt: (trip as any).finalizedAt ? String((trip as any).finalizedAt) : null,
       },
       changeLog,
       metrics: metricsMap,
