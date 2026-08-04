@@ -101,7 +101,14 @@ export default function AdminUsers() {
     page: number;
     limit: number;
   }>({
-    queryKey: ["/api/admin/users", { search: searchQuery, page, role: roleFilter ?? undefined }],
+    // Send the browser's IANA timezone so the server computes "New Today"
+    // against the admin's local day boundary instead of server UTC.
+    queryKey: ["/api/admin/users", {
+      search: searchQuery,
+      page,
+      role: roleFilter ?? undefined,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    }],
     placeholderData: (prev) => prev,
   });
 
