@@ -35,6 +35,7 @@
  * aggregated under a single "Guest" row (userId null); if no such rows exist, no Guest row.
  */
 import { Router } from "express";
+import { getUserId } from "../utils/auth";
 import { db } from "../db";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { and, eq, ne } from "drizzle-orm";
@@ -51,7 +52,7 @@ import {
 const router = Router();
 
 function sessionUserId(req: any): string | undefined {
-  return (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+  return getUserId(req)!;
 }
 
 type Relationship = "active_trip" | "repeat" | "one_time";

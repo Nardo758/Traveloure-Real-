@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { getUserId } from "../utils/auth";
 import { z } from "zod";
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "../db";
@@ -20,7 +21,7 @@ import { createRateLimiter } from "../infrastructure/rate-limiter";
 const router = Router();
 
 function sessionUserId(req: any): string | undefined {
-  return (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+  return getUserId(req)!;
 }
 
 // Per-user throttle: each POST also inserts an admin_notifications row, so cap how

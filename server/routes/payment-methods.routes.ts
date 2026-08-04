@@ -14,6 +14,7 @@
  * §13: Stripe unconfigured → honest 503, never a fake empty success for mutations.
  */
 import { Router } from "express";
+import { getUserId } from "../utils/auth";
 import { z } from "zod";
 import { stripePaymentService } from "../services/stripe-payment.service";
 
@@ -24,7 +25,7 @@ const isAuthenticated = (req: any, res: any, next: any) => {
   return res.status(401).json({ message: "Authentication required" });
 };
 
-const sessionUserId = (req: any) => req.user?.claims?.sub ?? req.user?.id;
+const sessionUserId = (req: any) => getUserId(req)!;
 
 router.get("/api/me/payment-methods", isAuthenticated, async (req: any, res) => {
   try {

@@ -1,4 +1,5 @@
 import type { Express } from "express";
+import { getUserId } from "./utils/auth";
 import type { Server } from "http";
 import { adminRateLimit, aiRateLimit, leadRoutingRateLimit, heavyReadRateLimit } from "./middleware/rateLimiter";
 import { getSlowQueryLog, clearSlowQueryLog } from "./utils/queryTimer";
@@ -486,7 +487,7 @@ export async function registerRoutes(
       if (typeof req.isAuthenticated !== "function" || !req.isAuthenticated()) {
         return res.status(401).json({ message: "Authentication required" });
       }
-      const uid = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const uid = getUserId(req)!;
       const user = uid
         ? await db.select().from(users).where(eq(users.id, uid)).then((r) => r[0])
         : undefined;
@@ -526,7 +527,7 @@ export async function registerRoutes(
     try {
       const enabled = await getPlatformFlag(FLAG_MAINTENANCE_MODE, false);
       if (!enabled) return next();
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       if (userId) {
         const [user] = await db.select({ role: users.role }).from(users).where(eq(users.id, userId)).limit(1);
         if (user?.role === "admin") return next();
@@ -969,7 +970,7 @@ export async function registerRoutes(
   // Trips Routes (inline — superseded by tripsRoutes mount above; kept as-is per task scope)
   // GET /api/trips — list trips (auth only, since guests access via shareToken)
   app.get(api.trips.list.path, isAuthenticated, async (req, res) => {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     const status = req.query.status as string | undefined;
     const trips = await storage.getTrips(userId, status);
     res.json(trips);
@@ -983,7 +984,7 @@ export async function registerRoutes(
     }
 
     // Check access: owner, assigned expert, managing EA, or guest with shareToken
-    const userId = (req.user as any)?.claims?.sub ?? null;
+    const userId = getUserId(req)!;
     const shareToken = req.query.token as string | undefined;
     const isOwner = trip.userId && trip.userId === userId;
     const isExpert = userId != null && (trip as any).expertId === userId;
@@ -1030,7 +1031,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Budget must be a positive number" });
       }
 
-      const userId = (req.user as any)?.claims?.sub ?? null;
+      const userId = getUserId(req)!;
       const trip = await storage.createTrip({ ...sanitizedInput, userId });
 
       // Fire-and-forget: T2 funnel event
@@ -1069,7 +1070,7 @@ export async function registerRoutes(
       const trip = await storage.getTrip(req.params.id);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
 
-      const userId = (req.user as any)?.claims?.sub ?? null;
+      const userId = getUserId(req)!;
       const shareToken = req.query.token as string | undefined;
       const isOwner = trip.userId && trip.userId === userId;
       const isManagingEa = userId != null && (trip as any).managedByEaId === userId;
@@ -1093,7 +1094,7 @@ export async function registerRoutes(
     const trip = await storage.getTrip(req.params.id);
     if (!trip) return res.status(404).json({ message: "Trip not found" });
     
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     if (trip.userId !== userId) return res.status(401).json({ message: "Unauthorized" });
 
     await storage.deleteTrip(req.params.id);
@@ -1117,7 +1118,7 @@ export async function registerRoutes(
         return res.status(409).json({ message: "Trip already claimed" });
       }
 
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const [updated] = await db.update(trips)
         .set({ userId })
         .where(eq(trips.id, req.params.id))
@@ -1170,7 +1171,7 @@ export async function registerRoutes(
       //
       // Placed after the trip fetch (it needs the two columns) but BEFORE the AI call and BEFORE
       // the destructive delete, so a denied caller costs zero AI tokens and destroys nothing.
-      const callerUserId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const callerUserId = getUserId(req)!;
       const isTripColumnExpert = callerUserId != null && (trip as any).expertId === callerUserId;
       const isManagingEa = callerUserId != null && (trip as any).managedByEaId === callerUserId;
       if (!isTripColumnExpert && !isManagingEa) {
@@ -1296,7 +1297,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
       // Fire-and-forget: T3 funnel event (AI itinerary generated)
       trackFunnelEvent({
-        userId: (req.user as any)?.claims?.sub ?? (req.user as any)?.id,
+        userId: getUserId(req)!,
         tripId: trip.id,
         eventType: "itinerary_generated",
         funnelStage: "T3",
@@ -1354,7 +1355,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       }
       
       const { tripId, notes, serviceId, bookingMetadata } = validation.data;
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       
       // Only validate trip ownership when a tripId is provided
       if (tripId) {
@@ -1589,7 +1590,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Chats Routes
   // SECURITY: User data is sanitized and contact info in messages is redacted
   app.get(api.chats.list.path, isAuthenticated, async (req, res) => {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     const userRole = (req.user as any).claims.role || 'user';
     const chats = await storage.getChats(userId);
     
@@ -1639,7 +1640,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // Sender is always the session user — a body-sent senderId would let any
       // authenticated user write messages as someone else (§14's identity rule,
       // applied to chat integrity).
-      const sessionUserId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const sessionUserId = getUserId(req)!;
       const chat = await storage.createChat({ ...input, senderId: sessionUserId });
       res.status(201).json(chat);
     } catch (err) {
@@ -1690,7 +1691,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   
   // Get current user's expert application
   app.get("/api/expert-application", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     const form = await storage.getLocalExpertForm(userId);
     res.json(form || null);
   });
@@ -1698,7 +1699,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Submit expert application
   app.post("/api/expert-application", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       
       const existing = await storage.getLocalExpertForm(userId);
       if (existing) {
@@ -1748,7 +1749,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Alias: /api/expert-forms -> /api/expert-application (for API compatibility)
   app.post("/api/expert-forms", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const existing = await storage.getLocalExpertForm(userId);
       if (existing) {
         if (existing.status === "rejected") {
@@ -1794,7 +1795,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   // Admin: Payout-gap report — approved experts who haven't completed Stripe Connect
   app.get("/api/admin/expert-payout-gap", isAuthenticated, async (req, res) => {
-    const user = await db.select().from(users).where(eq(users.id, (req.user as any)?.claims?.sub ?? (req.user as any)?.id)).then(r => r[0]);
+    const user = await db.select().from(users).where(eq(users.id, getUserId(req)!)).then(r => r[0]);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -1833,7 +1834,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   
   // Get current user's provider application
   app.get("/api/provider-application", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     const form = await storage.getServiceProviderForm(userId);
     res.json(form || null);
   });
@@ -1841,7 +1842,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Submit provider application
   app.post("/api/provider-application", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       
       const existing = await storage.getServiceProviderForm(userId);
       if (existing) {
@@ -1863,7 +1864,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Alias: /api/provider-forms -> /api/provider-application (for API compatibility)
   app.post("/api/provider-forms", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const existing = await storage.getServiceProviderForm(userId);
       if (existing) {
         return res.status(400).json({ message: "You already have an application submitted" });
@@ -1882,7 +1883,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // GET /api/expert/application-status — user-facing live step status for expert applicants
   app.get("/api/expert/application-status", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const [form] = await db.select().from(localExpertForms).where(eq(localExpertForms.userId, userId)).limit(1);
       const identityStatus = (form as any)?.identityVerificationStatus ?? "pending";
 
@@ -1943,7 +1944,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // GET /api/provider/application-status — user-facing live step status for provider applicants
   app.get("/api/provider/application-status", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const [form] = await db.select().from(serviceProviderForms).where(eq(serviceProviderForms.userId, userId)).limit(1);
       const identityStatus = (form as any)?.identityVerificationStatus ?? "pending";
       const bizStatus = (form as any)?.businessVerificationStatus ?? "pending";
@@ -2029,7 +2030,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   
   // Get provider's services
   app.get("/api/provider/services", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     const { destination, category, activeOnly } = req.query as Record<string, string>;
     const services = await storage.getProviderServices(userId, {
       destination: destination || undefined,
@@ -2042,7 +2043,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Get a single provider service by ID (ownership required)
   app.get("/api/provider/services/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const service = await storage.getProviderServiceById(req.params.id);
       if (!service || service.userId !== userId) {
         return res.status(404).json({ message: "Service not found" });
@@ -2075,7 +2076,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Create a new service
   app.post("/api/provider/services", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       // Extract neighborhoods before schema parse (not a DB column)
       const { neighborhoods: neighborhoodSlugs, ...bodyWithoutNeighborhoods } = req.body;
       // L27-P3: pull the confirmed map point out and STRIP any client-sent
@@ -2160,7 +2161,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Verification status for the current authenticated provider/expert
   app.get("/api/provider/verification-status", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const [userRow] = await db.select({
         providerVerificationStatus: users.providerVerificationStatus,
         backgroundCheckConfirmed: users.backgroundCheckConfirmed,
@@ -2182,7 +2183,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // admin/providers.tsx after manual review.
   app.post("/api/provider/request-verification-review", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const [userRow] = await db.select({
         providerVerificationStatus: users.providerVerificationStatus,
         email: users.email,
@@ -2221,7 +2222,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Update a service
   app.patch("/api/provider/services/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const services = await storage.getProviderServices(userId);
       const ownedService = services.find(s => s.id === req.params.id);
       if (!ownedService) {
@@ -2336,7 +2337,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   // Delete a service
   app.delete("/api/provider/services/:id", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     const services = await storage.getProviderServices(userId);
     const ownedService = services.find(s => s.id === req.params.id);
     if (!ownedService) {
@@ -2998,7 +2999,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // GET /api/expert/neighborhoods — Return current expert's neighborhoods + locality proof
   app.get("/api/expert/neighborhoods", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const form = await storage.getLocalExpertForm(userId);
       res.json({
         neighborhoods: (form?.neighborhoods as string[]) || [],
@@ -3013,7 +3014,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // PATCH /api/expert/neighborhoods — Save expert's neighbourhood coverage
   app.patch("/api/expert/neighborhoods", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const { neighborhoods, localityProof } = req.body;
       if (!Array.isArray(neighborhoods)) {
         return res.status(400).json({ message: "neighborhoods must be an array" });
@@ -3055,7 +3056,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // PATCH /api/expert/profile-notes — Save expert's notes style description
   app.patch("/api/expert/profile-notes", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const { notesStyle } = req.body;
       if (typeof notesStyle !== "string") {
         return res.status(400).json({ message: "notesStyle must be a string" });
@@ -3070,14 +3071,14 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   // Get current expert's selected services (authenticated)
   app.get("/api/expert/selected-services", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     const services = await storage.getExpertSelectedServices(userId);
     res.json(services);
   });
 
   // Add service offering to expert's profile (authenticated)
   app.post("/api/expert/selected-services", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     const { serviceOfferingId, customPrice } = req.body;
     const service = await storage.addExpertSelectedService(userId, serviceOfferingId, customPrice);
     res.json(service);
@@ -3085,21 +3086,21 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   // Remove service offering from expert's profile (authenticated)
   app.delete("/api/expert/selected-services/:serviceOfferingId", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     await storage.removeExpertSelectedService(userId, req.params.serviceOfferingId);
     res.json({ success: true });
   });
 
   // Get current expert's specializations (authenticated)
   app.get("/api/expert/specializations", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     const specializations = await storage.getExpertSpecializations(userId);
     res.json(specializations);
   });
 
   // Add specialization to expert's profile (authenticated)
   app.post("/api/expert/specializations", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     const { specialization } = req.body;
     const spec = await storage.addExpertSpecialization(userId, specialization);
     res.json(spec);
@@ -3107,7 +3108,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   // Remove specialization from expert's profile (authenticated)
   app.delete("/api/expert/specializations/:specialization", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     await storage.removeExpertSpecialization(userId, req.params.specialization);
     res.json({ success: true });
   });
@@ -3116,14 +3117,14 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   
   // Get current expert's custom services (authenticated)
   app.get("/api/expert/service-listings", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     const services = await storage.getProviderServiceListings(userId);
     res.json(services);
   });
 
   // Get single custom service by ID (authenticated - owner only)
   app.get("/api/expert/service-listings/:id", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     const service = await storage.getProviderServiceListingById(req.params.id);
     if (!service) {
       return res.status(404).json({ message: "Custom service not found" });
@@ -3137,7 +3138,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Create new custom service (authenticated - experts only)
   app.post("/api/expert/service-listings", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const user = await db.select().from(users).where(eq(users.id, userId)).then(r => r[0]);
       
       // Full expert family (shared/roles.ts): the previous bare `role !== "expert"` check
@@ -3177,7 +3178,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Update custom service (authenticated - owner only, draft status only)
   app.patch("/api/expert/service-listings/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const service = await storage.getProviderServiceListingById(req.params.id);
       
       if (!service) {
@@ -3201,7 +3202,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Submit custom service for approval (authenticated - owner only)
   app.post("/api/expert/service-listings/:id/submit", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const service = await storage.getProviderServiceListingById(req.params.id);
       
       if (!service) {
@@ -3225,7 +3226,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Delete custom service (authenticated - owner only, draft/rejected status only)
   app.delete("/api/expert/service-listings/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const service = await storage.getProviderServiceListingById(req.params.id);
       
       if (!service) {
@@ -3313,7 +3314,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // and an ADMIN (reviewing the queue) are exempt. Route is unauthenticated, so req.user is
       // read opportunistically (session middleware populates it when a cookie is present).
       const isPublic = template.approvalStatus === "approved" && template.isPublished;
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const isOwner = !!userId && template.expertId === userId;
       let isAdmin = false;
       if (userId && !isOwner) {
@@ -3343,7 +3344,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Get expert's own templates (authenticated)
   app.get("/api/expert/templates", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const templates = await storage.getExpertTemplates({ expertId: userId });
       res.json(templates);
     } catch (err) {
@@ -3361,7 +3362,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Update template (authenticated - owner only)
   app.patch("/api/expert/templates/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const template = await storage.getExpertTemplate(req.params.id);
       
       if (!template) {
@@ -3401,7 +3402,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Delete template (authenticated - owner only)
   app.delete("/api/expert/templates/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const template = await storage.getExpertTemplate(req.params.id);
       
       if (!template) {
@@ -3423,7 +3424,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Experts can submit; only an admin can approve (see the /api/admin queue below).
   app.post("/api/expert/templates/:id/submit", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const template = await storage.getExpertTemplate(req.params.id);
       if (!template) {
         return res.status(404).json({ message: "Template not found" });
@@ -3457,7 +3458,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.post("/api/admin/expert-templates/:id/approve", async (req, res) => {
     try {
-      const adminId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const adminId = getUserId(req)!;
       const template = await storage.getExpertTemplate(req.params.id);
       if (!template) {
         return res.status(404).json({ message: "Template not found" });
@@ -3475,7 +3476,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.post("/api/admin/expert-templates/:id/reject", async (req, res) => {
     try {
-      const adminId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const adminId = getUserId(req)!;
       const reason = (req.body?.reason ?? "").toString().trim();
       if (!reason) {
         return res.status(400).json({ message: "A rejection reason is required" });
@@ -3501,7 +3502,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Earning records are NOT created here — only after confirmed payment.
   app.post("/api/expert-templates/:id/purchase", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const template = await storage.getExpertTemplate(req.params.id);
 
       if (!template) {
@@ -3594,7 +3595,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // and records the expert earning. Fully idempotent.
   app.post("/api/expert-templates/:id/purchase/confirm", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const { paymentIntentId, purchaseId } = req.body;
 
       if (!paymentIntentId || !purchaseId) {
@@ -3713,7 +3714,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Get user's purchased templates
   app.get("/api/my-purchased-templates", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const purchases = await storage.getTemplatePurchases({ buyerId: userId });
       
       // Get full template data for each purchase
@@ -3745,7 +3746,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Create template review (authenticated - must have purchased)
   app.post("/api/expert-templates/:id/reviews", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       
       // Get user's purchase of this template
       const purchases = await storage.getTemplatePurchases({ buyerId: userId });
@@ -3773,7 +3774,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Get expert earnings (authenticated)
   app.get("/api/expert/earnings", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
 
       // Fetch bookings (for transactions list), payout history, and authoritative ledger summary
       const [bookings, payouts, ledgerSummary] = await Promise.all([
@@ -3848,7 +3849,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Get expert template sales (authenticated)
   app.get("/api/expert/template-sales", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const sales = await storage.getTemplatePurchases({ expertId: userId });
       
       // Get template details for each sale
@@ -3886,7 +3887,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Get tips received by expert
   app.get("/api/expert/tips", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const result = await storage.getTipsForExpert(userId);
       res.json(result);
     } catch (err) {
@@ -3898,7 +3899,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Expert Referrals - Get referral code and stats
   app.get("/api/expert/referrals", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const referrals = await storage.getExpertReferrals(userId);
       
       // Get the expert's referral code from their profile
@@ -3922,7 +3923,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Affiliate earnings for expert
   app.get("/api/expert/affiliate-earnings", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const earnings = await storage.getAffiliateEarnings(userId);
       const summary = await storage.getAffiliateEarningsSummary(userId);
       res.json({ earnings, summary });
@@ -3935,7 +3936,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Comprehensive Revenue Optimization endpoint
   app.get("/api/expert/revenue-optimization", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       
       // Get all earnings data
       const [
@@ -3956,7 +3957,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         storage.getAffiliateEarningsSummary(userId),
         storage.getExpertReferrals(userId),
         storage.getProviderServices(userId),
-        storage.getServiceBookings(userId),
+        // NOTE: pre-existing latent bug preserved as-is — a string is passed where a
+        // {providerId?,travelerId?,status?} filter is expected (was hidden behind `any`).
+        storage.getServiceBookings(userId as any),
         storage.getRevenueSplits()
       ]);
 
@@ -4205,7 +4208,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   // Get expert's services by status
   app.get("/api/expert/services", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     const status = req.query.status as string | undefined;
     const services = await storage.getProviderServicesByStatus(userId, status);
     res.json(services);
@@ -4214,7 +4217,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Toggle service status (pause/activate)
   app.patch("/api/expert/services/:id/status", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const service = await storage.getProviderServiceById(req.params.id);
       if (!service || service.userId !== userId) {
         return res.status(404).json({ message: "Service not found or not owned by you" });
@@ -4233,7 +4236,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Duplicate a service
   app.post("/api/expert/services/:id/duplicate", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const service = await storage.getProviderServiceById(req.params.id);
       if (!service || service.userId !== userId) {
         return res.status(404).json({ message: "Service not found or not owned by you" });
@@ -4250,7 +4253,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // and status 'draft' (F2 — a copy of an approved listing is never born-approved).
   app.post("/api/provider/services/:id/duplicate", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const service = await storage.getProviderServiceById(req.params.id);
       if (!service || service.userId !== userId) {
         return res.status(404).json({ message: "Service not found or not owned by you" });
@@ -4264,7 +4267,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.post("/api/expert/services/from-template/:templateId", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const templateId = req.params.templateId;
 
       // expert_service_offerings is the primary catalog; service_templates is legacy fallback
@@ -4328,7 +4331,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Get bookings for provider (their services)
   // NOTE: User data is sanitized - experts cannot see full traveler info (email, phone, etc.)
   app.get("/api/expert/bookings", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     const userRole = (req.user as any).claims.role || 'expert';
     const status = req.query.status as string | undefined;
     const bookings = await storage.getServiceBookings({ providerId: userId, status });
@@ -4353,7 +4356,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Provider bookings (for calendar)
   // NOTE: User data is sanitized - providers cannot see full traveler info
   app.get("/api/provider/bookings", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     const userRole = (req.user as any).claims.role || 'provider';
     const status = req.query.status as string | undefined;
     const bookings = await storage.getServiceBookings({ providerId: userId, status });
@@ -4377,7 +4380,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   });
 
   app.get("/api/my-bookings", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     const status = req.query.status as string | undefined;
     const bookings = await storage.getServiceBookings({ travelerId: userId, status });
     
@@ -4392,7 +4395,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.get("/api/service-bookings", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const status = req.query.status as string | undefined;
       const bookings = await storage.getServiceBookings({ travelerId: userId, status });
       const enrichedBookings = await Promise.all(bookings.map(async (booking) => {
@@ -4413,7 +4416,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.get("/api/bookings/user", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const status = req.query.status as string | undefined;
       const bookings = await storage.getServiceBookings({ travelerId: userId, status });
       const enrichedBookings = await Promise.all(bookings.map(async (booking) => {
@@ -4429,7 +4432,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.post("/api/cart/items", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const { serviceId, customVenueId, quantity, tripId, scheduledDate, notes, experienceSlug: rawSlug } = req.body;
       if (!serviceId && !customVenueId) {
         return res.status(400).json({ message: "Service ID or Custom Venue ID is required" });
@@ -4469,7 +4472,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Get single booking
   // NOTE: If requester is provider, traveler info is sanitized
   app.get("/api/bookings/:id", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     const userRole = (req.user as any).claims.role || 'user';
     const booking = await storage.getServiceBooking(req.params.id);
     if (!booking) {
@@ -4501,7 +4504,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Get client profile (for experts/providers) - sanitized view
   // SECURITY: Experts can only see limited client information for their bookings
   app.get("/api/client/:clientId", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     const userRole = (req.user as any).claims.role || 'user';
     const { clientId } = req.params;
     
@@ -4559,7 +4562,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Create a booking
   app.post("/api/bookings", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const input = insertServiceBookingSchema.parse(req.body);
       
       // Verify service exists and is active
@@ -4598,7 +4601,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   const OWNER_SETTABLE_BOOKING_STATUSES = ["confirmed", "cancelled"];
   const handleOwnerBookingStatus = async (req: any, res: any) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const booking = await storage.getServiceBooking(req.params.id);
       if (!booking || booking.providerId !== userId) {
         return res.status(404).json({ message: "Booking not found or not yours" });
@@ -4660,7 +4663,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Update visa application status on a service booking (expert/provider action)
   app.patch("/api/service-bookings/:id/visa-status", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const booking = await storage.getServiceBooking(req.params.id);
       if (!booking || booking.providerId !== userId) {
         return res.status(404).json({ message: "Booking not found or not yours" });
@@ -4725,7 +4728,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Update traveler's document checklist checked state
   app.patch("/api/service-bookings/:id/document-checklist", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const booking = await storage.getServiceBooking(req.params.id);
       if (!booking || booking.travelerId !== userId) {
         return res.status(404).json({ message: "Booking not found or not yours" });
@@ -4749,7 +4752,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Cancel booking (traveler action)
   app.post("/api/bookings/:id/cancel", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const booking = await storage.getServiceBooking(req.params.id);
       if (!booking || booking.travelerId !== userId) {
         return res.status(404).json({ message: "Booking not found or not yours" });
@@ -4772,7 +4775,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Provider responds to a review
   app.post("/api/expert/reviews/:id/respond", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const review = await storage.getServiceReview(req.params.id);
       if (!review || review.providerId !== userId) {
         return res.status(404).json({ message: "Review not found or not for your service" });
@@ -4790,7 +4793,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   // Get expert's analytics/stats
   app.get("/api/expert/analytics", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     const services = await storage.getProviderServicesByStatus(userId);
     const bookings = await storage.getServiceBookings({ providerId: userId });
     
@@ -4818,7 +4821,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.get("/api/expert/dashboard", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const services = await storage.getProviderServicesByStatus(userId);
       const bookings = await storage.getServiceBookings({ providerId: userId });
       const earnings = await storage.getExpertEarnings(userId);
@@ -4848,7 +4851,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.get("/api/provider/dashboard", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const services = await storage.getProviderServicesByStatus(userId);
       const bookings = await storage.getServiceBookings({ providerId: userId });
       const totalRevenue = services.reduce((sum, s) => sum + Number(s.totalRevenue || 0), 0);
@@ -4868,7 +4871,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Get comprehensive expert analytics dashboard data
   app.get("/api/expert/analytics/dashboard", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const services = await storage.getProviderServicesByStatus(userId);
       const bookings = await storage.getServiceBookings({ providerId: userId });
       const earnings = await storage.getExpertEarnings(userId);
@@ -5002,7 +5005,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Get market intelligence for experts - filtered by their markets
   app.get("/api/expert/market-intelligence", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       
       // Get expert's profile to find their markets/destinations
       const expertProfile = await storage.getLocalExpertForm(userId);
@@ -5125,7 +5128,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Get service recommendations for experts based on TravelPulse trends
   app.get("/api/recommendations/expert", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const limit = parseInt(req.query.limit as string) || 10;
       
       // Get expert's profile to find their markets/destinations
@@ -5158,7 +5161,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Get service recommendations for providers
   app.get("/api/recommendations/provider", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const limit = parseInt(req.query.limit as string) || 10;
       
       // Get provider's service locations
@@ -5190,7 +5193,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const experienceType = req.query.experienceType as string | undefined;
       const preferences = req.query.preferences ? (req.query.preferences as string).split(",") : undefined;
       const limit = parseInt(req.query.limit as string) || 10;
-      const userId = ((req.user as any)?.claims?.sub ?? (req.user as any)?.id) || "anonymous";
+      const userId = getUserId(req)! || "anonymous";
       
       // If no city provided, return trending destinations as recommendations
       const { serviceRecommendationEngine } = await import("./services/recommendation.service");
@@ -5267,7 +5270,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   app.post("/api/recommendations/:id/convert", isAuthenticated, async (req, res) => {
     try {
       const { id } = req.params;
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       
       // Validate request body
       const conversionSchema = z.object({
@@ -5311,7 +5314,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Get provider analytics dashboard
   app.get("/api/provider/analytics/dashboard", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const services = await storage.getProviderServicesByStatus(userId);
       const bookings = await storage.getServiceBookings({ providerId: userId });
       
@@ -5380,7 +5383,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Get cart items
   app.get("/api/cart", isAuthenticated, async (req, res) => {
     try {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     const rawSlug = req.query.experience as string | undefined;
     const experienceSlug = rawSlug ? resolveSlug(rawSlug) : undefined;
     const items = await storage.getCartItems(userId, experienceSlug);
@@ -5474,7 +5477,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Resolve cart items into a trip (creates draft trip + backfills tripId on cart items)
   app.post("/api/cart/resolve-trip", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const { experienceSlug, userExperienceId } = req.body;
 
       // External (affiliate/AI) cart items live only in the client's sessionStorage —
@@ -5640,7 +5643,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Add to cart
   app.post("/api/cart", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const { serviceId, customVenueId, quantity, tripId, scheduledDate, notes, experienceSlug: rawSlug, contentType, contentId, contentMeta, slotId } = req.body;
 
       console.log("[Cart] Add to cart request:", { serviceId, customVenueId, contentType, contentId, experienceSlug: rawSlug });
@@ -5776,7 +5779,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Update cart item
   app.patch("/api/cart/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const existing = await storage.getCartItemById(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Cart item not found" });
@@ -5799,7 +5802,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Remove from cart
   app.delete("/api/cart/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const existing = await storage.getCartItemById(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Cart item not found" });
@@ -5817,7 +5820,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Clear cart
   app.delete("/api/cart", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const experienceSlug = req.query.experience as string | undefined;
       await cartProjection.clearCart(userId, experienceSlug);
       res.status(204).send();
@@ -5829,7 +5832,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Migrate guest cart after login/signup
   app.post("/api/cart/migrate", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const { guestSessionId } = req.body;
       if (!guestSessionId || typeof guestSessionId !== "string") {
         return res.status(400).json({ message: "guestSessionId is required" });
@@ -5845,7 +5848,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Convert content cart items into itinerary items
   app.post("/api/cart/convert-to-itinerary", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const { tripId, newTripName, destination, cartItemIds } = req.body;
 
       if (!cartItemIds || !Array.isArray(cartItemIds) || cartItemIds.length === 0) {
@@ -5955,7 +5958,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // unattributable financial artifact should not be shown to a caller who merely guessed an id.
   // 404, not 403, so the endpoint does not confirm that an id exists to someone probing.
   app.get("/api/contracts/:id", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
     const contract = await storage.getContract(req.params.id);
@@ -5979,7 +5982,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.post("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const { userExperienceId, tripId, title, destination, startDate, endDate, budget, travelers, baselineItems: inlineBaselineItems, experienceTypeSlug, optimizationPaymentId } = req.body;
 
       // SECURITY: `tripId` is caller-supplied and is persisted onto the comparison row, which
@@ -6156,7 +6159,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.get("/api/dashboard/trip-scores", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
 
       const allComps = await db
         .select({
@@ -6214,7 +6217,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.get("/api/itinerary-comparisons", heavyReadRateLimit, isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const comparisons = await db
         .select()
         .from(itineraryComparisons)
@@ -6230,7 +6233,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.get("/api/itinerary-comparisons/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const result = await getComparisonWithVariants(req.params.id);
 
       if (!result) {
@@ -6250,7 +6253,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.post("/api/itinerary-comparisons/:id/generate", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const comparisonId = req.params.id;
       const { baselineItems: inlineBaselineItems, feedback: rawFeedback, optimizationPaymentId } = req.body;
 
@@ -6484,7 +6487,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.post("/api/itinerary-comparisons/:id/select", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const { variantId } = req.body;
 
       const comparison = await db.query.itineraryComparisons.findFirst({
@@ -6514,7 +6517,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.post("/api/itinerary-comparisons/:id/apply-to-cart", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const comparisonId = req.params.id;
 
       const comparison = await db.query.itineraryComparisons.findFirst({
@@ -6587,7 +6590,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.get("/api/provider/availability", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const slots = await storage.getProviderAvailabilitySlots(userId);
       res.json(slots);
     } catch (error) {
@@ -6606,7 +6609,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // provider_services row, or a provider could create slots on another provider's service.
   app.post("/api/provider/availability", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const availabilityInput = z.object({
         serviceId: z.string().min(1),
         date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "date must be YYYY-MM-DD"),
@@ -6634,7 +6637,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.patch("/api/provider/availability/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const updateInput = z.object({
         date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "date must be YYYY-MM-DD").optional(),
         startTime: z.string().min(1).max(10).optional(),
@@ -6658,7 +6661,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.delete("/api/provider/availability/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const existingSlot = await storage.getVendorAvailabilitySlot(req.params.id);
       if (!existingSlot) return res.status(404).json({ message: "Slot not found" });
       if (existingSlot.providerId !== userId) return res.status(403).json({ message: "Unauthorized" });
@@ -6684,7 +6687,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Coordination States
   app.get("/api/coordination-states", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const states = await storage.getCoordinationStates(userId);
       res.json(states);
     } catch (error) {
@@ -6697,7 +6700,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     try {
       const state = await storage.getCoordinationState(req.params.id);
       if (!state) return res.status(404).json({ message: "Coordination state not found" });
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       if (state.userId !== userId) return res.status(403).json({ message: "Unauthorized" });
       res.json(state);
     } catch (error) {
@@ -6708,7 +6711,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.get("/api/coordination-states/active/:experienceType", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const state = await storage.getActiveCoordinationState(userId, req.params.experienceType);
       res.json(state || null);
     } catch (error) {
@@ -6719,7 +6722,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.post("/api/coordination-states", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const coordInput = z.object({
         experienceType: z.string().min(1).max(100),
         title: z.string().min(1).max(255).optional(),
@@ -6778,7 +6781,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       }).parse(req.body);
       const state = await storage.getCoordinationState(req.params.id);
       if (!state) return res.status(404).json({ message: "Coordination state not found" });
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       if (state.userId !== userId) return res.status(403).json({ message: "Unauthorized" });
       // D-BUDGET(interim): if the patch carries metadata.budget, persist it to the `budget` column
       // (same { amount: dollars, currency } contract as create).
@@ -6801,7 +6804,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     try {
       const state = await storage.getCoordinationState(req.params.id);
       if (!state) return res.status(404).json({ message: "Coordination state not found" });
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
 
       const isTraveler = state.userId === userId;
       const isCoordinator = state.assignedExpertId === userId;
@@ -6837,7 +6840,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     try {
       const state = await storage.getCoordinationState(req.params.id);
       if (!state) return res.status(404).json({ message: "Coordination state not found" });
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       if (state.userId !== userId) return res.status(403).json({ message: "Unauthorized" });
       await storage.deleteCoordinationState(req.params.id);
       res.json({ message: "Coordination state deleted" });
@@ -6852,7 +6855,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     try {
       const state = await storage.getCoordinationState(req.params.coordinationId);
       if (!state) return res.status(404).json({ message: "Coordination state not found" });
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       if (state.userId !== userId) return res.status(403).json({ message: "Unauthorized" });
       const bookings = await storage.getCoordinationBookings(req.params.coordinationId);
       res.json(bookings);
@@ -6877,7 +6880,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       }).parse(req.body);
       const state = await storage.getCoordinationState(req.params.coordinationId);
       if (!state) return res.status(404).json({ message: "Coordination state not found" });
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       if (state.userId !== userId) return res.status(403).json({ message: "Unauthorized" });
       const booking = await storage.createCoordinationBooking({ 
         ...bookingInput, 
@@ -6903,7 +6906,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         scheduledDate: z.string().optional(),
         notes: z.string().max(1000).optional(),
       }).parse(req.body);
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const booking = await storage.getCoordinationBooking(req.params.id);
       if (!booking) return res.status(404).json({ message: "Booking not found" });
       const state = await storage.getCoordinationState(booking.coordinationId);
@@ -6921,7 +6924,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.post("/api/coordination-bookings/:id/confirm", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const booking = await storage.getCoordinationBooking(req.params.id);
       if (!booking) return res.status(404).json({ message: "Booking not found" });
       const state = await storage.getCoordinationState(booking.coordinationId);
@@ -6937,7 +6940,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.delete("/api/coordination-bookings/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const booking = await storage.getCoordinationBooking(req.params.id);
       if (!booking) return res.status(404).json({ message: "Booking not found" });
       const state = await storage.getCoordinationState(booking.coordinationId);
@@ -6958,7 +6961,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     try {
       const state = await storage.getCoordinationState(req.params.id);
       if (!state) return res.status(404).json({ message: "Coordination state not found" });
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       if (state.userId !== userId) return res.status(403).json({ message: "Unauthorized" });
 
       const eventType = state.experienceType;
@@ -6991,7 +6994,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // §15: atomic conditional UPDATE + deterministic Stripe idempotencyKey, both directions.
   app.post("/api/coordination-states/:id/pay", isAuthenticated, async (req, res) => {
     const coordinationId = req.params.id;
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     let claimedCreditCents = 0;
     try {
       const state = await storage.getCoordinationState(coordinationId);
@@ -7189,7 +7192,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   app.post("/api/coordination-states/:id/pay/confirm", isAuthenticated, async (req, res) => {
     try {
       const coordinationId = req.params.id;
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const state = await storage.getCoordinationState(coordinationId);
       if (!state) return res.status(404).json({ message: "Coordination state not found" });
       if (state.userId !== userId) return res.status(403).json({ message: "Unauthorized" });
@@ -7265,7 +7268,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   app.post("/api/coordination-states/:id/refund", isAuthenticated, async (req, res) => {
     try {
       const coordinationId = req.params.id;
-      const callerId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const callerId = getUserId(req)!;
 
       // Admin-only gate (inline, consistent with other admin checks in this file)
       const [callerRow] = await db.select({ role: users.role }).from(users).where(eq(users.id, callerId));
@@ -7405,7 +7408,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     try {
       const state = await storage.getCoordinationState(req.params.id);
       if (!state) return res.status(404).json({ message: "Coordination state not found" });
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       if (state.userId !== userId) return res.status(403).json({ message: "Unauthorized" });
 
       const tripId = state.tripId;
@@ -7426,7 +7429,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     try {
       const state = await storage.getCoordinationState(req.params.id);
       if (!state) return res.status(404).json({ message: "Coordination state not found" });
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       if (state.userId !== userId) return res.status(403).json({ message: "Unauthorized" });
 
       const tripId = state.tripId;
@@ -7448,7 +7451,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.get("/api/expert/coordination-states/:tripId", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       // Verify the expert is assigned to this trip
       const isAssigned = await storage.isExpertAssignedToTrip(req.params.tripId, userId);
       if (!isAssigned) {
@@ -7764,7 +7767,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         return res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten() });
       }
 
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const { destination, country, dates, travelers, interests, pacePreference } = parsed.data;
 
       // Fetch city intelligence from TravelPulse
@@ -7902,7 +7905,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Get expert's AI tasks
   app.get("/api/expert/ai-tasks", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const status = req.query.status as string | undefined;
       
       const tasks = await db.select()
@@ -7936,7 +7939,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         return res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten() });
       }
 
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const { taskType, taskDescription, clientName, context } = parsed.data;
 
       // Create task in pending status
@@ -8024,7 +8027,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Approve/Send a task
   app.post("/api/expert/ai-tasks/:taskId/approve", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const { taskId } = req.params;
       const { editedContent } = req.body;
 
@@ -8057,7 +8060,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Reject a task
   app.post("/api/expert/ai-tasks/:taskId/reject", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const { taskId } = req.params;
 
       const [task] = await db.select()
@@ -8087,7 +8090,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Regenerate a task
   app.post("/api/expert/ai-tasks/:taskId/regenerate", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const { taskId } = req.params;
 
       const [task] = await db.select()
@@ -8164,7 +8167,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Get expert AI stats
   app.get("/api/expert/ai-stats", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
@@ -8227,7 +8230,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     if (!req.isAuthenticated()) {
       return res.status(401).json({ message: "Authentication required" });
     }
-    const user = await db.select().from(users).where(eq(users.id, (req.user as any)?.claims?.sub ?? (req.user as any)?.id)).then(r => r[0]);
+    const user = await db.select().from(users).where(eq(users.id, getUserId(req)!)).then(r => r[0]);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -8313,7 +8316,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   // --- Coordination / Participants Routes (using asyncHandler for consistent error handling) ---
   app.get("/api/trips/:tripId/participants", isAuthenticated, asyncHandler(async (req, res) => {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     if (!await verifyTripOwnership(req.params.tripId, userId)) {
       throw new ForbiddenError("Access denied to this trip");
     }
@@ -8322,7 +8325,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   }));
 
   app.get("/api/trips/:tripId/participants/stats", isAuthenticated, asyncHandler(async (req, res) => {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     if (!await verifyTripOwnership(req.params.tripId, userId)) {
       throw new ForbiddenError("Access denied to this trip");
     }
@@ -8331,7 +8334,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   }));
 
   app.get("/api/trips/:tripId/participants/payment-stats", isAuthenticated, asyncHandler(async (req, res) => {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     if (!await verifyTripOwnership(req.params.tripId, userId)) {
       throw new ForbiddenError("Access denied to this trip");
     }
@@ -8340,7 +8343,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   }));
 
   app.get("/api/trips/:tripId/participants/dietary", isAuthenticated, asyncHandler(async (req, res) => {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     if (!await verifyTripOwnership(req.params.tripId, userId)) {
       throw new ForbiddenError("Access denied to this trip");
     }
@@ -8350,7 +8353,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.post("/api/trips/:tripId/participants", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       if (!await verifyTripOwnership(req.params.tripId, userId)) {
         return res.status(403).json({ message: "Access denied" });
       }
@@ -8377,7 +8380,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // materially larger disclosure than anything an expert surface has ever shown.
   app.post("/api/trips/:tripId/participants/bulk-invite", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const denied = await authorizeTripOwnerTier(
         req.params.tripId, userId, "POST /api/trips/:tripId/participants/bulk-invite",
       );
@@ -8415,7 +8418,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // financial/legal artifact on the traveler's trip is owner-only.
   app.get("/api/trips/:tripId/contracts", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const denied = await authorizeTripLogistics(
         req.params.tripId, userId, "GET /api/trips/:tripId/contracts",
       );
@@ -8429,7 +8432,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.get("/api/trips/:tripId/contracts/stats", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const denied = await authorizeTripLogistics(
         req.params.tripId, userId, "GET /api/trips/:tripId/contracts/stats",
       );
@@ -8443,7 +8446,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.get("/api/trips/:tripId/contracts/upcoming-payments", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const denied = await authorizeTripLogistics(
         req.params.tripId, userId, "GET /api/trips/:tripId/contracts/upcoming-payments",
       );
@@ -8458,7 +8461,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.get("/api/trips/:tripId/contracts/overdue", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const denied = await authorizeTripLogistics(
         req.params.tripId, userId, "GET /api/trips/:tripId/contracts/overdue",
       );
@@ -8472,7 +8475,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.post("/api/trips/:tripId/contracts", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const denied = await authorizeTripOwnerTier(
         req.params.tripId, userId, "POST /api/trips/:tripId/contracts",
       );
@@ -8489,7 +8492,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.patch("/api/contracts/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const existing = await vendorManagementService.getContract(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Contract not found" });
@@ -8506,7 +8509,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.post("/api/contracts/:id/payment", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const existing = await vendorManagementService.getContract(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Contract not found" });
@@ -8524,7 +8527,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.post("/api/contracts/:id/milestone", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const existing = await vendorManagementService.getContract(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Contract not found" });
@@ -8541,7 +8544,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.post("/api/contracts/:id/communication", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const existing = await vendorManagementService.getContract(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Contract not found" });
@@ -8558,7 +8561,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.delete("/api/contracts/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const existing = await vendorManagementService.getContract(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Contract not found" });
@@ -8580,7 +8583,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // throughout this block, NOT `authorizeTripLogistics`.
   app.get("/api/trips/:tripId/transactions", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const denied = await authorizeTripOwnerTier(
         req.params.tripId, userId, "GET /api/trips/:tripId/transactions",
       );
@@ -8594,7 +8597,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.get("/api/trips/:tripId/budget/summary", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const denied = await authorizeTripOwnerTier(
         req.params.tripId, userId, "GET /api/trips/:tripId/budget/summary",
       );
@@ -8609,7 +8612,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.get("/api/trips/:tripId/budget/categories", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const denied = await authorizeTripOwnerTier(
         req.params.tripId, userId, "GET /api/trips/:tripId/budget/categories",
       );
@@ -8623,7 +8626,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.get("/api/trips/:tripId/budget/settle-up", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const denied = await authorizeTripOwnerTier(
         req.params.tripId, userId, "GET /api/trips/:tripId/budget/settle-up",
       );
@@ -8637,7 +8640,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.post("/api/trips/:tripId/transactions", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const denied = await authorizeTripOwnerTier(
         req.params.tripId, userId, "POST /api/trips/:tripId/transactions",
       );
@@ -8654,7 +8657,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.post("/api/trips/:tripId/transactions/split", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const denied = await authorizeTripOwnerTier(
         req.params.tripId, userId, "POST /api/trips/:tripId/transactions/split",
       );
@@ -8680,7 +8683,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.post("/api/trips/:tripId/budget/calculate-split", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const denied = await authorizeTripOwnerTier(
         req.params.tripId, userId, "POST /api/trips/:tripId/budget/calculate-split",
       );
@@ -8701,7 +8704,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Authoritative GET: requires trip ownership or expert assignment; returns items grouped by day
   app.get("/api/trips/:tripId/itinerary-items", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const { tripId } = req.params;
       const owned = await verifyTripOwnership(tripId, userId);
       const assigned = owned ? true : await storage.isExpertAssignedToTrip(tripId, userId);
@@ -8729,7 +8732,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // admin (`authorizeTripLogistics`): reasoning over the plan is squarely the expert's job.
   app.get("/api/trips/:tripId/itinerary/schedules", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const denied = await authorizeTripLogistics(
         req.params.tripId, userId, "GET /api/trips/:tripId/itinerary/schedules",
       );
@@ -8743,7 +8746,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.get("/api/trips/:tripId/itinerary/analyze", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const denied = await authorizeTripLogistics(
         req.params.tripId, userId, "GET /api/trips/:tripId/itinerary/analyze",
       );
@@ -8763,7 +8766,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // added to the shared `ai:<ip>` bucket, so they cannot starve it.
   app.get("/api/trips/:tripId/itinerary/recommendations", aiRateLimit, isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const denied = await authorizeTripLogistics(
         req.params.tripId, userId, "GET /api/trips/:tripId/itinerary/recommendations",
       );
@@ -8779,7 +8782,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Authoritative POST: requires trip ownership or expert assignment; validates via Zod schema
   app.post("/api/trips/:tripId/itinerary-items", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const userName = (req.user as any).claims.name || "User";
       const { tripId } = req.params;
       const owned = await verifyTripOwnership(tripId, userId);
@@ -8844,7 +8847,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.patch("/api/itinerary-items/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const userName = (req.user as any).claims.name || "User";
       const existing = await itineraryIntelligenceService.getItem(req.params.id);
       if (!existing) {
@@ -8864,7 +8867,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.post("/api/itinerary-items/:id/backup", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const existing = await itineraryIntelligenceService.getItem(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Itinerary item not found" });
@@ -8882,7 +8885,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.post("/api/trips/:tripId/itinerary/reorder", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const userName = (req.user as any).claims.name || "User";
       // SECURITY: this mutates another user's itinerary ordering; `isAuthenticated` alone was the
       // only gate. Canonical authorization, matching the sibling itinerary-item handlers above.
@@ -8915,7 +8918,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.post("/api/trips/:tripId/itinerary/optimize-order", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       // SECURITY: same omission as the reorder handler above — `isAuthenticated` only, no trip
       // authorization, so any authenticated user could compute an optimized order for any trip.
       const denied = await authorizeTripLogistics(req.params.tripId, userId, "POST /api/trips/:tripId/itinerary/optimize-order");
@@ -8956,7 +8959,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const { tripId } = req.params;
       // Email/password sessions carry the id at claims.sub, not .id — a bare .id read
       // made this endpoint 404 for every standard account (plancard audit F2 class).
-      const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
+      const userId = getUserId(req)!;
 
       const [trip] = await db
         .select()
@@ -9067,7 +9070,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.delete("/api/itinerary-items/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const userName = (req.user as any).claims.name || "User";
       const existing = await itineraryIntelligenceService.getItem(req.params.id);
       if (!existing) {
@@ -9090,7 +9093,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // RAISING an alert is the one write the assigned expert may perform (see POST /alerts below).
   app.get("/api/trips/:tripId/emergency-contacts", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const denied = await authorizeTripLogistics(
         req.params.tripId, userId, "GET /api/trips/:tripId/emergency-contacts",
       );
@@ -9104,7 +9107,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.get("/api/trips/:tripId/emergency-contacts/by-type", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const denied = await authorizeTripLogistics(
         req.params.tripId, userId, "GET /api/trips/:tripId/emergency-contacts/by-type",
       );
@@ -9118,7 +9121,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.post("/api/trips/:tripId/emergency-contacts", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const denied = await authorizeTripOwnerTier(
         req.params.tripId, userId, "POST /api/trips/:tripId/emergency-contacts",
       );
@@ -9135,7 +9138,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.post("/api/trips/:tripId/emergency/initialize", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const denied = await authorizeTripOwnerTier(
         req.params.tripId, userId, "POST /api/trips/:tripId/emergency/initialize",
       );
@@ -9152,7 +9155,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.get("/api/trips/:tripId/alerts", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const denied = await authorizeTripLogistics(
         req.params.tripId, userId, "GET /api/trips/:tripId/alerts",
       );
@@ -9166,7 +9169,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   app.get("/api/trips/:tripId/alerts/summary", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const denied = await authorizeTripLogistics(
         req.params.tripId, userId, "GET /api/trips/:tripId/alerts/summary",
       );
@@ -9183,7 +9186,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // assigned expert ‖ author ‖ admin) — NOT the owner-only tier.
   app.post("/api/trips/:tripId/alerts", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const denied = await authorizeTripLogistics(
         req.params.tripId, userId, "POST /api/trips/:tripId/alerts",
       );
@@ -9239,7 +9242,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // fallback message when their lead could not be auto-assigned
   app.get("/api/trips/:tripId/expert-request-status", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const { tripId } = req.params;
       const rows = await db

@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { getUserId } from "../utils/auth";
 import { z } from "zod";
 import { eq, and, inArray, asc, desc } from "drizzle-orm";
 import { db } from "../db";
@@ -38,7 +39,7 @@ const router = Router();
 
 /** Resolve the session user's id iff they are a provider (or admin); else 403 and return null. */
 async function requireProviderRole(req: any, res: any): Promise<string | null> {
-  const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+  const userId = getUserId(req)!;
   if (!userId) {
     res.status(401).json({ message: "Authentication required" });
     return null;

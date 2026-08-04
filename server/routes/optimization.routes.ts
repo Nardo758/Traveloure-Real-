@@ -15,6 +15,7 @@
  */
 
 import { Router } from "express";
+import { getUserId } from "../utils/auth";
 import { db } from "../db";
 import { itineraryComparisons, users, trips, userExperiences, experienceTypes, platformRevenue, coordinationFeeCredits, cartItems } from "@shared/schema";
 import { eq, and, gte } from "drizzle-orm";
@@ -83,7 +84,7 @@ router.post("/api/optimization-preview", async (req, res) => {
 
     // Check free re-run for authenticated users
     let freeRerun = false;
-    const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
+    const userId = getUserId(req)!;
     if (userId) {
       const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000);
       const [recent] = await db
@@ -140,7 +141,7 @@ router.get("/api/optimization-fee", isAuthenticated, async (req, res) => {
       });
     }
 
-    const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+    const userId = getUserId(req)!;
     const { eventType: dbEventType, ownerId } = await resolveTargetFromDb(tripId, userExperienceId);
     if (ownerId === undefined) {
       return res.status(404).json({ error: "Target trip or experience not found" });
@@ -223,7 +224,7 @@ async function respondIfCartAwaitsConversion(userId: string, res: any): Promise<
 
 router.post("/api/optimization-payments", isAuthenticated, async (req, res) => {
   try {
-    const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+    const userId = getUserId(req)!;
     const { tripId, userExperienceId, comparisonContext } = req.body;
 
     // Require a concrete optimization target — cannot omit both
@@ -387,7 +388,7 @@ router.post("/api/optimization-payments", isAuthenticated, async (req, res) => {
  */
 router.post("/api/optimization-payments/confirm", isAuthenticated, async (req, res) => {
   try {
-    const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+    const userId = getUserId(req)!;
     const { paymentIntentId, comparisonId, feeCents, currency = "USD" } = req.body;
 
     if (!paymentIntentId) {

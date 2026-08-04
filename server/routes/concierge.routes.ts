@@ -21,6 +21,7 @@
  * possession-of-the-request, NOT `isAuthenticated`.
  */
 import { Router } from "express";
+import { getUserId } from "../utils/auth";
 import { createHmac, timingSafeEqual } from "crypto";
 import { z } from "zod";
 import { and, eq, ilike, desc, sql } from "drizzle-orm";
@@ -114,7 +115,7 @@ const createRequestSchema = z.object({
 router.post("/api/concierge/requests", async (req, res) => {
   try {
     const body = createRequestSchema.parse(req.body);
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id ?? null;
+    const userId = getUserId(req)!;
 
     const [row] = await db
       .insert(conciergeRequests)
@@ -163,7 +164,7 @@ const quoteSchema = z.object({
 router.post("/api/concierge/quote", async (req, res) => {
   try {
     const body = quoteSchema.parse(req.body);
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id ?? null;
+    const userId = getUserId(req)!;
 
     const route = await routeConcierge({
       intent: body.intent,
@@ -235,7 +236,7 @@ router.patch("/api/concierge/requests/:id", async (req, res) => {
     // property of the row (owner / guest-session / claim token), so it cannot be
     // decided from the URL alone — which is exactly what the hole was.
     const userId: string | null =
-      (req.user as any)?.claims?.sub ?? (req.user as any)?.id ?? null;
+      getUserId(req)!;
 
     const [target] = await db
       .select({ id: conciergeRequests.id, userId: conciergeRequests.userId })
@@ -333,7 +334,7 @@ router.patch("/api/concierge/requests/:id", async (req, res) => {
 
 router.post("/api/concierge/requests/:id/claim", async (req, res) => {
   try {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id ?? null;
+    const userId = getUserId(req)!;
     if (!userId) {
       return res.status(401).json({ error: "unauthenticated", message: "Sign in to claim a concierge request." });
     }

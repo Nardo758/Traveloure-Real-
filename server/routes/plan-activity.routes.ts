@@ -19,6 +19,7 @@
  * simply never matched today.
  */
 import { Router } from "express";
+import { getUserId } from "../utils/auth";
 import { and, desc, eq, gt, inArray } from "drizzle-orm";
 import { db } from "../db";
 import { isAuthenticated } from "../replit_integrations/auth";
@@ -32,7 +33,7 @@ const MAX_LOOKBACK_MS = 90 * 24 * 60 * 60 * 1000; // 90 days
 const RESULT_LIMIT = 20;
 
 function sessionUserId(req: any): string | undefined {
-  return (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+  return getUserId(req)!;
 }
 
 router.get("/api/me/plan-activity", isAuthenticated, async (req, res) => {
