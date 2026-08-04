@@ -53,6 +53,7 @@ import {
   SURFACE_SLUGS,
 } from "@shared/content-surface-map";
 import { db } from "./db";
+import { getPlatformFlag, FLAG_MAINTENANCE_MODE } from "./services/platform-flags";
 import { eq, and, or, ilike, sql, desc, count, ne, inArray, asc, isNull } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
 import { scoreKnowledgeProof, KNOWLEDGE_PROOF_QUESTIONS } from "./services/expertise-scoring.service";
@@ -499,6 +500,47 @@ export async function registerRoutes(
     }
   };
   app.use("/api/admin", adminApiGuard);
+
+  // ─── Maintenance mode gate ──────────────────────────────────────────────────
+  // When the admin flips the "Maintenance Mode" switch on /admin/system
+  // (platform_settings.maintenance_mode = 'true'), block non-admin API access
+  // with a 503. Exemptions so the platform stays administrable:
+  //   - /api/auth/* and /api/login|logout|callback — admins must be able to sign in
+  //   - /api/admin/* — the admin panel itself (adminApiGuard above already
+  //     enforces the admin role for this prefix)
+  //   - authenticated admins on any route
+  // Flag reads are cached (see platform-flags.ts); the role lookup only runs
+  // while maintenance mode is active.
+  app.use(async (req: any, res: any, next: any) => {
+    const p: string = req.path;
+    if (!p.startsWith("/api")) return next();
+    if (
+      p.startsWith("/api/auth") ||
+      p.startsWith("/api/login") ||
+      p.startsWith("/api/logout") ||
+      p.startsWith("/api/callback") ||
+      p.startsWith("/api/admin")
+    ) {
+      return next();
+    }
+    try {
+      const enabled = await getPlatformFlag(FLAG_MAINTENANCE_MODE, false);
+      if (!enabled) return next();
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      if (userId) {
+        const [user] = await db.select({ role: users.role }).from(users).where(eq(users.id, userId)).limit(1);
+        if (user?.role === "admin") return next();
+      }
+      return res.status(503).json({
+        maintenance: true,
+        message: "The platform is temporarily down for maintenance. Please try again shortly.",
+      });
+    } catch (err) {
+      // Fail open — a flag/DB read error must not take the whole API down.
+      console.error("[maintenance] gate check failed, allowing request:", err);
+      return next();
+    }
+  });
 
   // ─── Expert / Provider self-service RBAC backstop ──────────────────────────
   // Mirrors the admin guard pattern above. Protects all /api/expert/* and

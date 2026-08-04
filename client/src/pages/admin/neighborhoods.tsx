@@ -173,7 +173,7 @@ function NeighborhoodDetailPanel({
             {detail.neighborhood.city} / {detail.neighborhood.name}
             <code className="font-mono text-[10px] bg-gray-100 px-1 rounded">{detail.neighborhood.slug}</code>
           </CardTitle>
-          <Button size="sm" variant="ghost" onClick={onClose}>Close</Button>
+          <Button size="sm" variant="ghost" onClick={onClose} data-testid="button-close-neighborhood-detail">Close</Button>
         </div>
       </CardHeader>
 
