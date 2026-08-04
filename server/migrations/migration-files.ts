@@ -754,4 +754,13 @@ export const MIGRATION_FILES = [
   // Numbering note (ruling 19): 171 verified free on this branch at merge time; the
   // chain-integrity test is the arbiter if a concurrent lane also claims it.
   "171_item_transition_log.sql",
+  // 172: DATA-ONLY fixture purge — the 20 paid_out/NULL-payout_id earnings rows belonging to
+  // @example.com seed personas, archive-then-delete via legacy_archives (migration-168 pattern).
+  // Decision-maker ratified Aug 2, 2026 after invariant triage. Idempotent; no schema change.
+  "172_purge_fixture_paid_out_earnings.sql",
+  // 173: Console Realign Lane E5 (R-F, Trip Card delivery: Finalize) — additive nullable
+  // `trips.finalized_at` TIMESTAMP. No CHECK, no DEFAULT, no backfill; NOT a revival of the dead
+  // `trips.status` (Lane 3 Option B stands) — a narrow rendering-handover signal read only by the
+  // primary-surface rule. See 173_trips_finalized_at.sql for the full rationale.
+  "173_trips_finalized_at.sql",
 ] as const;

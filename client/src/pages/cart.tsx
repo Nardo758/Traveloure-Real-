@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, type ReactNode } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { createComparison as createComparisonRequest } from "@/lib/create-comparison";
 import { useAuth } from "@/hooks/use-auth";
 import { getGuestSessionId } from "@/lib/guestSession";
 import { getTripContext, updateTripContext, switchTripContext, useTripContext, type TripContext } from "@/lib/trip-context";
@@ -518,7 +519,7 @@ export default function CartPage() {
         description: "View and arrange them in your trip itinerary.",
       });
       setShowPlanningDialog(false);
-      setLocation(`/trip/${data.tripId}`);
+      setLocation(`/plans/${data.tripId}`);
     },
     onError: () => {
       toast({ variant: "destructive", title: "Failed to add items to trip" });
@@ -1200,25 +1201,39 @@ export default function CartPage() {
           }
         }
       }
-      return "Your destination";
+      return null;
     };
-    
+
+    // §13 honest-or-absent (mirrors discover.tsx's createComparison): don't invent
+    // "Your destination" — if nothing real resolves, block with a toast instead.
+    const knownDestination = getComparisonDestination();
+    if (!knownDestination) {
+      toast({
+        title: "Tell us where you're headed",
+        description: "Add an item with a location, or start from a trip with a destination, so we know where to plan for.",
+      });
+      setCreatingComparison(false);
+      return;
+    }
+
     try {
-      const response = await apiRequest("POST", "/api/itinerary-comparisons", {
+      const comparison = await createComparisonRequest({
         title: experienceContext?.title || "My Trip",
-        destination: getComparisonDestination(),
+        destination: knownDestination,
         startDate: experienceContext?.startDate || new Date().toISOString().split('T')[0],
         endDate: experienceContext?.endDate || new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
         budget: String(combinedTotal),
-        travelers: experienceContext?.travelers || 2,
+        // Real traveler count when known; otherwise omitted — server defaults to 1 (§13, no invented "2").
+        ...(typeof experienceContext?.travelers === "number" ? { travelers: experienceContext.travelers } : {}),
         baselineItems,
         tripId: experienceContext?.tripId,
         userExperienceId: experienceContext?.userExperienceId || experienceContext?.id,
-        ...(optimizationPaymentId ? { optimizationPaymentId } : {}),
+        optimizationPaymentId,
       });
-      
-      const comparison = await response.json();
-      // G7: if we have a tripId, signal the comparison page to auto-apply and redirect
+
+      // G7: if we have a tripId, signal the comparison page to auto-apply and redirect. This
+      // ?autoApply=1 query-param behavior is UNCHANGED (R-E only changed where the auto-apply
+      // path itself lands — see itinerary-comparison.tsx).
       const autoApplyFlag = experienceContext?.tripId ? "?autoApply=1" : "";
       setLocation(`/itinerary-comparison/${comparison.id}${autoApplyFlag}`);
     } catch (error: any) {

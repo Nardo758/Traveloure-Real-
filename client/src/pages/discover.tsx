@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { createComparison as createComparisonRequest } from "@/lib/create-comparison";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -731,8 +732,21 @@ export default function DiscoverPage() {
       toast({ title: "Please sign in", description: "Sign in to use AI comparison" });
       return;
     }
+    // §13 honest-or-absent: this page has no destination the user actually told us — no
+    // traveler-count picker either. Prefer a real destination (the cart's own service location,
+    // then whatever the user typed into the location filter); if neither exists, don't invent
+    // "Paris, France" — block with a toast instead of silently fabricating a destination.
+    const knownDestination = cart.items[0]?.service?.location || locationFilter.trim();
+    if (!knownDestination) {
+      toast({
+        title: "Tell us where you're headed",
+        description: "Search or filter by a destination first so we know where to plan for.",
+      });
+      return;
+    }
+
     setCreatingComparison(true);
-    
+
     const cartItems = cart.items.map((item: any) => ({
       name: item.service?.serviceName || "Service",
       category: item.service?.category || "service",
@@ -740,18 +754,19 @@ export default function DiscoverPage() {
       provider: item.service?.providerName || "Provider",
       location: item.service?.location || ""
     }));
-    
+
     try {
-      const response = await apiRequest("POST", "/api/itinerary-comparisons", {
+      // NOTE (payload-preservation): the pre-existing call here never sent `baselineItems` in the
+      // POST body (unlike the other three sites) — only sessionStorage carried the cart snapshot,
+      // for the comparison page's retry path. Preserved exactly; not a candidate fix for this lane.
+      const comparison = await createComparisonRequest({
         title: "My Trip",
-        destination: cart.items[0]?.service?.location || "Paris, France",
+        destination: knownDestination,
         startDate: new Date().toISOString().split('T')[0],
         endDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
         budget: cart.total,
-        travelers: 2
       });
-      
-      const comparison = await response.json();
+
       sessionStorage.setItem(`comparison_baseline_${comparison.id}`, JSON.stringify(cartItems));
       setLocation(`/itinerary-comparison/${comparison.id}`);
     } catch (error: any) {

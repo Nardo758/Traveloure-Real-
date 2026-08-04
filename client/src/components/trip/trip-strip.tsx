@@ -94,12 +94,16 @@ export function TripStrip() {
         ? `Your ${destination.split(",")[0]} ${(ctx.experienceType || "").toLowerCase()}`.trim()
         : `Your ${(ctx.experienceType || "trip").toLowerCase()}`;
 
-  const partyLabel =
-    vocab === "event"
-      ? `${ctx.travelers || 2} guests`
+  // Honest-or-absent (§13): render the party fragment only for a real traveler count the user
+  // actually entered — never an invented "2".
+  const hasTravelers = typeof ctx.travelers === "number" && ctx.travelers > 0;
+  const partyLabel = hasTravelers
+    ? vocab === "event"
+      ? `${ctx.travelers} guests`
       : vocab === "couple"
-        ? `Party of ${ctx.travelers || 2}`
-        : `${ctx.travelers || 2} traveler${(ctx.travelers || 2) === 1 ? "" : "s"}`;
+        ? `Party of ${ctx.travelers}`
+        : `${ctx.travelers} traveler${ctx.travelers === 1 ? "" : "s"}`
+    : "";
 
   const singleDay = ctx.startDate && ctx.startDate === ctx.endDate;
   const dateLabel = ctx.startDate
@@ -132,7 +136,7 @@ export function TripStrip() {
           </span>
         )}
 
-        {(ctx.travelers || vocab !== "travel") && (
+        {hasTravelers && (
           <span className="inline-flex items-center gap-1 rounded-full border border-primary/20 bg-background px-3 py-0.5 text-xs" data-testid="trip-strip-party">
             <Users className="w-3 h-3 text-muted-foreground" />
             {partyLabel}
