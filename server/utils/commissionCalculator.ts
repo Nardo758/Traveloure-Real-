@@ -14,7 +14,10 @@
  * Rate reference (business plan §4):
  *   EXPERT_SESSION   — new expert 85/15, established 75/25
  *   PROVIDER_BOOKING — tier 1=12 %, tier 2=8 %, tier 3=6 %, tier 4=4 %
- *   EXPERIENCE_CART  — 30 % platform fee (catalog checkout surface)
+ *   EXPERIENCE_CART  — platform take from fee_bands.experience_cart_checkout
+ *                      (migration 174; resolve via requireExperienceCartRate()
+ *                      and pass as options.experienceCartRate — keeps this
+ *                      module DB-free)
  *   CREDIT_PURCHASE  — 100 % platform (deferred revenue; no payout)
  */
 
@@ -56,6 +59,9 @@ export function calculateCommission(
   options?: {
     isNewExpert?: boolean;
     providerTier?: 1 | 2 | 3 | 4;
+    /** REQUIRED for EXPERIENCE_CART: platform-take fraction resolved from
+     *  fee_bands via requireExperienceCartRate() (ruling 25 / migration 174). */
+    experienceCartRate?: number;
   },
 ): CommissionResult {
   const round = (n: number) => Math.round(n * 100) / 100;
@@ -86,8 +92,16 @@ export function calculateCommission(
     }
 
     case BookingType.EXPERIENCE_CART: {
-      // 30 % platform fee — canonical checkout surface rate
-      const commissionRate = 0.30; // fee-literal-ok: canonical checkout rate; fee_bands routing filed to standing fee-literal follow-up (DECISIONS.md ruling 25)
+      // Ruling 25 / migration 174: the rate lives in fee_bands.experience_cart_checkout.
+      // This module stays DB-free, so the caller must resolve it (requireExperienceCartRate)
+      // and pass it in. Fail loud on a missing rate — no hardcoded fallback.
+      const commissionRate = options?.experienceCartRate;
+      if (commissionRate === undefined || !Number.isFinite(commissionRate) || commissionRate < 0 || commissionRate > 1) {
+        throw new Error(
+          "EXPERIENCE_CART requires options.experienceCartRate resolved from fee_bands " +
+          "(use requireExperienceCartRate() from server/services/commission.ts).",
+        );
+      }
       return {
         platformFee:   round(subtotal * commissionRate),
         bookingType,
