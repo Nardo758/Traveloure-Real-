@@ -148,8 +148,7 @@ import {
 
 // ─── Commission constants & resolver (canonical source: server/services/commission.ts) ─
 import {
-  EXPERT_SHARE_RATE,
-  PLATFORM_FEE_RATE,
+  getExpertSplitRates,
   PROCESSING_FEE_RATE,
   resolveCommissionRates,
   calcInsuranceFee,
@@ -3526,7 +3525,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         return res.status(400).json({ message: "You have already purchased this template" });
       }
 
-      // Resolve commission rates from booking_fee_configs (fallback: PLATFORM_FEE_RATE)
+      // Resolve commission rates from booking_fee_configs (fallback: fee_bands expert_standard)
       const templateRates = await resolveCommissionRates(template.category ?? null);
       const price = parseFloat(template.price as string);
       const platformFee = price * templateRates.platformFeeRate;
@@ -3808,7 +3807,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
       const effectiveRate = grossBookingTotal > 0
         ? Number(((ledgerSummary.total) / grossBookingTotal).toFixed(4))
-        : EXPERT_SHARE_RATE;
+        : (await getExpertSplitRates()).expertShareRate;
 
       const lastPayout = payouts[0];
 
