@@ -6510,7 +6510,8 @@ const suspendBodySchema = z.object({
 
 router.patch("/api/admin/users/:id/suspend", isAuthenticated, async (req, res) => {
   try {
-    const adminUserId = (req.user as any).claims?.sub;
+    // Email-auth sessions carry user.id (no claims); Replit Auth carries claims.sub.
+    const adminUserId = (req.user as any).claims?.sub ?? (req.user as any).id;
     const adminUser = await storage.getUser(adminUserId);
     if (!adminUser || adminUser.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
@@ -6628,7 +6629,8 @@ router.get("/api/admin/qa/verify", isAuthenticated, async (req, res) => {
 
 router.patch("/api/admin/users/:id/unsuspend", isAuthenticated, async (req, res) => {
   try {
-    const adminUserId = (req.user as any).claims?.sub;
+    // Email-auth sessions carry user.id (no claims); Replit Auth carries claims.sub.
+    const adminUserId = (req.user as any).claims?.sub ?? (req.user as any).id;
     const adminUser = await storage.getUser(adminUserId);
     if (!adminUser || adminUser.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
