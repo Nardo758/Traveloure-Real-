@@ -26,7 +26,7 @@ const sendMessageSchema = z.object({
 
 router.get("/", isAuthenticated, async (req, res) => {
   try {
-    const userId = (req as any).user?.claims?.sub;
+    const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
 
     const partyType = (req.query.party as string)?.toLowerCase();
@@ -42,7 +42,7 @@ router.get("/", isAuthenticated, async (req, res) => {
 
 router.get("/conversation/:conversationId", isAuthenticated, async (req, res) => {
   try {
-    const userId = (req as any).user?.claims?.sub;
+    const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
     const { conversationId } = req.params;
     const { userId1, userId2 } = parseConversationId(conversationId);
 
@@ -60,7 +60,7 @@ router.get("/conversation/:conversationId", isAuthenticated, async (req, res) =>
 
 router.get("/unread/count", isAuthenticated, async (req, res) => {
   try {
-    const userId = (req as any).user?.claims?.sub;
+    const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
     const count = await getUnreadMessageCount(userId);
     res.json({ count });
   } catch (error) {
@@ -70,7 +70,7 @@ router.get("/unread/count", isAuthenticated, async (req, res) => {
 
 router.get("/search/query", isAuthenticated, async (req, res) => {
   try {
-    const userId = (req as any).user?.claims?.sub;
+    const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
     const query = (req.query.q as string)?.trim();
     const limit = Math.min(parseInt(req.query.limit as string) || 20, 50);
 
@@ -87,7 +87,7 @@ router.get("/search/query", isAuthenticated, async (req, res) => {
 
 router.get("/:id", isAuthenticated, async (req, res) => {
   try {
-    const userId = (req as any).user?.claims?.sub;
+    const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
     const message = await getMessageById(req.params.id);
     if (!message) return res.status(404).json({ message: "Message not found" });
     if (message.senderId !== userId && message.receiverId !== userId) {
@@ -110,7 +110,7 @@ router.get("/:id", isAuthenticated, async (req, res) => {
 
 router.post("/", isAuthenticated, async (req, res) => {
   try {
-    const userId = (req as any).user?.claims?.sub;
+    const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
     const validation = sendMessageSchema.safeParse(req.body);
     if (!validation.success) {
       return res.status(400).json({ message: validation.error.errors[0]?.message });
@@ -147,7 +147,7 @@ router.post("/", isAuthenticated, async (req, res) => {
 
 router.patch("/:messageId/read", isAuthenticated, async (req, res) => {
   try {
-    const userId = (req as any).user?.claims?.sub;
+    const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
     const message = await getMessageById(req.params.messageId);
     if (!message) return res.status(404).json({ message: "Message not found" });
     if (message.receiverId !== userId) {
@@ -163,7 +163,7 @@ router.patch("/:messageId/read", isAuthenticated, async (req, res) => {
 
 router.patch("/conversation/:conversationId/read-all", isAuthenticated, async (req, res) => {
   try {
-    const userId = (req as any).user?.claims?.sub;
+    const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
     const { conversationId } = req.params;
     const { userId1, userId2 } = parseConversationId(conversationId);
 
@@ -180,7 +180,7 @@ router.patch("/conversation/:conversationId/read-all", isAuthenticated, async (r
 
 router.get("/typing/:conversationId", isAuthenticated, async (req, res) => {
   try {
-    const userId = (req as any).user?.claims?.sub;
+    const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
     const { conversationId } = req.params;
     const { userId1, userId2 } = parseConversationId(conversationId);
     if (userId !== userId1 && userId !== userId2) {
@@ -194,7 +194,7 @@ router.get("/typing/:conversationId", isAuthenticated, async (req, res) => {
 
 router.post("/typing/:conversationId", isAuthenticated, async (req, res) => {
   try {
-    const userId = (req as any).user?.claims?.sub;
+    const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
     const { conversationId } = req.params;
     const { userId1, userId2 } = parseConversationId(conversationId);
     if (userId !== userId1 && userId !== userId2) {

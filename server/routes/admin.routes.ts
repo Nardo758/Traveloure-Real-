@@ -225,7 +225,7 @@ function serviceCategorySlugToFeeCategory(slug: string | null | undefined): stri
 
 const requireAdminLocal = async (req: any, res: any, next: any) => {
   if (!req.isAuthenticated()) return res.status(401).json({ message: "Authentication required" });
-  const user = await getAdminRole(req.user?.claims?.sub);
+  const user = await getAdminRole((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
   if (!user || user.role !== "admin") return res.status(403).json({ message: "Admin access required" });
   next();
 };
@@ -2406,7 +2406,7 @@ router.post("/api/admin/destination-events/:id/reject", isAuthenticated, async (
 
 router.get("/api/admin/data/location-summary", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -2439,7 +2439,7 @@ router.get("/api/admin/data/location-summary", isAuthenticated, async (req, res)
 
 router.get("/api/admin/affiliate/reconciliation", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -2466,7 +2466,7 @@ router.get("/api/admin/affiliate/reconciliation", isAuthenticated, async (req, r
 
 router.patch("/api/admin/affiliate/reconciliation/:earningId", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -2493,7 +2493,7 @@ router.patch("/api/admin/affiliate/reconciliation/:earningId", isAuthenticated, 
 
 router.get("/api/admin/content/summary", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -2511,7 +2511,7 @@ router.get("/api/admin/content/summary", isAuthenticated, async (req, res) => {
 
 router.get("/api/admin/content/registry", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -2539,7 +2539,7 @@ router.get("/api/admin/content/registry", isAuthenticated, async (req, res) => {
 
 router.get("/api/admin/content/providers", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -2556,7 +2556,7 @@ router.get("/api/admin/content/providers", isAuthenticated, async (req, res) => 
 
 router.get("/api/admin/content/:trackingNumber", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -2589,7 +2589,7 @@ router.get("/api/admin/content/:trackingNumber", isAuthenticated, async (req, re
 
 router.post("/api/admin/content/register", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -2626,7 +2626,7 @@ router.post("/api/admin/content/register", isAuthenticated, async (req, res) => 
 
 router.get("/api/admin/content/moderation/queue", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -2644,7 +2644,7 @@ router.get("/api/admin/content/moderation/queue", isAuthenticated, async (req, r
 
 router.post("/api/admin/content/:trackingNumber/moderate", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -2679,7 +2679,7 @@ router.post("/api/admin/content/:trackingNumber/moderate", isAuthenticated, asyn
 
 router.get("/api/admin/content/flags/pending", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -2697,7 +2697,7 @@ router.get("/api/admin/content/flags/pending", isAuthenticated, async (req, res)
 
 router.post("/api/admin/content/flags/:flagId/resolve", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -2729,7 +2729,7 @@ router.post("/api/admin/content/flags/:flagId/resolve", isAuthenticated, async (
 
 router.get("/api/admin/services/summary", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") return res.status(403).json({ message: "Admin access required" });
 
@@ -2763,7 +2763,7 @@ router.get("/api/admin/services/summary", isAuthenticated, async (req, res) => {
 
 router.get("/api/admin/services", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") return res.status(403).json({ message: "Admin access required" });
 
@@ -2806,7 +2806,7 @@ router.get("/api/admin/services", isAuthenticated, async (req, res) => {
 
 router.patch("/api/admin/services/:id/status", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") return res.status(403).json({ message: "Admin access required" });
 
@@ -2825,7 +2825,7 @@ router.patch("/api/admin/services/:id/status", isAuthenticated, async (req, res)
 
 router.patch("/api/admin/services/:id/featured", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") return res.status(403).json({ message: "Admin access required" });
 
@@ -2841,7 +2841,7 @@ router.patch("/api/admin/services/:id/featured", isAuthenticated, async (req, re
 
 router.patch("/api/admin/services/:id/affinity-tags", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") return res.status(403).json({ message: "Admin access required" });
 
@@ -2867,7 +2867,7 @@ router.patch("/api/admin/services/:id/affinity-tags", isAuthenticated, async (re
 
 router.delete("/api/admin/services/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") return res.status(403).json({ message: "Admin access required" });
 
@@ -2902,7 +2902,7 @@ router.delete("/api/admin/services/:id", isAuthenticated, async (req, res) => {
 
 router.post("/api/admin/invoices", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -2942,7 +2942,7 @@ router.post("/api/admin/invoices", isAuthenticated, async (req, res) => {
 
 router.get("/api/admin/invoices/:invoiceNumber", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -2966,7 +2966,7 @@ router.get("/api/admin/invoices/:invoiceNumber", isAuthenticated, async (req, re
 
 router.patch("/api/admin/invoices/:invoiceNumber/status", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -2995,7 +2995,7 @@ router.patch("/api/admin/invoices/:invoiceNumber/status", isAuthenticated, async
 
 router.get("/api/admin/ai-usage/summary", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -3017,7 +3017,7 @@ router.get("/api/admin/ai-usage/summary", isAuthenticated, async (req, res) => {
 
 router.get("/api/admin/ai-usage/daily", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -3036,7 +3036,7 @@ router.get("/api/admin/ai-usage/daily", isAuthenticated, async (req, res) => {
 
 router.get("/api/admin/ai-usage/logs", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -3055,7 +3055,7 @@ router.get("/api/admin/ai-usage/logs", isAuthenticated, async (req, res) => {
 
 router.get("/api/admin/ai-usage/pricing", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -3116,7 +3116,7 @@ router.get("/api/admin/ai/circuit-breaker", isAuthenticated, async (req, res) =>
 
 router.get("/api/admin/api-usage/summary", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -3134,7 +3134,7 @@ router.get("/api/admin/api-usage/summary", isAuthenticated, async (req, res) => 
 
 router.get("/api/admin/api-usage/daily", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -3152,7 +3152,7 @@ router.get("/api/admin/api-usage/daily", isAuthenticated, async (req, res) => {
 
 router.get("/api/admin/api-usage/logs", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -3170,7 +3170,7 @@ router.get("/api/admin/api-usage/logs", isAuthenticated, async (req, res) => {
 
 router.get("/api/admin/api-usage/pricing", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -3191,7 +3191,7 @@ router.get("/api/admin/api-usage/pricing", isAuthenticated, async (req, res) => 
 
 router.get("/api/admin/revenue/dashboard", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -3214,7 +3214,7 @@ router.get("/api/admin/revenue/dashboard", isAuthenticated, async (req, res) => 
 
 router.get("/api/admin/revenue/summary", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -3235,7 +3235,7 @@ router.get("/api/admin/revenue/summary", isAuthenticated, async (req, res) => {
 
 router.get("/api/admin/revenue/transactions", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -3258,7 +3258,7 @@ router.get("/api/admin/revenue/transactions", isAuthenticated, async (req, res) 
 
 router.get("/api/admin/revenue/content/:trackingNumber", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -3277,7 +3277,7 @@ router.get("/api/admin/revenue/content/:trackingNumber", isAuthenticated, async 
 
 router.get("/api/admin/revenue/unified", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -3416,7 +3416,7 @@ router.get("/api/admin/revenue/unified", isAuthenticated, async (req, res) => {
 
 router.get("/api/admin/revenue/unified/export", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -3691,7 +3691,7 @@ router.get("/api/admin/revenue/unified/export", isAuthenticated, async (req, res
 
 router.get("/api/admin/payouts", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -3720,7 +3720,7 @@ router.get("/api/admin/payouts", isAuthenticated, async (req, res) => {
 
 router.post("/api/admin/payouts", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -3786,7 +3786,7 @@ router.post("/api/admin/payouts", isAuthenticated, async (req, res) => {
 
 router.patch("/api/admin/payouts/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {

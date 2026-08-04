@@ -815,7 +815,7 @@ router.get("/api/expert/contracts/recent", isAuthenticated, async (req, res) => 
   // Local admin guard for this scope (requireAdmin is defined in the outer registerRoutes scope)
   const requireAdminLocal = async (req: any, res: any, next: any) => {
     if (!req.isAuthenticated()) return res.status(401).json({ message: "Authentication required" });
-    const role = await getUserRole(req.user?.claims?.sub);
+    const role = await getUserRole((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
     if (role !== "admin") return res.status(403).json({ message: "Admin access required" });
     next();
   };
