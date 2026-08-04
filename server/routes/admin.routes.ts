@@ -71,7 +71,7 @@ import { ingestKyotoHeritage, ingestKyotoContentGaps, isDmoIngestReady } from ".
 import { analyzeKyotoContentGaps, listOpenKyotoGaps } from "../services/content-gap.service";
 import { getProviderHealth } from "../services/provider-health.service";
 import { cityNeighborhoods, expertNeighborhoods, dmoRawContent } from "@shared/schema";
-import { isExpertRole, isProviderRole } from "@shared/roles";
+import { isExpertRole, isProviderRole, EXPERT_ROLES, PROVIDER_ROLES } from "@shared/roles";
 import { isReadyMadeBadge, READY_MADE_BADGE_VALUES } from "@shared/ready-made-badges";
 import { coordinationService } from "../services/coordination.service";
 import { vendorManagementService } from "../services/vendor-management.service";
@@ -3948,7 +3948,15 @@ router.get("/api/admin/users", isAuthenticated, async (req, res) => {
         );
       }
       if (role) {
-        conditions.push(eq(users.role, role));
+        // Filter-key vocabulary matches the client tabs: role *groups* expand to
+        // the shared role lists (shared/roles.ts); anything else is an exact role.
+        const roleGroups: Record<string, readonly string[]> = {
+          expert: EXPERT_ROLES,
+          provider: PROVIDER_ROLES,
+          ea: ["executive_assistant"],
+        };
+        const roleList = roleGroups[role] ?? [role];
+        conditions.push(inArray(users.role, [...roleList]));
       }
 
       const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
