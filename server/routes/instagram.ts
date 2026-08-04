@@ -69,7 +69,7 @@ router.get("/callback", isAuthenticated, async (req: Request, res: Response) => 
       longLivedToken = longLivedData.access_token;
     }
 
-    const userId = (req.user as any)?.claims?.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     if (userId) {
       await db
         .update(users)
@@ -89,7 +89,7 @@ router.get("/callback", isAuthenticated, async (req: Request, res: Response) => 
 
 router.get("/status", isAuthenticated, async (req: Request, res: Response) => {
   try {
-    const userId = (req.user as any)?.claims?.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     if (!userId) {
       return res.json({ connected: false });
     }
@@ -108,7 +108,7 @@ router.get("/status", isAuthenticated, async (req: Request, res: Response) => {
 
 router.post("/publish", isAuthenticated, async (req: Request, res: Response) => {
   try {
-    const userId = (req.user as any)?.claims?.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     if (!userId) {
       return res.status(401).json({ error: "Not authenticated" });
     }
@@ -208,7 +208,7 @@ router.post("/publish", isAuthenticated, async (req: Request, res: Response) => 
 
 router.post("/publish-carousel", isAuthenticated, async (req: Request, res: Response) => {
   try {
-    const userId = (req.user as any)?.claims?.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     if (!userId) {
       return res.status(401).json({ error: "Not authenticated" });
     }
@@ -310,7 +310,7 @@ router.post("/publish-carousel", isAuthenticated, async (req: Request, res: Resp
 
 router.get("/publishing-limit", isAuthenticated, async (req: Request, res: Response) => {
   try {
-    const userId = (req.user as any)?.claims?.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     if (!userId) {
       return res.status(401).json({ error: "Not authenticated" });
     }
@@ -345,7 +345,7 @@ router.get("/publishing-limit", isAuthenticated, async (req: Request, res: Respo
 
 router.post("/disconnect", isAuthenticated, async (req: Request, res: Response) => {
   try {
-    const userId = (req.user as any)?.claims?.sub;
+    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
     if (!userId) {
       return res.status(401).json({ error: "Not authenticated" });
     }

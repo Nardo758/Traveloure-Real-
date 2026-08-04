@@ -131,7 +131,7 @@ router.post('/confirm-payment', isAuthenticated, async (req, res) => {
     }
 
     // Extract userId handling both Replit Auth (user.id) and email-auth (user.claims.sub)
-    const userId = (req as any).user?.id ?? (req as any).user?.claims?.sub;
+    const userId = (req as any).user?.id ?? (req as any).user?.claims?.sub ?? (req as any).user?.id;
     if (!userId) {
       return res.status(401).json({ success: false, error: 'User identity could not be resolved' });
     }
@@ -180,7 +180,7 @@ router.post('/bulk-status', isAuthenticated, async (req, res) => {
       return res.status(400).json({ error: 'bookingIds must be a non-empty array' });
     }
 
-    const userId = (req as any).user?.id ?? (req as any).user?.claims?.sub;
+    const userId = (req as any).user?.id ?? (req as any).user?.claims?.sub ?? (req as any).user?.id;
     if (!userId) {
       return res.status(401).json({ success: false, error: 'User identity could not be resolved' });
     }

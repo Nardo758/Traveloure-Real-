@@ -1729,7 +1729,7 @@ router.post("/api/trips/:tripId/alerts", isAuthenticated, async (req, res) => {
 
 router.get("/api/trips/:tripId/anchors", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const trip = await storage.getTrip(req.params.tripId);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
@@ -1761,7 +1761,7 @@ const anchorUpdateInput = insertTemporalAnchorSchema
 
 router.post("/api/trips/:tripId/anchors", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const trip = await storage.getTrip(req.params.tripId);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
@@ -1796,7 +1796,7 @@ router.post("/api/trips/:tripId/anchors", isAuthenticated, async (req, res) => {
 
 router.put("/api/anchors/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       // Resolve the anchor → its owning trip, then apply owner ‖ assigned ‖ admin.
       // Unknown id → 404; forbidden → 403 below, per codebase convention. NOTE: because
@@ -1823,7 +1823,7 @@ router.put("/api/anchors/:id", isAuthenticated, async (req, res) => {
 
 router.delete("/api/anchors/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       // Resolve the anchor → its owning trip, then apply owner ‖ assigned ‖ admin.
       // Unknown id → 404; forbidden → 403 below, per codebase convention. NOTE: because
@@ -1845,7 +1845,7 @@ router.delete("/api/anchors/:id", isAuthenticated, async (req, res) => {
 
 router.get("/api/trips/:tripId/day-boundaries", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const trip = await storage.getTrip(req.params.tripId);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
@@ -1862,7 +1862,7 @@ router.get("/api/trips/:tripId/day-boundaries", isAuthenticated, async (req, res
 
 router.post("/api/trips/:tripId/day-boundaries", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const trip = await storage.getTrip(req.params.tripId);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
@@ -1885,7 +1885,7 @@ router.post("/api/trips/:tripId/day-boundaries", isAuthenticated, async (req, re
 
 router.post("/api/trips/:tripId/validate-schedule", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const trip = await storage.getTrip(req.params.tripId);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
@@ -1958,7 +1958,7 @@ router.get("/api/logistics/presets/:templateSlug", async (req, res) => {
 
 router.post("/api/trips/:tripId/anchors/:anchorId/impacts", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const trip = await storage.getTrip(req.params.tripId);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
@@ -1978,7 +1978,7 @@ router.post("/api/trips/:tripId/anchors/:anchorId/impacts", isAuthenticated, asy
 
 router.post("/api/trips/:tripId/anchor-suggestions", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const trip = await storage.getTrip(req.params.tripId);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
@@ -2010,7 +2010,7 @@ router.post("/api/trips/:tripId/anchor-suggestions", isAuthenticated, async (req
 
 router.get("/api/trips/:tripId/anchor-optimization", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const trip = await storage.getTrip(req.params.tripId);
       if (!trip) return res.status(404).json({ message: "Trip not found" });

@@ -11,7 +11,7 @@ const router = Router();
 // ── helpers ──────────────────────────────────────────────────────────────────
 
 async function requireAdmin(req: any, res: any): Promise<boolean> {
-  const userId = req.user?.claims?.sub;
+  const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
   if (!userId) { res.status(401).json({ message: "Unauthorized" }); return false; }
   const user = await storage.getUser(userId);
   if (!user || user.role !== "admin") { res.status(403).json({ message: "Admin access required" }); return false; }

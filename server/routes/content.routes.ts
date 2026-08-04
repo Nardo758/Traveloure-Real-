@@ -2097,7 +2097,7 @@ router.get("/api/discover", async (req, res) => {
 
     // Track search pattern for trend analytics (non-blocking)
     if (filters.query || filters.location) {
-      const userId = (req.user as any)?.claims?.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       storage.createDestinationSearchPattern({
         destination: filters.location || filters.query || "unknown",
         city: filters.location || undefined,
@@ -2184,7 +2184,7 @@ router.post("/api/analytics/search-event", async (req, res) => {
       }
       
       const data = validation.data;
-      const userId = (req.user as any)?.claims?.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       
       // Log to destination search patterns for trend analysis
       await storage.createDestinationSearchPattern({
@@ -2234,7 +2234,7 @@ router.post("/api/analytics/itinerary-generated", async (req, res) => {
       }
       
       const data = validation.data;
-      const userId = (req.user as any)?.claims?.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       
       // Track as AI interaction for analytics
       await insertAiInteraction({
@@ -2294,7 +2294,7 @@ router.post("/api/analytics/booking", async (req, res) => {
       }
       
       const data = validation.data;
-      const userId = (req.user as any)?.claims?.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       
       // Track booking event
       console.log("[Analytics] Booking event tracked:", {
@@ -4889,7 +4889,7 @@ router.post("/api/travelpulse/seed", isAuthenticated, async (req, res) => {
     if (!req.isAuthenticated()) {
       return res.status(401).json({ message: "Authentication required" });
     }
-    const user = await storage.getUser(req.user?.claims?.sub);
+    const user = await storage.getUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -6549,7 +6549,7 @@ router.get("/api/spontaneous/opportunities", async (req, res) => {
       });
       
       const params = schema.parse(req.query);
-      const userId = (req.user as any)?.claims?.sub || null;
+      const userId = ((req.user as any)?.claims?.sub ?? (req.user as any)?.id) || null;
       
       const opportunities = await opportunityEngineService.getOpportunities(userId, {
         lat: params.lat,
@@ -6648,7 +6648,7 @@ router.get("/api/spontaneous/quick-search/:window", async (req, res) => {
       const lat = req.query.lat ? parseFloat(req.query.lat as string) : undefined;
       const lng = req.query.lng ? parseFloat(req.query.lng as string) : undefined;
       
-      const userId = (req.user as any)?.claims?.sub || null;
+      const userId = ((req.user as any)?.claims?.sub ?? (req.user as any)?.id) || null;
       
       const opportunities = await opportunityEngineService.getOpportunities(userId, {
         lat,
@@ -7130,7 +7130,7 @@ export async function registerDiscoveryRoutes() {
     if (!req.isAuthenticated()) {
       return res.status(401).json({ message: "Authentication required" });
     }
-    const user = await storage.getUser(req.user?.claims?.sub);
+    const user = await storage.getUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -7712,7 +7712,7 @@ router.post("/api/content/affiliate-redirect", async (req, res) => {
         userAgent: req.headers["user-agent"] || undefined,
         ipAddress: req.ip || undefined,
       };
-      const authUserId = (req.user as any)?.claims?.sub || null;
+      const authUserId = ((req.user as any)?.claims?.sub ?? (req.user as any)?.id) || null;
       if (authUserId) trackPayload.userId = authUserId;
 
       if (itemType === "affiliate") {
@@ -7871,7 +7871,7 @@ router.post("/api/content/:trackingNumber/flag", isAuthenticated, async (req, re
 
       const flag = await storage.createContentFlag({
         trackingNumber,
-        reporterId: user?.claims?.sub,
+        reporterId: user?.claims?.sub ?? user?.id,
         flagType,
         severity: severity || 'medium',
         description,
@@ -7952,7 +7952,7 @@ router.get("/api/platform/stats", async (_req, res) => {
 router.post("/api/track/search", async (req, res) => {
     try {
       const { searchAnalytics } = await import("@shared/schema");
-      const userId = (req.user as any)?.claims?.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       
       await insertSearchAnalytics({
         sessionId: req.body.sessionId || req.headers["x-session-id"] as string,
@@ -7992,7 +7992,7 @@ router.post("/api/track/search", async (req, res) => {
 router.post("/api/track/pageview", async (req, res) => {
     try {
       const { pageViewAnalytics } = await import("@shared/schema");
-      const userId = (req.user as any)?.claims?.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       
       await insertPageViewAnalytics({
         sessionId: req.body.sessionId,
@@ -8018,7 +8018,7 @@ router.post("/api/track/pageview", async (req, res) => {
 router.post("/api/track/funnel", async (req, res) => {
     try {
       const { bookingFunnelAnalytics } = await import("@shared/schema");
-      const userId = (req.user as any)?.claims?.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       
       await insertBookingFunnelAnalytics({
         sessionId: req.body.sessionId,
@@ -8058,7 +8058,7 @@ router.post("/api/track/funnel", async (req, res) => {
 router.post("/api/track/activity", async (req, res) => {
     try {
       const { activityBookingAnalytics } = await import("@shared/schema");
-      const userId = (req.user as any)?.claims?.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       
       await insertActivityBookingAnalytics({
         sessionId: req.body.sessionId,
@@ -8093,7 +8093,7 @@ router.post("/api/track/activity", async (req, res) => {
 router.post("/api/track/trip-enhanced", async (req, res) => {
     try {
       const { tripAnalyticsEnhanced } = await import("@shared/schema");
-      const userId = (req.user as any)?.claims?.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       
       await insertTripAnalyticsEnhanced({
         tripId: req.body.tripId,
@@ -8137,7 +8137,7 @@ router.post("/api/track/trip-enhanced", async (req, res) => {
 router.post("/api/track/destination-search", async (req, res) => {
     try {
       const { searchAnalytics } = await import("@shared/schema");
-      const userId = (req.user as any)?.claims?.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       const sessionId = req.body.sessionId || req.headers["x-session-id"] as string;
       
       // Track this search
@@ -8175,7 +8175,7 @@ router.post("/api/track/destination-search", async (req, res) => {
 router.post("/api/track/accommodation-preference", async (req, res) => {
     try {
       const { tripAnalyticsEnhanced } = await import("@shared/schema");
-      const userId = (req.user as any)?.claims?.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       
       if (userId && req.body.tripId) {
         await updateTripAnalyticsEnhanced(req.body.tripId, {
