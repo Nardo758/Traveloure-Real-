@@ -1,5 +1,6 @@
 /**
- * Traveler Inbox — QA_PUNCH_LIST item 15 [DM] half (Lane W5-E).
+ * Traveler Inbox — QA_PUNCH_LIST item 15 [DM] half (Lane W5-E), R-G unified-Inbox update
+ * (Console Realign Lane E4).
  *
  * A unified aggregation surface (mirrors the earner console's Inbox concept —
  * client/src/pages/provider/inbox.tsx, client/src/pages/expert/inbox.tsx) with two tabs:
@@ -8,12 +9,15 @@
  *    now factored into the shared `useConversationThreads` hook (client/src/hooks/
  *    use-conversation-threads.ts) so this tab and chat.tsx read one implementation, not two.
  *  - Updates: the traveler's real notifications (GET /api/notifications — the exact query the
- *    bell/notifications.tsx page reads), reusing the same mark-as-read / mark-all-read
- *    mutations so state stays in sync with those existing surfaces.
+ *    bell reads). /notifications (`pages/notifications.tsx`) is retired to a redirect here
+ *    (`?tab=updates`); this tab absorbed its unique functions verbatim — per-row mark-read,
+ *    per-row DELETE (`DELETE /api/notifications/:id`), mark-all-read, and deep-link derivation
+ *    (now the shared `resolveNotificationLink`/`getNotificationIcon` in
+ *    client/src/lib/notification-icons.tsx, also consumed by notification-bell.tsx).
  *
- * One-home rule: this page REFERENCES and deep-links into /chat and /notifications — it never
- * re-implements the chat pane or a notification action (accept/decline booking requests stays
- * on /notifications and the earner Inbox pages; this is a traveler surface).
+ * One-home rule: this page REFERENCES and deep-links into /chat — it never re-implements the
+ * chat pane. Accept/decline booking requests is an earner action that already lives on the
+ * expert/provider Inbox Queue tabs (never duplicated here — this is a traveler surface).
  */
 import { useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -33,15 +37,15 @@ import {
   Inbox as InboxIcon,
   MessageSquare,
   Bell,
-  Calendar,
-  CreditCard,
-  Bot,
-  Briefcase,
-  Plane,
-  FileText,
   Check,
   CheckCheck,
+  Trash2,
 } from "lucide-react";
+import {
+  getNotificationIcon,
+  resolveNotificationLink,
+  type ApiNotification,
+} from "@/lib/notification-icons";
 
 // ─── Messages tab ───────────────────────────────────────────────────────────
 
@@ -125,71 +129,14 @@ function MessagesTab() {
 
 // ─── Updates tab ─────────────────────────────────────────────────────────────
 //
-// Shape + endpoints verified against client/src/pages/notifications.tsx and
-// client/src/components/notification-bell.tsx — both real, live surfaces this tab reuses
-// rather than re-querying/re-deriving. `isRead` is a real column (server/storage.ts
+// R-G (Console Realign): this tab is the Updates half of the retired /notifications page —
+// its uniques (per-row mark-read, per-row DELETE, mark-all-read, deep-link derivation) are
+// absorbed here verbatim (notifications.tsx now just redirects to /inbox?tab=updates). Icon
+// map + link resolution ride the shared client/src/lib/notification-icons module (bell +
+// this tab are now its only two consumers). `isRead` is a real column (server/storage.ts
 // `createNotification`/notifications table); there is no separate "delivered" or
 // per-recipient read-receipt concept in the schema, so unread state here is exactly the
-// same boolean those two surfaces already render — nothing invented (§13).
-
-interface ApiNotification {
-  id: string;
-  type: string;
-  title: string;
-  message: string;
-  isRead: boolean;
-  createdAt: string;
-  relatedId?: string;
-  data?: {
-    tripId?: string;
-    workspacePath?: string;
-    clientId?: string;
-    [key: string]: unknown;
-  };
-}
-
-const typeIcons: Record<string, typeof Bell> = {
-  message: MessageSquare,
-  new_chat: MessageSquare,
-  message_received: MessageSquare,
-  ai: Bot,
-  reminder: Calendar,
-  credits: CreditCard,
-  booking_request: Briefcase,
-  booking_created: Briefcase,
-  booking_confirmed: Briefcase,
-  visa_status_update: Plane,
-  itinerary_update: FileText,
-  itinerary_shared: FileText,
-  expert_suggestion: FileText,
-};
-
-function getNotificationIcon(type: string) {
-  return typeIcons[type] || Bell;
-}
-
-/**
- * Deep-link resolution — mirrors notifications.tsx's priority chain exactly (tripId branch
- * first, then message_received/clientId, else no action): tripId + workspacePath is how every
- * traveler-facing notification (itinerary_update, expert_suggestion, itinerary_shared) links
- * back to the traveler's own trip view; the `/expert/workspace/:id` fallback is dead for real
- * traveler rows (the server always sets workspacePath alongside tripId for this audience) but
- * kept for parity with the shared renderer.
- */
-function resolveNotificationLink(n: ApiNotification): { href: string; label: string } | null {
-  if (n.data?.tripId) {
-    return {
-      href: n.data.workspacePath || `/expert/workspace/${n.data.tripId}`,
-      label: n.data.workspacePath?.startsWith("/trip/") || n.data.workspacePath?.startsWith("/itinerary-view/")
-        ? "View Itinerary"
-        : "Open",
-    };
-  }
-  if (n.type === "message_received") {
-    return { href: n.data?.clientId ? `/chat?clientId=${n.data.clientId}` : "/chat", label: "Open Chat" };
-  }
-  return null;
-}
+// same boolean the bell already renders — nothing invented (§13).
 
 function UpdatesTab() {
   const { data: notifications, isLoading } = useQuery<ApiNotification[]>({
@@ -198,6 +145,16 @@ function UpdatesTab() {
 
   const markAsReadMutation = useMutation({
     mutationFn: (id: string) => apiRequest("PATCH", `/api/notifications/${id}/read`, {}),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/notifications/unread-count"] });
+    },
+  });
+
+  // Absorbed from notifications.tsx (DELETE /api/notifications/:id) — kept alive, this tab is
+  // now its only client caller (server/routes/content.routes.ts:2373).
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("DELETE", `/api/notifications/${id}`, {}),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
       queryClient.invalidateQueries({ queryKey: ["/api/notifications/unread-count"] });
@@ -297,19 +254,32 @@ function UpdatesTab() {
                   )}
                 </div>
               </div>
-              {!n.isRead && (
+              <div className="flex items-center gap-1 flex-shrink-0">
+                {!n.isRead && (
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                    onClick={() => markAsReadMutation.mutate(n.id)}
+                    disabled={markAsReadMutation.isPending}
+                    title="Mark as read"
+                    data-testid={`button-mark-read-${n.id}`}
+                  >
+                    <Check className="w-4 h-4" />
+                  </Button>
+                )}
                 <Button
                   size="icon"
                   variant="ghost"
-                  className="h-7 w-7 text-muted-foreground hover:text-foreground flex-shrink-0"
-                  onClick={() => markAsReadMutation.mutate(n.id)}
-                  disabled={markAsReadMutation.isPending}
-                  title="Mark as read"
-                  data-testid={`button-mark-read-${n.id}`}
+                  className="h-7 w-7 text-muted-foreground hover:text-red-500"
+                  onClick={() => deleteMutation.mutate(n.id)}
+                  disabled={deleteMutation.isPending}
+                  title="Delete"
+                  data-testid={`button-delete-update-${n.id}`}
                 >
-                  <Check className="w-4 h-4" />
+                  <Trash2 className="w-4 h-4" />
                 </Button>
-              )}
+              </div>
             </CardContent>
           </Card>
         );

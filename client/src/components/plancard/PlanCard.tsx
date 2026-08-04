@@ -305,7 +305,9 @@ interface SummaryNotification {
   message?: string;
   type?: string;
   createdAt?: string;
-  tripId?: string | null;
+  // Real server shape (shared/schema.ts `notifications.data` jsonb) — there is no
+  // top-level `tripId` column; per-trip linkage lives inside `data`.
+  data?: { tripId?: string | null } | null;
   read?: boolean;
 }
 
@@ -385,7 +387,11 @@ function PlanCardSummary({
     queryKey: ['/api/notifications'],
     staleTime: 60000,
   });
-  const actionItems = (notificationsData ?? []).filter(n => n.tripId === trip.id).slice(0, 2);
+  // R-I(3): notifications carry no top-level `tripId` — the real value lives at
+  // `data.tripId` (see server createNotification call sites, e.g. booking-actions.ts /
+  // trips.routes.ts, which set `data: { tripId, ... }`). The old `n.tripId` filter never
+  // matched, so per-trip action items never populated.
+  const actionItems = (notificationsData ?? []).filter(n => n.data?.tripId === trip.id).slice(0, 2);
 
   const { data: conversations } = useQuery<Array<{ id: number; title: string }>>({
     queryKey: ['/api/conversations'],

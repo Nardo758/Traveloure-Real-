@@ -128,6 +128,11 @@ export const trips = pgTable("trips", {
   // construction) + authorId = the expert. NULL for every normal traveler trip. Auth path:
   // assignment OR (authorId IS NOT NULL AND authorId === caller) — never via getTripRole.
   authorId: varchar("author_id").references(() => users.id, { onDelete: "set null" }),
+  // Console Realign R-F (migration 173): NULL = never finalized (born state, no backfill). Set by
+  // POST /api/trips/:tripId/finalize, cleared by POST /api/trips/:tripId/reopen. NOT a revival of
+  // the dead `status` field above — a narrow rendering-handover signal consumed only by
+  // shared/trip-primary-surface.ts's `tripCardIsPrimary` OR-branch, never a lifecycle/status value.
+  finalizedAt: timestamp("finalized_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -5394,7 +5399,7 @@ export const itemTransitionLog = pgTable(
     id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
     tripId: varchar("trip_id").notNull().references(() => trips.id, { onDelete: "cascade" }),
     itemId: varchar("item_id"), // NULL = trip-scoped event (ruling 16); no FK — history outlives the item
-    eventType: varchar("event_type", { length: 30 }).notNull().default("status_transition"), // status_transition | variant_applied
+    eventType: varchar("event_type", { length: 30 }).notNull().default("status_transition"), // status_transition | variant_applied | plan_finalized | plan_reopened (R-F)
     fromStatus: varchar("from_status", { length: 20 }), // NULL for non-status events
     toStatus: varchar("to_status", { length: 20 }),
     actorType: varchar("actor_type", { length: 20 }).notNull(), // traveler | expert | checkout | refund | optimizer | system

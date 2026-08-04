@@ -8,6 +8,7 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { DashboardLayout } from "@/components/dashboard-layout";
+import { IntakePanel } from "@/components/intake-panel";
 import { format, differenceInDays } from "date-fns";
 import { useState } from "react";
 import { useLocation } from "wouter";
@@ -52,6 +53,9 @@ export default function MyTrips() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [, setLocation] = useLocation();
+  // R-C: both "+ New plan" CTAs on this page open the intake panel instead of navigating
+  // to /experiences (CONSOLE_REALIGN_BRIEF.md).
+  const [intakeOpen, setIntakeOpen] = useState(false);
 
   if (isLoading) {
     return (
@@ -105,14 +109,19 @@ export default function MyTrips() {
   const upcomingTrips = filteredTrips.filter(t => new Date(t.startDate) > now);
   const completedTrips = filteredTrips.filter(t => new Date(t.endDate) < now);
 
-  const getProgressValue = (trip: any) => {
+  // §13 honest-or-absent: progress is the trip's REAL elapsed-time fraction, and only once the
+  // trip has started. An upcoming trip has no measurable progress → null → no bar (this line
+  // used to be `Math.random() * 60 + 20`, rendered unrounded — a fabricated, per-render-changing
+  // number on the "My plans" list). A planning-completeness metric (confirmed/total items, the
+  // routing-status counts the slip already shows) is a separate design decision — do not invent
+  // one here.
+  const getProgressValue = (trip: any): number | null => {
     const start = new Date(trip.startDate);
     const end = new Date(trip.endDate);
     const total = differenceInDays(end, start);
-    if (total <= 0) return 100;
     const elapsed = differenceInDays(now, start);
-    if (elapsed < 0) return Math.min(Math.random() * 60 + 20, 95);
-    if (elapsed > total) return 100;
+    if (elapsed < 0) return null;
+    if (total <= 0 || elapsed > total) return 100;
     return Math.round((elapsed / total) * 100);
   };
 
@@ -129,7 +138,7 @@ export default function MyTrips() {
       <Card
         className="border border-border hover:shadow-md transition-shadow cursor-pointer"
         data-testid={`trip-card-${trip.id}`}
-        onClick={() => setLocation(`/trip/${trip.id}`)}
+        onClick={() => setLocation(`/plans/${trip.id}`)}
       >
         <CardContent className={viewMode === "list" ? "p-5" : "p-4"}>
           <div className={viewMode === "list" ? "flex items-start gap-4" : "space-y-4"}>
@@ -161,10 +170,10 @@ export default function MyTrips() {
                 )}
               </div>
               
-              {!isCompleted && (
+              {!isCompleted && progress !== null && (
                 <div className="mb-3">
                   <div className="flex items-center justify-between text-sm mb-1">
-                    <span className="text-muted-foreground">Progress</span>
+                    <span className="text-muted-foreground">Trip progress</span>
                     <span className="font-medium text-foreground dark:text-white">{progress}%</span>
                   </div>
                   <Progress value={progress} className="h-2" />
@@ -172,15 +181,10 @@ export default function MyTrips() {
               )}
 
               <div className="flex items-center gap-2 flex-wrap">
-                <Link href={`/trip/${trip.id}`} onClick={(e) => e.stopPropagation()}>
+                {/* R-E: "View" lands on the slip (/plans/:tripId) — the merged former "Open slip" action. */}
+                <Link href={`/plans/${trip.id}`} onClick={(e) => e.stopPropagation()}>
                   <Button size="sm" variant="outline" data-testid={`button-view-${trip.id}`}>
                     View
-                  </Button>
-                </Link>
-                {/* Slip dispatch §4 Spec A: unobtrusive link to the slip's canonical address. */}
-                <Link href={`/plans/${trip.id}`} onClick={(e) => e.stopPropagation()}>
-                  <Button size="sm" variant="ghost" className="text-muted-foreground" data-testid={`button-open-slip-${trip.id}`}>
-                    Open slip
                   </Button>
                 </Link>
                 <Link href="/chat" onClick={(e) => e.stopPropagation()}>
@@ -191,7 +195,7 @@ export default function MyTrips() {
                 {!isCompleted && (
                   <Link href={`/trip/${trip.id}`} onClick={(e) => e.stopPropagation()}>
                     <Button size="sm" variant="ghost" className="text-muted-foreground" data-testid={`button-edit-${trip.id}`}>
-                      Edit
+                      Trip Card
                     </Button>
                   </Link>
                 )}
@@ -209,14 +213,16 @@ export default function MyTrips() {
         {/* Header */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <h1 className="text-2xl font-bold text-foreground dark:text-white" data-testid="text-page-title">
-            My Plans & Events
+            My plans
           </h1>
-          <Link href="/experiences">
-            <Button className="bg-primary hover:bg-primary/90 text-white" data-testid="button-create-new">
-              <Plus className="w-4 h-4 mr-2" />
-              Create New
-            </Button>
-          </Link>
+          <Button
+            className="bg-primary hover:bg-primary/90 text-white"
+            data-testid="button-create-new"
+            onClick={() => setIntakeOpen(true)}
+          >
+            <Plus className="w-4 h-4 mr-2" />
+            Create New
+          </Button>
         </div>
 
         {/* Filters */}
@@ -365,17 +371,21 @@ export default function MyTrips() {
                   : "Start planning your next adventure!"}
               </p>
               {!searchQuery && typeFilter === "all" && statusFilter === "all" && (
-                <Link href="/experiences">
-                  <Button className="bg-primary hover:bg-primary/90 text-white" data-testid="button-create-first">
-                    <Plus className="w-4 h-4 mr-2" />
-                    Create Your First Plan
-                  </Button>
-                </Link>
+                <Button
+                  className="bg-primary hover:bg-primary/90 text-white"
+                  data-testid="button-create-first"
+                  onClick={() => setIntakeOpen(true)}
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Create Your First Plan
+                </Button>
               )}
             </CardContent>
           </Card>
         )}
       </div>
+
+      <IntakePanel open={intakeOpen} onOpenChange={setIntakeOpen} />
     </DashboardLayout>
   );
 }

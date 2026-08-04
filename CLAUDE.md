@@ -218,7 +218,9 @@ This document captures architectural decisions to maintain consistency across co
     the consumer read/purchase surface, buyers' purchased content (`/api/my-purchased-templates`), owner reads
     (My Offerings lane 2, storefront lane 2), admin queues, and the §15 purchase/confirm money endpoints.** The
     consumer wind-down is a SEPARATE decision-maker-read phase gated on PROD counts (dev counts were test
-    fixtures only; the test-email filter must include %@test.dev / %@t.test). Do not build new features on
+    fixtures only; the test-email filter must include %@test.dev / %@t.test / **%@example.com** — the last
+    added Aug 2, 2026 when invariant triage found the seed-expert-services personas live there; RFC 2606
+    reserved, always fixtures). Do not build new features on
     `expert_templates`. Historical §10 record below stands for the still-live consumer surface.
     **(Historical) ACTIVATION record:** (`claude/marketplace-phaseA-gate` and follow-ons).
     Replit commit `3ceeffc3` replaced the old ledger stub with a **real two-step Stripe checkout**: `POST

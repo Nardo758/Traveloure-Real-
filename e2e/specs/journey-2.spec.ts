@@ -186,7 +186,18 @@ test.describe('Journey 2D — Expert advisor request from trip-details', () => {
       return;
     }
 
-    await page.locator(SELECTORS.tripCard).first().click();
+    // R-E (Console Realign): a trip-card click now opens the SLIP (/plans/:tripId),
+    // not the Trip Card page. This flow targets the expert tab, which lives on the
+    // trip-details page (/trip/:id) — still reachable via the card's "Trip Card"
+    // button. Navigate there by id directly (robust across trip status, whereas the
+    // "Trip Card" button is hidden for completed trips).
+    const firstCardTestId = await page
+      .locator(SELECTORS.tripCard)
+      .first()
+      .getAttribute('data-testid');
+    const tripId = (firstCardTestId ?? '').replace('trip-card-', '');
+    expect(tripId, 'derived a trip id from the first card').toBeTruthy();
+    await page.goto(`/trip/${tripId}`, { waitUntil: 'domcontentloaded' });
     await page.waitForURL(/\/trip\//, { timeout: 10_000 });
     await page.waitForSelector(SELECTORS.expertTab, { timeout: 25_000 });
     await page.click(SELECTORS.expertTab);
