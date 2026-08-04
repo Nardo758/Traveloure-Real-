@@ -237,14 +237,22 @@ router.get("/api/admin/commission-test", isAuthenticated, async (req, res) => {
   if (!user || user.role !== "admin") {
     return res.status(403).json({ message: "Admin access required" });
   }
-  res.json({
-    expertNew:          calculateCommission(100, BookingType.EXPERT_SESSION,   { isNewExpert: true }),
-    expertEstablished:  calculateCommission(100, BookingType.EXPERT_SESSION,   { isNewExpert: false }),
-    providerTier1:      calculateCommission(100, BookingType.PROVIDER_BOOKING, { providerTier: 1 }),
-    providerTier4:      calculateCommission(100, BookingType.PROVIDER_BOOKING, { providerTier: 4 }),
-    experienceCart:     calculateCommission(100, BookingType.EXPERIENCE_CART),
-    creditPurchase:     calculateCommission(100, BookingType.CREDIT_PURCHASE),
-  });
+  try {
+    // Ruling 25 / migration 174: EXPERIENCE_CART rate resolves from fee_bands.
+    const { requireExperienceCartRate } = await import("../services/commission");
+    const experienceCartRate = await requireExperienceCartRate();
+    res.json({
+      expertNew:          calculateCommission(100, BookingType.EXPERT_SESSION,   { isNewExpert: true }),
+      expertEstablished:  calculateCommission(100, BookingType.EXPERT_SESSION,   { isNewExpert: false }),
+      providerTier1:      calculateCommission(100, BookingType.PROVIDER_BOOKING, { providerTier: 1 }),
+      providerTier4:      calculateCommission(100, BookingType.PROVIDER_BOOKING, { providerTier: 4 }),
+      experienceCart:     calculateCommission(100, BookingType.EXPERIENCE_CART,  { experienceCartRate }),
+      creditPurchase:     calculateCommission(100, BookingType.CREDIT_PURCHASE),
+    });
+  } catch (err: any) {
+    // Fail loud with the configuration message (e.g. missing experience_cart_checkout band).
+    res.status(500).json({ message: err?.message || "Commission test failed" });
+  }
 });
 
 router.get("/api/admin/stats", isAuthenticated, async (req, res) => {
