@@ -31,7 +31,11 @@ export type TransitionEventType =
   | "variant_applied"
   // R-F (Console Realign, Trip Card delivery): trip-scoped (itemId null) Finalize/reopen events.
   | "plan_finalized"
-  | "plan_reopened";
+  | "plan_reopened"
+  // Task 1028 (Console Sigma ABSENCE fix): trip-scoped (itemId NULL, ruling 16) expert workspace
+  // draft → in_review → delivered transitions, logged in the same transaction as the flip
+  // (rulings 12/18) so disputes over when work was delivered have an audit trail.
+  | "workspace_status_transition";
 
 /** The executor shape both `db` and a drizzle `tx` satisfy — callers inside a transaction MUST
  *  pass their `tx` (ruling 18: same-transaction pair), everything else may pass `db`. */

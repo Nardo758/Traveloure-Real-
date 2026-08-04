@@ -1131,7 +1131,9 @@ router.patch("/expert/assignments/:assignmentId/workspace-status", isAuthenticat
     if (!validTransitions[current]?.includes(workspaceStatus)) {
       return res.status(400).json({ message: `Cannot transition workspace status from '${current}' to '${workspaceStatus}'. Allowed: ${validTransitions[current]?.join(", ") || "none"}` });
     }
-    const updated = await storage.updateExpertAssignmentWorkspaceStatus(assignmentId, workspaceStatus, current);
+    // Task 1028: the helper flips the status AND writes the append-only item_transition_log row
+    // (actor, from/to, timestamp) in one transaction — rulings 12/16/18. Pass the acting expert.
+    const updated = await storage.updateExpertAssignmentWorkspaceStatus(assignmentId, workspaceStatus, current, userId);
     if (!updated) {
       // Lost the race — a concurrent call already moved this row off `current` (§15).
       return res.status(409).json({ message: `Cannot transition workspace status from '${current}' to '${workspaceStatus}'. A concurrent update already changed it.` });
