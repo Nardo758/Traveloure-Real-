@@ -1266,11 +1266,29 @@ router.post('/trips/:id/plan-review', isAuthenticated, async (req, res) => {
             workspaceStatus: 'draft', // send the expert back to work; re-delivery re-runs this handshake
           };
 
-    const [updated] = await db
-      .update(tripExpertAdvisors)
-      .set(setValues as any)
-      .where(and(eq(tripExpertAdvisors.id, candidate.id), eq(tripExpertAdvisors.workspaceStatus, 'delivered')))
-      .returning();
+    // Task 1028: `request_changes` also flips workspaceStatus (delivered → draft), so it must
+    // write its trip-scoped workspace_status_transition diary row in the SAME transaction as the
+    // flip (rulings 12/16/18) — actor is the TRAVELER here, not the expert. The `approve` branch
+    // changes no workspaceStatus, so it logs nothing.
+    const updated = await db.transaction(async (tx) => {
+      const [row] = await tx
+        .update(tripExpertAdvisors)
+        .set(setValues as any)
+        .where(and(eq(tripExpertAdvisors.id, candidate.id), eq(tripExpertAdvisors.workspaceStatus, 'delivered')))
+        .returning();
+      if (row && decision === 'request_changes') {
+        await logItemTransition(tx, {
+          tripId: id,
+          itemId: null, // trip-scoped event (ruling 16)
+          eventType: 'workspace_status_transition',
+          fromStatus: 'delivered',
+          toStatus: 'draft',
+          actorType: 'traveler',
+          actorId: userId,
+        });
+      }
+      return row;
+    });
 
     if (!updated) {
       // Lost the race (a concurrent decision already moved this row off 'delivered').
