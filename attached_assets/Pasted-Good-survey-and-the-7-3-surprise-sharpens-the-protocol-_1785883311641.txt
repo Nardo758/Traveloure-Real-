@@ -1,0 +1,17 @@
+Good survey — and the 7.3 surprise sharpens the protocol's own principle: a script not wired into CI is not a guard, it's a suggestion with a filename. "Guarded" henceforth means runs on every push/merge; the ledger lint should treat script-only as MISSING. That's worth its own line in the ledger.
+
+Rulings 27–31:
+
+27. Guard gaps — wire, don't defer, for the two that exist. Fee-literal grep and chain-integrity get wired into CI in this lane. This isn't absorption: §8 bans absorbing guard authoring, and these are existing scripts needing a CI step each — minutes, not a follow-up. More to the point, the ledger lint you're about to build would go red on day one over exactly these two, and shipping a lint born-red against known-fixable items is theater. The matrix lint stays out — it's the journey-suite lane's deliverable #1; enter it in the ledger as [guarded, deferred:journey-suite-wave-1] so the expiry mechanism owns it. Env allowlist remains a named candidate. And append the sharpened definition: guard = in CI; script-only = missing.
+
+28. R-A..R-J — single ledger, original IDs preserved, series closed. Fold them into DECISIONS.md as a "Console Realign series" block under their existing letters — renumbering would break every citation in that brief and force exactly the paraphrase-translation the protocol exists to prevent. One file of authority, two ID schemes within it, both append-only and unique. The series is closed: all new rulings use the numeric sequence only; no future lettered entries. The brief gets a pointer line ("R-series now lives in DECISIONS.md").
+
+29. CLAUDE.md findings → one archive doc. docs/findings/CLAUDE_MD_ARCHIVE.md, chronological, every entry carrying its as-of SHA. Scattering 981 lines across per-topic docs means 981 editorial judgment calls and a week of drift-prone re-homing; the archive is cheap, honest, and greppable. Where a live audit doc already owns a topic, the archive entry gets a pointer to it — content moves nowhere twice. Migration post-mortems 059–168 stay intact in the archive; they're institutional memory, not clutter.
+
+30. PR template — confirmed in scope. Create .github/PULL_REQUEST_TEMPLATE.md containing the §4 write-back checklist and nothing else. If a section ever gets added later, it goes through a ruling — the template staying four lines is part of why it'll get filled in rather than skipped.
+
+31. PHASE_4_RUNBOOK — real SHA plus explicit stale flag. audited@0b47ea44 (2026-06-03 — STALE, re-verify before use). The June date is the information; audited@unknown is reserved for genuinely indeterminable provenance, and using it to soften known staleness would be the protocol lying politely. Same treatment for anything else old-but-determinable.
+
+One addition to Phase 1 from your 7.3 extras: the ledger's guard list should include the full in-CI set you found (money-endpoints, unmounted-routers, linkage-preservation, upsell-trust-contract, noop-migrations, fee-config-parity, migration-ledger idempotency, claims-only lookups) — the protocol name-checked six from memory and reality has eleven; the ledger records reality.
+
+Approved — proceed to Phase 1: DECISIONS.md seeded 1–31 + R-series block, header retrofits per the table, CLAUDE.md slim per the approved classification with the archive doc, PR template, ledger lint (with the in-CI definition), and the two CI wirings.
