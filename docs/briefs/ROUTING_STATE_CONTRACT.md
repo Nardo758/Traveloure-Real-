@@ -1,5 +1,6 @@
 # Routing-State Contract — Addendum to RECONCILE_PHASE1_SCOPE.md
 
+**audited@6c832b2e** (2026-07-31) — volatile claims as-of that SHA; re-verify at Phase 0. Ledger: `docs/DECISIONS.md`.
 **Purpose:** declare every independent component's relationship to `routing_status` at the field's birth, so it never becomes another `trips.status` — a state with believing readers and no contract. Lesson source: Trip-Gravity Audit §5 (class-D disagreements on `cart_items` and `trips.status` both trace to states introduced without a declared read/write contract).
 
 **Rule:** a component's relationship to each state is exactly one of **WRITES** (may cause the transition), **READS** (must respect the state), or **NEVER** (must not touch or interpret it). Anything undeclared is NEVER. Adding a writer later requires amending this contract — not just shipping code.

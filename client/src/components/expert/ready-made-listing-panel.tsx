@@ -26,7 +26,8 @@ import { READY_MADE_PLAN_TYPES } from "@shared/ready-made-plan-types";
 // action uses the darkest neutral rather than introducing a second accent colour.
 const G: Record<number, string> = {
   50: "#F9FAFB", 200: "#E5E7EB", 300: "#D1D5DB", 400: "#9CA3AF",
-  500: "#6B7280", 600: "#4B5563", 700: "#374151", 900: "#111827",
+  500: "#6B7280", 600: "#4B5563", 700: "#374151", 900: "#111827", // fee-literal-ok: neutral colour scale, not a fee
+
 };
 const P = G[900];
 
