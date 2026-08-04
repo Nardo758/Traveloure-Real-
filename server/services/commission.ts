@@ -60,8 +60,12 @@ export const PLATFORM_FEE_RATE = 0.25;
 export const CONCIERGE_BOOKING_CONCERN = "booking_concierge";
 export const CONCIERGE_BOOKING_FEE_BAND_KEY = "expert_concierge_booking";
 
-/** Ruling 25 follow-through (migration 174): the EXPERIENCE_CART display/preview
- *  rate resolves from this admin-editable percent band (platform-take fraction). */
+/** Ruling 25 follow-through (migration 174): the EXPERIENCE_CART typed-breakdown
+ *  rate resolves from this admin-editable percent band (platform-take fraction).
+ *  SCOPE: this band backs the DIAGNOSTIC/DISPLAY calculator surface
+ *  (calculateCommission). The actual cart charge + fee-preview paths resolve
+ *  per-item rates via resolveCommissionRates() — per the R3/F6 note in
+ *  payments.routes.ts, the old 0.30 literal matched no actual charged rate. */
 export const EXPERIENCE_CART_BAND_KEY = "experience_cart_checkout";
 
 export interface CommissionRates {
