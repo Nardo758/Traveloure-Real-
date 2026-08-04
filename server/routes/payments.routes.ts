@@ -959,7 +959,7 @@ router.post("/api/stripe/connect/onboard", isAuthenticated, async (req, res) => 
       if (!process.env.STRIPE_SECRET_KEY) {
         return res.status(503).json({ error: "stripe_unavailable", message: "Payouts onboarding is not yet available. Please check back soon." });
       }
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user) return res.status(404).json({ error: "User not found" });
@@ -1002,7 +1002,7 @@ router.post("/api/stripe/connect/onboard", isAuthenticated, async (req, res) => 
 
 router.get("/api/stripe/connect/status", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
       const account = await storage.getUserStripeAccount(userId);
@@ -1041,7 +1041,7 @@ router.get("/api/stripe/connect/dashboard", isAuthenticated, async (req, res) =>
       if (!process.env.STRIPE_SECRET_KEY) {
         return res.status(503).json({ error: "stripe_unavailable", message: "Payouts onboarding is not yet available. Please check back soon." });
       }
-      const userId = (req.user as any).claims?.sub;
+      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
       const account = await storage.getUserStripeAccount(userId);

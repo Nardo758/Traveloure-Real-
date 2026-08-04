@@ -5190,7 +5190,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const experienceType = req.query.experienceType as string | undefined;
       const preferences = req.query.preferences ? (req.query.preferences as string).split(",") : undefined;
       const limit = parseInt(req.query.limit as string) || 10;
-      const userId = (req.user as any)?.claims?.sub || "anonymous";
+      const userId = ((req.user as any)?.claims?.sub ?? (req.user as any)?.id) || "anonymous";
       
       // If no city provided, return trending destinations as recommendations
       const { serviceRecommendationEngine } = await import("./services/recommendation.service");
@@ -8227,7 +8227,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     if (!req.isAuthenticated()) {
       return res.status(401).json({ message: "Authentication required" });
     }
-    const user = await db.select().from(users).where(eq(users.id, req.user?.claims?.sub)).then(r => r[0]);
+    const user = await db.select().from(users).where(eq(users.id, (req.user as any)?.claims?.sub ?? (req.user as any)?.id)).then(r => r[0]);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -9239,7 +9239,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // fallback message when their lead could not be auto-assigned
   app.get("/api/trips/:tripId/expert-request-status", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub;
+      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const { tripId } = req.params;
       const rows = await db
