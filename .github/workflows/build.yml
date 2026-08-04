@@ -90,6 +90,45 @@ jobs:
       - name: Trip-mint owner-access guard
         run: node scripts/check-trip-mint-owner-access.cjs
 
+  fee-literal-guard:
+    name: fee-literal-guard (phase2-fee-gate — DECISIONS.md ruling 27)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Grep gate: no optimize/coordination fee literals in LOGIC code (fee_bands seed /
+      # migrations / config rows excluded; `// fee-literal-ok: <reason>` exempts a line).
+      - name: Fee-literal grep (scripts/phase2-fee-gate.sh)
+        run: bash scripts/phase2-fee-gate.sh
+
+  migration-chain-integrity:
+    name: migration-chain-integrity (DECISIONS.md rulings 19, 27)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      # Ruling 19: migration numbering re-verified at merge — the chain-integrity test is arbiter.
+      - name: chain-integrity test
+        run: npx tsx --test server/migrations/__tests__/chain-integrity.test.ts
+
+  decision-guards-lint:
+    name: decision-guards-lint (ledger lint — DECISIONS.md ruling 26)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # Every [guarded: name] ruling in docs/DECISIONS.md must name a guard that runs in CI
+      # (script-only = MISSING, ruling 27). deferred:<lane> tags warn until their lane merges.
+      - name: Ledger lint self-test
+        run: node scripts/check-decision-guards.cjs --self-test
+      - name: Ledger lint
+        run: node scripts/check-decision-guards.cjs
+
   linkage-preservation-guard:
     name: linkage-preservation-guard (Trip-Canon Lane G / E2E_ITEM_LIFECYCLE.md §3)
     runs-on: ubuntu-latest

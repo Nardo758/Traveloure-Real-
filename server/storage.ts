@@ -113,6 +113,7 @@ import {
 } from "@shared/schema";
 import { eq, ilike, and, desc, or, count, gt, gte, lte, avg, inArray, asc, isNotNull, isNull, ne, sql as sqlOp } from "drizzle-orm";
 import { authStorage } from "./replit_integrations/auth/storage";
+import { logItemTransition } from "./services/item-transition-log.service";
 import type { User } from "@shared/models/auth";
 import {
   eventInvites,
@@ -549,7 +550,7 @@ export interface IStorage {
 
   // Expert Workspace Status
   getExpertAssignment(assignmentId: string): Promise<any>;
-  updateExpertAssignmentWorkspaceStatus(assignmentId: string, workspaceStatus: string, expectedCurrentStatus?: string): Promise<any>;
+  updateExpertAssignmentWorkspaceStatus(assignmentId: string, workspaceStatus: string, expectedCurrentStatus?: string, actorId?: string): Promise<any>;
 
   // Expert/Provider Logistics
   getProviderAvailability(providerId: string): Promise<ProviderAvailabilitySchedule[]>;
@@ -5055,16 +5056,33 @@ export class DatabaseStorage implements IStorage {
   // actually makes a duplicate/racing transition lose (0 rows updated -> caller 409s), which now
   // matters because a `delivered` transition also fires a customer email. Omitting the param keeps
   // the prior unconditional-update behavior for any other caller.
-  async updateExpertAssignmentWorkspaceStatus(assignmentId: string, workspaceStatus: string, expectedCurrentStatus?: string): Promise<any> {
-    const [updated] = await db.update(tripExpertAdvisors)
-      .set({ workspaceStatus })
-      .where(
-        expectedCurrentStatus !== undefined
-          ? and(eq(tripExpertAdvisors.id, assignmentId), eq(tripExpertAdvisors.workspaceStatus, expectedCurrentStatus))
-          : eq(tripExpertAdvisors.id, assignmentId)
-      )
-      .returning();
-    return updated;
+  // Task 1028 (Console Sigma ABSENCE fix): every workspaceStatus flip writes an append-only
+  // item_transition_log row in the SAME transaction (rulings 12/18 — flip+log atomic pair inside
+  // the helper's transaction). Trip-scoped grain per ruling 16: itemId NULL. `actorId` is the
+  // session user performing the transition; pass it so disputes have an actor on record.
+  async updateExpertAssignmentWorkspaceStatus(assignmentId: string, workspaceStatus: string, expectedCurrentStatus?: string, actorId?: string): Promise<any> {
+    return db.transaction(async (tx) => {
+      const [updated] = await tx.update(tripExpertAdvisors)
+        .set({ workspaceStatus })
+        .where(
+          expectedCurrentStatus !== undefined
+            ? and(eq(tripExpertAdvisors.id, assignmentId), eq(tripExpertAdvisors.workspaceStatus, expectedCurrentStatus))
+            : eq(tripExpertAdvisors.id, assignmentId)
+        )
+        .returning();
+      if (updated) {
+        await logItemTransition(tx, {
+          tripId: updated.tripId,
+          itemId: null, // trip-scoped event (ruling 16)
+          eventType: "workspace_status_transition",
+          fromStatus: expectedCurrentStatus ?? null,
+          toStatus: workspaceStatus,
+          actorType: "expert",
+          actorId: actorId ?? null,
+        });
+      }
+      return updated;
+    });
   }
 
   // Atomically accept a pending advisory assignment (owner + pending guard in one UPDATE — §15).

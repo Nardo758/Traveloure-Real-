@@ -464,7 +464,7 @@ router.post("/api/optimization-payments/confirm", isAuthenticated, async (req, r
 
     // Paid-signal ledger (§7, migration 125). An Event-branch optimize fee that was ACTUALLY paid
     // is recorded as a coordination_fee_credit, so it can be credited against the traveler's eventual
-    // coordination fee (the "$19.99 credited-toward-coordination" promise, honored only on real payment).
+    // coordination fee (the "$19.99 credited-toward-coordination" promise, honored only on real payment). fee-literal-ok: comment
     // Idempotent: source_payment_intent_id is UNIQUE → onConflictDoNothing makes a duplicate confirm a
     // no-op. amount_cents comes from Stripe (never the client); user_id is the session user (verified
     // above to match the PI). Non-Event optimizers (trip/experience branch) record no credit.

@@ -1,5 +1,7 @@
 # Console Realign Brief — entry surfaces, one rail, one Inbox, honest engagement
 
+**audited@4f07ee1a** (2026-08-03) — volatile claims as-of that SHA; re-verify at Phase 0.
+**R-series now lives in DECISIONS.md** (ruling 28: series folded under original letters, CLOSED — all new rulings use the numeric sequence). This section remains the verbatim text of record.
 **Status:** RATIFIED by the decision-maker (Aug 2–3, 2026) — "proceed as recommended" on the full set.
 **Mockup of record:** claude.ai artifact `9547d288` (6 tabs; one canonical dataset). Annotations ①–⑰ there = the rulings here.
 **Execution protocol:** model-tiered (docs/EXECUTION_MAP.md posture): Fable plans/reviews; Sonnet-tier agents execute

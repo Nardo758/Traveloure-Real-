@@ -1,5 +1,6 @@
 # Backoffice Execution Roadmap — token-optimized, post-P1a-1c
 
+**audited@de3c984b** (2026-07-26; last touched 7b54ab3b 2026-07-28) — sizing/state claims as-of those SHAs; re-verify at Phase 0. Ledger: `docs/DECISIONS.md`.
 **Date:** Jul 26, 2026 · **Baseline:** branch `claude/sync-local-repo-2j7ghv` @ `d8c02aed`
 **Design source:** `docs/backoffice/mockups/` · gap state: `MOCKUP_CODE_AUDIT.md` (supersedes the gap atlas)
 **Token model:** Fable plans/briefs + money/schema diffs; Sonnet executes fenced endpoint/UI work behind the
