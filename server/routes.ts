@@ -456,6 +456,7 @@ async function verifyOptimizationPayment(params: {
   }
 }
 
+// hint: Logic changed on both sides. Requires understanding intent of each change.
 export async function registerRoutes(
   httpServer: Server,
   app: Express
