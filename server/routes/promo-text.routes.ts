@@ -6,6 +6,7 @@
  * a caption via promo-text.service.ts (AI best-effort, deterministic fallback — §13 no fabrication).
  */
 import { Router } from "express";
+import { getUserId } from "../utils/auth";
 import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { storage } from "../storage";
@@ -15,7 +16,7 @@ import { generatePromoText, type PromoTextTarget } from "../services/promo-text.
 const router = Router();
 
 function sessionUserId(req: any): string | null {
-  return (req.user as any)?.claims?.sub ?? (req.user as any)?.id ?? null;
+  return getUserId(req)!;
 }
 
 function isAuthenticated(req: any, res: any, next: any) {

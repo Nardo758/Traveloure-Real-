@@ -66,6 +66,7 @@
  * the derived view, and the reconciler is re-runnable.
  */
 import { Router } from "express";
+import { getUserId } from "../utils/auth";
 import { z } from "zod";
 import { and, count, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { db } from "../db";
@@ -81,7 +82,7 @@ import { logger } from "../infrastructure/logger";
 const router = Router();
 
 function sessionUserId(req: any): string | undefined {
-  return (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+  return getUserId(req)!;
 }
 
 /**

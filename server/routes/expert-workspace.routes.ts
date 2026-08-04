@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from "express";
+import { getUserId } from "../utils/auth";
 import { z } from "zod";
 import { db } from "../db";
 import { storage } from "../storage";
@@ -157,7 +158,7 @@ router.get(
     const page = Math.max(1, parseInt(params.page, 10));
     const limit = Math.min(100, Math.max(1, parseInt(params.limit, 10)));
     const offset = (page - 1) * limit;
-    const expertId = req.user?.claims?.sub || req.user?.id;
+    const expertId = getUserId(req)!;
 
     const conditions = [];
 
@@ -297,7 +298,7 @@ router.get(
   "/collections",
   requireExpert,
   asyncHandler(async (req: any, res: Response) => {
-    const expertId = req.user?.claims?.sub || req.user?.id;
+    const expertId = getUserId(req)!;
     const market = req.query.market as string | undefined;
 
     const conditions = [eq(expertDmoCollections.expertId, expertId)];
@@ -317,7 +318,7 @@ router.post(
   "/collections",
   requireExpert,
   asyncHandler(async (req: any, res: Response) => {
-    const expertId = req.user?.claims?.sub || req.user?.id;
+    const expertId = getUserId(req)!;
 
     const schema = z.object({
       name: z.string().min(1).max(255),
@@ -360,7 +361,7 @@ router.post(
   "/build-itinerary",
   requireExpert,
   asyncHandler(async (req: any, res: Response) => {
-    const expertId = req.user?.claims?.sub || req.user?.id;
+    const expertId = getUserId(req)!;
 
     // Same gate as POST /api/expert/ready-made (D3, ready-made.routes.ts AUTHOR_ROLES):
     // this endpoint creates the identical authoring pair, so it must not be a looser side
@@ -555,7 +556,7 @@ router.post(
   requireExpert,
   asyncHandler(async (req: any, res: Response) => {
     const rawContentId = req.params.id;
-    const expertId = req.user?.claims?.sub || req.user?.id;
+    const expertId = getUserId(req)!;
 
     const schema = z.object({
       editedName: z.string().optional(),
@@ -610,7 +611,7 @@ router.patch(
   requireExpert,
   asyncHandler(async (req: any, res: Response) => {
     const editId = req.params.editId;
-    const expertId = req.user?.claims?.sub || req.user?.id;
+    const expertId = getUserId(req)!;
 
     const [edit] = await db
       .select()
@@ -641,7 +642,7 @@ router.get(
     const market = req.query.market as string | undefined;
     const severity = req.query.severity as string | undefined;
     const assignedToMe = req.query.assignedToMe === "true";
-    const expertId = req.user?.claims?.sub || req.user?.id;
+    const expertId = getUserId(req)!;
 
     const conditions = [];
     if (market) conditions.push(eq(contentGapAlerts.market, market));
@@ -664,7 +665,7 @@ router.patch(
   requireExpert,
   asyncHandler(async (req: any, res: Response) => {
     const alertId = req.params.id;
-    const expertId = req.user?.claims?.sub || req.user?.id;
+    const expertId = getUserId(req)!;
 
     const [updated] = await db
       .update(contentGapAlerts)

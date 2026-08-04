@@ -36,6 +36,7 @@
  * exists for expert-family roles, and hrefs resolve to the caller's own console.
  */
 import { Router } from "express";
+import { getUserId } from "../utils/auth";
 import { db } from "../db";
 import { storage } from "../storage";
 import { isAuthenticated } from "../replit_integrations/auth";
@@ -71,7 +72,7 @@ interface CalendarEvent {
 }
 
 function sessionUserId(req: any): string | undefined {
-  return (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+  return getUserId(req)!;
 }
 
 // GET /api/me/calendar?from=YYYY-MM-DD&to=YYYY-MM-DD — read-only, session-scoped aggregate.

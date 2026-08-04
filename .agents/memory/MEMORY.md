@@ -14,4 +14,5 @@
 - [PlanCard item source](plancard-itinerary-items.md) — dashboard Trip Card reads itinerary_items not trip_items; routing actions need provider_service_id + routing_status
 - [Playwright + Radix Dropdown](playwright-radix-dropdown.md) — auth mock via addInitScript only (not catch-all); re-focus before Enter/Escape cycles; href check not click+waitForURL; unauth testid is button-sign-in
 - [Travelpayouts partner API](travelpayouts-partner-api.md) — /v1/statistics/* endpoints don't exist (silent $0); use statistics/v1/execute_query + finance/v2 with X-Access-Token header.
+- [tsc baseline & getUserId convention](tsc-baseline-and-getuserid.md) — tsc is not clean (~137 pre-existing server errors); diff against baseline. Routes must use getUserId(req) from server/utils/auth.
 - [MapMarker fallback testing](map-marker-fallback-testing.md) — fallback mode drops map-pin-* testids (AdvancedMarker children); find pins by .gm-style [title]; ItineraryMapView is orphaned; Maps key lacks billing.

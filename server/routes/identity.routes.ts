@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { getUserId } from "../utils/auth";
 import Stripe from "stripe";
 import { db } from "../db";
 import { localExpertForms, serviceProviderForms } from "@shared/schema";
@@ -15,7 +16,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
 // POST /api/identity/create-session — Stripe Identity individual verification
 router.post("/create-session", isAuthenticated, async (req, res) => {
   try {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     const { formType } = req.body as { formType: "expert" | "provider" };
 
     if (!formType || !["expert", "provider"].includes(formType)) {
@@ -58,7 +59,7 @@ router.post("/create-session", isAuthenticated, async (req, res) => {
 // POST /api/identity/business/create-inquiry — Persona KYB for providers
 router.post("/business/create-inquiry", isAuthenticated, async (req, res) => {
   try {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     const { country, registrationNumber, additionalDocUrl } = req.body as { country: string; registrationNumber: string; additionalDocUrl?: string };
 
     if (!country || !registrationNumber) {

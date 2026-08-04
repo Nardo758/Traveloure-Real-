@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { getUserId } from "../utils/auth";
 import { storage } from "../storage";
 import { z } from "zod";
 import { crossSellEvents, serviceBookings, providerServices } from "@shared/schema";
@@ -11,7 +12,7 @@ const router = Router();
 // ── helpers ──────────────────────────────────────────────────────────────────
 
 async function requireAdmin(req: any, res: any): Promise<boolean> {
-  const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+  const userId = getUserId(req)!;
   if (!userId) { res.status(401).json({ message: "Unauthorized" }); return false; }
   const user = await storage.getUser(userId);
   if (!user || user.role !== "admin") { res.status(403).json({ message: "Admin access required" }); return false; }
@@ -36,7 +37,7 @@ const crossSellEventSchema = z.object({
 // Attaches user_id when the request is authenticated.
 router.post("/api/cross-sell-events", async (req, res) => {
   try {
-    const userId = (req as any).user?.claims?.sub ?? null;
+    const userId = getUserId(req)!;
 
     const body = req.body;
     const events = Array.isArray(body) ? body : [body];
@@ -70,7 +71,7 @@ router.post("/api/cross-sell-events", async (req, res) => {
 // Auth required. Returns cross-sell performance for the authenticated provider's services.
 router.get("/api/cross-sell-events/provider-stats", isAuthenticated, async (req, res) => {
   try {
-    const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
+    const userId = getUserId(req)!;
 
     // providerServices uses userId (not providerId) as the owner FK
     const serviceIds = await storage.getProviderServiceIdsForUser(userId);

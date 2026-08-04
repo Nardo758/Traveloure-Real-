@@ -31,6 +31,7 @@
  */
 
 import { Router } from "express";
+import { getUserId } from "../utils/auth";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { authorizeTripLogistics } from "../utils/trip-logistics-auth";
@@ -47,7 +48,7 @@ import {
 const router = Router();
 
 function sessionUserId(req: any): string | undefined {
-  return req.user?.claims?.sub ?? req.user?.id;
+  return getUserId(req)!;
 }
 
 /**

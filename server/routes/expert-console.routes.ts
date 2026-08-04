@@ -14,6 +14,7 @@
  * owner-gated where they mutate.
  */
 import { Router } from "express";
+import { getUserId } from "../utils/auth";
 import { z } from "zod";
 import { db } from "../db";
 import { storage } from "../storage";
@@ -38,7 +39,7 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 function sessionUserId(req: any): string {
-  return (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+  return getUserId(req)!;
 }
 
 // ─── Expert role ─────────────────────────────────────────────────────────────

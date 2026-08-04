@@ -19,6 +19,7 @@
  * Phase 0.5): additionally gate on identity/KYB verification status before any marketing push.
  */
 import { Router } from "express";
+import { getUserId } from "../utils/auth";
 import { z } from "zod";
 import fs from "fs";
 import path from "path";
@@ -66,7 +67,7 @@ const claimSchema = z.object({
 
 router.patch("/api/me/handle", isAuthenticated, async (req: any, res) => {
   try {
-    const userId = req.user?.claims?.sub ?? req.user?.id;
+    const userId = getUserId(req)!;
     const parsed = claimSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
       return res.status(400).json({ message: parsed.error.issues[0]?.message ?? "Invalid handle" });
@@ -200,7 +201,7 @@ const settingsPatchSchema = z.object({
 
 router.get("/api/me/preferences", isAuthenticated, async (req: any, res) => {
   try {
-    const userId = req.user?.claims?.sub ?? req.user?.id;
+    const userId = getUserId(req)!;
     if (!userId) return res.status(401).json({ message: "Authentication required" });
     const [me] = await db
       .select({ preferences: users.preferences })
@@ -218,7 +219,7 @@ router.get("/api/me/preferences", isAuthenticated, async (req: any, res) => {
 
 router.patch("/api/me/preferences", isAuthenticated, async (req: any, res) => {
   try {
-    const userId = req.user?.claims?.sub ?? req.user?.id;
+    const userId = getUserId(req)!;
     if (!userId) return res.status(401).json({ message: "Authentication required" });
 
     const parsed = settingsPatchSchema.safeParse(req.body ?? {});
@@ -284,7 +285,7 @@ const storefrontPrefsPatchSchema = z.object({
 
 router.patch("/api/me/storefront", isAuthenticated, async (req: any, res) => {
   try {
-    const userId = req.user?.claims?.sub ?? req.user?.id;
+    const userId = getUserId(req)!;
     if (!userId) return res.status(401).json({ message: "Authentication required" });
 
     const parsed = storefrontPrefsPatchSchema.safeParse(req.body ?? {});
@@ -339,7 +340,7 @@ const travelPreferencesPatchSchema = z.object({
 
 router.get("/api/me/travel-preferences", isAuthenticated, async (req: any, res) => {
   try {
-    const userId = req.user?.claims?.sub ?? req.user?.id;
+    const userId = getUserId(req)!;
     if (!userId) return res.status(401).json({ message: "Authentication required" });
     const [me] = await db
       .select({ preferences: users.preferences })
@@ -360,7 +361,7 @@ router.get("/api/me/travel-preferences", isAuthenticated, async (req: any, res) 
 
 router.patch("/api/me/travel-preferences", isAuthenticated, async (req: any, res) => {
   try {
-    const userId = req.user?.claims?.sub ?? req.user?.id;
+    const userId = getUserId(req)!;
     if (!userId) return res.status(401).json({ message: "Authentication required" });
 
     const parsed = travelPreferencesPatchSchema.safeParse(req.body ?? {});
@@ -408,7 +409,7 @@ router.patch("/api/me/travel-preferences", isAuthenticated, async (req: any, res
 // nothing is stored; there is no migration and no state to drift.
 router.get("/api/me/business-setup", isAuthenticated, async (req: any, res) => {
   try {
-    const userId = req.user?.claims?.sub ?? req.user?.id;
+    const userId = getUserId(req)!;
     if (!userId) return res.status(401).json({ message: "Authentication required" });
 
     const [me] = await db

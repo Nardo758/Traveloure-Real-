@@ -1,4 +1,5 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
+import { getUserId } from "../utils/auth";
 import { Router } from "express";
 import { db } from "../db";
 import { storage } from "../storage";
@@ -274,7 +275,7 @@ function nightDatesBetween(checkIn: string, checkOut: string): string[] {
 
 router.post("/api/checkout", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const { tripId, notes, idempotencyKey } = req.body;
 
       // ── Idempotency guard (DB level) ────────────────────────────────────────
@@ -862,7 +863,7 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
 
 router.get("/api/cart/fee-preview", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
       const cartData = await storage.getCartItems(userId);
@@ -938,7 +939,7 @@ router.get("/api/cart/fee-preview", isAuthenticated, async (req, res) => {
 router.get("/api/invoices/my", isAuthenticated, async (req, res) => {
     try {
       const user = req.user as any;
-      const invoices = await storage.getInvoicesByCustomer(user?.claims?.sub ?? user?.id);
+      const invoices = await storage.getInvoicesByCustomer(getUserId(req)!);
       res.json(invoices);
     } catch (error: any) {
       res.status(500).json({ message: "Failed to get invoices", error: error.message });
@@ -959,7 +960,7 @@ router.post("/api/stripe/connect/onboard", isAuthenticated, async (req, res) => 
       if (!process.env.STRIPE_SECRET_KEY) {
         return res.status(503).json({ error: "stripe_unavailable", message: "Payouts onboarding is not yet available. Please check back soon." });
       }
-      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user) return res.status(404).json({ error: "User not found" });
@@ -1002,7 +1003,7 @@ router.post("/api/stripe/connect/onboard", isAuthenticated, async (req, res) => 
 
 router.get("/api/stripe/connect/status", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
       const account = await storage.getUserStripeAccount(userId);
@@ -1041,7 +1042,7 @@ router.get("/api/stripe/connect/dashboard", isAuthenticated, async (req, res) =>
       if (!process.env.STRIPE_SECRET_KEY) {
         return res.status(503).json({ error: "stripe_unavailable", message: "Payouts onboarding is not yet available. Please check back soon." });
       }
-      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
       const account = await storage.getUserStripeAccount(userId);
@@ -1127,7 +1128,7 @@ router.get("/api/fee-bands/:bandKey", async (req, res) => {
 
   router.post("/api/payouts/request", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ error: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user) return res.status(401).json({ error: "Not authenticated" });
@@ -1200,7 +1201,7 @@ router.get("/api/fee-bands/:bandKey", async (req, res) => {
   // that already back the admin queue. No admin data leakage — there is no id/userId input at all.
   router.get("/api/payouts", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ error: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user) return res.status(401).json({ error: "Not authenticated" });
