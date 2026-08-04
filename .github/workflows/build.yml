@@ -57,6 +57,8 @@ jobs:
       # fallback (or the shared getUserId helper). Email-login sessions only carry
       # claims.sub; OAuth sessions may only carry .id — a claims-only read causes false
       # 403s (~120 routes were fixed for this once). Node built-ins only — no npm ci needed.
+      - name: Guard self-tests (fixture cases)
+        run: node scripts/check-claims-only-user-lookups.cjs --self-test
       - name: Claims-only session-user lookup guard
         run: node scripts/check-claims-only-user-lookups.cjs
 
