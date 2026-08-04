@@ -195,7 +195,15 @@ export function EALayout({ children, title }: EALayoutProps) {
               )}
             </div>
             <div className="flex items-center gap-2">
-              <Link href="/notifications">
+              {/*
+               * The EA console has no notifications/updates page of its own
+               * (ground-truthed against client/src/pages/ea/* — communications.tsx
+               * is a message-composer, not a notifications feed). "/notifications"
+               * resolves to the traveler-shell Inbox and would wrong-sidebar an EA
+               * session, so the bell points at the EA dashboard instead until a
+               * real EA notifications surface exists.
+               */}
+              <Link href="/ea/dashboard">
                 <Button
                   variant="ghost"
                   size="icon"

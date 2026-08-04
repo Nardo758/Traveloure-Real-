@@ -288,9 +288,9 @@ export interface IStorage {
   getNotifications(userId: string, unreadOnly?: boolean): Promise<Notification[]>;
   getUnreadCount(userId: string): Promise<number>;
   createNotification(notification: InsertNotification): Promise<Notification>;
-  markAsRead(id: string): Promise<Notification | undefined>;
+  markAsRead(id: string, userId: string): Promise<Notification | undefined>;
   markAllAsRead(userId: string): Promise<void>;
-  deleteNotification(id: string): Promise<void>;
+  deleteNotification(id: string, userId: string): Promise<boolean>;
 
   // Experience Types
   getExperienceTypes(): Promise<ExperienceType[]>;
@@ -2208,10 +2208,13 @@ export class DatabaseStorage implements IStorage {
     return newNotification;
   }
 
-  async markAsRead(id: string): Promise<Notification | undefined> {
+  // Scoped to (id, userId) so a caller can only mutate their own notification — the WHERE is the
+  // authorization (no read-then-check window, no cross-user write). Undefined = missing OR not
+  // yours; callers return 404 for both so the id-space can't be probed.
+  async markAsRead(id: string, userId: string): Promise<Notification | undefined> {
     const [updated] = await db.update(notifications)
       .set({ isRead: true })
-      .where(eq(notifications.id, id))
+      .where(and(eq(notifications.id, id), eq(notifications.userId, userId)))
       .returning();
     return updated;
   }
@@ -2222,8 +2225,11 @@ export class DatabaseStorage implements IStorage {
       .where(eq(notifications.userId, userId));
   }
 
-  async deleteNotification(id: string): Promise<void> {
-    await db.delete(notifications).where(eq(notifications.id, id));
+  async deleteNotification(id: string, userId: string): Promise<boolean> {
+    const deleted = await db.delete(notifications)
+      .where(and(eq(notifications.id, id), eq(notifications.userId, userId)))
+      .returning({ id: notifications.id });
+    return deleted.length > 0;
   }
 
   // Experience Types Methods

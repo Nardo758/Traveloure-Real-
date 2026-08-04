@@ -19,26 +19,31 @@ import {
   Home,
   Calendar,
   Bot,
-  MessageSquare,
   Users,
   User,
-  Bell,
   LogOut,
   Compass,
   ShoppingCart,
   Package,
   Crown,
-  Sparkles,
   Inbox,
 } from "lucide-react";
 
+// R-G (CONSOLE_REALIGN_BRIEF.md sidebar 13→10): "Plan new" is retired — the intake panel
+// (client/src/components/intake-panel.tsx) opens from CTAs elsewhere (dashboard "New
+// experience", my-trips "+ New plan"), not from a sidebar destination. "Messages" and
+// "Notifications" are retired — Messages folds into the Inbox module's Messages tab (/chat
+// itself stays routed as the thread page, just no longer has its own sidebar entry) and
+// Notifications' unique functions rehome into Inbox's Updates tab + the bell popover (E4).
+// "Experts" is repointed from /chat (an unexamined first-commit artifact) to /experts. Final
+// traveler sidebar (10 entries): Home, My plans, AI planner, Discover, Experts, Bookings,
+// My events, Trip Cart, Inbox, Profile.
 const menuGroups = [
   {
     label: "Plan",
     items: [
       { title: "Home", href: "/dashboard", icon: Home },
       { title: "My plans", href: "/my-trips", icon: Calendar },
-      { title: "Plan new", href: "/experiences", icon: Sparkles },
       { title: "AI planner", href: "/ai-assistant", icon: Bot },
     ],
   },
@@ -46,7 +51,7 @@ const menuGroups = [
     label: "Marketplace",
     items: [
       { title: "Discover", href: "/discover", icon: Users },
-      { title: "Experts", href: "/chat", icon: Compass },
+      { title: "Experts", href: "/experts", icon: Compass },
       { title: "Bookings", href: "/bookings", icon: Package },
       { title: "My events", href: "/my-events", icon: Crown },
       { title: "Trip Cart", href: "/cart", icon: ShoppingCart },
@@ -65,8 +70,6 @@ const menuGroups = [
   {
     label: "Account",
     items: [
-      { title: "Messages", href: "/chat", icon: MessageSquare },
-      { title: "Notifications", href: "/notifications", icon: Bell },
       { title: "Profile", href: "/profile", icon: User },
     ],
   },
@@ -123,7 +126,8 @@ export function DashboardSidebar() {
                     (item.href === "/my-trips" && (
                       location.startsWith("/my-trips") ||
                       location.startsWith("/itinerary") ||
-                      location.startsWith("/my-itinerary")
+                      location.startsWith("/my-itinerary") ||
+                      location.startsWith("/plans")
                     )) ||
                     (item.href !== "/dashboard" && item.href !== "/my-trips" && location.startsWith(item.href));
 

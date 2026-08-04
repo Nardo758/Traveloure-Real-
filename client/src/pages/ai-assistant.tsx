@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { motion, AnimatePresence } from "framer-motion";
+import { AiPlannerDraftPanel } from "@/components/ai-planner-draft-panel";
 
 interface Message {
   id: number;
@@ -51,6 +52,9 @@ export default function AIAssistant() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [renamingId, setRenamingId] = useState<number | null>(null);
   const [renameValue, setRenameValue] = useState("");
+  // R-D draft panel: bumped once per completed assistant reply to trigger a fresh
+  // TripContext extraction pass (see ai-planner-draft-panel.tsx).
+  const [extractionTrigger, setExtractionTrigger] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
@@ -206,6 +210,7 @@ export default function AIAssistant() {
                 }
                 if (data.done) {
                   queryClient.invalidateQueries({ queryKey: ["/api/conversations", conversationId] });
+                  setExtractionTrigger((t) => t + 1);
                 }
               } catch {
               }
@@ -270,7 +275,7 @@ export default function AIAssistant() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 h-[calc(100vh-200px)]">
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 h-[calc(100vh-200px)]">
           <Card className="lg:col-span-1 bg-white dark:bg-gray-800 rounded-lg shadow-md border border-gray-200 dark:border-gray-700">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between gap-2">
@@ -543,6 +548,13 @@ export default function AIAssistant() {
               </div>
             </CardContent>
           </Card>
+
+          <div className="lg:col-span-1">
+            <AiPlannerDraftPanel
+              conversationId={selectedConversation}
+              extractionTrigger={extractionTrigger}
+            />
+          </div>
         </div>
       </div>
     </div>

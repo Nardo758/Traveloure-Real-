@@ -24,6 +24,13 @@ interface BackofficeShellProps {
   statusBadge?: React.ReactNode;
   sidebarToggleTestId?: string;
   notificationsTestId?: string;
+  /**
+   * Role-specific target for the header bell. The traveler-shell default
+   * ("/notifications" → "/inbox?tab=updates") is a traveler-console page and
+   * wrong-sidebars an expert/provider/EA session — each console must pass its
+   * own Inbox-module home (e.g. "/expert/inbox", "/provider/inbox").
+   */
+  notificationsHref: string;
 }
 
 export function BackofficeShell({
@@ -33,6 +40,7 @@ export function BackofficeShell({
   statusBadge,
   sidebarToggleTestId = "button-backoffice-sidebar-toggle",
   notificationsTestId = "button-backoffice-notifications",
+  notificationsHref,
 }: BackofficeShellProps) {
   const style = {
     "--sidebar-width": "220px",
@@ -67,7 +75,7 @@ export function BackofficeShell({
             </div>
             <div className="flex items-center gap-2">
               {statusBadge}
-              <Link href="/notifications">
+              <Link href={notificationsHref}>
                 <Button
                   variant="ghost"
                   size="icon"

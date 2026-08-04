@@ -66,7 +66,7 @@ export function SavedTripsSection() {
       queryClient.invalidateQueries({ queryKey: ["/api/saved-trips"] });
       queryClient.invalidateQueries({ queryKey: ["/api/trips"] });
       toast({ title: "Trip created!", description: "Your plan is ready — let's build it out." });
-      navigate(`/trip/${data.tripId}`);
+      navigate(`/plans/${data.tripId}`);
     },
     onError: () => {
       toast({ title: "Something went wrong", description: "Could not create the trip. Please try again.", variant: "destructive" });
