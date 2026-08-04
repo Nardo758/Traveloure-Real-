@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { useRoute, useLocation, Link, useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { createComparison as createComparisonRequest } from "@/lib/create-comparison";
 import { SEOHead } from "@/components/seo-head";
 import { useToast } from "@/hooks/use-toast";
 import { Layout } from "@/components/layout";
@@ -1254,7 +1255,7 @@ export default function ExperienceTemplatePage() {
     }));
     
     try {
-      const response = await apiRequest("POST", "/api/itinerary-comparisons", {
+      const comparison = await createComparisonRequest({
         title: `${experienceType?.name || "Trip"} Experience`,
         destination: destination,
         startDate: startDate?.toISOString().split('T')[0] || new Date().toISOString().split('T')[0],
@@ -1264,8 +1265,7 @@ export default function ExperienceTemplatePage() {
         baselineItems: cartItems,
         experienceTypeSlug: slug || "travel",
       });
-      
-      const comparison = await response.json();
+
       // Also save to sessionStorage so the comparison page can retry if needed
       sessionStorage.setItem(`comparison_baseline_${comparison.id}`, JSON.stringify(cartItems));
       setCartOpen(false);
@@ -3351,7 +3351,7 @@ export default function ExperienceTemplatePage() {
                   onClose={() => setAiItineraryDialogOpen(false)}
                   onSave={(tripId) => {
                     setAiItineraryDialogOpen(false);
-                    setLocation(`/itinerary/${tripId}`);
+                    setLocation(`/plans/${tripId}`);
                   }}
                 />
               )}

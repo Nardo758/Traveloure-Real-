@@ -201,9 +201,9 @@ export interface TripPlanActivityChange {
  */
 export interface TripPlanTransition {
   id: string;
-  /** NULL = trip-scoped event (`variant_applied`, ruling 16). */
+  /** NULL = trip-scoped event (`variant_applied`, `plan_finalized`, `plan_reopened`, ruling 16). */
   itemId: string | null;
-  /** `status_transition` | `variant_applied` (the log's eventType vocabulary). */
+  /** `status_transition` | `variant_applied` | `plan_finalized` | `plan_reopened` (R-F). */
   eventType: string;
   fromStatus: string | null;
   toStatus: string | null;
@@ -496,6 +496,10 @@ export interface TripPlanPlancardExtras {
     /** Lane S §3: version = `item_transition_log` row count for this trip. Display-only,
      *  computed per read — never a stored column. 0 for trips predating the log (honest). */
     planVersion?: number;
+    /** R-F (migration 173): set once by POST .../finalize, cleared by POST .../reopen. NULL =
+     *  never finalized (the born state — no backfill). Feeds `tripCardIsPrimary`
+     *  (shared/trip-primary-surface.ts) alongside the date-derived arms; never a status field. */
+    finalizedAt?: string | null;
   };
   changeLog: TripPlanChange[];
   metrics: TripPlanMetrics;

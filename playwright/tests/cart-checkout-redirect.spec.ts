@@ -16,7 +16,7 @@ function uid(prefix = "") {
 /**
  * Cart Checkout Redirect — Suite 6
  *
- * Regression guard for the cart-checkout → /trip/:id redirect.
+ * Regression guard for the cart-conversion redirect target.
  *
  * Background: dynamic-links.spec.ts (Suite 5) caught that cart.tsx and
  * EnhancedPlanningModal.tsx were using `/trips/${tripId}` (plural, wrong) instead
@@ -24,12 +24,19 @@ function uid(prefix = "") {
  * exercises the full happy-path end-to-end so a future route rename or
  * copy-paste error cannot slip through undetected.
  *
+ * CONTRACT CHANGE (Console Realign R-E, ratified — docs/briefs/CONSOLE_REALIGN_BRIEF.md):
+ * cart conversion now lands on the SLIP, `/plans/:tripId`, not the Trip Card page.
+ * This suite guards the NEW target for cart.tsx. EnhancedPlanningModal keeps its
+ * pre-existing `/trip/:id` target (untouched by the realign) and stays guarded as-is.
+ *
  * Tests:
- *   A. Static — cart.tsx must NOT use the broken /trips/${…} pattern
+ *   A. Static — cart.tsx must redirect to /plans/${…} (not /trips/${…}, not the
+ *      pre-R-E /trip/${…})
  *   B. Static — EnhancedPlanningModal.tsx must NOT use the broken /trips/${…}
- *   C. Static — App.tsx must declare a /trip/:id route
+ *   C. Static — App.tsx must declare /plans/:tripId (cart target) and /trip/:id
+ *      (modal target)
  *   D. Browser — register user → add cart item via API → convert-to-itinerary →
- *      navigate to /trip/:id → confirm trip page renders, not 404 NotFound
+ *      navigate to /plans/:tripId → confirm the slip renders, not 404 NotFound
  */
 
 // ── Source paths ─────────────────────────────────────────────────────────────
@@ -43,24 +50,29 @@ function readSource(filePath: string): string {
 }
 
 // ── Static analysis tests (no browser needed) ─────────────────────────────
-test.describe("Cart checkout → /trip/:id redirect (Suite 6)", () => {
-  // ── A. cart.tsx uses the correct singular /trip/ route ───────────────────
-  test("cart.tsx uses /trip/${…} (singular) — not the broken /trips/${…}", () => {
+test.describe("Cart conversion → /plans/:tripId redirect (Suite 6)", () => {
+  // ── A. cart.tsx uses the ratified R-E slip target /plans/ ────────────────
+  test("cart.tsx redirects to /plans/${…} — not /trips/${…} or the pre-R-E /trip/${…}", () => {
     const src = readSource(CART_FILE);
 
     expect(
       /setLocation\(`\/trips\/\$\{/.test(src),
-      "cart.tsx still contains the broken setLocation(`/trips/${…}`) pattern. " +
-        "It must use /trip/:id (singular) to match the App.tsx route."
+      "cart.tsx still contains the broken setLocation(`/trips/${…}`) pattern."
     ).toBe(false);
 
     expect(
       /setLocation\(`\/trip\/\$\{/.test(src),
-      "cart.tsx does not contain setLocation(`/trip/${…}`) — the redirect to the " +
-        "trip page after cart conversion may be missing or broken."
+      "cart.tsx contains setLocation(`/trip/${…}`) — cart conversion must land on " +
+        "the slip (/plans/:tripId) per Console Realign R-E, not the Trip Card page."
+    ).toBe(false);
+
+    expect(
+      /setLocation\(`\/plans\/\$\{/.test(src),
+      "cart.tsx does not contain setLocation(`/plans/${…}`) — the post-conversion " +
+        "redirect to the slip may be missing or broken."
     ).toBe(true);
 
-    console.log("[cart-checkout-redirect] PASS cart.tsx redirect uses /trip/:id");
+    console.log("[cart-checkout-redirect] PASS cart.tsx redirect uses /plans/:tripId");
   });
 
   // ── B. EnhancedPlanningModal.tsx uses the correct singular /trip/ route ──
@@ -80,24 +92,30 @@ test.describe("Cart checkout → /trip/:id redirect (Suite 6)", () => {
     console.log("[cart-checkout-redirect] PASS EnhancedPlanningModal.tsx redirect uses /trip/:id");
   });
 
-  // ── C. App.tsx declares /trip/:id ────────────────────────────────────────
-  test('App.tsx declares a <Route path="/trip/:id"> (the target of the cart redirect)', () => {
+  // ── C. App.tsx declares both targets ─────────────────────────────────────
+  test('App.tsx declares /plans/:tripId (cart target) and /trip/:id (modal target)', () => {
     const src = readSource(APP_FILE);
 
     expect(
-      /path="\/trip\/:id"/.test(src),
-      'App.tsx is missing a <Route path="/trip/:id"> — navigating to /trip/<id> after ' +
+      /path="\/plans\/:tripId"/.test(src),
+      'App.tsx is missing <Route path="/plans/:tripId"> — navigating to the slip after ' +
         "cart conversion would land on the 404 Not-Found page."
     ).toBe(true);
 
-    console.log('[cart-checkout-redirect] PASS App.tsx has <Route path="/trip/:id">');
+    expect(
+      /path="\/trip\/:id"/.test(src),
+      'App.tsx is missing a <Route path="/trip/:id"> — the EnhancedPlanningModal ' +
+        "post-planning redirect would land on the 404 Not-Found page."
+    ).toBe(true);
+
+    console.log('[cart-checkout-redirect] PASS App.tsx has /plans/:tripId and /trip/:id');
   });
 
-  // ── D. Browser end-to-end: cart → convert-to-itinerary → /trip/:id ───────
+  // ── D. Browser end-to-end: cart → convert-to-itinerary → /plans/:tripId ──
   // Exercises the complete happy path that mimics what cart.tsx does after
-  // a successful convert-to-itinerary call:  setLocation(`/trip/${data.tripId}`)
+  // a successful convert-to-itinerary call:  setLocation(`/plans/${data.tripId}`)
   test(
-    "convert-to-itinerary → navigating to /trip/:id renders the trip page, not NotFound",
+    "convert-to-itinerary → navigating to /plans/:tripId renders the slip, not NotFound",
     async ({ page }) => {
       const email = `e2e-cart-redirect-${uid()}@example.com`;
       const password = "TestRedirect123!";
@@ -164,8 +182,8 @@ test.describe("Cart checkout → /trip/:id redirect (Suite 6)", () => {
       );
 
       // 4. Navigate the browser to exactly the URL cart.tsx produces:
-      //    setLocation(`/trip/${data.tripId}`)
-      await page.goto(`${BASE_URL}/trip/${tripId}`);
+      //    setLocation(`/plans/${data.tripId}`)
+      await page.goto(`${BASE_URL}/plans/${tripId}`);
       await page.waitForLoadState("networkidle");
 
       // 5. Assert the trip-details page rendered — NOT the 404 "Lost at Sea" page.
@@ -180,12 +198,12 @@ test.describe("Cart checkout → /trip/:id redirect (Suite 6)", () => {
         "The browser must NOT show the 404 'Lost at Sea?' message"
       ).not.toBeVisible();
 
-      // 6. Confirm the URL stayed at /trip/<id> (not redirected to / or /login)
+      // 6. Confirm the URL stayed at /plans/<id> (not redirected to / or /login)
       const finalUrl = new URL(page.url());
       expect(
         finalUrl.pathname,
-        `After navigation the URL should remain under /trip/, got: ${finalUrl.pathname}`
-      ).toMatch(/^\/trip\//);
+        `After navigation the URL should remain under /plans/, got: ${finalUrl.pathname}`
+      ).toMatch(/^\/plans\//);
 
       console.log(
         `[cart-checkout-redirect] PASS — browser at ${finalUrl.pathname} with no 404`

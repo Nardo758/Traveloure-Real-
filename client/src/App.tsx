@@ -21,7 +21,6 @@ import { MaintenanceGate } from "@/components/maintenance-screen";
 const LandingPage = lazy(() => import("@/pages/landing"));
 const LandingMockups = lazy(() => import("@/pages/landing-mockups"));
 const Dashboard = lazy(() => import("@/pages/dashboard"));
-const CreateTrip = lazy(() => import("@/pages/create-trip"));
 const TripDetails = lazy(() => import("@/pages/trip-details"));
 const MyTrips = lazy(() => import("@/pages/my-trips"));
 const Profile = lazy(() => import("@/pages/profile"));
@@ -546,8 +545,12 @@ function Router() {
         <Redirect to="/dashboard" />
       </Route>
 
+      {/* R-G (Console Realign, Lane E4): retired — Notifications now redirects to the Inbox's
+          Updates tab (client/src/pages/inbox.tsx), which absorbed its uniques. Route
+          kept registered so existing links/bookmarks still resolve. No DashboardLayout wrapper
+          needed — the redirect target (/inbox) supplies its own. */}
       <Route path="/notifications">
-        {() => <DashboardLayout><ProtectedRoute component={Notifications} /></DashboardLayout>}
+        {() => <ProtectedRoute component={Notifications} />}
       </Route>
       <Route path="/expert-status">
         {() => <ProtectedRoute component={ExpertStatusPage} />}
