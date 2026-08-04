@@ -2695,9 +2695,8 @@ export default function ExpertWorkspace() {
   const advanceStatusMutation = useMutation({
     mutationFn: async () => {
       if (!assignment?.id) throw new Error("No assignment");
-      const current = assignment.workspaceStatus || "draft";
-      const next = current === "draft" ? "in_review" : "delivered";
-      const res = await apiRequest("PATCH", `/api/expert/assignments/${assignment.id}/workspace-status`, { workspaceStatus: next });
+      // Server derives the next status (ruling 25) — client only sends the intent.
+      const res = await apiRequest("PATCH", `/api/expert/assignments/${assignment.id}/workspace-status`, { intent: "advance" });
       return res.json();
     },
     onSuccess: () => {
