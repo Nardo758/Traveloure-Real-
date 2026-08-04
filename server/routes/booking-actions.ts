@@ -105,7 +105,7 @@ async function isTripOwnerCanonical(tripId: string, userId: string): Promise<boo
 router.post('/expert-requests/payment-intent', isAuthenticated, async (req, res) => {
   try {
     // Acting user = session, NEVER the body. (Was: userId from req.body — an identity-spoof hole.)
-    const sessionUserId = getUserId(req);
+    const sessionUserId = getUserId(req)!;
     if (!sessionUserId) return res.status(401).json({ error: 'Not authenticated' });
 
     // `amount` and `userId` are intentionally NOT read from the body. The charge amount is derived
@@ -149,7 +149,7 @@ router.post('/expert-requests/payment-intent', isAuthenticated, async (req, res)
  */
 router.get('/expert-requests', isAuthenticated, async (req, res) => {
   try {
-    const userId = (req as any).user?.claims?.sub;
+    const userId = getUserId(req)!;
     if (!userId) return res.status(401).json({ error: 'Not authenticated' });
 
     const { tripId } = req.query;
@@ -167,7 +167,7 @@ router.get('/expert-requests', isAuthenticated, async (req, res) => {
  */
 router.post('/expert-requests', isAuthenticated, async (req, res) => {
   try {
-    const authUserId = (req as any).user?.claims?.sub;
+    const authUserId = getUserId(req)!;
     const {
       userId,
       tripId,
@@ -374,7 +374,7 @@ router.post('/expert-requests', isAuthenticated, async (req, res) => {
  */
 router.patch('/expert-requests/:id/complete', isAuthenticated, async (req, res) => {
   try {
-    const expertUserId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
+    const expertUserId = getUserId(req)!;
     if (!expertUserId) return res.status(401).json({ error: 'Not authenticated' });
 
     const { id } = req.params;
@@ -396,7 +396,7 @@ router.patch('/expert-requests/:id/complete', isAuthenticated, async (req, res) 
  */
 router.post('/saved-trips', isAuthenticated, async (req, res) => {
   try {
-    const userId = (req as any).user?.claims?.sub;
+    const userId = getUserId(req)!;
     if (!userId) return res.status(401).json({ error: 'Not authenticated' });
 
     const { variantId, comparisonId, notes } = req.body;
@@ -428,7 +428,7 @@ router.post('/saved-trips', isAuthenticated, async (req, res) => {
  */
 router.post('/saved-trips/:id/convert', isAuthenticated, async (req, res) => {
   try {
-    const userId = getUserId(req);
+    const userId = getUserId(req)!;
     if (!userId) return res.status(401).json({ error: 'Not authenticated' });
 
     const { tripId } = await bookingService.convertSavedTrip(req.params.id, userId);
@@ -448,7 +448,7 @@ router.post('/saved-trips/:id/convert', isAuthenticated, async (req, res) => {
  */
 router.get('/saved-trips', isAuthenticated, async (req, res) => {
   try {
-    const userId = (req as any).user?.claims?.sub;
+    const userId = getUserId(req)!;
     if (!userId) return res.status(401).json({ error: 'Not authenticated' });
 
     const trips = await getSavedTripsForUser(userId);
@@ -513,7 +513,7 @@ router.get('/shared-trips/:token', async (req, res) => {
  */
 router.post('/trips/:id/share', isAuthenticated, async (req, res) => {
   try {
-    const userId = (req as any).user?.claims?.sub;
+    const userId = getUserId(req)!;
     if (!userId) return res.status(401).json({ error: 'Not authenticated' });
 
     const { id } = req.params;
@@ -608,7 +608,7 @@ router.get('/trip-experts', async (req, res) => {
  */
 router.get('/trips/:id/expert-advisor', isAuthenticated, async (req, res) => {
   try {
-    const userId = (req as any).user?.claims?.sub;
+    const userId = getUserId(req)!;
     if (!userId) return res.status(401).json({ error: 'Not authenticated' });
 
     const { id } = req.params;
@@ -642,7 +642,7 @@ router.get('/trips/:id/expert-advisor', isAuthenticated, async (req, res) => {
  */
 router.post('/trips/:id/expert-advisor', isAuthenticated, async (req, res) => {
   try {
-    const userId = (req as any).user?.claims?.sub;
+    const userId = getUserId(req)!;
     if (!userId) return res.status(401).json({ error: 'Not authenticated' });
 
     const { id } = req.params;
@@ -695,7 +695,7 @@ router.post('/trips/:id/expert-advisor', isAuthenticated, async (req, res) => {
  */
 router.get('/expert/assigned-trips', isAuthenticated, async (req, res) => {
   try {
-    const userId = (req as any).user?.claims?.sub;
+    const userId = getUserId(req)!;
     if (!userId) return res.status(401).json({ error: 'Not authenticated' });
 
     const trips = await getExpertAssignedTrips(userId);
@@ -716,7 +716,7 @@ router.get('/expert/assigned-trips', isAuthenticated, async (req, res) => {
  */
 router.get('/trips/mine/advisors', isAuthenticated, async (req, res) => {
   try {
-    const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
+    const userId = getUserId(req)!;
     if (!userId) return res.status(401).json({ error: 'Not authenticated' });
 
     const advisors = await getTravelerTripAdvisors(userId);
@@ -751,7 +751,7 @@ router.get('/trips/mine/advisors', isAuthenticated, async (req, res) => {
  */
 router.get('/expert/bookings/:id/plan-snapshot', isAuthenticated, async (req, res) => {
   try {
-    const userId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
+    const userId = getUserId(req)!;
     if (!userId) return res.status(401).json({ error: 'Not authenticated' });
 
     const booking = await storage.getServiceBooking(req.params.id);
@@ -842,7 +842,7 @@ router.get('/expert/bookings/:id/plan-snapshot', isAuthenticated, async (req, re
  */
 router.get('/trips/:id/suggestions', isAuthenticated, async (req, res) => {
   try {
-    const userId = (req as any).user?.claims?.sub;
+    const userId = getUserId(req)!;
     if (!userId) return res.status(401).json({ error: 'Not authenticated' });
 
     const { id } = req.params;
@@ -873,7 +873,7 @@ router.get('/trips/:id/suggestions', isAuthenticated, async (req, res) => {
  */
 router.post('/trips/:id/suggestions', isAuthenticated, async (req, res) => {
   try {
-    const userId = (req as any).user?.claims?.sub;
+    const userId = getUserId(req)!;
     if (!userId) return res.status(401).json({ error: 'Not authenticated' });
 
     const { id } = req.params;
@@ -956,7 +956,7 @@ router.post('/trips/:id/suggestions', isAuthenticated, async (req, res) => {
  */
 router.patch('/trips/:id/suggestions/:suggestionId', isAuthenticated, async (req, res) => {
   try {
-    const userId = (req as any).user?.claims?.sub;
+    const userId = getUserId(req)!;
     if (!userId) return res.status(401).json({ error: 'Not authenticated' });
 
     const { id, suggestionId } = req.params;
@@ -1049,7 +1049,7 @@ router.patch('/trips/:id/suggestions/:suggestionId', isAuthenticated, async (req
  */
 router.get('/trips/:tripId/traveler-profile', isAuthenticated, async (req, res) => {
   try {
-    const expertId = (req as any).user?.claims?.sub;
+    const expertId = getUserId(req)!;
     if (!expertId) return res.status(401).json({ error: 'Not authenticated' });
 
     const { tripId } = req.params;
@@ -1095,7 +1095,7 @@ router.get('/trips/:tripId/traveler-profile', isAuthenticated, async (req, res) 
 // Owner-gated; the pending→accepted flip is atomic (§15) so a double-click accepts once.
 router.post("/expert/assignments/:assignmentId/accept", isAuthenticated, async (req, res) => {
   try {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     const { assignmentId } = req.params;
     const assignment = await storage.getExpertAssignment(assignmentId);
     if (!assignment) return res.status(404).json({ message: "Assignment not found" });
@@ -1113,7 +1113,7 @@ router.post("/expert/assignments/:assignmentId/accept", isAuthenticated, async (
 // state machine (draft → in_review → delivered), assigned-expert-only.
 router.patch("/expert/assignments/:assignmentId/workspace-status", isAuthenticated, async (req, res) => {
   try {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     const { assignmentId } = req.params;
     const { workspaceStatus } = req.body;
     const validTransitions: Record<string, string[]> = {
@@ -1220,7 +1220,7 @@ router.patch("/expert/assignments/:assignmentId/workspace-status", isAuthenticat
 // under-grants the owner on several live gates; this handler must not inherit that class of bug).
 router.post('/trips/:id/plan-review', isAuthenticated, async (req, res) => {
   try {
-    const userId = (req as any).user?.claims?.sub;
+    const userId = getUserId(req)!;
     if (!userId) return res.status(401).json({ error: 'Not authenticated' });
 
     const { id } = req.params;
@@ -1385,7 +1385,7 @@ async function loadItemComments(itemId: string) {
 
 router.get('/trips/:tripId/items/:itemId/comments', isAuthenticated, async (req, res) => {
   try {
-    const userId = getUserId(req);
+    const userId = getUserId(req)!;
     if (!userId) return res.status(401).json({ error: 'Not authenticated' });
     const { tripId, itemId } = req.params;
 
@@ -1406,7 +1406,7 @@ router.get('/trips/:tripId/items/:itemId/comments', isAuthenticated, async (req,
 router.post('/trips/:tripId/items/:itemId/comments', isAuthenticated, async (req, res) => {
   try {
     // §14: author is the SESSION user — never a body-supplied id.
-    const userId = getUserId(req);
+    const userId = getUserId(req)!;
     if (!userId) return res.status(401).json({ error: 'Not authenticated' });
     const { tripId, itemId } = req.params;
 
@@ -1487,7 +1487,7 @@ router.post('/trips/:tripId/items/:itemId/comments', isAuthenticated, async (req
 // GET /api/trips/:tripId/my-assignment — expert's assignment record (id + workspaceStatus).
 router.get("/trips/:tripId/my-assignment", isAuthenticated, async (req, res) => {
   try {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     const { tripId } = req.params;
     const assignment = await storage.getTripExpertAdvisoryAssignment(tripId, userId);
     if (!assignment) return res.status(404).json({ message: "Not assigned to this trip" });
@@ -1501,7 +1501,7 @@ router.get("/trips/:tripId/my-assignment", isAuthenticated, async (req, res) => 
 // GET /api/trips/:tripId/expert-notes — readable by trip owner OR assigned expert.
 router.get("/trips/:tripId/expert-notes", isAuthenticated, async (req, res) => {
   try {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     const { tripId } = req.params;
     const owned = await verifyTripOwnership(tripId, userId);
     if (!owned) {
@@ -1522,7 +1522,7 @@ router.get("/trips/:tripId/expert-notes", isAuthenticated, async (req, res) => {
 // PATCH /api/trips/:tripId/expert-notes — auto-save (assigned expert only).
 router.patch("/trips/:tripId/expert-notes", isAuthenticated, async (req, res) => {
   try {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     const { tripId } = req.params;
     const { expertNotes } = req.body;
     if (typeof expertNotes !== "string") return res.status(400).json({ message: "expertNotes must be a string" });
@@ -1540,7 +1540,7 @@ router.patch("/trips/:tripId/expert-notes", isAuthenticated, async (req, res) =>
 // (read-only; amount from the catalog/records, acting user from session — §14-clean).
 router.get("/trips/:tripId/commission", isAuthenticated, async (req, res) => {
   try {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     const { tripId } = req.params;
     const assignment = await storage.getTripExpertAdvisoryAssignment(tripId, userId);
     if (!assignment) return res.status(403).json({ message: "Not assigned to this trip" });
@@ -1611,7 +1611,7 @@ router.get("/trips/:tripId/commission", isAuthenticated, async (req, res) => {
 // GET /api/trips/:tripId/workspace-constraints — anchors/boundaries/energy + conflict detection.
 router.get("/trips/:tripId/workspace-constraints", isAuthenticated, async (req, res) => {
   try {
-    const userId = (req.user as any).claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
 
     const { tripId } = req.params;
@@ -1732,7 +1732,7 @@ router.get("/trips/:tripId/workspace-constraints", isAuthenticated, async (req, 
 // (owner ‖ assigned-expert ‖ authored-build author ‖ admin) via the canonical authorizeTripLogistics.
 router.get("/trips/:tripId/transport-gaps", isAuthenticated, async (req, res) => {
   try {
-    const userId = (req.user as any).claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
     const denied = await authorizeTripLogistics(req.params.tripId, userId, "GET /api/trips/:tripId/transport-gaps");
     if (denied) return res.status(denied.status).json({ message: denied.message });
@@ -1751,7 +1751,7 @@ router.get("/trips/:tripId/transport-gaps", isAuthenticated, async (req, res) =>
 // POST /api/trips/:tripId/calculate-energy — per-day energy depletion; owner/admin/expert.
 router.post("/trips/:tripId/calculate-energy", isAuthenticated, async (req, res) => {
   try {
-    const userId = (req.user as any).claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
     const trip = await storage.getTrip(req.params.tripId);
     if (!trip) return res.status(404).json({ message: "Trip not found" });
@@ -1810,7 +1810,7 @@ router.post("/trips/:tripId/calculate-energy", isAuthenticated, async (req, res)
 // POST /api/trips/:tripId/generate-presets — logistics presets from a template; owner/admin/expert.
 router.post("/trips/:tripId/generate-presets", isAuthenticated, async (req, res) => {
   try {
-    const userId = (req.user as any).claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
     const trip = await storage.getTrip(req.params.tripId);
     if (!trip) return res.status(404).json({ message: "Trip not found" });

@@ -1,4 +1,5 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
+import { getUserId } from "../utils/auth";
 import { authorizeTripLogistics } from '../utils/trip-logistics-auth';
 import { checkProviderPublishGate } from '../services/provider-publish.service';
 import { withQueryTimer } from '../utils/queryTimer';
@@ -196,7 +197,7 @@ async function getVendorCoordinationTripId(vendorId: string): Promise<string | n
 
 router.get("/api/provider/earnings", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const earnings = await storage.getProviderEarnings(userId);
       res.json(earnings);
     } catch (error: any) {
@@ -208,7 +209,7 @@ router.get("/api/provider/earnings", isAuthenticated, async (req, res) => {
 
 router.get("/api/provider/earnings/summary", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const summary = await storage.getProviderEarningsSummary(userId);
       // Return both legacy field names and the names the payouts UI expects
       res.json({
@@ -227,7 +228,7 @@ router.get("/api/provider/earnings/summary", isAuthenticated, async (req, res) =
 
 router.get("/api/provider/earnings/details", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const { revenueTrackingService } = await import('../services/revenue-tracking.service');
       const details = await revenueTrackingService.getProviderRevenueDetails(userId);
       res.json(details);
@@ -242,7 +243,7 @@ router.get("/api/provider/earnings/details", isAuthenticated, async (req, res) =
 
 router.get("/api/expert/earnings/details", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const { revenueTrackingService } = await import('../services/revenue-tracking.service');
       const details = await revenueTrackingService.getExpertRevenueDetails(userId);
       res.json(details);
@@ -257,7 +258,7 @@ router.get("/api/expert/earnings/details", isAuthenticated, async (req, res) => 
 
 router.get("/api/expert/trips/:tripId/constraints", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || (user.role !== "expert" && user.role !== "admin")) {
@@ -313,7 +314,7 @@ router.get("/api/expert/trips/:tripId/constraints", isAuthenticated, async (req,
 
 router.get("/api/expert/trips/:tripId/vendors", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || (user.role !== "expert" && user.role !== "admin")) {
@@ -336,7 +337,7 @@ router.get("/api/expert/trips/:tripId/vendors", isAuthenticated, async (req, res
 
 router.post("/api/expert/trips/:tripId/vendors", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || (user.role !== "expert" && user.role !== "admin")) {
@@ -375,7 +376,7 @@ router.post("/api/expert/trips/:tripId/vendors", isAuthenticated, async (req, re
 
 router.put("/api/expert/vendors/:vendorId", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || (user.role !== "expert" && user.role !== "admin")) {
@@ -413,7 +414,7 @@ router.put("/api/expert/vendors/:vendorId", isAuthenticated, async (req, res) =>
 
 router.delete("/api/expert/vendors/:vendorId", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || (user.role !== "expert" && user.role !== "admin")) {
@@ -449,7 +450,7 @@ router.delete("/api/expert/vendors/:vendorId", isAuthenticated, async (req, res)
 
 router.post("/api/provider/blackout-dates", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || (user.role !== "provider" && user.role !== "service_provider" && user.role !== "admin")) {
@@ -476,7 +477,7 @@ router.post("/api/provider/blackout-dates", isAuthenticated, async (req, res) =>
 
 router.delete("/api/provider/blackout-dates/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || (user.role !== "provider" && user.role !== "service_provider" && user.role !== "admin")) {
@@ -515,7 +516,7 @@ router.delete("/api/provider/blackout-dates/:id", isAuthenticated, async (req, r
 
 router.get("/api/provider/booking-requests", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || (user.role !== "provider" && user.role !== "service_provider" && user.role !== "admin")) {
@@ -531,7 +532,7 @@ router.get("/api/provider/booking-requests", isAuthenticated, async (req, res) =
 
 router.put("/api/provider/booking-requests/:requestId/respond", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || (user.role !== "provider" && user.role !== "service_provider" && user.role !== "admin")) {
@@ -604,7 +605,7 @@ router.put("/api/provider/booking-requests/:requestId/respond", isAuthenticated,
 
 router.get("/api/expert/assigned-trips", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const rows = await db
         .select({
           trip_id: tripExpertAdvisors.tripId,
@@ -800,7 +801,7 @@ router.get("/api/expert/contracts/recent", isAuthenticated, async (req, res) => 
       // returned the 20 most recent contracts PLATFORM-WIDE — other earners' service names,
       // client destinations and amounts — to any authenticated caller. It is now the required
       // first argument, so the scope is visible at the call site and the compiler enforces it.
-      const expertId = (req.user as any).id || (req.user as any).claims?.sub;
+      const expertId = getUserId(req)!;
       if (!expertId) return res.status(401).json({ message: "Not authenticated" });
       const limit = Math.min(parseInt(req.query.limit as string || "20"), 100);
       res.json(await getRecentExpertContracts(expertId, limit));
@@ -815,7 +816,7 @@ router.get("/api/expert/contracts/recent", isAuthenticated, async (req, res) => 
   // Local admin guard for this scope (requireAdmin is defined in the outer registerRoutes scope)
   const requireAdminLocal = async (req: any, res: any, next: any) => {
     if (!req.isAuthenticated()) return res.status(401).json({ message: "Authentication required" });
-    const role = await getUserRole(req.user?.claims?.sub);
+    const role = await getUserRole(getUserId(req)!);
     if (role !== "admin") return res.status(403).json({ message: "Admin access required" });
     next();
   };

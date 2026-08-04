@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { getUserId } from "../utils/auth";
 import { z } from "zod";
 import { eq, desc } from "drizzle-orm";
 import { db } from "../db";
@@ -38,7 +39,7 @@ router.use("/api/ea", isEA);
 // Email/password sessions only carry `claims.sub` (no top-level `.id`) — every
 // handler in this file must resolve the acting EA user the same way.
 function getEaUserId(req: any): string {
-  return (req.user as any).id || (req.user as any).claims?.sub;
+  return getUserId(req)!;
 }
 
 router.get("/api/ea/clients", isAuthenticated, async (req, res) => {

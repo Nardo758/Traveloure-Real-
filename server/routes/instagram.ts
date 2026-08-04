@@ -1,4 +1,5 @@
 import { Router, Request, Response } from "express";
+import { getUserId } from "../utils/auth";
 import { db } from "../db";
 import { users } from "@shared/schema";
 import { eq } from "drizzle-orm";
@@ -69,7 +70,7 @@ router.get("/callback", isAuthenticated, async (req: Request, res: Response) => 
       longLivedToken = longLivedData.access_token;
     }
 
-    const userId = (req.user as any)?.claims?.sub;
+    const userId = getUserId(req)!;
     if (userId) {
       await db
         .update(users)
@@ -89,7 +90,7 @@ router.get("/callback", isAuthenticated, async (req: Request, res: Response) => 
 
 router.get("/status", isAuthenticated, async (req: Request, res: Response) => {
   try {
-    const userId = (req.user as any)?.claims?.sub;
+    const userId = getUserId(req)!;
     if (!userId) {
       return res.json({ connected: false });
     }
@@ -108,7 +109,7 @@ router.get("/status", isAuthenticated, async (req: Request, res: Response) => {
 
 router.post("/publish", isAuthenticated, async (req: Request, res: Response) => {
   try {
-    const userId = (req.user as any)?.claims?.sub;
+    const userId = getUserId(req)!;
     if (!userId) {
       return res.status(401).json({ error: "Not authenticated" });
     }
@@ -208,7 +209,7 @@ router.post("/publish", isAuthenticated, async (req: Request, res: Response) => 
 
 router.post("/publish-carousel", isAuthenticated, async (req: Request, res: Response) => {
   try {
-    const userId = (req.user as any)?.claims?.sub;
+    const userId = getUserId(req)!;
     if (!userId) {
       return res.status(401).json({ error: "Not authenticated" });
     }
@@ -310,7 +311,7 @@ router.post("/publish-carousel", isAuthenticated, async (req: Request, res: Resp
 
 router.get("/publishing-limit", isAuthenticated, async (req: Request, res: Response) => {
   try {
-    const userId = (req.user as any)?.claims?.sub;
+    const userId = getUserId(req)!;
     if (!userId) {
       return res.status(401).json({ error: "Not authenticated" });
     }
@@ -345,7 +346,7 @@ router.get("/publishing-limit", isAuthenticated, async (req: Request, res: Respo
 
 router.post("/disconnect", isAuthenticated, async (req: Request, res: Response) => {
   try {
-    const userId = (req.user as any)?.claims?.sub;
+    const userId = getUserId(req)!;
     if (!userId) {
       return res.status(401).json({ error: "Not authenticated" });
     }

@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { getUserId } from "../utils/auth";
 import { storage } from "../storage";
 import {
   insertItineraryChangeSchema,
@@ -35,7 +36,7 @@ function logChange(tripId: string, who: string, action: string, changeType: stri
 router.post("/api/itinerary-comparisons/:id/apply-to-trip", isAuthenticated, async (req, res) => {
   try {
     const { id: comparisonId } = req.params;
-    const userId = (req.user as any)?.claims?.sub;
+    const userId = getUserId(req)!;
 
     const comparison = await storage.getItineraryComparison(comparisonId);
     if (!comparison || comparison.userId !== userId) {
@@ -230,7 +231,7 @@ router.post("/api/itinerary-comparisons/:id/apply-to-trip", isAuthenticated, asy
 router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
   try {
     const { tripId } = req.params;
-    const userId = (req.user as any)?.claims?.sub;
+    const userId = getUserId(req)!;
 
     const trip = await storage.getTrip(tripId);
     if (!trip) {
@@ -301,7 +302,7 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
 
 router.get("/api/trips/:tripId/changes", isAuthenticated, async (req, res) => {
   try {
-    const userId = (req.user as any)?.claims?.sub;
+    const userId = getUserId(req)!;
     const trip = await storage.getTrip(req.params.tripId);
     if (!trip || trip.userId !== userId) {
       return res.status(403).json({ error: "Access denied" });
@@ -317,7 +318,7 @@ router.get("/api/trips/:tripId/changes", isAuthenticated, async (req, res) => {
 router.post("/api/trips/:tripId/changes", isAuthenticated, async (req, res) => {
   try {
     const { tripId } = req.params;
-    const userId = (req.user as any)?.claims?.sub;
+    const userId = getUserId(req)!;
     const userName = (req.user as any)?.claims?.name || "User";
 
     const trip = await storage.getTrip(tripId);
@@ -353,7 +354,7 @@ router.post("/api/trips/:tripId/changes", isAuthenticated, async (req, res) => {
 router.patch("/api/transport-legs/:legId/status", isAuthenticated, async (req, res) => {
   try {
     const { legId } = req.params;
-    const userId = (req.user as any)?.claims?.sub;
+    const userId = getUserId(req)!;
     const userName = (req.user as any)?.claims?.name || "User";
     const { status, tripId } = req.body;
 
@@ -418,7 +419,7 @@ router.patch("/api/transport-legs/:legId/status", isAuthenticated, async (req, r
 
 router.delete("/api/trips/:tripId/changes/:changeId", isAuthenticated, async (req, res) => {
   try {
-    const userId = (req.user as any)?.claims?.sub;
+    const userId = getUserId(req)!;
     const trip = await storage.getTrip(req.params.tripId);
     if (!trip || trip.userId !== userId) {
       return res.status(403).json({ error: "Access denied" });

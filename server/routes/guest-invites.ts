@@ -1,4 +1,5 @@
 import { Router, Request, Response } from "express";
+import { getUserId } from "../utils/auth";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { storage } from "../storage";
@@ -80,7 +81,7 @@ const travelPlansSchema = z.object({
 
 /** Session user id — works for both Replit-OIDC (claims.sub) and email/password (id) sessions. */
 function sessionUserId(req: Request): string | undefined {
-  return (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+  return getUserId(req)!;
 }
 
 /** The organizer gate: the session user must OWN the user_experiences row. */

@@ -100,14 +100,17 @@ export default function MyTrips() {
     return true;
   });
 
-  const activeTrips = filteredTrips.filter(t => {
+  // Three mutually exclusive, date-derived buckets — a trip appears in EXACTLY ONE.
+  // trips.status is a documented-dead field (CLAUDE.md §13, Lane 3 Option B: never read
+  // it; phase derives from dates). The old `t.status === "planning"` read here made a
+  // future-dated trip render under both "Active Plans" and "Upcoming Events".
+  const travelingNow = filteredTrips.filter(t => {
     const start = new Date(t.startDate);
     const end = new Date(t.endDate);
-    return (start <= now && end >= now) || (start > now && t.status === "planning");
+    return start <= now && now <= end;
   });
-  
-  const upcomingTrips = filteredTrips.filter(t => new Date(t.startDate) > now);
-  const completedTrips = filteredTrips.filter(t => new Date(t.endDate) < now);
+  const inPlanning = filteredTrips.filter(t => new Date(t.startDate) > now);
+  const pastTrips = filteredTrips.filter(t => new Date(t.endDate) < now);
 
   // §13 honest-or-absent: progress is the trip's REAL elapsed-time fraction, and only once the
   // trip has started. An upcoming trip has no measurable progress → null → no bar (this line
@@ -147,25 +150,38 @@ export default function MyTrips() {
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-start justify-between gap-2 mb-2">
-                <div>
-                  <h3 className="font-semibold text-foreground dark:text-white truncate" data-testid={`text-trip-title-${trip.id}`}>
-                    {trip.title}
-                  </h3>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <h3 className="font-semibold text-foreground dark:text-white truncate" data-testid={`text-trip-title-${trip.id}`}>
+                      {trip.title}
+                    </h3>
+                    {/* Slip identity — render ONLY when the trips-list response carries a
+                        tracking number (§13: never invent; omit when absent). */}
+                    {trip.trackingNumber && (
+                      <span
+                        className="flex-shrink-0 rounded border border-border bg-muted/50 px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground"
+                        data-testid={`chip-tracking-${trip.id}`}
+                      >
+                        {trip.trackingNumber}
+                      </span>
+                    )}
+                  </div>
                   <p className="text-sm text-muted-foreground">
                     {format(start, "MMM d")} - {format(end, "MMM d, yyyy")} • {trip.destination}
                   </p>
                 </div>
+                {/* Phase chip — same date-derived logic as the section buckets (§13 honest-or-absent). */}
                 {isCompleted ? (
                   <Badge variant="secondary" className="flex-shrink-0">
                     <Star className="w-3 h-3 mr-1" /> Completed
                   </Badge>
-                ) : isUpcoming && daysAway <= 30 ? (
+                ) : isUpcoming ? (
                   <Badge className="flex-shrink-0 bg-blue-100 text-blue-600 hover:bg-blue-100">
                     {daysAway} days away
                   </Badge>
                 ) : (
                   <Badge variant="outline" className="flex-shrink-0">
-                    Planning
+                    Underway
                   </Badge>
                 )}
               </div>
@@ -285,14 +301,14 @@ export default function MyTrips() {
           </div>
         </div>
 
-        {/* Active Plans */}
-        {activeTrips.length > 0 && (
+        {/* Traveling now — first when non-empty */}
+        {travelingNow.length > 0 && (
           <section>
             <h2 className="text-lg font-semibold text-foreground dark:text-white mb-4 flex items-center gap-2">
-              Active Plans ({activeTrips.length})
+              Traveling now ({travelingNow.length})
             </h2>
             <div className={viewMode === "grid" ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" : "space-y-4"}>
-              {activeTrips.map((trip, i) => (
+              {travelingNow.map((trip, i) => (
                 <motion.div
                   key={trip.id}
                   initial={{ opacity: 0, y: 10 }}
@@ -306,14 +322,14 @@ export default function MyTrips() {
           </section>
         )}
 
-        {/* Upcoming Events */}
-        {upcomingTrips.length > 0 && (
+        {/* In planning (events live on My events — ratified; no "Upcoming Events" here) */}
+        {inPlanning.length > 0 && (
           <section>
             <h2 className="text-lg font-semibold text-foreground dark:text-white mb-4 flex items-center gap-2">
-              Upcoming Events ({upcomingTrips.length})
+              In planning ({inPlanning.length})
             </h2>
             <div className={viewMode === "grid" ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" : "space-y-4"}>
-              {upcomingTrips.map((trip, i) => (
+              {inPlanning.map((trip, i) => (
                 <motion.div
                   key={trip.id}
                   initial={{ opacity: 0, y: 10 }}
@@ -327,19 +343,19 @@ export default function MyTrips() {
           </section>
         )}
 
-        {/* Completed */}
-        {completedTrips.length > 0 && (
+        {/* Past trips */}
+        {pastTrips.length > 0 && (
           <section>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold text-foreground dark:text-white flex items-center gap-2">
-                Completed ({completedTrips.length})
+                Past trips ({pastTrips.length})
               </h2>
               <Button variant="ghost" className="text-primary" data-testid="button-show-all-completed">
                 Show All <ChevronRight className="w-4 h-4 ml-1" />
               </Button>
             </div>
             <div className={viewMode === "grid" ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" : "space-y-4"}>
-              {completedTrips.slice(0, 3).map((trip, i) => (
+              {pastTrips.slice(0, 3).map((trip, i) => (
                 <motion.div
                   key={trip.id}
                   initial={{ opacity: 0, y: 10 }}

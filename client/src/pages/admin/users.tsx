@@ -87,6 +87,7 @@ const ROLE_FILTER_OPTIONS: RoleFilterOption[] = [
 export default function AdminUsers() {
   const [searchQuery, setSearchQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
   const [viewUser, setViewUser] = useState<AdminUserRow | null>(null);
   const [suspendUser, setSuspendUser] = useState<AdminUserRow | null>(null);
   const [suspendReason, setSuspendReason] = useState("");
@@ -96,7 +97,20 @@ export default function AdminUsers() {
   const { data: usersData, isLoading } = useQuery<{
     users: AdminUserRow[];
     total: number;
-  }>({ queryKey: ["/api/admin/users", { search: searchQuery }] });
+    stats?: { active: number; suspended: number; newToday: number };
+    page: number;
+    limit: number;
+  }>({
+    // Send the browser's IANA timezone so the server computes "New Today"
+    // against the admin's local day boundary instead of server UTC.
+    queryKey: ["/api/admin/users", {
+      search: searchQuery,
+      page,
+      role: roleFilter ?? undefined,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    }],
+    placeholderData: (prev) => prev,
+  });
 
   const suspendMutation = useMutation({
     mutationFn: async ({ id, reason }: { id: string; reason: string }) => {
@@ -147,10 +161,18 @@ export default function AdminUsers() {
     return matchesSearch && matchesRole;
   });
 
+  const pageLimit = usersData?.limit ?? 50;
+  const totalPages = Math.max(1, Math.ceil((usersData?.total ?? 0) / pageLimit));
+  const currentPage = usersData?.page ?? page;
+
+  // Active/Suspended/New Today come from server-side aggregates over the WHOLE
+  // filtered set, so the numbers stay stable across pages (previously they were
+  // computed from just the visible 50-row page).
   const stats = {
     total: usersData?.total ?? users.length,
-    active: users.filter(u => u.status === "active").length,
-    suspended: users.filter(u => u.status === "suspended").length,
+    active: usersData?.stats?.active ?? 0,
+    suspended: usersData?.stats?.suspended ?? 0,
+    newToday: usersData?.stats?.newToday ?? 0,
   };
 
   return (
@@ -178,13 +200,7 @@ export default function AdminUsers() {
           </Card>
           <Card data-testid="card-stat-new">
             <CardContent className="p-4 text-center">
-              <p className="text-2xl font-bold text-blue-600">
-                {usersData?.users?.filter(u => {
-                  const joined = new Date(u.joined);
-                  const today = new Date();
-                  return joined.toDateString() === today.toDateString();
-                }).length ?? 0}
-              </p>
+              <p className="text-2xl font-bold text-blue-600">{stats.newToday}</p>
               <p className="text-sm text-gray-500">New Today</p>
             </CardContent>
           </Card>
@@ -199,7 +215,7 @@ export default function AdminUsers() {
                 <Input
                   placeholder="Search users by name or email..."
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
                   className="pl-10"
                   data-testid="input-search-users"
                 />
@@ -208,7 +224,7 @@ export default function AdminUsers() {
                 <Button
                   variant={roleFilter === null ? "default" : "outline"}
                   size="sm"
-                  onClick={() => setRoleFilter(null)}
+                  onClick={() => { setRoleFilter(null); setPage(1); }}
                   data-testid="button-filter-all"
                 >
                   All
@@ -218,7 +234,7 @@ export default function AdminUsers() {
                     key={key}
                     variant={roleFilter === key ? "default" : "outline"}
                     size="sm"
-                    onClick={() => setRoleFilter(key)}
+                    onClick={() => { setRoleFilter(key); setPage(1); }}
                     data-testid={`button-filter-${key}`}
                   >
                     {label}
@@ -344,6 +360,35 @@ export default function AdminUsers() {
                 </tbody>
               </table>
             </div>
+            {/* Pagination: server pages at `limit` (default 50); without controls,
+                only the newest page of users is ever reachable in the UI. */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between pt-4 border-t border-gray-100 mt-2">
+                <p className="text-sm text-gray-500" data-testid="text-page-info">
+                  Page {currentPage} of {totalPages} · {usersData?.total ?? 0} users
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage <= 1}
+                    data-testid="button-prev-page"
+                  >
+                    Previous
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={currentPage >= totalPages}
+                    data-testid="button-next-page"
+                  >
+                    Next
+                  </Button>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

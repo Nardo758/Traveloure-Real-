@@ -73,7 +73,7 @@ router.post('/process-cart', isAuthenticated, async (req, res) => {
   try {
     // Acting user = session, NEVER the body. (Was: `userId` from req.body — an IDOR letting an
     // authenticated user create trips/bookings under another user's id.)
-    const sessionUserId = getUserId(req);
+    const sessionUserId = getUserId(req)!;
     if (!sessionUserId) return res.status(401).json({ error: 'Not authenticated' });
 
     const { cartItems, paymentMethod = 'full', bookingMetadata } = req.body;
@@ -131,7 +131,7 @@ router.post('/confirm-payment', isAuthenticated, async (req, res) => {
     }
 
     // Extract userId handling both Replit Auth (user.id) and email-auth (user.claims.sub)
-    const userId = (req as any).user?.id ?? (req as any).user?.claims?.sub;
+    const userId = getUserId(req)!;
     if (!userId) {
       return res.status(401).json({ success: false, error: 'User identity could not be resolved' });
     }
@@ -180,7 +180,7 @@ router.post('/bulk-status', isAuthenticated, async (req, res) => {
       return res.status(400).json({ error: 'bookingIds must be a non-empty array' });
     }
 
-    const userId = (req as any).user?.id ?? (req as any).user?.claims?.sub;
+    const userId = getUserId(req)!;
     if (!userId) {
       return res.status(401).json({ success: false, error: 'User identity could not be resolved' });
     }
@@ -299,7 +299,7 @@ router.post('/apply-promo', isAuthenticated, async (req, res) => {
     // limit). This is a discount PREVIEW only — no money moves and no usage is recorded here
     // (recordPromoUsage runs at checkout); `amount` is the client subtotal to preview against and
     // is not authoritative — the actual charge + promo are re-derived server-side at /api/checkout.
-    const sessionUserId = getUserId(req);
+    const sessionUserId = getUserId(req)!;
     if (!sessionUserId) return res.status(401).json({ error: 'Not authenticated' });
 
     const { code, amount } = req.body; // money-derive-ok: preview subtotal only; charge re-derives at /api/checkout
@@ -405,7 +405,7 @@ router.post('/refund', isAuthenticated, async (req, res) => {
     // Was WORLD-WRITABLE: auth-only, any user could refund any bookingId for an arbitrary amount.
     // Now: owner-or-admin gate, and the refund amount is server-derived from the booking record
     // (client-sent `amount` is ignored). Acting user from the session, never the body.
-    const sessionUserId = getUserId(req);
+    const sessionUserId = getUserId(req)!;
     if (!sessionUserId) return res.status(401).json({ error: 'Not authenticated' });
 
     const { bookingId, reason } = req.body; // NOTE: `amount` intentionally not read — server-derived.
@@ -485,7 +485,7 @@ router.post('/refund', isAuthenticated, async (req, res) => {
 
 router.post('/:id/confirm-completion', isAuthenticated, async (req, res) => {
   try {
-    const sessionUserId = getUserId(req);
+    const sessionUserId = getUserId(req)!;
     if (!sessionUserId) return res.status(401).json({ error: 'Not authenticated' });
     const bookingId = req.params.id;
 
@@ -510,7 +510,7 @@ router.post('/:id/confirm-completion', isAuthenticated, async (req, res) => {
 
 router.post('/:id/dispute', isAuthenticated, async (req, res) => {
   try {
-    const sessionUserId = getUserId(req);
+    const sessionUserId = getUserId(req)!;
     if (!sessionUserId) return res.status(401).json({ error: 'Not authenticated' });
     const bookingId = req.params.id;
     const { reason } = req.body;
