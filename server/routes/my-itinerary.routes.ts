@@ -6,6 +6,7 @@
  */
 
 import { Router } from "express";
+import { getUserId } from "../utils/auth";
 import { storage } from "../storage";
 import { 
   generateActivityNote, 
@@ -22,7 +23,7 @@ const router = Router();
 router.get("/api/my-itinerary/:id", isAuthenticated, async (req, res) => {
   try {
     const { id } = req.params;
-    const callerUserId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
+    const callerUserId = getUserId(req)!;
     const callerRole = (req as any).user?.claims?.role ?? (req as any).user?.role;
 
     // Get comparison data
@@ -208,7 +209,7 @@ router.get("/api/my-itinerary/:id", isAuthenticated, async (req, res) => {
 router.get("/api/my-itinerary/:id/calendar", isAuthenticated, async (req, res) => {
   try {
     const { id } = req.params;
-    const callerUserId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
+    const callerUserId = getUserId(req)!;
     const callerRole = (req as any).user?.claims?.role ?? (req as any).user?.role;
 
     // Get comparison data
@@ -262,7 +263,7 @@ router.get("/api/my-itinerary/:id/calendar", isAuthenticated, async (req, res) =
 router.get("/api/my-itinerary/:id/pdf", isAuthenticated, async (req, res) => {
   try {
     const { id } = req.params;
-    const callerUserId = (req as any).user?.claims?.sub ?? (req as any).user?.id;
+    const callerUserId = getUserId(req)!;
     const callerRole = (req as any).user?.claims?.role ?? (req as any).user?.role;
 
     // Get comparison data

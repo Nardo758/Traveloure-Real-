@@ -1,4 +1,5 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
+import { getUserId } from "../utils/auth";
 import { withQueryTimer } from '../utils/queryTimer';
 import { Router } from "express";
 import { storage } from "../storage";
@@ -225,13 +226,13 @@ function serviceCategorySlugToFeeCategory(slug: string | null | undefined): stri
 
 const requireAdminLocal = async (req: any, res: any, next: any) => {
   if (!req.isAuthenticated()) return res.status(401).json({ message: "Authentication required" });
-  const user = await getAdminRole((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  const user = await getAdminRole(getUserId(req)!);
   if (!user || user.role !== "admin") return res.status(403).json({ message: "Admin access required" });
   next();
 };
 
 router.get("/api/admin/commission-test", isAuthenticated, async (req, res) => {
-  const userId = ((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  const userId = getUserId(req)!;
   const user = await getFullAdminUser(userId);
   if (!user || user.role !== "admin") {
     return res.status(403).json({ message: "Admin access required" });
@@ -247,7 +248,7 @@ router.get("/api/admin/commission-test", isAuthenticated, async (req, res) => {
 });
 
 router.get("/api/admin/stats", isAuthenticated, async (req, res) => {
-    const userId = ((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+    const userId = getUserId(req)!;
     const user = await getFullAdminUser(userId);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
@@ -303,7 +304,7 @@ router.get("/api/admin/stats", isAuthenticated, async (req, res) => {
 
 
 router.get("/api/admin/bookings", isAuthenticated, async (req, res) => {
-    const user = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
+    const user = await getFullAdminUser(getUserId(req)!);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -336,7 +337,7 @@ router.get("/api/admin/bookings", isAuthenticated, async (req, res) => {
  * Stripe webhook arrived (e.g. browser closed mid-payment).
  */
 router.get("/api/admin/bookings/stale-pending", isAuthenticated, async (req, res) => {
-  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  const user = await getFullAdminUser(getUserId(req)!);
   if (!user || user.role !== "admin") {
     return res.status(403).json({ message: "Admin access required" });
   }
@@ -376,7 +377,7 @@ router.get("/api/admin/bookings/stale-pending", isAuthenticated, async (req, res
  * Ops should cross-check each against Stripe dashboard before manually reconciling.
  */
 router.get("/api/admin/bookings/stuck-pending", isAuthenticated, async (req, res) => {
-  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  const user = await getFullAdminUser(getUserId(req)!);
   if (!user || user.role !== "admin") {
     return res.status(403).json({ message: "Admin access required" });
   }
@@ -423,7 +424,7 @@ router.get("/api/admin/bookings/stuck-pending", isAuthenticated, async (req, res
  * Each row includes the raw_payload so ops can replay manually if needed.
  */
 router.get("/api/admin/webhooks/unprocessed", isAuthenticated, async (req, res) => {
-  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  const user = await getFullAdminUser(getUserId(req)!);
   if (!user || user.role !== "admin") {
     return res.status(403).json({ message: "Admin access required" });
   }
@@ -466,7 +467,7 @@ router.get("/api/admin/webhooks/unprocessed", isAuthenticated, async (req, res) 
  * dispute endpoint persists it, since service_bookings has no dispute_reason column).
  */
 router.get("/api/admin/disputes", isAuthenticated, async (req, res) => {
-  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  const user = await getFullAdminUser(getUserId(req)!);
   if (!user || user.role !== "admin") {
     return res.status(403).json({ message: "Admin access required" });
   }
@@ -509,7 +510,7 @@ router.get("/api/admin/disputes", isAuthenticated, async (req, res) => {
 // expert/full) and act on them. Read-only over the existing table; no schema change.
 // (Full white-glove fulfillment/messaging is filed as a separate build.)
 router.get("/api/admin/concierge-requests", isAuthenticated, async (req, res) => {
-  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  const user = await getFullAdminUser(getUserId(req)!);
   if (!user || user.role !== "admin") {
     return res.status(403).json({ message: "Admin access required" });
   }
@@ -557,7 +558,7 @@ router.get("/api/admin/concierge-requests", isAuthenticated, async (req, res) =>
 // applications → approved → earner accounts → handle claimed → first offering → approved
 // offering → payouts connected → first booking. Role lists mirror shared/roles.ts.
 router.get("/api/admin/business-funnel", isAuthenticated, async (req, res) => {
-  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  const user = await getFullAdminUser(getUserId(req)!);
   if (!user || user.role !== "admin") {
     return res.status(403).json({ message: "Admin access required" });
   }
@@ -601,7 +602,7 @@ router.get("/api/admin/business-funnel", isAuthenticated, async (req, res) => {
 // Any expert-family role (shared/roles.ts), excluding deleted/suspended. The original list
 // omitted event_planner — the single most relevant coordinator role for event coordination.
 router.get("/api/admin/coordinators", isAuthenticated, async (req, res) => {
-  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  const user = await getFullAdminUser(getUserId(req)!);
   if (!user || user.role !== "admin") {
     return res.status(403).json({ message: "Admin access required" });
   }
@@ -626,7 +627,7 @@ router.get("/api/admin/coordinators", isAuthenticated, async (req, res) => {
 // coordinator to a coordination engagement. Sets assigned_expert_id; the expert coordinator
 // workspace reads engagements by that field. Validates the target is a real expert-type user.
 router.post("/api/admin/coordination-states/:id/assign-coordinator", isAuthenticated, async (req, res) => {
-  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  const user = await getFullAdminUser(getUserId(req)!);
   if (!user || user.role !== "admin") {
     return res.status(403).json({ message: "Admin access required" });
   }
@@ -695,7 +696,7 @@ router.post("/api/admin/coordination-states/:id/assign-coordinator", isAuthentic
 // reviewed. Idempotent: re-marking an already-reviewed gap just re-stamps the timestamp/reviewer,
 // no error, no duplicate side effect (there is nothing else to duplicate).
 router.post("/api/admin/coordination-states/:id/review-ledger-gap", isAuthenticated, async (req, res) => {
-  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  const user = await getFullAdminUser(getUserId(req)!);
   if (!user || user.role !== "admin") {
     return res.status(403).json({ message: "Admin access required" });
   }
@@ -726,7 +727,7 @@ router.post("/api/admin/coordination-states/:id/review-ledger-gap", isAuthentica
 
 // GET /api/admin/ready-made/pending — submitted listings + author identity + build coverage.
 router.get("/api/admin/ready-made/pending", isAuthenticated, async (req, res) => {
-  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  const user = await getFullAdminUser(getUserId(req)!);
   if (!user || user.role !== "admin") {
     return res.status(403).json({ message: "Admin access required" });
   }
@@ -755,7 +756,7 @@ router.get("/api/admin/ready-made/pending", isAuthenticated, async (req, res) =>
 // The snapshot is taken here (not at read time) so the public card never recomputes from a trip
 // the author keeps editing — what was approved is what the shelf describes.
 router.post("/api/admin/ready-made/:id/approve", isAuthenticated, async (req, res) => {
-  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  const user = await getFullAdminUser(getUserId(req)!);
   if (!user || user.role !== "admin") {
     return res.status(403).json({ message: "Admin access required" });
   }
@@ -822,7 +823,7 @@ router.post("/api/admin/ready-made/:id/approve", isAuthenticated, async (req, re
 // Admin-only, and it rides the blanket /api/admin adminApiGuard (§2) as well as this explicit
 // role check, matching the sibling ready-made handlers.
 router.patch("/api/admin/ready-made/:id/badge", isAuthenticated, async (req, res) => {
-  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  const user = await getFullAdminUser(getUserId(req)!);
   if (!user || user.role !== "admin") {
     return res.status(403).json({ message: "Admin access required" });
   }
@@ -854,7 +855,7 @@ router.patch("/api/admin/ready-made/:id/badge", isAuthenticated, async (req, res
 
 // POST /api/admin/ready-made/:id/reject — reason required (the author sees it verbatim).
 router.post("/api/admin/ready-made/:id/reject", isAuthenticated, async (req, res) => {
-  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  const user = await getFullAdminUser(getUserId(req)!);
   if (!user || user.role !== "admin") {
     return res.status(403).json({ message: "Admin access required" });
   }
@@ -890,7 +891,7 @@ router.post("/api/admin/ready-made/:id/reject", isAuthenticated, async (req, res
 // earnings — the GET /api/admin/disputes list above now reads service_bookings too, so the queue
 // and both actions operate on the same rows.
 router.post("/api/admin/disputes/:bookingId/reject", isAuthenticated, async (req, res) => {
-  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  const user = await getFullAdminUser(getUserId(req)!);
   if (!user || user.role !== "admin") {
     return res.status(403).json({ message: "Admin access required" });
   }
@@ -918,7 +919,7 @@ router.post("/api/admin/disputes/:bookingId/reject", isAuthenticated, async (req
 // retry after a Stripe failure re-runs cleanly without double-reversing or double-refunding. Amount
 // is server-derived from the booking; the acting user is the admin session (§14/§15).
 router.post("/api/admin/disputes/:bookingId/uphold", isAuthenticated, async (req, res) => {
-  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  const user = await getFullAdminUser(getUserId(req)!);
   if (!user || user.role !== "admin") {
     return res.status(403).json({ message: "Admin access required" });
   }
@@ -967,7 +968,7 @@ router.post("/api/admin/disputes/:bookingId/uphold", isAuthenticated, async (req
  * Useful for on-demand checks without waiting for the daily schedule.
  */
 router.get("/api/admin/reconciliation/run-now", isAuthenticated, async (req, res) => {
-  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  const user = await getFullAdminUser(getUserId(req)!);
   if (!user || user.role !== "admin") {
     return res.status(403).json({ message: "Admin access required" });
   }
@@ -991,7 +992,7 @@ router.get("/api/admin/reconciliation/run-now", isAuthenticated, async (req, res
  * Returns the current auto-cancel scheduler configuration.
  */
 router.get("/api/admin/bookings/auto-cancel/config", isAuthenticated, async (req, res) => {
-  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  const user = await getFullAdminUser(getUserId(req)!);
   if (!user || user.role !== "admin") {
     return res.status(403).json({ message: "Admin access required" });
   }
@@ -1007,7 +1008,7 @@ router.get("/api/admin/bookings/auto-cancel/config", isAuthenticated, async (req
  * Updates the staleness threshold (hours) used by the auto-cancel scheduler.
  */
 router.patch("/api/admin/bookings/auto-cancel/config", isAuthenticated, async (req, res) => {
-  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  const user = await getFullAdminUser(getUserId(req)!);
   if (!user || user.role !== "admin") {
     return res.status(403).json({ message: "Admin access required" });
   }
@@ -1029,7 +1030,7 @@ router.patch("/api/admin/bookings/auto-cancel/config", isAuthenticated, async (r
  * Manually triggers the auto-cancel sweep immediately.
  */
 router.post("/api/admin/bookings/auto-cancel/run", isAuthenticated, async (req, res) => {
-  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  const user = await getFullAdminUser(getUserId(req)!);
   if (!user || user.role !== "admin") {
     return res.status(403).json({ message: "Admin access required" });
   }
@@ -1048,7 +1049,7 @@ router.post("/api/admin/bookings/auto-cancel/run", isAuthenticated, async (req, 
 // ── DMO ingestion (D3, Kyoto-first, Tavily-only) ─────────────────────────────
 // Readiness probe for the admin UI — tells the button whether a Tavily key is configured.
 router.get("/api/admin/dmo/ingest-kyoto/status", isAuthenticated, async (req, res) => {
-  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  const user = await getFullAdminUser(getUserId(req)!);
   if (!user || user.role !== "admin") {
     return res.status(403).json({ message: "Admin access required" });
   }
@@ -1061,7 +1062,7 @@ router.get("/api/admin/dmo/ingest-kyoto/status", isAuthenticated, async (req, re
 // Runs one Kyoto DMO enrichment pass on demand (Tavily search + extract). Enriched rows stay
 // born-hidden (D1a); if no Tavily key, writes nothing and reports ready:false (§13, no fabrication).
 router.post("/api/admin/dmo/ingest-kyoto", isAuthenticated, async (req, res) => {
-  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  const user = await getFullAdminUser(getUserId(req)!);
   if (!user || user.role !== "admin") {
     return res.status(403).json({ message: "Admin access required" });
   }
@@ -1084,7 +1085,7 @@ router.post("/api/admin/dmo/ingest-kyoto", isAuthenticated, async (req, res) => 
 
 // List the current Kyoto coverage picture (met + unmet) plus the open gap queue.
 router.get("/api/admin/dmo/gaps", isAuthenticated, async (req, res) => {
-  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  const user = await getFullAdminUser(getUserId(req)!);
   if (!user || user.role !== "admin") {
     return res.status(403).json({ message: "Admin access required" });
   }
@@ -1102,7 +1103,7 @@ router.get("/api/admin/dmo/gaps", isAuthenticated, async (req, res) => {
 
 // Recompute coverage and reconcile the gap alerts (idempotent).
 router.post("/api/admin/dmo/analyze-gaps", isAuthenticated, async (req, res) => {
-  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  const user = await getFullAdminUser(getUserId(req)!);
   if (!user || user.role !== "admin") {
     return res.status(403).json({ message: "Admin access required" });
   }
@@ -1118,7 +1119,7 @@ router.post("/api/admin/dmo/analyze-gaps", isAuthenticated, async (req, res) => 
 // Fill the thinnest categories from their gap alerts via Tavily discovery. New rows are born-hidden
 // (D1a); no Tavily key ⇒ zero writes (§13, ready:false).
 router.post("/api/admin/dmo/ingest-gaps", isAuthenticated, async (req, res) => {
-  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  const user = await getFullAdminUser(getUserId(req)!);
   if (!user || user.role !== "admin") {
     return res.status(403).json({ message: "Admin access required" });
   }
@@ -1143,7 +1144,7 @@ router.post("/api/admin/dmo/ingest-gaps", isAuthenticated, async (req, res) => {
 // array before this). See server/services/provider-health.service.ts.
 
 router.get("/api/admin/provider-health", isAuthenticated, async (req, res) => {
-  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  const user = await getFullAdminUser(getUserId(req)!);
   if (!user || user.role !== "admin") {
     return res.status(403).json({ message: "Admin access required" });
   }
@@ -1163,7 +1164,7 @@ router.get("/api/admin/provider-health", isAuthenticated, async (req, res) => {
 
 // List content awaiting admin intake — not yet expert-visible, not rejected/quarantined.
 router.get("/api/admin/dmo/intake", isAuthenticated, async (req, res) => {
-  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  const user = await getFullAdminUser(getUserId(req)!);
   if (!user || user.role !== "admin") {
     return res.status(403).json({ message: "Admin access required" });
   }
@@ -1191,7 +1192,7 @@ router.get("/api/admin/dmo/intake", isAuthenticated, async (req, res) => {
 // Approve raw content INTO the expert library (flip expert_workspace_visible true). Idempotent:
 // only transitions rows that are still hidden and not rejected.
 router.post("/api/admin/dmo/intake/:id/approve", isAuthenticated, async (req, res) => {
-  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  const user = await getFullAdminUser(getUserId(req)!);
   if (!user || user.role !== "admin") {
     return res.status(403).json({ message: "Admin access required" });
   }
@@ -1223,7 +1224,7 @@ router.post("/api/admin/dmo/intake/:id/approve", isAuthenticated, async (req, re
 
 // Backfill: register ALL existing dmo_raw_content into the central registry as 'sourced' (idempotent).
 router.post("/api/admin/dmo/sync-registry", isAuthenticated, async (req, res) => {
-  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  const user = await getFullAdminUser(getUserId(req)!);
   if (!user || user.role !== "admin") {
     return res.status(403).json({ message: "Admin access required" });
   }
@@ -1241,7 +1242,7 @@ router.post("/api/admin/dmo/sync-registry", isAuthenticated, async (req, res) =>
 // affiliate_products + content_registry. Key-gated (§13 — no token ⇒ ready:false, zero writes).
 // Body: { city (required), network? } — one network or all. Kyoto-first (§12).
 router.post("/api/admin/catalog/ingest", isAuthenticated, async (req, res) => {
-  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  const user = await getFullAdminUser(getUserId(req)!);
   if (!user || user.role !== "admin") {
     return res.status(403).json({ message: "Admin access required" });
   }
@@ -1268,7 +1269,7 @@ router.post("/api/admin/catalog/ingest", isAuthenticated, async (req, res) => {
 
 // Reject raw content at intake — it never enters the expert library. Stays hidden.
 router.post("/api/admin/dmo/intake/:id/reject", isAuthenticated, async (req, res) => {
-  const user = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  const user = await getFullAdminUser(getUserId(req)!);
   if (!user || user.role !== "admin") {
     return res.status(403).json({ message: "Admin access required" });
   }
@@ -1294,7 +1295,7 @@ router.post("/api/admin/dmo/intake/:id/reject", isAuthenticated, async (req, res
 });
 
 router.get("/api/admin/revenue", isAuthenticated, async (req, res) => {
-    const user = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
+    const user = await getFullAdminUser(getUserId(req)!);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -1318,7 +1319,7 @@ router.get("/api/admin/revenue", isAuthenticated, async (req, res) => {
   // Admin: list contact submissions
 router.get("/api/admin/contact-submissions", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const adminUser = await getFullAdminUser(userId);
       if (!adminUser || adminUser.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
@@ -1339,7 +1340,7 @@ router.get("/api/admin/contact-submissions", isAuthenticated, async (req, res) =
   // Admin: update contact submission status
 router.patch("/api/admin/contact-submissions/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const adminUser = await getFullAdminUser(userId);
       if (!adminUser || adminUser.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
@@ -1370,7 +1371,7 @@ router.patch("/api/admin/contact-submissions/:id", isAuthenticated, async (req, 
 // active assignments made before the restriction — admin must review and reassign.
 
 router.get("/api/admin/experts/stripe-restricted", isAuthenticated, async (req, res) => {
-    const user = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
+    const user = await getFullAdminUser(getUserId(req)!);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -1403,7 +1404,7 @@ router.get("/api/admin/experts/stripe-restricted", isAuthenticated, async (req, 
   });
 
 router.get("/api/admin/expert-applications", isAuthenticated, async (req, res) => {
-    const user = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
+    const user = await getFullAdminUser(getUserId(req)!);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -1427,7 +1428,7 @@ router.get("/api/admin/expert-applications", isAuthenticated, async (req, res) =
   // Admin: Update expert application status
 
 router.patch("/api/admin/expert-applications/:id/status", isAuthenticated, async (req, res) => {
-    const user = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
+    const user = await getFullAdminUser(getUserId(req)!);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -1508,7 +1509,7 @@ router.patch("/api/admin/expert-applications/:id/status", isAuthenticated, async
 
   // Admin: Update rejection reason only (without changing status)
 router.patch("/api/admin/expert-applications/:id/rejection-reason", isAuthenticated, async (req, res) => {
-    const user = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
+    const user = await getFullAdminUser(getUserId(req)!);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -1538,7 +1539,7 @@ router.patch("/api/admin/expert-applications/:id/rejection-reason", isAuthentica
   // percent (e.g. 80 → expert keeps 80%, platform takes 20%).
 
 router.patch("/api/admin/users/:id/verification", isAuthenticated, async (req, res) => {
-  const admin = await getAdminRole((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+  const admin = await getAdminRole(getUserId(req)!);
   if (!admin || admin.role !== "admin") return res.status(403).json({ message: "Admin access required" });
 
   const schema = z.object({
@@ -1585,7 +1586,7 @@ router.patch("/api/admin/users/:id/verification", isAuthenticated, async (req, r
 });
 
 router.patch("/api/admin/users/:id/commission-override", isAuthenticated, async (req, res) => {
-    const admin = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
+    const admin = await getFullAdminUser(getUserId(req)!);
     if (!admin || admin.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -1623,7 +1624,7 @@ router.patch("/api/admin/users/:id/commission-override", isAuthenticated, async 
   // Get current user's provider application
 
 router.get("/api/admin/provider-applications", isAuthenticated, async (req, res) => {
-    const user = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
+    const user = await getFullAdminUser(getUserId(req)!);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -1635,7 +1636,7 @@ router.get("/api/admin/provider-applications", isAuthenticated, async (req, res)
   // Admin: Get active platform service providers with their services
 
 router.get("/api/admin/platform-service-providers", isAuthenticated, async (req, res) => {
-    const user = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
+    const user = await getFullAdminUser(getUserId(req)!);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -1669,7 +1670,7 @@ router.get("/api/admin/platform-service-providers", isAuthenticated, async (req,
 
   // Admin: Get count of providers missing Stripe Connect setup
 router.get("/api/admin/providers/stripe-incomplete-count", isAuthenticated, async (req, res) => {
-    const user = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
+    const user = await getFullAdminUser(getUserId(req)!);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -1686,7 +1687,7 @@ router.get("/api/admin/providers/stripe-incomplete-count", isAuthenticated, asyn
 
   // Admin: Send a Stripe Connect reminder notification to a provider
 router.post("/api/admin/providers/:userId/remind-stripe", isAuthenticated, async (req, res) => {
-    const user = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
+    const user = await getFullAdminUser(getUserId(req)!);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -1705,7 +1706,7 @@ router.post("/api/admin/providers/:userId/remind-stripe", isAuthenticated, async
   // Admin: Update provider application status
 
 router.patch("/api/admin/provider-applications/:id/status", isAuthenticated, async (req, res) => {
-    const user = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
+    const user = await getFullAdminUser(getUserId(req)!);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -1766,7 +1767,7 @@ router.patch("/api/admin/provider-applications/:id/status", isAuthenticated, asy
 
   // Admin: Update provider application rejection reason only (without changing status)
 router.patch("/api/admin/provider-applications/:id/rejection-reason", isAuthenticated, async (req, res) => {
-    const user = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
+    const user = await getFullAdminUser(getUserId(req)!);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -1804,7 +1805,7 @@ router.patch("/api/admin/provider-applications/:id/rejection-reason", isAuthenti
 
 router.post("/api/admin/service-templates", isAuthenticated, async (req, res) => {
     try {
-      const user = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
+      const user = await getFullAdminUser(getUserId(req)!);
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -1849,7 +1850,7 @@ router.post("/api/admin/service-templates", isAuthenticated, async (req, res) =>
 
 router.patch("/api/admin/service-templates/:id", isAuthenticated, async (req, res) => {
     try {
-      const user = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
+      const user = await getFullAdminUser(getUserId(req)!);
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -1870,7 +1871,7 @@ router.patch("/api/admin/service-templates/:id", isAuthenticated, async (req, re
   // Delete template (admin only - soft delete)
 
 router.delete("/api/admin/service-templates/:id", isAuthenticated, async (req, res) => {
-    const user = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
+    const user = await getFullAdminUser(getUserId(req)!);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -1886,7 +1887,7 @@ router.delete("/api/admin/service-templates/:id", isAuthenticated, async (req, r
 
 router.get("/api/admin/expert-templates", isAuthenticated, async (req, res) => {
     try {
-      const user = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
+      const user = await getFullAdminUser(getUserId(req)!);
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -1926,7 +1927,7 @@ router.get("/api/admin/expert-templates", isAuthenticated, async (req, res) => {
 
 router.patch("/api/admin/expert-templates/:id/roles", isAuthenticated, async (req, res) => {
     try {
-      const user = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
+      const user = await getFullAdminUser(getUserId(req)!);
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -1964,7 +1965,7 @@ router.patch("/api/admin/expert-templates/:id/roles", isAuthenticated, async (re
   // Get all categories with subcategories
 
 router.get("/api/admin/categories", isAuthenticated, async (req, res) => {
-    const user = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
+    const user = await getFullAdminUser(getUserId(req)!);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -1983,7 +1984,7 @@ router.get("/api/admin/categories", isAuthenticated, async (req, res) => {
   // Get single category
 
 router.get("/api/admin/categories/:id", isAuthenticated, async (req, res) => {
-    const user = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
+    const user = await getFullAdminUser(getUserId(req)!);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -1999,7 +2000,7 @@ router.get("/api/admin/categories/:id", isAuthenticated, async (req, res) => {
 
 router.post("/api/admin/categories", isAuthenticated, async (req, res) => {
     try {
-      const user = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
+      const user = await getFullAdminUser(getUserId(req)!);
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -2024,7 +2025,7 @@ router.post("/api/admin/categories", isAuthenticated, async (req, res) => {
 
 router.patch("/api/admin/categories/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = ((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+      const userId = getUserId(req)!;
       const user = await getFullAdminUser(userId);
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
@@ -2138,7 +2139,7 @@ router.patch("/api/admin/categories/:id", isAuthenticated, async (req, res) => {
   // Delete category (admin only)
 
 router.delete("/api/admin/categories/:id", isAuthenticated, async (req, res) => {
-    const user = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
+    const user = await getFullAdminUser(getUserId(req)!);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -2150,7 +2151,7 @@ router.delete("/api/admin/categories/:id", isAuthenticated, async (req, res) => 
 
 router.post("/api/admin/categories/:categoryId/subcategories", isAuthenticated, async (req, res) => {
     try {
-      const user = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
+      const user = await getFullAdminUser(getUserId(req)!);
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -2173,7 +2174,7 @@ router.post("/api/admin/categories/:categoryId/subcategories", isAuthenticated, 
 
 router.patch("/api/admin/subcategories/:id", isAuthenticated, async (req, res) => {
     try {
-      const user = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
+      const user = await getFullAdminUser(getUserId(req)!);
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -2194,7 +2195,7 @@ router.patch("/api/admin/subcategories/:id", isAuthenticated, async (req, res) =
   // Delete subcategory (admin only)
 
 router.delete("/api/admin/subcategories/:id", isAuthenticated, async (req, res) => {
-    const user = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
+    const user = await getFullAdminUser(getUserId(req)!);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -2205,7 +2206,7 @@ router.delete("/api/admin/subcategories/:id", isAuthenticated, async (req, res) 
   // Seed 15 core categories (admin only - run once)
 
 router.post("/api/admin/seed-categories", isAuthenticated, async (req, res) => {
-    const user = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
+    const user = await getFullAdminUser(getUserId(req)!);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -2263,7 +2264,7 @@ router.post("/api/admin/seed-categories", isAuthenticated, async (req, res) => {
   // Get all expert service categories with offerings (public)
 
 router.get("/api/admin/provider-services/pending", isAuthenticated, async (req, res) => {
-    const user = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
+    const user = await getFullAdminUser(getUserId(req)!);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -2275,7 +2276,7 @@ router.get("/api/admin/provider-services/pending", isAuthenticated, async (req, 
 
 router.post("/api/admin/provider-services/:id/approve", isAuthenticated, async (req, res) => {
     try {
-      const adminId = ((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+      const adminId = getUserId(req)!;
       const user = await getFullAdminUser(adminId);
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
@@ -2305,7 +2306,7 @@ router.post("/api/admin/provider-services/:id/approve", isAuthenticated, async (
 
 router.post("/api/admin/provider-services/:id/reject", isAuthenticated, async (req, res) => {
     try {
-      const adminId = ((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+      const adminId = getUserId(req)!;
       const user = await getFullAdminUser(adminId);
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
@@ -2337,7 +2338,7 @@ router.post("/api/admin/provider-services/:id/reject", isAuthenticated, async (r
   // Get all published templates (public)
 
 router.get("/api/admin/destination-events/pending", isAuthenticated, async (req, res) => {
-    const user = await getFullAdminUser(((req.user as any)?.claims?.sub ?? (req.user as any)?.id));
+    const user = await getFullAdminUser(getUserId(req)!);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -2349,7 +2350,7 @@ router.get("/api/admin/destination-events/pending", isAuthenticated, async (req,
 
 router.post("/api/admin/destination-events/:id/approve", isAuthenticated, async (req, res) => {
     try {
-      const adminId = ((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+      const adminId = getUserId(req)!;
       const user = await getFullAdminUser(adminId);
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
@@ -2375,7 +2376,7 @@ router.post("/api/admin/destination-events/:id/approve", isAuthenticated, async 
 
 router.post("/api/admin/destination-events/:id/reject", isAuthenticated, async (req, res) => {
     try {
-      const adminId = ((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+      const adminId = getUserId(req)!;
       const user = await getFullAdminUser(adminId);
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
@@ -2406,7 +2407,7 @@ router.post("/api/admin/destination-events/:id/reject", isAuthenticated, async (
 
 router.get("/api/admin/data/location-summary", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -2439,7 +2440,7 @@ router.get("/api/admin/data/location-summary", isAuthenticated, async (req, res)
 
 router.get("/api/admin/affiliate/reconciliation", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -2466,7 +2467,7 @@ router.get("/api/admin/affiliate/reconciliation", isAuthenticated, async (req, r
 
 router.patch("/api/admin/affiliate/reconciliation/:earningId", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -2493,7 +2494,7 @@ router.patch("/api/admin/affiliate/reconciliation/:earningId", isAuthenticated, 
 
 router.get("/api/admin/content/summary", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -2511,7 +2512,7 @@ router.get("/api/admin/content/summary", isAuthenticated, async (req, res) => {
 
 router.get("/api/admin/content/registry", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -2539,7 +2540,7 @@ router.get("/api/admin/content/registry", isAuthenticated, async (req, res) => {
 
 router.get("/api/admin/content/providers", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -2556,7 +2557,7 @@ router.get("/api/admin/content/providers", isAuthenticated, async (req, res) => 
 
 router.get("/api/admin/content/:trackingNumber", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -2589,7 +2590,7 @@ router.get("/api/admin/content/:trackingNumber", isAuthenticated, async (req, re
 
 router.post("/api/admin/content/register", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -2626,7 +2627,7 @@ router.post("/api/admin/content/register", isAuthenticated, async (req, res) => 
 
 router.get("/api/admin/content/moderation/queue", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -2644,7 +2645,7 @@ router.get("/api/admin/content/moderation/queue", isAuthenticated, async (req, r
 
 router.post("/api/admin/content/:trackingNumber/moderate", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -2679,7 +2680,7 @@ router.post("/api/admin/content/:trackingNumber/moderate", isAuthenticated, asyn
 
 router.get("/api/admin/content/flags/pending", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -2697,7 +2698,7 @@ router.get("/api/admin/content/flags/pending", isAuthenticated, async (req, res)
 
 router.post("/api/admin/content/flags/:flagId/resolve", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -2729,7 +2730,7 @@ router.post("/api/admin/content/flags/:flagId/resolve", isAuthenticated, async (
 
 router.get("/api/admin/services/summary", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const userId = getUserId(req)!;
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") return res.status(403).json({ message: "Admin access required" });
 
@@ -2763,7 +2764,7 @@ router.get("/api/admin/services/summary", isAuthenticated, async (req, res) => {
 
 router.get("/api/admin/services", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const userId = getUserId(req)!;
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") return res.status(403).json({ message: "Admin access required" });
 
@@ -2806,7 +2807,7 @@ router.get("/api/admin/services", isAuthenticated, async (req, res) => {
 
 router.patch("/api/admin/services/:id/status", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const userId = getUserId(req)!;
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") return res.status(403).json({ message: "Admin access required" });
 
@@ -2825,7 +2826,7 @@ router.patch("/api/admin/services/:id/status", isAuthenticated, async (req, res)
 
 router.patch("/api/admin/services/:id/featured", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const userId = getUserId(req)!;
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") return res.status(403).json({ message: "Admin access required" });
 
@@ -2841,7 +2842,7 @@ router.patch("/api/admin/services/:id/featured", isAuthenticated, async (req, re
 
 router.patch("/api/admin/services/:id/affinity-tags", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const userId = getUserId(req)!;
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") return res.status(403).json({ message: "Admin access required" });
 
@@ -2867,7 +2868,7 @@ router.patch("/api/admin/services/:id/affinity-tags", isAuthenticated, async (re
 
 router.delete("/api/admin/services/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const userId = getUserId(req)!;
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") return res.status(403).json({ message: "Admin access required" });
 
@@ -2902,7 +2903,7 @@ router.delete("/api/admin/services/:id", isAuthenticated, async (req, res) => {
 
 router.post("/api/admin/invoices", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -2942,7 +2943,7 @@ router.post("/api/admin/invoices", isAuthenticated, async (req, res) => {
 
 router.get("/api/admin/invoices/:invoiceNumber", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -2966,7 +2967,7 @@ router.get("/api/admin/invoices/:invoiceNumber", isAuthenticated, async (req, re
 
 router.patch("/api/admin/invoices/:invoiceNumber/status", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -2995,7 +2996,7 @@ router.patch("/api/admin/invoices/:invoiceNumber/status", isAuthenticated, async
 
 router.get("/api/admin/ai-usage/summary", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -3017,7 +3018,7 @@ router.get("/api/admin/ai-usage/summary", isAuthenticated, async (req, res) => {
 
 router.get("/api/admin/ai-usage/daily", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -3036,7 +3037,7 @@ router.get("/api/admin/ai-usage/daily", isAuthenticated, async (req, res) => {
 
 router.get("/api/admin/ai-usage/logs", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -3055,7 +3056,7 @@ router.get("/api/admin/ai-usage/logs", isAuthenticated, async (req, res) => {
 
 router.get("/api/admin/ai-usage/pricing", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -3090,7 +3091,7 @@ router.get("/api/admin/ai-usage/pricing", isAuthenticated, async (req, res) => {
 
 router.get("/api/admin/ai/circuit-breaker", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -3116,7 +3117,7 @@ router.get("/api/admin/ai/circuit-breaker", isAuthenticated, async (req, res) =>
 
 router.get("/api/admin/api-usage/summary", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -3134,7 +3135,7 @@ router.get("/api/admin/api-usage/summary", isAuthenticated, async (req, res) => 
 
 router.get("/api/admin/api-usage/daily", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -3152,7 +3153,7 @@ router.get("/api/admin/api-usage/daily", isAuthenticated, async (req, res) => {
 
 router.get("/api/admin/api-usage/logs", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -3170,7 +3171,7 @@ router.get("/api/admin/api-usage/logs", isAuthenticated, async (req, res) => {
 
 router.get("/api/admin/api-usage/pricing", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -3191,7 +3192,7 @@ router.get("/api/admin/api-usage/pricing", isAuthenticated, async (req, res) => 
 
 router.get("/api/admin/revenue/dashboard", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -3214,7 +3215,7 @@ router.get("/api/admin/revenue/dashboard", isAuthenticated, async (req, res) => 
 
 router.get("/api/admin/revenue/summary", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -3235,7 +3236,7 @@ router.get("/api/admin/revenue/summary", isAuthenticated, async (req, res) => {
 
 router.get("/api/admin/revenue/transactions", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -3258,7 +3259,7 @@ router.get("/api/admin/revenue/transactions", isAuthenticated, async (req, res) 
 
 router.get("/api/admin/revenue/content/:trackingNumber", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -3277,7 +3278,7 @@ router.get("/api/admin/revenue/content/:trackingNumber", isAuthenticated, async 
 
 router.get("/api/admin/revenue/unified", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -3416,7 +3417,7 @@ router.get("/api/admin/revenue/unified", isAuthenticated, async (req, res) => {
 
 router.get("/api/admin/revenue/unified/export", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -3691,7 +3692,7 @@ router.get("/api/admin/revenue/unified/export", isAuthenticated, async (req, res
 
 router.get("/api/admin/payouts", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -3720,7 +3721,7 @@ router.get("/api/admin/payouts", isAuthenticated, async (req, res) => {
 
 router.post("/api/admin/payouts", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -3786,7 +3787,7 @@ router.post("/api/admin/payouts", isAuthenticated, async (req, res) => {
 
 router.patch("/api/admin/payouts/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any).claims?.sub ?? (req.user as any).id;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
@@ -4042,7 +4043,7 @@ router.delete("/api/admin/users/:id", isAuthenticated, async (req, res) => {
       }
 
       const targetUserId = req.params.id;
-      const adminId: string = adminUser?.claims?.sub ?? adminUser?.id;
+      const adminId: string = getUserId(req)!;
 
       if (targetUserId === adminId) {
         return res.status(400).json({ message: "Admins cannot delete their own account via this endpoint" });
@@ -4628,7 +4629,7 @@ router.get("/api/admin/notifications", isAuthenticated, async (req, res) => {
       // `claims?.role` check 403'd every real admin (no auth flow writes a role
       // claim into the session; role lives in the users table). Belt-and-suspenders
       // under the blanket adminApiGuard (§2).
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const user = await storage.getUser(userId);
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
@@ -5026,7 +5027,7 @@ router.get("/api/admin/reports/destination-benchmark/:destination", isAuthentica
 
 router.get("/api/admin/reviews", isAuthenticated, async (req, res) => {
     try {
-      const actorId0 = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const actorId0 = getUserId(req)!;
       const adminUser = await getAdminRole(actorId0);
       if (!adminUser || adminUser.role !== "admin") return res.status(403).json({ message: "Admin access required" });
       const status = req.query.status as string | undefined;
@@ -5062,7 +5063,7 @@ router.get("/api/admin/reviews", isAuthenticated, async (req, res) => {
 
 router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) => {
     try {
-      const actorId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const actorId = getUserId(req)!;
       const adminCheck = await getAdminRole(actorId);
       if (!adminCheck || adminCheck.role !== "admin") return res.status(403).json({ message: "Admin access required" });
       const { status, reason } = req.body;
@@ -5090,7 +5091,7 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
   // service rating. Logged to review_moderation_logs as 'response_cleared'.
   router.post("/api/admin/reviews/:id/clear-response", isAuthenticated, async (req, res) => {
     try {
-      const actorId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const actorId = getUserId(req)!;
       const adminCheck = await getAdminRole(actorId);
       if (!adminCheck || adminCheck.role !== "admin") return res.status(403).json({ message: "Admin access required" });
       const review = await getReviewById(req.params.id);
@@ -5118,7 +5119,7 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
 
   router.get("/api/admin/testimonials/featured", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const user = await getAdminRole(userId);
       if (!user || user.role !== "admin") return res.status(403).json({ message: "Admin access required" });
 
@@ -5141,7 +5142,7 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
 
   router.put("/api/admin/testimonials/featured", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const user = await getAdminRole(userId);
       if (!user || user.role !== "admin") return res.status(403).json({ message: "Admin access required" });
 
@@ -5169,7 +5170,7 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
   // GET /api/admin/fee-bands — list all bands grouped by rate_type
   router.get("/api/admin/fee-bands", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const user = await getAdminRole(userId);
       if (!user || user.role !== "admin") return res.status(403).json({ error: "Admin access required" });
 
@@ -5195,7 +5196,7 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
   // Validates default_rate falls within min/max if set.
   router.patch("/api/admin/fee-bands/:bandKey", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const user = await getAdminRole(userId);
       if (!user || user.role !== "admin") return res.status(403).json({ error: "Admin access required" });
 
@@ -5272,7 +5273,7 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
 
   /** Resolve the caller and ensure admin; on failure sends the response and returns null. */
   const requireAdmin = async (req: any, res: any): Promise<{ userId: string; role: string } | null> => {
-    const userId = req.user?.claims?.sub ?? req.user?.id;
+    const userId = getUserId(req)!;
     const user = await getAdminRole(userId);
     if (!user || user.role !== "admin") {
       res.status(403).json({ error: "Admin access required" });
@@ -5410,7 +5411,7 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
   // GET /api/admin/platform-settings — list all key/value settings
   router.get("/api/admin/platform-settings", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const user = await getAdminRole(userId);
       if (!user || user.role !== "admin") return res.status(403).json({ error: "Admin access required" });
 
@@ -5429,7 +5430,7 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
   // The active_provider_commission_policy flip lives here. Audit-logged.
   router.patch("/api/admin/platform-settings/:settingKey", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const user = await getAdminRole(userId);
       if (!user || user.role !== "admin") return res.status(403).json({ error: "Admin access required" });
 
@@ -5525,7 +5526,7 @@ router.get("/api/admin/lead-routing-logs", isAuthenticated, async (req, res) => 
 
 router.patch("/api/admin/lead-routing-logs/:id/override", isAuthenticated, async (req, res) => {
     try {
-      const adminId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const adminId = getUserId(req)!;
       const { id } = req.params;
       const { newExpertId } = req.body;
 
@@ -5545,7 +5546,7 @@ router.patch("/api/admin/lead-routing-logs/:id/override", isAuthenticated, async
 
 router.get("/api/admin/routing-queue", isAuthenticated, async (req, res) => {
     try {
-      const adminUser = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+      const adminUser = await getFullAdminUser(getUserId(req)!);
       if (!adminUser || adminUser.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -5604,7 +5605,7 @@ router.get("/api/admin/routing-queue", isAuthenticated, async (req, res) => {
   // (assignExpertAdvisorToRequest in booking-actions.service.ts: assigned_expert_id +
   // status='assigned' + assigned_at) so the EXISTING confirm endpoint below can run unchanged.
 router.post("/api/admin/leads/:expertRequestId/assign", isAuthenticated, async (req, res) => {
-    const adminUser = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+    const adminUser = await getFullAdminUser(getUserId(req)!);
     if (!adminUser || adminUser.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -5649,7 +5650,7 @@ router.post("/api/admin/leads/:expertRequestId/assign", isAuthenticated, async (
 
   // Shared handler: confirm lead → workspace bridge (used by both route aliases below)
   async function confirmLeadAssignmentHandler(requestId: string, req: any, res: any) {
-    const adminUser = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+    const adminUser = await getFullAdminUser(getUserId(req)!);
     if (!adminUser || adminUser.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -5731,7 +5732,7 @@ router.post("/api/admin/routing-queue/:requestId/confirm", isAuthenticated, asyn
 
 router.post("/api/admin/routing-queue/:requestId/reassign", isAuthenticated, async (req, res) => {
     try {
-      const adminUser = await getFullAdminUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+      const adminUser = await getFullAdminUser(getUserId(req)!);
       if (!adminUser || adminUser.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -5978,7 +5979,7 @@ router.get("/api/admin/optimization-fees", requireAdminLocal, async (req, res) =
 
 router.post("/api/admin/optimization-fees", requireAdminLocal, async (req, res) => {
   try {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     const { complexityTier, eventType = null, priceCents, currency = "USD", isActive = true, isDisabled = false } = req.body;
 
     if (!complexityTier || !["simple", "standard", "complex"].includes(complexityTier)) {
@@ -6116,7 +6117,7 @@ router.delete("/api/admin/event-packages/:id", requireAdminLocal, async (req, re
 //     and city-scoped.
 
 async function isAdmin(req: any): Promise<{ ok: true; userId: string } | { ok: false }> {
-  const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+  const userId = getUserId(req)!;
   if (!userId) return { ok: false };
   const user = await getAdminRole(userId);
   if (!user || user.role !== "admin") return { ok: false };
@@ -6521,7 +6522,7 @@ const suspendBodySchema = z.object({
 router.patch("/api/admin/users/:id/suspend", isAuthenticated, async (req, res) => {
   try {
     // Email-auth sessions carry user.id (no claims); Replit Auth carries claims.sub.
-    const adminUserId = (req.user as any).claims?.sub ?? (req.user as any).id;
+    const adminUserId = getUserId(req)!;
     const adminUser = await storage.getUser(adminUserId);
     if (!adminUser || adminUser.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
@@ -6567,7 +6568,7 @@ router.patch("/api/admin/users/:id/suspend", isAuthenticated, async (req, res) =
 // Returns the most recent QA run snapshot so the checklist page can show a badge.
 router.get("/api/admin/qa/last-run", isAuthenticated, async (req, res) => {
   try {
-    const adminUserId = (req.user as any).claims?.sub ?? (req.user as any).id;
+    const adminUserId = getUserId(req)!;
     const adminUser = await storage.getUser(adminUserId);
     if (!adminUser || adminUser.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
@@ -6597,7 +6598,7 @@ router.get("/api/admin/qa/last-run", isAuthenticated, async (req, res) => {
 // Triggers the nightly QA job on-demand (same as the scheduled 02:00 UTC run).
 router.post("/api/admin/qa/run-nightly", isAuthenticated, async (req, res) => {
   try {
-    const adminUserId = (req.user as any).claims?.sub ?? (req.user as any).id;
+    const adminUserId = getUserId(req)!;
     const adminUser = await storage.getUser(adminUserId);
     if (!adminUser || adminUser.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
@@ -6618,7 +6619,7 @@ router.post("/api/admin/qa/run-nightly", isAuthenticated, async (req, res) => {
 
 router.get("/api/admin/qa/verify", isAuthenticated, async (req, res) => {
   try {
-    const adminUserId = (req.user as any).claims?.sub ?? (req.user as any).id;
+    const adminUserId = getUserId(req)!;
     const adminUser = await storage.getUser(adminUserId);
     if (!adminUser || adminUser.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
@@ -6640,7 +6641,7 @@ router.get("/api/admin/qa/verify", isAuthenticated, async (req, res) => {
 router.patch("/api/admin/users/:id/unsuspend", isAuthenticated, async (req, res) => {
   try {
     // Email-auth sessions carry user.id (no claims); Replit Auth carries claims.sub.
-    const adminUserId = (req.user as any).claims?.sub ?? (req.user as any).id;
+    const adminUserId = getUserId(req)!;
     const adminUser = await storage.getUser(adminUserId);
     if (!adminUser || adminUser.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
@@ -6671,7 +6672,7 @@ router.patch("/api/admin/users/:id/unsuspend", isAuthenticated, async (req, res)
 
 router.post("/api/admin/affiliate/partners/:id/approve", isAuthenticated, async (req: any, res) => {
   try {
-    const reviewerId = req.user?.claims?.sub ?? req.user?.id;
+    const reviewerId = getUserId(req)!;
     const partner = await affiliateScraperService.setPartnerApproval(req.params.id, "approved", reviewerId);
     if (!partner) return res.status(404).json({ message: "Partner not found" });
     res.json({ partner, message: "Partner approved" });
@@ -6682,7 +6683,7 @@ router.post("/api/admin/affiliate/partners/:id/approve", isAuthenticated, async 
 
 router.post("/api/admin/affiliate/partners/:id/reject", isAuthenticated, async (req: any, res) => {
   try {
-    const reviewerId = req.user?.claims?.sub ?? req.user?.id;
+    const reviewerId = getUserId(req)!;
     const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
     if (!reason) return res.status(400).json({ message: "A rejection reason is required." });
     const partner = await affiliateScraperService.setPartnerApproval(req.params.id, "rejected", reviewerId, reason);

@@ -18,6 +18,7 @@
  * existing booking ledger read-only, no charge/payout/earning write) — outside the §14/§15 clusters.
  */
 import { Router } from "express";
+import { getUserId } from "../utils/auth";
 import crypto from "crypto";
 import { z } from "zod";
 import { eq, and, isNull, sql, gte, inArray } from "drizzle-orm";
@@ -50,7 +51,7 @@ function generateCode(): string {
 
 router.post("/api/short-links", isAuthenticated, async (req: any, res) => {
   try {
-    const userId = req.user?.claims?.sub ?? req.user?.id;
+    const userId = getUserId(req)!;
     const parsed = createSchema.safeParse(req.body ?? {});
     if (!parsed.success) {
       return res.status(400).json({ message: parsed.error.issues[0]?.message ?? "Invalid request" });
@@ -183,7 +184,7 @@ const RANGE_DAYS = [7, 30, 90, 365] as const;
  */
 router.get("/api/me/link-analytics", isAuthenticated, async (req: any, res) => {
   try {
-    const userId = req.user?.claims?.sub ?? req.user?.id;
+    const userId = getUserId(req)!;
     const daysParsed = parseInt(String(req.query?.days ?? "30"), 10);
     const days = (RANGE_DAYS as readonly number[]).includes(daysParsed) ? daysParsed : 30;
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
@@ -295,7 +296,7 @@ const SOURCE_LABEL: Record<SourceBucket, string> = {
  */
 router.get("/api/me/earnings-by-source", isAuthenticated, async (req: any, res) => {
   try {
-    const userId = req.user?.claims?.sub ?? req.user?.id;
+    const userId = getUserId(req)!;
 
     const rows = await db
       .select({

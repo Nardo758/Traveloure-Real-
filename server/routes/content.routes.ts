@@ -1,4 +1,5 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
+import { getUserId } from "../utils/auth";
 import { redactTemplateContent } from '../utils/template-content-gate';
 import { withQueryTimer } from '../utils/queryTimer';
 import { dedupedRequest, callWithCircuitBreaker } from '../utils/requestDeduplication';
@@ -390,7 +391,7 @@ router.post("/api/contact", async (req, res) => {
 
 router.post("/api/chat/start", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const { expertId, message, tripId } = req.body;
 
       if (!expertId) {
@@ -467,7 +468,7 @@ router.post("/api/generated-itineraries", isAuthenticated, async (req, res) => {
         return res.status(404).json({ message: "Trip not found" });
       }
       
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       if (trip.userId !== userId) {
         return res.status(401).json({ message: "Unauthorized" });
       }
@@ -501,7 +502,7 @@ router.get("/api/generated-itineraries/:tripId", isAuthenticated, async (req, re
         return res.status(404).json({ message: "Trip not found" });
       }
       
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       if (trip.userId !== userId) {
         return res.status(401).json({ message: "Unauthorized" });
       }
@@ -522,7 +523,7 @@ router.get("/api/generated-itineraries/:tripId", isAuthenticated, async (req, re
 router.post("/api/ai/generate-blueprint", isAuthenticated, async (req, res) => {
     try {
       const { eventType, destination, travelers, startDate, endDate, budget, preferences } = req.body;
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
 
       const prompt = `You are an expert travel planner. Create a detailed trip blueprint for the following:
       
@@ -632,7 +633,7 @@ Be friendly, helpful, and provide specific actionable advice. If recommending sp
 
 router.post("/api/ai/optimize-experience", isAuthenticated, async (req, res) => {
     try {
-      const user = await storage.getUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+      const user = await storage.getUser(getUserId(req)!);
       // Full expert family (shared/roles.ts): bare `role !== "expert"` locked out
       // local_expert / travel_expert / event_planner.
       if (!user || (user.role !== "admin" && !isExpertRole(user.role))) {
@@ -799,7 +800,7 @@ router.get("/api/service-categories/provider-counts", async (_req, res) => {
 
 router.post("/api/service-categories", isAuthenticated, async (req, res) => {
     try {
-      const user = await storage.getUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+      const user = await storage.getUser(getUserId(req)!);
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -825,7 +826,7 @@ router.get("/api/service-categories/:categoryId/subcategories", async (req, res)
 
 router.post("/api/service-subcategories", isAuthenticated, async (req, res) => {
     try {
-      const user = await storage.getUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+      const user = await storage.getUser(getUserId(req)!);
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -886,7 +887,7 @@ router.patch("/api/custom-venues/:id", isAuthenticated, async (req, res) => {
     try {
       // Ownership check (IDOR) — harvested from the routes.ts shadow copy (571b593f
       // applied this fix to the dead duplicate; see docs/audits/shadow-route-sweep.md).
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const venue = await storage.getCustomVenue(req.params.id);
       if (!venue) {
         return res.status(404).json({ message: "Custom venue not found" });
@@ -913,7 +914,7 @@ router.patch("/api/custom-venues/:id", isAuthenticated, async (req, res) => {
 router.delete("/api/custom-venues/:id", isAuthenticated, async (req, res) => {
     try {
       // Ownership check (IDOR) — harvested from the routes.ts shadow copy (571b593f).
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const venue = await storage.getCustomVenue(req.params.id);
       if (!venue) {
         return res.status(404).json({ message: "Custom venue not found" });
@@ -1521,7 +1522,7 @@ router.get("/api/destinations", async (req, res) => {
   // Get user's experiences
 
 router.get("/api/user-experiences", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     const experiences = await storage.getUserExperiences(userId);
     res.json(experiences);
   });
@@ -1541,7 +1542,7 @@ router.get("/api/user-experiences/:id", isAuthenticated, async (req, res) => {
 
 router.post("/api/user-experiences", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const experience = await storage.createUserExperience({ ...req.body, userId });
 
       // Auto-create a linked trip
@@ -1575,7 +1576,7 @@ router.post("/api/user-experiences", isAuthenticated, async (req, res) => {
   // Update experience
 
 router.patch("/api/user-experiences/:id", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     const experience = await storage.getUserExperience(req.params.id);
     if (!experience || experience.userId !== userId) {
       return res.status(404).json({ message: "Experience not found" });
@@ -1615,7 +1616,7 @@ router.patch("/api/user-experiences/:id", isAuthenticated, async (req, res) => {
   // Delete experience
 
 router.delete("/api/user-experiences/:id", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     const experience = await storage.getUserExperience(req.params.id);
     if (!experience || experience.userId !== userId) {
       return res.status(404).json({ message: "Experience not found" });
@@ -1627,7 +1628,7 @@ router.delete("/api/user-experiences/:id", isAuthenticated, async (req, res) => 
   // Add item to experience
 
 router.post("/api/user-experiences/:id/items", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     const experience = await storage.getUserExperience(req.params.id);
     if (!experience || experience.userId !== userId) {
       return res.status(404).json({ message: "Experience not found" });
@@ -1667,7 +1668,7 @@ router.get("/api/faqs", async (req, res) => {
 
 router.post("/api/faqs", isAuthenticated, async (req, res) => {
     try {
-      const user = await storage.getUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+      const user = await storage.getUser(getUserId(req)!);
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -1686,7 +1687,7 @@ router.post("/api/faqs", isAuthenticated, async (req, res) => {
 
 router.patch("/api/faqs/:id", isAuthenticated, async (req, res) => {
     try {
-      const user = await storage.getUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+      const user = await storage.getUser(getUserId(req)!);
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -1707,7 +1708,7 @@ router.patch("/api/faqs/:id", isAuthenticated, async (req, res) => {
   // Delete FAQ (admin)
 
 router.delete("/api/faqs/:id", isAuthenticated, async (req, res) => {
-    const user = await storage.getUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+    const user = await storage.getUser(getUserId(req)!);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -1822,7 +1823,7 @@ router.get("/api/destination-calendar/seasons", async (req, res) => {
 
 router.get("/api/destination-calendar/my-events", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const events = await storage.getContributorDestinationEvents(userId);
       res.json(events);
     } catch (err) {
@@ -1835,7 +1836,7 @@ router.get("/api/destination-calendar/my-events", isAuthenticated, async (req, r
 
 router.post("/api/destination-calendar/events", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const event = await storage.createDestinationEvent({
         ...req.body,
         contributorId: userId,
@@ -1853,7 +1854,7 @@ router.post("/api/destination-calendar/events", isAuthenticated, async (req, res
 
 router.put("/api/destination-calendar/events/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const event = await storage.getDestinationEventById(req.params.id);
       
       if (!event) {
@@ -1878,7 +1879,7 @@ router.put("/api/destination-calendar/events/:id", isAuthenticated, async (req, 
 
 router.post("/api/destination-calendar/events/:id/submit", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const event = await storage.getDestinationEventById(req.params.id);
       
       if (!event) {
@@ -1903,7 +1904,7 @@ router.post("/api/destination-calendar/events/:id/submit", isAuthenticated, asyn
 
 router.delete("/api/destination-calendar/events/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const event = await storage.getDestinationEventById(req.params.id);
       
       if (!event) {
@@ -2097,7 +2098,7 @@ router.get("/api/discover", async (req, res) => {
 
     // Track search pattern for trend analytics (non-blocking)
     if (filters.query || filters.location) {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       storage.createDestinationSearchPattern({
         destination: filters.location || filters.query || "unknown",
         city: filters.location || undefined,
@@ -2184,7 +2185,7 @@ router.post("/api/analytics/search-event", async (req, res) => {
       }
       
       const data = validation.data;
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       
       // Log to destination search patterns for trend analysis
       await storage.createDestinationSearchPattern({
@@ -2234,7 +2235,7 @@ router.post("/api/analytics/itinerary-generated", async (req, res) => {
       }
       
       const data = validation.data;
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       
       // Track as AI interaction for analytics
       await insertAiInteraction({
@@ -2294,7 +2295,7 @@ router.post("/api/analytics/booking", async (req, res) => {
       }
       
       const data = validation.data;
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       
       // Track booking event
       console.log("[Analytics] Booking event tracked:", {
@@ -2335,7 +2336,7 @@ router.post("/api/analytics/booking", async (req, res) => {
   // Get expert's services by status
 
 router.get("/api/notifications", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     const unreadOnly = req.query.unread === "true";
     const notifications = await storage.getNotifications(userId, unreadOnly);
     res.json(notifications);
@@ -2344,7 +2345,7 @@ router.get("/api/notifications", isAuthenticated, async (req, res) => {
   // Get unread count
 
 router.get("/api/notifications/unread-count", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     const count = await storage.getUnreadCount(userId);
     res.json({ count });
   });
@@ -2352,7 +2353,7 @@ router.get("/api/notifications/unread-count", isAuthenticated, async (req, res) 
   // Mark notification as read
 
 router.patch("/api/notifications/:id/read", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     // Ownership enforced IN the update's WHERE (id + userId) — the old shape mutated first and
     // checked after, so a cross-user write landed before the 403. 404 for missing-or-not-yours
     // alike (no id-space oracle).
@@ -2366,7 +2367,7 @@ router.patch("/api/notifications/:id/read", isAuthenticated, async (req, res) =>
   // Mark all as read
 
 router.post("/api/notifications/mark-all-read", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     await storage.markAllAsRead(userId);
     res.json({ success: true });
   });
@@ -2374,7 +2375,7 @@ router.post("/api/notifications/mark-all-read", isAuthenticated, async (req, res
   // Delete notification
 
 router.delete("/api/notifications/:id", isAuthenticated, async (req, res) => {
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     // Ownership enforced IN the delete's WHERE — audit A1 proved any authenticated user could
     // delete any other user's notification (IDOR). 404 for missing-or-not-yours alike.
     const deleted = await storage.deleteNotification(req.params.id, userId);
@@ -2404,7 +2405,7 @@ router.get("/api/services/:serviceId/reviews", async (req, res) => {
   // Flag a review (any authenticated user)
 router.post("/api/reviews/:id/flag", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const { reason } = req.body;
       const review = await getReviewById(req.params.id);
       if (!review) return res.status(404).json({ message: "Review not found" });
@@ -2421,7 +2422,7 @@ router.post("/api/reviews/:id/flag", isAuthenticated, async (req, res) => {
 
 router.post("/api/services/:serviceId/reviews", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       
       // Verify user has a completed booking for this service
       const bookings = await storage.getServiceBookings({ 
@@ -3809,7 +3810,7 @@ router.post("/api/grok/match-experts", isAuthenticated, async (req, res) => {
       }
 
       // Support both Replit Auth (claims.sub) and email auth (id)
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const { expertIds, limit } = parsed.data;
 
       // Normalize to a common travelerProfile shape
@@ -3978,7 +3979,7 @@ router.post("/api/grok/content/generate", isAuthenticated, async (req, res) => {
         return res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten() });
       }
 
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const result = await aiOrchestrator.generateContent(parsed.data, { userId });
       res.json(result);
     } catch (error: any) {
@@ -4005,7 +4006,7 @@ router.post("/api/grok/intelligence", isAuthenticated, async (req, res) => {
         return res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten() });
       }
 
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const { destination, dates, topics } = parsed.data;
 
       // Check cache first
@@ -4065,7 +4066,7 @@ router.post("/api/grok/itinerary/generate", isAuthenticated, async (req, res) =>
         return res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten() });
       }
 
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const { tripId, ...itineraryRequest } = parsed.data;
 
       const result = await aiOrchestrator.generateAutonomousItinerary(itineraryRequest, {
@@ -4127,7 +4128,7 @@ router.post("/api/grok/chat", isAuthenticated, async (req, res) => {
         return res.status(400).json({ message: "Invalid request", errors: parsed.error.flatten() });
       }
 
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const { messages, systemContext, preferProvider } = parsed.data;
 
       const { response, provider } = await aiOrchestrator.chat(messages, {
@@ -4161,7 +4162,7 @@ router.get("/api/grok/health", async (req, res) => {
 router.get("/api/destination-intelligence", isAuthenticated, async (req, res) => {
     try {
       const { destination, startDate, endDate } = req.query;
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       
       if (!destination || typeof destination !== "string") {
         return res.status(400).json({ message: "Destination is required" });
@@ -4229,7 +4230,7 @@ router.get("/api/destination-intelligence", isAuthenticated, async (req, res) =>
 
 router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const { 
         destination: destinationRaw,
         destinations,
@@ -4546,7 +4547,7 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
 
 router.post("/api/ai/generate-optimized-itineraries", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const { 
         destination, 
         dates, 
@@ -4636,7 +4637,7 @@ router.post("/api/ai/generate-optimized-itineraries", isAuthenticated, async (re
 
 router.get("/api/ai/itineraries", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       
       const itineraries = await getAiItinerariesForUser(userId);
       res.json(itineraries);
@@ -4650,7 +4651,7 @@ router.get("/api/ai/itineraries", isAuthenticated, async (req, res) => {
 
 router.get("/api/ai/itineraries/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const { id } = req.params;
       
       const itinerary = await getAiItineraryById(id, userId);
@@ -4889,7 +4890,7 @@ router.post("/api/travelpulse/seed", isAuthenticated, async (req, res) => {
     if (!req.isAuthenticated()) {
       return res.status(401).json({ message: "Authentication required" });
     }
-    const user = await storage.getUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+    const user = await storage.getUser(getUserId(req)!);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -6296,7 +6297,7 @@ router.post("/api/fever/cache/refresh-all", isAuthenticated, async (req, res) =>
 
 router.patch("/api/participants/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const existing = await coordinationService.getParticipant(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Participant not found" });
@@ -6314,7 +6315,7 @@ router.patch("/api/participants/:id", isAuthenticated, async (req, res) => {
 
 router.patch("/api/participants/:id/rsvp", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const existing = await coordinationService.getParticipant(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Participant not found" });
@@ -6333,7 +6334,7 @@ router.patch("/api/participants/:id/rsvp", isAuthenticated, async (req, res) => 
 
 router.post("/api/participants/:id/payment", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const existing = await coordinationService.getParticipant(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Participant not found" });
@@ -6352,7 +6353,7 @@ router.post("/api/participants/:id/payment", isAuthenticated, async (req, res) =
 
 router.delete("/api/participants/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const existing = await coordinationService.getParticipant(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Participant not found" });
@@ -6392,7 +6393,7 @@ router.post("/api/budget/calculate-tip", isAuthenticated, async (req, res) => {
 
 router.patch("/api/transactions/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const existing = await budgetService.getTransaction(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Transaction not found" });
@@ -6410,7 +6411,7 @@ router.patch("/api/transactions/:id", isAuthenticated, async (req, res) => {
 
 router.delete("/api/transactions/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const existing = await budgetService.getTransaction(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Transaction not found" });
@@ -6430,7 +6431,7 @@ router.delete("/api/transactions/:id", isAuthenticated, async (req, res) => {
 
 router.patch("/api/emergency-contacts/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const existing = await emergencyService.getContact(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Emergency contact not found" });
@@ -6448,7 +6449,7 @@ router.patch("/api/emergency-contacts/:id", isAuthenticated, async (req, res) =>
 
 router.delete("/api/emergency-contacts/:id", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const existing = await emergencyService.getContact(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Emergency contact not found" });
@@ -6466,7 +6467,7 @@ router.delete("/api/emergency-contacts/:id", isAuthenticated, async (req, res) =
 
 router.post("/api/alerts/:id/acknowledge", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const existing = await emergencyService.getAlert(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Alert not found" });
@@ -6484,7 +6485,7 @@ router.post("/api/alerts/:id/acknowledge", isAuthenticated, async (req, res) => 
 
 router.post("/api/alerts/:id/dismiss", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const existing = await emergencyService.getAlert(req.params.id);
       if (!existing) {
         return res.status(404).json({ message: "Alert not found" });
@@ -6549,7 +6550,7 @@ router.get("/api/spontaneous/opportunities", async (req, res) => {
       });
       
       const params = schema.parse(req.query);
-      const userId = ((req.user as any)?.claims?.sub ?? (req.user as any)?.id) || null;
+      const userId = getUserId(req)!;
       
       const opportunities = await opportunityEngineService.getOpportunities(userId, {
         lat: params.lat,
@@ -6578,7 +6579,7 @@ router.get("/api/spontaneous/opportunities", async (req, res) => {
 
 router.get("/api/spontaneous/preferences", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const preferences = await opportunityEngineService.getUserPreferences(userId);
       res.json(preferences || {});
     } catch (error) {
@@ -6590,7 +6591,7 @@ router.get("/api/spontaneous/preferences", isAuthenticated, async (req, res) => 
 
 router.post("/api/spontaneous/preferences", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       
       const schema = z.object({
         spontaneityLevel: z.number().min(0).max(100).optional(),
@@ -6624,7 +6625,7 @@ router.post("/api/spontaneous/preferences", isAuthenticated, async (req, res) =>
 
 router.post("/api/spontaneous/:id/book", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const opportunityId = req.params.id;
       
       const result = await opportunityEngineService.bookOpportunity(userId, opportunityId);
@@ -6648,7 +6649,7 @@ router.get("/api/spontaneous/quick-search/:window", async (req, res) => {
       const lat = req.query.lat ? parseFloat(req.query.lat as string) : undefined;
       const lng = req.query.lng ? parseFloat(req.query.lng as string) : undefined;
       
-      const userId = ((req.user as any)?.claims?.sub ?? (req.user as any)?.id) || null;
+      const userId = getUserId(req)!;
       
       const opportunities = await opportunityEngineService.getOpportunities(userId, {
         lat,
@@ -6675,7 +6676,7 @@ router.post("/api/affiliate-booking-requests", isAuthenticated, async (req, res)
     try {
       // Session shape is {claims:{sub,...}} for BOTH email and OIDC auth — a bare `.id` read
       // is undefined and violated the users FK (audit P0). Same pattern as every live handler.
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Unauthorized" });
       const { itemName, itemDescription, partnerName, partnerCategory, affiliateUrl, travelDate, travelers, userNotes } = req.body;
       if (!itemName || !partnerName || !affiliateUrl) {
@@ -6712,7 +6713,7 @@ router.post("/api/affiliate-booking-requests", isAuthenticated, async (req, res)
 // catalog row, never from the body.
 router.post("/api/affiliate-booking-requests/from-catalog", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Unauthorized" });
       const { provider, itemId, destination, origin, travelDate, travelers, userNotes } = req.body;
       if (!provider || !itemId) {
@@ -6785,7 +6786,7 @@ router.post("/api/affiliate-booking-requests/from-catalog", isAuthenticated, asy
 
 router.get("/api/affiliate-booking-requests/user", isAuthenticated, async (req, res) => {
     try {
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Unauthorized" });
       const records = await storage.getAffiliateBookingRequestsByUser(userId);
       return res.json(records);
@@ -6801,7 +6802,7 @@ router.get("/api/affiliate-booking-requests/expert", isAuthenticated, async (req
       // Audit P0: session objects carry {claims:{sub}} — top-level .id/.role are undefined on
       // every auth shape, so this handler 403'd all real experts. Id from the session pattern,
       // role from the DB (§2 posture — never the session's possibly-stale/absent role string).
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Unauthorized" });
       const dbUser = await storage.getUser(userId);
       if (!dbUser || (!isExpertRole(dbUser.role ?? "") && dbUser.role !== "admin")) {
@@ -6843,7 +6844,7 @@ function deriveItineraryDayNumber(
 router.patch("/api/affiliate-booking-requests/:id", isAuthenticated, async (req, res) => {
     try {
       // Audit P0: same session-shape fix as the expert list above — id from claims, role from DB.
-      const sessionUserId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const sessionUserId = getUserId(req)!;
       if (!sessionUserId) return res.status(401).json({ message: "Unauthorized" });
       const dbUser = await storage.getUser(sessionUserId);
       if (!dbUser || (!isExpertRole(dbUser.role ?? "") && dbUser.role !== "admin")) {
@@ -7008,7 +7009,7 @@ router.patch("/api/affiliate-booking-requests/:id", isAuthenticated, async (req,
 // pooled-expert-queue model the rest of this rail uses; no per-row expertId ownership check).
 router.post("/api/affiliate-booking-requests/:id/verify", isAuthenticated, async (req, res) => {
     try {
-      const sessionUserId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const sessionUserId = getUserId(req)!;
       if (!sessionUserId) return res.status(401).json({ message: "Unauthorized" });
       const dbUser = await storage.getUser(sessionUserId);
       if (!dbUser || (!isExpertRole(dbUser.role ?? "") && dbUser.role !== "admin")) {
@@ -7130,7 +7131,7 @@ export async function registerDiscoveryRoutes() {
     if (!req.isAuthenticated()) {
       return res.status(401).json({ message: "Authentication required" });
     }
-    const user = await storage.getUser((req.user as any)?.claims?.sub ?? (req.user as any)?.id);
+    const user = await storage.getUser(getUserId(req)!);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -7281,7 +7282,7 @@ router.get("/api/discovery/jobs", isAuthenticated, async (req, res) => {
   const isRequestAdmin = async (req: any): Promise<boolean> => {
     try {
       if (!req.isAuthenticated?.() && !req.user) return false;
-      const uid = req.user?.claims?.sub ?? req.user?.id;
+      const uid = getUserId(req)!;
       if (!uid) return false;
       const user = await storage.getUser(uid);
       return user?.role === "admin";
@@ -7712,7 +7713,7 @@ router.post("/api/content/affiliate-redirect", async (req, res) => {
         userAgent: req.headers["user-agent"] || undefined,
         ipAddress: req.ip || undefined,
       };
-      const authUserId = ((req.user as any)?.claims?.sub ?? (req.user as any)?.id) || null;
+      const authUserId = getUserId(req)!;
       if (authUserId) trackPayload.userId = authUserId;
 
       if (itemType === "affiliate") {
@@ -7811,7 +7812,7 @@ router.post("/api/affiliates/track", async (req, res) => {
       if (!partner) {
         return res.status(400).json({ message: "partner is required" });
       }
-      const userId = (req.user as any)?.claims?.sub || (req.user as any)?.id || null;
+      const userId = getUserId(req)!;
       await insertAffiliateClick({
         productId: null,
         partnerId: null,
@@ -7871,7 +7872,7 @@ router.post("/api/content/:trackingNumber/flag", isAuthenticated, async (req, re
 
       const flag = await storage.createContentFlag({
         trackingNumber,
-        reporterId: user?.claims?.sub ?? user?.id,
+        reporterId: getUserId(req)!,
         flagType,
         severity: severity || 'medium',
         description,
@@ -7932,7 +7933,7 @@ router.get("/api/platform/stats", async (_req, res) => {
         return res.status(400).json({ error: "Invalid impression payload" });
       }
       const userId =
-        (req.user as any)?.claims?.sub ?? (req.user as any)?.id ?? null;
+        getUserId(req)!;
 
       const impressionId = await insertContentImpression({
         contentType: parsed.data.contentType,
@@ -7952,7 +7953,7 @@ router.get("/api/platform/stats", async (_req, res) => {
 router.post("/api/track/search", async (req, res) => {
     try {
       const { searchAnalytics } = await import("@shared/schema");
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       
       await insertSearchAnalytics({
         sessionId: req.body.sessionId || req.headers["x-session-id"] as string,
@@ -7992,7 +7993,7 @@ router.post("/api/track/search", async (req, res) => {
 router.post("/api/track/pageview", async (req, res) => {
     try {
       const { pageViewAnalytics } = await import("@shared/schema");
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       
       await insertPageViewAnalytics({
         sessionId: req.body.sessionId,
@@ -8018,7 +8019,7 @@ router.post("/api/track/pageview", async (req, res) => {
 router.post("/api/track/funnel", async (req, res) => {
     try {
       const { bookingFunnelAnalytics } = await import("@shared/schema");
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       
       await insertBookingFunnelAnalytics({
         sessionId: req.body.sessionId,
@@ -8058,7 +8059,7 @@ router.post("/api/track/funnel", async (req, res) => {
 router.post("/api/track/activity", async (req, res) => {
     try {
       const { activityBookingAnalytics } = await import("@shared/schema");
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       
       await insertActivityBookingAnalytics({
         sessionId: req.body.sessionId,
@@ -8093,7 +8094,7 @@ router.post("/api/track/activity", async (req, res) => {
 router.post("/api/track/trip-enhanced", async (req, res) => {
     try {
       const { tripAnalyticsEnhanced } = await import("@shared/schema");
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       
       await insertTripAnalyticsEnhanced({
         tripId: req.body.tripId,
@@ -8137,7 +8138,7 @@ router.post("/api/track/trip-enhanced", async (req, res) => {
 router.post("/api/track/destination-search", async (req, res) => {
     try {
       const { searchAnalytics } = await import("@shared/schema");
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       const sessionId = req.body.sessionId || req.headers["x-session-id"] as string;
       
       // Track this search
@@ -8175,7 +8176,7 @@ router.post("/api/track/destination-search", async (req, res) => {
 router.post("/api/track/accommodation-preference", async (req, res) => {
     try {
       const { tripAnalyticsEnhanced } = await import("@shared/schema");
-      const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+      const userId = getUserId(req)!;
       
       if (userId && req.body.tripId) {
         await updateTripAnalyticsEnhanced(req.body.tripId, {

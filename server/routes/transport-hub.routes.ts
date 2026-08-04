@@ -9,6 +9,7 @@
  */
 
 import { Router } from "express";
+import { getUserId } from "../utils/auth";
 import { storage } from "../storage";
 import { db } from "../db";
 import { transportBookingOptions } from "@shared/schema";
@@ -88,7 +89,7 @@ router.get("/api/itinerary/:tripId/transport-hub", isAuthenticated, async (req, 
     // Authorize BEFORE returning any of the plan (or the empty-hub existence
     // signal). Runs after resolution because BOTH id paths must land on the same
     // decision — see authorizeTransportScope.
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     const denied = await authorizeTransportScope(
       comparison as any,
       tripId,
@@ -279,7 +280,7 @@ router.post(
     try {
       const { optionId } = req.params;
       const { travelers = 1, specialRequests } = req.body;
-      const userId = (req as any).user?.id ?? (req as any).user?.claims?.sub ?? (req as any).user?.id; // Replit Auth: user.id; email auth: user.claims.sub
+      const userId = getUserId(req)!; // Replit Auth: user.id; email auth: user.claims.sub
 
       if (!userId) {
         return res.status(401).json({ error: "User not authenticated" });
@@ -360,7 +361,7 @@ router.post(
   async (req, res) => {
     try {
       const { optionId } = req.params;
-      const userId = (req as any).user?.id ?? (req as any).user?.claims?.sub ?? (req as any).user?.id;
+      const userId = getUserId(req)!;
       const userAgent = req.get("user-agent") || "";
       const referrer = req.get("referrer") || "";
 
@@ -498,7 +499,7 @@ router.post("/api/transport-booking-options/seed/:variantId", isAuthenticated, a
     }
     const comparison = await storage.getItineraryComparison(variant.comparisonId);
 
-    const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+    const userId = getUserId(req)!;
     const denied = await authorizeTransportScope(
       comparison as any,
       variant.comparisonId,

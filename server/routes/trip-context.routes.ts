@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { getUserId } from "../utils/auth";
 import { z } from "zod";
 import { sql } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
@@ -34,7 +35,7 @@ import { trackAICost, calculateAnthropicCost } from "../services/ai-cost-tracker
 const router = Router();
 
 function sessionUserId(req: any): string | undefined {
-  return (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+  return getUserId(req)!;
 }
 
 const tripIdParamSchema = z.string().min(1).max(64);

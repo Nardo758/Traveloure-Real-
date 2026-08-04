@@ -16,6 +16,7 @@
  * comparison). NEVER routed through getTripRole/canMutateTrip.
  */
 import { Router } from "express";
+import { getUserId } from "../utils/auth";
 import { z } from "zod";
 import { db } from "../db";
 import { storage } from "../storage";
@@ -33,7 +34,7 @@ const router = Router();
 const AUTHOR_ROLES = new Set(["local_expert", "travel_expert", "admin"]); // D3 (Leon, 2026-07-25)
 
 function sessionUserId(req: any): string | null {
-  return (req.user as any)?.claims?.sub ?? (req.user as any)?.id ?? null;
+  return getUserId(req)!;
 }
 
 function isAuthenticated(req: any, res: any, next: any) {
