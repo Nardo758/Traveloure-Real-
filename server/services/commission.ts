@@ -48,8 +48,8 @@ export const PROCESSING_FEE_RATE = 0.03;
 // migration 033, guaranteed by the idempotent re-seed in 174) is the single source of
 // truth for this split. These constants survive ONLY as the documented last-resort
 // data-model defaults and must mirror that seeded default row.
-export const EXPERT_SHARE_RATE = 0.75;
-export const PLATFORM_FEE_RATE = 0.25;
+export const EXPERT_SHARE_RATE = 0.75; // fee-literal-ok: documented last-resort data-model default mirroring the fee_bands expert_standard seed (ruling 25); fee_bands-everywhere migration in flight
+export const PLATFORM_FEE_RATE = 0.25; // fee-literal-ok: documented last-resort data-model default mirroring the fee_bands expert_standard seed (ruling 25); fee_bands-everywhere migration in flight
 
 /**
  * Phase 3.1 — Booking Concierge facilitation fee.
