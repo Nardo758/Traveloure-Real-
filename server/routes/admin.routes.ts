@@ -3934,6 +3934,9 @@ router.get("/api/admin/users", isAuthenticated, async (req, res) => {
       const page = parseInt(req.query.page as string) || 1;
       const limit = parseInt(req.query.limit as string) || 50;
       const offset = (page - 1) * limit;
+      // Admin's IANA timezone (e.g. "America/New_York") so the "New Today"
+      // aggregate uses the admin's local day boundary, not server UTC.
+      const timezone = (req.query.timezone as string) || undefined;
 
       let conditions: any[] = [];
       // Always exclude soft-deleted users from the normal admin listing.
@@ -3964,7 +3967,7 @@ router.get("/api/admin/users", isAuthenticated, async (req, res) => {
 
       const { allUsers, totalResult, stats } = await withQueryTimer(
         "admin-users-paginated",
-        () => getAdminUsersPage(whereClause, limit, offset),
+        () => getAdminUsersPage(whereClause, limit, offset, timezone),
         (req.user as any)?.claims?.role
       );
 
