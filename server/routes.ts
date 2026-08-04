@@ -6389,7 +6389,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // contract in `optimization.routes.ts` (24h free re-run) + the twin's create gate:
       //   (a) the caller has ANY completed optimization run in the last 24h  → the DOCUMENTED free
       //       re-run (identical clock/query to `POST /api/optimization-payments`, which answers
-      //       `freeRerun:true, feeCents:0` in exactly this case);
+      //       `freeRerun:true, feeCents:0` in exactly this case); fee-literal-ok: comment
       //   (b) THIS comparison's own run was paid inside that same window (its
       //       `optimizationPaymentId` was Stripe-verified at create) — covers the re-run fired
       //       before the first run has stamped `optimizedAt`, so a just-paid user is never charged twice;

@@ -87,7 +87,7 @@ export function calculateCommission(
 
     case BookingType.EXPERIENCE_CART: {
       // 30 % platform fee — canonical checkout surface rate
-      const commissionRate = 0.30;
+      const commissionRate = 0.30; // fee-literal-ok: canonical checkout rate; fee_bands routing filed to standing fee-literal follow-up (DECISIONS.md ruling 25)
       return {
         platformFee:   round(subtotal * commissionRate),
         bookingType,
@@ -100,7 +100,7 @@ export function calculateCommission(
       return {
         platformFee:   round(subtotal),
         bookingType,
-        commissionRate: 1,
+        commissionRate: 1, // fee-literal-ok: credit purchase is 100% deferred revenue by definition, not a configurable fee
       };
     }
   }

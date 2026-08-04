@@ -1,5 +1,6 @@
 # Slip Experience Dispatch — Lane 6 + Slip Identity + Rendering Specs
 
+**audited@9a208861** (2026-08-02) · Rulings 1–19 herein are now canonical in `docs/DECISIONS.md` (cite by number; this text remains the verbatim source). Volatile claims (file:line, "X is cart-based") are as-of that SHA — re-verify at Phase 0.
 **Status:** Dispatch for Claude Code. Contains three build lanes and three UI rendering specs. Each lane has its own Phase 0 read-only audit with a HARD STOP before writes. One lane per branch, one agent per lane. No direct-to-main.
 **Doc map (already on main — reference, do not re-scope):** `TRIP_ARTIFACT_RECONCILE_BRIEF.md` · `TRIP_GRAVITY_AUDIT_DISPATCH.md` (+ findings) · `RECONCILE_PHASE1_SCOPE.md` · `ROUTING_STATE_CONTRACT.md` · `L5-optimizer-repoint-brief.md` · `plancard-surface-manifest.md`.
 **This document adds:** the stationary-slip model erratum, the decisions ratified 2026-08-02, the Lane 6 refinements, the slip identity + transition-log lane, and implementable specs for three slip renderings.
