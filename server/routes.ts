@@ -148,8 +148,7 @@ import {
 
 // ─── Commission constants & resolver (canonical source: server/services/commission.ts) ─
 import {
-  EXPERT_SHARE_RATE,
-  PLATFORM_FEE_RATE,
+  getExpertSplitRates,
   PROCESSING_FEE_RATE,
   resolveCommissionRates,
   calcInsuranceFee,
@@ -3526,7 +3525,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         return res.status(400).json({ message: "You have already purchased this template" });
       }
 
-      // Resolve commission rates from booking_fee_configs (fallback: PLATFORM_FEE_RATE)
+      // Resolve commission rates from booking_fee_configs (fallback: fee_bands expert_standard)
       const templateRates = await resolveCommissionRates(template.category ?? null);
       const price = parseFloat(template.price as string);
       const platformFee = price * templateRates.platformFeeRate;
@@ -3808,7 +3807,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
       const effectiveRate = grossBookingTotal > 0
         ? Number(((ledgerSummary.total) / grossBookingTotal).toFixed(4))
-        : EXPERT_SHARE_RATE;
+        : (await getExpertSplitRates()).expertShareRate;
 
       const lastPayout = payouts[0];
 
@@ -6389,7 +6388,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // contract in `optimization.routes.ts` (24h free re-run) + the twin's create gate:
       //   (a) the caller has ANY completed optimization run in the last 24h  → the DOCUMENTED free
       //       re-run (identical clock/query to `POST /api/optimization-payments`, which answers
-      //       `freeRerun:true, feeCents:0` in exactly this case);
+      //       `freeRerun:true, feeCents:0` in exactly this case); fee-literal-ok: comment
       //   (b) THIS comparison's own run was paid inside that same window (its
       //       `optimizationPaymentId` was Stripe-verified at create) — covers the re-run fired
       //       before the first run has stamped `optimizedAt`, so a just-paid user is never charged twice;

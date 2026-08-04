@@ -41,12 +41,48 @@ export const AFFILIATE_EXPERT_SHARE = 0.30;
 /** Stripe processing / gateway fee deducted from every platform-fee receipt. */
 export const PROCESSING_FEE_RATE = 0.03;
 
-// 3.0.1b: Exported field defaults — NOT resolver safety-nets. Used in route files
-// when a provider service's revenueShareRate is unset. The resolver path no longer
-// falls back to these; it throws on missing config. These are data-model defaults.
-// The actual runtime rates come from fee_bands via resolveCommissionRates().
-export const EXPERT_SHARE_RATE = 0.75; // fee-literal-ok: data-model default for unset revenueShareRate; runtime rate from fee_bands
-export const PLATFORM_FEE_RATE = 0.25; // fee-literal-ok: data-model default for unset revenueShareRate; runtime rate from fee_bands
+// 3.0.1b / ruling 25: Exported field defaults — NOT resolver safety-nets. Used in route
+// files when a provider service's revenueShareRate is unset. The resolver path never
+// falls back to these; it throws on missing config. Per DECISIONS.md ruling 25 the
+// 75/25 safety net lives in fee_bands: the `expert_standard` default row (seeded in
+// migration 033, guaranteed by the idempotent re-seed in 174) is the single source of
+// truth for this split. These constants survive ONLY as the documented last-resort
+// data-model defaults and must mirror that seeded default row.
+export const EXPERT_SHARE_RATE = 0.75; // fee-literal-ok: documented last-resort data-model default mirroring the fee_bands expert_standard seed (ruling 25); fee_bands-everywhere migration in flight
+export const PLATFORM_FEE_RATE = 0.25; // fee-literal-ok: documented last-resort data-model default mirroring the fee_bands expert_standard seed (ruling 25); fee_bands-everywhere migration in flight
+
+/**
+ * Ruling 25 / Task follow-through: the runtime home of the 75/25 safety net is the
+ * `expert_standard` fee band (platform-take fraction), not the constants above.
+ * Call sites that previously used EXPERT_SHARE_RATE / PLATFORM_FEE_RATE as runtime
+ * fallbacks (e.g. when a provider service's revenueShareRate is unset) must call
+ * this instead, so an admin edit to the band takes effect without a deploy.
+ *
+ * Reads through a short in-process TTL cache — these are hot display/derivation
+ * paths and the band changes rarely. The constants remain ONLY as the last-resort
+ * fallback when the band is missing/inactive/non-percent (mirrors the seeded row).
+ */
+const EXPERT_SPLIT_CACHE_TTL_MS = 60_000;
+let expertSplitCache: { rates: { expertShareRate: number; platformFeeRate: number }; expiresAt: number } | null = null;
+
+export async function getExpertSplitRates(): Promise<{ expertShareRate: number; platformFeeRate: number }> {
+  const now = Date.now();
+  if (expertSplitCache && expertSplitCache.expiresAt > now) return expertSplitCache.rates;
+
+  const band = await getBand("expert_standard");
+  const rates =
+    band && band.rateType === "percent" && band.rate > 0 && band.rate < 1
+      ? { expertShareRate: 1 - band.rate, platformFeeRate: band.rate }
+      : { expertShareRate: EXPERT_SHARE_RATE, platformFeeRate: PLATFORM_FEE_RATE }; // fee-literal-ok: documented last-resort default mirroring the seeded row
+
+  expertSplitCache = { rates, expiresAt: now + EXPERT_SPLIT_CACHE_TTL_MS };
+  return rates;
+}
+
+/** Test/admin hook: drop the cached expert split so the next read hits the band. */
+export function clearExpertSplitCache(): void {
+  expertSplitCache = null;
+}
 
 /**
  * Phase 3.1 — Booking Concierge facilitation fee.
@@ -56,6 +92,14 @@ export const PLATFORM_FEE_RATE = 0.25; // fee-literal-ok: data-model default for
  * separately via the expert band — a flat band is never built into a split. */
 export const CONCIERGE_BOOKING_CONCERN = "booking_concierge";
 export const CONCIERGE_BOOKING_FEE_BAND_KEY = "expert_concierge_booking";
+
+/** Ruling 25 follow-through (migration 174): the EXPERIENCE_CART typed-breakdown
+ *  rate resolves from this admin-editable percent band (platform-take fraction).
+ *  SCOPE: this band backs the DIAGNOSTIC/DISPLAY calculator surface
+ *  (calculateCommission). The actual cart charge + fee-preview paths resolve
+ *  per-item rates via resolveCommissionRates() — per the R3/F6 note in
+ *  payments.routes.ts, the old 0.30 literal matched no actual charged rate. */
+export const EXPERIENCE_CART_BAND_KEY = "experience_cart_checkout";
 
 export interface CommissionRates {
   expertShareRate: number;
@@ -288,6 +332,25 @@ export async function requireConciergeBookingRate(): Promise<number> {
     );
   }
   return rate;
+}
+
+/**
+ * Ruling 25 (migration 174): EXPERIENCE_CART platform-take rate from fee_bands.
+ * THROWS if the `experience_cart_checkout` band is missing/inactive/non-percent —
+ * same fail-loud posture as requireConciergeBookingRate: a misconfigured DB must
+ * surface immediately rather than silently displaying the wrong rate.
+ * Callers pass the result to calculateCommission(..., { experienceCartRate }).
+ */
+export async function requireExperienceCartRate(): Promise<number> {
+  const band = await getBand(EXPERIENCE_CART_BAND_KEY);
+  if (!band || band.rateType !== "percent" || band.rate <= 0) {
+    throw new Error(
+      "Experience cart fee band not configured — " +
+      `${EXPERIENCE_CART_BAND_KEY} must be active with rate_type='percent' and default_rate > 0. ` +
+      "Run migrations to apply 174_seed_experience_cart_band.sql.",
+    );
+  }
+  return band.rate;
 }
 
 async function getSetting(key: string): Promise<string | null> {

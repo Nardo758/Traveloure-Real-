@@ -1,5 +1,6 @@
 # Lane 3 decision brief — `trips.status`: own the lifecycle, or derive-and-retire?
 
+**audited@80d00ea7** (2026-07-31) — volatile claims as-of that SHA. Decision = DECISIONS.md ruling 2.
 **Date:** Jul 31, 2026 · **Status:** RATIFIED Jul 31, 2026 — Option B (derive-and-retire).
 **Source finding:** Trip-Gravity Audit `[P2] [D] [S17×L6]` — "dead lifecycle field with a believing reader."
 

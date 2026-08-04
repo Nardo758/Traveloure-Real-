@@ -22,7 +22,7 @@ import { and, desc, eq, inArray } from 'drizzle-orm';
 // Aliased: this router already uses `itineraryItems` as a local variable name in more than one
 // handler, and shadowing the table import would be a silent footgun.
 import { notifications, itineraryItems as itineraryItemsTable, tripCollaborators, tripExpertAdvisors, tripItemComments, users, PLAN_APPROVAL_STATUSES } from '@shared/schema';
-import { EXPERT_SHARE_RATE } from '../services/commission';
+import { getExpertSplitRates } from '../services/commission';
 import {
   sendPlanDeliveredEmail,
   sendPlanApprovedEmail,
@@ -1081,14 +1081,14 @@ router.get('/trips/:tripId/traveler-profile', isAuthenticated, async (req, res) 
   }
 });
 
-// ============================================================================
+// --------------------------------------------------------------------------
 // Expert Workspace endpoints — ported VERBATIM from the imported-but-UNMOUNTED
 // trips.routes.ts + experts.routes.ts (§9 shadow-route class). These power the
 // expert trip workspace (workspace.tsx); the dark copies never served traffic
 // (Vite catch-all → 200-HTML), so notes/commission/status-advance silently
 // failed. Mounted here (app.use("/api", …)) so the paths lose their "/api" prefix.
 // The dark copies are deleted in the same change so no stale twin remains.
-// ============================================================================
+// --------------------------------------------------------------------------
 
 // POST /api/expert/assignments/:assignmentId/accept — expert accepts a PENDING advisory
 // assignment (pending → accepted), so a newly-assigned trip has a path into the workspace.
@@ -1115,26 +1115,32 @@ router.patch("/expert/assignments/:assignmentId/workspace-status", isAuthenticat
   try {
     const userId = getUserId(req)!;
     const { assignmentId } = req.params;
-    const { workspaceStatus } = req.body;
+    const { workspaceStatus, intent } = req.body;
     const validTransitions: Record<string, string[]> = {
       draft: ["in_review"],
       in_review: ["delivered"],
       delivered: [],
     };
-    if (!workspaceStatus || !(workspaceStatus in validTransitions)) {
+    const isAdvance = intent === "advance";
+    if (!isAdvance && (!workspaceStatus || !(workspaceStatus in validTransitions))) {
       return res.status(400).json({ message: "Invalid workspaceStatus. Must be: draft, in_review, or delivered" });
     }
     const assignment = await storage.getExpertAssignment(assignmentId);
     if (!assignment) return res.status(404).json({ message: "Assignment not found" });
     if (assignment.localExpertId !== userId) return res.status(403).json({ message: "Access denied" });
     const current = assignment.workspaceStatus ?? "draft";
-    if (!validTransitions[current]?.includes(workspaceStatus)) {
-      return res.status(400).json({ message: `Cannot transition workspace status from '${current}' to '${workspaceStatus}'. Allowed: ${validTransitions[current]?.join(", ") || "none"}` });
+    // Ruling 25: the server derives the next status; the client sends an intent, not a target.
+    const nextStatus = isAdvance ? validTransitions[current]?.[0] : workspaceStatus;
+    if (!nextStatus || !validTransitions[current]?.includes(nextStatus)) {
+      return res.status(400).json({ message: `Cannot transition workspace status from '${current}'${nextStatus ? ` to '${nextStatus}'` : ""}. Allowed: ${validTransitions[current]?.join(", ") || "none"}` });
     }
-    const updated = await storage.updateExpertAssignmentWorkspaceStatus(assignmentId, workspaceStatus, current);
+    // Task 1028: the helper flips the status AND writes the append-only item_transition_log row
+    // (actor, from/to, timestamp) in one transaction — rulings 12/16/18. Pass the acting expert.
+    // The status is server-derived (ruling 25): nextStatus, never the raw client value.
+    const updated = await storage.updateExpertAssignmentWorkspaceStatus(assignmentId, nextStatus, current, userId);
     if (!updated) {
       // Lost the race — a concurrent call already moved this row off `current` (§15).
-      return res.status(409).json({ message: `Cannot transition workspace status from '${current}' to '${workspaceStatus}'. A concurrent update already changed it.` });
+      return res.status(409).json({ message: `Cannot transition workspace status from '${current}' to '${nextStatus}'. A concurrent update already changed it.` });
     }
 
     // F2 (workstation-flows audit): delivery was SILENT — the expert advanced the status and the
@@ -1145,7 +1151,7 @@ router.patch("/expert/assignments/:assignmentId/workspace-status", isAuthenticat
       const trip = await storage.getTrip(assignment.tripId);
       if (trip?.userId) {
         const copy =
-          workspaceStatus === "in_review"
+          nextStatus === "in_review"
             ? { title: "Your itinerary is ready for review", message: "Your expert sent an itinerary update for your review." }
             : { title: "Your itinerary has been delivered", message: "Your expert marked your itinerary as complete." };
         await db.insert(notifications).values({
@@ -1165,7 +1171,7 @@ router.patch("/expert/assignments/:assignmentId/workspace-status", isAuthenticat
         // (never `in_review`), never for a logged-out/no-account trip (trip.userId null-guarded
         // by the same `if` this sits inside). Best-effort — inside the same try/catch as the bell
         // insert, so a send failure never fails the already-committed workspace-status transition.
-        if (workspaceStatus === "delivered") {
+        if (nextStatus === "delivered") {
           const customer = await storage.getUser(trip.userId);
           if (customer?.email) {
             await sendPlanDeliveredEmail({
@@ -1192,7 +1198,7 @@ router.patch("/expert/assignments/:assignmentId/workspace-status", isAuthenticat
     // `expert_id IS NULL` claim both guard against double-credit on a repeated/racing delivered
     // flip. Best-effort: a credit failure never blocks the workspace-status transition already
     // committed above.
-    if (workspaceStatus === "delivered") {
+    if (nextStatus === "delivered") {
       try {
         const paidRequestIds = await getPaidUncompletedExpertRequestIds(assignment.tripId, userId);
         for (const requestId of paidRequestIds) {
@@ -1264,11 +1270,29 @@ router.post('/trips/:id/plan-review', isAuthenticated, async (req, res) => {
             workspaceStatus: 'draft', // send the expert back to work; re-delivery re-runs this handshake
           };
 
-    const [updated] = await db
-      .update(tripExpertAdvisors)
-      .set(setValues as any)
-      .where(and(eq(tripExpertAdvisors.id, candidate.id), eq(tripExpertAdvisors.workspaceStatus, 'delivered')))
-      .returning();
+    // Task 1028: `request_changes` also flips workspaceStatus (delivered → draft), so it must
+    // write its trip-scoped workspace_status_transition diary row in the SAME transaction as the
+    // flip (rulings 12/16/18) — actor is the TRAVELER here, not the expert. The `approve` branch
+    // changes no workspaceStatus, so it logs nothing.
+    const updated = await db.transaction(async (tx) => {
+      const [row] = await tx
+        .update(tripExpertAdvisors)
+        .set(setValues as any)
+        .where(and(eq(tripExpertAdvisors.id, candidate.id), eq(tripExpertAdvisors.workspaceStatus, 'delivered')))
+        .returning();
+      if (row && decision === 'request_changes') {
+        await logItemTransition(tx, {
+          tripId: id,
+          itemId: null, // trip-scoped event (ruling 16)
+          eventType: 'workspace_status_transition',
+          fromStatus: 'delivered',
+          toStatus: 'draft',
+          actorType: 'traveler',
+          actorId: userId,
+        });
+      }
+      return row;
+    });
 
     if (!updated) {
       // Lost the race (a concurrent decision already moved this row off 'delivered').
@@ -1552,16 +1576,18 @@ router.get("/trips/:tripId/commission", isAuthenticated, async (req, res) => {
       item.bookingStatus !== "cancelled"
     );
 
-    // Expert-favorable split policy: EXPERT_SHARE_RATE (75%) floor. Do NOT lower
-    // without a product decision — it inverts the split in experts' disfavor.
+    // Expert-favorable split policy: expert_standard band (75% default) floor. Do NOT
+    // lower without a product decision — it inverts the split in experts' disfavor.
+    // Ruling 25: the fallback share resolves from fee_bands so admin edits apply live.
     const safeParseRate = (value: any, fallback: number): number => {
       const n = parseFloat(value);
       return Number.isFinite(n) && n >= 0 && n <= 1 ? n : fallback;
     };
+    const { expertShareRate: fallbackExpertShare } = await getExpertSplitRates();
     const expertServices = await storage.getProviderServicesByStatus(userId, "active");
     const expertRate = expertServices.length > 0
-      ? expertServices.reduce((sum: number, svc: any) => sum + safeParseRate(svc.revenueShareRate, EXPERT_SHARE_RATE), 0) / expertServices.length
-      : EXPERT_SHARE_RATE;
+      ? expertServices.reduce((sum: number, svc: any) => sum + safeParseRate(svc.revenueShareRate, fallbackExpertShare), 0) / expertServices.length
+      : fallbackExpertShare;
 
     let totalGross = 0;
     let expertShare = 0;

@@ -1,5 +1,6 @@
 # Phase 4 Runbook — Blended Network Fill for Kyoto
 
+**audited@0b47ea44** (2026-06-03 — **STALE, re-verify before use**; ruling 31). Ledger: `docs/DECISIONS.md`.
 **Objective:** Populate Kyoto neighborhoods with real gem and service data, turning the NeighborhoodCard counts from 0/0 (sparse/expected) to real numbers. This activates Phase 3's renderers against actual content instead of empty scaffolding.
 
 **Status:** Schema is live (Phase 2 baseline), seed script is ready, orchestrator annotation is restored. Ready to execute.

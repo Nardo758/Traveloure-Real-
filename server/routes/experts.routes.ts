@@ -92,8 +92,6 @@ import {
   providerBookingRequests,
 } from "@shared/schema";
 import {
-  EXPERT_SHARE_RATE,
-  PLATFORM_FEE_RATE,
   resolveCommissionRates,
   type CommissionRates,
 } from "../services/commission";

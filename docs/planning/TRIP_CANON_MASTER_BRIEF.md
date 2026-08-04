@@ -1,5 +1,6 @@
 # Trip-Canon Master Brief — all findings, one plan
 
+**audited@c2653696** (2026-07-31) — volatile claims as-of that SHA; re-verify at Phase 0. Ledger: `docs/DECISIONS.md`.
 **Date:** Jul 31, 2026 · **Status:** consolidated execution plan, built from five ratified/reviewed documents.
 This brief SYNTHESIZES — it does not restate. Detail and receipts live in the sources; this document owns the
 merged gap registry, the diagrams, and the lane plan. When this brief and a source disagree, flag it — do not

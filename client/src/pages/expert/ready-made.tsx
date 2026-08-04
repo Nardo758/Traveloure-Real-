@@ -25,7 +25,8 @@ import { EmptyState } from "@/components/backoffice/primitives";
 // Console palette (two-palettes decision — warm back-office greys, see index.css .console-scope).
 const G: Record<number, string> = {
   50: "#FAFAF8", 100: "#F3F3EE", 200: "#E8E8E2", 400: "#A8A8A0",
-  500: "#7A7A72", 600: "#5C5C55", 700: "#45453F", 900: "#1A1A18",
+  500: "#7A7A72", 600: "#5C5C55", 700: "#45453F", 900: "#1A1A18", // fee-literal-ok: neutral colour scale, not a fee
+
 };
 
 type ListingRow = ReadyMadeListing & { sourceTripId: string; updatedAt: string | null };
