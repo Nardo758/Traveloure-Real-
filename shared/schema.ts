@@ -5399,7 +5399,7 @@ export const itemTransitionLog = pgTable(
     id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
     tripId: varchar("trip_id").notNull().references(() => trips.id, { onDelete: "cascade" }),
     itemId: varchar("item_id"), // NULL = trip-scoped event (ruling 16); no FK — history outlives the item
-    eventType: varchar("event_type", { length: 30 }).notNull().default("status_transition"), // status_transition | variant_applied | plan_finalized | plan_reopened (R-F)
+    eventType: varchar("event_type", { length: 30 }).notNull().default("status_transition"), // status_transition | variant_applied | plan_finalized | plan_reopened (R-F) | workspace_status_transition (task 1028)
     fromStatus: varchar("from_status", { length: 20 }), // NULL for non-status events
     toStatus: varchar("to_status", { length: 20 }),
     actorType: varchar("actor_type", { length: 20 }).notNull(), // traveler | expert | checkout | refund | optimizer | system

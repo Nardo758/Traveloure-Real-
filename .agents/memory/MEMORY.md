@@ -16,3 +16,4 @@
 - [Travelpayouts partner API](travelpayouts-partner-api.md) — /v1/statistics/* endpoints don't exist (silent $0); use statistics/v1/execute_query + finance/v2 with X-Access-Token header.
 - [tsc baseline & getUserId convention](tsc-baseline-and-getuserid.md) — tsc is not clean (~137 pre-existing server errors); diff against baseline. Routes must use getUserId(req) from server/utils/auth.
 - [MapMarker fallback testing](map-marker-fallback-testing.md) — fallback mode drops map-pin-* testids (AdvancedMarker children); find pins by .gm-style [title]; ItineraryMapView is orphaned; Maps key lacks billing.
+- [Fee-band scope split](fee-band-scope-split.md) — EXPERIENCE_CART 0.30 was display-only; real charges resolve per-item via resolveCommissionRates; new bands must state which surface they control or review rejects.
