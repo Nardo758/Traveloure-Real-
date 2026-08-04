@@ -16,6 +16,7 @@ import { ActiveConsoleProvider } from "@/contexts/ActiveConsoleContext";
 import { ConsoleAwareLayout } from "@/components/console-aware-layout";
 import { useEffect, useRef, lazy, Suspense } from "react";
 import { PageErrorBoundary } from "@/components/page-error-boundary";
+import { MaintenanceGate } from "@/components/maintenance-screen";
 
 const LandingPage = lazy(() => import("@/pages/landing"));
 const LandingMockups = lazy(() => import("@/pages/landing-mockups"));
@@ -1097,7 +1098,9 @@ function App() {
               <TooltipProvider>
                 <Toaster />
                 <GuestCartMigrator />
-                <Router />
+                <MaintenanceGate>
+                  <Router />
+                </MaintenanceGate>
               </TooltipProvider>
             </ActiveConsoleProvider>
           </SignInModalProvider>
