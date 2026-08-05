@@ -708,6 +708,8 @@ export async function registerRoutes(
   // ─── Seed / backfill booking_fee_configs (idempotent) ──────────────────────
   // Ensures the canonical default row (platform 25% / expert 75%) always exists,
   // and backfills any legacy 70/30 rows that were inserted before the policy change.
+  // fee-literal-debt:#1036 — startup seed hardcodes the 25/75 default instead of deriving
+  // it from the fee-band source of truth (ruling 32: surface + DB-backed test required).
   (async () => {
     try {
       // 1. Upsert the 'default' row only if it doesn't already exist
@@ -3970,6 +3972,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const templateSplit = revenueSplits.find((s) => s.type === 'template_sale');
 
       // Calculate expert's share percentages — policy: service/template 75%, affiliate 30%
+      // fee-literal-debt:#1036 — '75' string fallback bypasses fee_bands when a revenue-split
+      // row is missing (ruling 32: band-back or fail loud, with a DB-backed test).
       const serviceExpertPct = parseFloat(serviceSplit?.expertPercentage || '75') / 100;
       const templateExpertPct = parseFloat(templateSplit?.expertPercentage || '75') / 100;
       
