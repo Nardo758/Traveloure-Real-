@@ -44,7 +44,7 @@ if (!process.env.STRIPE_SECRET_KEY?.startsWith("sk_test_")) {
 
 const { db, pool } = await import("../db");
 const { and, eq } = await import("drizzle-orm");
-const { users, trips, tripExpertAdvisors, itemTransitionLog } = await import("../../shared/schema");
+const { users, trips, tripExpertAdvisors, itemTransitionLog, expertRequests, expertEarnings } = await import("../../shared/schema");
 const { getSession } = await import("../replit_integrations/auth");
 const { setupEmailAuth } = await import("../replit_integrations/auth/emailAuth");
 const { storage } = await import("../storage");
@@ -252,6 +252,21 @@ test("M3+L3: delivered is terminal; rejected advances leave status and diary fro
   }
   assert.equal(await dbStatus(), "delivered");
   assert.equal((await diaryRows()).length, 2, "no diary rows for rejected transitions");
+});
+
+// ---------------------------------------------------------------------------
+// D6a (Phase 2 closure, part a — audit §9 D6): the delivered flip above ran the
+// R7 paid-request credit block against THIS fixture. The fixture has no
+// expert_requests row (let alone a paid one), so no credit may be minted:
+// zero expert_requests for the trip, zero expert_earnings for the expert.
+// (Part b — J8 assertion + Tier-3 non-assigned-actor negative — is PRE-CLAIMED
+// for the journey-suite matrix, not built here.)
+// ---------------------------------------------------------------------------
+test("D6a: the delivered flip minted no R7 credit for a fixture with no paid expert_requests", async () => {
+  const reqs = await db.select({ id: expertRequests.id }).from(expertRequests).where(eq(expertRequests.tripId, tripId));
+  assert.equal(reqs.length, 0, "fixture precondition: no expert_requests bridged to this trip");
+  const earnings = await db.select({ id: expertEarnings.id }).from(expertEarnings).where(eq(expertEarnings.expertId, expertId));
+  assert.equal(earnings.length, 0, "no expert_earnings row may exist for the fixture expert after delivered");
 });
 
 // ---------------------------------------------------------------------------
