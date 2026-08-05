@@ -132,4 +132,50 @@ Per the brief, surprising findings are surfaced as questions rather than silentl
 
 ---
 
-*Prepared by the console-sigma-test lane agent. No writes performed other than this report. All `file:line` @ `5941a4ff`.*
+# PHASE 1 — Re-diff findings & assertion inventory
+
+**Phase 1 dispatch received 2026-08-04 (HARD STOP lifted; §8 answered as rulings 20–25 in `docs/DECISIONS.md`).**
+**Re-diff:** Phase 0 pin `5941a4ff` → current main `89913e4a` (PR #418 `42cb0d5f` + task merges #1026–#1028, #1032–#1034).
+
+## §9 Re-diff findings (deltas since `5941a4ff`)
+
+| # | Phase 0 claim | Now | Delta / consequence |
+|---|---|---|---|
+| D1 | §0.2 "Transition logging: NONE (recorded absence)" | **FIXED** by #1028 (`45000861`): `storage.updateExpertAssignmentWorkspaceStatus` flips status AND writes an `item_transition_log` row (`workspace_status_transition`, itemId NULL per ruling 16, actor recorded) in ONE transaction (rulings 12/18). Traveler `request_changes` reset also logged. | Ruling 21's expected-fail ABSENCE row, tagged `deferred:#1028`, **flips to expected-PASS in this same phase** — assertions L1–L3 below. |
+| D2 | §0.2 "Client still computes `next`" (`workspace.tsx:2699`) | **FIXED** by #1027 (`0b1a8529`): client sends `{ intent: "advance" }`; server derives `nextStatus = validTransitions[current][0]`; explicit target kept for backward compat (`booking-actions.ts:1114-1138` @ `89913e4a`). | Ruling 25's expected-fail STATE_DIVERGENCE **flips to expected-PASS** — assertions S1–S3, incl. the lying-client divergence probe S3. |
+| D3 | §0.4 money literals: `commission.ts:48-49` (0.75/0.25 safety net) | **Superseded** by #1032 (`d2b61ccd`): fallback splits resolve from `fee_bands.expert_standard` (60s cache); constants remain documented last-resort data-model defaults, `fee-literal-ok`-annotated. Already assertion-covered by merged tests (`expert-split-band.db.test.ts`, `trip-commission-band-edit.http.test.ts` — #1033/#1034). | MONEY_INTEGRITY candidate row RETIRED for 48-49. Fee expectations checked against **ruling 32**: the EXPERIENCE_CART 0.30 was display/diagnostic-only (supersedes ruling 25's checkout-rate framing); migration 174 + `experience-cart-band.db.test.ts` cover it. |
+| D4 | §0.4 literals `routes.ts:719` (25/75 band injection) and `routes.ts:3973-3975` (`'75'` string fallback) | **Still present** @ `89913e4a` (line drift only). | FOLLOWUPS rows stand. Per ruling 32 any future move into `fee_bands` must declare its surface + ship a DB-backed test. |
+| D5 | §0.2 evidence lines (`booking-actions.ts:1119-1123`, `workspace.tsx:2695-2708`) | Handler grew (intent branch, 1028 log call, R7 delivered-credit block); machine map itself **unchanged** (`draft→in_review→delivered`, linear, forward-only). | file:line refs in §0.2 are stale by drift; the semantic claims hold except D1/D2. |
+| D6 | (new since Phase 0) | Delivered-flip now triggers best-effort completion/credit of PAID bridged `expert_requests` (R7 block in the same handler). | OUT of v1 scope (money edge, not the workspace machine — ruling 24); noted for the journey suite's money matrix. |
+
+CLAUDE.md §-references cited by Phase 0 (§14/§15) survive the #418 slim; the ledger (`docs/DECISIONS.md`) is now the ruling authority (cited by number below, per ruling 26).
+
+## §10 Assertion inventory (Phase 1, harness v1 — workspace machine only per ruling 24)
+
+**Code:** `server/__tests__/console-sigma-workspace-machine.http.test.ts` (real HTTP, real email-auth sessions, DB-fact assertions; 9/9 green) and `server/__tests__/console-sigma-reorder-divergence.db.test.ts` (R22 divergence pin; green = divergence present).
+
+| ID | Ruling | Kind | Assertion (every green = a DB fact) | Status |
+|---|---|---|---|---|
+| M1/S1 | 24, 25 | expected-PASS | `intent:"advance"` from draft lands `workspace_status='in_review'` in `trip_expert_advisors` | PASS |
+| M2/S2 | 24, 25 | expected-PASS | explicit legal target `in_review→delivered` still accepted (backward compat), DB fact `delivered` | PASS |
+| M3 | 24 | expected-PASS | `delivered` terminal: advance + both backward targets → 400, DB frozen | PASS |
+| M4 | 24 | expected-PASS | illegal jump `draft→delivered` → 400, DB frozen | PASS |
+| M5 | 24 | expected-PASS | non-owning expert → 403, DB frozen | PASS |
+| M6 | 24 | expected-PASS | stale `expectedCurrentStatus` precondition (the HTTP 409 source) writes neither status nor diary row — atomic pair (rulings 12/18) | PASS |
+| L1 | 21 | **FLIPPED to expected-PASS** (fixing commit `45000861` / #1028) | successful transition writes exactly one `workspace_status_transition` row: itemId NULL (r16), from/to correct, actorType `expert`, actorId = acting expert | PASS |
+| L2 | 21 | flipped expected-PASS (`45000861`) | second transition appends row 2 with correct from/to | PASS |
+| L3 | 21 | flipped expected-PASS (`45000861`) | rejected transitions append NO diary rows | PASS |
+| S3 | 25 | **FLIPPED to expected-PASS** (fixing commit `0b1a8529` / #1027) | divergence probe: `intent:"advance"` + lying `workspaceStatus:"delivered"` → server-derived `in_review` wins | PASS |
+| A2 | 20 | expected-PASS regression (spec flag #2; fixed pre-`5941a4ff`) | empty-body PATCH (old dead saveMutation shape) → 400, DB + diary untouched | PASS |
+| A4 | 20 | expected-PASS regression (spec flag #4) | `workspace-constraints` aggregation mounted + assignment-gated (403 intruder / 200 assigned) | PASS |
+| R22 | 22 | **EXPECTED DIVERGENCE** (green = defect pinned) | `optimizeOrder` ignores `isFlexible` anchors — computes `fixedItems` then never uses them (`itinerary-intelligence.service.ts:343-362`); a non-flexible 08:00 anchor is demoted behind flexible items by pure energy sort. Test is the tripwire: it FAILS when the named follow-up (reorder consumes the optimizer's constraint service) lands, and must then be flipped positive. Remediation NOT in scope (ruling 22). | PASS (divergence present) |
+| A1 | 20 | **deferred:phase-2** | admin-confirm bridge regression (flag #1): `POST /api/admin/routing-queue/:requestId/confirm` transactionally inserts advisor row + flips `expert_requests.status='assigned'`. Needs admin session + `expert_requests` fixture — same fixture bench as R23; batched into Phase 2. | pending |
+| A5 | 20, 32 | already-covered | commission fallback (flag #5): covered by merged `expert-split-band.db.test.ts`, `trip-commission-band-edit.http.test.ts`, `experience-cart-band.db.test.ts` — not duplicated here | PASS (external) |
+| — | 23 | phase-2 | Kyoto expert fixture: full draft→submitted→approved lifecycle, standard account convention, never bypassing the Kyoto submit gate | pending |
+| — | 24 | deferred:phase-4 | per-item routing-layer matrix cells | pending |
+
+**Standing-rule compliance:** dev DB only (all seeded rows removed in `after`); no UI-only passes (every assertion lands on a `trip_expert_advisors` / `item_transition_log` fact or a rejected write proven by an unchanged fact); tsc baseline untouched (no production code modified — test files + this doc only); one branch (`lane/console-sigma-test`).
+
+---
+
+*Phase 0 prepared read-only @ `5941a4ff`; Phase 1 assertions + re-diff @ `89913e4a`.*
