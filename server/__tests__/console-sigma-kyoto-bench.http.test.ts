@@ -53,6 +53,10 @@ process.env.SESSION_SECRET = process.env.SESSION_SECRET || "test-session-secret"
 if (!process.env.STRIPE_SECRET_KEY?.startsWith("sk_test_")) {
   process.env.STRIPE_SECRET_KEY = "sk_test_dummy";
 }
+// Hermetic: the approval path fires a best-effort congratulations email. Point the
+// mail provider at a dummy key so no real send is attempted (failures are caught
+// and logged non-fatally by the route).
+process.env.RESEND_API_KEY = "re_test_dummy_console_sigma";
 
 const { db, pool } = await import("../db");
 const { and, eq } = await import("drizzle-orm");
@@ -253,7 +257,13 @@ test("K3: admin approval flips form to 'approved' and users.role to the clamped 
 // seeded via the SAME lifecycle, idempotently. Never cleaned up: it is the
 // journey suite's Kyoto expert (bench registry: audit §12).
 // ---------------------------------------------------------------------------
-test("K4: durable Kyoto bench fixture exists via the full lifecycle (idempotent)", async () => {
+test("K4: durable Kyoto bench fixture exists via the full lifecycle (reconciling, idempotent)", async () => {
+  // RECONCILE, don't just branch on user-exists: a prior interrupted run may have
+  // left a partial fixture (user without form, pending/rejected form, stale
+  // password). Every repair step goes through the same lifecycle layers — the
+  // application guard for submission, the admin HTTP route for approval. The only
+  // direct write is the deterministic bench password (auth credential, not
+  // lifecycle state).
   let [bench] = await db.select().from(users).where(eq(users.email, BENCH_EMAIL));
   if (!bench) {
     benchUserCreatedThisRun = true;
@@ -263,28 +273,45 @@ test("K4: durable Kyoto bench fixture exists via the full lifecycle (idempotent)
       id, email: BENCH_EMAIL, password, firstName: "Kyoto", lastName: "Temples",
       role: "traveler", authProvider: "email",
     } as any);
-    const form = await submitApplication(id, {
+    [bench] = await db.select().from(users).where(eq(users.email, BENCH_EMAIL));
+  } else {
+    // Deterministic credential policy: the bench password is part of the fixture
+    // contract, so converge it (covers a pre-existing user seeded another way).
+    await db
+      .update(users)
+      .set({ password: await hashPassword(BENCH_PASSWORD), authProvider: "email" } as any)
+      .where(eq(users.id, bench.id));
+  }
+
+  // Form reconciliation through the real lifecycle:
+  let [form] = await db.select().from(localExpertForms).where(eq(localExpertForms.userId, bench.id));
+  if (!form) {
+    form = await submitApplication(bench.id, {
       firstName: "Kyoto", lastName: "Temples", email: BENCH_EMAIL,
       city: "Kyoto", country: "Japan", expertType: "local_expert",
       specialties: ["temples", "shrines"], languages: ["ja", "en"],
       bio: "Console-sigma journey-suite bench fixture: Kyoto temple & shrine specialist.",
     });
+  }
+  if (form.status !== "approved") {
+    // pending (fresh or interrupted) or rejected — the admin approval route is the
+    // lifecycle-legitimate repair for both.
     const res = await fetch(`${baseUrl}/api/admin/expert-applications/${form.id}/status`, {
       method: "PATCH",
       headers: { "content-type": "application/json", cookie: adminCookie },
       body: JSON.stringify({ status: "approved" }),
     });
     assert.equal(res.status, 200, `bench approval failed: ${await res.clone().text()}`);
-    [bench] = await db.select().from(users).where(eq(users.email, BENCH_EMAIL));
   }
+  [bench] = await db.select().from(users).where(eq(users.email, BENCH_EMAIL));
   benchUserId = bench.id;
 
   // Facts every run must re-prove, whether freshly seeded or pre-existing:
   assert.equal(bench.role, "local_expert", "bench fixture must be a lifecycle-approved local expert");
-  const [form] = await db.select().from(localExpertForms).where(eq(localExpertForms.userId, bench.id));
-  assert.ok(form, "bench fixture must own an application row (lifecycle provenance, not a bare role flip)");
-  assert.equal(form.status, "approved");
-  assert.equal(form.city, "Kyoto");
+  const [finalForm] = await db.select().from(localExpertForms).where(eq(localExpertForms.userId, bench.id));
+  assert.ok(finalForm, "bench fixture must own an application row (lifecycle provenance, not a bare role flip)");
+  assert.equal(finalForm.status, "approved");
+  assert.equal(finalForm.city, "Kyoto");
 
   // The bench account must actually be able to log in with the standard convention.
   const loginRes = await fetch(`${baseUrl}/api/auth/login`, {

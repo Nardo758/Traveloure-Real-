@@ -198,7 +198,7 @@ CLAUDE.md §-references cited by Phase 0 (§14/§15) survive the #418 slim; the 
 
 | Fixture | Provenance | Login | Owned by | Status |
 |---|---|---|---|---|
-| `kyoto-temples@traveloure.test` | **Full lifecycle** — email-auth user → `POST` application (through `insertLocalExpertFormSchema`, the real gate) → `pending` → admin HTTP approval → `users.role='local_expert'`. Never a bare role flip: K4 asserts the `local_expert_forms` row exists with `status='approved'`, `city='Kyoto'`. | Standard convention password (`TestPass123!`); K4 proves login works every run. | console-sigma lane (built once here, consumed everywhere) | **SEEDED** in dev DB, durable (deliberately not cleaned up); K4 idempotently re-verifies or re-seeds |
+| `kyoto-temples@traveloure.test` | **Full lifecycle** — email-auth user → submission through the application guard itself (`insertLocalExpertFormSchema.parse` + `storage.createLocalExpertForm`, exactly the layers the `POST /api/expert-forms` route runs; the route body is not HTTP-mounted in the suite) → `pending` → admin approval over real HTTP → `users.role='local_expert'`. Never a bare role flip: K4 asserts the `local_expert_forms` row exists with `status='approved'`, `city='Kyoto'`. | Standard convention password (`TestPass123!`), converged deterministically each run; K4 proves login works every run. | console-sigma lane (built once here, consumed everywhere) | **SEEDED** in dev DB, durable (deliberately not cleaned up); K4 RECONCILES partial states via the lifecycle (missing form → guarded submission; pending/rejected → admin approval; stale credential → converged) |
 | Kyoto traveler / second Kyoto expert / admin bench accounts | — | — | journey suite | GAP — inventory items for the journey-suite wave (throwaway equivalents exist inside the Phase 2 test but are cleaned up) |
 
 ## §13 Phase 2 assertion inventory
@@ -210,7 +210,7 @@ CLAUDE.md §-references cited by Phase 0 (§14/§15) survive the #418 slim; the 
 | K1 | 23 | born-approved impossible: smuggled `status:'approved'` stripped by the gate → row lands `pending`; `expertType:'admin'` rejected (privilege-escalation clamp); submission alone flips no role | PASS |
 | K2 | 23 | approval cannot precede submission: PATCH on nonexistent application → 404 | PASS |
 | K3 | 23 | full lifecycle over real HTTP: `pending` → admin approval → form `approved` + `users.role` clamped flip to `local_expert` | PASS |
-| K4 | 23 | durable bench fixture seeded via the SAME lifecycle, idempotent (verified twice in a row); login with standard convention proven each run | PASS |
+| K4 | 23 | durable bench fixture seeded via the SAME lifecycle layers; reconciling and idempotent (repairs a partial fixture — missing form, pending/rejected form, stale credential — through the lifecycle, never a bare role flip); login with standard convention proven each run | PASS |
 | A1-403 | 20 | non-admin confirm → 403, NEITHER write lands | PASS |
 | A1-PF | 20 | partial-failure probe: poisoned `assigned_expert_id` (no users row) makes the advisor insert violate its FK inside the tx → rollback leaves no advisor row AND the lead un-flipped (both-or-neither) | PASS |
 | A1-TX | 20 | expected-PASS regression (spec flag #1): healthy confirm writes the advisor row (`assigned`/`draft`) AND flips `expert_requests.status='assigned'` in one transaction; second confirm idempotent (no duplicate) | PASS |
