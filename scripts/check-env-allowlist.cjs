@@ -112,6 +112,19 @@ function referencesAllowTestAccounts(rawYaml) {
  */
 function targetsDeployment(yamlNoComments) {
   if (/\bE2E_BASE_URL\b/.test(yamlNoComments)) return true;
+  // GENERALIZED (Aug 2026, staging split): ANY `*BASE_URL` variable bound to a
+  // secret/vars interpolation, or to a literal https:// URL, is a deploy target.
+  // Previously only the literal name E2E_BASE_URL counted, so introducing
+  // E2E_STAGING_BASE_URL would have created a deploy-targeting workflow the
+  // guard did not recognise — and (c) would have silently stopped applying to
+  // it. This closes that by matching the guard's own documented intent
+  // ("*_BASE_URL bound to a secret / an https URL secret").
+  //
+  // Deliberately NOT matched: `BASE_URL: http://localhost:5000`, which the
+  // in-Actions route gates set alongside ALLOW_TEST_ACCOUNTS=1 against a
+  // throwaway DB. Those are legitimate and must keep passing.
+  if (/^\s*[A-Z0-9_]*BASE_URL\s*:\s*\$\{\{\s*(?:secrets|vars)\./m.test(yamlNoComments)) return true;
+  if (/^\s*[A-Z0-9_]*BASE_URL\s*:\s*['"]?https:\/\//m.test(yamlNoComments)) return true;
   if (/^\s*environment\s*:/m.test(yamlNoComments)) return true;
   // A job key named for production/deploy (two-space indent under jobs:).
   if (/^\s{2}[a-z0-9_-]*(?:deploy|production)[a-z0-9_-]*\s*:\s*$/im.test(yamlNoComments)) return true;
@@ -341,13 +354,62 @@ function selfTest() {
   });
   results.push(["non-deploy workflow referencing ALLOW passes (narrow behavior kept)", nonDeployRef.length === 0, nonDeployRef]);
 
+  // (c) GENERALIZED DEPLOY DETECTION — a STAGING base-URL secret is a deploy target too.
+  // Without this, the staging split (E2E_STAGING_BASE_URL) would have been an unrecognised
+  // deploy target and (c) would have stopped applying to it.
+  const stagingLeak = lint({
+    ...okPosture,
+    workflows: [
+      {
+        name: "staging.yml",
+        text: "jobs:\n  auth-smoke:\n    env:\n      E2E_STAGING_BASE_URL: ${{ secrets.E2E_STAGING_BASE_URL }}\n      ALLOW_TEST_ACCOUNTS: '1'\n",
+      },
+    ],
+  });
+  results.push(["staging base-URL secret + ALLOW=1 fails (generalized deploy detection)", stagingLeak.some((f) => f.includes("staging.yml")), stagingLeak]);
+
+  // (c) An https:// literal base URL is likewise a deploy target.
+  const httpsLiteralLeak = lint({
+    ...okPosture,
+    workflows: [
+      { name: "https-literal.yml", text: "jobs:\n  x:\n    env:\n      APP_BASE_URL: 'https://example.replit.app'\n      ALLOW_TEST_ACCOUNTS: '1'\n" },
+    ],
+  });
+  results.push(["https-literal base URL + ALLOW=1 fails", httpsLiteralLeak.some((f) => f.includes("https-literal.yml")), httpsLiteralLeak]);
+
+  // (c) NOT a false positive — the in-Actions route gates set BASE_URL to localhost AND
+  // ALLOW_TEST_ACCOUNTS=1 against a throwaway DB. That is the sanctioned pattern and must pass.
+  const localhostGate = lint({
+    ...okPosture,
+    workflows: [
+      {
+        name: "route-gate.yml",
+        text: "jobs:\n  gate:\n    steps:\n      - run: npm start\n        env:\n          NODE_ENV: production\n          ALLOW_TEST_ACCOUNTS: '1'\n      - run: npx playwright test\n        env:\n          BASE_URL: http://localhost:5000\n",
+      },
+    ],
+  });
+  results.push(["localhost BASE_URL gate with ALLOW=1 still passes", localhostGate.length === 0, localhostGate]);
+
+  // (c) NOT a false positive — a staging workflow that only MENTIONS the token in a
+  // comment/echo (the real e2e-staging-auth-smoke.yml shape) passes.
+  const stagingClean = lint({
+    ...okPosture,
+    workflows: [
+      {
+        name: "staging-clean.yml",
+        text: "jobs:\n  auth-smoke:\n    env:\n      E2E_STAGING_BASE_URL: ${{ secrets.E2E_STAGING_BASE_URL }}\n    steps:\n      # staging opts in via ALLOW_TEST_ACCOUNTS=1 on the DEPLOY, never here\n      - run: echo ok\n",
+      },
+    ],
+  });
+  results.push(["staging workflow with comment-only ALLOW mention passes", stagingClean.length === 0, stagingClean]);
+
   const allOk = results.every(([, ok]) => ok);
   if (!allOk) {
     console.error("SELF-TEST FAILED");
     for (const [label, ok, detail] of results) if (!ok) console.error(`  ✗ ${label}`, detail);
     process.exit(1);
   }
-  console.log(`self-test OK (${results.length} cases: definition/reference/purge/gate-order/deploy-leak positives + fail-closed bypass forms (quoted/secrets/env-prefix) + no-false-positive on comment-only, throwaway-DB, clean-deploy, and non-deploy reference)`);
+  console.log(`self-test OK (${results.length} cases: definition/reference/purge/gate-order/deploy-leak positives + fail-closed bypass forms (quoted/secrets/env-prefix) + generalized deploy detection (staging/https-literal base URLs) + no-false-positive on comment-only, throwaway-DB, localhost gates, clean-deploy, staging-clean, and non-deploy reference)`);
   process.exit(0);
 }
 

@@ -145,7 +145,8 @@ Wave key (brief §7): W1 = Journey Wave 1, build now · W2 = post SLIP phase 4 �
 | Existing suite | Disposition |
 |---|---|
 | e2e/specs/journey-1.spec.ts, journey-4-5, journey-5-admin, journey-6, journey-7 (Model B, RED per docs/audits/e2e-model-b-triage.md — drift + stale deploy) | Superseded row-by-row as J-claims land; keep running non-blocking until each replacement is green, then retire per triage doc |
-| e2e/specs/smoke.spec.ts, login-ui.spec.ts (GREEN) | Absorbed: F-auth-1 |
+| e2e/specs/smoke.spec.ts, login-ui.spec.ts (GREEN) | Absorbed: F-auth-1. Both are AUTH-DEPENDENT and now run against STAGING only (`E2E_STAGING_BASE_URL`) — production purges the seeded accounts, see docs/STAGING.md |
+| e2e/specs/public-smoke.spec.ts (NEW — unauthenticated) | Production smoke: public routes render + /health, /api/version, /api/ready answer. No login; run by e2e-deploy-smoke.yml |
 | scripts/journeys/*.mjs (expert-loop, plan-lifecycle, store-lifecycle, traveler-comms, adversarial-money-access, partner-gate, workstation-build) | Kept as-is; journey-lib.mjs (connectDb/dbOne/dbAll) is the Tier-1 read-only DB helper |
 | server/__tests__/console-sigma-*.test.ts | Kept; workspace status-machine + Kyoto bench claims cited in §7 |
 | server/__tests__/booking-confirm-payment-idempotency.test.ts, coordination-ledger-gap-review.test.ts | Absorbed: F-pay-3, J10 support |

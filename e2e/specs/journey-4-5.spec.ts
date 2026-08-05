@@ -1,9 +1,10 @@
 import { test, expect } from "@playwright/test";
 import { loginAsTestAccount } from "./helpers/auth";
+import { requireBaseUrl } from "../fixtures/base-url";
 
 test.describe("Journey 4 — Expert Supply Side (Onboarding → Service → Booking → Earnings)", () => {
   test("Expert onboarding wizard → creates service → traveler books → earnings reflect", async ({ page }) => {
-    const BASE = process.env.E2E_BASE_URL || "https://localhost:5000";
+    const BASE = requireBaseUrl();
 
     // ── Step 1: Sign in as expert test account ───────────────────────────
     await loginAsTestAccount(page, "expert");
@@ -100,7 +101,7 @@ test.describe("Journey 4 — Expert Supply Side (Onboarding → Service → Book
 
 test.describe("Journey 5 — Provider Supply Side (Onboarding → Service → Booking → Earnings)", () => {
   test("Provider onboarding wizard → creates service → traveler books → earnings reflect", async ({ page }) => {
-    const BASE = process.env.E2E_BASE_URL || "https://localhost:5000";
+    const BASE = requireBaseUrl();
 
     // ── Step 1: Sign in as provider test account ─────────────────────────
     await loginAsTestAccount(page, "provider");
