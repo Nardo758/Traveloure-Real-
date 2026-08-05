@@ -121,7 +121,8 @@ function isLoopback(req: Request): boolean {
  * The journey-suite workflow boots the PRODUCTION bundle with NODE_ENV=production
  * (that is the point — it tests the real bundle) and dutifully sets
  * RATE_LIMIT_LOOPBACK_SKIP=1, which the auth limiter then ignored. Result: the
- * 11th POST /api/auth/register in a run got 429 "Try again in 900 seconds", and
+ * 11th POST /api/auth/register in a run got a 429 carrying the limiter's full
+ * fifteen-minute retry-after, and
  * every journey after it failed inside registerUser. A documented escape hatch
  * that only half the limiters honour is worse than none — so it lives here once.
  */
