@@ -1,0 +1,191 @@
+name: Journey Suite (Wave-1 Tier-1)
+
+# Runs the Wave-1 Tier-1 traveler journeys (J1 golden path, J2 AI entry) end-to-end
+# against a freshly-built production bundle backed by a THROWAWAY Postgres service.
+#
+# Every step in these specs asserts a DB FACT via a read-only pg pool (DATABASE_URL);
+# UI checks supplement only. Fresh registered users + fresh trips are minted per test
+# via the app's own HTTP APIs (never shared fixtures, never direct app-table writes).
+#
+# This gate is NON-BLOCKING by design (Wave-1 shakeout): it runs on push-to-main and
+# nightly, surfaces failures in the run summary + uploaded report, but does not gate
+# merges. Promote to a required check only once the journeys are proven stable.
+#
+# Stripe: the money path's DB facts (booking row, item→purchased, diary, projection
+# removal, fee_bands-derived amount) are written at POST /api/checkout and are asserted
+# unconditionally. The J1 Stripe *PaymentElement* confirm (card 4242) needs a real TEST
+# Stripe secret key + publishable key baked into the bundle. When STRIPE_SECRET_KEY is
+# absent (the default CI posture — the boot env below uses a non-functional stub), the
+# Stripe UI-confirm leg is EXPLICITLY skipped via JOURNEY_SKIP_STRIPE_UI=1 (never a
+# silent pass). Locally, with real test keys present, it runs for real.
+#
+# Route/spec source of truth: playwright/tests/journeys/*.spec.ts
+# Matrix IDs covered: J1.3, J1.6, J1.7, J1.9, J2 (matrix lint greps `playwright/`).
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    # Nightly at 07:00 UTC.
+    - cron: '0 7 * * *'
+  workflow_dispatch:
+
+# Cancel in-progress runs for the same ref to avoid redundant runs.
+concurrency:
+  group: journey-suite-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  journeys:
+    name: journeys (J1 golden path + J2 AI entry)
+    runs-on: ubuntu-latest
+    # Non-blocking gate: a red run is informational (surfaced in summary + report),
+    # not a merge blocker. Remove this once the suite is promoted to a required check.
+    continue-on-error: true
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Playwright (chromium)
+        run: |
+          if [ "${{ steps.playwright-cache.outputs.cache-hit }}" = "true" ]; then
+            npx playwright install-deps chromium
+          else
+            npx playwright install --with-deps chromium
+          fi
+
+      - name: Build production bundle
+        run: npm run build
+
+      - name: Set up CI database (migrations, sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          # The journeys mint their own fresh users via POST /api/auth/register; no
+          # pre-seeded ci-* accounts are needed.
+          seed-ci-users: 'false'
+
+      - name: Start production server
+        run: node dist/index.cjs &
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          SESSION_SECRET: ci-test-secret-not-for-production
+          # Non-functional stub keys — the journeys assert money-path DB facts written at
+          # /api/checkout; the Stripe PaymentElement confirm leg is gated off below when no
+          # real key is present. NEVER real values here.
+          STRIPE_SECRET_KEY: [REDACTED_STRIPE_TEST_KEY]_stub_no_real_calls
+          STRIPE_WEBHOOK_SECRET: whsec_ci_stub_no_real_calls
+          XAI_API_KEY: xai-ci-stub-no-real-calls
+          ANTHROPIC_API_KEY: sk-ant-ci-stub-no-real-calls
+          RESEND_API_KEY: re_ci_stub_no_real_calls
+          GIT_COMMIT: ${{ github.sha }}
+          NODE_ENV: production
+          # P0 fail-safe (server/index.ts): a production boot purges test accounts unless
+          # explicitly allowed. This CI DB is throwaway.
+          ALLOW_TEST_ACCOUNTS: '1'
+          PORT: 5000
+          # Plain-http loopback: a `secure` session cookie is never replayed, so opt out.
+          # NEVER set this in production.
+          SESSION_COOKIE_INSECURE: '1'
+          # The journeys hammer /api from one loopback IP; exempt loopback from the limiter
+          # so registration/checkout calls are never 429'd. NEVER set this in production.
+          RATE_LIMIT_LOOPBACK_SKIP: '1'
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGDATABASE: traveloure
+
+      - name: Wait for server and seeding
+        run: |
+          for i in $(seq 1 60); do
+            result=$(curl -s http://localhost:5000/api/ready || true)
+            if echo "$result" | grep -q '"ready":true'; then
+              echo "Server ready ✅"; exit 0
+            fi
+            echo "attempt $i/60: waiting... ($result)"; sleep 5
+          done
+          echo "::error::Server did not become ready within 5 minutes"
+          pgrep -a node || true
+          exit 1
+
+      - name: Assert journey spec files exist
+        run: |
+          missing=0
+          for f in \
+            "playwright/tests/journeys/j1-golden-path.spec.ts" \
+            "playwright/tests/journeys/j2-ai-entry.spec.ts"; do
+            if [ ! -f "$f" ]; then
+              echo "::error::Journey spec not found: $f"
+              missing=1
+            fi
+          done
+          [ "$missing" = "0" ] && echo "Journey spec files present ✅"
+          exit $missing
+
+      - name: Decide Stripe UI-confirm gating (explicit skip, never a silent pass)
+        id: stripe-gate
+        run: |
+          # The Stripe PaymentElement confirm leg needs a REAL test Stripe secret key +
+          # publishable key baked into the bundle. The boot env above uses a non-functional
+          # stub, so unless a real STRIPE_SECRET_KEY secret is provided to this workflow we
+          # skip the UI-confirm leg EXPLICITLY (the money-path DB facts are still asserted).
+          if [ -n "${{ secrets.STRIPE_SECRET_KEY }}" ]; then
+            echo "Real STRIPE_SECRET_KEY present → Stripe PaymentElement confirm leg WILL run."
+            echo "skip_stripe_ui=0" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::STRIPE_SECRET_KEY absent in CI → J1 Stripe PaymentElement confirm leg is EXPLICITLY skipped (JOURNEY_SKIP_STRIPE_UI=1). Money-path DB facts are still fully asserted. This is a declared skip, not a silent pass."
+            echo "skip_stripe_ui=1" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run journey suite (test:journeys)
+        run: npm run test:journeys -- --project=chromium
+        env:
+          BASE_URL: http://localhost:5000
+          # Specs assert DB facts via a read-only pg pool.
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGDATABASE: traveloure
+          CI: 'true'
+          # Explicit Stripe-UI gating decided above (1 = skip the PaymentElement confirm leg).
+          JOURNEY_SKIP_STRIPE_UI: ${{ steps.stripe-gate.outputs.skip_stripe_ui }}
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: journey-suite-report
+          path: playwright-report/
+          retention-days: 14

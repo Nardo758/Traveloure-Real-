@@ -16,6 +16,6 @@
 - [Travelpayouts partner API](travelpayouts-partner-api.md) — /v1/statistics/* endpoints don't exist (silent $0); use statistics/v1/execute_query + finance/v2 with X-Access-Token header.
 - [tsc baseline & getUserId convention](tsc-baseline-and-getuserid.md) — tsc is not clean (~137 pre-existing server errors); diff against baseline. Routes must use getUserId(req) from server/utils/auth.
 - [MapMarker fallback testing](map-marker-fallback-testing.md) — fallback mode drops map-pin-* testids (AdvancedMarker children); find pins by .gm-style [title]; ItineraryMapView is orphaned; Maps key lacks billing.
-- [Amadeus decommission](amadeus-decommission.md) — test.api.amadeus.com is DNS-dead; new travel.api.amadeus.com domain 401s the stored keys; needs Leon's credentials decision, not code debugging.
+- [Amadeus decommission](amadeus-decommission.md) — dropped (ruling 34) and code fully removed Aug 2026; /api/amadeus/* return honest empties; never re-add without new credentials + ledger ruling.
 - [Fee-band scope split](fee-band-scope-split.md) — EXPERIENCE_CART 0.30 was display-only; real charges resolve per-item via resolveCommissionRates; new bands must state which surface they control or review rejects.
 - [Kyoto bench fixture](kyoto-bench-fixture.md) — durable dev-DB expert kyoto-temples@traveloure.test with lifecycle provenance; never seed Kyoto experts by bare role flip; no DB CHECK on application status.
