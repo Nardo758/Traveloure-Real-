@@ -157,6 +157,7 @@ import {
   type CommissionRates,
 } from "./services/commission";
 import { calculateCommission, BookingType } from "./utils/commissionCalculator";
+import { ensureDefaultBookingFeeConfig } from "./services/booking-fee-bootstrap";
 // Ready-made authoring mode (brief §2): explicit present-value author check. Never getTripRole.
 import { isTripAuthor } from "./utils/trip-authorship";
 import { verifyTripOwnership } from "./utils/trip-ownership";
