@@ -88,6 +88,66 @@ export async function closePool(): Promise<void> {
   }
 }
 
+// ── DB-write safety guard (test cleanup only) ───────────────────────────────────────────────
+// The journey suites open a pg pool on DATABASE_URL and their cleanup phases run DELETEs. This
+// guard MUST run before ANY write: it inspects the live connection (current_database() +
+// inet_server_addr()) and the DATABASE_URL host, and THROWS loudly unless the DB is clearly a
+// disposable dev/CI database — hostname localhost/127.0.0.1, OR an explicit env opt-in
+// (JOURNEY_DB_WRITES_OK=1). It NEVER defaults open: an unrecognized/remote host with no opt-in
+// aborts the cleanup rather than risk a destructive DELETE against a shared/prod DB.
+//
+// Shared with server/__tests__/journey-suite-negatives.http.test.ts (which inlines an identical
+// dependency-free copy — keep the two in lockstep).
+const DISPOSABLE_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "0.0.0.0", ""]);
+
+function connStringHost(): string | null {
+  const cs = process.env.DATABASE_URL;
+  if (!cs) return null;
+  try {
+    // pg accepts postgres:// and postgresql://; URL parses both.
+    return new URL(cs).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+let _dbWriteGuardOk = false;
+export async function assertDisposableDb(p: Pool): Promise<void> {
+  if (_dbWriteGuardOk) return; // one successful check per worker is sufficient
+
+  const optIn = process.env.JOURNEY_DB_WRITES_OK === "1";
+  const csHost = connStringHost();
+
+  // Inspect the LIVE connection — never trust the connection string alone.
+  let currentDb = "<unknown>";
+  let serverAddr: string | null = null;
+  try {
+    const r = await p.query<{ db: string; addr: string | null }>(
+      "SELECT current_database() AS db, host(inet_server_addr()) AS addr",
+    );
+    currentDb = r.rows[0]?.db ?? currentDb;
+    serverAddr = r.rows[0]?.addr ?? null;
+  } catch {
+    // inet_server_addr() returns NULL for a unix-socket / loopback connection; that is itself a
+    // disposable-local signal, not an error. Fall back to the connection-string host below.
+  }
+
+  // A NULL inet_server_addr() means the server is on the same host over a local socket/loopback.
+  const serverIsLocal = serverAddr === null || DISPOSABLE_HOSTS.has(serverAddr);
+  const csIsLocal = csHost !== null && DISPOSABLE_HOSTS.has(csHost);
+  const disposable = csIsLocal || (csHost === null && serverIsLocal);
+
+  if (!disposable && !optIn) {
+    throw new Error(
+      `[assertDisposableDb] REFUSING to run destructive test cleanup writes: DATABASE_URL host ` +
+        `'${csHost ?? "<none>"}' / server addr '${serverAddr ?? "<local-socket>"}' (db='${currentDb}') ` +
+        `is not a recognized disposable dev/CI database (localhost/127.0.0.1). If this is a throwaway ` +
+        `DB, opt in DELIBERATELY with JOURNEY_DB_WRITES_OK=1. Never set that against a shared/prod DB.`,
+    );
+  }
+  _dbWriteGuardOk = true;
+}
+
 /** A single-value read. Returns the first column of the first row, or null. */
 export async function scalar<T = string>(sqlText: string, params: any[] = []): Promise<T | null> {
   const r = await pool().query(sqlText, params);

@@ -42,6 +42,48 @@ process.env.RESEND_API_KEY = process.env.RESEND_API_KEY || "re_test_dummy_journe
 const { Pool } = await import("pg");
 const readPool = new Pool({ connectionString: process.env.DATABASE_URL });
 
+// ── DB-write safety guard (test cleanup only) ───────────────────────────────────────────────
+// The `after` hook DELETEs this run's fixture users. This guard MUST run before that write: it
+// inspects the LIVE connection (current_database() + inet_server_addr()) and the DATABASE_URL
+// host, and THROWS unless the DB is clearly a disposable dev/CI database — hostname
+// localhost/127.0.0.1, OR an explicit env opt-in (JOURNEY_DB_WRITES_OK=1). It NEVER defaults
+// open. This is a dependency-free inline mirror of assertDisposableDb() in
+// playwright/tests/journeys/_journey-helpers.ts — keep the two in lockstep.
+const DISPOSABLE_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "0.0.0.0", ""]);
+function connStringHost(): string | null {
+  const cs = process.env.DATABASE_URL;
+  if (!cs) return null;
+  try {
+    return new URL(cs).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+async function assertDisposableDb(p: any): Promise<void> {
+  const optIn = process.env.JOURNEY_DB_WRITES_OK === "1";
+  const csHost = connStringHost();
+  let currentDb = "<unknown>";
+  let serverAddr: string | null = null;
+  try {
+    const r = await p.query("SELECT current_database() AS db, host(inet_server_addr()) AS addr");
+    currentDb = r.rows[0]?.db ?? currentDb;
+    serverAddr = r.rows[0]?.addr ?? null;
+  } catch {
+    // NULL inet_server_addr() (local socket/loopback) is itself a disposable-local signal.
+  }
+  const serverIsLocal = serverAddr === null || DISPOSABLE_HOSTS.has(serverAddr);
+  const csIsLocal = csHost !== null && DISPOSABLE_HOSTS.has(csHost);
+  const disposable = csIsLocal || (csHost === null && serverIsLocal);
+  if (!disposable && !optIn) {
+    throw new Error(
+      `[assertDisposableDb] REFUSING destructive test cleanup: DATABASE_URL host ` +
+        `'${csHost ?? "<none>"}' / server addr '${serverAddr ?? "<local-socket>"}' (db='${currentDb}') ` +
+        `is not a recognized disposable dev/CI database (localhost/127.0.0.1). If this is a throwaway ` +
+        `DB, opt in DELIBERATELY with JOURNEY_DB_WRITES_OK=1. Never set that against a shared/prod DB.`,
+    );
+  }
+}
+
 const BASE_URL = process.env.JOURNEY_BASE_URL || "http://127.0.0.1:5000";
 const PASSWORD = "TestPass123!";
 const RUN = crypto.randomUUID().slice(0, 8);
@@ -144,9 +186,15 @@ before(async () => {
 
 after(async () => {
   try {
-    for (const email of createdEmails) {
-      // Cascade: trips → items/cart/log/bookings all FK-cascade from the users row.
-      await readPool.query(`DELETE FROM users WHERE email = $1`, [email]).catch(() => {});
+    // DB-write safety: refuse destructive cleanup unless the DB is a disposable dev/CI target
+    // (localhost/127.0.0.1 or explicit JOURNEY_DB_WRITES_OK=1). Each fixture email is
+    // `jsn-<RUN>-<label>@t.test`, so the DELETEs are scoped to EXACTLY this run's users and
+    // cascade to their trips/items/cart/log/bookings — never a broad delete.
+    if (createdEmails.length > 0) {
+      await assertDisposableDb(readPool);
+      for (const email of createdEmails) {
+        await readPool.query(`DELETE FROM users WHERE email = $1`, [email]).catch(() => {});
+      }
     }
   } finally {
     await readPool.end().catch(() => {});

@@ -3,6 +3,7 @@ import crypto from "crypto";
 import { execFileSync } from "child_process";
 import { Pool } from "pg";
 import Stripe from "stripe";
+import { assertDisposableDb } from "./_journey-helpers";
 
 /**
  * JOURNEY SUITE — Wave-1 Tier-1 · J1 Golden Path (self-serve, no expert).
@@ -144,6 +145,11 @@ async function confirmPaymentIntentTestMode(skTest: string, paymentIntentId: str
 
 test.afterAll(async () => {
   if (createdEmails.length > 0) {
+    // DB-write safety: refuse destructive cleanup unless the DB is a disposable dev/CI target
+    // (localhost/127.0.0.1 or explicit JOURNEY_DB_WRITES_OK=1). Scope the DELETE to EXACTLY this
+    // run's fixture emails (each is `j1-<label>-<uid>@t.test`) — cascades from the user rows;
+    // never a broad delete.
+    await assertDisposableDb(readPool);
     await readPool
       .query(`DELETE FROM users WHERE email = ANY($1::text[])`, [createdEmails])
       .catch(() => {});

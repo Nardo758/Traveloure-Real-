@@ -179,6 +179,11 @@ jobs:
           PGHOST: localhost
           PGDATABASE: traveloure
           CI: 'true'
+          # DB-write safety opt-in for the specs' cleanup DELETEs (assertDisposableDb): this is a
+          # THROWAWAY localhost Postgres service — deliberately allowed. LOCAL DEV RUNS must export
+          # JOURNEY_DB_WRITES_OK=1 THEMSELVES (only against a disposable dev DB); the guard refuses
+          # any non-localhost DB without this flag so it can never delete against a shared/prod DB.
+          JOURNEY_DB_WRITES_OK: '1'
           # Explicit Stripe-UI gating decided above (1 = skip the PaymentElement confirm leg).
           JOURNEY_SKIP_STRIPE_UI: ${{ steps.stripe-gate.outputs.skip_stripe_ui }}
 
