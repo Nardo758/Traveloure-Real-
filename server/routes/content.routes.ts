@@ -98,7 +98,6 @@ import {
 } from "@shared/content-surface-map";
 import { contentOriginFor, CONTENT_ORIGIN_TRAVELER_LABEL } from "@shared/content-origin";
 import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant } from "../itinerary-optimizer";
-import { amadeusService } from "../services/amadeus.service";
 import { viatorService } from "../services/viator.service";
 import { cacheService } from "../services/cache.service";
 import { cacheSchedulerService } from "../services/cache-scheduler.service";
@@ -2528,35 +2527,9 @@ router.get("/api/amadeus/locations", async (req, res) => {
         return res.json(formattedLocations);
       }
       
-      // If not in cache, fetch from API and cache the results
-      const locations = subType === 'CITY' 
-        ? await amadeusService.searchCitiesByKeyword(keyword)
-        : await amadeusService.searchAirportsByKeyword(keyword);
-      
-      // Store in cache for future use (expires in 30 days)
-      const expiresAt = new Date();
-      expiresAt.setDate(expiresAt.getDate() + 30);
-      
-      for (const loc of locations) {
-        await storage.upsertLocationCache({
-          iataCode: loc.iataCode,
-          locationType: loc.subType || locationType,
-          name: loc.name,
-          detailedName: loc.detailedName,
-          cityName: loc.address?.cityName,
-          cityCode: loc.address?.cityCode,
-          countryName: loc.address?.countryName,
-          countryCode: loc.address?.countryCode,
-          regionCode: loc.address?.regionCode,
-          stateCode: loc.address?.stateCode,
-          latitude: loc.geoCode?.latitude?.toString(),
-          longitude: loc.geoCode?.longitude?.toString(),
-          timeZoneOffset: loc.timeZoneOffset,
-          travelerScore: loc.analytics?.travelers?.score,
-          rawData: loc,
-          expiresAt,
-        });
-      }
+      // Cache miss: the live location provider (Amadeus) was dropped per
+      // DECISIONS.md ruling 34 (2026-08-05). location_cache is the only source now.
+      const locations: any[] = [];
       
       // Sort by relevance: exact name match first, then by traveler score
       locations.sort((a: any, b: any) => {
@@ -2601,20 +2574,8 @@ router.get("/api/amadeus/flights", isAuthenticated, async (req, res) => {
         });
       }
       
-      const flights = await amadeusService.searchFlights({
-        originLocationCode: origin as string,
-        destinationLocationCode: destination as string,
-        departureDate: departureDate as string,
-        returnDate: returnDate as string | undefined,
-        adults: parseInt(adults as string, 10),
-        children: children ? parseInt(children as string, 10) : undefined,
-        infants: infants ? parseInt(infants as string, 10) : undefined,
-        travelClass: travelClass as any,
-        nonStop: nonStop === 'true',
-        max: max ? parseInt(max as string, 10) : 10,
-      });
-      
-      res.json(flights);
+      // Amadeus dropped (DECISIONS.md ruling 34) — no live flight provider on this route.
+      res.json([]);
     } catch (error: any) {
       console.error('Flight search error:', error);
       res.status(500).json({ message: error.message || "Flight search failed" });
@@ -2633,16 +2594,8 @@ router.get("/api/amadeus/hotels", isAuthenticated, async (req, res) => {
         });
       }
       
-      const hotels = await amadeusService.searchHotels({
-        cityCode: cityCode as string,
-        checkInDate: checkInDate as string,
-        checkOutDate: checkOutDate as string,
-        adults: parseInt(adults as string, 10),
-        roomQuantity: rooms ? parseInt(rooms as string, 10) : 1,
-        currency: (currency as string) || 'USD',
-      });
-      
-      res.json(hotels);
+      // Amadeus dropped (DECISIONS.md ruling 34) — Booking.com results are served via /api/catalog.
+      res.json([]);
     } catch (error: any) {
       console.error('Hotel search error:', error);
       res.status(500).json({ message: error.message || "Hotel search failed" });
@@ -2659,14 +2612,8 @@ router.get("/api/amadeus/pois", isAuthenticated, async (req, res) => {
         return res.status(400).json({ message: "latitude and longitude are required" });
       }
       
-      const pois = await amadeusService.searchPointsOfInterest({
-        latitude: parseFloat(latitude as string),
-        longitude: parseFloat(longitude as string),
-        radius: radius ? parseInt(radius as string, 10) : 5,
-        categories: categories ? (categories as string).split(',') : undefined,
-      });
-      
-      res.json(pois);
+      // Amadeus dropped (DECISIONS.md ruling 34) — POIs are served from poi_cache via /api/catalog.
+      res.json([]);
     } catch (error: any) {
       console.error('POI search error:', error);
       res.status(500).json({ message: error.message || "POI search failed" });
@@ -2677,11 +2624,8 @@ router.get("/api/amadeus/pois", isAuthenticated, async (req, res) => {
 
 router.get("/api/amadeus/pois/:id", isAuthenticated, async (req, res) => {
     try {
-      const poi = await amadeusService.getPointOfInterestById(req.params.id);
-      if (!poi) {
-        return res.status(404).json({ message: "POI not found" });
-      }
-      res.json(poi);
+      // Amadeus dropped (DECISIONS.md ruling 34) — no live POI lookup.
+      return res.status(404).json({ message: "POI not found" });
     } catch (error: any) {
       console.error('POI get error:', error);
       res.status(500).json({ message: error.message || "Failed to get POI" });
@@ -2698,13 +2642,8 @@ router.get("/api/amadeus/activities", isAuthenticated, async (req, res) => {
         return res.status(400).json({ message: "latitude and longitude are required" });
       }
       
-      const activities = await amadeusService.searchActivities({
-        latitude: parseFloat(latitude as string),
-        longitude: parseFloat(longitude as string),
-        radius: radius ? parseInt(radius as string, 10) : 20,
-      });
-      
-      res.json(activities);
+      // Amadeus dropped (DECISIONS.md ruling 34) — activities come from Viator (/api/viator/*).
+      res.json([]);
     } catch (error: any) {
       console.error('Amadeus activities search error:', error);
       res.status(500).json({ message: error.message || "Activities search failed" });
@@ -2715,11 +2654,8 @@ router.get("/api/amadeus/activities", isAuthenticated, async (req, res) => {
 
 router.get("/api/amadeus/activities/:id", isAuthenticated, async (req, res) => {
     try {
-      const activity = await amadeusService.getActivityById(req.params.id);
-      if (!activity) {
-        return res.status(404).json({ message: "Activity not found" });
-      }
-      res.json(activity);
+      // Amadeus dropped (DECISIONS.md ruling 34) — no live activity lookup.
+      return res.status(404).json({ message: "Activity not found" });
     } catch (error: any) {
       console.error('Amadeus activity get error:', error);
       res.status(500).json({ message: error.message || "Failed to get activity" });
@@ -2754,19 +2690,9 @@ router.post("/api/amadeus/transfers", isAuthenticated, async (req, res) => {
         });
       }
       
-      const { startLocationCode, endAddressLine, endCityName, endGeoCode, transferType, startDateTime, passengers } = parseResult.data;
-      
-      const transfers = await amadeusService.searchTransfers({
-        startLocationCode,
-        endAddressLine,
-        endCityName,
-        endGeoCode: endGeoCode as any,
-        transferType: transferType as any,
-        startDateTime,
-        passengers,
-      });
-      
-      res.json(transfers);
+      // Amadeus dropped (DECISIONS.md ruling 34) — transfer options come from the
+      // Travelpayouts-backed transport commerce layer, not this legacy route.
+      res.json([]);
     } catch (error: any) {
       console.error('Transfers search error:', error);
       res.status(500).json({ message: error.message || "Transfers search failed" });
@@ -2783,13 +2709,8 @@ router.get("/api/amadeus/safety", isAuthenticated, async (req, res) => {
         return res.status(400).json({ message: "latitude and longitude are required" });
       }
       
-      const safetyRatings = await amadeusService.getSafetyRatings({
-        latitude: parseFloat(latitude as string),
-        longitude: parseFloat(longitude as string),
-        radius: radius ? parseInt(radius as string, 10) : 5,
-      });
-      
-      res.json(safetyRatings);
+      // Amadeus dropped (DECISIONS.md ruling 34) — safety ratings had no other provider.
+      res.json([]);
     } catch (error: any) {
       console.error('Safety ratings search error:', error);
       res.status(500).json({ message: error.message || "Safety ratings search failed" });
@@ -2800,11 +2721,8 @@ router.get("/api/amadeus/safety", isAuthenticated, async (req, res) => {
 
 router.get("/api/amadeus/safety/:id", isAuthenticated, async (req, res) => {
     try {
-      const rating = await amadeusService.getSafetyRatingById(req.params.id);
-      if (!rating) {
-        return res.status(404).json({ message: "Safety rating not found" });
-      }
-      res.json(rating);
+      // Amadeus dropped (DECISIONS.md ruling 34) — no live safety-rating lookup.
+      return res.status(404).json({ message: "Safety rating not found" });
     } catch (error: any) {
       console.error('Safety rating get error:', error);
       res.status(500).json({ message: error.message || "Failed to get safety rating" });
