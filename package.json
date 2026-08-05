@@ -81,7 +81,6 @@
     "@types/passport-facebook": "^3.0.4",
     "@types/pdfkit": "^0.17.6",
     "@vis.gl/react-google-maps": "^1.7.1",
-    "amadeus": "^11.0.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",

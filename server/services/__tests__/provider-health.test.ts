@@ -58,9 +58,9 @@ describe("provider-health.service", () => {
   });
 
   it("a later success does not erase an earlier lastErrorAt, and vice versa", () => {
-    reportProviderResult("amadeus", "error", "ENOTFOUND");
-    reportProviderResult("amadeus", "ok");
-    const entry = getProviderHealth().find((e) => e.provider === "amadeus");
+    reportProviderResult("gettransfer", "error", "ENOTFOUND");
+    reportProviderResult("gettransfer", "ok");
+    const entry = getProviderHealth().find((e) => e.provider === "gettransfer");
     assert.equal(entry!.status, "ok"); // status reflects the LATEST outcome
     assert.ok(entry!.lastErrorAt, "earlier error timestamp should persist");
     assert.ok(entry!.lastSuccessAt, "the new success timestamp should be set");
