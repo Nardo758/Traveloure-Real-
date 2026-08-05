@@ -2,6 +2,9 @@
 // Exercises the REAL SignInModal UI (not the API path the global-setup fixture
 // uses), so a regression in the modal — trigger, fields, submit, or the
 // post-login redirect — is caught.
+//
+// matrix-id: F-auth-1 — this GREEN spec is the absorbed claim for the Auth/session
+// "Login/logout/expiry per role" cell in docs/testing/coverage-matrix.md §13.
 
 import { test, expect } from '../fixtures/roles';
 import { ACCOUNTS, PASSWORD } from '../fixtures/accounts';

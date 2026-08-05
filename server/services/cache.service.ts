@@ -1,8 +1,40 @@
 import { db } from "../db";
 import { hotelCache, hotelOfferCache, activityCache, flightCache, locationCache } from "@shared/schema";
 import { eq, and, gte, lte, ilike, or, sql, inArray } from "drizzle-orm";
-import { HotelOffer, AmadeusService } from "./amadeus.service";
 import { ViatorProduct, viatorService } from "./viator.service";
+
+// Amadeus was dropped (DECISIONS.md ruling 34, 2026-08-05); this shape survives
+// only to describe the rows already sitting in hotel_cache.
+export interface HotelOffer {
+  hotel: {
+    hotelId: string;
+    name: string;
+    cityCode: string;
+    latitude: number;
+    longitude: number;
+    address?: {
+      lines?: string[];
+      cityName?: string;
+      countryCode?: string;
+    };
+    rating?: string;
+    amenities?: string[];
+    media?: Array<{ uri: string; category: string }>;
+  };
+  offers?: Array<{
+    id: string;
+    checkInDate: string;
+    checkOutDate: string;
+    room: {
+      type: string;
+      description?: { text: string };
+    };
+    price: {
+      currency: string;
+      total: string;
+    };
+  }>;
+}
 
 const CACHE_DURATION_HOURS = 24;
 
@@ -119,12 +151,6 @@ function isCacheValid(expiresAt: Date | null): boolean {
 }
 
 export class CacheService {
-  private amadeusService: AmadeusService;
-
-  constructor() {
-    this.amadeusService = new AmadeusService();
-  }
-
   // ============ HOTEL CACHING ============
 
   async getCachedHotels(cityCode: string): Promise<any[]> {
@@ -319,13 +345,10 @@ export class CacheService {
       }
     }
 
-    // Fetch from API (cache miss or no matching offers for these dates/currency)
-    const hotels = await this.amadeusService.searchHotels(params);
-    
-    // Cache the results
-    await this.cacheHotels(hotels, params.cityCode);
-    
-    return { data: hotels, fromCache: false };
+    // Cache miss (or no matching offers for these dates/currency). Amadeus was
+    // dropped (DECISIONS.md ruling 34) and no live hotel fallback replaces it here;
+    // Booking.com fetch-on-miss lives in experience-catalog.service.ts.
+    return { data: [], fromCache: false };
   }
 
   // ============ ACTIVITY CACHING ============
@@ -556,49 +579,15 @@ export class CacheService {
         ? parseFloat(cachedRawData.offers[0].price.total) 
         : undefined;
 
-      // Use provided options or fall back to cached/defaults
-      const adults = options?.adults || cachedRawData?.offers?.[0]?.guests?.adults || 2;
-      const rooms = options?.rooms || 1;
-      const currency = options?.currency || cachedRawData?.offers?.[0]?.price?.currency || 'USD';
-
-      // Call Amadeus API to verify current availability
-      // Note: Amadeus hotel search returns offers, so we search for this specific hotel
-      try {
-        const liveResult = await this.amadeusService.searchHotels({
-          cityCode: cached[0].cityCode,
-          checkInDate,
-          checkOutDate,
-          adults,
-          roomQuantity: rooms,
-          currency,
-        });
-
-        // Find the specific hotel in results
-        const matchingHotel = liveResult.find(h => h.hotel.hotelId === hotelId);
-        
-        if (!matchingHotel || !matchingHotel.offers || matchingHotel.offers.length === 0) {
-          return { available: false, cachedPrice };
-        }
-
-        const currentPrice = parseFloat(matchingHotel.offers[0].price.total);
-        const priceChanged = cachedPrice !== undefined && Math.abs(currentPrice - cachedPrice) > 0.01;
-
-        return { 
-          available: true, 
-          currentPrice,
-          cachedPrice,
-          priceChanged,
-        };
-      } catch (apiError) {
-        console.error("Live hotel availability check failed, using cached data:", apiError);
-        // Fall back to cached data if API fails
-        return { 
-          available: true, 
-          currentPrice: cachedPrice,
-          cachedPrice,
-          priceChanged: false,
-        };
-      }
+      // Amadeus was dropped (DECISIONS.md ruling 34) — there is no live hotel
+      // re-verification provider. Answer from the cached row, honestly flagged
+      // as unchanged, exactly as the pre-drop code did when the live call failed.
+      return {
+        available: true,
+        currentPrice: cachedPrice,
+        cachedPrice,
+        priceChanged: false,
+      };
     } catch (error) {
       console.error("Hotel availability check error:", error);
       return { available: false };
@@ -788,21 +777,9 @@ export class CacheService {
       };
     }
 
-    // Fetch from API
-    const flights = await this.amadeusService.searchFlights(params);
-    
-    // Cache the results
-    if (flights.length > 0) {
-      await this.cacheFlights(
-        flights,
-        params.originLocationCode,
-        params.destinationLocationCode,
-        params.departureDate,
-        params.returnDate
-      );
-    }
-    
-    return { data: flights, fromCache: false };
+    // Cache miss. Amadeus was dropped (DECISIONS.md ruling 34) and no live
+    // flight provider replaces it here — answer honestly empty.
+    return { data: [], fromCache: false };
   }
 
   // ============ CACHE CLEANUP ============

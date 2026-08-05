@@ -7466,24 +7466,6 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // Call seed database
   seedDatabase().catch(err => console.error("Error seeding database:", err));
 
-  // Amadeus Travel API Routes
-  
-  // Search airport transfers
-  const transferSearchSchema = z.object({
-    startLocationCode: z.string().min(3).max(4),
-    endAddressLine: z.string().optional(),
-    endCityName: z.string().optional(),
-    endGeoCode: z.object({
-      latitude: z.number(),
-      longitude: z.number()
-    }).optional(),
-    transferType: z.string(),
-    startDateTime: z.string(),
-    passengers: z.union([z.string(), z.number()]).transform((val) => 
-      typeof val === 'string' ? parseInt(val, 10) : val
-    ),
-  });
-
   // ============ VIATOR API ROUTES ============
 
   // ============ CACHED DATA WITH LOCATIONS API ============

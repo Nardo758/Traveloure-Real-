@@ -53,10 +53,10 @@ reportProviderResult("google_places", "auth", "REQUEST_DENIED (billing)");
 const gpAfterAuth = getProviderHealth().find((e) => e.provider === "google_places")!;
 assert(gpAfterAuth.status === "auth", "google_places reflects 'auth' after REQUEST_DENIED");
 
-// 6. Simulate a generic network error (Amadeus/GetTransfer DNS-failure live-probe evidence).
-reportProviderResult("amadeus", "error", "ENOTFOUND api.amadeus.com");
-const amadeusAfterError = getProviderHealth().find((e) => e.provider === "amadeus")!;
-assert(amadeusAfterError.status === "error", "amadeus reflects 'error' after a DNS failure");
+// 6. Simulate a generic network error (GetTransfer DNS-failure live-probe evidence).
+reportProviderResult("gettransfer", "error", "ENOTFOUND api.gettransfer.com");
+const gettransferAfterError = getProviderHealth().find((e) => e.provider === "gettransfer")!;
+assert(gettransferAfterError.status === "error", "gettransfer reflects 'error' after a DNS failure");
 
 // 7. Retired providers can never be reported into a false 'ok'.
 reportProviderResult("kiwi", "ok");
