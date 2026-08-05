@@ -1210,9 +1210,11 @@ export async function upsertTripAnalyticsEnhanced(tripId: string, values: Record
 // ─── Location Summary ─────────────────────────────────────────────────────────
 
 export async function getLocationSummary() {
-  const { feverEventCache, hotelCache, activityCache, flightCache } = await import("@shared/schema");
+  const { feverEventCache, hotelCache, activityCache } = await import("@shared/schema");
 
-  const [eventData, hotelData, activityData, flightData] = await Promise.all([
+  // flight_cache summary RETIRED (migration 176): the table was writerless since the
+  // Amadeus drop (ruling 34) and only ever counted a permanently-empty table here.
+  const [eventData, hotelData, activityData] = await Promise.all([
     db.select({
       cityCode: feverEventCache.cityCode,
       city: feverEventCache.city,
@@ -1233,16 +1235,9 @@ export async function getLocationSummary() {
       count: sql<number>`count(*)::int`,
       lastUpdated: sql<string>`max(${activityCache.lastUpdated})`,
     }).from(activityCache).groupBy(activityCache.destination, activityCache.city),
-
-    db.select({
-      origin: flightCache.originCode,
-      destination: flightCache.destinationCode,
-      count: sql<number>`count(*)::int`,
-      lastUpdated: sql<string>`max(${flightCache.lastUpdated})`,
-    }).from(flightCache).groupBy(flightCache.originCode, flightCache.destinationCode),
   ]);
 
-  return { eventData, hotelData, activityData, flightData };
+  return { eventData, hotelData, activityData };
 }
 
 // ─── Report Queries ───────────────────────────────────────────────────────────

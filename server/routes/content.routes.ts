@@ -2871,11 +2871,12 @@ router.get("/api/cache/activities", async (req, res) => {
     }
   });
 
-  // GET /api/cache/flights RETIRED (flight-repoint, Aug 2026): the flight_cache table has no
+  // GET /api/cache/flights RETIRED (flight-repoint, Aug 2026): the flight_cache table had no
   // writer since the Amadeus drop (ruling 34), so this could only ever replay stale rows or
   // answer empty. Its sole client (the GDS-style FlightSearch component) is deleted; the
-  // flights tab now reads GET /api/catalog/flights. Table retirement is a separate decision —
-  // flight_cache stays (declared in shared/schema.ts) until ratified.
+  // flights tab now reads GET /api/catalog/flights. The table itself is now RETIRED too —
+  // dropped by migration 176 (with transfer_cache and safety_cache) and removed from
+  // shared/schema.ts in the same commit.
 
   // Get map markers for hotels in a destination
 

@@ -1,5 +1,5 @@
 import { db } from "../db";
-import { hotelCache, hotelOfferCache, activityCache, flightCache, locationCache } from "@shared/schema";
+import { hotelCache, hotelOfferCache, activityCache, locationCache } from "@shared/schema";
 import { eq, and, gte, lte, ilike, or, sql, inArray } from "drizzle-orm";
 import { ViatorProduct, viatorService } from "./viator.service";
 
@@ -658,133 +658,13 @@ export class CacheService {
     }
   }
 
-  // ============ FLIGHT CACHING ============
-
-  async getCachedFlights(originCode: string, destinationCode: string, departureDate: string, returnDate?: string): Promise<any[]> {
-    const conditions = [
-      eq(flightCache.originCode, originCode),
-      eq(flightCache.destinationCode, destinationCode),
-      eq(flightCache.departureDate, departureDate),
-      gte(flightCache.expiresAt, new Date())
-    ];
-    
-    if (returnDate) {
-      conditions.push(eq(flightCache.returnDate, returnDate));
-    }
-    
-    const cached = await db.select()
-      .from(flightCache)
-      .where(and(...conditions));
-    
-    return cached;
-  }
-
-  async cacheFlights(flights: any[], originCode: string, destinationCode: string, departureDate: string, returnDate?: string): Promise<void> {
-    const expiresAt = getExpirationDate();
-
-    for (const flight of flights) {
-      const firstSegment = flight.itineraries?.[0]?.segments?.[0];
-      const lastSegment = flight.itineraries?.[0]?.segments?.[flight.itineraries?.[0]?.segments?.length - 1];
-      
-      const existing = await db.select()
-        .from(flightCache)
-        .where(eq(flightCache.offerId, flight.id))
-        .limit(1);
-
-      const flightData = {
-        originCode,
-        destinationCode,
-        departureDate,
-        returnDate: returnDate || null,
-        adults: flight.travelerPricings?.length || 1,
-        offerId: flight.id,
-        carrierCode: firstSegment?.carrierCode || null,
-        flightNumber: firstSegment?.number || null,
-        departureTime: firstSegment?.departure?.at || null,
-        arrivalTime: lastSegment?.arrival?.at || null,
-        duration: flight.itineraries?.[0]?.duration || null,
-        stops: (flight.itineraries?.[0]?.segments?.length || 1) - 1,
-        price: flight.price?.total,
-        currency: flight.price?.currency || "USD",
-        rawData: flight,
-        expiresAt,
-      };
-
-      if (existing.length > 0) {
-        await db.update(flightCache)
-          .set({ ...flightData, lastUpdated: new Date() })
-          .where(eq(flightCache.offerId, flight.id));
-      } else {
-        await db.insert(flightCache).values(flightData);
-      }
-    }
-  }
-
-  async getFlightsWithCache(params: {
-    originLocationCode: string;
-    destinationLocationCode: string;
-    departureDate: string;
-    returnDate?: string;
-    adults: number;
-    travelClass?: 'ECONOMY' | 'PREMIUM_ECONOMY' | 'BUSINESS' | 'FIRST';
-    nonStop?: boolean;
-    currencyCode?: string;
-    max?: number;
-  }): Promise<{ data: any[]; fromCache: boolean; lastUpdated?: Date }> {
-    const cached = await this.getCachedFlights(
-      params.originLocationCode,
-      params.destinationLocationCode,
-      params.departureDate,
-      params.returnDate
-    );
-    
-    if (cached.length > 0) {
-      // Reconstruct flight data from cache
-      const flightsFromCache = cached.map(f => ({
-        id: f.offerId,
-        source: 'CACHED',
-        price: {
-          total: f.price?.toString(),
-          currency: f.currency,
-          grandTotal: f.price?.toString(),
-        },
-        itineraries: [{
-          duration: f.duration,
-          segments: [{
-            departure: { iataCode: f.originCode, at: f.departureTime },
-            arrival: { iataCode: f.destinationCode, at: f.arrivalTime },
-            carrierCode: f.carrierCode,
-            number: f.flightNumber,
-            duration: f.duration,
-            numberOfStops: f.stops,
-          }],
-        }],
-        travelerPricings: [{
-          travelerId: "1",
-          fareOption: "STANDARD",
-          travelerType: "ADULT",
-          price: { currency: f.currency, total: f.price?.toString() },
-        }],
-        ...f.rawData,
-        _cached: true,
-        _lastUpdated: f.lastUpdated,
-      }));
-      
-      return { 
-        data: flightsFromCache, 
-        fromCache: true, 
-        lastUpdated: cached[0]?.lastUpdated || undefined 
-      };
-    }
-
-    // Cache miss. Amadeus was dropped (DECISIONS.md ruling 34) and no live
-    // flight provider replaces it here — answer honestly empty.
-    return { data: [], fromCache: false };
-  }
+  // Flight caching RETIRED (migration 176): flight_cache had no writer since the Amadeus
+  // drop (ruling 34) and its last route reader was deleted in PR #425. Flights are served
+  // live by the Travelpayouts price-grid (GET /api/catalog/flights).
 
   // ============ CACHE CLEANUP ============
 
-  async cleanupExpiredCache(): Promise<{ hotels: number; activities: number; flights: number }> {
+  async cleanupExpiredCache(): Promise<{ hotels: number; activities: number }> {
     const now = new Date();
 
     const deletedHotels = await db.delete(hotelCache)
@@ -795,14 +675,9 @@ export class CacheService {
       .where(lte(activityCache.expiresAt, now))
       .returning();
 
-    const deletedFlights = await db.delete(flightCache)
-      .where(lte(flightCache.expiresAt, now))
-      .returning();
-
     return {
       hotels: deletedHotels.length,
       activities: deletedActivities.length,
-      flights: deletedFlights.length,
     };
   }
 

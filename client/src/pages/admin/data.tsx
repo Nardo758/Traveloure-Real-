@@ -13,7 +13,6 @@ import {
   RefreshCw,
   Clock,
   Hotel,
-  Plane,
   Ticket,
   Globe,
   Loader2,
@@ -48,16 +47,16 @@ interface ProviderHealthEntry {
   lastDetail: string | null;
 }
 
+// flights removed from this summary (migration 176 retired the writerless flight_cache
+// table — the tab only ever showed a permanently-empty count since the Amadeus drop).
 interface LocationSummary {
   events: Array<{ cityCode: string; city: string; count: number; lastUpdated: string }>;
   hotels: Array<{ cityCode: string; city: string; count: number; lastUpdated: string }>;
   activities: Array<{ destination: string; city: string; count: number; lastUpdated: string }>;
-  flights: Array<{ origin: string; destination: string; count: number; lastUpdated: string }>;
   totals: {
     events: number;
     hotels: number;
     activities: number;
-    flights: number;
   };
 }
 
@@ -280,8 +279,8 @@ export default function AdminData() {
     return `${days}d ago`;
   };
 
-  const totals = locationSummary?.totals || { events: 0, hotels: 0, activities: 0, flights: 0 };
-  const totalItems = totals.events + totals.hotels + totals.activities + totals.flights;
+  const totals = locationSummary?.totals || { events: 0, hotels: 0, activities: 0 };
+  const totalItems = totals.events + totals.hotels + totals.activities;
 
   const sortedEvents = [...(locationSummary?.events || [])].sort((a, b) => b.count - a.count);
   const sortedHotels = [...(locationSummary?.hotels || [])].sort((a, b) => b.count - a.count);
@@ -302,7 +301,7 @@ export default function AdminData() {
           </CardContent>
         </Card>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <Card data-testid="card-total-data">
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
@@ -351,17 +350,6 @@ export default function AdminData() {
             </CardContent>
           </Card>
 
-          <Card data-testid="card-flights">
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-500">Flights</p>
-                  <p className="text-2xl font-bold text-rose-600">{totals.flights.toLocaleString()}</p>
-                </div>
-                <Plane className="w-8 h-8 text-rose-600" />
-              </div>
-            </CardContent>
-          </Card>
         </div>
 
         <Card data-testid="card-provider-health">
@@ -633,7 +621,7 @@ export default function AdminData() {
         </div>
 
         <Tabs defaultValue="events" className="w-full">
-          <TabsList className="grid w-full grid-cols-4">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="events" data-testid="tab-events">
               <Calendar className="w-4 h-4 mr-2" /> Events ({totals.events})
             </TabsTrigger>
@@ -642,9 +630,6 @@ export default function AdminData() {
             </TabsTrigger>
             <TabsTrigger value="activities" data-testid="tab-activities">
               <Ticket className="w-4 h-4 mr-2" /> Activities ({totals.activities})
-            </TabsTrigger>
-            <TabsTrigger value="flights" data-testid="tab-flights">
-              <Plane className="w-4 h-4 mr-2" /> Flights ({totals.flights})
             </TabsTrigger>
           </TabsList>
 
@@ -824,59 +809,7 @@ export default function AdminData() {
             </Card>
           </TabsContent>
 
-          <TabsContent value="flights" className="mt-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Plane className="w-5 h-5 text-rose-600" />
-                  Flight Routes
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {loadingSummary ? (
-                  <div className="flex items-center justify-center py-8">
-                    <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
-                  </div>
-                ) : (locationSummary?.flights?.length || 0) === 0 ? (
-                  <p className="text-gray-500 text-center py-8">No flight data cached yet</p>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead>
-                        <tr className="border-b border-gray-200">
-                          <th className="text-left py-3 px-4 font-medium text-gray-600">Origin</th>
-                          <th className="text-left py-3 px-4 font-medium text-gray-600">Destination</th>
-                          <th className="text-right py-3 px-4 font-medium text-gray-600">Flights</th>
-                          <th className="text-left py-3 px-4 font-medium text-gray-600">Updated</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {locationSummary?.flights?.map((flight, idx) => (
-                          <tr 
-                            key={`${flight.origin}-${flight.destination}-${idx}`} 
-                            className="border-b border-gray-100 hover:bg-gray-50"
-                            data-testid={`row-flight-${idx}`}
-                          >
-                            <td className="py-3 px-4">
-                              <Badge variant="outline">{flight.origin}</Badge>
-                            </td>
-                            <td className="py-3 px-4">
-                              <div className="flex items-center gap-2">
-                                <Plane className="w-4 h-4 text-rose-500" />
-                                <Badge variant="outline">{flight.destination}</Badge>
-                              </div>
-                            </td>
-                            <td className="py-3 px-4 text-right font-semibold">{flight.count.toLocaleString()}</td>
-                            <td className="py-3 px-4 text-gray-500 text-sm">{getTimeSince(flight.lastUpdated)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
+          {/* Flights tab removed (migration 176 retired the writerless flight_cache table). */}
         </Tabs>
       </div>
     </AdminLayout>
