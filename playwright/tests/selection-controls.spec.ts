@@ -135,43 +135,61 @@ test.describe('Selection controls (P462) — render / narrow / parity / tab-isol
     });
   }
 
-  // #35 / #1 — flight & hotel tabs adopted CompactFilterBar (the 25018ff convergence,
-  // which landed via a wholesale merge with NO e2e coverage). Guard the same invariants
-  // the gate enforces elsewhere: exactly one filter-bar per flight/hotel tab, never the
-  // old facet wall, and the tab-specific controls render (stops/star + max-price slider).
+  // #35 / #1 — the hotel tab adopted CompactFilterBar (the 25018ff convergence, which
+  // landed via a wholesale merge with NO e2e coverage). Guard the same invariants the
+  // gate enforces elsewhere: exactly one filter-bar, never the old facet wall, and the
+  // tab-specific controls render (star chips + max-price slider).
   //
   // Narrowing itself is verified by code-trace, not asserted here on purpose:
-  // FlightSearch filters by [maxPrice, stops, sortBy] and HotelSearch syncs the bar's
-  // props into local state via useEffect before its [localMaxPrice, localStarRating,
-  // localSortBy] filter memo. A *live* narrowing assertion needs real Amadeus results,
-  // which the hermetic CI stubs out (no results → it would only ever skip), and there are
-  // no result-card testids to count — so it's intentionally left to the code-trace + a
-  // follow-up rather than shipped as an always-skipped test.
-  // Note: the flight/hotel bars pass stops/star-rating via the `controls` prop (the
-  // multi-select chip path), so those chips render as `selection-<id>-<opt>`, not the
-  // `filter-<id>-<opt>` of the singleSelectControls path. Max-price uses rangeControls →
+  // HotelSearch syncs the bar's props into local state via useEffect before its
+  // [localMaxPrice, localStarRating, localSortBy] filter memo. A *live* narrowing
+  // assertion needs real provider results, which the hermetic CI stubs out (no results →
+  // it would only ever skip) — so it's intentionally left to the code-trace.
+  // Note: the hotel bar passes star-rating via the `controls` prop (the multi-select chip
+  // path), so chips render as `selection-<id>-<opt>`; max-price uses rangeControls →
   // `slider-<id>`.
-  const FLIGHT_HOTEL_TABS: Array<{ tab: string; control: string; slider: string }> = [
-    { tab: 'tab-flights', control: 'selection-flight-stops-nonstop', slider: 'slider-flightMaxPrice' },
-    { tab: 'tab-hotels', control: 'selection-hotel-stars-4', slider: 'slider-hotelMaxPrice' },
-  ];
-  for (const { tab, control, slider } of FLIGHT_HOTEL_TABS) {
-    test(`single filter surface + controls on travel/${tab}`, async ({ page }) => {
-      await gotoTemplate(page, 'travel');
+  test('single filter surface + controls on travel/tab-hotels', async ({ page }) => {
+    await gotoTemplate(page, 'travel');
 
-      const visible = await tabVisible(page, tab);
-      test.skip(!visible, `${tab} not rendered on /experiences/travel — skipping (seeding or auth dependency)`);
+    const visible = await tabVisible(page, 'tab-hotels');
+    test.skip(!visible, 'tab-hotels not rendered on /experiences/travel — skipping (seeding or auth dependency)');
 
-      await page.getByTestId(tab).click();
-      // Exactly one filter surface, never the old facet wall.
-      await expect(page.getByTestId('filter-bar')).toHaveCount(1);
-      await expect(page.getByTestId('button-toggle-filters')).toHaveCount(0);
-      // The convergence wired the tab-specific controls into that one bar.
-      await expect(page.getByTestId(control)).toBeVisible();
-      await expect(page.getByTestId(slider)).toBeVisible();
-      await expect(page.getByTestId('select-template-sort')).toHaveCount(1);
-    });
-  }
+    await page.getByTestId('tab-hotels').click();
+    // Exactly one filter surface, never the old facet wall.
+    await expect(page.getByTestId('filter-bar')).toHaveCount(1);
+    await expect(page.getByTestId('button-toggle-filters')).toHaveCount(0);
+    // The convergence wired the tab-specific controls into that one bar.
+    await expect(page.getByTestId('selection-hotel-stars-4')).toBeVisible();
+    await expect(page.getByTestId('slider-hotelMaxPrice')).toBeVisible();
+    await expect(page.getByTestId('select-template-sort')).toHaveCount(1);
+  });
+
+  // Flight-repoint (Aug 2026): the flights tab no longer renders a CompactFilterBar at all —
+  // the GDS-style stops/max-price controls only made sense for full Amadeus itineraries, and
+  // that pipeline is retired. The single surface is now the Travelpayouts price-grid
+  // (FlightPriceGrid), which carries its own route/date controls: origin + destination
+  // airport comboboxes (seeded location_cache autocomplete) and depart/return date inputs.
+  // Book actions route through the booking-agent rail (§16) — asserted by code-trace
+  // (FlightCard → useAgentBooking), not live-booked here.
+  test('flights tab renders the TP price-grid as its single surface', async ({ page }) => {
+    await gotoTemplate(page, 'travel');
+
+    const visible = await tabVisible(page, 'tab-flights');
+    test.skip(!visible, 'tab-flights not rendered on /experiences/travel — skipping (seeding or auth dependency)');
+
+    await page.getByTestId('tab-flights').click();
+    // The price-grid is the one and only surface: no filter bar, never the old facet wall.
+    await expect(page.getByTestId('flight-price-grid')).toBeVisible();
+    await expect(page.getByTestId('filter-bar')).toHaveCount(0);
+    await expect(page.getByTestId('button-toggle-filters')).toHaveCount(0);
+    // Its own controls: origin/destination comboboxes + date inputs (no stops/max-price).
+    await expect(page.getByTestId('input-flight-origin')).toBeVisible();
+    await expect(page.getByTestId('input-flight-destination')).toBeVisible();
+    await expect(page.getByTestId('input-flight-depart')).toBeVisible();
+    await expect(page.getByTestId('input-flight-return')).toBeVisible();
+    await expect(page.getByTestId('selection-flight-stops-nonstop')).toHaveCount(0);
+    await expect(page.getByTestId('slider-flightMaxPrice')).toHaveCount(0);
+  });
 
   test('no console errors interacting with the panel', async ({ page }) => {
     const errors: string[] = [];
