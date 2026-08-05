@@ -472,7 +472,9 @@ function extractTransportPackage(items: any[]) {
       details: 'Unlimited rides on metro, bus, and tram',
       price: uniqueDays.size * 8, // ~$8 per day estimate
       included: false,
-      bookingUrl: 'https://12go.co',
+      // §16: no raw partner URL in the DTO — the client routes "Book" through the
+      // booking-agent rail with a partnerRoute reference; the server builds the deep link.
+      bookablePartner: '12go',
     });
   }
   

@@ -57,6 +57,7 @@ import {
   Waves,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useContentAgentBooking } from "@/hooks/use-content-agent-booking";
 import { TransportLeg, type TransportLegData, type TransportAlternative } from "@/components/itinerary/TransportLeg";
 import { Anchor } from "lucide-react";
 // Spec C (SLIP_EXPERIENCE_DISPATCH §4): variant columns render through the CANONICAL
@@ -204,6 +205,57 @@ interface TransportLegApiResponse {
   fromLng: number | null;
   toLat: number | null;
   toLng: number | null;
+}
+
+/**
+ * §16: partner-fulfilled plan items (12Go ground transport, Fever events) book through the
+ * in-platform booking-agent rail — never a raw affiliate anchor. The client sends only the
+ * partner key + route context; the server builds the deep link, keeps it server-side, and a
+ * booking agent completes the booking. Own component so the hook isn't called inside a map.
+ */
+function PartnerAgentBookButton({
+  partner,
+  itemName,
+  itemDescription,
+  destination,
+}: {
+  partner: "12go" | "fever";
+  itemName: string;
+  itemDescription?: string | null;
+  destination?: string | null;
+}) {
+  const label = partner === "12go" ? "12Go" : "Fever";
+  const agentBooking = useContentAgentBooking({
+    itemName,
+    itemDescription,
+    partnerName: partner === "12go" ? "12Go Asia" : "Fever",
+    partnerCategory: partner === "12go" ? "ground-transport" : "event",
+    partnerRoute: { partner, destination: destination || undefined },
+  });
+
+  if (agentBooking.requested) {
+    return (
+      <span
+        className="inline-flex items-center gap-1 text-sm text-green-700 dark:text-green-300"
+        data-testid="text-partner-agent-requested"
+      >
+        <Check className="h-3 w-3" /> Booking request sent
+      </span>
+    );
+  }
+
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={agentBooking.book}
+      disabled={agentBooking.isPending}
+      data-testid={`button-partner-agent-book-${partner}`}
+    >
+      <UserCheck className="h-3.5 w-3.5 mr-1.5" />
+      {agentBooking.isPending ? "Sending…" : `Book ${label} via agent`}
+    </Button>
+  );
 }
 
 function VariantTransportLegs({ variantId }: { variantId: string }) {
@@ -501,15 +553,17 @@ export default function ItineraryComparisonPage() {
     return partnerTypes.some(t => serviceType?.toLowerCase().includes(t)) ? "partner" : "inApp";
   };
 
-  const getPartnerUrl = (item: VariantItem): string | null => {
+  // §16: this used to build raw partner URLs client-side (the 12Go affiliate id and the
+  // Fever/Impact campaign id were hardcoded here) and render a "Book on Partner Site"
+  // anchor. It now resolves only the PARTNER KEY; the booking-agent rail's `partnerRoute`
+  // reference makes the server build the deep link and an agent complete the booking.
+  const getPartnerKey = (item: VariantItem): "12go" | "fever" | null => {
     if (getBookingType(item.serviceType) !== "partner") return null;
-    const twelveGoAffiliateId = "13805109";
-    const impactCatalogId = "15532";
     if (["transport", "ground_transport", "train", "bus", "ferry"].some(t => item.serviceType?.toLowerCase().includes(t))) {
-      return `https://12go.co/en/travel?affiliate_id=${twelveGoAffiliateId}`;
+      return "12go";
     }
     if (["event", "entertainment", "concert", "show"].some(t => item.serviceType?.toLowerCase().includes(t))) {
-      return `https://feverup.com/en?utm_source=impact&utm_medium=affiliate&utm_campaign=${impactCatalogId}`;
+      return "fever";
     }
     return null;
   };
@@ -2055,7 +2109,7 @@ export default function ItineraryComparisonPage() {
                       <div className="space-y-3 pl-4">
                         {day.activities.map((item, idx) => {
                           const bookingType = getBookingType(item.serviceType);
-                          const partnerUrl = getPartnerUrl(item);
+                          const partnerKey = getPartnerKey(item);
                           const legAfter = day.transportLegs?.find(l => l.legOrder === idx + 1);
 
                           return (
@@ -2123,15 +2177,13 @@ export default function ItineraryComparisonPage() {
                                   </p>
                                 )}
 
-                                {partnerUrl && (
-                                  <a
-                                    href={partnerUrl}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="inline-flex items-center gap-1 text-sm text-blue-600 hover:underline"
-                                  >
-                                    Book on Partner Site <ExternalLink className="h-3 w-3" />
-                                  </a>
+                                {partnerKey && (
+                                  <PartnerAgentBookButton
+                                    partner={partnerKey}
+                                    itemName={item.name}
+                                    itemDescription={item.description || null}
+                                    destination={data?.comparison?.destination}
+                                  />
                                 )}
                               </div>
 

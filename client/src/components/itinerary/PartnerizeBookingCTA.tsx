@@ -1,16 +1,20 @@
 /**
  * PartnerizeBookingCTA
  *
- * Primary "book with an expert" action for Partnerize-backed offers, with a
- * secondary direct-link fallback to the affiliate deep link. Mirrors the
+ * Primary "book with an expert" action for Partnerize-backed offers. Mirrors the
  * expert-request flow used by client/src/components/plancard/EscalationCTA.tsx,
  * but scoped to experts who've opted in to booking affiliate offers on a
  * traveler's behalf (requestType: "partnerize_booking_assist").
+ *
+ * §16: the former secondary "Open on {partner}" direct affiliate link is gone —
+ * traveler surfaces never hold or open partner URLs. The expert resolves the
+ * deep link server-side from the transportOptionId reference carried in the
+ * request context.
  */
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { UserCheck, ExternalLink, Loader2, CheckCircle2 } from "lucide-react";
+import { UserCheck, Loader2, CheckCircle2 } from "lucide-react";
 
 interface PartnerizeBookingCTAProps {
   tripId?: string;
@@ -22,7 +26,8 @@ interface PartnerizeBookingCTAProps {
   partnerName: string;
   partnerId?: string;
   offerTitle: string;
-  directUrl: string;
+  /** transport_booking_options row id — the expert resolves the deep link server-side (§16). */
+  transportOptionId?: string;
   itemType?: string;
 }
 
@@ -34,7 +39,7 @@ export function PartnerizeBookingCTA({
   partnerName,
   partnerId,
   offerTitle,
-  directUrl,
+  transportOptionId,
   itemType,
 }: PartnerizeBookingCTAProps) {
   const { toast } = useToast();
@@ -52,7 +57,7 @@ export function PartnerizeBookingCTA({
       toast({
         variant: "destructive",
         title: "Can't request an expert here",
-        description: "This offer isn't linked to a trip or plan yet. Use the direct link instead.",
+        description: "This offer isn't linked to a trip or plan yet.",
       });
       return;
     }
@@ -75,7 +80,7 @@ export function PartnerizeBookingCTA({
             partnerId,
             partnerName,
             offerTitle,
-            directUrl,
+            transportOptionId,
             itemType,
             destination,
           },
@@ -94,7 +99,7 @@ export function PartnerizeBookingCTA({
       toast({
         variant: "destructive",
         title: "Couldn't send your request",
-        description: err.message ?? "Please try again, or use the direct link instead.",
+        description: err.message ?? "Please try again.",
       });
     } finally {
       setSubmitting(false);
@@ -129,17 +134,6 @@ export function PartnerizeBookingCTA({
           <UserCheck className="h-3.5 w-3.5 mr-1.5" />
         )}
         Book with an expert
-      </Button>
-      <Button
-        asChild
-        variant="outline"
-        size="sm"
-        data-testid="button-partnerize-direct-link"
-      >
-        <a href={directUrl} target="_blank" rel="noopener noreferrer">
-          <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
-          Open on {partnerName}
-        </a>
       </Button>
     </div>
   );
