@@ -65,7 +65,7 @@ export function resolvePrimaryAction(
         rideDetails: leg.rideDetails ?? null,
       };
     }
-    if (leg.bookingAffiliateUrl) {
+    if (leg.bookingToken) {
       return { kind: "book_ride", leg, activity };
     }
     // Chauffeured leg with no real booking AND no bookable affiliate data (today's reality

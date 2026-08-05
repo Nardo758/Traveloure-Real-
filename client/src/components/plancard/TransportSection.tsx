@@ -183,7 +183,7 @@ function BookViaAgentButton({
   fromName,
   toName,
 }: {
-  option: { id: string; title: string; description?: string; priceDisplay?: string; source: string; externalUrl?: string };
+  option: { id: string; title: string; description?: string; priceDisplay?: string; source: string; hasBookingLink?: boolean };
   fromName?: string;
   toName?: string;
 }) {
@@ -201,8 +201,9 @@ function BookViaAgentButton({
             .join(" · ") || null,
         partnerName: PARTNER_STYLES[option.source]?.badge ?? option.source,
         partnerCategory: "transport",
-        // §16: forwarded to the server only, never opened client-side.
-        affiliateUrl: option.externalUrl,
+        // §16 closure: the client never holds the URL — the server re-resolves it from the
+        // transport_booking_options row by id.
+        transportOptionId: option.id,
         travelers: 1,
       }),
     onSuccess: () => {
@@ -214,7 +215,7 @@ function BookViaAgentButton({
   });
 
   const handleClick = () => {
-    if (!option.externalUrl) return;
+    if (!option.hasBookingLink) return;
     if (!user) {
       openSignInModal();
       return;
@@ -385,7 +386,7 @@ export function LegBookingPanel({ legId, fromName, toName }: { legId: string; fr
                         )}
                       </div>
                     </div>
-                    {opt.externalUrl && (
+                    {opt.hasBookingLink && (
                       <BookViaAgentButton option={opt} fromName={fromName} toName={toName} />
                     )}
                   </div>

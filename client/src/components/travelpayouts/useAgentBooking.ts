@@ -3,11 +3,14 @@
  *
  * Platform rule (CLAUDE.md §16): affiliate content must NEVER send the traveler off-site with a
  * raw window.open. Any "book" action on partner-fulfilled content routes through the in-platform
- * booking-agent rail instead — POST /api/affiliate-booking-requests, the same rail Discover's
- * unified-result-card uses. The server auto-assigns a booking agent (expert), keeps the affiliate
- * URL server-side (it is never returned to the client — the agent books through it, preserving
- * commission and preventing disintermediation), and the confirmed booking is logged onto the
- * traveler's trip (migration 051).
+ * booking-agent rail instead — POST /api/affiliate-booking-requests, the same rail Discover uses.
+ * The server auto-assigns a booking agent (expert), keeps the affiliate URL server-side (it is
+ * never returned to the client — the agent books through it, preserving commission and preventing
+ * disintermediation), and the confirmed booking is logged onto the traveler's trip (migration 051).
+ *
+ * §16 closure: the client never holds the affiliate URL at all. Catalog feeds strip it server-side
+ * and ship an opaque `bookingToken` instead; this hook sends that token and the SERVER re-resolves
+ * the URL from its vault. Nothing this client sends can steer which URL the agent books through.
  */
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
@@ -33,7 +36,7 @@ export function useAgentBooking(item: CatalogItem, partnerCategory: string) {
             .join(" · ") || null,
         partnerName: item.provider,
         partnerCategory,
-        affiliateUrl: item.affiliateUrl || item.bookingUrl,
+        bookingToken: item.bookingToken,
         travelers: 1,
       }),
     onSuccess: () => {
@@ -53,7 +56,7 @@ export function useAgentBooking(item: CatalogItem, partnerCategory: string) {
   });
 
   const book = () => {
-    if (!(item.affiliateUrl || item.bookingUrl)) return;
+    if (!item.bookingToken) return;
     if (!user) {
       openSignInModal();
       return;

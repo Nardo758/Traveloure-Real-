@@ -41,7 +41,8 @@ interface ScoredOpportunity {
   title: string;
   description: string | null;
   imageUrl: string | null;
-  affiliateUrl: string | null;
+  // §16: affiliateUrl is stripped server-side — booking goes through the tracked
+  // /api/spontaneous/:id/book rail, which resolves the redirect by id.
   originalPrice: number | null;
   currentPrice: number | null;
   currency: string;
