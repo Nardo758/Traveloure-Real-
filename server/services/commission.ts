@@ -85,6 +85,29 @@ export function clearExpertSplitCache(): void {
 }
 
 /**
+ * Task #1036 / ruling 32 — expert-share fraction for a revenue-splits display row.
+ * SURFACE: the expert revenue-optimization earnings breakdown (display/analytics,
+ * not charge-time math). When the revenue_splits row exists its percentage wins;
+ * when it is missing the share resolves from the fee_bands `expert_standard` band
+ * via getExpertSplitRates() — never a hardcoded '75'. An admin band edit therefore
+ * drives the displayed breakdown (DB-backed test in
+ * server/__tests__/booking-fee-bootstrap-and-split-fallback.db.test.ts).
+ */
+export async function resolveExpertSharePct(
+  split: { expertPercentage?: string | null } | undefined,
+): Promise<number> {
+  // Strict validity (ruling 32 — invalid config must band-back, never leak through):
+  // the WHOLE string must parse (Number, not parseFloat — "75junk" is invalid) to a
+  // finite share in (0, 100]. "0" is treated as absent, preserving the endpoint's
+  // pre-#1036 `|| '75'` semantics where a zero/empty percentage fell through.
+  const raw = split?.expertPercentage?.trim();
+  const parsed = raw ? Number(raw) : NaN;
+  if (Number.isFinite(parsed) && parsed > 0 && parsed <= 100) return parsed / 100;
+  const { expertShareRate } = await getExpertSplitRates();
+  return expertShareRate;
+}
+
+/**
  * Phase 3.1 — Booking Concierge facilitation fee.
  * `expert_concierge_booking` is a FLAT fee-AMOUNT band (dollars, not a split
  * fraction). `booking_concierge` is the concern key that routes to it. The fee
