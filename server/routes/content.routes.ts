@@ -6592,8 +6592,9 @@ router.get("/api/spontaneous/quick-search/:window", async (req, res) => {
 //                          (approved-partner-gated, same posture as /api/content/affiliate-redirect).
 //   • transportOptionId  — transport_booking_options row: URL comes from the DB row
 //                          (affiliate/deep_link options only — platform options have their own rail).
-//   • partnerRoute       — { partner: "12go", origin?, destination? }: the server BUILDS the 12Go
-//                          deep link itself, so the affiliate id lives server-side only.
+//   • partnerRoute       — { partner: "12go" | "fever", origin?, destination? }: the server BUILDS
+//                          the partner deep link itself, so the affiliate/campaign id lives
+//                          server-side only.
 // itemName/partnerName prefer the server-resolved values; body values are display-only fallbacks.
 router.post("/api/affiliate-booking-requests", isAuthenticated, async (req, res) => {
     try {
@@ -6628,6 +6629,15 @@ router.post("/api/affiliate-booking-requests", isAuthenticated, async (req, res)
           }),
           name: null,
           partner: "12Go",
+        };
+      } else if (partnerRoute && typeof partnerRoute === "object" && partnerRoute.partner === "fever") {
+        // Same server-side construction posture as 12Go: the Impact campaign id never
+        // lives in client code (§16).
+        const { affiliateService } = await import("../services/affiliate.service");
+        resolved = {
+          url: affiliateService.buildFeverDeepLink(),
+          name: null,
+          partner: "Fever",
         };
       } else {
         return res.status(400).json({

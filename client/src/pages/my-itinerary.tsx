@@ -64,6 +64,7 @@ import {
   Package,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useContentAgentBooking } from "@/hooks/use-content-agent-booking";
 import { TemporalAnchorManager, ScheduleValidator, EnergyBudgetDisplay, AnchorSuggestionsPanel, TripLogisticsDashboard } from "@/components/logistics";
 
 interface ItineraryItem {
@@ -93,7 +94,12 @@ interface TransportPackage {
   details: string;
   price: number;
   included: boolean;
-  bookingUrl?: string;
+  /**
+   * §16: no partner URL in the DTO. The server emits a partner KEY for items whose booking
+   * it can hand to the booking-agent rail (it builds the deep link itself); absent this,
+   * the row renders informational-only — never a fabricated link.
+   */
+  bookablePartner?: '12go';
 }
 
 interface AccommodationPackage {
@@ -234,6 +240,52 @@ function getCategoryColor(category: string): string {
     case 'transport': return 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300';
     default: return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300';
   }
+}
+
+/**
+ * §16: transport-package rows book through the in-platform booking-agent rail — never a raw
+ * partner anchor (the DTO no longer carries a partner URL at all). Own component so the hook
+ * isn't called inside a map.
+ */
+function TransportPackageAgentBook({
+  partner,
+  itemName,
+  itemDescription,
+  destination,
+}: {
+  partner: "12go";
+  itemName: string;
+  itemDescription?: string | null;
+  destination?: string | null;
+}) {
+  const agentBooking = useContentAgentBooking({
+    itemName,
+    itemDescription,
+    partnerName: "12Go Asia",
+    partnerCategory: "ground-transport",
+    partnerRoute: { partner, destination: destination || undefined },
+  });
+
+  if (agentBooking.requested) {
+    return (
+      <span className="inline-flex items-center gap-1 text-xs text-green-700 dark:text-green-300" data-testid="text-transport-agent-requested">
+        <Check className="h-3 w-3" /> Request sent
+      </span>
+    );
+  }
+
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      className="mt-1"
+      onClick={agentBooking.book}
+      disabled={agentBooking.isPending}
+      data-testid="button-transport-agent-book"
+    >
+      {agentBooking.isPending ? "Sending…" : "Book via agent"}
+    </Button>
+  );
 }
 
 export default function MyItineraryPage() {
@@ -708,12 +760,17 @@ export default function MyItineraryPage() {
                             <div className="font-bold">${transport.price.toLocaleString()}</div>
                             {transport.included ? (
                               <Badge className="bg-green-100 text-green-700 text-xs">Included</Badge>
-                            ) : transport.bookingUrl && (
-                              <Button variant="outline" size="sm" asChild className="mt-1">
-                                <a href={transport.bookingUrl} target="_blank" rel="noopener noreferrer">
-                                  Book <ExternalLink className="h-3 w-3 ml-1" />
-                                </a>
-                              </Button>
+                            ) : transport.bookablePartner ? (
+                              <TransportPackageAgentBook
+                                partner={transport.bookablePartner}
+                                itemName={transport.name}
+                                itemDescription={[transport.description, transport.details].filter(Boolean).join(" · ") || null}
+                                destination={data.destination}
+                              />
+                            ) : (
+                              <span className="text-xs text-muted-foreground italic" data-testid={`text-transport-not-bookable-${idx}`}>
+                                Not bookable here
+                              </span>
                             )}
                           </div>
                         </div>

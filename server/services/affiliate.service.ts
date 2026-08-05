@@ -253,6 +253,17 @@ class AffiliateService {
   }
 
   /**
+   * §16 server-side Fever deep-link builder for the rail's `partnerRoute` reference —
+   * same posture as buildTwelveGoDeepLink: the Impact campaign id used to live hardcoded
+   * in client surfaces (itinerary-comparison "Book on Partner Site"); it now exists only
+   * here, server-side.
+   */
+  buildFeverDeepLink(): string {
+    const campaignId = process.env.FEVER_IMPACT_CAMPAIGN_ID || "15532";
+    return `https://feverup.com/en?utm_source=impact&utm_medium=affiliate&utm_campaign=${campaignId}`;
+  }
+
+  /**
    * Build TwelveGo affiliate link (transportation)
    */
   private buildTwelveGoLink(destination: string, date: string, metadata?: any): string {

@@ -12,8 +12,9 @@
  *   • bookingToken       — opaque vault token a live feed DTO shipped in place of the URL
  *   • affiliateProductId — affiliate_products registry row id (URL from the DB row)
  *   • transportOptionId  — transport_booking_options row id (URL from the DB row)
- *   • partnerRoute       — { partner: "12go", origin?, destination? }: the server constructs the
- *                          deep link itself (the affiliate id no longer lives in client code)
+ *   • partnerRoute       — { partner: "12go" | "fever", origin?, destination? }: the server
+ *                          constructs the deep link itself (the affiliate/campaign id no longer
+ *                          lives in client code)
  *
  * useAgentBooking (travelpayouts/useAgentBooking.ts) is the CatalogItem-typed variant used by the
  * catalog cards. This hook is the same rail but accepts a plain descriptor, so non-catalog surfaces
@@ -38,8 +39,8 @@ export interface AgentBookingDescriptor {
   affiliateProductId?: string | null;
   /** transport_booking_options row id — the server resolves the URL from the row. */
   transportOptionId?: string | null;
-  /** Server-side deep-link construction for partners without per-item feeds (e.g. 12Go). */
-  partnerRoute?: { partner: "12go"; origin?: string | null; destination?: string | null } | null;
+  /** Server-side deep-link construction for partners without per-item feeds (e.g. 12Go, Fever). */
+  partnerRoute?: { partner: "12go" | "fever"; origin?: string | null; destination?: string | null } | null;
   travelers?: number;
 }
 
