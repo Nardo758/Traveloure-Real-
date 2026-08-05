@@ -1,5 +1,5 @@
 /**
- * JOURNEY SUITE — Tier 3 contract negatives (Wave 1).
+ * JOURNEY SUITE — Tier 3 contract negatives (Journey Wave 1).
  *
  * Governing docs: docs/planning/JOURNEY_TEST_SUITE_BRIEF.md §4 (N1–N15) + §5/§9,
  * docs/briefs/ROUTING_STATE_CONTRACT.md (WRITES/READS/NEVER cells = the negative source),
@@ -233,7 +233,7 @@ test("N1: a non-owner cannot set ready_for_checkout via the routing endpoint; it
 // seeded trip whose item is routed to ready_for_checkout keeps that value across the closest
 // mutation we can drive as the owner (the finalize path, which shares the diary vocabulary but
 // is declared to NOT touch routing_status). Before/after diff = zero routing_status changes.
-// (Full 3-variant optimizer apply is J6/Wave-1 journey scope; here we lock the contract row
+// (Full 3-variant optimizer apply is J6/Journey Wave 1 journey scope; here we lock the contract row
 // that apply/optimizer are NEVER writers of routing_status by proving a routed value survives.)
 // ---------------------------------------------------------------------------
 test("N2: routing_status values are unchanged by non-routing owner mutations (finalize) — before/after diff is zero", async () => {
@@ -315,7 +315,7 @@ test("N4: no route file writes cart_items except via the projection writer (rout
 // bookings payload must not carry routing_status anywhere (deep JSON scan). On current main a
 // provider session with no bookings returns []; the deep-scan of the full provider bookings
 // payload contains no `routing_status`/`routingStatus` key. (Populated-booking provider payloads
-// are Wave-4 J11 scope; the NEVER-key absence is provable now on the live endpoint shape.)
+// are Journey Wave 4 / J11 scope; the NEVER-key absence is provable now on the live shape.)
 // ---------------------------------------------------------------------------
 test("N5: the provider bookings payload never exposes routing_status (deep JSON scan)", async () => {
   const provider = await registerActor("provider");

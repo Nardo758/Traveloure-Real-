@@ -1,10 +1,10 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
 import crypto from "crypto";
 import { Pool } from "pg";
-import { assertDisposableDb } from "./_journey-helpers";
+import { assertDisposableDb, assertCheckoutAccepted } from "./_journey-helpers";
 
 /**
- * JOURNEY SUITE — Wave-1 Tier-1 · J2 AI Entry.
+ * JOURNEY SUITE — Journey Wave 1 Tier-1 · J2 AI Entry.
  *
  * Governing docs: docs/planning/JOURNEY_TEST_SUITE_BRIEF.md (J2), docs/testing/coverage-matrix.md.
  * Matrix ID exercised here: J2 (matrix lint greps `playwright/`).
@@ -197,11 +197,9 @@ test.describe("J2 — AI Entry → catalog checkout (matrix-id: J2)", () => {
     const checkoutRes = await request.post(`${BASE_URL}/api/checkout`, {
       data: { tripId, idempotencyKey },
     });
-    expect(checkoutRes.status(), `checkout failed (${checkoutRes.status()}): ${await checkoutRes.text()}`).toBeGreaterThanOrEqual(200);
-    expect(checkoutRes.status()).toBeLessThan(300);
-    const checkoutBody = await checkoutRes.json();
-    expect(checkoutBody.success).toBe(true);
-    expect(checkoutBody.paymentIntent?.clientSecret, "checkout must return a PaymentIntent clientSecret").toBeTruthy();
+    // The HTTP envelope is the ONLY thing that depends on Stripe reachability — see
+    // assertCheckoutAccepted. Every DB fact below is asserted unconditionally.
+    await assertCheckoutAccepted(checkoutRes, "j2");
 
     // DB fact: exactly ONE booking (only one item was routed), H5 survives to booking.serviceId.
     const bookings = await q<{
