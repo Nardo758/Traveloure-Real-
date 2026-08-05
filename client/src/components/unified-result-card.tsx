@@ -41,7 +41,11 @@ export interface UnifiedResult {
   source: "native" | "serp" | "viator" | "amadeus" | "booking_com" | "opentable" | "fever" | "poi" | "transfer" | "safety" | "restaurant";
   isPartner?: boolean;
   category?: string | null;
-  bookingUrl?: string | null;
+  /**
+   * §16: partner feeds never ship a booking URL — the server strips it and ships this opaque
+   * vault token instead; the agent-booking rail resolves it back to the URL server-side.
+   */
+  bookingToken?: string | null;
 }
 
 interface UnifiedResultCardProps {
@@ -68,7 +72,7 @@ export function UnifiedResultCard({
 
   const isPartnerSource = result.source === "viator" || result.source === "amadeus" || result.source === "booking_com" || result.source === "fever" || result.source === "opentable";
   const isPartner = result.isPartner || isPartnerSource;
-  const hasPartnerBookingUrl = isPartner && !!result.bookingUrl;
+  const hasPartnerBookingUrl = isPartner && !!result.bookingToken;
   const displayName = result.name || result.title || "Unknown";
   const imageUrl = result.imageUrl || result.thumbnail;
   const websiteUrl = result.websiteUrl || result.website;
@@ -102,7 +106,8 @@ export function UnifiedResultCard({
         itemName: displayName,
         partnerName,
         partnerCategory: result.category ?? "activity",
-        affiliateUrl: result.bookingUrl,
+        // §16 closure: opaque server-minted vault token — the client never holds the URL.
+        bookingToken: result.bookingToken,
         travelDate: travelDate || null,
         travelers,
         userNotes: bookingNotes || null,
@@ -129,9 +134,9 @@ export function UnifiedResultCard({
     handleCardClick();
     if (hasPartnerBookingUrl) {
       setBookingModalOpen(true);
-    } else if (result.bookingUrl) {
-      window.open(result.bookingUrl, "_blank");
     } else if (websiteUrl) {
+      // Informational outbound to the venue's own website (not a partner booking URL — §16
+      // only prohibits raw off-site *booking* CTAs / untracked affiliate outbound).
       window.open(websiteUrl, "_blank");
     }
   };
@@ -261,7 +266,7 @@ export function UnifiedResultCard({
                 </Button>
               )}
               
-              {(result.bookingUrl || websiteUrl) && (
+              {(hasPartnerBookingUrl || websiteUrl) && (
                 <Button
                   size="sm"
                   variant={hasPartnerBookingUrl ? "outline" : "default"}

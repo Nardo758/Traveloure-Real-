@@ -7,7 +7,15 @@
  * agent, and logs the confirmed booking onto the traveler's trip — preserving commission and
  * preventing disintermediation.
  *
- * useAgentBooking (travelpayouts/useAgentBooking.ts) is the CatalogItem-typed variant used by the 10
+ * §16 closure: the client never holds (or sends) the affiliate URL at all. The descriptor carries
+ * exactly one BOOKING REFERENCE the server resolves to the URL itself:
+ *   • bookingToken       — opaque vault token a live feed DTO shipped in place of the URL
+ *   • affiliateProductId — affiliate_products registry row id (URL from the DB row)
+ *   • transportOptionId  — transport_booking_options row id (URL from the DB row)
+ *   • partnerRoute       — { partner: "12go", origin?, destination? }: the server constructs the
+ *                          deep link itself (the affiliate id no longer lives in client code)
+ *
+ * useAgentBooking (travelpayouts/useAgentBooking.ts) is the CatalogItem-typed variant used by the
  * catalog cards. This hook is the same rail but accepts a plain descriptor, so non-catalog surfaces
  * (Fever events, TravelPulse booking options, affiliate transport, curated cards, …) can adopt the
  * rail without a CatalogItem. Same endpoint, same behavior.
@@ -24,8 +32,14 @@ export interface AgentBookingDescriptor {
   itemDescription?: string | null;
   partnerName?: string | null;
   partnerCategory?: string | null;
-  /** The affiliate/booking URL. Sent to the server (which keeps it private); never opened client-side. */
-  affiliateUrl?: string | null;
+  /** Opaque server-minted vault token from a live feed DTO (§16 — never a URL). */
+  bookingToken?: string | null;
+  /** affiliate_products registry row id — the server resolves the URL from the row. */
+  affiliateProductId?: string | null;
+  /** transport_booking_options row id — the server resolves the URL from the row. */
+  transportOptionId?: string | null;
+  /** Server-side deep-link construction for partners without per-item feeds (e.g. 12Go). */
+  partnerRoute?: { partner: "12go"; origin?: string | null; destination?: string | null } | null;
   travelers?: number;
 }
 
@@ -35,6 +49,13 @@ export function useContentAgentBooking(descriptor: AgentBookingDescriptor) {
   const { toast } = useToast();
   const [requested, setRequested] = useState(false);
 
+  const hasBookingReference = !!(
+    descriptor.bookingToken ||
+    descriptor.affiliateProductId ||
+    descriptor.transportOptionId ||
+    descriptor.partnerRoute
+  );
+
   const mutation = useMutation({
     mutationFn: () =>
       apiRequest("POST", "/api/affiliate-booking-requests", {
@@ -42,7 +63,10 @@ export function useContentAgentBooking(descriptor: AgentBookingDescriptor) {
         itemDescription: descriptor.itemDescription ?? null,
         partnerName: descriptor.partnerName ?? null,
         partnerCategory: descriptor.partnerCategory ?? null,
-        affiliateUrl: descriptor.affiliateUrl ?? null,
+        bookingToken: descriptor.bookingToken ?? undefined,
+        affiliateProductId: descriptor.affiliateProductId ?? undefined,
+        transportOptionId: descriptor.transportOptionId ?? undefined,
+        partnerRoute: descriptor.partnerRoute ?? undefined,
         travelers: descriptor.travelers ?? 1,
       }),
     onSuccess: () => {
@@ -62,7 +86,7 @@ export function useContentAgentBooking(descriptor: AgentBookingDescriptor) {
   });
 
   const book = () => {
-    if (!descriptor.affiliateUrl) return;
+    if (!hasBookingReference) return;
     if (!user) {
       openSignInModal();
       return;
