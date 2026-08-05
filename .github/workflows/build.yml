@@ -4,9 +4,12 @@ name: Build Smoke
 # the logic gate tests an isolated module and the e2e never had a green run, so
 # nothing actually built or booted the app. This runs the real production build
 # (vite client + esbuild server bundle via `npm run build`), which FAILS on
-# syntax / bundling errors but does NOT type-check — so it tolerates the ~191
+# syntax / bundling errors but does NOT type-check — so it tolerates the
 # pre-existing baseline type errors (a `tsc --noEmit`-clean gate is impossible
 # against that baseline). Catches the dropped-sort-block class of bug.
+#
+# The type-error BASELINE is gated separately below (`tsc-baseline`): 197 as of
+# 2026-08-05 @ ea0bbc05, and the number only ever moves DOWN.
 
 on:
   pull_request:
@@ -31,6 +34,34 @@ jobs:
       - run: npm ci
       - name: Production build (syntax/bundle gate — does NOT run tsc)
         run: npm run build
+
+      # ── tsc baseline ratchet ──────────────────────────────────────────────────
+      # The repo is NOT tsc-clean, so the gate is a CEILING, not zero. THE NUMBER
+      # ONLY EVER MOVES DOWN: a lane that removes errors lowers TSC_BASELINE in the
+      # same PR so the improvement is locked in and cannot be spent as headroom by
+      # the next lane. Coming in UNDER the ceiling therefore fails too — with the
+      # instruction to lower it here.
+      #
+      # 197 measured on 2026-08-05 @ ea0bbc05 (was 199 before PR #430 removed two
+      # errors with a dead code branch). Before this step existed the discipline
+      # had no machine enforcement at all — every "baseline" in the repo was a
+      # stale prose number (191/209/254/~137, none of them current).
+      - name: tsc baseline ratchet (down-only)
+        env:
+          TSC_BASELINE: '197'
+        run: |
+          count=$(npx tsc --noEmit 2>&1 | grep -c "error TS" || true)
+          echo "tsc --noEmit: $count error(s); baseline ceiling: $TSC_BASELINE"
+          if [ "$count" -gt "$TSC_BASELINE" ]; then
+            echo "::error::tsc errors went UP: $count > baseline $TSC_BASELINE. Fix the net-new type errors in this change."
+            npx tsc --noEmit 2>&1 | grep "error TS" | head -40
+            exit 1
+          fi
+          if [ "$count" -lt "$TSC_BASELINE" ]; then
+            echo "::error::tsc errors went DOWN to $count (baseline $TSC_BASELINE) — good! Now LOCK IT IN: set TSC_BASELINE to $count in .github/workflows/build.yml in this same PR. The baseline only ever moves down; leftover headroom is how it creeps back up."
+            exit 1
+          fi
+          echo "tsc baseline holds at $count ✅"
 
   money-endpoint-guard:
     name: money-endpoint-guard (CLAUDE.md §14)

@@ -97,11 +97,11 @@ Every journey/spec/negative id above pre-claims its cells at matrix creation. Th
 ## 7. Build order (tracks lane completion — do not build ahead of features)
 
 ```
-Wave 1 (now):        matrix + lint · Tier 3 negatives that are testable today ·
+Journey Wave 1 (now):        matrix + lint · Tier 3 negatives that are testable today ·
                      J1-minus-expert-leg · J2 · J6 · J7 · J13-minus-lane-5-swap
-Wave 2 (post phase 4 of SLIP dispatch): full J1 · J8 · J14 · routing-action specs
-Wave 3 (post Lane S): log/version assertions activate across all journeys · J5
-Wave 4 (post provider back-office P1): J11 · J12 · provider specs
+Journey Wave 2 (post phase 4 of SLIP dispatch): full J1 · J8 · J14 · routing-action specs
+Journey Wave 3 (post Lane S): log/version assertions activate across all journeys · J5
+Journey Wave 4 (post provider back-office P1): J11 · J12 · provider specs
 Deferred:            J4 (G2) · losing-variant share treatment checks (follow-up lane)
 ```
 
@@ -112,7 +112,7 @@ Deferred:            J4 (G2) · losing-variant share treatment checks (follow-up
 3. Confirm Stripe test-mode wiring, webhook path in dev, and the env allowlist enforcement point.
 4. Confirm test-db read helper approach compatible with CI parallelism.
 5. Verify current seed + account set covers all roles J9/J11/J12 need (admin context especially); list gaps.
-6. Return findings + the seeded matrix for approval before Wave 1 code.
+6. Return findings + the seeded matrix for approval before Journey Wave 1 code.
 
 ## 9. What NOT to do
 
