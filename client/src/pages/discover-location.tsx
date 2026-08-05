@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import { AlertCircle, Plus, ArrowLeft, UserCheck, ChevronRight, Sparkles, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useContentAgentBooking } from "@/hooks/use-content-agent-booking";
 import { useGemPhoto } from "@/hooks/use-gem-photo";
 import { CityFeedCardGem, CityFeedCardEvent, CityFeedCardSupply, CityFeedCardVendorService } from "@/components/city-feed-card";
 import { CityFeedCardExpert } from "@/components/city-feed-card-expert";
@@ -1448,10 +1449,16 @@ interface AddOn {
   icon: string;
   label: string;
   badge: string;
-  href: string;
+  /** Absent when the add-on books through the agent rail (§16) instead of linking out. */
+  href?: string;
   variant: "platform" | "affiliate";
   isExternal?: boolean;
   partner?: string;
+  /**
+   * §16: partner-fulfilled BOOKING add-ons route through the in-platform booking-agent rail
+   * (the server builds the deep link) instead of carrying a client-built affiliate URL.
+   */
+  agentPartner?: "12go";
 }
 
 function trackAddonClick(partner: string, city: string) {
@@ -1468,13 +1475,14 @@ function buildAddOns(city: string): AddOn[] {
 
   return [
     {
+      // §16: was a raw outbound booking CTA with the 12Go affiliate id built in client code.
+      // Now a booking-agent hand-off — the server constructs the 12Go deep link server-side.
       icon: "🚖",
       label: "Airport transfer",
-      badge: "Book via 12Go",
-      href: `https://12go.asia?aff=13805109&destination=${cityParam}&utm_source=traveloure&utm_medium=addon_strip&utm_campaign=${citySlug}`,
+      badge: "Book via agent",
       variant: "affiliate",
-      isExternal: true,
       partner: "12go",
+      agentPartner: "12go",
     },
     {
       icon: "📱",
@@ -1571,34 +1579,77 @@ function TripComplementsStrip({
         COMPLETE YOUR {city.toUpperCase()} TRIP · complements any itinerary
       </div>
       <div className="flex gap-2.5 flex-wrap">
-        {addOns.map((addon) => (
-          <a
-            key={addon.label}
-            href={addon.href}
-            target={addon.isExternal ? "_blank" : undefined}
-            rel={addon.isExternal ? "noopener noreferrer" : undefined}
-            onClick={() => addon.partner && trackAddonClick(addon.partner, city)}
-            className="flex-1 min-w-[150px] bg-card border border-border rounded-xl p-3 hover:shadow-sm transition-shadow"
-            data-testid={`addon-${addon.label.toLowerCase().replace(/\s+/g, "-")}`}
-          >
-            <div className="flex items-center gap-2 mb-1.5">
-              <span className="text-xl">{addon.icon}</span>
-              <span className="font-semibold text-[13px]">{addon.label}</span>
-            </div>
-            <span
-              className={cn(
-                "text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide",
-                addon.variant === "platform"
-                  ? "bg-teal-50 text-teal-700"
-                  : "bg-blue-50 text-blue-700",
-              )}
+        {addOns.map((addon) =>
+          addon.agentPartner ? (
+            <AddOnAgentCard key={addon.label} addon={addon} city={city} />
+          ) : (
+            <a
+              key={addon.label}
+              href={addon.href}
+              target={addon.isExternal ? "_blank" : undefined}
+              rel={addon.isExternal ? "noopener noreferrer" : undefined}
+              onClick={() => addon.partner && trackAddonClick(addon.partner, city)}
+              className="flex-1 min-w-[150px] bg-card border border-border rounded-xl p-3 hover:shadow-sm transition-shadow"
+              data-testid={`addon-${addon.label.toLowerCase().replace(/\s+/g, "-")}`}
             >
-              {addon.badge}
-            </span>
-          </a>
-        ))}
+              <AddOnFace addon={addon} />
+            </a>
+          ),
+        )}
       </div>
     </div>
+  );
+}
+
+function AddOnFace({ addon }: { addon: AddOn }) {
+  return (
+    <>
+      <div className="flex items-center gap-2 mb-1.5">
+        <span className="text-xl">{addon.icon}</span>
+        <span className="font-semibold text-[13px]">{addon.label}</span>
+      </div>
+      <span
+        className={cn(
+          "text-[9px] font-bold px-1.5 py-0.5 rounded tracking-wide",
+          addon.variant === "platform"
+            ? "bg-teal-50 text-teal-700"
+            : "bg-blue-50 text-blue-700",
+        )}
+      >
+        {addon.badge}
+      </span>
+    </>
+  );
+}
+
+/**
+ * §16: partner-fulfilled booking add-on — routes through the booking-agent rail instead of
+ * a client-built affiliate URL. Own component so the hook isn't called inside a map.
+ */
+function AddOnAgentCard({ addon, city }: { addon: AddOn; city: string }) {
+  const agentBooking = useContentAgentBooking({
+    itemName: `${addon.label} — ${city}`,
+    itemDescription: "Trains, buses, ferries and transfers via 12Go Asia",
+    partnerName: "12Go Asia",
+    partnerCategory: "ground-transport",
+    partnerRoute: { partner: "12go", destination: city },
+  });
+
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        if (addon.partner) trackAddonClick(addon.partner, city);
+        agentBooking.book();
+      }}
+      disabled={agentBooking.isPending || agentBooking.requested}
+      className="flex-1 min-w-[150px] bg-card border border-border rounded-xl p-3 hover:shadow-sm transition-shadow text-left"
+      data-testid={`addon-${addon.label.toLowerCase().replace(/\s+/g, "-")}`}
+    >
+      <AddOnFace
+        addon={agentBooking.requested ? { ...addon, badge: "Request sent" } : addon}
+      />
+    </button>
   );
 }
 

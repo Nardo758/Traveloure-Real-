@@ -18,20 +18,14 @@ import {
   Clock,
   DollarSign,
   Zap,
-  ExternalLink,
   Train,
-  Bus,
-  Ship,
-  Car,
-  Bike,
-  Plane,
   ArrowRight,
-  MapPin,
   CheckCircle2,
+  UserCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { apiRequest } from "@/lib/queryClient";
-import { TransportBookingCard } from "./TransportBookingCard";
+import { useContentAgentBooking } from "@/hooks/use-content-agent-booking";
 import { MultiDayPassCard, type MultiDayPass } from "./MultiDayPassCard";
 
 const TRANSPORT_MODE_ICONS: Record<string, string> = {
@@ -85,8 +79,8 @@ interface BookingOption {
   estimatedMinutes?: number;
   rating?: number;
   reviewCount?: number;
-  externalUrl?: string;
-  deepLinkScheme?: string;
+  /** §16: the server never ships externalUrl — only whether a bookable link exists. */
+  hasBookingLink?: boolean;
   isRecommended?: boolean;
   bookingStatus?: string;
   confirmationRef?: string | null;
@@ -150,6 +144,19 @@ export function TransportHub({ tripId, destination = "", readOnly = false, onNav
     },
   });
 
+  // §16 booking-agent rail for the empty state's "find transport" hand-off: the server
+  // builds the 12Go deep link itself (partnerRoute) — no affiliate URL or affiliate id
+  // lives in client code. Hook is called unconditionally (rules of hooks) even though
+  // it only renders in the empty state.
+  const dest = destination?.split(",")[0]?.trim() || "";
+  const findTransportViaAgent = useContentAgentBooking({
+    itemName: dest ? `Ground transport in ${dest}` : "Ground transport",
+    itemDescription: "Trains, buses, ferries via 12Go Asia",
+    partnerName: "12Go Asia",
+    partnerCategory: "ground-transport",
+    partnerRoute: { partner: "12go", destination: dest || undefined },
+  });
+
   if (isLoading) {
     return <TransportHubSkeleton />;
   }
@@ -165,135 +172,50 @@ export function TransportHub({ tripId, destination = "", readOnly = false, onNav
   }
 
   if (!data || data.summary.totalLegs === 0) {
-    const dest = destination?.split(",")[0]?.trim() || "";
-    const twelveGoUrl = dest
-      ? `https://12go.co/en?affiliate_id=13805109&q=${encodeURIComponent(dest)}`
-      : "https://12go.co/en?affiliate_id=13805109";
-
-    const partners = [
-      {
-        name: "12Go",
-        tagline: "Trains, buses & ferries",
-        description: "Book ground transport across Asia, Europe & more. Instant confirmation.",
-        url: twelveGoUrl,
-        color: "from-blue-500 to-indigo-600",
-        icon: Train,
-        badge: "Most Popular",
-      },
-      {
-        name: "Uber",
-        tagline: "Rideshare & taxis",
-        description: "On-demand rides in 70+ countries. Airport transfers, city rides.",
-        url: "https://www.uber.com",
-        color: "from-gray-800 to-black",
-        icon: Car,
-        badge: null,
-      },
-      {
-        name: "Viator",
-        tagline: "Tours with transport",
-        description: "Day trips, excursions & activities with transport included.",
-        url: dest
-          ? `https://www.viator.com/search/${encodeURIComponent(dest)}?pid=P00049487`
-          : "https://www.viator.com?pid=P00049487",
-        color: "from-emerald-500 to-teal-600",
-        icon: MapPin,
-        badge: null,
-      },
-    ];
-
-    const modes = [
-      { label: "Train", icon: Train, url: twelveGoUrl },
-      { label: "Bus", icon: Bus, url: twelveGoUrl },
-      { label: "Ferry", icon: Ship, url: twelveGoUrl },
-      { label: "Taxi", icon: Car, url: "https://www.uber.com" },
-      { label: "Bicycle", icon: Bike, url: "https://www.google.com/maps" },
-      { label: "Flight", icon: Plane, url: "https://www.skyscanner.com" },
-    ];
-
+    // §16: no raw partner links here — the former hardcoded 12Go/Uber/Viator homepage
+    // cards sent travelers off-site with the affiliate id baked into client code. The
+    // "find transport" hand-off now routes through the booking-agent rail; the server
+    // builds the partner deep link and an agent handles the booking.
     return (
-      <div className="space-y-8">
-        {/* Partner booking cards */}
-        <div>
-          <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-4">Book Your Transport</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {partners.map((p) => (
-              <a
-                key={p.name}
-                href={p.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="group block"
-                data-testid={`link-transport-partner-${p.name.toLowerCase()}`}
-              >
-                <Card className="h-full border border-gray-200 dark:border-gray-700 hover:border-primary hover:shadow-md transition-all duration-200 overflow-hidden">
-                  <div className={`h-2 bg-gradient-to-r ${p.color}`} />
-                  <CardContent className="p-4">
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <div className={`p-1.5 rounded-md bg-gradient-to-r ${p.color}`}>
-                          <p.icon className="w-4 h-4 text-white" />
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="font-semibold text-sm text-gray-900 dark:text-white">{p.name}</span>
-                            {p.badge && (
-                              <Badge className="bg-primary text-white text-[10px] px-1.5 py-0">{p.badge}</Badge>
-                            )}
-                          </div>
-                          <p className="text-xs text-gray-500">{p.tagline}</p>
-                        </div>
-                      </div>
-                      <ExternalLink className="w-3.5 h-3.5 text-gray-400 group-hover:text-primary transition-colors mt-0.5 flex-shrink-0" />
-                    </div>
-                    <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed">{p.description}</p>
-                  </CardContent>
-                </Card>
-              </a>
-            ))}
-          </div>
-        </div>
-
-        {/* Transport mode grid */}
-        <div>
-          <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-4">Browse by Mode</h3>
-          <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
-            {modes.map((m) => (
-              <a
-                key={m.label}
-                href={m.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="group"
-                data-testid={`link-transport-mode-${m.label.toLowerCase()}`}
-              >
-                <Card className="border border-gray-200 dark:border-gray-700 hover:border-primary hover:shadow-sm transition-all duration-200">
-                  <CardContent className="p-3 flex flex-col items-center gap-2">
-                    <div className="p-2 rounded-lg bg-gray-100 dark:bg-gray-800 group-hover:bg-[#FFE3E8] dark:group-hover:bg-primary/20 transition-colors">
-                      <m.icon className="w-5 h-5 text-gray-600 dark:text-gray-300 group-hover:text-primary transition-colors" />
-                    </div>
-                    <span className="text-xs font-medium text-gray-700 dark:text-gray-300">{m.label}</span>
-                  </CardContent>
-                </Card>
-              </a>
-            ))}
-          </div>
-        </div>
-
-        {/* Tips section */}
+      <div className="space-y-6">
         <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 border-blue-200 dark:border-blue-800">
-          <CardContent className="p-4 flex items-center justify-between gap-4">
-            <div>
-              <p className="text-sm font-medium text-gray-900 dark:text-white">Travelling in Asia?</p>
-              <p className="text-xs text-gray-500 mt-0.5">12Go has the best coverage for trains, buses & ferries across Southeast and East Asia.</p>
+          <CardContent className="p-5 space-y-3">
+            <div className="flex items-center gap-2">
+              <Train className="w-5 h-5 text-primary" />
+              <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                Book your ground transport
+              </p>
             </div>
-            <a href={twelveGoUrl} target="_blank" rel="noopener noreferrer">
-              <Button size="sm" className="bg-primary hover:bg-primary/90 text-white whitespace-nowrap">
-                Search Routes <ArrowRight className="w-3.5 h-3.5 ml-1.5" />
+            <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed">
+              Trains, buses and ferries{dest ? ` around ${dest}` : ""} — our booking agent finds
+              the best option, books it for you, and adds it to your trip.
+            </p>
+            {findTransportViaAgent.requested ? (
+              <div
+                className="flex items-center gap-1.5 text-xs text-green-700 dark:text-green-300"
+                data-testid="text-transport-agent-requested"
+              >
+                <CheckCircle2 className="h-3.5 w-3.5" /> Request sent — our booking agent will follow up.
+              </div>
+            ) : (
+              <Button
+                size="sm"
+                className="bg-primary hover:bg-primary/90 text-white whitespace-nowrap"
+                disabled={readOnly || findTransportViaAgent.isPending}
+                onClick={findTransportViaAgent.book}
+                data-testid="button-find-transport-via-agent"
+              >
+                <UserCheck className="w-3.5 h-3.5 mr-1.5" />
+                {findTransportViaAgent.isPending ? "Sending…" : "Find transport via agent"}
+                <ArrowRight className="w-3.5 h-3.5 ml-1.5" />
               </Button>
-            </a>
+            )}
           </CardContent>
         </Card>
+        <p className="text-xs text-muted-foreground">
+          Per-leg transport options appear here automatically once activities with locations are
+          added to your itinerary.
+        </p>
       </div>
     );
   }

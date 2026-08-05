@@ -3,19 +3,26 @@
  *
  * Renders a single booking option with 4 variants:
  * 1. Platform ("Book on Traveloure") - green badge, Stripe checkout
- * 2. Affiliate ("View on 12Go") - blue badge, external link + mark as booked
- * 3. Deep Link ("Open App") - blue badge, native app or web fallback
+ * 2. Affiliate - blue badge, booking-agent rail (§16)
+ * 3. Deep Link - blue badge, booking-agent rail (§16)
  * 4. Info Only (Walking, etc.) - gray label, no action
+ *
+ * §16 (CLAUDE.md): affiliate/deep-link options never open a partner URL from the client.
+ * The transport-hub DTO strips externalUrl server-side (hasBookingLink flag only) and the
+ * "book" action routes through the booking-agent rail (POST /api/affiliate-booking-requests)
+ * with a transportOptionId reference — the server re-resolves the partner URL from the
+ * transport_booking_options row and a booking agent completes the booking. When an option
+ * has no server-side URL to derive (hasBookingLink false), the card shows an honest
+ * no-link state — never a homepage guess.
  */
 
-import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { ExternalLink, Star, CheckCircle2, AlertCircle } from "lucide-react";
+import { Star, CheckCircle2, AlertCircle, UserCheck } from "lucide-react";
+import { useContentAgentBooking } from "@/hooks/use-content-agent-booking";
 import { PartnerizeBookingCTA } from "./PartnerizeBookingCTA";
 
 interface TransportBookingOption {
@@ -30,8 +37,8 @@ interface TransportBookingOption {
   estimatedMinutes?: number;
   rating?: number;
   reviewCount?: number;
-  externalUrl?: string;
-  deepLinkScheme?: string;
+  /** §16: the server never ships externalUrl — only whether a bookable link exists. */
+  hasBookingLink?: boolean;
   isRecommended?: boolean;
   bookingStatus?: string;
   confirmationRef?: string | null;
@@ -53,17 +60,10 @@ export function TransportBookingCard({
   destination,
 }: TransportBookingCardProps) {
   const { toast } = useToast();
-  const queryClient = useQueryClient();
 
   const isConfirmed = option.bookingStatus === "confirmed";
   const isBooked = option.bookingStatus === "booked" || isConfirmed;
   const isCancelled = option.bookingStatus === "cancelled";
-
-  const [hasClicked, setHasClicked] = useState(false);
-  const [showMarkBooked, setShowMarkBooked] = useState(false);
-  const [confirmationRef, setConfirmationRef] = useState("");
-  const [savedConfirmationRef, setSavedConfirmationRef] = useState<string | null>(null);
-  const [localBooked, setLocalBooked] = useState(false);
 
   const bookPlatformMutation = useMutation({
     mutationFn: async () => {
@@ -81,72 +81,18 @@ export function TransportBookingCard({
     },
   });
 
-  const affiliateClickMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/transport-booking-options/${option.id}/click`, {});
-      return res.json();
-    },
-    onSuccess: (data) => {
-      setHasClicked(true);
-      if (data.redirectUrl) {
-        window.open(data.redirectUrl, "_blank");
-      } else if (option.externalUrl) {
-        window.open(option.externalUrl, "_blank");
-      }
-      setTimeout(() => setShowMarkBooked(true), 2000);
-    },
-    onError: () => {
-      if (option.externalUrl) {
-        window.open(option.externalUrl, "_blank");
-        setHasClicked(true);
-        setTimeout(() => setShowMarkBooked(true), 2000);
-      } else {
-        toast({ title: "Failed to open link", description: "Please try again", variant: "destructive" });
-      }
-    },
+  // §16 booking-agent rail — the server resolves the partner URL from the
+  // transport_booking_options row (transportOptionId); the client never holds it.
+  const agentBooking = useContentAgentBooking({
+    itemName: option.title,
+    itemDescription:
+      [option.description, destination, option.priceDisplay].filter(Boolean).join(" · ") || null,
+    partnerName: getPartnerDisplayName(option.source),
+    partnerCategory: "ground-transport",
+    transportOptionId: option.id,
   });
 
-  const markBookedMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("PATCH", `/api/transport-booking-options/${option.id}/status`, {
-        bookingStatus: "booked",
-        confirmationRef: confirmationRef || undefined,
-      });
-      return res.json();
-    },
-    onSuccess: () => {
-      setSavedConfirmationRef(confirmationRef || null);
-      setLocalBooked(true);
-      toast({ title: "Marked as booked", description: confirmationRef ? `Ref: ${confirmationRef}` : undefined });
-      queryClient.invalidateQueries({ queryKey: ["/api/itinerary"] });
-      setShowMarkBooked(false);
-    },
-    onError: () => {
-      toast({ title: "Failed to update", variant: "destructive" });
-    },
-  });
-
-  const effectivelyBooked = localBooked || isBooked;
-  const effectivelyConfirmed = isConfirmed;
-
-  const handleDeepLink = () => {
-    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-    if (isMobile && option.deepLinkScheme) {
-      window.location.href = option.deepLinkScheme;
-    } else {
-      const webUrls: Record<string, string> = {
-        uber: "https://m.uber.com",
-        grab: "https://grab.com/sg/transport/",
-        bolt: "https://bolt.eu",
-        ola: "https://www.olacabs.com",
-        beat: "https://thebeat.co",
-        lyft: "https://www.lyft.com",
-      };
-      const fallback = webUrls[option.source] || option.externalUrl || `https://www.google.com/maps`;
-      window.open(fallback, "_blank");
-    }
-    setHasClicked(true);
-  };
+  const isExternalType = option.bookingType === "affiliate" || option.bookingType === "deep_link";
 
   const statusBadge = () => {
     if (isCancelled) {
@@ -156,10 +102,10 @@ export function TransportBookingCard({
         </Badge>
       );
     }
-    if (effectivelyConfirmed || effectivelyBooked) {
+    if (isConfirmed || isBooked) {
       return (
         <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300 flex items-center gap-1 shrink-0">
-          <CheckCircle2 className="h-3 w-3" /> {effectivelyConfirmed ? "Confirmed" : "Booked"}
+          <CheckCircle2 className="h-3 w-3" /> {isConfirmed ? "Confirmed" : "Booked"}
         </Badge>
       );
     }
@@ -171,17 +117,11 @@ export function TransportBookingCard({
           </Badge>
         );
       case "affiliate":
-        return (
-          <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 flex items-center gap-1 shrink-0">
-            <ExternalLink className="h-3 w-3" />
-            {getPartnerDisplayName(option.source)}
-          </Badge>
-        );
       case "deep_link":
         return (
           <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 flex items-center gap-1 shrink-0">
-            <ExternalLink className="h-3 w-3" />
-            Open App
+            <UserCheck className="h-3 w-3" />
+            {getPartnerDisplayName(option.source)}
           </Badge>
         );
       default:
@@ -194,7 +134,7 @@ export function TransportBookingCard({
   };
 
   const actionButton = () => {
-    if (isCancelled || effectivelyBooked || effectivelyConfirmed) return null;
+    if (isCancelled || isBooked || isConfirmed) return null;
     if (option.bookingType === "info_only") return null;
 
     if (option.bookingType === "platform") {
@@ -211,32 +151,39 @@ export function TransportBookingCard({
       );
     }
 
-    if (option.bookingType === "affiliate") {
+    if (isExternalType) {
+      // Honest no-link state: no server-derivable booking URL for this option —
+      // never guess a partner homepage (§16).
+      if (!option.hasBookingLink) {
+        return (
+          <span
+            className="text-xs text-gray-400 dark:text-gray-500 italic"
+            data-testid={`text-no-booking-link-${option.id}`}
+          >
+            No booking link available
+          </span>
+        );
+      }
+      if (agentBooking.requested) {
+        return (
+          <span
+            className="flex items-center gap-1.5 text-xs text-green-700 dark:text-green-300"
+            data-testid={`text-agent-requested-${option.id}`}
+          >
+            <CheckCircle2 className="h-3.5 w-3.5" /> Booking request sent
+          </span>
+        );
+      }
       return (
         <Button
-          onClick={() => affiliateClickMutation.mutate()}
-          disabled={readOnly || affiliateClickMutation.isPending}
+          onClick={agentBooking.book}
+          disabled={readOnly || agentBooking.isPending}
           variant="outline"
           size="sm"
-          data-testid={`button-view-affiliate-${option.id}`}
+          data-testid={`button-book-via-agent-${option.id}`}
         >
-          <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
-          {affiliateClickMutation.isPending ? "Opening…" : `View on ${getPartnerDisplayName(option.source)}`}
-        </Button>
-      );
-    }
-
-    if (option.bookingType === "deep_link") {
-      return (
-        <Button
-          onClick={handleDeepLink}
-          disabled={readOnly}
-          variant="outline"
-          size="sm"
-          data-testid={`button-deeplink-${option.id}`}
-        >
-          <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
-          Open {option.title}
+          <UserCheck className="h-3.5 w-3.5 mr-1.5" />
+          {agentBooking.isPending ? "Sending…" : "Book via agent"}
         </Button>
       );
     }
@@ -282,7 +229,7 @@ export function TransportBookingCard({
       </div>
 
       {/* Action row */}
-      {!readOnly && option.isPartnerizeSourced && option.bookingType === "affiliate" && !effectivelyBooked && !effectivelyConfirmed && !isCancelled && (
+      {!readOnly && option.isPartnerizeSourced && option.bookingType === "affiliate" && !isBooked && !isConfirmed && !isCancelled && (
         <div className="pt-1">
           <PartnerizeBookingCTA
             tripId={tripId}
@@ -290,7 +237,7 @@ export function TransportBookingCard({
             partnerName={option.title}
             partnerId={option.partnerizePartnerId}
             offerTitle={option.title}
-            directUrl={option.externalUrl || "#"}
+            transportOptionId={option.id}
             itemType={option.modeType}
           />
         </div>
@@ -298,59 +245,14 @@ export function TransportBookingCard({
       {!readOnly && !(option.isPartnerizeSourced && option.bookingType === "affiliate") && (
         <div className="flex items-center gap-2 flex-wrap pt-1">
           {actionButton()}
-          {/* "Mark as booked" trigger — shown after clicking affiliate link, before the panel is open */}
-          {hasClicked && !effectivelyBooked && !showMarkBooked && option.bookingType === "affiliate" && (
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-xs text-gray-500 hover:text-gray-800"
-              onClick={() => setShowMarkBooked(true)}
-              data-testid={`button-mark-booked-${option.id}`}
-            >
-              ✓ Mark as booked
-            </Button>
-          )}
         </div>
       )}
 
       {/* Confirmation ref display — shown when booked/confirmed with a ref */}
-      {effectivelyBooked && (savedConfirmationRef || option.confirmationRef) && (
+      {isBooked && option.confirmationRef && (
         <div className="flex items-center gap-1.5 text-xs text-green-700 dark:text-green-300 bg-green-50 dark:bg-green-900/20 rounded-md px-2.5 py-1.5" data-testid={`text-confirmation-ref-${option.id}`}>
           <CheckCircle2 className="h-3 w-3 shrink-0" />
-          <span>Ref: <span className="font-medium">{savedConfirmationRef || option.confirmationRef}</span></span>
-        </div>
-      )}
-
-      {/* Mark as booked panel */}
-      {showMarkBooked && !effectivelyBooked && (
-        <div className="mt-2 p-3 rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 space-y-2">
-          <p className="text-xs font-medium text-blue-800 dark:text-blue-200">Did you complete the booking?</p>
-          <div className="flex items-center gap-2">
-            <Input
-              placeholder="Confirmation ref (optional)"
-              value={confirmationRef}
-              onChange={e => setConfirmationRef(e.target.value)}
-              className="h-7 text-xs flex-1"
-              data-testid={`input-confirmation-ref-${option.id}`}
-            />
-            <Button
-              size="sm"
-              className="h-7 text-xs bg-primary hover:bg-primary/90 text-white"
-              onClick={() => markBookedMutation.mutate()}
-              disabled={markBookedMutation.isPending}
-              data-testid={`button-confirm-booked-${option.id}`}
-            >
-              {markBookedMutation.isPending ? "Saving…" : "Yes, booked"}
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-7 text-xs"
-              onClick={() => setShowMarkBooked(false)}
-            >
-              Not yet
-            </Button>
-          </div>
+          <span>Ref: <span className="font-medium">{option.confirmationRef}</span></span>
         </div>
       )}
     </div>
