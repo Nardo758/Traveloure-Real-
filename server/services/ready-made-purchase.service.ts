@@ -14,7 +14,7 @@ import { db } from "../db";
 import { storage } from "../storage";
 import { trips, itineraryItems, readyMadeTrips, readyMadePurchases, expertEarnings, platformRevenue, tripCollaborators } from "@shared/schema";
 import { and, eq, inArray, ne } from "drizzle-orm";
-import { getBand, PLATFORM_FEE_RATE, PROCESSING_FEE_RATE } from "./commission";
+import { getBand, getExpertSplitRates, PROCESSING_FEE_RATE } from "./commission";
 import { availableAtFor, holdWindowDays } from "../config/earnings-hold.config";
 
 export interface FulfillResult {
@@ -28,8 +28,8 @@ export async function resolveReadyMadeTakeRate(): Promise<number> {
   const band = await getBand("ready_made_trip");
   if (band && band.rateType === "percent" && band.rate > 0 && band.rate < 1) return band.rate;
   // Same fallback posture as the resolver's data-model default: survive a missing band with the
-  // documented default rather than refusing a paid buyer their clone. fee-literal-ok (fallback only).
-  return PLATFORM_FEE_RATE;
+  // expert_standard band (admin-editable; ruling 25) rather than refusing a paid buyer their clone.
+  return (await getExpertSplitRates()).platformFeeRate;
 }
 
 /**
