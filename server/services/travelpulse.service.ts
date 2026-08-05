@@ -1248,7 +1248,7 @@ Return JSON:
         
         // AI-specific fields
         aiGeneratedAt: new Date(),
-        aiSourceModel: "grok-2-1212",
+        aiSourceModel: "grok-3", // provenance label — must match grok.service.ts GROK_MODEL
         aiBestTimeToVisit: result.seasonalInsights.bestTimeToVisit,
         aiSeasonalHighlights: result.seasonalInsights.monthlyHighlights,
         aiUpcomingEvents: result.seasonalInsights.upcomingEvents,
