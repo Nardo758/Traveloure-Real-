@@ -178,4 +178,46 @@ CLAUDE.md §-references cited by Phase 0 (§14/§15) survive the #418 slim; the 
 
 ---
 
-*Phase 0 prepared read-only @ `5941a4ff`; Phase 1 assertions + re-diff @ `89913e4a`.*
+# PHASE 2 — Kyoto bench fixture (R23) + admin bridge (A1) + D6 closure (a)
+
+**Phase 2 dispatch received 2026-08-05 (precondition: PR #419 merged ✓ squash `bfaba681`; cap check: Lane S's transition-log scope merged via #1028 → lane may proceed).**
+
+## §11 Re-diff findings (Phase 1 pin `89913e4a` → current main `bfaba681`)
+
+| # | Finding |
+|---|---|
+| E1 | **Sole delta on main is #419 itself** (this lane's Phase 1 squash). Neither Lane 6 residue nor further Lane S code merged between the pins — the anticipated diary-row-expectation movers did not move. All §9/§10 claims re-verified standing; no assertion flips required by the re-diff. |
+| E2 | **Dispatch-premise correction (recorded, not a ruling contradiction):** the R23 gate is "application guard + DB CHECK" in the dispatch text, but **no DB CHECK exists** on `local_expert_forms.status` — the schema comment is explicit: "The varchar column has no DB CHECK — this is the gate", the gate being `insertLocalExpertFormSchema` (strips `status`, clamps `expertType` against the enum — the privilege-escalation guard). Ruling 23 itself only requires the full lifecycle + never bypassing the gate, so the fixture work proceeds against the REAL gate at its actual layer; the missing DB CHECK is filed as a fixture-bench gap candidate for the journey suite's inventory. |
+| E3 | **Lifecycle vocabulary mapping:** the dispatch's draft → submitted → approved maps onto the actual machine as *unsubmitted (no row)* → `pending` (created by submission; Kyoto Knowledge-Bar scoring fires here) → `approved`/`rejected` (admin PATCH; approval flips `users.role` to the clamped `expertType`, `rejected` allows one resubmission back to `pending`). There is no distinct persisted "draft" state. |
+| E4 | **D6 part (b) pre-claim (recorded per dispatch):** J8 assertion + the Tier-3 negative (non-assigned actor forcing `delivered` must not mint an R7 credit) are claimed for the **journey-suite matrix** — not built in this lane. |
+| E5 | **D4 filed:** Task #1036 (*Retire the last 25/75 fee literals in routes.ts*) opened; the fee gate's roots (`server`, all `*.ts`) DO cover `server/routes.ts` (verified in `scripts/phase2-fee-gate.sh`, not assumed), so both sites now carry `fee-literal-debt:#1036` annotations per ruling 32. Fixing them is #1036's scope, not this lane's. |
+
+**D6 closure, part (a):** the Phase 1 fixtures that flipped to `delivered` could not and did not accrue R7 paid-request credits — the credit path requires an `expert_requests` row for the trip with a `paymentIntentId`, and the Phase 1 trip fixture has none. This is now a standing assertion, not a one-time observation: test `D6a` in `console-sigma-workspace-machine.http.test.ts` re-proves zero `expert_requests` for the trip and zero `expert_earnings` for the fixture expert on every run, immediately after the delivered flip.
+
+## §12 Fixture bench registry (journey suite's role/fixture inventory)
+
+| Fixture | Provenance | Login | Owned by | Status |
+|---|---|---|---|---|
+| `kyoto-temples@traveloure.test` | **Full lifecycle** — email-auth user → `POST` application (through `insertLocalExpertFormSchema`, the real gate) → `pending` → admin HTTP approval → `users.role='local_expert'`. Never a bare role flip: K4 asserts the `local_expert_forms` row exists with `status='approved'`, `city='Kyoto'`. | Standard convention password (`TestPass123!`); K4 proves login works every run. | console-sigma lane (built once here, consumed everywhere) | **SEEDED** in dev DB, durable (deliberately not cleaned up); K4 idempotently re-verifies or re-seeds |
+| Kyoto traveler / second Kyoto expert / admin bench accounts | — | — | journey suite | GAP — inventory items for the journey-suite wave (throwaway equivalents exist inside the Phase 2 test but are cleaned up) |
+
+## §13 Phase 2 assertion inventory
+
+**Code:** `server/__tests__/console-sigma-kyoto-bench.http.test.ts` (7/7 green; admin routes mounted over the same real-HTTP/email-auth recipe) + the `D6a` test added to the Phase 1 machine suite (10/10 green).
+
+| ID | Ruling | Assertion (every green = a DB fact) | Status |
+|---|---|---|---|
+| K1 | 23 | born-approved impossible: smuggled `status:'approved'` stripped by the gate → row lands `pending`; `expertType:'admin'` rejected (privilege-escalation clamp); submission alone flips no role | PASS |
+| K2 | 23 | approval cannot precede submission: PATCH on nonexistent application → 404 | PASS |
+| K3 | 23 | full lifecycle over real HTTP: `pending` → admin approval → form `approved` + `users.role` clamped flip to `local_expert` | PASS |
+| K4 | 23 | durable bench fixture seeded via the SAME lifecycle, idempotent (verified twice in a row); login with standard convention proven each run | PASS |
+| A1-403 | 20 | non-admin confirm → 403, NEITHER write lands | PASS |
+| A1-PF | 20 | partial-failure probe: poisoned `assigned_expert_id` (no users row) makes the advisor insert violate its FK inside the tx → rollback leaves no advisor row AND the lead un-flipped (both-or-neither) | PASS |
+| A1-TX | 20 | expected-PASS regression (spec flag #1): healthy confirm writes the advisor row (`assigned`/`draft`) AND flips `expert_requests.status='assigned'` in one transaction; second confirm idempotent (no duplicate) | PASS |
+| D6a | — (§9 D6) | delivered flip minted no R7 credit for a fixture without paid `expert_requests` (standing, every run) | PASS |
+
+**Standing-rule compliance:** dev DB only; throwaway fixtures cleaned in `after` (trip cascade + user deletes) — the K4 bench fixture is the sole intentional, registered survivor; tsc baseline untouched; no production code changes except the two `fee-literal-debt:#1036` comment annotations authorized by the dispatch.
+
+---
+
+*Phase 0 prepared read-only @ `5941a4ff`; Phase 1 assertions + re-diff @ `89913e4a`; Phase 2 bench + bridge assertions re-diffed @ `bfaba681`.*
