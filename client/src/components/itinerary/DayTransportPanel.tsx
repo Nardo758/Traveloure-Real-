@@ -123,8 +123,8 @@ interface LegBookingOption {
   estimatedMinutes?: number;
   rating?: number;
   reviewCount?: number;
-  externalUrl?: string;
-  deepLinkScheme?: string;
+  /** §16: the server never ships externalUrl — only whether a bookable link exists. */
+  hasBookingLink?: boolean;
   isRecommended?: boolean;
   bookingStatus?: string;
   confirmationRef?: string | null;
@@ -395,9 +395,9 @@ function TransportLegCard({
   const modeIcon = TRANSPORT_MODE_ICONS[currentMode] || "🚌";
   const modeLabel = TRANSPORT_MODE_LABELS[currentMode] || currentMode;
 
-  const twelveGoUrl = destination
-    ? `https://12go.co/en/travel/${encodeURIComponent(leg.fromName.toLowerCase().replace(/\s+/g, '-'))}/${encodeURIComponent(leg.toName.toLowerCase().replace(/\s+/g, '-'))}?affiliate_id=13805109`
-    : null;
+  // §16: the client-built 12Go affiliate deep link that used to live here is gone (it was
+  // already unused — computed and never rendered). Transport booking runs through the
+  // booking-agent rail on TransportBookingCard; the affiliate id lives server-side only.
 
   return (
     <Card className={cn("border transition-all", getModeColor(currentMode))} data-testid={`transport-leg-card-${leg.legOrder}`}>

@@ -3,16 +3,19 @@
  *
  * Displays a multi-day transport pass recommendation
  * Shows: pass name, description, price, savings, rating, validity
+ *
+ * §16 (CLAUDE.md): the pass is a transport_booking_options row; the hub DTO strips
+ * externalUrl (hasBookingLink flag only) and "book" routes through the booking-agent
+ * rail (POST /api/affiliate-booking-requests, transportOptionId reference) — the
+ * former POST /:id/click → window.open(redirectUrl) off-site hop is gone. When no
+ * server-side URL exists, the card shows an honest no-link state.
  */
 
-import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
-import { useToast } from "@/hooks/use-toast";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { ExternalLink, Star, TrendingDown } from "lucide-react";
+import { Star, TrendingDown, UserCheck, CheckCircle2 } from "lucide-react";
+import { useContentAgentBooking } from "@/hooks/use-content-agent-booking";
 
 export interface MultiDayPass {
   id: string;
@@ -24,7 +27,8 @@ export interface MultiDayPass {
   savingsVsIndividual?: number;
   rating?: number;
   reviewCount?: number;
-  externalUrl?: string;
+  /** §16: the server never ships externalUrl — only whether a bookable link exists. */
+  hasBookingLink?: boolean;
   source: string;
   isRecommended?: boolean;
 }
@@ -35,34 +39,14 @@ interface MultiDayPassCardProps {
 }
 
 export function MultiDayPassCard({ pass, readOnly = false }: MultiDayPassCardProps) {
-  const { toast } = useToast();
-  const [isClicked, setIsClicked] = useState(false);
-
-  // Affiliate click mutation
-  const clickMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", `/api/transport-booking-options/${pass.id}/click`, {});
-      return res.json() as Promise<{ redirectUrl?: string }>;
-    },
-    onSuccess: (data) => {
-      setIsClicked(true);
-      if (data.redirectUrl) {
-        window.open(data.redirectUrl, "_blank");
-      }
-    },
-    onError: () => {
-      toast({
-        title: "Failed to open link",
-        description: "Please try again",
-        variant: "destructive",
-      });
-    },
+  const agentBooking = useContentAgentBooking({
+    itemName: pass.title,
+    itemDescription:
+      [pass.description, `${pass.passValidDays}-day pass`, pass.priceDisplay].filter(Boolean).join(" · ") || null,
+    partnerName: getPartnerName(pass.source),
+    partnerCategory: "transport-pass",
+    transportOptionId: pass.id,
   });
-
-  const handleViewPass = () => {
-    if (readOnly || isClicked) return;
-    clickMutation.mutate();
-  };
 
   const savingsAmount = pass.savingsVsIndividual ? (pass.savingsVsIndividual / 100).toFixed(2) : null;
 
@@ -120,26 +104,36 @@ export function MultiDayPassCard({ pass, readOnly = false }: MultiDayPassCardPro
         </span>
       </div>
 
-      {/* Action Button */}
-      <Button
-        onClick={handleViewPass}
-        disabled={isClicked || readOnly || clickMutation.isPending}
-        variant="outline"
-        size="sm"
-        className="w-full justify-center gap-2"
-      >
-        {clickMutation.isPending ? (
-          <>
-            <span className="animate-spin">⏳</span>
-            Loading...
-          </>
+      {/* Action: booking-agent rail, or honest no-link state (§16) */}
+      {pass.hasBookingLink ? (
+        agentBooking.requested ? (
+          <div
+            className="flex items-center justify-center gap-1.5 text-xs text-green-700 dark:text-green-300 bg-green-50 dark:bg-green-950/20 rounded-lg p-2"
+            data-testid={`text-pass-agent-requested-${pass.id}`}
+          >
+            <CheckCircle2 className="h-3.5 w-3.5" /> Booking request sent
+          </div>
         ) : (
-          <>
-            <ExternalLink className="h-3 w-3" />
-            {isClicked ? "Opened" : `View on ${getPartnerName(pass.source)}`}
-          </>
-        )}
-      </Button>
+          <Button
+            onClick={agentBooking.book}
+            disabled={readOnly || agentBooking.isPending}
+            variant="outline"
+            size="sm"
+            className="w-full justify-center gap-2"
+            data-testid={`button-pass-book-via-agent-${pass.id}`}
+          >
+            <UserCheck className="h-3 w-3" />
+            {agentBooking.isPending ? "Sending…" : "Book via agent"}
+          </Button>
+        )
+      ) : (
+        <div
+          className="text-xs text-muted-foreground italic text-center py-1"
+          data-testid={`text-pass-no-booking-link-${pass.id}`}
+        >
+          No booking link available
+        </div>
+      )}
 
       {/* Savings Info */}
       {savingsAmount && (

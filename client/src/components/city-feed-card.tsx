@@ -572,18 +572,26 @@ export function CityFeedCardGem({
     enabled: false,
   });
 
-  // Book/Reserve destination: prefer a matched platform service, else the gem's OWN booking
-  // signal (the same fields resolveBookability keyed on). Never "#" — without a real
-  // destination the button doesn't render at all.
+  // Book/Reserve destination — §16 sanitized at the read layer.
+  //
+  // This used to fall through to the gem record's OWN partner-URL fields
+  // (affiliateUrl / affiliateLink / bookingUrl / externalUrl), which are free-shape values
+  // carried on gem-ish feed records: an off-site partner booking CTA rendered straight from
+  // stored data, exactly what §16 forbids. Only IN-PLATFORM destinations are accepted now
+  // (a matched platform service, the gem's provider service, or a relative platform path);
+  // any absolute off-site URL is dropped. Historical stored rows are NOT rewritten (no data
+  // migration) — the client simply stops reading the partner-URL fields. Without an
+  // in-platform destination the Book button doesn't render at all (honest no-link state);
+  // the card keeps its informational body, "Ask" and "More info" actions. Never "#", never
+  // a fabricated link.
+  const platformPath: string | null =
+    typeof gem.platformBookingUrl === "string" && gem.platformBookingUrl.startsWith("/")
+      ? gem.platformBookingUrl
+      : null;
   const bookHref: string | null =
     suggestion?.href ??
     (gem.providerServiceId ? `/services/${gem.providerServiceId}` : null) ??
-    gem.platformBookingUrl ??
-    gem.affiliateUrl ??
-    gem.affiliateLink ??
-    gem.bookingUrl ??
-    gem.externalUrl ??
-    null;
+    platformPath;
   const typeMeta = gemTypeMeta(gem.placeType);
   const isTrending = gem.gemScore !== undefined && Number(gem.gemScore) >= 8.5;
 
@@ -722,10 +730,9 @@ export function CityFeedCardGem({
                 }).catch(() => {});
               }}
             >
-              <a
-                href={bookHref}
-                {...(bookHref.startsWith("http") ? { target: "_blank", rel: "noopener noreferrer" } : {})}
-              >
+              {/* bookHref is always an in-platform path (§16 sanitization above) — no
+                  target=_blank / off-site hop remains on this CTA. */}
+              <a href={bookHref}>
                 {resolvedBookability === "deeplink" ? "Reserve" : "Book"}
               </a>
             </Button>
