@@ -773,4 +773,13 @@ export const MIGRATION_FILES = [
   // clobber a deliberate admin edit back to 70/30. Create-only bootstrap remains in
   // server/services/booking-fee-bootstrap.ts. No schema change.
   "175_backfill_legacy_7030_booking_fee_default.sql",
+  // 176: retire the three writerless Amadeus-era cache tables (flight_cache, transfer_cache,
+  // safety_cache) — migration-158 precedent (deliberate recorded drop, idempotent IF EXISTS).
+  // Their writer died with the Amadeus drop (ruling 34); the last live route reader went in
+  // PR #425; the residual dead readers (scheduler no-op refresh loop, admin counters of a
+  // permanently-empty table, getCatalogItem transfer branch) are deleted in the same commit,
+  // as are the shared/schema.ts declarations (push-authoritative rule). hotel_offer_cache and
+  // poi_cache are writerless too but have LIVE readers — kept and flagged, NOT dropped here.
+  // See 176_retire_amadeus_flight_transfer_safety_cache.sql for the full per-table audit.
+  "176_retire_amadeus_flight_transfer_safety_cache.sql",
 ] as const;

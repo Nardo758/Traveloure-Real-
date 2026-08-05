@@ -2044,44 +2044,8 @@ export const activityCache = pgTable("activity_cache", {
   expiresAt: timestamp("expires_at").notNull(),
 });
 
-export const flightCache = pgTable("flight_cache", {
-  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
-  originCode: varchar("origin_code", { length: 10 }).notNull(),
-  destinationCode: varchar("destination_code", { length: 10 }).notNull(),
-  departureDate: date("departure_date").notNull(),
-  returnDate: date("return_date"),
-  adults: integer("adults").notNull(),
-  offerId: varchar("offer_id", { length: 100 }).notNull(),
-  carrierCode: varchar("carrier_code", { length: 10 }),
-  carrierName: varchar("carrier_name", { length: 100 }),
-  flightNumber: varchar("flight_number", { length: 20 }),
-  departureTime: varchar("departure_time", { length: 30 }),
-  arrivalTime: varchar("arrival_time", { length: 30 }),
-  duration: varchar("duration", { length: 30 }),
-  stops: integer("stops").default(0),
-  // Origin location details
-  originLatitude: decimal("origin_latitude", { precision: 10, scale: 7 }),
-  originLongitude: decimal("origin_longitude", { precision: 10, scale: 7 }),
-  originCity: varchar("origin_city", { length: 255 }),
-  originCountryCode: varchar("origin_country_code", { length: 10 }),
-  originAirportName: varchar("origin_airport_name", { length: 255 }),
-  // Destination location details
-  destinationLatitude: decimal("destination_latitude", { precision: 10, scale: 7 }),
-  destinationLongitude: decimal("destination_longitude", { precision: 10, scale: 7 }),
-  destinationCity: varchar("destination_city", { length: 255 }),
-  destinationCountryCode: varchar("destination_country_code", { length: 10 }),
-  destinationAirportName: varchar("destination_airport_name", { length: 255 }),
-  // Provider and pricing
-  provider: varchar("provider", { length: 100 }).default("amadeus"),
-  price: decimal("price", { precision: 10, scale: 2 }),
-  currency: varchar("currency", { length: 10 }).default("USD"),
-  cabin: varchar("cabin", { length: 50 }),
-  // For sorting
-  popularityScore: integer("popularity_score").default(0),
-  rawData: jsonb("raw_data").default({}),
-  lastUpdated: timestamp("last_updated").defaultNow(),
-  expiresAt: timestamp("expires_at").notNull(),
-});
+// flight_cache RETIRED by migration 176 (writerless since the Amadeus drop, ruling 34;
+// last route reader deleted in PR #425). Do not re-declare without a new ruling.
 
 export const locationCache = pgTable("location_cache", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -2195,50 +2159,8 @@ export const poiCache = pgTable("poi_cache", {
   expiresAt: timestamp("expires_at").notNull(),
 });
 
-// ============ AMADEUS TRANSFER CACHE TABLE ============
-export const transferCache = pgTable("transfer_cache", {
-  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
-  offerId: varchar("offer_id", { length: 100 }).notNull(),
-  transferType: varchar("transfer_type", { length: 50 }).notNull(),
-  startLocationCode: varchar("start_location_code", { length: 10 }).notNull(),
-  endAddress: text("end_address"),
-  endCityName: varchar("end_city_name", { length: 255 }),
-  endLatitude: decimal("end_latitude", { precision: 10, scale: 7 }),
-  endLongitude: decimal("end_longitude", { precision: 10, scale: 7 }),
-  vehicleCode: varchar("vehicle_code", { length: 50 }),
-  vehicleCategory: varchar("vehicle_category", { length: 100 }),
-  vehicleDescription: text("vehicle_description"),
-  maxSeats: integer("max_seats"),
-  price: decimal("price", { precision: 10, scale: 2 }),
-  currency: varchar("currency", { length: 10 }).default("USD"),
-  provider: varchar("provider", { length: 100 }).default("amadeus"),
-  rawData: jsonb("raw_data").default({}),
-  lastUpdated: timestamp("last_updated").defaultNow(),
-  expiresAt: timestamp("expires_at").notNull(),
-});
-
-// ============ AMADEUS SAFETY RATING CACHE TABLE ============
-export const safetyCache = pgTable("safety_cache", {
-  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
-  amadeusId: varchar("amadeus_id", { length: 100 }).notNull().unique(),
-  name: varchar("name", { length: 500 }).notNull(),
-  subType: varchar("sub_type", { length: 50 }),
-  latitude: decimal("latitude", { precision: 10, scale: 7 }).notNull(),
-  longitude: decimal("longitude", { precision: 10, scale: 7 }).notNull(),
-  city: varchar("city", { length: 255 }),
-  country: varchar("country", { length: 100 }),
-  countryCode: varchar("country_code", { length: 10 }),
-  overallScore: integer("overall_score"),
-  lgbtqScore: integer("lgbtq_score"),
-  medicalScore: integer("medical_score"),
-  physicalHarmScore: integer("physical_harm_score"),
-  politicalFreedomScore: integer("political_freedom_score"),
-  theftScore: integer("theft_score"),
-  womenSafetyScore: integer("women_safety_score"),
-  rawData: jsonb("raw_data").default({}),
-  lastUpdated: timestamp("last_updated").defaultNow(),
-  expiresAt: timestamp("expires_at").notNull(),
-});
+// transfer_cache and safety_cache RETIRED by migration 176 (Amadeus-era, writerless,
+// no live reader — ruling 34). Do not re-declare without a new ruling.
 
 export const restaurantCache = pgTable("restaurant_cache", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -2262,12 +2184,9 @@ export const restaurantCache = pgTable("restaurant_cache", {
 export const insertHotelCacheSchema = createInsertSchema(hotelCache).omit({ id: true, lastUpdated: true });
 export const insertHotelOfferCacheSchema = createInsertSchema(hotelOfferCache).omit({ id: true, lastUpdated: true });
 export const insertActivityCacheSchema = createInsertSchema(activityCache).omit({ id: true, lastUpdated: true });
-export const insertFlightCacheSchema = createInsertSchema(flightCache).omit({ id: true, lastUpdated: true });
 export const insertLocationCacheSchema = createInsertSchema(locationCache).omit({ id: true, lastUpdated: true });
 export const insertFeverEventCacheSchema = createInsertSchema(feverEventCache).omit({ id: true, lastUpdated: true });
 export const insertPoiCacheSchema = createInsertSchema(poiCache).omit({ id: true, lastUpdated: true });
-export const insertTransferCacheSchema = createInsertSchema(transferCache).omit({ id: true, lastUpdated: true });
-export const insertSafetyCacheSchema = createInsertSchema(safetyCache).omit({ id: true, lastUpdated: true });
 export const insertUserFilterPreferencesSchema = createInsertSchema(userFilterPreferences).omit({ id: true, createdAt: true, updatedAt: true });
 
 export type HotelCache = typeof hotelCache.$inferSelect;
@@ -2276,14 +2195,8 @@ export type HotelOfferCache = typeof hotelOfferCache.$inferSelect;
 export type InsertHotelOfferCache = z.infer<typeof insertHotelOfferCacheSchema>;
 export type ActivityCache = typeof activityCache.$inferSelect;
 export type InsertActivityCache = z.infer<typeof insertActivityCacheSchema>;
-export type FlightCache = typeof flightCache.$inferSelect;
-export type InsertFlightCache = z.infer<typeof insertFlightCacheSchema>;
 export type PoiCache = typeof poiCache.$inferSelect;
 export type InsertPoiCache = z.infer<typeof insertPoiCacheSchema>;
-export type TransferCache = typeof transferCache.$inferSelect;
-export type InsertTransferCache = z.infer<typeof insertTransferCacheSchema>;
-export type SafetyCache = typeof safetyCache.$inferSelect;
-export type InsertSafetyCache = z.infer<typeof insertSafetyCacheSchema>;
 export type LocationCache = typeof locationCache.$inferSelect;
 export type InsertLocationCache = z.infer<typeof insertLocationCacheSchema>;
 export type FeverEventCache = typeof feverEventCache.$inferSelect;
