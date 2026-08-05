@@ -67,6 +67,10 @@ const STATIC_PROVIDERS: Record<string, StaticEntry> = {
     label: "Fever (via Impact.com)",
     isConfigured: () => !!(process.env.IMPACT_ACCOUNT_SID && process.env.IMPACT_AUTH_TOKEN),
   },
+  // server/services/travelpayouts/aviasales.service.ts: getTravelpayoutsToken() — the live flight
+  // price source behind /api/catalog/flights (the route previously mis-reported health under the
+  // retired "kiwi" label; fixed in the flight-repoint change, Aug 2026).
+  aviasales: { label: "Aviasales (Travelpayouts flights)", isConfigured: () => !!process.env.TRAVELPAYOUTS_TOKEN },
   // server/services/travelpayouts/getyourguide.service.ts: getTravelpayoutsToken()
   getyourguide: { label: "GetYourGuide (Travelpayouts feed)", isConfigured: () => !!process.env.TRAVELPAYOUTS_TOKEN },
   // server/services/travelpayouts/stasher.service.ts: getTravelpayoutsToken()

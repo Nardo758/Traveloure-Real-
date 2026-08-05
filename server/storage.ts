@@ -3172,9 +3172,13 @@ export class DatabaseStorage implements IStorage {
       conditions.push(eq(locationCache.locationType, locationType));
     }
     
+    // Rank BEFORE the limit: with the seeded IATA dataset (flight-repoint, Aug 2026) a broad
+    // substring like "san" matches far more than 20 rows — an unordered LIMIT would return an
+    // arbitrary slice. Highest traveler_score (major airports) first, NULLS LAST for legacy rows.
     return await db.select()
       .from(locationCache)
       .where(and(...conditions))
+      .orderBy(sql`${locationCache.travelerScore} DESC NULLS LAST`)
       .limit(20);
   }
 

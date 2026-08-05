@@ -20,6 +20,7 @@ import { seedDmoKyotoHeritage } from "./seeds/dmo-kyoto-heritage.seed";
 import { seedRoleScopedTemplates } from "./seeds/role-scoped-templates.seed";
 import { seedTripOwnership } from "./seeds/trip-ownership.seed";
 import { seedE2EAccounts, purgeE2EAccountsFromProd } from "./seeds/e2e-test-accounts.seed";
+import { seedLocationCache } from "./seeds/location-cache.seed";
 import { storage } from "./storage";
 import { grokDiscoveryService } from "./services/grok-discovery.service";
 import { setupWebSocket } from "./websocket";
@@ -415,6 +416,15 @@ async function runDatabaseSeeding() {
     }
   } catch (err) {
     logger.error({ err }, "Failed to seed trip ownership collaborators");
+  }
+
+  try {
+    const locationResult = await seedLocationCache();
+    if (locationResult.upserted > 0) {
+      logger.info({ count: locationResult.upserted }, "Seeded IATA airport/city location cache");
+    }
+  } catch (err) {
+    logger.error({ err }, "Failed to seed location cache");
   }
 
   // E2E test accounts — FAIL-SAFE gate (dispatch P0 fix, Jul 28 2026).
