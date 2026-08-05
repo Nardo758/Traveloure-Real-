@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { MapPin, Calendar, Users, ShoppingCart, Lock } from "lucide-react";
+import { MapPin, Calendar, Users, ShoppingCart, Lock, Heart } from "lucide-react";
 import { useTripContext } from "@/lib/trip-context";
 import { EditTripPanel } from "@/components/trip/edit-trip-panel";
 
@@ -87,8 +87,14 @@ export function TripStrip() {
   const marketing = MARKETING_PATHS.has(location);
 
   const destination = ctx.destination || ctx.city || "";
-  const lead =
-    vocab === "travel"
+  // A3 (docs/briefs/04): invite-aware Event-class variant — a context born from a
+  // guest invite (origin === "guest_invite", first-touch A2) with an Event-class
+  // vocabulary shows the invite's event framing. Graceful fallback: no event
+  // title carried → the generic strip, never a fabricated placeholder (§13).
+  const inviteAware = ctx.origin === "guest_invite" && vocab === "event" && !!ctx.title;
+  const lead = inviteAware
+    ? `You're planning for ${ctx.title}`
+    : vocab === "travel"
       ? "Your trip"
       : destination
         ? `Your ${destination.split(",")[0]} ${(ctx.experienceType || "").toLowerCase()}`.trim()
@@ -118,9 +124,14 @@ export function TripStrip() {
       data-testid="trip-strip"
     >
       <div className="container mx-auto px-4 py-1.5 flex items-center gap-2 flex-wrap text-sm">
-        <span className="flex items-center gap-1.5 font-semibold shrink-0" data-testid="trip-strip-lead">
-          <MapPin className="w-3.5 h-3.5 text-primary" />
-          <span className="capitalize">{lead}</span>
+        <span
+          className="flex items-center gap-1.5 font-semibold shrink-0"
+          data-testid="trip-strip-lead"
+          data-invite-aware={inviteAware ? "true" : undefined}
+        >
+          {inviteAware ? <Heart className="w-3.5 h-3.5 text-primary" /> : <MapPin className="w-3.5 h-3.5 text-primary" />}
+          {/* no `capitalize` on the invite lead — the event title keeps its own casing */}
+          <span className={inviteAware ? undefined : "capitalize"}>{lead}</span>
         </span>
 
         {destination && vocab === "travel" && (
