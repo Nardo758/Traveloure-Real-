@@ -15,24 +15,24 @@ Enumerated from actual routes + UI controls with file:line — recorded per-surf
 ## §8.3 Stripe wiring — CONFIRMED
 - Dev key: connector-fetched sk_test via scripts/dev-stripe-key.cjs in the Start workflow; boot guard (server/validate-env.ts:40-51 + server/utils/stripe-key-policy.ts) blocks sk_live in dev and sk_test in prod.
 - Webhooks: /api/webhooks/stripe (+ /stripe-identity), server/routes/webhooks.routes.ts:535/28; dev fallback accepts unverified payloads when the secret is absent (NODE_ENV!=='production') — journeys can drive webhooks with test-mode events without Stripe CLI.
-- Env allowlist enforcement point: isProdStrictEnv (stripe-key-policy.ts:29-34) + the seed/purge gate (server/index.ts:428-430, ALLOW_TEST_ACCOUNTS). **Named guard verdict: TRIVIAL — wire in this lane.** A CI-side check asserting the allowlist posture (dev/helium only; ALLOW_TEST_ACCOUNTS never set in prod deploy config) rides Wave 1 with the matrix lint, converting the "env allowlist" MISSING candidate in the guards register.
+- Env allowlist enforcement point: isProdStrictEnv (stripe-key-policy.ts:29-34) + the seed/purge gate (server/index.ts:428-430, ALLOW_TEST_ACCOUNTS). **Named guard verdict: TRIVIAL — wire in this lane.** A CI-side check asserting the allowlist posture (dev/helium only; ALLOW_TEST_ACCOUNTS never set in prod deploy config) rides Journey Wave 1 with the matrix lint, converting the "env allowlist" MISSING candidate in the guards register.
 
 ## §8.4 Test-DB helper — CONFIRMED
 scripts/journeys/lib/journey-lib.mjs already provides connectDb/dbOne/dbAll (read-only assertions, plain pg, no ORM). CI parallelism: one Postgres container per job (.github/actions/ci-db-setup); within a job, run-all.mjs enforces sequential journeys. No new machinery.
 
 ## §8.5 Seed/account gaps for J9/J11/J12
 Core roles exist (server/seeds/e2e-test-accounts.seed.ts:31): traveler, expert (kyoto-food), provider (kyoto-photography), **admin (test-admin@traveloure.test — DB role column, no env promotion)**, EA. kyoto-temples bench fixture is runner-owned (console-sigma) — consume, never re-seed.
-Gaps (all W4/post-W1 journeys — no Wave 1 blocker):
+Gaps (all W4/post-W1 journeys — no Journey Wave 1 blocker):
 - **J9:** no expert owns an authored ready-made + source trip; needs an authoring fixture (follow the Kyoto-bench reconciling-seeder pattern).
 - **J11:** no seeded provider is Stripe-Connect booking-ready (no stripe_account_id / can_receive_payments in seeds).
 - **J12:** no attributed short-link/acquisitionRef fixtures.
 
 ## §8 item 6 (dispatch addendum) — Amadeus-drop surface check
-Post ruling 34, these render empty: flight search (no fallback), POIs, safety, transfers, city/airport autocomplete (unless LocationCache-hit); hotels fall back to Booking.com on-page. **NO Wave-1 journey step depends on any of them** — J1/J2/J6/J7 run on Viator/Travelpayouts/OpenTable/gems content. Beta-gate finding (not a test workaround): flight search + location autocomplete are dead surfaces until repointed (project tasks #1040/#1041).
+Post ruling 34, these render empty: flight search (no fallback), POIs, safety, transfers, city/airport autocomplete (unless LocationCache-hit); hotels fall back to Booking.com on-page. **NO Journey Wave 1 journey step depends on any of them** — J1/J2/J6/J7 run on Viator/Travelpayouts/OpenTable/gems content. Beta-gate finding (not a test workaround): flight search + location autocomplete are dead surfaces until repointed (project tasks #1040/#1041).
 
 ## Ledger housekeeping done in this lane
 - Ruling 35 appended (two-layer born-approved enforcement; renumbered from collided 34 — Amadeus keeps 34). Enforcement task number pending (task-proposal throttled at append time; file by amendment).
 - Numbering rule appended to the protocol header: conversation numbers are provisional; the ledger is the number authority.
 
 ## HARD STOP
-Awaiting approval of this findings set + the seeded matrix before Wave 1 code (matrix lint · testable Tier-3 negatives · J1-minus-expert-leg · J2 · J6 · J7 · J13-minus-lane-5-swap, with Lane S log/version assertions active from day one).
+Awaiting approval of this findings set + the seeded matrix before Journey Wave 1 code (matrix lint · testable Tier-3 negatives · J1-minus-expert-leg · J2 · J6 · J7 · J13-minus-lane-5-swap, with Lane S log/version assertions active from day one).

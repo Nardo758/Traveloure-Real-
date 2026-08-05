@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Coverage-matrix lint (journey-suite Wave 1; brief §1/§6, DECISIONS.md ruling 21/27).
+ * Coverage-matrix lint (journey-suite Journey Wave 1; brief §1/§6, DECISIONS.md ruling 21/27).
  *
  * The matrix (docs/testing/coverage-matrix.md) is the single answer to "is X
  * tested?" Every surface×action cell claims ≥1 test id or is explicitly marked
@@ -23,6 +23,22 @@
  *      absent from the register ⇒ FAIL (unknown tag). A tag whose register
  *      status is `merged` yet still present in any cell ⇒ FAIL (its lane landed;
  *      the deferred test must now be built — ruling 21).
+ *   4. Expiry owner — every register row must carry an `owner:` naming who flips
+ *      the tag and on what event. Ruling 21 makes `deferred:` an EXPIRY marker,
+ *      so a tag with no owner (or one naming a point in time rather than a lane)
+ *      can never expire and its cells sit unclaimed while wearing a legitimate-
+ *      looking tag. Missing owner ⇒ FAIL. (Caught `deferred:post-wave-1`, which
+ *      tagged 19 cells with "expires at the next journey-suite wave" and nobody
+ *      to do it.)
+ *   5. Phase/wave namespacing (DECISIONS.md ruling 37) — in the journey lane's
+ *      own files, a phase/wave name must be namespaced to its lane: write
+ *      "Journey Wave 1", never a bare unqualified one ⇒ FAIL.
+ *      The rule exists because the bare name meant BOTH the journey suite's first wave
+ *      and the QA Punch List's Wave 1 (docs/planning/QA_PUNCH_LIST.md, Aug 1,
+ *      PRs #363/#364/#365), which made "is Wave 1 done?" unanswerable — and the
+ *      journey-suite squash (d45fcd0f, PR #421) additionally carried the Amadeus
+ *      decommission (ruling 34) under the same name. A line that deliberately
+ *      QUOTES the ambiguous form carries `wave-name-ok`.
  *
  * Node built-ins only — no npm ci needed. Self-test: --self-test
  */
@@ -40,6 +56,44 @@ const REGISTER_HEADING = "deferred-tag register";
 
 const TEST_ID_RE = /\b(?:J\d+(?:\.\d+)?|F-[a-z0-9-]+|N\d+|N-[a-z-]+)\b/g;
 const DEFERRED_RE = /deferred:([a-z0-9-]+)/gi;
+
+// ── Rule 5: phase/wave namespacing (ruling 37) ────────────────────────────────
+// Files owned by the journey-suite lane whose wave names must be namespaced.
+// Paths are repo-relative; a missing file is skipped (not a failure) so the guard
+// survives a rename without turning into a tripwire on the wrong thing.
+const NAMESPACE_SCAN_FILES = [
+  path.join("docs", "testing", "coverage-matrix.md"),
+  path.join("docs", "planning", "JOURNEY_TEST_SUITE_BRIEF.md"),
+  path.join("docs", "planning", "journey-suite-phase0-findings.md"),
+  path.join(".github", "workflows", "journey-suite.yml"),
+  path.join("playwright", "tests", "journeys", "_journey-helpers.ts"),
+  path.join("playwright", "tests", "journeys", "j1-golden-path.spec.ts"),
+  path.join("playwright", "tests", "journeys", "j2-ai-entry.spec.ts"),
+  path.join("playwright", "tests", "journeys", "j6-optimizer-contract.spec.ts"),
+  path.join("playwright", "tests", "journeys", "j7-discovery.spec.ts"),
+  path.join("playwright", "tests", "journeys", "j13-share.spec.ts"),
+  path.join("server", "__tests__", "journey-suite-negatives.http.test.ts"),
+  // NOT this file: the guard's own source necessarily quotes both the good and the bad
+  // form (docs + self-test fixtures), so scanning itself would be a self-reference trap.
+];
+
+// Escape hatch: a line that deliberately QUOTES the ambiguous form — recording the
+// decision-maker's exact words, or naming the collision the rule exists to prevent —
+// carries `wave-name-ok` and is exempt. Use it for quotation, never for new prose.
+const WAVE_NAME_OK = /wave-name-ok/;
+
+// Captures the word immediately before a "Wave <N>" / "Wave-<N>" mention (if any).
+const WAVE_MENTION_RE = /(?:\b([A-Za-z][A-Za-z-]*)\s+)?\bWave[\s-](\d+)\b/g;
+
+// Words that do NOT namespace a wave — an article/preposition/adjective in front of
+// "Wave 1" leaves it just as ambiguous as a bare one.
+const NON_NAMESPACE_WORDS = new Set([
+  "the", "a", "an", "this", "that", "each", "every", "next", "last", "first",
+  "in", "at", "on", "to", "of", "for", "by", "from", "and", "or", "but",
+  "post", "pre", "after", "before", "during", "until", "since", "per",
+  "is", "was", "are", "were", "be", "been", "not", "no", "all", "any",
+  "build", "wave", "waves", "one", "two", "three", "four",
+]);
 
 function isTableRow(line) {
   return /^\s*\|.*\|\s*$/.test(line);
@@ -62,6 +116,7 @@ function parseMatrix(text) {
   const lines = text.split("\n");
   const claimCells = [];
   const register = new Map();
+  const registerRowText = new Map(); // tag → the row's remaining columns (owner lookup)
   let section = "(preamble)";
   let excluded = false;
   let inRegister = false;
@@ -97,7 +152,10 @@ function parseMatrix(text) {
         // Register row: | tag | status | ... |
         const tag = (cells[0] || "").replace(/^deferred:/i, "").trim().toLowerCase();
         const status = (cells[1] || "").trim().toLowerCase();
-        if (tag && (status === "open" || status === "merged")) register.set(tag, status);
+        if (tag && (status === "open" || status === "merged")) {
+          register.set(tag, status);
+          registerRowText.set(tag, cells.slice(2).join(" | "));
+        }
       } else if (!excluded) {
         // Claim table: last column is the claim; first column is the action.
         const action = cells[0] || "";
@@ -107,7 +165,27 @@ function parseMatrix(text) {
       i++;
     }
   }
-  return { claimCells, register };
+  return { claimCells, register, registerRowText };
+}
+
+/**
+ * Rule 5 helper — every "Wave <N>" mention must be namespaced to its lane
+ * (ruling 37). Returns a list of offending mentions with 1-based line numbers.
+ */
+function unnamespacedWaveMentions(text) {
+  const offenders = [];
+  text.split("\n").forEach((line, idx) => {
+    if (WAVE_NAME_OK.test(line)) return;
+    WAVE_MENTION_RE.lastIndex = 0;
+    let m;
+    while ((m = WAVE_MENTION_RE.exec(line))) {
+      const prev = (m[1] || "").toLowerCase();
+      if (!prev || NON_NAMESPACE_WORDS.has(prev)) {
+        offenders.push({ line: idx + 1, text: m[0].trim(), context: line.trim().slice(0, 140) });
+      }
+    }
+  });
+  return offenders;
 }
 
 function collectTestAnnotations(root) {
@@ -158,9 +236,9 @@ function hasAnyClaimMark(claim) {
   return TEST_ID_RE.test(claim);
 }
 
-function lint({ matrixText, testIds }) {
+function lint({ matrixText, testIds, namespaceFiles = {} }) {
   const failures = [];
-  const { claimCells, register } = parseMatrix(matrixText);
+  const { claimCells, register, registerRowText } = parseMatrix(matrixText);
 
   if (claimCells.length === 0) failures.push("No claim cells parsed from the matrix — table format drifted?");
   if (register.size === 0) failures.push("No Deferred-tag register parsed — add a `## Deferred-tag register` table with tag/status columns.");
@@ -207,6 +285,26 @@ function lint({ matrixText, testIds }) {
     }
   }
 
+  // Rule 4: every registered tag names an expiry owner (ruling 21 — a tag with no
+  // owner can never flip to `merged`, so its cells are unclaimed-wearing-a-tag).
+  for (const [tag] of register) {
+    const rest = registerRowText.get(tag) || "";
+    if (!/owner:\s*\S/i.test(rest)) {
+      failures.push(
+        `Deferred tag "deferred:${tag}" has no expiry owner — add an \`owner: <lane> — flips \`merged\` when …\` column to its register row (ruling 21).`,
+      );
+    }
+  }
+
+  // Rule 5: phase/wave namespacing (ruling 37).
+  for (const [file, text] of Object.entries(namespaceFiles)) {
+    for (const o of unnamespacedWaveMentions(text)) {
+      failures.push(
+        `Unnamespaced phase/wave name "${o.text}" — ${file}:${o.line}: write "Journey Wave <N>" (ruling 37: phase/wave names are namespaced to their lane). Context: ${o.context}`,
+      );
+    }
+  }
+
   return { failures, register, usedTags };
 }
 
@@ -231,10 +329,10 @@ function selfTest() {
     "| foo.spec.ts | this row has no test id and must be IGNORED |",
     "",
     "## Deferred-tag register",
-    "| deferred tag | status | notes |",
-    "|---|---|---|",
-    "| deferred:some-lane | open | a lane |",
-    "| deferred:landed-lane | merged | a lane that landed |",
+    "| deferred tag | status | notes | expiry owner |",
+    "|---|---|---|---|",
+    "| deferred:some-lane | open | a lane | owner: some lane — flips `merged` when it merges |",
+    "| deferred:landed-lane | merged | a lane that landed | owner: landed lane — flipped on merge |",
   ].join("\n");
 
   const r1 = lint({ matrixText: goodMatrix, testIds });
@@ -273,7 +371,28 @@ function selfTest() {
   const r8 = lint({ matrixText: noReg, testIds });
   const ok8 = r8.failures.some((f) => f.includes("Deferred-tag register"));
 
-  const cases = { ok1, ok2, ok3, ok4, ok5, ok6, ok7, ok8 };
+  // Rule 4: a register row with no `owner:` fails.
+  const noOwner = goodMatrix.replace(
+    "| deferred:some-lane | open | a lane | owner: some lane — flips `merged` when it merges |",
+    "| deferred:some-lane | open | a lane | expires at the next wave |",
+  );
+  const r9 = lint({ matrixText: noOwner, testIds });
+  const ok9 = r9.failures.some((f) => f.includes("deferred:some-lane") && f.includes("expiry owner"));
+
+  // Rule 5: an unnamespaced "Wave <N>" in a scanned file fails; "Journey Wave 1" passes.
+  const r10 = lint({
+    matrixText: goodMatrix,
+    testIds,
+    namespaceFiles: { "fake.md": "Journey Wave 1 is fine.\nWave 2 is not.\n" },
+  });
+  const ok10 =
+    r10.failures.some((f) => f.includes("Unnamespaced phase/wave name") && f.includes("Wave 2") && f.includes("fake.md:2")) &&
+    !r10.failures.some((f) => f.includes('"Journey Wave 1"'));
+  // …and "the Wave 3" is just as ambiguous as a bare one.
+  const r11 = lint({ matrixText: goodMatrix, testIds, namespaceFiles: { "fake.md": "built in the Wave 3 pass" } });
+  const ok11 = r11.failures.some((f) => f.includes("Unnamespaced phase/wave name"));
+
+  const cases = { ok1, ok2, ok3, ok4, ok5, ok6, ok7, ok8, ok9, ok10, ok11 };
   if (!Object.values(cases).every(Boolean)) {
     console.error("SELF-TEST FAILED", cases);
     console.error("r1", r1.failures);
@@ -283,10 +402,13 @@ function selfTest() {
     if (!ok5) console.error("r5", r5.failures);
     if (!ok6) console.error("r6", r6.failures);
     if (!ok8) console.error("r8", r8.failures);
+    if (!ok9) console.error("r9", r9.failures);
+    if (!ok10) console.error("r10", r10.failures);
+    if (!ok11) console.error("r11", r11.failures);
     process.exit(1);
   }
   console.log(
-    "self-test OK (completeness · id-existence · deferred-exempt · unknown-tag · merged-tag · absorption-ignored · register-required)",
+    "self-test OK (completeness · id-existence · deferred-exempt · unknown-tag · merged-tag · absorption-ignored · register-required · expiry-owner · wave-namespacing)",
   );
   process.exit(0);
 }
@@ -295,7 +417,13 @@ if (process.argv.includes("--self-test")) selfTest();
 
 const matrixText = fs.readFileSync(MATRIX, "utf8");
 const testIds = collectTestAnnotations(ROOT);
-const { failures, register, usedTags } = lint({ matrixText, testIds });
+const namespaceFiles = {};
+for (const rel of NAMESPACE_SCAN_FILES) {
+  const abs = path.join(ROOT, rel);
+  if (!fs.existsSync(abs)) continue; // renamed/removed file is not a tripwire
+  namespaceFiles[rel] = fs.readFileSync(abs, "utf8");
+}
+const { failures, register, usedTags } = lint({ matrixText, testIds, namespaceFiles });
 
 // Report unused registered tags as a non-failing note (drift signal, not a gate).
 for (const [tag, status] of register) {

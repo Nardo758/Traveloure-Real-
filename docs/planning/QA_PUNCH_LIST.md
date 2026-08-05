@@ -3,6 +3,11 @@
 Living list from the decision-maker's hands-on QA + the exploratory build-content test pass.
 Items are struck through when merged to main (with the PR). Decision-maker calls are marked **[DM]**.
 
+**Naming (DECISIONS.md ruling 37):** the waves below are this lane's own — read every "Wave N" here as
+**QA Punch List Wave N**. They are unrelated to the journey suite's **Journey Wave 1–4**
+(`docs/planning/JOURNEY_TEST_SUITE_BRIEF.md` §7). The two series collided on the bare name "Wave 1"
+and made a real status question unanswerable; new prose in either lane must namespace it.
+
 ## Fixed (Aug 1 round — PRs #359 / #360 / #361)
 
 - ~~Platform-services search box was a no-op within a destination~~ (#361 — query text now actually filters)
