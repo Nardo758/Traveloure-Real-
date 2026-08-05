@@ -95,8 +95,6 @@ jobs:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
           SESSION_SECRET: ci-test-secret-not-for-production
           STRIPE_SECRET_KEY: sk_test_ci_stub_no_real_calls
-          AMADEUS_API_KEY: amadeus-ci-stub-no-real-calls
-          AMADEUS_API_SECRET: amadeus-ci-stub-no-real-calls
           GIT_COMMIT: ${{ github.sha }}
           NODE_ENV: production
           # P0 fail-safe gate (server/index.ts): a production-bundle boot purges
