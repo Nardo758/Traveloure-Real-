@@ -81,10 +81,12 @@ const STATIC_PROVIDERS: Record<string, StaticEntry> = {
   tiqets: { label: "Tiqets", isConfigured: () => !!process.env.TRAVELPAYOUTS_TOKEN },
   // server/services/pexels.service.ts: `process.env.PEXELS_API_KEY`
   pexels: { label: "Pexels", isConfigured: () => !!process.env.PEXELS_API_KEY },
-  // server/services/amadeus.service.ts: AMADEUS_API_KEY + AMADEUS_API_SECRET
+  // DROPPED — DECISIONS.md ruling 34 (2026-08-05): Amadeus Self-Service decommissioned
+  // upstream; keys 401 on the new domain; service short-circuits to empty results.
+  // isConfigured=false keeps the dashboard honest ("not configured", never "down").
   amadeus: {
-    label: "Amadeus",
-    isConfigured: () => !!(process.env.AMADEUS_API_KEY && process.env.AMADEUS_API_SECRET),
+    label: "Amadeus (dropped — ruling 34)",
+    isConfigured: () => false,
   },
   // server/services/serp.service.ts: `process.env.SERP_API_KEY`
   serpapi: { label: "SerpAPI", isConfigured: () => !!process.env.SERP_API_KEY },
