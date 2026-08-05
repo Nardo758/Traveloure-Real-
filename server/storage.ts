@@ -690,6 +690,7 @@ export interface IStorage {
   // === Optimization gate ===
   getRecentOptimizationRun(userId: string, cutoffDate: Date): Promise<{ id: string } | null>;
   getComparisonByOptimizationPaymentId(paymentId: string): Promise<{ id: string } | null>;
+  sweepStaleGeneratingComparisons(staleBefore: Date): Promise<Array<{ id: string; userId: string }>>;
   getExperienceTypeSlugByExperienceId(experienceId: string): Promise<string | null>;
   getCartItemsWithServices(userId: string): Promise<Array<{ cartItem: any; service: any | null }>>;
   getActiveProviderServices(limit?: number): Promise<any[]>;
@@ -5546,6 +5547,29 @@ export class DatabaseStorage implements IStorage {
       .where(eq(itineraryComparisons.optimizationPaymentId, paymentId))
       .limit(1);
     return row ?? null;
+  }
+
+  /**
+   * Stale-generating sweep (server-restart orphan): flips `itineraryComparisons` rows stuck at
+   * status='generating' — because the in-memory background AI job that owned them died with a
+   * server restart/crash — to status='failed'. §15 atomic conditional UPDATE: the WHERE clause
+   * (status='generating' AND updatedAt < staleBefore) is itself the concurrency guard, so a
+   * concurrent sweep tick or a still-alive job matches nothing extra; a second pass over the same
+   * row is a no-op. The generation job's own success/failure writes
+   * (server/itinerary-optimizer.ts) are plain unconditional updates keyed only on id, so if the
+   * job WAS actually still alive and later finishes, its write legitimately overwrites this
+   * 'failed' verdict with the real outcome — acceptable because that means the job genuinely
+   * finished, not a race with a dead job.
+   */
+  async sweepStaleGeneratingComparisons(staleBefore: Date): Promise<Array<{ id: string; userId: string }>> {
+    const rows = await db.update(itineraryComparisons)
+      .set({ status: 'failed', updatedAt: new Date() } as any)
+      .where(and(
+        eq(itineraryComparisons.status, 'generating'),
+        lte(itineraryComparisons.updatedAt, staleBefore),
+      ))
+      .returning({ id: itineraryComparisons.id, userId: itineraryComparisons.userId });
+    return rows;
   }
 
   async getExperienceTypeSlugByExperienceId(experienceId: string): Promise<string | null> {
