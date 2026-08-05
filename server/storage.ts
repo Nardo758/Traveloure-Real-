@@ -5871,12 +5871,27 @@ export class DatabaseStorage implements IStorage {
   // ─── Guest Invite System ──────────────────────────────────────────────────
 
   async getInviteByToken(token: string): Promise<{ invite: EventInvite; experience: any } | null> {
-    const [row] = await db.select({ invite: eventInvites, experience: userExperiences })
+    // experienceTypeName join (Guest-invite A2): the parent experience's type name
+    // (e.g. "Wedding") rides along so the guest surface can stamp TripContext's
+    // Event-class vocabulary. Guest-safe — exposure is still gated by
+    // redactExperienceForGuest in guest-invites.ts.
+    const [row] = await db.select({
+      invite: eventInvites,
+      experience: userExperiences,
+      experienceTypeName: experienceTypes.name,
+    })
       .from(eventInvites)
       .leftJoin(userExperiences, eq(eventInvites.experienceId, userExperiences.id))
+      .leftJoin(experienceTypes, eq(userExperiences.experienceTypeId, experienceTypes.id))
       .where(eq(eventInvites.uniqueToken, token))
       .limit(1);
-    return row ?? null;
+    if (!row) return null;
+    return {
+      invite: row.invite,
+      experience: row.experience
+        ? { ...row.experience, experienceTypeName: row.experienceTypeName }
+        : row.experience,
+    };
   }
 
   async getInviteById(inviteId: string): Promise<EventInvite | null> {
