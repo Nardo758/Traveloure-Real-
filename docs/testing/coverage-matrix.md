@@ -1,11 +1,14 @@
 # Coverage Matrix — surface × action
 
-**Status:** SEEDED (Phase 0, journey-suite Wave 1) — awaiting HARD-STOP approval. No test code exists yet for unclaimed-by-existing-suite cells; claims below are pre-claims per brief §6.
+**Status:** HARD-STOP **APPROVED 2026-08-05 @ ea0bbc05** (decision-maker mdixon5030, in conversation: "Approved — build Wave 1" <!-- wave-name-ok: verbatim quotation of the approval -->). Recorded retroactively on 2026-08-05: the approval was given and the build proceeded (PR #421 `d45fcd0f`), but it never crossed into the repo — this line closes that gap. **This is a record of the approval that happened; it is NOT a new approval request and nothing was re-run to obtain it.**
+**What was approved (the scrutiny set):** the Journey Wave 1 scope of brief §7 — *matrix + lint · Tier-3 negatives that are testable today · J1-minus-expert-leg · J2 · J6 · J7 · J13-minus-lane-5-swap* — reviewed against the Phase 0 findings set (`docs/planning/journey-suite-phase0-findings.md`) and this seeded matrix (brief §8 item 6: "Return findings + the seeded matrix for approval before Journey Wave 1 code"). Journey Waves 2–4 were **not** approved by this HARD STOP; each takes its own.
+**Post-approval build state:** Journey Wave 1 code has LANDED. Cells claimed by a Journey Wave 1 test id are live claims; cells carrying `deferred:` are still pre-claims per brief §6.
 **Sources:** rows from `docs/briefs/SLIP_EXPERIENCE_DISPATCH.md` §4 disposition + brief §1 supply-side additions; columns enumerated from actual routes/UI (file:line, Phase 0 item 1); NEVER cells from `docs/briefs/ROUTING_STATE_CONTRACT.md`.
 **Cell legend:** `J*` journey step · `F*` feature spec · `N*` contract negative · `EX:*` existing test absorbed (cited) · `deferred:<lane>` feature unbuilt · `n/a:<reason>`.
-**Lint rule (brief §6):** every cell claimed or marked; referenced test ids must exist in-repo once Wave 1 lands; `deferred:` tags expire when their lane merges. Landing the lint expires the standing ledger warning `[matrix-lint deferred:journey-suite-wave-1]` (rulings 21/27).
+**Lint rule (brief §6):** every cell claimed or marked; referenced test ids must exist in-repo once Journey Wave 1 lands; `deferred:` tags expire when their lane merges. Landing the lint expires the standing ledger warning `[matrix-lint deferred:journey-suite-wave-1]` (rulings 21/27).
+**Naming (ruling 37, guarded by `scripts/check-coverage-matrix.cjs` rule 5):** waves in this document are **Journey Wave N**, never a bare unqualified "Wave N" — the unqualified name collides with the QA Punch List's own Wave 1–5 series (`docs/planning/QA_PUNCH_LIST.md`, Aug 1, PRs #363/#364/#365), and the journey-suite squash `d45fcd0f` (PR #421) additionally carried the Amadeus decommission (ruling 34) under that same unqualified name — so "is Wave 1 done?" had no answer. <!-- wave-name-ok: names the collision the rule prevents -->
 
-Wave key (brief §7): W1 = build now · W2 = post SLIP phase 4 · W3 = post Lane S activation wiring (Lane S itself MERGED #1028 — log assertions ACTIVE in W1 journeys) · W4 = post provider back-office P1.
+Wave key (brief §7): W1 = Journey Wave 1, build now · W2 = post SLIP phase 4 · W3 = post Lane S activation wiring (Lane S itself MERGED #1028 — log assertions ACTIVE in W1 journeys) · W4 = post provider back-office P1.
 
 ## 1. Slip / plan view (`/trip/:id` → `client/src/pages/trip-details.tsx`; slip specs A/B pending SLIP phase 4)
 | Action (file:line) | Claim |
@@ -149,13 +152,15 @@ Wave key (brief §7): W1 = build now · W2 = post SLIP phase 4 · W3 = post Lane
 
 ## Deferred-tag register
 
-Every `deferred:<lane>` tag used in a claim cell above must be registered here with a status. `open` = the lane has not merged; the tagged cells are legitimate pre-claims exempt from test-id existence. `merged` = the lane has landed; the matrix lint then FAILS on every cell still carrying that tag, forcing the deferred test to be built (rulings 21/27). An unknown tag in a cell (absent from this register) also FAILS. Wave-only markers ((W2)/→ W2/(W3)/(W4)/slip phase 4) were normalized into these explicit tags; `deferred:journey-suite-wave-1` is a LEDGER tag (ruling 21), NOT a matrix tag, and is intentionally absent here.
+Every `deferred:<lane>` tag used in a claim cell above must be registered here with a status **and a named expiry owner**. `open` = the lane has not merged; the tagged cells are legitimate pre-claims exempt from test-id existence. `merged` = the lane has landed; the matrix lint then FAILS on every cell still carrying that tag, forcing the deferred test to be built (rulings 21/27). An unknown tag in a cell (absent from this register) also FAILS. Wave-only markers ((W2)/→ W2/(W3)/(W4)/slip phase 4) were normalized into these explicit tags; `deferred:journey-suite-wave-1` is a LEDGER tag (ruling 21), NOT a matrix tag, and is intentionally absent here.
 
-| deferred tag | status | lane / notes |
-|---|---|---|
-| deferred:slip-phase-4 | open | SLIP dispatch phase 4 (surfaces A/B + Get Expert Help remediation); Wave 2 build |
-| deferred:wave-3-activation | open | post Lane S activation wiring — J5 money round-trip; Wave 3 build |
-| deferred:provider-backoffice-p1 | open | provider back-office P1 — provider surfaces §9; Wave 4 build |
-| deferred:lane-6 | open | optimizer residue (generation-time in-checkout rejection, ruling 4/15) |
-| deferred:G2 | open | guest→signup migration lane (ruling 5) — J4 |
-| deferred:post-wave-1 | open | Tier-2 breadth specs + later-wave journeys (F-adm/F-auth-2/F-cart/F-disc/F-msg/F-pay/F-slip; J3/J9/J11 admin+RM cells) — expires at the next journey-suite wave |
+**Expiry owner is mandatory (added 2026-08-05).** Ruling 21 makes a `deferred:` tag an *expiry* marker: it must name a lane that can actually merge and flip it to `merged`. A tag naming a point in time rather than a lane can never expire, so its cells sit unclaimed while wearing a legitimate-looking tag. Every row below therefore ends with `owner:` naming who flips it and on what event.
+
+| deferred tag | status | lane / notes | expiry owner + trigger |
+|---|---|---|---|
+| deferred:slip-phase-4 | open | SLIP dispatch phase 4 (surfaces A/B + Get Expert Help remediation); Journey Wave 2 build | owner: SLIP dispatch lane — flips `merged` when SLIP phase 4 merges |
+| deferred:wave-3-activation | open | post Lane S activation wiring — J5 money round-trip; Journey Wave 3 build | owner: journey-suite lane, Journey Wave 3 dispatch — flips `merged` when the Lane S activation wiring lands |
+| deferred:provider-backoffice-p1 | open | provider back-office P1 — provider surfaces §9; Journey Wave 4 build | owner: provider back-office lane — flips `merged` when back-office P1 merges |
+| deferred:lane-6 | open | optimizer residue (generation-time in-checkout rejection, ruling 4/15) | owner: Lane 6 (optimizer residue) — flips `merged` when Lane 6 merges |
+| deferred:G2 | open | guest→signup migration lane (ruling 5) — J4 | owner: G2 guest-migration lane — flips `merged` when G2 merges |
+| deferred:post-wave-1 | open | Tier-2 breadth specs + later-wave journeys (F-adm/F-auth-2/F-cart/F-disc/F-msg/F-pay/F-slip; J3/J9/J11 admin+RM cells). **PROVENANCE (audited 2026-08-05 @ ea0bbc05): NEW TAG, not a rename.** It has no predecessor anywhere in git — `docs/testing/coverage-matrix.md` has exactly one commit (`d45fcd0f`, PR #421) and the tag is present in that first version, while the brief, the Phase 0 findings and DECISIONS.md never mention it. It was minted mid-build to park cells that brief §3 (Tier 2) and §7 (Journey Waves 2–4) already scope, so the SCOPE is inside the approved set — but the TAG was not among the four presented at the HARD STOP (slip-phase-4, lane-6, G2, journey-suite-wave-1), and as a time-name rather than a lane-name it had no way to expire. Now owned. | owner: journey-suite lane, **Journey Wave 2 dispatch** — that dispatch MUST either build each tagged cell's F-/J- spec or re-tag it to the specific lane that owes it; the tag flips `merged` when Journey Wave 2 merges, which then FAILS the lint on every cell still carrying it (ruling 21) |
