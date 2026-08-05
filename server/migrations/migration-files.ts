@@ -768,4 +768,9 @@ export const MIGRATION_FILES = [
   // re-seeds expert_standard (0.25) so the 75/25 safety net lives in the single source of truth.
   // Behavior-neutral: ON CONFLICT DO NOTHING; no schema change.
   "174_seed_experience_cart_band.sql",
+  // 175: one-time legacy 70/30 → 75/25 booking_fee_configs backfill (Task #1036, ruling 32).
+  // Moved out of the server/routes.ts startup path, where re-running every boot could
+  // clobber a deliberate admin edit back to 70/30. Create-only bootstrap remains in
+  // server/services/booking-fee-bootstrap.ts. No schema change.
+  "175_backfill_legacy_7030_booking_fee_default.sql",
 ] as const;
