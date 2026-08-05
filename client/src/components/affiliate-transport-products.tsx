@@ -15,8 +15,6 @@ interface AffiliateProduct {
   shortDescription: string | null;
   price: string | null;
   currency: string;
-  productUrl: string;
-  affiliateUrl: string;
   imageUrl: string | null;
   category: string;
   city: string | null;
@@ -43,7 +41,6 @@ interface AffiliateTransportProductsProps {
     provider: string;
     details?: string;
     isExternal: boolean;
-    affiliateUrl: string;
   }) => void;
 }
 
@@ -91,7 +88,8 @@ export function AffiliateTransportProducts({
   });
 
   // §16 (item ④): a specific affiliate-product "Book" routes through the in-platform agent rail —
-  // never a raw window.open(affiliateUrl). The server keeps the URL private and an agent books it.
+  // never a raw window.open. §16 closure: the client sends only the registry row id
+  // (affiliateProductId) — the server resolves the partner URL from the DB row itself.
   const bookViaAgent = useMutation({
     mutationFn: (product: AffiliateProduct) =>
       apiRequest("POST", "/api/affiliate-booking-requests", {
@@ -99,7 +97,21 @@ export function AffiliateTransportProducts({
         itemDescription: product.description || product.shortDescription || null,
         partnerName: "12Go Asia",
         partnerCategory: "transport",
-        affiliateUrl: product.affiliateUrl,
+        affiliateProductId: product.id,
+        travelers: 1,
+      }),
+    onSuccess: () => toast({ title: "Booking request sent", description: "Our booking agent will handle this and add it to your trip." }),
+    onError: (e: any) => toast({ variant: "destructive", title: "Couldn't send request", description: e?.message || "Please try again." }),
+  });
+
+  const browseViaAgent = useMutation({
+    mutationFn: () =>
+      apiRequest("POST", "/api/affiliate-booking-requests", {
+        itemName: `Ground transport${destination ? ` in ${destination}` : ""}`,
+        itemDescription: "Trains, buses, ferries via 12Go Asia",
+        partnerName: "12Go Asia",
+        partnerCategory: "transport",
+        partnerRoute: { partner: "12go", origin: origin || undefined, destination: destination || undefined },
         travelers: 1,
       }),
     onSuccess: () => toast({ title: "Booking request sent", description: "Our booking agent will handle this and add it to your trip." }),
@@ -127,7 +139,6 @@ export function AffiliateTransportProducts({
         provider: "12Go Asia",
         details: product.description || product.shortDescription || undefined,
         isExternal: true,
-        affiliateUrl: product.affiliateUrl
       });
     }
   };
@@ -200,16 +211,13 @@ export function AffiliateTransportProducts({
           <p className="text-sm text-muted-foreground mb-4">
             Book trains, buses, and ferries for your trip via 12Go Asia.
           </p>
+          {/* §16 closure: no client-built partner URL — the server constructs the 12Go deep
+              link itself from the route params (partnerRoute reference). */}
           <Button
             variant="outline"
             className="w-full"
-            disabled={bookViaAgent.isPending}
-            onClick={() => bookViaAgent.mutate({
-              id: "browse",
-              name: `Ground transport${destination ? ` in ${destination}` : ""}`,
-              description: "Trains, buses, ferries via 12Go Asia",
-              affiliateUrl: `https://12go.asia/en?affiliate_id=13805109${destination ? `&q=${encodeURIComponent(destination)}` : ''}`,
-            } as AffiliateProduct)}
+            disabled={browseViaAgent.isPending}
+            onClick={() => browseViaAgent.mutate()}
             data-testid="button-browse-12go"
           >
             Find Transportation Options

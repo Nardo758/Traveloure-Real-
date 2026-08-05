@@ -36,9 +36,9 @@ function BookRideButton({ leg, activityName }: { leg: PlanCardLegData; activityN
         itemDescription: leg.fromName && leg.toName ? `${leg.fromName} → ${leg.toName}` : null,
         partnerName: null,
         partnerCategory: "transport",
-        // §16: the affiliate URL is only ever forwarded to the server here, never
-        // opened directly client-side — the booking agent books through it.
-        affiliateUrl: leg.bookingAffiliateUrl,
+        // §16 closure: opaque server-minted vault token — the client never holds the URL;
+        // the booking agent's URL is resolved server-side from the vault.
+        bookingToken: leg.bookingToken,
         travelers: 1,
       }),
     onSuccess: () => {

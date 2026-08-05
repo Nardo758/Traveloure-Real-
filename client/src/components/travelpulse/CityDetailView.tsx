@@ -454,7 +454,8 @@ function AIRecommendationsSection({ cityName, country }: { cityName: string; cou
 
 interface BookingOption {
   platform: string;
-  url: string;
+  /** §16: the server strips the partner URL and ships this opaque vault token instead. */
+  bookingToken?: string;
   type: 'reservation' | 'tickets' | 'tour' | 'website';
 }
 
@@ -477,7 +478,8 @@ function CityBookingButton({
     itemDescription: `${booking.type} via ${booking.platform}`,
     partnerName: booking.platform,
     partnerCategory: booking.type,
-    affiliateUrl: booking.url,
+    // §16 closure: opaque server-minted vault token, never the URL.
+    bookingToken: booking.bookingToken,
   });
   return (
     <Button size="sm" variant="outline" onClick={book} disabled={isPending || requested} data-testid={testId}>

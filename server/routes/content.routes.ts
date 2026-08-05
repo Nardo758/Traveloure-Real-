@@ -11,6 +11,9 @@ import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { geocodeAddress } from "../utils/geocode";
 import { applyAttributionSubId } from "../services/travelpayouts/travelpayouts-client";
+// §16: live-feed DTOs never ship partner URLs to the client — they are vaulted server-side and
+// replaced with opaque bookingTokens the booking-agent rail resolves back (affiliate-url-vault).
+import { vaultAndStripItems, mintBookingTokens, type VaultedBooking } from "../services/affiliate-url-vault.service";
 import { getProviderHealth } from "../services/provider-health.service";
 import {
   verifyBookingRequest,
@@ -1032,7 +1035,8 @@ router.get("/api/catalog/search", async (req, res) => {
         tabSlug: tabSlug as string | undefined,
       });
 
-      res.json(result);
+      // §16: partner URLs never reach the client — vaulted server-side, tokens out.
+      res.json({ ...result, items: await vaultAndStripItems(result.items) });
     } catch (error) {
       console.error("Catalog search error:", error);
       res.status(500).json({ message: "Failed to search catalog" });
@@ -1055,7 +1059,8 @@ router.get("/api/catalog/search-hybrid", async (req, res) => {
 
       const result = await experienceCatalogService.searchWithSerpFallback(parseResult.data);
 
-      res.json(result);
+      // §16: partner URLs never reach the client — vaulted server-side, tokens out.
+      res.json({ ...result, items: await vaultAndStripItems(result.items) });
     } catch (error) {
       console.error("Hybrid catalog search error:", error);
       res.status(500).json({ message: "Failed to search catalog" });
@@ -1085,7 +1090,9 @@ router.get("/api/catalog/items/:type/:id", async (req, res) => {
       if (!item) {
         return res.status(404).json({ message: "Item not found" });
       }
-      res.json(item);
+      // §16: partner URLs never reach the client — vaulted server-side, token out.
+      const [safeItem] = await vaultAndStripItems([item]);
+      res.json(safeItem);
     } catch (error) {
       console.error("Error fetching catalog item:", error);
       res.status(500).json({ message: "Failed to fetch catalog item" });
@@ -1124,7 +1131,7 @@ router.get("/api/catalog/flights", isAuthenticated, async (req, res) => {
 
       // Health is reported under the REAL provider ("aviasales") — this route previously
       // labeled itself "kiwi", a retired source, which made the honest-empty seam lie.
-      res.json({ items, total: items.length, ...sourceStatusField("aviasales") });
+      res.json({ items: await vaultAndStripItems(items), total: items.length, ...sourceStatusField("aviasales") });
     } catch (error) {
       console.error("Flights search error:", error);
       res.status(500).json({ message: "Failed to search flights" });
@@ -1152,7 +1159,7 @@ router.get("/api/catalog/nomad", isAuthenticated, async (req, res) => {
         currency: currency as string,
       });
 
-      res.json({ items, total: items.length, retired: !process.env.KIWI_TEQUILA_API_KEY, ...sourceStatusField("kiwi") });
+      res.json({ items: await vaultAndStripItems(items), total: items.length, retired: !process.env.KIWI_TEQUILA_API_KEY, ...sourceStatusField("kiwi") });
     } catch (error) {
       console.error("Nomad search error:", error);
       res.status(500).json({ message: "Failed to search nomad routes" });
@@ -1176,7 +1183,7 @@ router.get("/api/catalog/transfers", isAuthenticated, async (req, res) => {
         currency: currency as string,
       });
 
-      res.json({ items, total: items.length, ...sourceStatusField("gettransfer") });
+      res.json({ items: await vaultAndStripItems(items), total: items.length, ...sourceStatusField("gettransfer") });
     } catch (error) {
       console.error("Transfers search error:", error);
       res.status(500).json({ message: "Failed to search transfers" });
@@ -1203,7 +1210,7 @@ router.get("/api/catalog/cars", isAuthenticated, async (req, res) => {
         limit: limit ? parseInt(limit as string) : 10,
       });
 
-      res.json({ items, total: items.length, ...sourceStatusField("discovercars") });
+      res.json({ items: await vaultAndStripItems(items), total: items.length, ...sourceStatusField("discovercars") });
     } catch (error) {
       console.error("Car rental search error:", error);
       res.status(500).json({ message: "Failed to search car rentals" });
@@ -1223,7 +1230,7 @@ router.get("/api/catalog/esim", isAuthenticated, async (req, res) => {
         limit: limit ? parseInt(limit as string) : 10,
       });
 
-      res.json({ items, total: items.length });
+      res.json({ items: await vaultAndStripItems(items), total: items.length });
     } catch (error) {
       console.error("eSIM search error:", error);
       res.status(500).json({ message: "Failed to search eSIM plans" });
@@ -1243,7 +1250,7 @@ router.get("/api/catalog/tiqets", isAuthenticated, async (req, res) => {
         limit: limit ? parseInt(limit as string) : 20,
       });
 
-      res.json({ items, total: items.length, ...sourceStatusField("tiqets") });
+      res.json({ items: await vaultAndStripItems(items), total: items.length, ...sourceStatusField("tiqets") });
     } catch (error) {
       console.error("Tiqets search error:", error);
       res.status(500).json({ message: "Failed to search Tiqets products" });
@@ -1262,7 +1269,7 @@ router.get("/api/catalog/wegotrip", isAuthenticated, async (req, res) => {
         limit: limit ? parseInt(limit as string) : 20,
       });
 
-      res.json({ items, total: items.length, ...sourceStatusField("wegotrip") });
+      res.json({ items: await vaultAndStripItems(items), total: items.length, ...sourceStatusField("wegotrip") });
     } catch (error) {
       console.error("WeGoTrip search error:", error);
       res.status(500).json({ message: "Failed to search WeGoTrip products" });
@@ -1282,7 +1289,7 @@ router.get("/api/catalog/viator-feed", isAuthenticated, async (req, res) => {
         limit: limit ? parseInt(limit as string) : 20,
       });
 
-      res.json({ items, total: items.length });
+      res.json({ items: await vaultAndStripItems(items), total: items.length });
     } catch (error) {
       console.error("Viator feed error:", error);
       res.status(500).json({ message: "Failed to fetch Viator feed" });
@@ -1302,7 +1309,7 @@ router.get("/api/catalog/ground-transport", isAuthenticated, async (req, res) =>
         limit: limit ? parseInt(limit as string) : 10,
       });
 
-      res.json({ items, total: items.length });
+      res.json({ items: await vaultAndStripItems(items), total: items.length });
     } catch (error) {
       console.error("Ground transport error:", error);
       res.status(500).json({ message: "Failed to search ground transport" });
@@ -1331,7 +1338,7 @@ router.get("/api/catalog/agoda", isAuthenticated, async (req, res) => {
         guests: guests ? parseInt(guests as string) : 2,
         limit: limit ? parseInt(limit as string) : 4,
       });
-      res.json({ items, total: items.length });
+      res.json({ items: await vaultAndStripItems(items), total: items.length });
     } catch (err) {
       console.error("Agoda error:", err);
       res.status(500).json({ message: "Failed to search Agoda" });
@@ -1353,7 +1360,7 @@ router.get("/api/catalog/booking", isAuthenticated, async (req, res) => {
         limit: limit ? parseInt(limit as string) : 5,
         currency: currency as string,
       });
-      res.json({ items, total: items.length });
+      res.json({ items: await vaultAndStripItems(items), total: items.length });
     } catch (err) {
       console.error("Booking.com (TP) error:", err);
       res.status(500).json({ message: "Failed to fetch Booking.com results" });
@@ -1372,7 +1379,7 @@ router.get("/api/catalog/activities-gyg", isAuthenticated, async (req, res) => {
         currency: currency as string,
         limit: limit ? parseInt(limit as string) : 12,
       });
-      res.json({ items, total: items.length, ...sourceStatusField("getyourguide") });
+      res.json({ items: await vaultAndStripItems(items), total: items.length, ...sourceStatusField("getyourguide") });
     } catch (err) {
       console.error("GetYourGuide error:", err);
       res.status(500).json({ message: "Failed to search GetYourGuide" });
@@ -1391,7 +1398,7 @@ router.get("/api/catalog/klook", isAuthenticated, async (req, res) => {
         currency: currency as string,
         limit: limit ? parseInt(limit as string) : 6,
       });
-      res.json({ items, total: items.length });
+      res.json({ items: await vaultAndStripItems(items), total: items.length });
     } catch (err) {
       console.error("Klook error:", err);
       res.status(500).json({ message: "Failed to search Klook" });
@@ -1409,7 +1416,7 @@ router.get("/api/catalog/insurance", isAuthenticated, async (req, res) => {
         travelers: travelers ? parseInt(travelers as string) : 1,
         limit: limit ? parseInt(limit as string) : 3,
       });
-      res.json({ items, total: items.length });
+      res.json({ items: await vaultAndStripItems(items), total: items.length });
     } catch (err) {
       console.error("SafetyWing error:", err);
       res.status(500).json({ message: "Failed to fetch insurance plans" });
@@ -1430,7 +1437,7 @@ router.get("/api/catalog/bus", isAuthenticated, async (req, res) => {
         currency: currency as string,
         limit: limit ? parseInt(limit as string) : 10,
       });
-      res.json({ items, total: items.length });
+      res.json({ items: await vaultAndStripItems(items), total: items.length });
     } catch (err) {
       console.error("Busbud error:", err);
       res.status(500).json({ message: "Failed to search Busbud" });
@@ -1454,7 +1461,7 @@ router.get("/api/catalog/airport-transfers", isAuthenticated, async (req, res) =
       ]);
 
       const items = [...kiwiItems, ...welcomeItems];
-      res.json({ items, total: items.length });
+      res.json({ items: await vaultAndStripItems(items), total: items.length });
     } catch (err) {
       console.error("Airport transfers error:", err);
       res.status(500).json({ message: "Failed to search airport transfers" });
@@ -1475,7 +1482,7 @@ router.get("/api/catalog/luggage-storage", isAuthenticated, async (req, res) => 
         bags: bags ? parseInt(bags as string) : 1,
         limit: limit ? parseInt(limit as string) : 6,
       });
-      res.json({ items, total: items.length });
+      res.json({ items: await vaultAndStripItems(items), total: items.length });
     } catch (err) {
       console.error("Stasher error:", err);
       res.status(500).json({ message: "Failed to search Stasher" });
@@ -1497,7 +1504,7 @@ router.get("/api/catalog/rentalcars", isAuthenticated, async (req, res) => {
         currency: currency as string,
         limit: limit ? parseInt(limit as string) : 4,
       });
-      res.json({ items, total: items.length });
+      res.json({ items: await vaultAndStripItems(items), total: items.length });
     } catch (err) {
       console.error("Rentalcars error:", err);
       res.status(500).json({ message: "Failed to search Rentalcars" });
@@ -5393,7 +5400,36 @@ router.get("/api/travelpulse/enriched/:cityName", async (req, res) => {
         });
       }
 
-      res.json(enrichedContent);
+      // §16: per-platform bookingOptions power CityDetailView's book-via-agent buttons — vault the
+      // partner URLs server-side and ship opaque bookingTokens instead. Clone first: the service
+      // may serve a cached object, and stripping in place would corrupt it for later callers.
+      const safeContent = JSON.parse(JSON.stringify(enrichedContent));
+      const vaultEntries: VaultedBooking[] = [];
+      const optionSlots: Array<{ option: any }> = [];
+      for (const section of ["restaurants", "attractions", "nightlife", "hiddenGems", "trendingNow"]) {
+        const recs = (safeContent as any)[section];
+        if (!Array.isArray(recs)) continue;
+        for (const rec of recs) {
+          if (!Array.isArray(rec?.bookingOptions)) continue;
+          for (const option of rec.bookingOptions) {
+            if (option && typeof option.url === "string" && option.url) {
+              vaultEntries.push({
+                url: option.url,
+                name: typeof rec.name === "string" ? rec.name : null,
+                provider: typeof option.platform === "string" ? option.platform : null,
+              });
+              optionSlots.push({ option });
+            }
+          }
+        }
+      }
+      const tokens = await mintBookingTokens(vaultEntries);
+      optionSlots.forEach(({ option }, i) => {
+        delete option.url;
+        option.bookingToken = tokens[i];
+      });
+
+      res.json(safeContent);
     } catch (error: any) {
       console.error("Error getting enriched content:", error);
       res.status(500).json({ message: "Failed to get enriched content", error: error.message });
@@ -6531,7 +6567,9 @@ router.get("/api/spontaneous/quick-search/:window", async (req, res) => {
       });
       
       res.json({
-        opportunities,
+        // §16: the Book action goes through the tracked /api/spontaneous/:id/book rail, which
+        // re-resolves the redirect server-side by id — the client never needs the affiliate URL.
+        opportunities: opportunities.map(({ affiliateUrl: _url, ...rest }: any) => rest),
         timeWindow: window,
         total: opportunities.length,
       });
@@ -6543,29 +6581,94 @@ router.get("/api/spontaneous/quick-search/:window", async (req, res) => {
   // === Affiliate Booking Requests ===
 
 
+// §16 CLOSED (server-derivation rewrite): the rail no longer accepts an affiliate URL from the
+// client at all — req.body.affiliateUrl is deliberately never read (§14 posture: client-supplied
+// data must not steer the transaction the booking agent performs; a forged URL is simply ignored).
+// The caller passes exactly ONE booking reference and the server re-derives the partner URL itself:
+//   • bookingToken       — opaque token minted by the affiliate-url vault when a live catalog feed
+//                          response was served (TP /api/catalog/*, catalog search family,
+//                          TravelPulse booking options). Resolution is entirely server-side.
+//   • affiliateProductId — affiliate_products registry row: URL comes from the DB row
+//                          (approved-partner-gated, same posture as /api/content/affiliate-redirect).
+//   • transportOptionId  — transport_booking_options row: URL comes from the DB row
+//                          (affiliate/deep_link options only — platform options have their own rail).
+//   • partnerRoute       — { partner: "12go", origin?, destination? }: the server BUILDS the 12Go
+//                          deep link itself, so the affiliate id lives server-side only.
+// itemName/partnerName prefer the server-resolved values; body values are display-only fallbacks.
 router.post("/api/affiliate-booking-requests", isAuthenticated, async (req, res) => {
     try {
       // Session shape is {claims:{sub,...}} for BOTH email and OIDC auth — a bare `.id` read
       // is undefined and violated the users FK (audit P0). Same pattern as every live handler.
       const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Unauthorized" });
-      const { itemName, itemDescription, partnerName, partnerCategory, affiliateUrl, travelDate, travelers, userNotes } = req.body;
-      if (!itemName || !partnerName || !affiliateUrl) {
-        return res.status(400).json({ message: "itemName, partnerName, and affiliateUrl are required" });
+      const { itemName, itemDescription, partnerName, partnerCategory, travelDate, travelers, userNotes,
+              bookingToken, affiliateProductId, transportOptionId, partnerRoute } = req.body;
+
+      let resolved: { url: string; name: string | null; partner: string | null } | null = null;
+      if (typeof bookingToken === "string" && bookingToken) {
+        const { resolveBookingToken } = await import("../services/affiliate-url-vault.service");
+        const entry = await resolveBookingToken(bookingToken);
+        if (entry) resolved = { url: entry.url, name: entry.name, partner: entry.provider };
+      } else if (typeof affiliateProductId === "string" && affiliateProductId) {
+        const { affiliateScraperService } = await import("../services/affiliate-scraper.service");
+        const product = await affiliateScraperService.getProductById(affiliateProductId, { approvedOnly: true });
+        const url = product ? (product.affiliateUrl || product.productUrl || null) : null;
+        if (product && url) resolved = { url, name: product.name ?? null, partner: null };
+      } else if (typeof transportOptionId === "string" && transportOptionId) {
+        const option = await storage.getTransportBookingOptionById(transportOptionId);
+        if (option && option.externalUrl && (option.bookingType === "affiliate" || option.bookingType === "deep_link")) {
+          resolved = { url: option.externalUrl, name: option.title ?? null, partner: option.source ?? null };
+        }
+      } else if (partnerRoute && typeof partnerRoute === "object" && partnerRoute.partner === "12go") {
+        const { affiliateService } = await import("../services/affiliate.service");
+        resolved = {
+          url: affiliateService.buildTwelveGoDeepLink({
+            origin: typeof partnerRoute.origin === "string" ? partnerRoute.origin.slice(0, 100) : undefined,
+            destination: typeof partnerRoute.destination === "string" ? partnerRoute.destination.slice(0, 100) : undefined,
+          }),
+          name: null,
+          partner: "12Go",
+        };
+      } else {
+        return res.status(400).json({
+          message: "A booking reference is required (bookingToken, affiliateProductId, transportOptionId, or partnerRoute)",
+        });
       }
+      if (!resolved) {
+        return res.status(404).json({ message: "This item is no longer available to book — try refreshing the list" });
+      }
+
+      const finalItemName = (resolved.name || (typeof itemName === "string" ? itemName : "") || "Partner booking").slice(0, 255);
+      const finalPartnerName = (resolved.partner || (typeof partnerName === "string" ? partnerName : "") || "Partner").slice(0, 100);
+
       // Auto-assign to an expert based on category (city match optional, fallback any expert)
       const expertIds2 = await getExpertUserIds(10);
-      const allExperts: any[] = expertIds2.map(id => ({ id }));
-      const expertId = allExperts.length > 0 ? allExperts[0].id : null;
+      const expertId = expertIds2.length > 0 ? expertIds2[0] : null;
       const status = expertId ? "assigned" : "pending";
+
+      // Same MONEY_MAP F-5 (dormant) sub_id attribution seam as the /from-catalog variant below:
+      // pre-generate the id so the flag-gated token can be baked into the stored URL up front.
+      const bookingRequestId = crypto.randomUUID();
+      const affiliateUrlToStore = applyAttributionSubId(
+        resolved.url,
+        bookingRequestId,
+        process.env.TP_SUBID_ATTRIBUTION === "1"
+      );
+
       const record = await storage.createAffiliateBookingRequest({
-        userId, expertId, itemName, itemDescription: itemDescription ?? null,
-        partnerName, partnerCategory: partnerCategory ?? null,
-        affiliateUrl, travelDate: travelDate ?? null,
-        travelers: travelers ?? 1, userNotes: userNotes ?? null,
+        id: bookingRequestId,
+        userId, expertId,
+        itemName: finalItemName,
+        itemDescription: typeof itemDescription === "string" ? itemDescription.slice(0, 2000) : null,
+        partnerName: finalPartnerName,
+        partnerCategory: typeof partnerCategory === "string" ? partnerCategory.slice(0, 50) : null,
+        affiliateUrl: affiliateUrlToStore,
+        travelDate: typeof travelDate === "string" ? travelDate : null,
+        travelers: Number.isInteger(travelers) && travelers > 0 ? travelers : 1,
+        userNotes: typeof userNotes === "string" ? userNotes.slice(0, 2000) : null,
         expertNotes: null, confirmationRef: null, price: null,
         status,
-      });
+      } as any);
       // Never return affiliateUrl to client
       const { affiliateUrl: _url, ...safe } = record;
       return res.json(safe);
@@ -7162,6 +7265,12 @@ router.get("/api/discovery/jobs", isAuthenticated, async (req, res) => {
     }
   };
 
+  // §16: registry-product DTOs for travelers carry NO partner URLs. The rail re-resolves the URL
+  // from the affiliate_products row by id (affiliateProductId), and informational outbound goes
+  // through the tracked /api/content/affiliate-redirect — neither needs the URL client-side.
+  const stripProductUrls = <T extends { affiliateUrl?: any; productUrl?: any }>(products: T[]) =>
+    products.map(({ affiliateUrl: _a, productUrl: _p, ...rest }) => rest);
+
   // Get partner categories
 
 router.get("/api/affiliate/categories", async (_req, res) => {
@@ -7299,7 +7408,8 @@ router.get("/api/affiliate/partners/:id/jobs", isAuthenticated, async (req, res)
 router.get("/api/affiliate/products", async (req, res) => {
     try {
       const { partnerId, category, city, country, search, minPrice, maxPrice, minRating, limit, offset } = req.query;
-      const approvedOnly = !(await isRequestAdmin(req)); // public sees approved-partner products only
+      const isAdmin = await isRequestAdmin(req);
+      const approvedOnly = !isAdmin; // public sees approved-partner products only
       const result = await affiliateScraperService.getProducts({
         partnerId: partnerId as string,
         category: category as string,
@@ -7313,7 +7423,11 @@ router.get("/api/affiliate/products", async (req, res) => {
         limit: limit ? parseInt(limit as string) : undefined,
         offset: offset ? parseInt(offset as string) : undefined,
       });
-      res.json(result);
+      // §16: traveler-facing product DTOs never carry partner URLs — these are registry rows, so
+      // the booking-agent rail re-resolves the URL from the DB by affiliateProductId, and the
+      // tracked informational path (/api/content/affiliate-redirect) resolves it by id too.
+      // Admin console keeps the raw rows (the partner-management surface needs the links).
+      res.json(isAdmin ? result : { ...result, products: stripProductUrls(result.products) });
     } catch (error: any) {
       res.status(500).json({ message: "Failed to get products", error: error.message });
     }
@@ -7323,12 +7437,13 @@ router.get("/api/affiliate/products", async (req, res) => {
 
 router.get("/api/affiliate/products/:id", async (req, res) => {
     try {
-      const approvedOnly = !(await isRequestAdmin(req));
-      const product = await affiliateScraperService.getProductById(req.params.id, { approvedOnly });
+      const isAdmin = await isRequestAdmin(req);
+      const product = await affiliateScraperService.getProductById(req.params.id, { approvedOnly: !isAdmin });
       if (!product) {
         return res.status(404).json({ message: "Product not found" });
       }
-      res.json({ product });
+      // §16: see /api/affiliate/products — public DTOs carry no partner URLs.
+      res.json({ product: isAdmin ? product : stripProductUrls([product])[0] });
     } catch (error: any) {
       res.status(500).json({ message: "Failed to get product", error: error.message });
     }
@@ -7713,15 +7828,17 @@ router.get("/api/affiliate/products/by-location", async (req, res) => {
         return res.status(400).json({ message: "city or country is required" });
       }
 
+      const isAdmin = await isRequestAdmin(req);
       const result = await affiliateScraperService.getProducts({
         city: city as string,
         country: country as string,
         category: category as string,
-        approvedOnly: !(await isRequestAdmin(req)), // traveler-facing location feed → approved partners only
+        approvedOnly: !isAdmin, // traveler-facing location feed → approved partners only
         limit: limit ? parseInt(limit as string) : 10,
       });
 
-      res.json(result);
+      // §16: see /api/affiliate/products — public DTOs carry no partner URLs.
+      res.json(isAdmin ? result : { ...result, products: stripProductUrls(result.products) });
     } catch (error: any) {
       res.status(500).json({ message: "Failed to get products by location", error: error.message });
     }
