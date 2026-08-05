@@ -38,8 +38,17 @@ import {
 } from "./services/smart-sequencing.service";
 import { calculateTransportLegs, type UserTransportPrefs } from "./services/transport-leg-calculator";
 
-const GROK_MODEL = "grok-2-1212";
+// grok-2-1212 was deprecated at x.ai (every call 404s → fallback → paid optimizes failed).
+// grok-3 is the model the other Grok services (grok.service.ts, grok-discovery.service.ts)
+// already run against the same account.
+const GROK_MODEL = "grok-3";
 const CLAUDE_MODEL = "claude-sonnet-4-5";
+
+// The 2-variant response JSON runs ~120-150 tokens per item; a 7-day trip with empty-day
+// fill can exceed 10k output tokens. 5120 truncated mid-JSON, which surfaced as
+// "Failed to parse AI response" on the fallback path.
+const GROK_MAX_TOKENS = 8192; // the max grok.service.ts has proven against this account
+const CLAUDE_MAX_TOKENS = 16384;
 
 // Anthropic pricing per token (as of 2026-06)
 const ANTHROPIC_PRICING = {
@@ -77,10 +86,17 @@ async function callAI(systemPrompt: string, userPrompt: string): Promise<string>
           { role: "user", content: userPrompt },
         ],
         temperature: 0.7,
-        max_tokens: 5120,
+        max_tokens: GROK_MAX_TOKENS,
+        response_format: { type: "json_object" },
       });
-      const content = response.choices[0]?.message?.content;
-      if (content) return content;
+      const choice = response.choices[0];
+      const content = choice?.message?.content;
+      // A length-truncated response is unparseable JSON — treat it as a Grok
+      // failure and let the Anthropic path (with a larger budget) take over.
+      if (content && choice?.finish_reason !== "length") return content;
+      if (choice?.finish_reason === "length") {
+        console.warn("Grok response truncated at max_tokens, falling back to Anthropic");
+      }
     } catch (grokError: any) {
       console.warn("Grok API failed, falling back to Anthropic:", grokError.message);
     }
@@ -90,7 +106,7 @@ async function callAI(systemPrompt: string, userPrompt: string): Promise<string>
   if (anthropic) {
     const response = await anthropic.messages.create({
       model: CLAUDE_MODEL,
-      max_tokens: 5120,
+      max_tokens: CLAUDE_MAX_TOKENS,
       system: systemPrompt,
       messages: [
         { role: "user", content: userPrompt },
@@ -106,6 +122,13 @@ async function callAI(systemPrompt: string, userPrompt: string): Promise<string>
         tokensIn: response.usage.input_tokens,
         tokensOut: response.usage.output_tokens,
       }).catch(err => console.error("[cost-tracker] failed to log optimization cost:", err));
+    }
+    if (response.stop_reason === "max_tokens") {
+      // Truncated JSON is unparseable — fail with the real cause instead of a
+      // downstream "Failed to parse AI response".
+      throw new Error(
+        `Anthropic response truncated at ${CLAUDE_MAX_TOKENS} tokens — itinerary too large for one response`,
+      );
     }
     const textBlock = response.content.find((b: any) => b.type === "text");
     if (textBlock && textBlock.type === "text") return textBlock.text;
