@@ -129,6 +129,39 @@ jobs:
       - name: Ledger lint
         run: node scripts/check-decision-guards.cjs
 
+  matrix-lint:
+    name: matrix-lint (coverage matrix — DECISIONS.md ruling 21/27)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # Every claim cell in docs/testing/coverage-matrix.md must name a test id (or a
+      # deferred:/n-a: marker); non-deferred ids must carry a `matrix-id:` annotation in a
+      # test file; merged deferred lanes may no longer tag a cell (ruling 21). Node built-ins
+      # only — no npm ci needed.
+      - name: Matrix lint self-test
+        run: node scripts/check-coverage-matrix.cjs --self-test
+      - name: Matrix lint
+        run: node scripts/check-coverage-matrix.cjs && echo "matrix-lint OK"
+
+  env-allowlist-guard:
+    name: env-allowlist-guard (dev/CI-only test accounts — DECISIONS.md ruling 27/33)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # Asserts the prod-strict Stripe source + the P0 seed/purge gate posture still hold and
+      # that no deploy-targeting workflow seeds test accounts via ALLOW_TEST_ACCOUNTS=1. Node
+      # built-ins only — no npm ci needed.
+      - name: Env-allowlist guard self-test
+        run: node scripts/check-env-allowlist.cjs --self-test
+      - name: Env-allowlist guard
+        run: node scripts/check-env-allowlist.cjs
+
   linkage-preservation-guard:
     name: linkage-preservation-guard (Trip-Canon Lane G / E2E_ITEM_LIFECYCLE.md §3)
     runs-on: ubuntu-latest

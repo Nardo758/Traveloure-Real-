@@ -28,7 +28,7 @@
 | 18 | 2026-08-02 | [advisory] | Amends 12: flip+log atomic pair inside helper-internal transaction; outer money-path swallow retained; swallowed failure MUST alarm (ops-visible error w/ ids) + Lane S ships the bookings-vs-purchased reconciliation health-check. | SLIP_EXPERIENCE_DISPATCH.md |
 | 19 | 2026-08-02 | [advisory] | varchar(20) tracking headroom = named follow-up (own verified ALTER, not opportunistic); migration numbering re-verified at merge (chain-integrity test is arbiter); traveler delete-optimize-row loss accepted per 11's follow-up. | SLIP_EXPERIENCE_DISPATCH.md |
 | 20 | 2026-08-04 | [advisory] | Ground-truthed fixed flags become expected-PASS regression assertions citing fixing commit. | console-sigma lane review |
-| 21 | 2026-08-04 | [guarded: matrix-lint, deferred:journey-suite-wave-1] | Expected-fail ABSENCE rows carry an expiry tag (deferred:<lane>) and MUST flip to expected-PASS in the wave their lane merges. | console-sigma lane review |
+| 21 | 2026-08-04 | [guarded: matrix-lint] | Expected-fail ABSENCE rows carry an expiry tag (deferred:<lane>) and MUST flip to expected-PASS in the wave their lane merges. | console-sigma lane review |
 | 22 | 2026-08-04 | [advisory] | Console reorder heuristic = second-query-engine class; assert divergence now; remediation (reorder consumes the optimizer's constraint service) = named follow-up, not harness scope. | console-sigma lane review |
 | 23 | 2026-08-04 | [advisory] | Kyoto expert fixture seeded in Phase 2 via full approval lifecycle; tests never bypass the Kyoto submit gate; fixture-bench gaps feed the journey suite's role/fixture inventory. | console-sigma lane review |
 | 24 | 2026-08-04 | [advisory] | Harness v1 = workspace machine only; per-item routing layer enters as deferred:phase-4 cells. | console-sigma lane review |
@@ -78,5 +78,7 @@ In-CI guards (name → script → CI location):
 | fee-literal grep (phase2-fee-gate) | `scripts/phase2-fee-gate.sh` | build.yml (wired by ruling 27) |
 | chain-integrity | `server/migrations/__tests__/chain-integrity.test.ts` | build.yml (wired by ruling 27) |
 | decision-guards ledger lint | `scripts/check-decision-guards.cjs` | build.yml (ruling 26) |
+| matrix-lint | `scripts/check-coverage-matrix.cjs` | build.yml |
+| env-allowlist | `scripts/check-env-allowlist.cjs` | build.yml |
 
-Named guard candidates (not yet guards — MISSING until in CI): matrix lint w/ expiring deferred tags (owner: journey-suite wave 1, ruling 21/27) · env allowlist · single-writer-per-event-type (11) · log append-only route inventory (per 12/18) · no-second-scheduling-heuristic (22 remediation) · apply-never-writes-routing_status grep.
+Named guard candidates (not yet guards — MISSING until in CI): single-writer-per-event-type (11) · log append-only route inventory (per 12/18) · no-second-scheduling-heuristic (22 remediation) · apply-never-writes-routing_status grep.
