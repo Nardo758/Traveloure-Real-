@@ -18,4 +18,5 @@
 - [MapMarker fallback testing](map-marker-fallback-testing.md) — fallback mode drops map-pin-* testids (AdvancedMarker children); find pins by .gm-style [title]; ItineraryMapView is orphaned; Maps key lacks billing.
 - [Amadeus decommission](amadeus-decommission.md) — dropped (ruling 34) and code fully removed Aug 2026; /api/amadeus/* return honest empties; never re-add without new credentials + ledger ruling.
 - [Fee-band scope split](fee-band-scope-split.md) — EXPERIENCE_CART 0.30 was display-only; real charges resolve per-item via resolveCommissionRates; new bands must state which surface they control or review rejects.
+- [Journey suite conventions](journey-suite-wave1.md) — --workers=1 + JOURNEY_DB_WRITES_OK=1 locally; fee gates payable in Stripe test mode via connector key; OPEN: optimizer AI generation broken (J1 gate path).
 - [Kyoto bench fixture](kyoto-bench-fixture.md) — durable dev-DB expert kyoto-temples@traveloure.test with lifecycle provenance; never seed Kyoto experts by bare role flip; no DB CHECK on application status.

@@ -70,6 +70,38 @@ function setsAllowTestAccounts(yamlNoComments) {
 }
 
 /**
+ * FAIL-CLOSED reference to ALLOW_TEST_ACCOUNTS for DEPLOY-TARGETING workflows.
+ *
+ * On a workflow that ships to a real deployment, ANY appearance of the token —
+ * a YAML `env:` assignment (quoted or bare, any value), a shell assignment/export,
+ * a `${{ secrets.* }}` / `${{ vars.* }}` interpolation, or an `env NAME=val cmd`
+ * prefix form — is a leak and must FAIL. Only PURE COMMENT LINES may mention it
+ * (a reviewer note). This receives the ORIGINAL yaml (comments intact) so it can
+ * distinguish a comment-only mention from real config.
+ */
+function referencesAllowTestAccounts(rawYaml) {
+  const lines = rawYaml.split("\n");
+  for (const line of lines) {
+    if (!/ALLOW_TEST_ACCOUNTS/.test(line)) continue;
+    // A pure comment line (optionally indented) never counts — reviewer prose is fine.
+    if (/^\s*#/.test(line)) continue;
+    // FAIL-CLOSED on any CONFIG/EXECUTION form of the token (as opposed to prose inside a quoted
+    // echo/notice message, which — like a comment — is allowed). The forms that reach the process:
+    //   1. YAML `env:` mapping, quoted or bare, ANY value:  `ALLOW_TEST_ACCOUNTS: '1'` | 1 | true | ${{...}}
+    //   2. `${{ ... ALLOW_TEST_ACCOUNTS ... }}` interpolation anywhere on the line.
+    //   3. Shell assignment/export at statement position:  `export ALLOW_TEST_ACCOUNTS=...`
+    //   4. `env ALLOW_TEST_ACCOUNTS=... cmd` prefix form.
+    if (/^\s*ALLOW_TEST_ACCOUNTS\s*:/.test(line)) return true; // YAML assignment (1)
+    if (/\$\{\{[^}]*ALLOW_TEST_ACCOUNTS[^}]*\}\}/.test(line)) return true; // interpolation (2)
+    if (/^\s*(?:export\s+)?ALLOW_TEST_ACCOUNTS=/.test(line)) return true; // shell assignment (3)
+    if (/(?:^|\s|&&|\||;)env\s+ALLOW_TEST_ACCOUNTS=/.test(line)) return true; // env-prefix form (4)
+    // Any OTHER occurrence (e.g. inside an `echo "::notice:: ... ALLOW_TEST_ACCOUNTS=1 ..."` prose
+    // message) is treated like a comment: not a leak, not flagged.
+  }
+  return false;
+}
+
+/**
  * True iff the workflow targets a REAL deployment (as opposed to a throwaway CI
  * DB boot). Signals: a deploy base-URL secret (E2E_BASE_URL / *_BASE_URL bound
  * to a secret / an https URL secret), an `environment:` gate, or a job key /
@@ -134,13 +166,21 @@ function lint({ stripePolicy, validateEnv, serverIndex, workflows }) {
     }
   }
 
-  // (c) No workflow SETS ALLOW_TEST_ACCOUNTS=1 while targeting a deployment.
+  // (c) Deploy-targeting workflows are FAIL-CLOSED on ALLOW_TEST_ACCOUNTS: ANY occurrence of the
+  //     token (assignment, quoted, ${{ }} interpolation, `env NAME=1 cmd` prefix) except a pure
+  //     comment line is a failure. Non-deployment workflows keep the narrower "SETS =1" behavior
+  //     (a throwaway-DB CI boot may legitimately set it).
   for (const { name, text } of workflows) {
     const noComments = stripYamlComments(text);
-    if (setsAllowTestAccounts(noComments) && targetsDeployment(noComments)) {
-      failures.push(
-        `(c) .github/workflows/${name} SETS ALLOW_TEST_ACCOUNTS=1 AND targets a real deployment (deploy base URL / production-named job / environment gate). Test accounts must never be seeded against a deployed target (P0 purge, PR #319).`,
-      );
+    if (targetsDeployment(noComments)) {
+      if (referencesAllowTestAccounts(text)) {
+        failures.push(
+          `(c) .github/workflows/${name} REFERENCES ALLOW_TEST_ACCOUNTS (any form: assignment / quoted / \${{ }} interpolation / env-prefix) AND targets a real deployment (deploy base URL / production-named job / environment gate). Fail-closed: test accounts must never reach a deployed target (P0 purge, PR #319). Only a pure comment mention is allowed.`,
+        );
+      }
+    } else if (setsAllowTestAccounts(noComments)) {
+      // A non-deploy workflow that SETS =1 is fine (throwaway-DB boot); no failure. Kept explicit
+      // so the branch reads intentionally rather than as a fall-through.
     }
   }
 
@@ -243,13 +283,71 @@ function selfTest() {
   });
   results.push(["deploy job without ALLOW passes", cleanProd.length === 0, cleanProd]);
 
+  // Shared clean posture for the fail-closed bypass-form cases below.
+  const okPosture = {
+    stripePolicy: "export function isProdStrictEnv() {}",
+    validateEnv: "isProdStrictEnv()",
+    serverIndex: "if (process.env.ALLOW_TEST_ACCOUNTS) { await seedE2EAccounts(); } else { await purgeE2EAccountsFromProd(); }",
+  };
+
+  // (c) FAIL-CLOSED — quoted YAML assignment to a NON-1 value on a deploy target still fails
+  // (any occurrence is a leak, not only `=1`).
+  const bypassQuoted = lint({
+    ...okPosture,
+    workflows: [
+      { name: "quoted.yml", text: "jobs:\n  x:\n    environment: production\n    env:\n      ALLOW_TEST_ACCOUNTS: 'true'\n" },
+    ],
+  });
+  results.push(["deploy-target quoted ALLOW assignment (any value) fails", bypassQuoted.some((f) => f.includes("quoted.yml")), bypassQuoted]);
+
+  // (c) FAIL-CLOSED — secrets/vars interpolation on a deploy target fails.
+  const bypassInterp = lint({
+    ...okPosture,
+    workflows: [
+      { name: "interp.yml", text: "jobs:\n  x:\n    env:\n      E2E_BASE_URL: ${{ secrets.E2E_BASE_URL }}\n      ALLOW_TEST_ACCOUNTS: ${{ secrets.ALLOW_TEST_ACCOUNTS }}\n" },
+    ],
+  });
+  results.push(["deploy-target secrets-interpolated ALLOW fails", bypassInterp.some((f) => f.includes("interp.yml")), bypassInterp]);
+
+  // (c) FAIL-CLOSED — `env NAME=1 cmd` prefix form on a deploy target fails (this form does NOT
+  // begin a statement, so the old `setsAllowTestAccounts` heuristic missed it).
+  const bypassEnvPrefix = lint({
+    ...okPosture,
+    workflows: [
+      { name: "envprefix.yml", text: "jobs:\n  production-deploy:\n    steps:\n      - run: env ALLOW_TEST_ACCOUNTS=1 npm run deploy\n" },
+    ],
+  });
+  results.push(["deploy-target env-prefix ALLOW form fails", bypassEnvPrefix.some((f) => f.includes("envprefix.yml")), bypassEnvPrefix]);
+
+  // (c) NOT a false positive — a pure COMMENT mention on a deploy target passes (reviewer prose).
+  const commentOnly = lint({
+    ...okPosture,
+    workflows: [
+      {
+        name: "comment.yml",
+        text: "jobs:\n  production-deploy:\n    env:\n      E2E_BASE_URL: ${{ secrets.E2E_BASE_URL }}\n    steps:\n      # NOTE: never set ALLOW_TEST_ACCOUNTS=1 on a deployed target\n      - run: echo ship\n",
+      },
+    ],
+  });
+  results.push(["deploy-target comment-only ALLOW mention passes", commentOnly.length === 0, commentOnly]);
+
+  // (c) NOT a false positive — a NON-deploy workflow may still SET ALLOW=1 (throwaway-DB boot),
+  // and even an interpolation on a non-deploy workflow keeps the narrow behavior (not flagged).
+  const nonDeployRef = lint({
+    ...okPosture,
+    workflows: [
+      { name: "nondeploy.yml", text: "jobs:\n  gate:\n    env:\n      NODE_ENV: production\n      ALLOW_TEST_ACCOUNTS: ${{ secrets.ALLOW_TEST_ACCOUNTS }}\n" },
+    ],
+  });
+  results.push(["non-deploy workflow referencing ALLOW passes (narrow behavior kept)", nonDeployRef.length === 0, nonDeployRef]);
+
   const allOk = results.every(([, ok]) => ok);
   if (!allOk) {
     console.error("SELF-TEST FAILED");
     for (const [label, ok, detail] of results) if (!ok) console.error(`  ✗ ${label}`, detail);
     process.exit(1);
   }
-  console.log(`self-test OK (${results.length} cases: definition/reference/purge/gate-order/deploy-leak positives + no-false-positive on throwaway-DB and clean-deploy)`);
+  console.log(`self-test OK (${results.length} cases: definition/reference/purge/gate-order/deploy-leak positives + fail-closed bypass forms (quoted/secrets/env-prefix) + no-false-positive on comment-only, throwaway-DB, clean-deploy, and non-deploy reference)`);
   process.exit(0);
 }
 
