@@ -1122,7 +1122,9 @@ router.get("/api/catalog/flights", isAuthenticated, async (req, res) => {
         ? await searchAviasalesFlights({ origin: origin as string, destination: destination as string, departDate: departDate as string, returnDate: returnDate as string, currency: currency as string, limit: limit ? parseInt(limit as string) : 10 })
         : [];
 
-      res.json({ items, total: items.length, ...sourceStatusField("kiwi") });
+      // Health is reported under the REAL provider ("aviasales") — this route previously
+      // labeled itself "kiwi", a retired source, which made the honest-empty seam lie.
+      res.json({ items, total: items.length, ...sourceStatusField("aviasales") });
     } catch (error) {
       console.error("Flights search error:", error);
       res.status(500).json({ message: "Failed to search flights" });
@@ -2559,28 +2561,9 @@ router.get("/api/amadeus/locations", async (req, res) => {
     }
   });
 
-  // Search flights
-
-router.get("/api/amadeus/flights", isAuthenticated, async (req, res) => {
-    try {
-      const { 
-        origin, destination, departureDate, returnDate, 
-        adults, children, infants, travelClass, nonStop, max 
-      } = req.query;
-      
-      if (!origin || !destination || !departureDate || !adults) {
-        return res.status(400).json({ 
-          message: "Required fields: origin, destination, departureDate, adults" 
-        });
-      }
-      
-      // Amadeus dropped (DECISIONS.md ruling 34) — no live flight provider on this route.
-      res.json([]);
-    } catch (error: any) {
-      console.error('Flight search error:', error);
-      res.status(500).json({ message: error.message || "Flight search failed" });
-    }
-  });
+  // GET /api/amadeus/flights RETIRED (flight-repoint, Aug 2026): the Amadeus service was
+  // deleted (DECISIONS.md ruling 34) and the stub answered `[]` to a client that no longer
+  // exists — flights are served by GET /api/catalog/flights (Aviasales/Travelpayouts).
 
   // Search hotels by city
 
@@ -2881,39 +2864,11 @@ router.get("/api/cache/activities", async (req, res) => {
     }
   });
 
-  // Get cached flights
-
-router.get("/api/cache/flights", isAuthenticated, async (req, res) => {
-    try {
-      const { origin, destination, departureDate, returnDate, adults, travelClass, nonStop } = req.query;
-      
-      if (!origin || !destination || !departureDate || !adults) {
-        return res.status(400).json({ 
-          message: "Required fields: origin, destination, departureDate, adults" 
-        });
-      }
-      
-      const result = await cacheService.getFlightsWithCache({
-        originLocationCode: origin as string,
-        destinationLocationCode: destination as string,
-        departureDate: departureDate as string,
-        returnDate: returnDate as string | undefined,
-        adults: parseInt(adults as string, 10),
-        travelClass: (travelClass as 'ECONOMY' | 'PREMIUM_ECONOMY' | 'BUSINESS' | 'FIRST') || 'ECONOMY',
-        nonStop: nonStop === 'true',
-        max: 20,
-      });
-      
-      res.json({
-        flights: result.data,
-        fromCache: result.fromCache,
-        lastUpdated: result.lastUpdated,
-      });
-    } catch (error: any) {
-      console.error('Cached flight search error:', error);
-      res.status(500).json({ message: error.message || "Flight search failed" });
-    }
-  });
+  // GET /api/cache/flights RETIRED (flight-repoint, Aug 2026): the flight_cache table has no
+  // writer since the Amadeus drop (ruling 34), so this could only ever replay stale rows or
+  // answer empty. Its sole client (the GDS-style FlightSearch component) is deleted; the
+  // flights tab now reads GET /api/catalog/flights. Table retirement is a separate decision —
+  // flight_cache stays (declared in shared/schema.ts) until ratified.
 
   // Get map markers for hotels in a destination
 
