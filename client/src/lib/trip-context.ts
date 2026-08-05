@@ -18,9 +18,26 @@ import { useCallback, useEffect, useState } from "react";
  * context — browsing "what's on date X" is not "when is my trip".
  * Full design: docs/audits/trip-context-scope.md
  */
+/**
+ * Provenance vocabulary for a planning context (Guest-invite A2, docs/briefs/04).
+ * Closed set — the server PUT allow-list (server/routes/trip-context.routes.ts)
+ * enforces the same enum. Absence of `origin` reads as organic; the explicit
+ * "organic" value exists so a surface can assert provenance positively.
+ */
+export const TRIP_ORIGIN_VALUES = ["organic", "guest_invite"] as const;
+export type TripOrigin = (typeof TRIP_ORIGIN_VALUES)[number];
+
 export interface TripContext {
   experienceSlug?: string;
   experienceType?: string;
+  /**
+   * FIRST-TOUCH provenance: set once at entry (e.g. GuestInvitePage stamps
+   * "guest_invite" when a visitor arrives via an invite link) and never
+   * overwritten by later merges — an invited guest who later browses
+   * organically KEEPS "guest_invite". Enforced in updateTripContext, not at
+   * call sites. Not part of SWITCH_FIELDS, so trip switches preserve it too.
+   */
+  origin?: TripOrigin;
   title?: string;
   destination?: string;
   city?: string;
@@ -80,6 +97,11 @@ export function updateTripContext(patch: TripContextPatch): TripContext {
     } else {
       sanitized[key] = value;
     }
+  }
+  // FIRST-TOUCH ORIGIN (A2): provenance is set once and never overwritten by a
+  // later merge — drop any incoming origin once one is already recorded.
+  if (current.origin && "origin" in sanitized) {
+    delete sanitized.origin;
   }
   // Dev-visible tripwire (no behavior change): a merge write that touches a
   // display field paired with trip identity (destination/dates) while a trip

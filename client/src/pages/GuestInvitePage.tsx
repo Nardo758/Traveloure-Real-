@@ -37,6 +37,7 @@ import {
   ArrowRight,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { getTripContext, updateTripContext } from '@/lib/trip-context';
 
 interface Invite {
   id: string;
@@ -54,6 +55,38 @@ interface Experience {
   startDate: string;
   endDate: string;
   eventDetails: any;
+  /** Event-type NAME from the redacted token view (e.g. "Wedding") — A2. */
+  experienceType?: string | null;
+}
+
+/**
+ * A2 (docs/briefs/04): stamp invite provenance into TripContext when the guest
+ * surface hydrates from an invite. `origin` is FIRST-TOUCH (the module drops a
+ * re-stamp), so a traveler who already carries provenance keeps it. When a trip
+ * is already BOUND locally (`tripId` set — Server-truth mode), only the
+ * provenance is stamped: overwriting the bound trip's identity/display fields
+ * from an invite would be the #972 desync class the module warns about.
+ * Exported so the behavioral gate (scripts/verify-guest-invite-context.ts) can
+ * drive the real entry-point code path.
+ */
+export function stampInviteTripContext(
+  experience:
+    | Pick<Experience, 'title' | 'destination' | 'startDate' | 'experienceType'>
+    | null
+    | undefined,
+): void {
+  if (!experience) return;
+  if (getTripContext().tripId) {
+    updateTripContext({ origin: 'guest_invite' });
+    return;
+  }
+  updateTripContext({
+    origin: 'guest_invite',
+    title: experience.title ?? undefined,
+    destination: experience.destination ?? undefined,
+    startDate: experience.startDate ?? undefined,
+    experienceType: experience.experienceType ?? undefined,
+  });
 }
 
 export function GuestInvitePage() {
@@ -91,7 +124,8 @@ export function GuestInvitePage() {
       if (response.ok) {
         setInvite(data.invite);
         setExperience(data.experience);
-        
+        stampInviteTripContext(data.experience);
+
         // Set initial form values if already filled
         if (data.invite.originCity) {
           setOriginCity(data.invite.originCity);
