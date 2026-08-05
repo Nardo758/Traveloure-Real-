@@ -1,11 +1,26 @@
-name: E2E Deploy Smoke
+name: E2E Deploy Smoke (production · UNAUTHENTICATED)
 
-# Runs the new deploy-targeting Playwright harness (playwright.e2e.config.ts →
-# e2e/specs) against a deployed app. NON-BLOCKING BY DESIGN: do NOT add this job
-# to branch-protection required checks until it has a green run with secrets.
+# Runs the UNAUTHENTICATED production smoke (playwright.e2e.public.config.ts →
+# e2e/specs/public-smoke.spec.ts) against the deployed production app.
 #
-# Distinct from e2e-tests.yml, which runs the OLDER local harness
-# (playwright.config.ts → ./playwright/tests) against a hardcoded URL.
+# WHY THIS WORKFLOW NO LONGER LOGS IN
+# ───────────────────────────────────
+# Production deliberately PURGES every @traveloure.test account on boot (the
+# PR #319 P0 security fix; scripts/check-env-allowlist.cjs enforces the posture).
+# So an auth-dependent suite CANNOT run against production: this job used to die
+# inside e2e/global-setup.ts with a 401 "Invalid email or password" before a
+# single test executed, on every PR, for weeks. A suite that always fails reports
+# nothing. Auth-dependent smoke moved to STAGING — see
+# .github/workflows/e2e-staging-auth-smoke.yml and docs/STAGING.md.
+#
+# THIS JOB MUST STAY LOGIN-FREE. It needs no E2E_TEST_PASSWORD and no seeded
+# account. Never point playwright.e2e.config.ts (which has a login globalSetup)
+# at E2E_BASE_URL from here.
+#
+# NON-BLOCKING BY DESIGN: do NOT add this job to branch-protection required
+# checks until it has a green run with secrets.
+#
+# Distinct from e2e-tests.yml, which runs the FULL journey specs against STAGING.
 
 on:
   pull_request:
@@ -16,63 +31,56 @@ permissions:
   contents: read
 
 jobs:
-  e2e-deploy-smoke:
-    name: e2e-deploy-smoke (deployed app; non-blocking)
+  # ── Gate: is a production URL configured at all? ────────────────────────────
+  # secrets.* are NOT accessible in `if:` conditions, so map to job env and
+  # publish the answer as an output the dependent jobs gate on.
+  config:
+    name: prod smoke config probe
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    # secrets.* are NOT accessible in `if:` conditions, so map them to job env
-    # and gate the work on a guard step's output instead.
+    outputs:
+      configured: ${{ steps.guard.outputs.run }}
     env:
       E2E_BASE_URL: ${{ secrets.E2E_BASE_URL }}
-      E2E_TEST_PASSWORD: ${{ secrets.E2E_TEST_PASSWORD }}
     steps:
-      - name: Check E2E secrets (skip cleanly when absent)
+      - name: Check E2E_BASE_URL (report loudly when absent)
         id: guard
         run: |
-          if [ -z "$E2E_BASE_URL" ] || [ -z "$E2E_TEST_PASSWORD" ]; then
-            echo "::notice::E2E_BASE_URL / E2E_TEST_PASSWORD not configured — skipping deploy smoke (non-blocking)."
+          if [ -z "$E2E_BASE_URL" ]; then
             echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=Prod smoke did not run::E2E_BASE_URL is not configured — the unauthenticated production smoke DID NOT RUN. This is not a pass."
+            {
+              echo "## ⚠️ Production smoke DID NOT RUN"
+              echo
+              echo "\`E2E_BASE_URL\` is not configured, so no checks were executed against production."
+              echo "**This is not a passing result — nothing was verified.**"
+              echo
+              echo "Add the repository secret \`E2E_BASE_URL\` (HTTPS production deploy URL) to enable it."
+            } >> "$GITHUB_STEP_SUMMARY"
           else
             echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "Production target configured — running the unauthenticated smoke."
           fi
 
-      # The production boot PURGES the seeded @traveloure.test accounts on every start
-      # (the PR #319 P0 security fix), so a production target correctly refuses their
-      # login with 401 — that is the fix WORKING, not a test failure. Auth-dependent
-      # smoke can only run against a deploy that opts in via ALLOW_TEST_ACCOUNTS=1
-      # (a staging deploy). Only a clean 401 skips; any other status (404 broken
-      # deploy, 500, timeouts) falls through and lets the suite fail loudly.
-      - name: Probe target accepts test accounts (P0 purge posture)
-        id: authprobe
-        if: steps.guard.outputs.run == 'true'
-        run: |
-          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 \
-            -X POST "$E2E_BASE_URL/api/auth/login" \
-            -H 'Content-Type: application/json' \
-            -d "{\"email\":\"test-traveler-kyoto@traveloure.test\",\"password\":\"$E2E_TEST_PASSWORD\"}") || code=000
-          if [ "$code" = "401" ]; then
-            echo "::notice::Deployed target refuses seeded test accounts (401) — the EXPECTED production posture since the P0 boot purge (PR #319). Auth smoke needs a deploy with ALLOW_TEST_ACCOUNTS=1; skipping (non-blocking)."
-            echo "run=false" >> "$GITHUB_OUTPUT"
-          else
-            echo "Auth probe returned $code — proceeding (200 = accounts seeded; anything else fails loudly in the suite)."
-            echo "run=true" >> "$GITHUB_OUTPUT"
-          fi
-
+  public-smoke:
+    name: public smoke (unauthenticated; non-blocking)
+    needs: config
+    if: needs.config.outputs.configured == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      E2E_BASE_URL: ${{ secrets.E2E_BASE_URL }}
+    steps:
       - uses: actions/checkout@v4
-        if: steps.guard.outputs.run == 'true' && steps.authprobe.outputs.run == 'true'
 
       - uses: actions/setup-node@v4
-        if: steps.guard.outputs.run == 'true' && steps.authprobe.outputs.run == 'true'
         with:
           node-version: '20'
           cache: 'npm'
 
       - name: Install dependencies
-        if: steps.guard.outputs.run == 'true' && steps.authprobe.outputs.run == 'true'
         run: npm ci
 
       - name: Cache Playwright browsers
-        if: steps.guard.outputs.run == 'true' && steps.authprobe.outputs.run == 'true'
         uses: actions/cache@v4
         id: playwright-cache
         with:
@@ -80,21 +88,51 @@ jobs:
           key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
 
       - name: Install Playwright (chromium)
-        if: steps.guard.outputs.run == 'true' && steps.authprobe.outputs.run == 'true' && steps.playwright-cache.outputs.cache-hit != 'true'
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: npx playwright install --with-deps chromium
 
       - name: Install Playwright system deps (cache hit)
-        if: steps.guard.outputs.run == 'true' && steps.authprobe.outputs.run == 'true' && steps.playwright-cache.outputs.cache-hit == 'true'
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: npx playwright install-deps chromium
 
-      - name: Run deploy smoke (chromium)
-        if: steps.guard.outputs.run == 'true' && steps.authprobe.outputs.run == 'true'
-        run: npm run test:e2e:deploy:smoke
+      # NOTE: no E2E_TEST_PASSWORD, no login, no seeded account. The public
+      # config has no globalSetup — see playwright.e2e.public.config.ts.
+      - name: Run public smoke (chromium)
+        run: npm run test:e2e:public
 
       - name: Upload report
-        if: ${{ always() && steps.guard.outputs.run == 'true' && steps.authprobe.outputs.run == 'true' }}
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: e2e-deploy-smoke-report
+          name: e2e-public-smoke-report
           path: playwright-report/
           retention-days: 14
+
+  # ── Final, unmissable verdict ───────────────────────────────────────────────
+  # The job NAME itself states whether the smoke ran, so an unconfigured run can
+  # never be read as a pass from the checks list alone.
+  report:
+    name: ${{ needs.config.outputs.configured == 'true' && 'prod smoke verdict' || 'PROD SMOKE DID NOT RUN — E2E_BASE_URL not configured' }}
+    needs: [config, public-smoke]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Summarize
+        run: |
+          CONFIGURED='${{ needs.config.outputs.configured }}'
+          RESULT='${{ needs.public-smoke.result }}'
+          if [ "$CONFIGURED" != "true" ]; then
+            echo "::warning title=Prod smoke did not run::E2E_BASE_URL not configured — DID NOT RUN (not a pass)."
+            echo "PROD SMOKE DID NOT RUN — E2E_BASE_URL is not configured. Nothing was verified."
+            exit 0
+          fi
+          echo "Public smoke job result: $RESULT"
+          {
+            echo "## Production public smoke: \`$RESULT\`"
+            echo
+            echo "Unauthenticated only (public routes + /health + /api/version + /api/ready)."
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$RESULT" = "failure" ]; then
+            echo "::error title=Prod public smoke failed::The unauthenticated production smoke failed — a public surface or health endpoint is broken."
+            exit 1
+          fi

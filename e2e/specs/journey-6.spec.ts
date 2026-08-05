@@ -1,9 +1,10 @@
 import { test, expect } from "@playwright/test";
 import { loginAsTestAccount } from "./helpers/auth";
+import { requireBaseUrl } from "../fixtures/base-url";
 
 test.describe("Journey 6 — Transport Booking", () => {
   test("PlanCard transport leg → affiliate click tracked → redirect to partner", async ({ page }) => {
-    const BASE = process.env.E2E_BASE_URL || "https://localhost:5000";
+    const BASE = requireBaseUrl();
 
     // ── Step 1: Sign in as traveler ────────────────────────────────────
     await loginAsTestAccount(page, "traveler");
@@ -44,7 +45,7 @@ test.describe("Journey 6 — Transport Booking", () => {
   });
 
   test("Standalone /transportation page → search → book → confirmation", async ({ page }) => {
-    const BASE = process.env.E2E_BASE_URL || "https://localhost:5000";
+    const BASE = requireBaseUrl();
 
     // ── Step 1: Sign in as traveler ────────────────────────────────────
     await loginAsTestAccount(page, "traveler");
@@ -73,7 +74,7 @@ test.describe("Journey 6 — Transport Booking", () => {
   });
 
   test("Affiliate click attribution endpoint", async ({ page }) => {
-    const BASE = process.env.E2E_BASE_URL || "https://localhost:5000";
+    const BASE = requireBaseUrl();
 
     // The seed + click endpoints are isAuthenticated (server/routes/transport-hub.routes.ts).
     // Authenticate first, then drive them through page.request so the session cookie rides
