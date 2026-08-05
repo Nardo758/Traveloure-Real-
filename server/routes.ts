@@ -3946,9 +3946,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         storage.getAffiliateEarningsSummary(userId),
         storage.getExpertReferrals(userId),
         storage.getProviderServices(userId),
-        // NOTE: pre-existing latent bug preserved as-is — a string is passed where a
-        // {providerId?,travelerId?,status?} filter is expected (was hidden behind `any`).
-        storage.getServiceBookings(userId as any),
+        // Fixed (was Task #1037): pass the proper filter object — the old call passed a
+        // bare userId string where {providerId?,travelerId?,status?} is expected, which
+        // matched nothing and zeroed the service-revenue figures on this page.
+        storage.getServiceBookings({ providerId: userId }),
         storage.getRevenueSplits()
       ]);
 

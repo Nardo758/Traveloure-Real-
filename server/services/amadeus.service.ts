@@ -2,6 +2,15 @@ import Amadeus from 'amadeus';
 import { apiUsageService } from './api-usage.service';
 import { reportProviderResult, outcomeFromHttpStatus } from './provider-health.service';
 
+
+// ─── DROPPED (DECISIONS.md ruling 34, 2026-08-05) ────────────────────────────
+// Amadeus Self-Service was decommissioned upstream (test.api.amadeus.com is
+// DNS-dead since ~2026-07-17) and the stored credentials 401 on the replacement
+// travel.api.amadeus.com domain. Leon ruled: DROP. Every public method
+// short-circuits to an empty result — no network calls, no provider-health
+// noise. Reviving Amadeus requires new credentials AND a new ledger ruling.
+const AMADEUS_DROPPED = true;
+
 const amadeus = new Amadeus({
   clientId: process.env.AMADEUS_API_KEY!,
   clientSecret: process.env.AMADEUS_API_SECRET!,
@@ -225,6 +234,7 @@ export interface SafetySearchParams {
 
 export class AmadeusService {
   async searchFlights(params: FlightSearchParams): Promise<FlightOffer[]> {
+    if (AMADEUS_DROPPED) return []; // ruling 34
     const startTime = Date.now();
     try {
       const response = await amadeus.shopping.flightOffersSearch.get({
@@ -265,6 +275,7 @@ export class AmadeusService {
   }
 
   async searchHotels(params: HotelSearchParams): Promise<HotelOffer[]> {
+    if (AMADEUS_DROPPED) return []; // ruling 34
     const startTime = Date.now();
     try {
       // First, get hotel list by city
@@ -320,6 +331,7 @@ export class AmadeusService {
   }
 
   async searchAirportsByKeyword(keyword: string): Promise<any[]> {
+    if (AMADEUS_DROPPED) return []; // ruling 34
     const startTime = Date.now();
     try {
       const response = await amadeus.referenceData.locations.get({
@@ -346,6 +358,7 @@ export class AmadeusService {
   }
 
   async searchCitiesByKeyword(keyword: string): Promise<any[]> {
+    if (AMADEUS_DROPPED) return []; // ruling 34
     const startTime = Date.now();
     try {
       const response = await amadeus.referenceData.locations.get({
@@ -372,6 +385,7 @@ export class AmadeusService {
   }
 
   async searchPointsOfInterest(params: POISearchParams): Promise<PointOfInterest[]> {
+    if (AMADEUS_DROPPED) return []; // ruling 34
     const startTime = Date.now();
     try {
       const queryParams: any = {
@@ -408,6 +422,7 @@ export class AmadeusService {
   }
 
   async getPointOfInterestById(poiId: string): Promise<PointOfInterest | null> {
+    if (AMADEUS_DROPPED) return null; // ruling 34
     const startTime = Date.now();
     try {
       const response = await (amadeus.referenceData.locations as any).pointOfInterest(poiId).get();
@@ -430,6 +445,7 @@ export class AmadeusService {
   }
 
   async searchActivities(params: ActivitySearchParams): Promise<Activity[]> {
+    if (AMADEUS_DROPPED) return []; // ruling 34
     const startTime = Date.now();
     try {
       const response = await (amadeus.shopping as any).activities.get({
@@ -460,6 +476,7 @@ export class AmadeusService {
   }
 
   async getActivityById(activityId: string): Promise<Activity | null> {
+    if (AMADEUS_DROPPED) return null; // ruling 34
     const startTime = Date.now();
     try {
       const response = await (amadeus.shopping as any).activity(activityId).get();
@@ -482,6 +499,7 @@ export class AmadeusService {
   }
 
   async searchTransfers(params: TransferSearchParams): Promise<TransferOffer[]> {
+    if (AMADEUS_DROPPED) return []; // ruling 34
     const startTime = Date.now();
     try {
       const requestBody: any = {
@@ -526,6 +544,7 @@ export class AmadeusService {
   }
 
   async getSafetyRatings(params: SafetySearchParams): Promise<SafetyRating[]> {
+    if (AMADEUS_DROPPED) return []; // ruling 34
     const startTime = Date.now();
     try {
       const response = await (amadeus as any).safety.safetyRatedLocations.get({
@@ -556,6 +575,7 @@ export class AmadeusService {
   }
 
   async getSafetyRatingById(locationId: string): Promise<SafetyRating | null> {
+    if (AMADEUS_DROPPED) return null; // ruling 34
     const startTime = Date.now();
     try {
       const response = await (amadeus as any).safety.safetyRatedLocation(locationId).get();
