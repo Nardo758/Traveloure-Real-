@@ -799,9 +799,14 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
     // ── Adaptive variant strategy (style-matched) ─────────────────────────────
     const [variantA, variantB] = selectVariantStrategy(tripPreferences);
 
+    // Stamp updatedAt on every transition INTO "generating" (not just create-time insert) so the
+    // stale-generating sweep (server/services/itinerary-generation-sweep-scheduler.service.ts)
+    // measures staleness from when THIS attempt actually started, not from a re-run's original,
+    // possibly days-old, createdAt/updatedAt. Without this, a regenerate call on an old comparison
+    // row would look instantly "stale" to the sweep the moment it starts.
     await db
       .update(itineraryComparisons)
-      .set({ status: "generating" })
+      .set({ status: "generating", updatedAt: new Date() } as any)
       .where(eq(itineraryComparisons.id, comparisonId));
 
     const baselineVariant = await db
