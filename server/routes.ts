@@ -149,6 +149,7 @@ import {
 // ─── Commission constants & resolver (canonical source: server/services/commission.ts) ─
 import {
   getExpertSplitRates,
+  resolveExpertSharePct,
   PROCESSING_FEE_RATE,
   resolveCommissionRates,
   calcInsuranceFee,
@@ -156,6 +157,7 @@ import {
   type CommissionRates,
 } from "./services/commission";
 import { calculateCommission, BookingType } from "./utils/commissionCalculator";
+import { ensureDefaultBookingFeeConfig } from "./services/booking-fee-bootstrap";
 // Ready-made authoring mode (brief §2): explicit present-value author check. Never getTripRole.
 import { isTripAuthor } from "./utils/trip-authorship";
 import { verifyTripOwnership } from "./utils/trip-ownership";
@@ -705,31 +707,16 @@ export async function registerRoutes(
     }
   })();
 
-  // ─── Seed / backfill booking_fee_configs (idempotent) ──────────────────────
-  // Ensures the canonical default row (platform 25% / expert 75%) always exists,
-  // and backfills any legacy 70/30 rows that were inserted before the policy change.
-  // fee-literal-debt:#1036 — startup seed hardcodes the 25/75 default instead of deriving
-  // it from the fee-band source of truth (ruling 32: surface + DB-backed test required).
+  // ─── Bootstrap booking_fee_configs 'default' row (create-only, never updates) ──
+  // Task #1036 / ruling 32: the bootstrap that CREATES the source of truth lives in
+  // server/services/booking-fee-bootstrap.ts (surface declaration + clobber-safety
+  // documented there; DB-backed test proves it never overwrites admin edits). The
+  // one-time legacy 70/30 → 75/25 backfill moved to migration 175.
   (async () => {
     try {
-      // 1. Upsert the 'default' row only if it doesn't already exist
-      await db.execute(sql`
-        INSERT INTO booking_fee_configs
-          (id, category, platform_fee_percent, expert_share_percent, ai_keeps_100, is_active, created_at, updated_at)
-        VALUES
-          (gen_random_uuid(), 'default', 25, 75, true, true, NOW(), NOW())
-        ON CONFLICT (category) DO NOTHING
-      `);
-      // 2. Backfill any rows that still carry the old 70/30 default
-      await db.execute(sql`
-        UPDATE booking_fee_configs
-        SET expert_share_percent = '75.00',
-            platform_fee_percent = '25.00'
-        WHERE CAST(expert_share_percent AS NUMERIC) = 70
-          AND CAST(platform_fee_percent  AS NUMERIC) = 30
-      `);
+      await ensureDefaultBookingFeeConfig();
     } catch (err) {
-      console.warn("[Seed] Could not seed/backfill booking_fee_configs:", err);
+      console.warn("[Seed] Could not bootstrap booking_fee_configs:", err);
     }
   })();
 
@@ -3971,11 +3958,13 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const serviceSplit = revenueSplits.find((s) => s.type === 'service_booking');
       const templateSplit = revenueSplits.find((s) => s.type === 'template_sale');
 
-      // Calculate expert's share percentages — policy: service/template 75%, affiliate 30%
-      // fee-literal-debt:#1036 — '75' string fallback bypasses fee_bands when a revenue-split
-      // row is missing (ruling 32: band-back or fail loud, with a DB-backed test).
-      const serviceExpertPct = parseFloat(serviceSplit?.expertPercentage || '75') / 100;
-      const templateExpertPct = parseFloat(templateSplit?.expertPercentage || '75') / 100;
+      // Expert share fractions for this DISPLAY breakdown: the revenue_splits row wins
+      // when present; a missing row band-backs to fee_bands `expert_standard` via
+      // resolveExpertSharePct (Task #1036 / ruling 32 — no hardcoded '75' fallback).
+      const [serviceExpertPct, templateExpertPct] = await Promise.all([
+        resolveExpertSharePct(serviceSplit),
+        resolveExpertSharePct(templateSplit),
+      ]);
       
       // Calculate real earnings breakdown - using expert's share after platform fees
       const publishedTemplates = templates.filter((t) => t.isPublished);
