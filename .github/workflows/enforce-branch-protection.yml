@@ -7,18 +7,16 @@ name: Enforce Branch Protection
 # Trigger: every push to main that touches CI_GATES.md or this file itself,
 # plus manual dispatch so an admin can re-apply after any manual UI change.
 #
-# Permissions: administration: write is required to update branch protection.
-# GitHub Actions grants this automatically when the workflow runs in a repo
-# where "Allow GitHub Actions to create and approve pull requests" and
-# "Read and write permissions" are enabled under Settings → Actions →
-# General → Workflow permissions.
-#
-# If GITHUB_TOKEN is insufficient (e.g., organisation SSO or finer-grained
-# controls), create a repo-scoped PAT with `administration` scope, store it
-# as the secret BRANCH_PROTECTION_PAT, and replace
-#   GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-# with
-#   GH_TOKEN: ${{ secrets.BRANCH_PROTECTION_PAT }}
+# Permissions/token: updating branch protection needs repo *administration*
+# rights, which is NOT a grantable GITHUB_TOKEN permission scope — there is no
+# `administration:` key in a workflow `permissions:` block (declaring one fails
+# workflow-file validation with zero jobs), and the installation token never
+# receives that right regardless of Settings → Actions → Workflow permissions.
+# So this workflow authenticates with a repo-scoped PAT that has the
+# `administration` scope, stored as the secret BRANCH_PROTECTION_PAT. The
+# GH_TOKEN expressions below fall back to secrets.GITHUB_TOKEN only so the
+# failure mode without the PAT is a clear 403 from the API call, not a
+# missing-env crash.
 #
 # Status context (for branch-protection required checks):
 #   This workflow APPLIES required checks; it does not itself need to be
@@ -35,7 +33,6 @@ on:
 
 permissions:
   contents: read
-  administration: write
 
 jobs:
   enforce-branch-protection:
@@ -47,7 +44,7 @@ jobs:
 
       - name: Apply required status checks from branch-protection.json
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.BRANCH_PROTECTION_PAT || secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
@@ -72,7 +69,7 @@ jobs:
 
       - name: Verify applied contexts match declaration
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.BRANCH_PROTECTION_PAT || secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
