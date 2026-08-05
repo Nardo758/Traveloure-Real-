@@ -109,6 +109,7 @@ import upsellRoutes from "./routes/upsell.routes";
 import tripsRoutes from "./routes/trips.routes";
 import { dedupedRequest, callWithCircuitBreaker } from "./utils/requestDeduplication";
 import adminRoutes from "./routes/admin.routes";
+import { insertAccessAuditLog } from "./services/admin-query.service";
 import expertsRoutes from "./routes/experts.routes";
 import eaRoutes from "./routes/ea.routes";
 import providerRoutes from "./routes/provider.routes";
@@ -3456,6 +3457,20 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         return res.status(400).json({ message: "Can only approve submitted templates" });
       }
       const approved = await storage.approveExpertTemplate(req.params.id, adminId);
+
+      // Rides the blanket /api/admin adminApiGuard (§2) — adminId is already confirmed admin.
+      insertAccessAuditLog({
+        actorId: adminId,
+        actorRole: "admin",
+        action: "expert_template_approve",
+        resourceType: "expert_template",
+        resourceId: req.params.id,
+        targetUserId: template.expertId ?? null,
+        metadata: {},
+        ipAddress: req.ip ?? null,
+        userAgent: req.get("user-agent") ?? null,
+      }).catch((err: any) => console.error("[admin/expert-templates] audit log failed (non-fatal):", err));
+
       res.json(approved);
     } catch (err) {
       console.error("Error approving template:", err);
@@ -3478,6 +3493,20 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         return res.status(400).json({ message: "Can only reject submitted templates" });
       }
       const rejected = await storage.rejectExpertTemplate(req.params.id, adminId, reason);
+
+      // Rides the blanket /api/admin adminApiGuard (§2) — adminId is already confirmed admin.
+      insertAccessAuditLog({
+        actorId: adminId,
+        actorRole: "admin",
+        action: "expert_template_reject",
+        resourceType: "expert_template",
+        resourceId: req.params.id,
+        targetUserId: template.expertId ?? null,
+        metadata: { reason },
+        ipAddress: req.ip ?? null,
+        userAgent: req.get("user-agent") ?? null,
+      }).catch((err: any) => console.error("[admin/expert-templates] audit log failed (non-fatal):", err));
+
       res.json(rejected);
     } catch (err) {
       console.error("Error rejecting template:", err);
