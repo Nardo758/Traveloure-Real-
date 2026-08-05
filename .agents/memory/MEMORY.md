@@ -18,3 +18,4 @@
 - [MapMarker fallback testing](map-marker-fallback-testing.md) — fallback mode drops map-pin-* testids (AdvancedMarker children); find pins by .gm-style [title]; ItineraryMapView is orphaned; Maps key lacks billing.
 - [Amadeus decommission](amadeus-decommission.md) — test.api.amadeus.com is DNS-dead; new travel.api.amadeus.com domain 401s the stored keys; needs Leon's credentials decision, not code debugging.
 - [Fee-band scope split](fee-band-scope-split.md) — EXPERIENCE_CART 0.30 was display-only; real charges resolve per-item via resolveCommissionRates; new bands must state which surface they control or review rejects.
+- [Kyoto bench fixture](kyoto-bench-fixture.md) — durable dev-DB expert kyoto-temples@traveloure.test with lifecycle provenance; never seed Kyoto experts by bare role flip; no DB CHECK on application status.
