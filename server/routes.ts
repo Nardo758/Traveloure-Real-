@@ -87,6 +87,7 @@ import { experienceTypes as experienceTypesTable, coordinationStates, coordinati
 import { isExpertRole, isProviderRole } from "@shared/roles";
 import Stripe from "stripe";
 import { sharedCache } from "./services/shared-cache.service";
+import { vaultAndStripItems } from "./services/affiliate-url-vault.service";
 import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, createPublicProfile, getDisplayName, redactContactInfo } from "./utils/data-sanitizer";
 import { transportLegs, sharedItineraries, mapsExportCache, expertUpdatedItineraries, affiliateProducts, contentRegistry } from "@shared/schema";
 import { calculateTransportLegs, regenerateMapsUrlsFromLegs } from "./services/transport-leg-calculator";
@@ -2652,7 +2653,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // 1. Fresh DB cache hit → return immediately
       const cached = await sharedCache.get<DealsPayload>(DEALS_CACHE_NS, cacheKey);
       if (cached) {
-        return res.json(cached);
+        // §16: deals ship an opaque bookingToken, never the affiliate URL (vaulted server-side).
+        return res.json({ ...cached, deals: await vaultAndStripItems(cached.deals) });
       }
 
       // 2. Stale-while-revalidate: serve last known result while refreshing in background.
@@ -2669,14 +2671,14 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             .catch((err) => console.error("[Deals] Background revalidation error:", err))
             .finally(() => dealsRevalidating.delete(cacheKey));
         }
-        return res.json({ ...stale, stale: true });
+        return res.json({ ...stale, deals: await vaultAndStripItems(stale.deals), stale: true });
       }
 
       // 3. Cold fetch: no cache at all → fetch synchronously, then cache
       const fresh = await fetchDealsFromProviders(type, destination, origin);
       await sharedCache.set(DEALS_CACHE_NS, cacheKey, fresh, DEALS_TTL_MS);
       setDealsStale(cacheKey, fresh);
-      return res.json(fresh);
+      return res.json({ ...fresh, deals: await vaultAndStripItems(fresh.deals) });
     } catch (error) {
       console.error("Deals aggregation error:", error);
       res.status(500).json({ message: "Failed to fetch deals" });

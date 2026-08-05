@@ -259,7 +259,15 @@ router.get(
         options = await storage.getBookingOptionsByLegId(legId);
       }
 
-      res.json({ legId, options });
+      // §16: affiliate/deep-link options never ship their externalUrl to the client. The
+      // booking-agent rail re-resolves the URL from the transport_booking_options row by id
+      // (transportOptionId) — the card only needs to know a bookable link exists.
+      const safeOptions = options.map(({ externalUrl, ...rest }: any) => ({
+        ...rest,
+        hasBookingLink: !!externalUrl,
+      }));
+
+      res.json({ legId, options: safeOptions });
     } catch (err) {
       console.error("[transport-legs/:legId/options]", err);
       res.status(500).json({ error: "Failed to load booking options" });

@@ -41,7 +41,8 @@ function FeverTicketsButton({ event }: { event: EventItem }) {
     itemDescription: [event.description, event.venueName, event.destination].filter(Boolean).join(" · ") || null,
     partnerName: event.provider || "Fever",
     partnerCategory: "event",
-    affiliateUrl: event.affiliateUrl || event.bookingUrl,
+    // §16 closure: the feed ships an opaque server-minted bookingToken, never the URL.
+    bookingToken: event.bookingToken,
   });
   return (
     <Button
@@ -306,7 +307,7 @@ export function FeverEventsSection({ destination, startDate, endDate }: FeverEve
                     )}
                   </div>
 
-                  {(event.affiliateUrl || event.bookingUrl) && !event.isSoldOut && (
+                  {event.bookingToken && !event.isSoldOut && (
                     <FeverTicketsButton event={event} />
                   )}
                   {event.isSoldOut && (

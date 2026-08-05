@@ -15,8 +15,13 @@ export interface CatalogItem {
   duration: string | null;
   categories: string[];
   tags: string[];
-  bookingUrl: string | null;
-  affiliateUrl?: string | null;
+  /**
+   * §16: catalog DTOs never carry partner URLs (`affiliateUrl`/`bookingUrl` are stripped
+   * server-side). This opaque token — minted by the server's affiliate-url vault when the feed
+   * response was built — is what the booking-agent rail resolves back to the URL, server-side
+   * only. Present exactly when the item is bookable via the agent rail.
+   */
+  bookingToken?: string | null;
   source?: string | null;
   lastUpdated: string | null;
   cuisine?: string | null;

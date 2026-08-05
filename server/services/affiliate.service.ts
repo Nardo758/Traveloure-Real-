@@ -239,6 +239,20 @@ class AffiliateService {
   }
 
   /**
+   * §16 server-side 12Go deep-link builder for the booking-agent rail's `partnerRoute` reference.
+   * Several client surfaces used to construct 12Go affiliate URLs in the browser and POST them back
+   * to the rail; the rail no longer accepts client URLs, so the link (and the affiliate id) is
+   * built here, server-side only, from the route params the traveler picked.
+   */
+  buildTwelveGoDeepLink(opts: { origin?: string; destination?: string } = {}): string {
+    const { affiliateId, baseUrl } = this.partners.twelvego;
+    const params = new URLSearchParams({ affiliate_id: affiliateId });
+    if (opts.destination) params.set("q", opts.destination);
+    if (opts.origin) params.set("departcity", opts.origin);
+    return `${baseUrl}/en?${params.toString()}`;
+  }
+
+  /**
    * Build TwelveGo affiliate link (transportation)
    */
   private buildTwelveGoLink(destination: string, date: string, metadata?: any): string {
