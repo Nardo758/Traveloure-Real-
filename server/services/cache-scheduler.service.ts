@@ -1,6 +1,6 @@
 import { db } from "../db";
-import { hotelCache, activityCache, flightCache, hotelOfferCache, restaurantCache } from "@shared/schema";
-import { sql, eq, gte, lte, and, desc } from "drizzle-orm";
+import { hotelCache, activityCache, hotelOfferCache, restaurantCache } from "@shared/schema";
+import { eq, desc } from "drizzle-orm";
 import { cacheService } from "./cache.service";
 import { partnerEventsCacheService } from "./partner-events-cache.service";
 import { sharedCache } from "./shared-cache.service";
@@ -35,7 +35,6 @@ const BATCH_DELAY_MS = 2000; // Delay between batches
 interface CacheRefreshStats {
   hotelsRefreshed: number;
   activitiesRefreshed: number;
-  flightsRefreshed: number;
   feverEventsRefreshed: number;
   bookingComHotelsRefreshed: number;
   openTableRestaurantsRefreshed: number;
@@ -223,10 +222,8 @@ class CacheSchedulerService {
       stats.activitiesRefreshed = activitiesResult.refreshed;
       stats.errors.push(...activitiesResult.errors);
 
-      // Refresh flights (optional - flights change frequently)
-      const flightsResult = await this.refreshStaleFlights();
-      stats.flightsRefreshed = flightsResult.refreshed;
-      stats.errors.push(...flightsResult.errors);
+      // Flight refresh RETIRED (migration 176): flight_cache is dropped — the loop here
+      // only ever re-read its own rows (no writer since the Amadeus drop, ruling 34).
 
       // Refresh Fever events
       const feverResult = await this.refreshStalePartnerEvents();
@@ -248,10 +245,10 @@ class CacheSchedulerService {
 
       // Clean up expired cache entries via shared primitive and domain-specific services
       await sharedCache.flushExpired(); // travelpayouts KV store
-      await cacheService.cleanupExpiredCache(); // hotels / activities / flights
+      await cacheService.cleanupExpiredCache(); // hotels / activities
       await partnerEventsCacheService.cleanupExpiredCache(); // fever events (delegates to sharedCache.cleanupDomainTable)
 
-      console.log(`[CacheScheduler] Refresh complete - Hotels: ${stats.hotelsRefreshed}, Activities: ${stats.activitiesRefreshed}, Flights: ${stats.flightsRefreshed}, Fever: ${stats.feverEventsRefreshed}`);
+      console.log(`[CacheScheduler] Refresh complete - Hotels: ${stats.hotelsRefreshed}, Activities: ${stats.activitiesRefreshed}, Fever: ${stats.feverEventsRefreshed}`);
     } catch (error: any) {
       console.error("[CacheScheduler] Refresh error:", error);
       stats.errors.push(`General error: ${error.message}`);
@@ -267,7 +264,6 @@ class CacheSchedulerService {
     return {
       hotelsRefreshed: 0,
       activitiesRefreshed: 0,
-      flightsRefreshed: 0,
       feverEventsRefreshed: 0,
       bookingComHotelsRefreshed: 0,
       openTableRestaurantsRefreshed: 0,
@@ -531,70 +527,9 @@ class CacheSchedulerService {
     return { refreshed, errors };
   }
 
-  // Refresh stale flight data (optional - flights change very frequently)
-  private async refreshStaleFlights(): Promise<{ refreshed: number; errors: string[] }> {
-    const errors: string[] = [];
-    let refreshed = 0;
-
-    try {
-      // Find unique flight routes with stale data (lastUpdated is null OR older than threshold)
-      const staleThreshold = new Date();
-      staleThreshold.setHours(staleThreshold.getHours() - STALE_THRESHOLD_HOURS);
-      const todayStr = new Date().toISOString().split('T')[0];
-
-      // Get all unique flight routes and check their freshness
-      const allFlights = await db
-        .selectDistinct({
-          origin: flightCache.originCode,
-          destination: flightCache.destinationCode,
-          departureDate: flightCache.departureDate,
-          returnDate: flightCache.returnDate,
-          lastUpdated: flightCache.lastUpdated,
-        })
-        .from(flightCache)
-        .where(gte(flightCache.departureDate, todayStr)); // Only future flights
-
-      // Filter for stale or null lastUpdated
-      const staleFlights = allFlights.filter(({ lastUpdated }) => 
-        !lastUpdated || new Date(lastUpdated) < staleThreshold
-      );
-
-      console.log(`[CacheScheduler] Found ${staleFlights.length} flight routes with stale data`);
-
-      // Process in batches
-      for (let i = 0; i < staleFlights.length; i += BATCH_SIZE) {
-        const batch = staleFlights.slice(i, i + BATCH_SIZE);
-        
-        await Promise.all(batch.map(async (flight) => {
-          try {
-            await cacheService.getFlightsWithCache({
-              originLocationCode: flight.origin,
-              destinationLocationCode: flight.destination,
-              departureDate: flight.departureDate,
-              returnDate: flight.returnDate || undefined,
-              adults: 2,
-              travelClass: 'ECONOMY',
-              nonStop: false,
-              max: 20,
-            });
-            refreshed++;
-            console.log(`[CacheScheduler] Refreshed flights for ${flight.origin} -> ${flight.destination}`);
-          } catch (error: any) {
-            errors.push(`Flight refresh error for ${flight.origin}-${flight.destination}: ${error.message}`);
-          }
-        }));
-
-        // Delay between batches
-        if (i + BATCH_SIZE < staleFlights.length) {
-          await this.delay(BATCH_DELAY_MS);
-        }
-      }
-    } catch (error: any) {
-      errors.push(`Flight refresh general error: ${error.message}`);
-    }
-
-    return { refreshed, errors };
-  }
+  // refreshStaleFlights RETIRED (migration 176): it listed routes from flight_cache and
+  // called getFlightsWithCache, which only re-read the same table — a no-op loop keeping
+  // a writerless table warm. Both are deleted along with the table.
 
   // Utility function to delay execution
   private delay(ms: number): Promise<void> {
@@ -680,7 +615,6 @@ class CacheSchedulerService {
   async getCacheFreshnessStatus(): Promise<{
     hotels: { total: number; fresh: number; stale: number; expired: number };
     activities: { total: number; fresh: number; stale: number; expired: number };
-    flights: { total: number; fresh: number; stale: number; expired: number };
     lastRefresh: Date | null;
     isRefreshing: boolean;
   }> {
@@ -696,14 +630,11 @@ class CacheSchedulerService {
     const allActivities = await db.select({ id: activityCache.id, lastUpdated: activityCache.lastUpdated, expiresAt: activityCache.expiresAt }).from(activityCache);
     const activityStats = this.categorizeByFreshness(allActivities, now, staleThreshold);
 
-    // Get flight counts
-    const allFlights = await db.select({ id: flightCache.id, lastUpdated: flightCache.lastUpdated, expiresAt: flightCache.expiresAt }).from(flightCache);
-    const flightStats = this.categorizeByFreshness(allFlights, now, staleThreshold);
+    // Flight counts RETIRED with flight_cache (migration 176).
 
     return {
       hotels: hotelStats,
       activities: activityStats,
-      flights: flightStats,
       lastRefresh: this.lastStats?.lastRefreshTime || null,
       isRefreshing: this.isRefreshing,
     };

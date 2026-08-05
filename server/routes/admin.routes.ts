@@ -2462,20 +2462,20 @@ router.get("/api/admin/data/location-summary", isAuthenticated, async (req, res)
         return res.status(403).json({ message: "Admin access required" });
       }
 
-      const { eventData, hotelData, activityData, flightData } = await getLocationSummaryData();
+      // flights RETIRED from this summary (migration 176 dropped flight_cache — it was
+      // writerless since the Amadeus drop and this only ever counted an empty table).
+      const { eventData, hotelData, activityData } = await getLocationSummaryData();
 
       const totals = {
         events: eventData.reduce((sum: number, e: any) => sum + e.count, 0),
         hotels: hotelData.reduce((sum: number, h: any) => sum + h.count, 0),
         activities: activityData.reduce((sum: number, a: any) => sum + a.count, 0),
-        flights: flightData.reduce((sum: number, f: any) => sum + f.count, 0),
       };
 
       res.json({
         events: eventData,
         hotels: hotelData,
         activities: activityData,
-        flights: flightData,
         totals,
       });
     } catch (error) {
