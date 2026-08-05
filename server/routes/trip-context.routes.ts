@@ -75,6 +75,11 @@ const tripContextSchema = z
   .object({
     experienceSlug: str(120).optional(),
     experienceType: str(120).optional(),
+    // Guest-invite A2 (docs/briefs/04): closed provenance vocabulary — must stay in
+    // sync with TRIP_ORIGIN_VALUES in client/src/lib/trip-context.ts. First-touch
+    // semantics are enforced in the UPDATE below (a stored origin is never
+    // overwritten or cleared by a later PUT).
+    origin: z.enum(["organic", "guest_invite"]).optional(),
     title: str(255).optional(),
     destination: str(255).optional(),
     city: str(120).optional(),
@@ -142,19 +147,34 @@ router.put("/api/trip-context", isAuthenticated, async (req, res) => {
     // target to exactly match an existing (partial) unique index, including its predicate
     // (migration 161 — trip_contexts_user_legacy_uidx WHERE trip_id IS NULL vs
     // trip_contexts_user_trip_uidx WHERE trip_id IS NOT NULL).
+    //
+    // The UPDATE's CASE mirrors the client module's FIRST-TOUCH origin semantics
+    // (Guest-invite A2): a stored `origin` always wins — a later PUT can neither
+    // overwrite it nor clear it by omission. Everything else is a full replace,
+    // exactly as before.
     if (tripId) {
       await db.execute(sql`
         INSERT INTO trip_contexts (user_id, trip_id, context, updated_at)
         VALUES (${userId}, ${tripId}, ${json}::jsonb, NOW())
         ON CONFLICT (user_id, trip_id) WHERE trip_id IS NOT NULL
-        DO UPDATE SET context = ${json}::jsonb, updated_at = NOW()
+        DO UPDATE SET context = CASE
+            WHEN trip_contexts.context ? 'origin'
+              THEN ${json}::jsonb || jsonb_build_object('origin', trip_contexts.context->'origin')
+            ELSE ${json}::jsonb
+          END,
+          updated_at = NOW()
       `);
     } else {
       await db.execute(sql`
         INSERT INTO trip_contexts (user_id, trip_id, context, updated_at)
         VALUES (${userId}, NULL, ${json}::jsonb, NOW())
         ON CONFLICT (user_id) WHERE trip_id IS NULL
-        DO UPDATE SET context = ${json}::jsonb, updated_at = NOW()
+        DO UPDATE SET context = CASE
+            WHEN trip_contexts.context ? 'origin'
+              THEN ${json}::jsonb || jsonb_build_object('origin', trip_contexts.context->'origin')
+            ELSE ${json}::jsonb
+          END,
+          updated_at = NOW()
       `);
     }
     res.json({ ok: true });
