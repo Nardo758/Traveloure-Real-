@@ -3,7 +3,12 @@ import crypto from "crypto";
 import { execFileSync } from "child_process";
 import { Pool } from "pg";
 import Stripe from "stripe";
-import { assertDisposableDb, assertCheckoutAccepted, STRIPE_UNAVAILABLE } from "./_journey-helpers";
+import {
+  assertDisposableDb,
+  assertCheckoutAccepted,
+  assertCheckoutCommittedNothing,
+  STRIPE_UNAVAILABLE,
+} from "./_journey-helpers";
 
 /**
  * JOURNEY SUITE — Journey Wave 1 Tier-1 · J1 Golden Path (self-serve, no expert).
@@ -242,11 +247,28 @@ test.describe("J1 — Golden Path (self-serve checkout, no expert)", () => {
     // confirm). Amount is server-computed (we NEVER send an amount). We then confirm the real
     // PaymentIntent through the StripeCheckout PaymentElement UI with card 4242.
     const idempotencyKey = crypto.randomUUID();
+    const [{ n: cartCountBefore }] = await q<{ n: number }>(
+      `SELECT count(*)::int AS n FROM cart_items WHERE user_id=$1`,
+      [actor.id],
+    );
     const checkoutRes = await request.post(`${BASE_URL}/api/checkout`, {
       data: { tripId, idempotencyKey },
     });
-    // The HTTP envelope is the ONLY thing that depends on Stripe reachability — see
-    // assertCheckoutAccepted. Every DB fact below (7a–7e) is asserted unconditionally.
+
+    // Ruling 38: which TRUTHFUL contract applies depends on Stripe reachability — but BOTH are
+    // hard-asserted. Without a PaymentIntent a checkout commits nothing, so 7a–7e below (which
+    // assert the committed state) only exist in the authorized posture; the unauthorized posture
+    // asserts their ABSENCE instead, which is the stronger claim and the one this lane added.
+    if (STRIPE_UNAVAILABLE) {
+      await assertCheckoutCommittedNothing(checkoutRes, "j1", {
+        userId: actor.id,
+        tripId,
+        itemIds: [itemId],
+        cartCountBefore: Number(cartCountBefore),
+      });
+      return;
+    }
+
     const checkoutBody = await assertCheckoutAccepted(checkoutRes, "j1");
     const paymentIntent = checkoutBody?.paymentIntent;
 
@@ -259,13 +281,22 @@ test.describe("J1 — Golden Path (self-serve checkout, no expert)", () => {
       platform_fee: string;
       provider_earnings: string;
       status: string;
+      stripe_payment_intent_id: string | null;
     }>(
-      `SELECT id, trip_id, service_id, total_amount, platform_fee, provider_earnings, status
+      `SELECT id, trip_id, service_id, total_amount, platform_fee, provider_earnings, status,
+              stripe_payment_intent_id
        FROM service_bookings WHERE traveler_id=$1 AND trip_id=$2`,
       [actor.id, tripId],
     );
     expect(booking, "checkout must create a service_bookings row").toBeTruthy();
     expect(booking.status).toBe("payment_pending");
+    // Ruling 38 PROMOTE fact: an authorized checkout stamps the PaymentIntent id on the booking
+    // BEFORE any of the commitments below. Its presence is what distinguishes a real booking from
+    // a provisional claim, and what re-arms the webhook confirm path.
+    expect(
+      booking.stripe_payment_intent_id,
+      "an authorized booking must carry its PaymentIntent id (PROMOTE, not CLAIM)",
+    ).toBeTruthy();
     expect(booking.service_id, "booking must link the catalog service (H5 survives to booking)").toBe(svc.id);
 
     // 7b. NO FEE LITERAL: assert the split is DB-fee-band-derived, not a hardcoded rate.
