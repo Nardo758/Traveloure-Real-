@@ -276,6 +276,31 @@ function LoginRoute() {
   return <PageLoader />;
 }
 
+/* OAuth (Replit) sign-in is a server-side redirect: the callback lands on "/"
+   and never sees browser storage. Password sign-in consumes and removes
+   traveloure_return_to itself before redirecting, so any value still present
+   once a user is authenticated belongs to an OAuth round-trip — restore it
+   here on authenticated bootstrap so /login?returnTo=… works for both paths. */
+function AuthReturnToRestorer() {
+  const { user, isLoading } = useAuth();
+  const [, navigate] = useLocation();
+  const restoredRef = useRef(false);
+
+  useEffect(() => {
+    if (isLoading || !user || restoredRef.current) return;
+    restoredRef.current = true;
+    const stored = sessionStorage.getItem("traveloure_return_to");
+    if (!stored) return;
+    sessionStorage.removeItem("traveloure_return_to");
+    const dest = sanitizeReturnTo(stored);
+    if (dest && dest !== window.location.pathname + window.location.search) {
+      navigate(dest, { replace: true });
+    }
+  }, [isLoading, user, navigate]);
+
+  return null;
+}
+
 function ChatWithRoleLayout() {
   return (
     <ConsoleAwareLayout title="Messages">
@@ -1137,6 +1162,7 @@ function App() {
               <TooltipProvider>
                 <Toaster />
                 <GuestCartMigrator />
+                <AuthReturnToRestorer />
                 <MaintenanceGate>
                   <Router />
                 </MaintenanceGate>
