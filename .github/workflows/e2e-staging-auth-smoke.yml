@@ -1,0 +1,191 @@
+name: E2E Staging Auth Smoke
+
+# AUTH-DEPENDENT smoke — runs against STAGING, never production.
+#
+# WHY STAGING EXISTS
+# ──────────────────
+# Production PURGES every @traveloure.test account on boot (the PR #319 P0
+# security fix). That is correct and is enforced at grep level by
+# scripts/check-env-allowlist.cjs. Consequence: a suite that logs in a seeded
+# account can NEVER pass against production — the old e2e-deploy-smoke died in
+# e2e/global-setup.ts with a 401 before a single test ran, on every PR, for
+# weeks. Rather than weaken the purge, auth-dependent smoke targets a STAGING
+# deploy that opts in to the seeded accounts. Provisioning that deploy is the
+# OWNER's action, not CI's — the exact steps are in docs/STAGING.md.
+#
+# This workflow NEVER sets the opt-in env var itself: doing so from a
+# deploy-targeting workflow is precisely the leak check-env-allowlist.cjs
+# fails on. The opt-in lives on the Replit staging deployment's own env.
+#
+# BEHAVIOUR WHEN STAGING IS NOT CONFIGURED
+# ────────────────────────────────────────
+# The smoke job is SKIPPED (grey, not green) and the final check is renamed to
+# "STAGING NOT CONFIGURED — auth smoke DID NOT RUN", with a run-summary banner
+# and a warning annotation. A not-configured run must never be mistakable for a
+# passing run. There is deliberately NO continue-on-error anywhere in this file:
+# once staging IS configured, a failure is a real failure and stays red.
+#
+# NON-BLOCKING BY DESIGN: do NOT add to branch-protection required checks until
+# it has had a green run against a provisioned staging deploy.
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  # ── Gate: does a staging target exist? ──────────────────────────────────────
+  # secrets.* are unavailable in `if:` conditions, so map to job env and publish
+  # the answer as an output the smoke job gates on.
+  config:
+    name: staging config probe
+    runs-on: ubuntu-latest
+    outputs:
+      configured: ${{ steps.guard.outputs.run }}
+    env:
+      E2E_STAGING_BASE_URL: ${{ secrets.E2E_STAGING_BASE_URL }}
+    steps:
+      - name: Check staging secrets (report loudly when absent)
+        id: guard
+        run: |
+          if [ -z "$E2E_STAGING_BASE_URL" ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=Auth smoke did not run::E2E_STAGING_BASE_URL is not configured — the auth-dependent smoke DID NOT RUN. This is not a pass."
+            {
+              echo "## ⛔ STAGING NOT CONFIGURED — auth smoke DID NOT RUN"
+              echo
+              echo "\`E2E_STAGING_BASE_URL\` is not set, so **zero** authenticated checks executed."
+              echo "**This is not a passing result — nothing was verified.**"
+              echo
+              echo "Auth-dependent smoke cannot run against production: production purges the seeded"
+              echo "\`@traveloure.test\` accounts on every boot (PR #319 P0 fix), so login correctly 401s."
+              echo "It needs a staging deploy that opts in to the seeded accounts."
+              echo
+              echo "**Owner action required — see \`docs/STAGING.md\`:** provision the staging deployment,"
+              echo "then add the repository secret \`E2E_STAGING_BASE_URL\` (HTTPS staging URL)"
+              echo "and, if staging uses a non-default seed password, \`E2E_STAGING_TEST_PASSWORD\`."
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "Staging target configured — running the auth-dependent smoke."
+          fi
+
+  auth-smoke:
+    name: auth smoke (staging; non-blocking)
+    needs: config
+    if: needs.config.outputs.configured == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      E2E_STAGING_BASE_URL: ${{ secrets.E2E_STAGING_BASE_URL }}
+      # Staging may carry its own seed password so it can be rotated without
+      # touching the existing E2E_TEST_PASSWORD secret; it falls back to that
+      # one. If BOTH are absent the value is the empty string, and both the
+      # probe below and e2e/fixtures/accounts.ts fall back to the same
+      # documented dev default (TestPass123!).
+      E2E_TEST_PASSWORD: ${{ secrets.E2E_STAGING_TEST_PASSWORD || secrets.E2E_TEST_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      # ── Preflight: staging must actually accept a seeded account ────────────
+      # This is the INVERSE of the old production probe. There, a 401 meant "the
+      # purge is working" and the run was skipped. Here, a 401 means STAGING IS
+      # MISPROVISIONED — the deploy is not carrying the test-account opt-in, or
+      # the password does not match its seed — and that is a real, actionable
+      # failure. Skipping on it would recreate the exact silent-noise problem
+      # this split exists to remove.
+      - name: Preflight — staging accepts the seeded traveler
+        run: |
+          PW="${E2E_TEST_PASSWORD:-TestPass123!}"
+          EMAIL="test-traveler-kyoto@traveloure.test"
+          BODY=$(node -e 'process.stdout.write(JSON.stringify({email:process.argv[1],password:process.argv[2]}))' "$EMAIL" "$PW")
+          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 60 \
+            -X POST "$E2E_STAGING_BASE_URL/api/auth/login" \
+            -H 'Content-Type: application/json' \
+            -d "$BODY") || code=000
+          echo "POST /api/auth/login -> $code"
+          if [ "$code" = "200" ]; then
+            echo "Staging accepts the seeded traveler — proceeding."
+            exit 0
+          fi
+          {
+            echo "## ❌ Staging preflight failed (HTTP $code)"
+            echo
+            echo "\`POST /api/auth/login\` for \`$EMAIL\` returned **$code** against the configured staging URL."
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$code" = "401" ]; then
+            echo "::error title=Staging is misprovisioned::401 from staging means the seeded @traveloure.test accounts are absent or the password does not match. The staging deployment must carry the test-account opt-in env var and the same seed password. See docs/STAGING.md."
+          elif [ "$code" = "000" ]; then
+            echo "::error title=Staging unreachable::Could not reach E2E_STAGING_BASE_URL within 60s. Confirm the staging deployment is running and the secret holds its HTTPS URL. See docs/STAGING.md."
+          else
+            echo "::error title=Staging preflight failed::Unexpected HTTP $code from the staging login endpoint. See docs/STAGING.md."
+          fi
+          exit 1
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Playwright (chromium)
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+
+      - name: Install Playwright system deps (cache hit)
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+
+      # playwright.e2e.config.ts resolves E2E_STAGING_BASE_URL first, so the
+      # auth harness can only ever point at staging from here.
+      - name: Run auth smoke (chromium)
+        run: npm run test:e2e:staging:smoke
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-staging-auth-smoke-report
+          path: playwright-report/
+          retention-days: 14
+
+  # ── Final, unmissable verdict ───────────────────────────────────────────────
+  # The check NAME itself carries the outcome, so "did not run" can never be
+  # mistaken for "passed" when skimming the checks list.
+  report:
+    name: ${{ needs.config.outputs.configured == 'true' && 'auth smoke verdict (staging)' || 'STAGING NOT CONFIGURED — auth smoke DID NOT RUN' }}
+    needs: [config, auth-smoke]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Summarize
+        run: |
+          CONFIGURED='${{ needs.config.outputs.configured }}'
+          RESULT='${{ needs.auth-smoke.result }}'
+          if [ "$CONFIGURED" != "true" ]; then
+            echo "::warning title=Auth smoke did not run::E2E_STAGING_BASE_URL not configured — DID NOT RUN (not a pass)."
+            echo "STAGING NOT CONFIGURED — auth smoke DID NOT RUN. Nothing was verified. See docs/STAGING.md."
+            exit 0
+          fi
+          echo "Auth smoke job result: $RESULT"
+          {
+            echo "## Staging auth smoke: \`$RESULT\`"
+            echo
+            echo "Target: the staging deploy behind \`E2E_STAGING_BASE_URL\` (seeded test accounts present)."
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$RESULT" = "failure" ]; then
+            echo "::error title=Staging auth smoke failed::An authenticated journey failed against staging."
+            exit 1
+          fi

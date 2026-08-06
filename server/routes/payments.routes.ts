@@ -7,6 +7,12 @@ import { storage } from "../storage";
 // The post-booking cart clear below goes through it. Passthrough; behavior identical.
 import * as cartProjection from "../services/cart-projection.service";
 import { markItemPurchased } from "../services/item-routing.service";
+// Ruling 38 (checkout atomicity): the claim → authorize → promote spine + the TTL reclaim.
+import {
+  findPriorClaim,
+  markStripeAttempt,
+  stampAuthorization,
+} from "../services/checkout-claim.service";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
@@ -270,6 +276,218 @@ function nightDatesBetween(checkIn: string, checkOut: string): string[] {
   return dates;
 }
 
+/**
+ * STEPS 2+3 of the checkout spine (ruling 38): AUTHORIZE at Stripe, then — and only then —
+ * PROMOTE the provisional claim into committed state.
+ *
+ * Shared by the first attempt and by the same-key re-drive, so "authorized" can only ever mean
+ * one thing. Everything it needs about the claim is read from the DB, so the re-drive needs no
+ * in-memory context and cannot price differently from the original attempt (§14: the charge is
+ * derived from the persisted catalog-sourced rows, never from the client).
+ *
+ * ORDER IS THE WHOLE POINT:
+ *   markStripeAttempt (Layer-1 marker) → paymentIntents.create → stampAuthorization (atomic,
+ *   all-or-nothing) → item flips + counters + cart clear + notifications.
+ * A failure at any point before the stamp leaves ONLY provisional rows, which the TTL sweep
+ * reclaims. Nothing the traveler or the provider can see has changed, and the cart is intact.
+ */
+async function authorizeAndPromote(
+  res: any,
+  args: {
+    userId: string;
+    checkoutKey: string;
+    bookings: Array<{ booking: any; contract?: any }>;
+    subtotal: number;
+    platformFee: number;
+    conciergeFee: number;
+    redriven?: boolean;
+  },
+) {
+  const { userId, checkoutKey, bookings, subtotal, platformFee, conciergeFee } = args;
+  const total = subtotal + platformFee + conciergeFee;
+  const bookingIds = bookings.map((b: any) => b.booking.id as string);
+
+  // LAYER 1 of the paid-PI protection (see checkout-claim.service.ts): stamp the pre-flight
+  // marker on EVERY row before Stripe is called. An unmarked row provably never reached Stripe,
+  // which is what lets the sweep void it with no network call and zero risk of voiding a paid
+  // booking. This must not be reordered below the Stripe call.
+  await markStripeAttempt(bookingIds, `pi-${checkoutKey}`);
+
+  const { stripePaymentService } = await import("../services/stripe-payment.service");
+  let paymentIntent: any;
+  try {
+    paymentIntent = await stripePaymentService.createPaymentIntent(
+      userId,
+      bookings.map((b: any) => b.booking),
+      total,
+      false,
+      'usd',
+      // §15 layer (a): the deterministic Stripe idempotency key. Uses the SAME normalised
+      // key the DB claim used (`checkoutKey`, not the raw body value) so the two layers can
+      // never disagree about what "this request" is — and so a re-drive of the same claim
+      // returns Stripe's ORIGINAL PaymentIntent rather than creating a second one.
+      checkoutKey
+    );
+  } catch (stripeErr: any) {
+    // THE FAILURE THIS LANE EXISTS FOR. Nothing irreversible has happened: no cart clear, no
+    // purchased flip, no diary row, no provider email. The claim rows stay provisional and the
+    // TTL sweep reclaims them (including their slot capacity) if the traveler walks away.
+    // Answered as 503 with a machine-readable code — NOT the old bare 500 "Checkout failed",
+    // which told the traveler nothing and told the client nothing it could act on.
+    console.error(`[checkout] authorization failed for idempotencyKey=${checkoutKey}:`, stripeErr?.message ?? stripeErr);
+    return res.status(503).json({
+      success: false,
+      error: "payment_unavailable",
+      message:
+        "We couldn't reach our payment provider, so nothing was charged and nothing was booked. " +
+        "Your cart is exactly as you left it — please try again.",
+      retryable: true,
+    });
+  }
+
+  if (!paymentIntent?.paymentIntentId) {
+    console.error(`[checkout] authorization returned no PaymentIntent id for idempotencyKey=${checkoutKey}`);
+    return res.status(503).json({
+      success: false,
+      error: "payment_unavailable",
+      message:
+        "We couldn't reach our payment provider, so nothing was charged and nothing was booked. " +
+        "Your cart is exactly as you left it — please try again.",
+      retryable: true,
+    });
+  }
+
+  // The AUTHORIZE→PROMOTE gate: an atomic, all-or-nothing conditional stamp on the provisional
+  // predicate. If the TTL sweep voided these rows first this returns false and we refuse to
+  // promote — handing back a clientSecret for a voided booking is precisely the outcome the
+  // race-safety requirement forbids.
+  const claimed = await stampAuthorization(bookingIds, paymentIntent.paymentIntentId);
+  if (!claimed) {
+    return res.status(409).json({
+      success: false,
+      error: "checkout_claim_expired",
+      message: "This checkout expired before payment could start. Your cart is intact — please try again.",
+      retryable: true,
+    });
+  }
+
+  await promoteAuthorizedCheckout(userId, bookingIds);
+
+  // R3/F6: commissionRate is the REAL charged ratio (platformFee/subtotal), not the
+  // calculateCommission display literal (0.30) that matched no actual rate. Display-only field.
+  const effectiveCommissionRate = subtotal > 0 ? Number((platformFee / subtotal).toFixed(4)) : 0;
+
+  return res.status(201).json({
+    success: true,
+    bookings,
+    subtotal: subtotal.toFixed(2),
+    platformFee: platformFee.toFixed(2),
+    conciergeFee: conciergeFee.toFixed(2),
+    total: total.toFixed(2),
+    paymentIntent,
+    bookingType: BookingType.EXPERIENCE_CART,
+    commissionRate: effectiveCommissionRate,
+    ...(args.redriven ? { redriven: true } : {}),
+    message: "Booking created successfully. Complete payment.",
+  });
+}
+
+/**
+ * STEP 3 — everything that may only happen once a PaymentIntent exists.
+ *
+ * Reads its context from the booking rows so the first attempt and the re-drive execute the
+ * identical promotion. Every effect here is best-effort in the same sense it always was: the
+ * booking is the money truth, and a plan flag / counter / notification must never fail a
+ * checkout that Stripe has already authorized.
+ */
+async function promoteAuthorizedCheckout(userId: string, bookingIds: string[]): Promise<void> {
+  if (bookingIds.length === 0) return;
+
+  const rows = await db.execute(sql`
+    SELECT sb.id,
+           sb.service_id,
+           sb.provider_id,
+           sb.total_amount,
+           sb.booking_details->>'itineraryItemId' AS itinerary_item_id,
+           ps.service_name
+    FROM service_bookings sb
+    LEFT JOIN provider_services ps ON ps.id = sb.service_id
+    WHERE sb.id IN (${sql.join(bookingIds.map((id) => sql`${id}`), sql`, `)})
+  `);
+
+  const traveler = await storage.getUser(userId).catch(() => null);
+  const travelerName = traveler
+    ? [traveler.firstName, traveler.lastName].filter(Boolean).join(" ") || traveler.email || "A traveler"
+    : "A traveler";
+
+  for (const raw of rows.rows as any[]) {
+    const bookingId = String(raw.id);
+    const price = parseFloat(raw.total_amount || "0");
+
+    // ── W4 (H2): the purchase reaches the plan ────────────────────────────────────────
+    // ROUTING_STATE_CONTRACT §2 — checkout is the SOLE writer of the forward
+    // `ready_for_checkout → purchased` edge. It now writes it AFTER authorization (ruling 38):
+    // the plan may only claim a purchase once a PaymentIntent exists to back it.
+    //
+    // Only a PROJECTED cart row has a plan item to flip — `itinerary_item_id` (migration 160)
+    // is NULL on every legacy/guest/direct-add row, and those are skipped. The flip itself is
+    // an atomic conditional UPDATE paired with its diary row inside the helper's own
+    // transaction (ruling 18); 0 rows matched is LOGGED AND IGNORED, never fatal.
+    if (raw.itinerary_item_id) {
+      await markItemPurchased(String(raw.itinerary_item_id), bookingId);
+    }
+
+    if (raw.service_id) {
+      await storage
+        .incrementServiceBookings(String(raw.service_id), 1)
+        .catch((e: any) => console.error(`[checkout] bookings-count increment failed for ${raw.service_id}:`, e));
+    }
+
+    // Provider notification + email. Post-authorization by design: the old ordering emailed a
+    // provider "New Booking Request" for checkouts that never obtained a PaymentIntent, and an
+    // email is the one effect no rollback or TTL can take back.
+    try {
+      if (raw.provider_id) {
+        await storage.createNotification({
+          userId: String(raw.provider_id),
+          type: "booking_request",
+          title: "New Booking Request",
+          message: `${travelerName} booked "${raw.service_name ?? "a service"}" ($${price.toFixed(2)})`,
+          relatedId: bookingId,
+          relatedType: "booking",
+          data: {
+            bookingId,
+            serviceName: raw.service_name ?? null,
+            travelerName,
+            amount: price.toFixed(2),
+          },
+        });
+
+        const provider = await storage.getUser(String(raw.provider_id));
+        if (provider?.email) {
+          const { sendBookingAlertEmail } = await import("../services/email.service");
+          const providerName = [provider.firstName, provider.lastName].filter(Boolean).join(" ") || provider.email;
+          await sendBookingAlertEmail({
+            providerEmail: provider.email,
+            providerName,
+            bookingId,
+            serviceName: raw.service_name ?? "a service",
+            travelerName,
+            amount: price.toFixed(2),
+          });
+        }
+      }
+    } catch (notifErr) {
+      console.error("Failed to create checkout booking notification:", notifErr);
+    }
+  }
+
+  // Cart clear LAST, and only now: while a claim is unauthorized the traveler must still have a
+  // cart to retry from. This single line moving below the Stripe call is what turns "fresh key ⇒
+  // Cart is empty" into a working retry.
+  await cartProjection.clearCart(userId);
+}
+
 router.post("/api/checkout", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req)!;
@@ -290,26 +508,68 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
           error: "idempotencyKey is required",
         });
       }
-      // Fast path: if this exact checkout request was already processed, return without
-      // creating duplicate bookings or Stripe charges. This SELECT is only a cheap
-      // short-circuit — it is NOT the concurrency guard (two simultaneous requests both
-      // read "not found"). The real guard is the atomic claim at the first booking insert
-      // below, which is protected by the unique partial index on
-      // service_bookings.idempotency_key (migration 096, re-asserted by migration 155).
-      {
-        const existing = await db.execute(sql`
-          SELECT id FROM service_bookings
-          WHERE idempotency_key = ${checkoutKey}
-          LIMIT 1
-        `);
-        if (existing.rows.length > 0) {
-          console.info(`[checkout] duplicate request detected, idempotencyKey=${checkoutKey} — returning early`);
+      // ── Prior-claim resolution (ruling 38) ──────────────────────────────────────────────
+      // §15 requires that a retry produce "the SAME single effect". The old code answered every
+      // prior key with a bare `{duplicate:true}` carrying no clientSecret — which the cart page
+      // rendered as "Booking created!" and redirected to /bookings, telling the traveler a
+      // checkout with NO PaymentIntent behind it had succeeded. A prior claim has three states
+      // and they are NOT the same answer:
+      //
+      //   • AUTHORIZED (stripe_payment_intent_id set) — the earlier attempt got a PaymentIntent.
+      //     Hand the SAME one back: one claim, one PI, one charge.
+      //   • PROVISIONAL (payment_pending + PI id NULL) — the earlier attempt claimed the key but
+      //     never reached an authorization. RE-DRIVE it below against the SAME rows and the SAME
+      //     Stripe key. Nothing irreversible was committed, so the cart is still intact and this
+      //     is a genuine continuation, not a second checkout.
+      //   • SPENT (confirmed / failed / expired by the TTL sweep) — report it honestly.
+      //
+      // Still only a fast path, never the concurrency guard: two simultaneous requests both read
+      // "not found". The guard remains the atomic claim at the first booking insert, protected by
+      // the unique partial index on service_bookings.idempotency_key (migration 096, re-asserted
+      // by 155, DECLARED in shared/schema.ts so the deploy push maintains it).
+      const priorClaim = await findPriorClaim(userId, checkoutKey);
+      if (priorClaim.length > 0) {
+        const authorized = priorClaim.find((r) => r.stripePaymentIntentId);
+        if (authorized) {
+          const { stripePaymentService } = await import("../services/stripe-payment.service");
+          const pi = await stripePaymentService
+            .getPaymentIntentClientSecret(authorized.stripePaymentIntentId!)
+            .catch(() => null);
+          console.info(`[checkout] idempotencyKey=${checkoutKey} already authorized — returning the same PaymentIntent`);
           return res.status(200).json({
             success: true,
             duplicate: true,
-            note: "Booking already exists for this request",
+            bookings: priorClaim.map((r) => ({ booking: { id: r.id } })),
+            ...(pi ? { paymentIntent: pi } : {}),
+            note: "This checkout was already authorized — completing the existing payment.",
           });
         }
+        const provisional = priorClaim.filter(
+          (r) => r.status === "payment_pending" && !r.stripePaymentIntentId,
+        );
+        if (provisional.length === priorClaim.length) {
+          // Re-drive. The charge total is recomputed from the CLAIMED ROWS, not from the client
+          // and not from a re-priced cart (§14): every row's totalAmount/platformFee was derived
+          // from the catalog + fee_bands when the claim was written, so this cannot drift.
+          console.info(`[checkout] idempotencyKey=${checkoutKey} has an unauthorized claim — re-driving authorization`);
+          return await authorizeAndPromote(res, {
+            userId,
+            checkoutKey,
+            bookings: provisional.map((r) => ({ booking: { id: r.id } })),
+            subtotal: provisional.reduce((s, r) => s + parseFloat(r.totalAmount || "0"), 0),
+            platformFee: provisional.reduce((s, r) => s + parseFloat(r.platformFee || "0"), 0),
+            conciergeFee: 0, // already folded into each row's stored platformFee
+            redriven: true,
+          });
+        }
+        // Mixed or terminal — the key is spent. Never a false success.
+        console.info(`[checkout] idempotencyKey=${checkoutKey} is spent (statuses: ${priorClaim.map((r) => r.status).join(",")})`);
+        return res.status(409).json({
+          success: false,
+          error: "checkout_key_spent",
+          message:
+            "This checkout has already been completed or has expired. Please start a new checkout.",
+        });
       }
 
       // ── S4 acquisition attribution — vocabulary direct | link | cross_sell, DERIVED
@@ -580,9 +840,10 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
       const subtotal = checkoutSubtotal;
       const platformFee = checkoutBasePlatformFeeTotal;
       const conciergeFee = checkoutConciergeFeeTotal;
-      // For Stripe total, charge subtotal + base platform fee + concierge facilitation fee
-      const total = subtotal + platformFee + conciergeFee;
-      
+      // The Stripe total (subtotal + base platform fee + concierge facilitation fee) is composed
+      // by `authorizeAndPromote` from these three server-derived parts — one place, so the first
+      // attempt and the same-key re-drive can never charge different amounts.
+
       // Create bookings for each cart item
       const bookings = [];
       for (const item of cartData) {
@@ -735,114 +996,27 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
           throw insertErr;
         }
 
-        // ── W4 (H2): the purchase reaches the plan ────────────────────────────────────────
-        // ROUTING_STATE_CONTRACT §2 — checkout is the SOLE writer of the forward
-        // `ready_for_checkout → purchased` edge, and it writes it atomically with THIS item's
-        // booking row (the row exists as of the line above; a lost idempotency claim returned
-        // long before here, so no un-booked item can be flipped).
-        //
-        // Only a PROJECTED cart row has a plan item to flip — `itinerary_item_id` (migration 160)
-        // is NULL on every legacy/guest/direct-add row, and those are skipped. The flip itself is
-        // an atomic conditional UPDATE inside the helper; 0 rows matched is LOGGED AND IGNORED,
-        // never fatal: the booking is the money truth and must not fail over a derived plan flag.
-        //
-        // Deliberately touches NOTHING else — no amount, no Stripe call, no idempotency key, no
-        // slot claim (§14/§15 surfaces are unchanged by this block).
-        if ((item as any).itineraryItemId) {
-          await markItemPurchased((item as any).itineraryItemId, booking.id);
-        }
-
-        // Increment bookings count for the service
-        await storage.incrementServiceBookings(item.serviceId, 1);
-
-        // Create notification for provider
-        try {
-          const traveler = await storage.getUser(userId);
-          const travelerName = traveler
-            ? [traveler.firstName, traveler.lastName].filter(Boolean).join(" ") || traveler.email || "A traveler"
-            : "A traveler";
-          await storage.createNotification({
-            userId: item.service.userId,
-            type: "booking_request",
-            title: "New Booking Request",
-            message: `${travelerName} booked "${item.service.serviceName}" ($${price.toFixed(2)})`,
-            relatedId: booking.id,
-            relatedType: "booking",
-            data: {
-              bookingId: booking.id,
-              serviceName: item.service.serviceName,
-              travelerName,
-              amount: price.toFixed(2),
-            },
-          });
-
-          // Send email alert to the provider
-          const provider = await storage.getUser(item.service.userId);
-          if (provider?.email) {
-            const { sendBookingAlertEmail } = await import("../services/email.service");
-            const providerName = [provider.firstName, provider.lastName].filter(Boolean).join(" ") || provider.email;
-            await sendBookingAlertEmail({
-              providerEmail: provider.email,
-              providerName,
-              bookingId: booking.id,
-              serviceName: item.service.serviceName,
-              travelerName,
-              amount: price.toFixed(2),
-            });
-          }
-        } catch (notifErr) {
-          console.error("Failed to create checkout booking notification:", notifErr);
-        }
-        
+        // ── STEP 1 ends here: the CLAIM is PROVISIONAL ────────────────────────────────────
+        // Ruling 38: everything irreversible that used to run inside this loop — the
+        // `ready_for_checkout → purchased` flip + its diary row, the bookings counter, the
+        // provider notification and its EMAIL — has moved to `promoteAuthorizedCheckout`, which
+        // runs only AFTER a PaymentIntent exists. Those writes are not undoable (an email least
+        // of all), so committing them ahead of the one operation that can fail was the defect.
+        // What stays here is exactly the atomic claim §15 requires to precede the external call.
         bookings.push({ booking, contract });
       }
-      
-      // Clear cart after creating bookings (before Stripe — recoverable if crash)
-      await cartProjection.clearCart(userId);
 
-      // ── Step B: Charge Stripe AFTER booking rows exist ──────────────────────
-      // Bookings are already at payment_pending; even if the server crashes here
-      // the webhook (payment_intent.succeeded) will flip them to confirmed.
-      const { stripePaymentService } = await import("../services/stripe-payment.service");
-      const paymentIntent = await stripePaymentService.createPaymentIntent(
+      // ── STEPS 2+3: AUTHORIZE, then PROMOTE ────────────────────────────────────────────────
+      // The cart is deliberately still intact at this point and stays intact unless Stripe
+      // answers. Same helper the re-drive path above uses — one implementation, so the two can
+      // never diverge on what "authorized" means.
+      return await authorizeAndPromote(res, {
         userId,
-        bookings.map((b: any) => b.booking),
-        total,
-        false,
-        'usd',
-        // §15 layer (a): the deterministic Stripe idempotency key. Uses the SAME normalised
-        // key the DB claim used (`checkoutKey`, not the raw body value) so the two layers can
-        // never disagree about what "this request" is.
-        checkoutKey
-      );
-
-      // ── Step C: Stamp the PI ID on every service_booking so the webhook can ──
-      // find and confirm them even after a mid-flight crash.
-      if (paymentIntent?.paymentIntentId) {
-        for (const { booking: b } of bookings as any[]) {
-          await db.execute(sql`
-            UPDATE service_bookings
-            SET stripe_payment_intent_id = ${paymentIntent.paymentIntentId}
-            WHERE id = ${b.id}
-          `);
-        }
-      }
-      
-      // R3/F6: commissionRate is now the REAL charged ratio (platformFee/subtotal), not the
-      // calculateCommission display literal (0.30) that matched no actual rate. Display-only field.
-      const effectiveCommissionRate = subtotal > 0 ? Number((platformFee / subtotal).toFixed(4)) : 0;
-
-      res.status(201).json({
-        success: true,
+        checkoutKey,
         bookings,
-        subtotal: subtotal.toFixed(2),
-        platformFee: platformFee.toFixed(2),
-        conciergeFee: conciergeFee.toFixed(2),
-        total: total.toFixed(2),
-        paymentIntent,
-        bookingType: BookingType.EXPERIENCE_CART,
-        commissionRate: effectiveCommissionRate,
-        message: "Booking created successfully. Complete payment.",
+        subtotal,
+        platformFee,
+        conciergeFee,
       });
     } catch (err: any) {
       console.error("Checkout error:", err);

@@ -82,6 +82,21 @@ the external call and (b) an **atomic conditional DB update** (`UPDATE … WHERE
 transition itself is the concurrency guard. A check-then-update (`if status==X { update }`) is the TOCTOU bug, **not**
 a guard. Claim the row atomically **first**, then make the external call — so a concurrent caller can't also pass.
 
+**§15b — the CLAIM is not the COMMITMENT (ruling 38, checkout atomicity).** "Claim first, then call" says what must
+be written *before* the external call; it does **not** license writing everything else there too. Irreversible state —
+cart clears, `purchased` flips and their diary rows, counters, notifications, **emails** — must follow the operation
+that authorizes it, never precede it. The canonical shape is **CLAIM (provisional) → AUTHORIZE → PROMOTE**, with a
+**TTL reclaim** rather than a compensating rollback (rollback code runs in exactly the conditions that broke the
+operation; expiry survives a process death). On `/api/checkout` the provisional marker needs no new state:
+`status='payment_pending' AND stripe_payment_intent_id IS NULL` **is** an unauthorized claim by construction. Two
+rules that fall out and must not be weakened: (1) the void and the authorization stamp are BOTH atomic conditionals on
+that same predicate, so a promote and a void can never both win; (2) **a sweep must never void a row whose
+PaymentIntent may exist** — a pre-flight `bookingDetails.stripeAttemptAt` marker is written before the Stripe call, an
+unmarked row is provably un-attempted and safe to void with no network call, and a marked row is only ever reconciled
+against Stripe (found ⇒ promote, definitively-absent ⇒ void, unreachable ⇒ quarantine, never guess). See
+`server/services/checkout-claim.service.ts`; proven by `server/__tests__/checkout-claim-sweep.db.test.ts` and
+journey negative **N16**.
+
 ### §16 — Affiliate-outbound rule (agent-booking, ratified Jul 23, 2026)
 
 **GOVERNING RULE (decision-maker directive):** affiliate/partner content must behave like the Discover feeds —

@@ -5,16 +5,30 @@ import dotenv from 'dotenv';
 // .env.e2e — so we point it explicitly.)
 dotenv.config({ path: '.env.e2e' });
 
-// E2E_BASE_URL is REQUIRED — it must be the HTTPS deploy URL. There is no
-// localhost fallback: the app's session cookie is Secure (httpOnly+secure), so
-// it is silently dropped over http, which would surface as a misleading 401 in
-// global-setup. Fail loudly here instead. (HTTPS is asserted in global-setup.)
-const baseURL = process.env.E2E_BASE_URL;
+// ─────────────────────────────────────────────────────────────────────────────
+// AUTH-DEPENDENT HARNESS — targets STAGING, never production.
+//
+// globalSetup logs in the seeded @traveloure.test accounts. Production PURGES
+// those accounts on every boot (PR #319 P0 fix, enforced by
+// scripts/check-env-allowlist.cjs), so pointing this config at production
+// guarantees a 401 in global-setup before any test runs — the failure that made
+// e2e-deploy-smoke permanent noise. Auth smoke runs against a STAGING deploy
+// provisioned with ALLOW_TEST_ACCOUNTS=1. See docs/STAGING.md.
+//
+// For an unauthenticated production smoke use playwright.e2e.public.config.ts.
+//
+// Resolution: E2E_STAGING_BASE_URL wins; E2E_BASE_URL is the legacy/local
+// fallback (a local dev target set in .env.e2e). Both must be HTTPS — the
+// session cookie is Secure (httpOnly+secure) and is silently dropped over http,
+// which surfaces as a misleading 401. (HTTPS is asserted in global-setup.)
+// ─────────────────────────────────────────────────────────────────────────────
+const baseURL = process.env.E2E_STAGING_BASE_URL || process.env.E2E_BASE_URL;
 if (!baseURL) {
   throw new Error(
-    'E2E_BASE_URL is required — set it to your HTTPS deploy URL ' +
-      '(e.g. in .env.e2e or the CI secret). No localhost fallback: the session ' +
-      'cookie is Secure and only works over https.',
+    'No target for the auth-dependent E2E harness. Set E2E_STAGING_BASE_URL to the ' +
+      'HTTPS staging deploy URL (the deploy provisioned so the seeded test accounts ' +
+      'exist — see docs/STAGING.md), or E2E_BASE_URL for a local/legacy target. ' +
+      'No localhost fallback: the session cookie is Secure and only works over https.',
   );
 }
 

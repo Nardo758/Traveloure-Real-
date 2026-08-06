@@ -35,6 +35,9 @@
     "test:e2e:deploy": "playwright test -c playwright.e2e.config.ts",
     "test:e2e:deploy:smoke": "playwright test -c playwright.e2e.config.ts --project=chromium smoke",
     "test:e2e:deploy:report": "playwright show-report",
+    "test:e2e:public": "playwright test -c playwright.e2e.public.config.ts --project=chromium",
+    "test:e2e:staging": "playwright test -c playwright.e2e.config.ts",
+    "test:e2e:staging:smoke": "playwright test -c playwright.e2e.config.ts --project=chromium e2e/specs/smoke.spec.ts e2e/specs/login-ui.spec.ts",
     "migrate:dry-run": "tsx server/migrations/dry-run-entry.ts",
     "migrate:bootstrap": "tsx server/migrations/bootstrap-prod-ledger.ts"
   },

@@ -219,7 +219,13 @@ const INVARIANTS = [
              b.status, b.created_at
       FROM service_bookings b
       WHERE b.booking_details->>'itineraryItemId' IS NOT NULL
-        AND b.status NOT IN ('cancelled', 'refunded', 'payment_failed')
+        AND b.status NOT IN ('cancelled', 'refunded', 'payment_failed', 'expired')
+        -- Ruling 38: the purchased flip moved BEHIND the authorization, so an UNAUTHORIZED
+        -- claim (payment_pending with no PaymentIntent) legitimately has no flipped item — it
+        -- is a claim, not a purchase, and the TTL sweep reclaims it. Only AUTHORIZED bookings
+        -- are expected to have flipped their plan item, so only they can evidence a rolled-back
+        -- flip+log pair. Without this the invariant would fire on every in-flight checkout.
+        AND b.stripe_payment_intent_id IS NOT NULL
         AND NOT EXISTS (
           SELECT 1 FROM itinerary_items i WHERE i.booking_id = b.id
         )
