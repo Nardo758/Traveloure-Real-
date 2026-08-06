@@ -831,6 +831,24 @@ class StripePaymentService {
   }
 
   /**
+   * Re-fetch an EXISTING PaymentIntent's client secret (ruling 38).
+   *
+   * Used by `POST /api/checkout` when the idempotency key resolves to a claim that was already
+   * authorized: the retry must be handed back the SAME PaymentIntent (§15 — "a retry produces
+   * the same single effect"), never a second one and never a bare `{duplicate:true}` the client
+   * would mis-render as success. Returns null for a terminal intent so the caller does not offer
+   * a payment sheet that cannot be completed.
+   */
+  async getPaymentIntentClientSecret(
+    paymentIntentId: string,
+  ): Promise<{ clientSecret: string; paymentIntentId: string; amount: number } | null> {
+    const pi = await stripe.paymentIntents.retrieve(paymentIntentId);
+    if (!pi.client_secret) return null;
+    if (pi.status === 'succeeded' || pi.status === 'canceled') return null;
+    return { clientSecret: pi.client_secret, paymentIntentId: pi.id, amount: pi.amount };
+  }
+
+  /**
    * Get payment intent status
    */
   async getPaymentIntentStatus(paymentIntentId: string) {
