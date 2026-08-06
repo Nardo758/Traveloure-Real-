@@ -141,6 +141,9 @@ Wave key (brief §7): W1 = Journey Wave 1, build now · W2 = post SLIP phase 4 �
 | item_transition_log UPDATE/DELETE via app — no route exists (inventory assertion) | N12 |
 | Mutation via getTripRole path — none remain (inventory assertion) | N15 |
 | Checkout commits NOTHING without a PaymentIntent (zero AUTHORIZED bookings, cart intact, no slot promoted, no item `purchased`, no `to_status='purchased'` row, no provider notification; a clean retry is never a false success) | N16 (ruling 38); EX: checkout-claim-sweep.db.test.ts proves the TTL reclaim is idempotent, race-safe and cannot void a paid booking |
+| Webhook-only recovery of a cart checkout: the client dies after authorization and the Stripe webhook alone promotes `payment_pending → confirmed` — booking purchasable, diary row `actor_type='webhook'`; incl. the mid-authorization window where the PaymentIntent was never stamped, and the wiring through `handlePaymentSucceeded` itself (task #212) | N17; EX: checkout-payment-promotion.db.test.ts |
+| Double signal (client confirm + webhook, either order and concurrently): EXACTLY ONE promotion and ONE diary set — the atomic conditional is the guard, never a double flip (tasks #212/#213) | N18; EX: checkout-payment-promotion.db.test.ts |
+| Late webhook vs a TTL-voided claim: the row is NEVER resurrected (void wins after TTL, ruling 38 §15b); the signal lands in a reconciliation-exception state that is a DB fact and ops-visible, never silent | N19; EX: checkout-payment-promotion.db.test.ts |
 
 ## Existing-coverage absorption (Phase 0 item 2 — nothing deleted)
 | Existing suite | Disposition |
