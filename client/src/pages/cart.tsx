@@ -609,6 +609,24 @@ export default function CartPage() {
       // top-of-function invalidation is dropped; its base-key ['/api/cart'] pattern (so the
       // TripStrip count updates — slug-scoped keys missed it) is applied to the invalidations
       // at the END of this handler instead. Both intents preserved.
+      // Ruling 38 (truthfulness): a 2xx from /api/checkout is NOT by itself a booking.
+      // `{duplicate:true}` with no paymentIntent means the server found a prior claim it could
+      // not hand a payment sheet for — the old code fell into the `else` below and told the
+      // traveler "Booking created!" then redirected to /bookings, which is how a checkout that
+      // never obtained a PaymentIntent was reported as a success. Never again: no success copy
+      // and no redirect unless there is something real behind it.
+      if (!data.paymentIntent && data.duplicate) {
+        setFlowStep("cart");
+        toast({
+          variant: "destructive",
+          title: "Checkout couldn't be resumed",
+          description:
+            data.note ||
+            "We couldn't reopen the payment for this checkout. Nothing has been charged — please refresh and try again.",
+        });
+        queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
+        return;
+      }
       if (data.paymentIntent) {
         // FP-4: snapshot the real, server-derived breakdown (incl. conciergeFee, which
         // the live GET /api/cart never computes) BEFORE invalidating — the cart is about
@@ -648,6 +666,34 @@ export default function CartPage() {
       } catch { /* not JSON (network error, etc.) — falls through to the generic message below */ }
 
       const errorCode = parsedBody?.error as string | undefined;
+      // Ruling 38: the payment provider could not be reached, or the claim expired before
+      // payment started. In BOTH cases the server committed nothing — the cart is intact and a
+      // retry is the correct next action, so say exactly that instead of the old generic
+      // "Your payment could not be processed" (which was written for a charge that failed).
+      if (errorCode === "payment_unavailable" || errorCode === "checkout_claim_expired") {
+        setFlowStep("cart");
+        toast({
+          variant: "destructive",
+          title: errorCode === "payment_unavailable" ? "Payment provider unavailable" : "Checkout expired",
+          description:
+            parsedBody?.message ||
+            "Nothing was charged and nothing was booked. Your cart is intact — please try again.",
+        });
+        queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
+        return;
+      }
+      if (errorCode === "checkout_key_spent") {
+        setFlowStep("cart");
+        toast({
+          variant: "destructive",
+          title: "Start a new checkout",
+          description:
+            parsedBody?.message ||
+            "This checkout has already been completed or has expired. Please start a new one.",
+        });
+        queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
+        return;
+      }
       if (errorCode === "slot_unavailable" || errorCode === "nights_unavailable") {
         // C3/§17: a picked availability slot or room-night filled between add-to-cart and
         // checkout — nothing was charged and no booking was created. Flag the specific item

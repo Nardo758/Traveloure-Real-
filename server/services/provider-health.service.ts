@@ -67,6 +67,10 @@ const STATIC_PROVIDERS: Record<string, StaticEntry> = {
     label: "Fever (via Impact.com)",
     isConfigured: () => !!(process.env.IMPACT_ACCOUNT_SID && process.env.IMPACT_AUTH_TOKEN),
   },
+  // server/services/travelpayouts/aviasales.service.ts: getTravelpayoutsToken() — the live flight
+  // price source behind /api/catalog/flights (the route previously mis-reported health under the
+  // retired "kiwi" label; fixed in the flight-repoint change, Aug 2026).
+  aviasales: { label: "Aviasales (Travelpayouts flights)", isConfigured: () => !!process.env.TRAVELPAYOUTS_TOKEN },
   // server/services/travelpayouts/getyourguide.service.ts: getTravelpayoutsToken()
   getyourguide: { label: "GetYourGuide (Travelpayouts feed)", isConfigured: () => !!process.env.TRAVELPAYOUTS_TOKEN },
   // server/services/travelpayouts/stasher.service.ts: getTravelpayoutsToken()
@@ -81,13 +85,8 @@ const STATIC_PROVIDERS: Record<string, StaticEntry> = {
   tiqets: { label: "Tiqets", isConfigured: () => !!process.env.TRAVELPAYOUTS_TOKEN },
   // server/services/pexels.service.ts: `process.env.PEXELS_API_KEY`
   pexels: { label: "Pexels", isConfigured: () => !!process.env.PEXELS_API_KEY },
-  // DROPPED — DECISIONS.md ruling 34 (2026-08-05): Amadeus Self-Service decommissioned
-  // upstream; keys 401 on the new domain; service short-circuits to empty results.
-  // isConfigured=false keeps the dashboard honest ("not configured", never "down").
-  amadeus: {
-    label: "Amadeus (dropped — ruling 34)",
-    isConfigured: () => false,
-  },
+  // Amadeus: entry removed entirely — the integration was dropped (DECISIONS.md ruling 34,
+  // 2026-08-05) and the service code deleted, so nothing can report against it anymore.
   // server/services/serp.service.ts: `process.env.SERP_API_KEY`
   serpapi: { label: "SerpAPI", isConfigured: () => !!process.env.SERP_API_KEY },
   // server/services/google-places-photos.service.ts: `process.env.GOOGLE_MAPS_API_KEY`

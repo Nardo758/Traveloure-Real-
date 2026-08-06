@@ -64,16 +64,9 @@ function getPartnerName(actType: string): string | undefined {
   return undefined;
 }
 
-function getPartnerUrl(partnerName: string | undefined, destination?: string): string {
-  if (partnerName === '12Go') {
-    const dest = destination?.split(',')[0]?.toLowerCase().replace(/\s+/g, '-') || 'paris';
-    return `https://12go.co/en/travel/${dest}?affiliate_id=13805109`;
-  }
-  if (partnerName === 'Fever') {
-    return 'https://feverup.com/';
-  }
-  return '#';
-}
+// §16: the client-side partner-URL builder that used to live here (hardcoded 12Go affiliate
+// id) is deleted — it had no callers, and partner booking runs through the booking-agent rail
+// (PlanCard's primary action / TransportBookingCard), where the server builds the deep link.
 
 
 function ESimSidebarWidget({ destination }: { destination: string }) {

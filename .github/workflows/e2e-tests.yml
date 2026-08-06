@@ -1,15 +1,23 @@
-name: E2E Tests (Model B — deploy-only, no Actions DB)
+name: E2E Tests (Model B — STAGING deploy-only, no Actions DB)
 
 # NON-BLOCKING BY DESIGN — scheduled + manual only, NOT on push/PR.
 #
-# This suite drives the FULL journey specs against an EXTERNAL deployed app (E2E_BASE_URL) that
-# lags `main` during active development. On a PR it therefore reports the state of the *deploy*,
-# not the PR's diff, so it cannot gate a PR meaningfully — the app-in-Actions gates (Build Smoke,
-# Selection Controls, Service Offering Types, Upsell Trust Contract, E2E Deploy Smoke) do that.
-# Running it on every push/PR only posted a permanent, misleading red. It now runs on a daily
-# schedule + manual dispatch, matching the sibling e2e-deploy-smoke.yml's documented non-blocking
-# intent. Triage of the current failures (stale-deploy vs. drifted specs) and the per-test rehab
-# backlog live in docs/audits/e2e-model-b-triage.md.
+# This suite drives the FULL journey specs against an EXTERNAL deployed app that lags `main`
+# during active development. On a PR it therefore reports the state of the *deploy*, not the
+# PR's diff, so it cannot gate a PR meaningfully — the app-in-Actions gates (Build Smoke,
+# Selection Controls, Service Offering Types, Upsell Trust Contract) do that. Running it on
+# every push/PR only posted a permanent, misleading red. It now runs on a daily schedule +
+# manual dispatch. Triage of the current failures (stale-deploy vs. drifted specs) and the
+# per-test rehab backlog live in docs/audits/e2e-model-b-triage.md.
+#
+# TARGET = STAGING (E2E_STAGING_BASE_URL), NOT production.
+# Nearly every journey spec logs in a seeded @traveloure.test account. Production purges those
+# accounts on boot (PR #319 P0 fix, enforced by scripts/check-env-allowlist.cjs), so this suite
+# is structurally incapable of passing against production — it would die in e2e/global-setup.ts
+# with a 401. Provisioning staging is the OWNER's action: see docs/STAGING.md.
+#
+# WHEN STAGING IS NOT CONFIGURED the test job is SKIPPED (grey, not green) and the final check
+# renames itself to say so. A not-configured run must never read as a passing run.
 
 on:
   workflow_dispatch:
@@ -18,12 +26,43 @@ on:
     - cron: '23 2 * * *'
 
 jobs:
+  # secrets.* are unavailable in `if:` conditions — probe in a job and publish an output.
+  config:
+    name: 'staging config probe'
+    runs-on: ubuntu-latest
+    outputs:
+      configured: ${{ steps.guard.outputs.run }}
+    env:
+      E2E_STAGING_BASE_URL: ${{ secrets.E2E_STAGING_BASE_URL }}
+    steps:
+      - name: Check staging secret (report loudly when absent)
+        id: guard
+        run: |
+          if [ -z "$E2E_STAGING_BASE_URL" ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=Journey suite did not run::E2E_STAGING_BASE_URL is not configured — the journey suite DID NOT RUN. This is not a pass."
+            {
+              echo "## ⛔ STAGING NOT CONFIGURED — journey suite DID NOT RUN"
+              echo
+              echo "\`E2E_STAGING_BASE_URL\` is not set, so **zero** journeys executed. This is not a passing result."
+              echo
+              echo "The journey specs log in seeded \`@traveloure.test\` accounts, which production purges on"
+              echo "every boot. They require a staging deploy — **owner action, see \`docs/STAGING.md\`**."
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
   playwright-tests:
     # 90 min: tests use 90 s element timeouts × 13 tests + 2 retries each = ~40 min
     # plus 10 min server wake-up window.
     timeout-minutes: 90
     runs-on: ubuntu-latest
-    name: 'Playwright E2E Tests'
+    name: 'Playwright E2E Tests (staging)'
+    needs: config
+    if: needs.config.outputs.configured == 'true'
+    env:
+      E2E_STAGING_BASE_URL: ${{ secrets.E2E_STAGING_BASE_URL }}
 
     steps:
       - name: Checkout code
@@ -73,7 +112,7 @@ jobs:
           while [ $attempt -le $max_attempts ]; do
             # Check 1: /health — DB connectivity and general health
             health_response=$(curl -s --connect-timeout 15 --max-time 20 \
-              "$E2E_BASE_URL/health" 2>/dev/null || echo "")
+              "$E2E_STAGING_BASE_URL/health" 2>/dev/null || echo "")
             health_db=$(echo "$health_response" | node -e "
               let d = '';
               process.stdin.on('data', c => d += c);
@@ -88,7 +127,7 @@ jobs:
 
             # Check 2: /api/ready — seeding completion (test accounts + data)
             ready_response=$(curl -s --connect-timeout 15 --max-time 20 \
-              "$E2E_BASE_URL/api/ready" 2>/dev/null || echo "")
+              "$E2E_STAGING_BASE_URL/api/ready" 2>/dev/null || echo "")
             ready_ok=$(echo "$ready_response" | node -e "
               let d = '';
               process.stdin.on('data', c => d += c);
@@ -116,8 +155,6 @@ jobs:
           echo "::error::E2E tests cannot run against an unready server — re-run this workflow"
           echo "::error::while the Replit workspace is active to get real test results."
           exit 1
-        env:
-          E2E_BASE_URL: ${{ secrets.E2E_BASE_URL }}
 
       - name: Verify service readiness (fast-fail on missing secrets)
         # Hits /api/ready which reports service-key presence.  Any "fail" check
@@ -129,7 +166,7 @@ jobs:
           READY_CODE=$(curl -s -o /tmp/ready.json \
             -w "%{http_code}" \
             --connect-timeout 15 --max-time 20 \
-            "$E2E_BASE_URL/api/ready")
+            "$E2E_STAGING_BASE_URL/api/ready")
           echo "HTTP $READY_CODE"
           cat /tmp/ready.json | python3 -m json.tool || cat /tmp/ready.json
           if [ "$READY_CODE" != "200" ]; then
@@ -152,8 +189,6 @@ jobs:
             exit 1
           fi
           echo "✅ All critical services ready"
-        env:
-          E2E_BASE_URL: ${{ secrets.E2E_BASE_URL }}
 
       - name: Annotate deploy freshness (warn-only)
         # The deployed app exposes GET /api/version -> { sha }. If the Replit deploy injects
@@ -161,7 +196,7 @@ jobs:
         # running the commit under test. A stale (or "dev") deploy is the #1 cause of red here:
         # a failing journey may just be testing older code. Warn-only — never fails the run.
         run: |
-          DEPLOY_SHA=$(curl -s --connect-timeout 15 --max-time 20 "$E2E_BASE_URL/api/version" \
+          DEPLOY_SHA=$(curl -s --connect-timeout 15 --max-time 20 "$E2E_STAGING_BASE_URL/api/version" \
             | node -e "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>{try{process.stdout.write(JSON.parse(d).sha||'unknown')}catch{process.stdout.write('unknown')}})" \
             || echo "unreachable")
           echo "Deploy /api/version sha: $DEPLOY_SHA"
@@ -173,14 +208,15 @@ jobs:
           else
             echo "✓ Deploy matches the commit under test."
           fi
-        env:
-          E2E_BASE_URL: ${{ secrets.E2E_BASE_URL }}
 
-      - name: Run E2E deploy tests (journey-1 + Stage 1 gates)
-        run: npm run test:e2e:deploy
+      # playwright.e2e.config.ts resolves E2E_STAGING_BASE_URL first (job env),
+      # so this harness can only point at staging from here.
+      - name: Run E2E journey suite against staging
+        run: npm run test:e2e:staging
         env:
-          E2E_BASE_URL: ${{ secrets.E2E_BASE_URL }}
-          E2E_TEST_PASSWORD: ${{ secrets.E2E_TEST_PASSWORD }}
+          # Staging may carry its own seed password; falls back to the shared one.
+          # If both are empty, e2e/fixtures/accounts.ts uses the documented dev default.
+          E2E_TEST_PASSWORD: ${{ secrets.E2E_STAGING_TEST_PASSWORD || secrets.E2E_TEST_PASSWORD }}
           XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
 
       - name: Upload Playwright report
@@ -218,18 +254,27 @@ jobs:
               body,
             }).catch(() => console.log('Could not post comment (OK for non-PR runs)'));
 
+  # The check NAME carries the outcome so a not-configured run can never be read
+  # as a passing run from the checks list alone.
   test-summary:
-    name: 'Test Summary'
+    name: ${{ needs.config.outputs.configured == 'true' && 'Test Summary (staging)' || 'STAGING NOT CONFIGURED — journey suite DID NOT RUN' }}
     runs-on: ubuntu-latest
-    needs: playwright-tests
+    needs: [config, playwright-tests]
     if: always()
 
     steps:
       - name: Summarize results
         run: |
-          echo "# E2E Test Suite Summary"
-          echo "## Harness: playwright.e2e.config.ts (deploy harness)"
-          echo "## Spec: e2e/specs/journey-1.spec.ts"
+          CONFIGURED='${{ needs.config.outputs.configured }}'
+          RESULT='${{ needs.playwright-tests.result }}'
+          if [ "$CONFIGURED" != "true" ]; then
+            echo "::warning title=Journey suite did not run::E2E_STAGING_BASE_URL not configured — DID NOT RUN (not a pass)."
+            echo "STAGING NOT CONFIGURED — journey suite DID NOT RUN. Nothing was verified. See docs/STAGING.md."
+            exit 0
+          fi
+          echo "# E2E Test Suite Summary (result: $RESULT)"
+          echo "## Harness: playwright.e2e.config.ts (auth-dependent — STAGING target)"
+          echo "## Specs: e2e/specs/*.spec.ts"
           echo ""
           echo "## Flows Tested"
           echo "- Journey 1A: Authed traveler — landing → discover → cart → checkout → confirmation"
@@ -242,5 +287,10 @@ jobs:
           echo "- /local-experts route renders without 404"
           echo ""
           echo "## Required Secrets (Model B — no DATABASE_URL)"
-          echo "- E2E_BASE_URL    (HTTPS deploy URL — must be live while workflow runs)"
-          echo "- E2E_TEST_PASSWORD  (password for seeded test accounts; app seeds itself on startup)"
+          echo "- E2E_STAGING_BASE_URL       (HTTPS STAGING deploy URL — must be live while the workflow runs)"
+          echo "- E2E_STAGING_TEST_PASSWORD  (optional; falls back to E2E_TEST_PASSWORD, then the dev default)"
+          echo "See docs/STAGING.md for provisioning."
+          if [ "$RESULT" = "failure" ]; then
+            echo "::error title=Journey suite failed::The staging journey suite failed."
+            exit 1
+          fi

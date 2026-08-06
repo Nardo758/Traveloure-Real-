@@ -14,7 +14,6 @@ import {
 } from "@shared/schema";
 import { eq, and, or, ilike, gte, lte, asc, sql, inArray } from "drizzle-orm";
 import { logger, databaseQueryDuration } from "../infrastructure";
-import { amadeusService } from "./amadeus.service";
 import { bookingComService } from "./booking-com.service";
 import { openTableService } from "./opentable.service";
 
@@ -251,7 +250,7 @@ class ExperienceCatalogService {
         const restaurants = await this.searchRestaurants(params, batchSize, 0);
         items.push(...restaurants);
       }
-      // flight: date-specific, stays as direct Amadeus call — no-op in generic search
+      // flight: date-specific — no-op in generic search (Amadeus dropped, ruling 34)
     } else {
       // Legacy providers[] behaviour
       const providers = params.providers || ["viator", "fever", "amadeus"];
@@ -577,85 +576,14 @@ class ExperienceCatalogService {
       }));
     }
 
-    // Live Amadeus fallback: need coords
-    const coords = params.destination ? await this.getDestinationCoords(params.destination) : null;
-    if (!coords) return [];
-
-    try {
-      const pois = await amadeusService.searchPointsOfInterest({
-        latitude: coords.lat,
-        longitude: coords.lng,
-        radius: 20,
-      });
-
-      return pois.slice(offset, offset + limit).map(p => ({
-        id: `poi-${p.id}`,
-        type: "poi" as const,
-        provider: "amadeus",
-        externalId: p.id,
-        title: p.name,
-        description: null,
-        imageUrl: null,
-        price: null,
-        currency: "USD",
-        rating: null,
-        reviewCount: null,
-        destination: params.destination || null,
-        location: { lat: p.geoCode.latitude, lng: p.geoCode.longitude },
-        duration: null,
-        categories: p.category ? [p.category] : [],
-        tags: p.tags || [],
-        bookingUrl: null,
-        affiliateUrl: null,
-        lastUpdated: new Date(),
-        rank: p.rank,
-        poiCategory: p.category,
-      }));
-    } catch (err) {
-      this.catalogLogger.warn({ err }, "Live Amadeus POI search failed, returning empty");
-      return [];
-    }
+    // No live POI fallback: the only live POI provider was Amadeus, dropped per
+    // DECISIONS.md ruling 34 (2026-08-05). Cache-only from here on.
+    return [];
   }
 
-  /** Search safety ratings via live Amadeus (requires coords) */
-  async searchSafety(params: CatalogSearchParams, _limit: number, _offset: number): Promise<SafetyItem[]> {
-    const coords = params.destination ? await this.getDestinationCoords(params.destination) : null;
-    if (!coords) return [];
-
-    try {
-      const ratings = await amadeusService.getSafetyRatings({
-        latitude: coords.lat,
-        longitude: coords.lng,
-        radius: 5,
-      });
-
-      return ratings.map(r => ({
-        id: `safety-${r.id}`,
-        type: "safety" as const,
-        provider: "amadeus",
-        externalId: r.id,
-        title: r.name,
-        description: null,
-        imageUrl: null,
-        price: null,
-        currency: "USD",
-        rating: r.safetyScores?.overall ?? null,
-        reviewCount: null,
-        destination: params.destination || null,
-        location: { lat: r.geoCode.latitude, lng: r.geoCode.longitude },
-        duration: null,
-        categories: ["safety"],
-        tags: [],
-        bookingUrl: null,
-        affiliateUrl: null,
-        lastUpdated: new Date(),
-        subType: r.subType,
-        safetyScores: r.safetyScores ?? null,
-      }));
-    } catch (err) {
-      this.catalogLogger.warn({ err }, "Live Amadeus safety search failed, returning empty");
-      return [];
-    }
+  /** Safety ratings had a single provider — Amadeus, dropped per DECISIONS.md ruling 34. */
+  async searchSafety(_params: CatalogSearchParams, _limit: number, _offset: number): Promise<SafetyItem[]> {
+    return [];
   }
 
   private async searchRestaurants(params: CatalogSearchParams, limit: number, offset: number): Promise<RestaurantItem[]> {
@@ -721,52 +649,9 @@ class ExperienceCatalogService {
     }));
   }
 
-  /**
-   * Search transfers via live Amadeus.
-   * In a generic catalog context (no specific start/end codes), returns empty.
-   * For direct use, call amadeusService.searchTransfers() with specific params.
-   */
+  /** Transfers had a single live provider — Amadeus, dropped per DECISIONS.md ruling 34. */
   async searchTransfers(_params: CatalogSearchParams, _limit: number, _offset: number): Promise<TransferItem[]> {
-    // Transfer search requires specific start/end location codes and a datetime —
-    // these cannot be derived from a generic destination string alone.
-    // Pages that need transfers should call amadeusService.searchTransfers() directly.
     return [];
-  }
-
-  /** Convert a live Amadeus TransferOffer into a TransferItem */
-  transferOfferToItem(offer: import("./amadeus.service").TransferOffer, destination?: string): TransferItem {
-    return {
-      id: `transfer-${offer.id}`,
-      type: "transfer" as const,
-      provider: "amadeus",
-      externalId: offer.id,
-      title: `${offer.vehicle.description} — ${offer.transferType}`,
-      description: null,
-      imageUrl: null,
-      price: parseFloat(offer.quotation.monetaryAmount),
-      currency: offer.quotation.currencyCode,
-      rating: null,
-      reviewCount: null,
-      destination: destination || null,
-      location: null,
-      duration: null,
-      categories: ["transfer"],
-      tags: [],
-      bookingUrl: null,
-      affiliateUrl: null,
-      lastUpdated: new Date(),
-      vehicle: {
-        code: offer.vehicle.code,
-        category: offer.vehicle.category,
-        description: offer.vehicle.description,
-        seats: offer.vehicle.seats?.[0]?.count,
-      },
-      quotation: {
-        amount: offer.quotation.monetaryAmount,
-        currencyCode: offer.quotation.currencyCode,
-      },
-      transferType: offer.transferType,
-    };
   }
 
   /**
@@ -1049,50 +934,9 @@ class ExperienceCatalogService {
       }
 
       if (type === "transfer") {
-        const [transfer] = await db.select()
-          .from(transferCache)
-          .where(eq(transferCache.id, id))
-          .limit(1);
-
-        if (!transfer) return null;
-
-        return {
-          id: transfer.id,
-          type: "transfer",
-          provider: transfer.provider || "amadeus",
-          externalId: transfer.offerId,
-          title: transfer.vehicleDescription
-            ? `${transfer.vehicleDescription} — ${transfer.transferType}`
-            : `Transfer — ${transfer.transferType}`,
-          description: null,
-          imageUrl: null,
-          price: transfer.price ? parseFloat(transfer.price) : null,
-          currency: transfer.currency || "USD",
-          rating: null,
-          reviewCount: null,
-          destination: transfer.endCityName,
-          location: transfer.endLatitude && transfer.endLongitude
-            ? { lat: parseFloat(transfer.endLatitude), lng: parseFloat(transfer.endLongitude) }
-            : null,
-          duration: null,
-          categories: ["transfer"],
-          tags: [],
-          bookingUrl: null,
-          affiliateUrl: null,
-          lastUpdated: transfer.lastUpdated,
-          vehicle: transfer.vehicleCode
-            ? {
-                code: transfer.vehicleCode,
-                category: transfer.vehicleCategory || "",
-                description: transfer.vehicleDescription || "",
-                seats: transfer.maxSeats ?? undefined,
-              }
-            : null,
-          quotation: transfer.price
-            ? { amount: transfer.price, currencyCode: transfer.currency || "USD" }
-            : null,
-          transferType: transfer.transferType,
-        };
+        // transfer_cache RETIRED (migration 176): writerless since the Amadeus drop
+        // (ruling 34), and no search surface ever emitted a transfer id. 404 like safety.
+        return null;
       }
 
       if (type === "safety") {

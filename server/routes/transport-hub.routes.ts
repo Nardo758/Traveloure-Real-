@@ -146,6 +146,15 @@ router.get("/api/itinerary/:tripId/transport-hub", isAuthenticated, async (req, 
       dayMap.get(leg.dayNumber)!.legs.push(leg);
     }
 
+    // §16: affiliate/deep-link options never ship their externalUrl to the client. The
+    // booking-agent rail re-resolves the URL from the transport_booking_options row by id
+    // (transportOptionId) — the card only needs to know a bookable link exists. Same strip
+    // as GET /api/transport-legs/:legId/options.
+    const stripExternalUrl = ({ externalUrl, ...rest }: any) => ({
+      ...rest,
+      hasBookingLink: !!externalUrl,
+    });
+
     // Add booking options to legs (filtered by user's selected mode)
     const days = Array.from(dayMap.values()).map((day) => ({
       ...day,
@@ -153,7 +162,7 @@ router.get("/api/itinerary/:tripId/transport-hub", isAuthenticated, async (req, 
         const activeMode = leg.userSelectedMode || leg.recommendedMode;
         const legOptions = allOptions.filter((opt) => opt.transportLegId === leg.id && !opt.isMultiDayPass);
         // Show only booking options matching the user's selected mode for this leg
-        const bookingOptions = legOptions.filter((opt) => opt.modeType === activeMode);
+        const bookingOptions = legOptions.filter((opt) => opt.modeType === activeMode).map(stripExternalUrl);
 
         return {
           id: leg.id,
@@ -175,8 +184,8 @@ router.get("/api/itinerary/:tripId/transport-hub", isAuthenticated, async (req, 
       }),
     }));
 
-    // Separate multi-day passes
-    const multiDayPasses = allOptions.filter((opt) => opt.isMultiDayPass);
+    // Separate multi-day passes (§16 strip applies here too)
+    const multiDayPasses = allOptions.filter((opt) => opt.isMultiDayPass).map(stripExternalUrl);
 
     // Calculate summary
     const totalLegs = legs.length;
@@ -259,7 +268,15 @@ router.get(
         options = await storage.getBookingOptionsByLegId(legId);
       }
 
-      res.json({ legId, options });
+      // §16: affiliate/deep-link options never ship their externalUrl to the client. The
+      // booking-agent rail re-resolves the URL from the transport_booking_options row by id
+      // (transportOptionId) — the card only needs to know a bookable link exists.
+      const safeOptions = options.map(({ externalUrl, ...rest }: any) => ({
+        ...rest,
+        hasBookingLink: !!externalUrl,
+      }));
+
+      res.json({ legId, options: safeOptions });
     } catch (err) {
       console.error("[transport-legs/:legId/options]", err);
       res.status(500).json({ error: "Failed to load booking options" });
@@ -532,7 +549,9 @@ router.get("/api/transport-booking-options/:optionId", isAuthenticated, async (r
       return res.status(404).json({ error: "Booking option not found" });
     }
 
-    res.json(option);
+    // §16: never ship the partner URL to the client — same strip as the hub/leg DTOs.
+    const { externalUrl, ...safe } = option as any;
+    res.json({ ...safe, hasBookingLink: !!externalUrl });
   } catch (error) {
     console.error("Error fetching booking option:", error);
     res.status(500).json({ error: "Failed to fetch booking option" });

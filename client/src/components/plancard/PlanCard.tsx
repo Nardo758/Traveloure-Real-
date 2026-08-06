@@ -823,7 +823,9 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
       pickupTime: tr.pickupTime ?? null,
       driverPhone: tr.driverPhone ?? null,
       rideDetails: tr.rideDetails ?? null,
-      bookingAffiliateUrl: tr.bookingAffiliateUrl ?? null,
+      // §16 closure: never forward a raw URL from stored itineraryData — the CTA is gated
+      // on a server-minted vault token only (not populated today; KNOWN GAP unchanged).
+      bookingToken: (tr as any).bookingToken ?? null,
     }))
     .sort((a, b) => a.legOrder - b.legOrder);
 

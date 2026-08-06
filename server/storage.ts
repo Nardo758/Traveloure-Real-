@@ -690,6 +690,7 @@ export interface IStorage {
   // === Optimization gate ===
   getRecentOptimizationRun(userId: string, cutoffDate: Date): Promise<{ id: string } | null>;
   getComparisonByOptimizationPaymentId(paymentId: string): Promise<{ id: string } | null>;
+  sweepStaleGeneratingComparisons(staleBefore: Date): Promise<Array<{ id: string; userId: string }>>;
   getExperienceTypeSlugByExperienceId(experienceId: string): Promise<string | null>;
   getCartItemsWithServices(userId: string): Promise<Array<{ cartItem: any; service: any | null }>>;
   getActiveProviderServices(limit?: number): Promise<any[]>;
@@ -3171,9 +3172,13 @@ export class DatabaseStorage implements IStorage {
       conditions.push(eq(locationCache.locationType, locationType));
     }
     
+    // Rank BEFORE the limit: with the seeded IATA dataset (flight-repoint, Aug 2026) a broad
+    // substring like "san" matches far more than 20 rows — an unordered LIMIT would return an
+    // arbitrary slice. Highest traveler_score (major airports) first, NULLS LAST for legacy rows.
     return await db.select()
       .from(locationCache)
       .where(and(...conditions))
+      .orderBy(sql`${locationCache.travelerScore} DESC NULLS LAST`)
       .limit(20);
   }
 
@@ -5548,6 +5553,29 @@ export class DatabaseStorage implements IStorage {
     return row ?? null;
   }
 
+  /**
+   * Stale-generating sweep (server-restart orphan): flips `itineraryComparisons` rows stuck at
+   * status='generating' — because the in-memory background AI job that owned them died with a
+   * server restart/crash — to status='failed'. §15 atomic conditional UPDATE: the WHERE clause
+   * (status='generating' AND updatedAt < staleBefore) is itself the concurrency guard, so a
+   * concurrent sweep tick or a still-alive job matches nothing extra; a second pass over the same
+   * row is a no-op. The generation job's own success/failure writes
+   * (server/itinerary-optimizer.ts) are plain unconditional updates keyed only on id, so if the
+   * job WAS actually still alive and later finishes, its write legitimately overwrites this
+   * 'failed' verdict with the real outcome — acceptable because that means the job genuinely
+   * finished, not a race with a dead job.
+   */
+  async sweepStaleGeneratingComparisons(staleBefore: Date): Promise<Array<{ id: string; userId: string }>> {
+    const rows = await db.update(itineraryComparisons)
+      .set({ status: 'failed', updatedAt: new Date() } as any)
+      .where(and(
+        eq(itineraryComparisons.status, 'generating'),
+        lte(itineraryComparisons.updatedAt, staleBefore),
+      ))
+      .returning({ id: itineraryComparisons.id, userId: itineraryComparisons.userId });
+    return rows;
+  }
+
   async getExperienceTypeSlugByExperienceId(experienceId: string): Promise<string | null> {
     const [row] = await db.select({ slug: experienceTypes.slug })
       .from(userExperiences)
@@ -5843,12 +5871,27 @@ export class DatabaseStorage implements IStorage {
   // ─── Guest Invite System ──────────────────────────────────────────────────
 
   async getInviteByToken(token: string): Promise<{ invite: EventInvite; experience: any } | null> {
-    const [row] = await db.select({ invite: eventInvites, experience: userExperiences })
+    // experienceTypeName join (Guest-invite A2): the parent experience's type name
+    // (e.g. "Wedding") rides along so the guest surface can stamp TripContext's
+    // Event-class vocabulary. Guest-safe — exposure is still gated by
+    // redactExperienceForGuest in guest-invites.ts.
+    const [row] = await db.select({
+      invite: eventInvites,
+      experience: userExperiences,
+      experienceTypeName: experienceTypes.name,
+    })
       .from(eventInvites)
       .leftJoin(userExperiences, eq(eventInvites.experienceId, userExperiences.id))
+      .leftJoin(experienceTypes, eq(userExperiences.experienceTypeId, experienceTypes.id))
       .where(eq(eventInvites.uniqueToken, token))
       .limit(1);
-    return row ?? null;
+    if (!row) return null;
+    return {
+      invite: row.invite,
+      experience: row.experience
+        ? { ...row.experience, experienceTypeName: row.experienceTypeName }
+        : row.experience,
+    };
   }
 
   async getInviteById(inviteId: string): Promise<EventInvite | null> {

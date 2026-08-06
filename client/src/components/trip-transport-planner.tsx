@@ -268,6 +268,8 @@ export function TripTransportPlanner({
 
   // §16 (item ④, decision B): route the 12Go "browse" hand-off through the agent rail with the
   // destination as context — never a raw window.open. The agent finds + books + adds to the trip.
+  // §16 closure: the client sends only the route params (partnerRoute) — the SERVER constructs the
+  // 12Go deep link itself; no affiliate URL or affiliate id lives in client code.
   const browse12goViaAgent = useMutation({
     mutationFn: (departCity?: string) =>
       apiRequest("POST", "/api/affiliate-booking-requests", {
@@ -275,7 +277,7 @@ export function TripTransportPlanner({
         itemDescription: "Trains, buses, ferries via 12Go Asia",
         partnerName: "12Go Asia",
         partnerCategory: "transport",
-        affiliateUrl: `https://12go.asia/en?z=13805109&curr=USD${departCity ? `&departcity=${encodeURIComponent(departCity)}` : ""}`,
+        partnerRoute: { partner: "12go", origin: departCity || undefined },
         travelers: travelers || 1,
       }),
   });

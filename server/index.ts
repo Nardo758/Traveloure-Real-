@@ -20,16 +20,19 @@ import { seedDmoKyotoHeritage } from "./seeds/dmo-kyoto-heritage.seed";
 import { seedRoleScopedTemplates } from "./seeds/role-scoped-templates.seed";
 import { seedTripOwnership } from "./seeds/trip-ownership.seed";
 import { seedE2EAccounts, purgeE2EAccountsFromProd } from "./seeds/e2e-test-accounts.seed";
+import { seedLocationCache } from "./seeds/location-cache.seed";
 import { storage } from "./storage";
 import { grokDiscoveryService } from "./services/grok-discovery.service";
 import { setupWebSocket } from "./websocket";
 import { cacheSchedulerService } from "./services/cache-scheduler.service";
 import { bookingExpiryScheduler } from "./services/booking-expiry-scheduler.service";
+import { checkoutClaimSweepScheduler } from "./services/checkout-claim.service";
 import { adminDigestScheduler } from "./services/admin-digest-scheduler.service";
 import { earningsReleaseScheduler } from "./services/earnings-release-scheduler.service";
 import { dmoIngestScheduler } from "./services/dmo-ingest-scheduler.service";
 import { stripeConnectReminderScheduler } from "./services/stripe-connect-reminder.service";
 import { tripCardHandoverScheduler } from "./services/trip-card-handover-scheduler.service";
+import { itineraryGenerationSweepScheduler } from "./services/itinerary-generation-sweep-scheduler.service";
 import { runDailyAdminDigest } from "./jobs/dailyAdminDigest";
 import { runNightlyQA } from "./jobs/nightlyQA";
 import { runStripeReconciliation } from "./jobs/stripeReconciliation";
@@ -416,6 +419,15 @@ async function runDatabaseSeeding() {
     logger.error({ err }, "Failed to seed trip ownership collaborators");
   }
 
+  try {
+    const locationResult = await seedLocationCache();
+    if (locationResult.upserted > 0) {
+      logger.info({ count: locationResult.upserted }, "Seeded IATA airport/city location cache");
+    }
+  } catch (err) {
+    logger.error({ err }, "Failed to seed location cache");
+  }
+
   // E2E test accounts — FAIL-SAFE gate (dispatch P0 fix, Jul 28 2026).
   // The old gate keyed on ENVIRONMENT === "PROD", an env var the deployed app
   // did NOT actually carry — so production took the SEED branch and re-created
@@ -549,6 +561,13 @@ if (process.env.NODE_ENV === "production") {
     bookingExpiryScheduler.start();
     logger.info("Booking expiry scheduler started");
 
+    // Ruling 38 (checkout atomicity): reclaim checkout claims that never reached an
+    // authorization — voids the provisional booking and hands its slot capacity back, with a
+    // diary row per void. Race-safe against a late authorization and never voids a row whose
+    // PaymentIntent Stripe actually holds (see checkout-claim.service.ts).
+    checkoutClaimSweepScheduler.start();
+    logger.info("Checkout claim sweep scheduler started");
+
     adminDigestScheduler.start();
     logger.info("Admin digest scheduler started");
 
@@ -561,6 +580,11 @@ if (process.env.NODE_ENV === "production") {
     // R-F: T-48h Trip Card auto-handover nudge (Console Realign, docs/briefs/CONSOLE_REALIGN_BRIEF.md).
     tripCardHandoverScheduler.start();
     logger.info("Trip Card handover scheduler started");
+
+    // Stale paid-itinerary-generation sweep: flips comparisons orphaned in 'generating' by a
+    // server restart/crash to 'failed' so the traveler isn't stuck on an infinite spinner.
+    itineraryGenerationSweepScheduler.start();
+    logger.info("Itinerary generation sweep scheduler started");
 
     // DMO ingestion scheduler — OFF unless DMO_INGEST_ENABLED=1 AND TAVILY_API_KEY set (D3).
     dmoIngestScheduler.start();

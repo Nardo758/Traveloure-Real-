@@ -13,52 +13,6 @@ interface TwelveGoTransportProps {
   variant?: "full" | "compact" | "button";
 }
 
-const AFFILIATE_ID = import.meta.env.VITE_TWELVEGO_AFFILIATE_ID || "13805109";
-
-function formatDateForUrl(dateStr: string): string {
-  const date = new Date(dateStr);
-  return date.toISOString().split('T')[0];
-}
-
-function generateDeepLink(
-  origin: string,
-  destination: string,
-  departureDate?: string,
-  passengers: number = 1
-): string {
-  const baseUrl = "https://12go.co/en/travel";
-  
-  const originSlug = origin.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
-  const destSlug = destination.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
-  
-  let url = `${baseUrl}/${originSlug}/${destSlug}`;
-  
-  const params = new URLSearchParams();
-  params.set('affiliate_id', AFFILIATE_ID);
-  
-  if (departureDate) {
-    params.set('date', formatDateForUrl(departureDate));
-  }
-  
-  if (passengers > 1) {
-    params.set('people', passengers.toString());
-  }
-  
-  return `${url}?${params.toString()}`;
-}
-
-function generateSearchLink(destination?: string): string {
-  const baseUrl = "https://12go.co/en";
-  const params = new URLSearchParams();
-  params.set('affiliate_id', AFFILIATE_ID);
-  
-  if (destination) {
-    params.set('q', destination);
-  }
-  
-  return `${baseUrl}?${params.toString()}`;
-}
-
 export function TwelveGoTransport({
   origin,
   destination,
@@ -69,19 +23,17 @@ export function TwelveGoTransport({
 }: TwelveGoTransportProps) {
   
   const hasRoute = origin && destination;
-  const bookingUrl = hasRoute
-    ? generateDeepLink(origin, destination, departureDate, passengers)
-    : generateSearchLink(destination);
 
   // §16 (item ④, decision B): route the transport search through the in-platform agent rail with
   // the route as context — never a raw window.open. An agent finds + books the option and adds it to
-  // the trip; the affiliate URL stays server-side.
+  // the trip. §16 closure: the deep link (and the affiliate id) is no longer built in the browser at
+  // all — the client sends only the route params and the SERVER constructs the 12Go link itself.
   const { book: handleBookClick, isPending, requested } = useContentAgentBooking({
     itemName: hasRoute ? `Transport: ${origin} → ${destination}` : `Ground transport${destination ? ` in ${destination}` : ""}`,
     itemDescription: [departureDate ? `Date ${departureDate}` : null, passengers > 1 ? `${passengers} passengers` : null].filter(Boolean).join(" · ") || null,
     partnerName: "12Go Asia",
     partnerCategory: "transport",
-    affiliateUrl: bookingUrl,
+    partnerRoute: { partner: "12go", origin: origin || undefined, destination: destination || undefined },
     travelers: passengers,
   });
 
@@ -188,11 +140,9 @@ export function TwelveGoTransport({
         </Button>
         
         <p className="text-xs text-gray-400 text-center">
-          Opens 12Go.co in a new tab
+          A Traveloure booking agent handles this for you
         </p>
       </CardContent>
     </Card>
   );
 }
-
-export { generateDeepLink, generateSearchLink };

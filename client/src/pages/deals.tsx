@@ -19,6 +19,7 @@ import {
   ExternalLink,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useContentAgentBooking } from "@/hooks/use-content-agent-booking";
 
 const dealCategories = [
   { id: "all", label: "All Deals", icon: Sparkles },
@@ -38,7 +39,8 @@ interface DealItem {
   rating: number | null;
   reviewCount: number | null;
   imageUrl: string | null;
-  affiliateUrl: string | null;
+  /** §16: the server never ships the affiliate URL — this opaque vault token drives the agent rail. */
+  bookingToken?: string | null;
   provider: string;
   providerLabel: string;
   featured: boolean;
@@ -149,6 +151,17 @@ function DealCard({ deal, idx }: { deal: DealItem; idx: number }) {
   const [imgFailed, setImgFailed] = useState(false);
   const resolvedImage = resolveImage(deal);
 
+  // §16: a deal's "Book" never opens a raw off-site affiliate link — it routes through the
+  // in-platform booking-agent rail via the opaque bookingToken the feed shipped in place of
+  // the URL; the server resolves the URL from its vault and an agent books it.
+  const { book, isPending, requested } = useContentAgentBooking({
+    itemName: deal.title,
+    itemDescription: [deal.destination, deal.providerLabel].filter(Boolean).join(" · ") || null,
+    partnerName: deal.providerLabel || deal.provider,
+    partnerCategory: deal.type,
+    bookingToken: deal.bookingToken,
+  });
+
   const formattedPrice =
     deal.price !== null
       ? new Intl.NumberFormat("en-US", {
@@ -249,22 +262,17 @@ function DealCard({ deal, idx }: { deal: DealItem; idx: number }) {
                 <div className="text-xs text-[#9CA3AF]">{deal.providerLabel}</div>
               </div>
 
-              {deal.affiliateUrl ? (
-                <a
-                  href={deal.affiliateUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  data-testid={`link-book-deal-${deal.id}`}
+              {deal.bookingToken ? (
+                <Button
+                  size="sm"
+                  className="bg-primary hover:bg-primary/90 text-white shrink-0"
+                  onClick={book}
+                  disabled={isPending || requested}
+                  data-testid={`button-book-${deal.id}`}
                 >
-                  <Button
-                    size="sm"
-                    className="bg-primary hover:bg-primary/90 text-white shrink-0"
-                    data-testid={`button-book-${deal.id}`}
-                  >
-                    Book Now
-                    <ExternalLink className="w-3 h-3 ml-1" />
-                  </Button>
-                </a>
+                  {requested ? "Requested" : "Book Now"}
+                  <ExternalLink className="w-3 h-3 ml-1" />
+                </Button>
               ) : (
                 <Button
                   size="sm"

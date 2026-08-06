@@ -87,6 +87,7 @@ import { experienceTypes as experienceTypesTable, coordinationStates, coordinati
 import { isExpertRole, isProviderRole } from "@shared/roles";
 import Stripe from "stripe";
 import { sharedCache } from "./services/shared-cache.service";
+import { vaultAndStripItems } from "./services/affiliate-url-vault.service";
 import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, createPublicProfile, getDisplayName, redactContactInfo } from "./utils/data-sanitizer";
 import { transportLegs, sharedItineraries, mapsExportCache, expertUpdatedItineraries, affiliateProducts, contentRegistry } from "@shared/schema";
 import { calculateTransportLegs, regenerateMapsUrlsFromLegs } from "./services/transport-leg-calculator";
@@ -109,6 +110,7 @@ import upsellRoutes from "./routes/upsell.routes";
 import tripsRoutes from "./routes/trips.routes";
 import { dedupedRequest, callWithCircuitBreaker } from "./utils/requestDeduplication";
 import adminRoutes from "./routes/admin.routes";
+import { insertAccessAuditLog } from "./services/admin-query.service";
 import expertsRoutes from "./routes/experts.routes";
 import eaRoutes from "./routes/ea.routes";
 import providerRoutes from "./routes/provider.routes";
@@ -965,41 +967,10 @@ export async function registerRoutes(
     res.json(trips);
   });
 
-  // GET /api/trips/:id — get trip (auth: owner/expert/EA, or guest via shareToken)
-  app.get(api.trips.get.path, requireAuthOrShareToken, async (req, res) => {
-    const trip = await storage.getTrip(req.params.id);
-    if (!trip) {
-      return res.status(404).json({ message: "Trip not found" });
-    }
-
-    // Check access: owner, assigned expert, managing EA, or guest with shareToken
-    const userId = getUserId(req)!;
-    const shareToken = req.query.token as string | undefined;
-    const isOwner = trip.userId && trip.userId === userId;
-    const isExpert = userId != null && (trip as any).expertId === userId;
-    const isManagingEa = userId != null && (trip as any).managedByEaId === userId;
-    const isGuestWithToken = shareToken && trip.shareToken === shareToken;
-
-    if (!isOwner && !isExpert && !isManagingEa && !isGuestWithToken) {
-      return res.status(401).json({ message: "Unauthorized" });
-    }
-
-    // GAP 5 fix (expert-loop object-flow audit, Jul 30 2026): "delivered" previously had no
-    // persistent signal on the trip itself — only a one-shot notification the traveler could
-    // dismiss/miss, with no fallback UI truth. Additive, server-only field (a sibling agent
-    // renders it): the most recent active (pending/accepted) assignment's workspaceStatus, or
-    // null when no expert is currently assigned. This is the canonical inline trips GET (§9).
-    const [advisorRow] = await db.select({ workspaceStatus: tripExpertAdvisors.workspaceStatus })
-      .from(tripExpertAdvisors)
-      .where(and(
-        eq(tripExpertAdvisors.tripId, trip.id),
-        inArray(tripExpertAdvisors.status, ["pending", "accepted"]),
-      ))
-      .orderBy(desc(tripExpertAdvisors.assignedAt))
-      .limit(1);
-
-    res.json({ ...trip, expertWorkspaceStatus: advisorRow?.workspaceStatus ?? null });
-  });
+  // GET /api/trips/:id — handled by tripsRoutes (trips.routes.ts), which owns the canonical
+  // handler with IDOR logging, 403 for non-owners, and expertWorkspaceStatus enrichment.
+  // The previous inline duplicate here shadowed that handler and suppressed security logging;
+  // it has been removed so the tripsRoutes registration (mounted above) wins. See task fix.
 
   // POST /api/trips — create a trip (guest or authenticated)
   // Guests get null userId; authenticated users get their userId.
@@ -2651,7 +2622,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // 1. Fresh DB cache hit → return immediately
       const cached = await sharedCache.get<DealsPayload>(DEALS_CACHE_NS, cacheKey);
       if (cached) {
-        return res.json(cached);
+        // §16: deals ship an opaque bookingToken, never the affiliate URL (vaulted server-side).
+        return res.json({ ...cached, deals: await vaultAndStripItems(cached.deals) });
       }
 
       // 2. Stale-while-revalidate: serve last known result while refreshing in background.
@@ -2668,14 +2640,14 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             .catch((err) => console.error("[Deals] Background revalidation error:", err))
             .finally(() => dealsRevalidating.delete(cacheKey));
         }
-        return res.json({ ...stale, stale: true });
+        return res.json({ ...stale, deals: await vaultAndStripItems(stale.deals), stale: true });
       }
 
       // 3. Cold fetch: no cache at all → fetch synchronously, then cache
       const fresh = await fetchDealsFromProviders(type, destination, origin);
       await sharedCache.set(DEALS_CACHE_NS, cacheKey, fresh, DEALS_TTL_MS);
       setDealsStale(cacheKey, fresh);
-      return res.json(fresh);
+      return res.json({ ...fresh, deals: await vaultAndStripItems(fresh.deals) });
     } catch (error) {
       console.error("Deals aggregation error:", error);
       res.status(500).json({ message: "Failed to fetch deals" });
@@ -3456,6 +3428,20 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         return res.status(400).json({ message: "Can only approve submitted templates" });
       }
       const approved = await storage.approveExpertTemplate(req.params.id, adminId);
+
+      // Rides the blanket /api/admin adminApiGuard (§2) — adminId is already confirmed admin.
+      insertAccessAuditLog({
+        actorId: adminId,
+        actorRole: "admin",
+        action: "expert_template_approve",
+        resourceType: "expert_template",
+        resourceId: req.params.id,
+        targetUserId: template.expertId ?? null,
+        metadata: {},
+        ipAddress: req.ip ?? null,
+        userAgent: req.get("user-agent") ?? null,
+      }).catch((err: any) => console.error("[admin/expert-templates] audit log failed (non-fatal):", err));
+
       res.json(approved);
     } catch (err) {
       console.error("Error approving template:", err);
@@ -3478,6 +3464,20 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         return res.status(400).json({ message: "Can only reject submitted templates" });
       }
       const rejected = await storage.rejectExpertTemplate(req.params.id, adminId, reason);
+
+      // Rides the blanket /api/admin adminApiGuard (§2) — adminId is already confirmed admin.
+      insertAccessAuditLog({
+        actorId: adminId,
+        actorRole: "admin",
+        action: "expert_template_reject",
+        resourceType: "expert_template",
+        resourceId: req.params.id,
+        targetUserId: template.expertId ?? null,
+        metadata: { reason },
+        ipAddress: req.ip ?? null,
+        userAgent: req.get("user-agent") ?? null,
+      }).catch((err: any) => console.error("[admin/expert-templates] audit log failed (non-fatal):", err));
+
       res.json(rejected);
     } catch (err) {
       console.error("Error rejecting template:", err);
@@ -7465,24 +7465,6 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   // Call seed database
   seedDatabase().catch(err => console.error("Error seeding database:", err));
-
-  // Amadeus Travel API Routes
-  
-  // Search airport transfers
-  const transferSearchSchema = z.object({
-    startLocationCode: z.string().min(3).max(4),
-    endAddressLine: z.string().optional(),
-    endCityName: z.string().optional(),
-    endGeoCode: z.object({
-      latitude: z.number(),
-      longitude: z.number()
-    }).optional(),
-    transferType: z.string(),
-    startDateTime: z.string(),
-    passengers: z.union([z.string(), z.number()]).transform((val) => 
-      typeof val === 'string' ? parseInt(val, 10) : val
-    ),
-  });
 
   // ============ VIATOR API ROUTES ============
 

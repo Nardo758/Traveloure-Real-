@@ -249,12 +249,13 @@ export interface PlanCardTransport {
   driverPhone?: string | null;
   rideDetails?: string | null;
   /**
-   * §16-safe: a deep link/affiliate URL used ONLY to gate the "Book this ride" CTA's
-   * presence — never opened directly (window.open) client-side. When present, the CTA
-   * routes through the existing booking-agent rail (POST /api/affiliate-booking-requests),
-   * which keeps the URL server-side. KNOWN GAP: not populated today (see pickupPoint above).
+   * §16-safe: an OPAQUE server-minted vault token (never a URL — §16 closure: partner URLs
+   * no longer exist client-side at all) used to gate the "Book this ride" CTA's presence.
+   * When present, the CTA routes through the booking-agent rail
+   * (POST /api/affiliate-booking-requests), which resolves the token back to the URL
+   * server-side. KNOWN GAP: not populated today (see pickupPoint above).
    */
-  bookingAffiliateUrl?: string | null;
+  bookingToken?: string | null;
 }
 
 /**
@@ -272,7 +273,7 @@ export interface PlanCardLegData extends InlineTransportLegData {
   pickupTime?: string | null;
   driverPhone?: string | null;
   rideDetails?: string | null;
-  bookingAffiliateUrl?: string | null;
+  bookingToken?: string | null;
 }
 
 export interface PlanCardDay {

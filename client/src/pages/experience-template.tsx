@@ -87,7 +87,7 @@ import { SELECTION_CONTROL_SEED } from "@shared/selection-control-seed";
 import { resolveSelectionsToFilterQuery, type SelectionControl, type SelectionOption } from "@shared/selection-controls";
 import { CompactFilterBar } from "@/components/compact-filter-bar";
 import { AddCustomVenueModal } from "@/components/add-custom-venue-modal";
-import { FlightSearch } from "@/components/flight-search";
+import { FlightPriceGrid } from "@/components/travelpayouts/FlightPriceGrid";
 import { HotelSearch } from "@/components/hotel-search";
 import { ServiceBrowser } from "@/components/service-browser";
 import { ActivitySearch } from "@/components/activity-search";
@@ -888,11 +888,9 @@ export default function ExperienceTemplatePage() {
   const [selectedInterests, setSelectedInterests] = useState<string[]>(initialSettings?.selectedInterests ?? []);
   const [vendorType, setVendorType] = useState<string>(initialSettings?.vendorType ?? "photographer");
   
-  // Flight-specific filters
-  const [flightMaxPrice, setFlightMaxPrice] = useState(initialSettings?.flightMaxPrice ?? 2000);
-  const [flightStops, setFlightStops] = useState<"any" | "nonstop" | "1stop">(initialSettings?.flightStops ?? "any");
-  const [flightSortBy, setFlightSortBy] = useState<"price" | "duration" | "departure">(initialSettings?.flightSortBy ?? "price");
-  
+  // Flight-specific filters (stops/max-price/sort) removed with the GDS-style FlightSearch —
+  // the TP price-grid (FlightPriceGrid) carries its own route/date controls (flight-repoint, Aug 2026).
+
   // Hotel-specific filters
   const [hotelMaxPrice, setHotelMaxPrice] = useState(initialSettings?.hotelMaxPrice ?? 5000);
   const [hotelStarRating, setHotelStarRating] = useState<number>(initialSettings?.hotelStarRating ?? 0);
@@ -1000,9 +998,6 @@ export default function ExperienceTemplatePage() {
       setSortBy(settings?.sortBy ?? "popular");
       setSelectedFilters(settings?.selectedFilters ?? []);
       setSelectedInterests(settings?.selectedInterests ?? []);
-      setFlightMaxPrice(settings?.flightMaxPrice ?? 2000);
-      setFlightStops(settings?.flightStops ?? "any");
-      setFlightSortBy(settings?.flightSortBy ?? "price");
       setHotelMaxPrice(settings?.hotelMaxPrice ?? 5000);
       setHotelStarRating(settings?.hotelStarRating ?? 0);
       setHotelSortBy(settings?.hotelSortBy ?? "price");
@@ -1054,9 +1049,6 @@ export default function ExperienceTemplatePage() {
       sortBy,
       selectedFilters,
       selectedInterests,
-      flightMaxPrice,
-      flightStops,
-      flightSortBy,
       hotelMaxPrice,
       hotelStarRating,
       hotelSortBy,
@@ -1092,7 +1084,7 @@ export default function ExperienceTemplatePage() {
   }, [
     slug, destination, originCity, originCode, startDate, endDate, activeTab,
     searchQuery, priceRange, minRating, sortBy, selectedFilters, selectedInterests,
-    flightMaxPrice, flightStops, flightSortBy, hotelMaxPrice, hotelStarRating,
+    hotelMaxPrice, hotelStarRating,
     hotelSortBy, adults, kids, detailsSubmitted, ctxApplied, experienceType?.name
   ]);
   
@@ -2140,46 +2132,13 @@ export default function ExperienceTemplatePage() {
             </div>
           )}
 
-          {/* Unified filter bar — all tabs including flights/hotels (#35).
-              Flights: stops chips + max-price range slider + flight sort.
+          {/* Unified filter bar — hotels + generic tabs (#35).
+              Flights: NO filter bar — the TP price-grid (FlightPriceGrid) is the single surface
+              and carries its own route/date controls; GDS-style stops/max-price filters made no
+              sense for cheapest-fare-by-route data (flight-repoint, Aug 2026).
               Hotels: star-rating chips + max-price range slider + hotel sort.
               Other tabs: seeded selection controls + generic sort. */}
-          {currentTabType === "flights" ? (
-            <CompactFilterBar
-              controls={[{
-                id: "flight-stops",
-                label: "Stops",
-                type: "single_select",
-                options: [
-                  { id: "any",     label: "Any",     filterMapping: {} },
-                  { id: "nonstop", label: "Nonstop", filterMapping: {} },
-                  { id: "1stop",   label: "1 Stop",  filterMapping: {} },
-                ],
-              }]}
-              selected={{ "flight-stops": [flightStops] }}
-              onToggle={(_, optionId) => setFlightStops(optionId as "any" | "nonstop" | "1stop")}
-              onClear={() => { setFlightStops("any"); setFlightMaxPrice(2000); }}
-              sortValue={flightSortBy}
-              onSortChange={(v) => setFlightSortBy(v as "price" | "duration" | "departure")}
-              sortOptions={[
-                { value: "price",     label: "Price" },
-                { value: "duration",  label: "Duration" },
-                { value: "departure", label: "Departure" },
-              ]}
-              rangeControls={[{
-                id: "flightMaxPrice",
-                label: "Max Price",
-                min: 100,
-                max: 5000,
-                step: 100,
-                format: (v) => `$${v.toLocaleString()}`,
-              }]}
-              rangeValues={{ flightMaxPrice }}
-              onRangeChange={(id, val) => {
-                if (id === "flightMaxPrice") setFlightMaxPrice(val);
-              }}
-            />
-          ) : currentTabType === "hotels" ? (
+          {currentTabType === "flights" ? null : currentTabType === "hotels" ? (
             <CompactFilterBar
               controls={[{
                 id: "hotel-stars",
@@ -2258,56 +2217,16 @@ export default function ExperienceTemplatePage() {
             />
           )}
 
-          {/* P5: tabType-registry driven — any tab with tabType "flights" renders FlightSearch */}
+          {/* P5: tabType-registry driven — any tab with tabType "flights" renders the TP price-grid.
+              Live cheapest-fare-by-route data from GET /api/catalog/flights (Aviasales); booking
+              routes through the agent rail per §16 — no add-to-cart of GDS offers here. */}
           {currentTabType === "flights" && (
             <div className="mb-6">
-              <FlightSearch
-                destination={destination}
-                origin={originCity}
+              <FlightPriceGrid
+                originQuery={originCity}
+                destinationQuery={destination}
                 startDate={startDate}
                 endDate={endDate}
-                travelers={adults + kids}
-                maxPrice={flightMaxPrice}
-                stops={flightStops}
-                sortBy={flightSortBy}
-                onSelectFlight={(flight) => {
-                  const outbound = flight.itineraries[0];
-                  const firstSegment = outbound?.segments[0];
-                  const lastSegment = outbound?.segments[outbound.segments.length - 1];
-                  const travelerPricing = flight.travelerPricings?.[0];
-                  const fareDetails = travelerPricing?.fareDetailsBySegment?.[0];
-                  const checkedBags = fareDetails?.includedCheckedBags;
-                  const bagsInfo = checkedBags?.quantity !== undefined 
-                    ? `${checkedBags.quantity} bag${checkedBags.quantity !== 1 ? 's' : ''}`
-                    : checkedBags?.weight 
-                      ? `${checkedBags.weight}${checkedBags.weightUnit || 'kg'}`
-                      : undefined;
-                  
-                  addToCart({
-                    id: `flight-${flight.id}`,
-                    type: "flights",
-                    name: `${firstSegment?.departure.iataCode} → ${lastSegment?.arrival.iataCode}`,
-                    price: parseFloat(flight.price.total),
-                    quantity: 1,
-                    provider: `${firstSegment?.carrierCode} ${firstSegment?.number}`,
-                    details: `${fareDetails?.cabin || 'Economy'} class${bagsInfo ? `, ${bagsInfo}` : ''}`,
-                    isExternal: true,
-                    metadata: {
-                      cabin: fareDetails?.cabin,
-                      baggage: bagsInfo,
-                      stops: outbound?.segments.length - 1,
-                      duration: outbound?.duration,
-                      airline: firstSegment?.carrierCode,
-                      flightNumber: `${firstSegment?.carrierCode}${firstSegment?.number}`,
-                      departureTime: firstSegment?.departure.at,
-                      arrivalTime: lastSegment?.arrival.at,
-                      seatsLeft: flight.numberOfBookableSeats,
-                      lastTicketingDate: flight.lastTicketingDate,
-                      travelers: adults + kids,
-                      rawData: flight,
-                    },
-                  });
-                }}
               />
             </div>
           )}

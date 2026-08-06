@@ -53,6 +53,14 @@ default for unmapped values, or `null` to force a manual decision — use `null`
 for content fields; a conservative constant only where one is genuinely safe,
 e.g. earnings → `held`).
 
+## Staging (auth-dependent E2E)
+
+Production purges the seeded `@traveloure.test` accounts on every boot, so no
+suite that logs in can run against it. Auth-dependent smoke targets a separate
+**staging** deployment; the unauthenticated smoke stays on production. Provisioning
+staging is a one-time owner action — see **[`docs/STAGING.md`](./STAGING.md)** for the
+exact env vars, GitHub secrets, and confirmation steps.
+
 ## The real fix (when there's time)
 
 Disable Replit's deploy-time schema-push so `runMigrations()` is the single source

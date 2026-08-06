@@ -775,7 +775,8 @@ export default function TripDetails() {
                               pickupTime: l.pickupTime ?? null,
                               driverPhone: l.driverPhone ?? null,
                               rideDetails: l.rideDetails ?? null,
-                              bookingAffiliateUrl: l.bookingAffiliateUrl ?? null,
+                              // §16 closure: no raw URLs off the jsonb blob — token only.
+                              bookingToken: (l as any).bookingToken ?? null,
                             }));
                           })(),
                         }));

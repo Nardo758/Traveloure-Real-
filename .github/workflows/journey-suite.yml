@@ -1,0 +1,239 @@
+name: Journey Suite (Journey Wave 1 · Tier-1)
+
+# Runs the Journey Wave 1 Tier-1 traveler journeys (J1 golden path, J2 AI entry) end-to-end
+# against a freshly-built production bundle backed by a THROWAWAY Postgres service.
+#
+# NAMING (ruling 37): "Journey Wave 1" is always written in full. The unqualified form
+# collides with the QA Punch List's own wave series (docs/planning/QA_PUNCH_LIST.md) and with
+# the Amadeus decommission (ruling 34) that rode the same squash, PR #421 — which made a real
+# status question unanswerable. Guarded by scripts/check-coverage-matrix.cjs rule 5.
+#
+# Every step in these specs asserts a DB FACT via a read-only pg pool (DATABASE_URL);
+# UI checks supplement only. Fresh registered users + fresh trips are minted per test
+# via the app's own HTTP APIs (never shared fixtures, never direct app-table writes).
+#
+# NON-BLOCKING, BUT NOT INVISIBLE (changed Journey Wave 1, 2026-08-05). This workflow triggers
+# on push-to-main / nightly / dispatch only — it is NOT a `pull_request` check, so it can never
+# gate a merge no matter what it concludes. The job-level `continue-on-error: true` it used to
+# carry therefore bought no merge-safety at all; all it did was report run conclusion = SUCCESS
+# while the job conclusion was FAILURE, so a human scanning the Actions list saw green over
+# three red journeys (head ea0bbc05). That is theatre, so it is gone: a red journey is now a
+# red run, plus an explicit verdict line in the run summary.
+#
+# Stripe (REWRITTEN by DECISIONS.md ruling 38 — the previous text described a defect):
+# `POST /api/checkout` calls `stripe.paymentIntents.create`, and a checkout that cannot obtain
+# a PaymentIntent now COMMITS NOTHING — no authorized booking, cart untouched, no item flipped
+# `purchased`, no diary row. So with the non-functional stub key below there are no money-path
+# DB facts to assert, because there correctly are none. (The old text said those facts were
+# "written BEFORE the Stripe call and asserted unconditionally" — true at the time, and exactly
+# the atomicity violation ruling 38 fixed.)
+#
+# JOURNEY_STRIPE_UNAVAILABLE=1 therefore no longer relaxes anything; it SELECTS which truthful
+# contract the specs assert:
+#   real key ⇒ assertCheckoutAccepted    — 2xx + clientSecret + every PROMOTE fact.
+#   stub key ⇒ assertCheckoutCommittedNothing — the declared 503 payment_unavailable AND the
+#              hard-asserted ABSENCE of all of them. Never a silent pass; the negative half is
+#              asserted as strictly as the positive half.
+# The J1 PaymentElement confirm (card 4242) runs only with a real key. Supplying an `sk_test_`
+# STRIPE_SECRET_KEY secret to this workflow enables the full positive path automatically.
+#
+# Route/spec source of truth: playwright/tests/journeys/*.spec.ts
+# Matrix IDs covered: J1.3, J1.6, J1.7, J1.9, J2 (matrix lint greps `playwright/`).
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    # Nightly at 07:00 UTC.
+    - cron: '0 7 * * *'
+  workflow_dispatch:
+
+# Cancel in-progress runs for the same ref to avoid redundant runs.
+concurrency:
+  group: journey-suite-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  journeys:
+    name: journeys (J1 golden path + J2 AI entry)
+    runs-on: ubuntu-latest
+    # NO `continue-on-error` — see the header. This workflow has no `pull_request` trigger, so
+    # it cannot block a merge in any case; masking the job conclusion only made the RUN read
+    # green over red specs. Red tests must be red at a glance in the Actions list.
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - run: npm ci
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Install Playwright (chromium)
+        run: |
+          if [ "${{ steps.playwright-cache.outputs.cache-hit }}" = "true" ]; then
+            npx playwright install-deps chromium
+          else
+            npx playwright install --with-deps chromium
+          fi
+
+      - name: Build production bundle
+        run: npm run build
+
+      - name: Set up CI database (migrations, sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          # The journeys mint their own fresh users via POST /api/auth/register; no
+          # pre-seeded ci-* accounts are needed.
+          seed-ci-users: 'false'
+
+      - name: Start production server
+        run: node dist/index.cjs &
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          SESSION_SECRET: ci-test-secret-not-for-production
+          # Non-functional stub keys — the journeys assert money-path DB facts written at
+          # /api/checkout; the Stripe PaymentElement confirm leg is gated off below when no
+          # real key is present. NEVER real values here.
+          STRIPE_SECRET_KEY: [REDACTED_STRIPE_TEST_KEY]_stub_no_real_calls
+          STRIPE_WEBHOOK_SECRET: whsec_ci_stub_no_real_calls
+          XAI_API_KEY: xai-ci-stub-no-real-calls
+          ANTHROPIC_API_KEY: sk-ant-ci-stub-no-real-calls
+          RESEND_API_KEY: re_ci_stub_no_real_calls
+          GIT_COMMIT: ${{ github.sha }}
+          NODE_ENV: production
+          # P0 fail-safe (server/index.ts): a production boot purges test accounts unless
+          # explicitly allowed. This CI DB is throwaway.
+          ALLOW_TEST_ACCOUNTS: '1'
+          PORT: 5000
+          # Plain-http loopback: a `secure` session cookie is never replayed, so opt out.
+          # NEVER set this in production.
+          SESSION_COOKIE_INSECURE: '1'
+          # The journeys hammer /api from one loopback IP; exempt loopback from the limiter
+          # so registration/checkout calls are never 429'd. NEVER set this in production.
+          RATE_LIMIT_LOOPBACK_SKIP: '1'
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGDATABASE: traveloure
+
+      - name: Wait for server and seeding
+        run: |
+          for i in $(seq 1 60); do
+            result=$(curl -s http://localhost:5000/api/ready || true)
+            if echo "$result" | grep -q '"ready":true'; then
+              echo "Server ready ✅"; exit 0
+            fi
+            echo "attempt $i/60: waiting... ($result)"; sleep 5
+          done
+          echo "::error::Server did not become ready within 5 minutes"
+          pgrep -a node || true
+          exit 1
+
+      - name: Assert journey spec files exist
+        run: |
+          missing=0
+          for f in \
+            "playwright/tests/journeys/j1-golden-path.spec.ts" \
+            "playwright/tests/journeys/j2-ai-entry.spec.ts"; do
+            if [ ! -f "$f" ]; then
+              echo "::error::Journey spec not found: $f"
+              missing=1
+            fi
+          done
+          [ "$missing" = "0" ] && echo "Journey spec files present ✅"
+          exit $missing
+
+      - name: Declare Stripe availability (explicit, never a silent pass)
+        id: stripe-gate
+        run: |
+          # BOTH Stripe legs need a REAL test Stripe secret key: POST /api/checkout creates the
+          # PaymentIntent server-side, and the J1 PaymentElement confirm needs the publishable
+          # key baked into the bundle. The boot env above uses a non-functional stub, so unless a
+          # real STRIPE_SECRET_KEY secret is provided we DECLARE Stripe unavailable — which
+          # selects the ruling-38 NEGATIVE contract (declared 503 + zero committed state), not a
+          # relaxed version of the positive one.
+          if [ -n "${{ secrets.STRIPE_SECRET_KEY }}" ]; then
+            echo "Real STRIPE_SECRET_KEY present → strict checkout contract + PaymentElement confirm leg WILL run."
+            echo "stripe_unavailable=0" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::STRIPE_SECRET_KEY absent in CI → Stripe is DECLARED UNAVAILABLE (JOURNEY_STRIPE_UNAVAILABLE=1). POST /api/checkout cannot obtain a PaymentIntent, so per ruling 38 it must commit NOTHING: the specs assert the declared 503 payment_unavailable AND the absence of every money-path fact (zero authorized bookings, cart intact, no purchased item, no purchase diary row). The J1 PaymentElement confirm leg is skipped. This is a hard-asserted negative contract, not a silent pass."
+            echo "stripe_unavailable=1" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run journey suite (test:journeys)
+        id: run-journeys
+        run: npm run test:journeys -- --project=chromium
+        env:
+          BASE_URL: http://localhost:5000
+          # Specs assert DB facts via a read-only pg pool.
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          PGUSER: postgres
+          PGPASSWORD: postgres
+          PGHOST: localhost
+          PGDATABASE: traveloure
+          CI: 'true'
+          # DB-write safety opt-in for the specs' cleanup DELETEs (assertDisposableDb): this is a
+          # THROWAWAY localhost Postgres service — deliberately allowed. LOCAL DEV RUNS must export
+          # JOURNEY_DB_WRITES_OK=1 THEMSELVES (only against a disposable dev DB); the guard refuses
+          # any non-localhost DB without this flag so it can never delete against a shared/prod DB.
+          JOURNEY_DB_WRITES_OK: '1'
+          # Declared Stripe availability decided above (1 = the app was booted with a stub key).
+          JOURNEY_STRIPE_UNAVAILABLE: ${{ steps.stripe-gate.outputs.stripe_unavailable }}
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: journey-suite-report
+          path: playwright-report/
+          retention-days: 14
+
+      - name: Journey suite verdict (the run must never read green over red specs)
+        if: always()
+        run: |
+          # THE MASK THIS REPLACES: this job used to carry `continue-on-error: true`, which left
+          # the RUN conclusion = success while the JOB conclusion = failure. Anyone scanning the
+          # Actions list saw a green ✓ over three failing journeys. This step states the verdict
+          # in the run summary AND propagates a red spec run into a red job, so the two can never
+          # disagree again. It is `if: always()` so the verdict is written even when an earlier
+          # step (build, DB setup, server boot) is what broke.
+          outcome='${{ steps.run-journeys.outcome }}'
+          if [ "$outcome" = "success" ]; then
+            echo "### ✅ Journey Wave 1 — Tier-1 journeys PASSED" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "Stripe declared unavailable: \`${{ steps.stripe-gate.outputs.stripe_unavailable }}\` (1 = stub key; money-path DB facts still fully asserted)." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo "### ❌ Journey Wave 1 — Tier-1 journeys FAILED (\`run-journeys\` outcome: ${outcome:-not-reached})" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Download the **journey-suite-report** artifact for the per-spec failures. This run is RED on purpose — a non-blocking gate is still an honest one." >> "$GITHUB_STEP_SUMMARY"
+          echo "::error::Journey Wave 1 Tier-1 journeys did not pass (run-journeys outcome: ${outcome:-not-reached})."
+          exit 1

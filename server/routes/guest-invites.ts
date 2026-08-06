@@ -106,6 +106,10 @@ function redactExperienceForGuest(experience: any) {
     eventDate: experience.eventDate,
     startDate: experience.eventDate,
     status: experience.status,
+    // A2: the event's type NAME (e.g. "Wedding", "Corporate Events") — guest-safe
+    // (the guest was invited to it) and required for the invite-aware Event-class
+    // strip vocabulary (TripContext.experienceType). Never budget/preferences.
+    experienceType: experience.experienceTypeName ?? null,
   };
 }
 

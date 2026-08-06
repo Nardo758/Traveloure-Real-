@@ -9,6 +9,7 @@ import { transformDevHtml } from "../vite-dev-html";
 import crypto from "crypto";
 import { Router } from "express";
 import { storage } from "../storage";
+import { db } from "../db";
 // W2 (Trip-Canon Lane 1 Phase 1b): `cart_items` has exactly ONE writer — the projection module.
 // NOTE: the apply-to-cart handler below is a §9 SHADOWED copy (this router mounts LAST, so the
 // inline routes.ts copy wins the path). It is re-pointed anyway so no live-or-dead file retains a
@@ -68,7 +69,6 @@ import { getTripTransportLegs, isTripScopedLeg } from "../services/trip-transpor
 import { generateOptimizedItineraries, getComparisonWithVariants, selectVariant, type TripPreferences } from "../itinerary-optimizer";
 import { complexityTier } from "../services/smart-sequencing.service";
 import { getFee } from "../services/optimization-fee.service";
-import { amadeusService } from "../services/amadeus.service";
 import { viatorService } from "../services/viator.service";
 import { cacheService } from "../services/cache.service";
 import { cacheSchedulerService } from "../services/cache-scheduler.service";
@@ -226,9 +226,17 @@ router.get(api.trips.get.path, async (req, res) => {
     // may access via shareToken — so ownership is enforced inline with IDOR logging.
     const userId = getUserId(req)!;
     const shareToken = req.query.token as string | undefined;
+
+    // Block fully-anonymous requests with neither a session nor a share token.
+    const hasSession = typeof (req as any).isAuthenticated === "function" && (req as any).isAuthenticated();
+    const hasToken = typeof shareToken === "string" && shareToken.length > 0;
+    if (!hasSession && !hasToken) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
     const isOwner = trip.userId && trip.userId === userId;
-    const isExpert = (trip as any).expertId === userId;
-    const isManagingEa = (trip as any).managedByEaId === userId;
+    const isExpert = userId != null && (trip as any).expertId === userId;
+    const isManagingEa = userId != null && (trip as any).managedByEaId === userId;
     const isGuestWithToken = shareToken && trip.shareToken === shareToken;
     if (!isOwner && !isExpert && !isManagingEa && !isGuestWithToken) {
       if (userId) {
@@ -239,7 +247,22 @@ router.get(api.trips.get.path, async (req, res) => {
       }
       return res.status(403).json({ message: "Access denied" });
     }
-    res.json(trip);
+
+    // GAP 5 fix (expert-loop object-flow audit, Jul 30 2026): "delivered" previously had no
+    // persistent signal on the trip itself — only a one-shot notification the traveler could
+    // dismiss/miss, with no fallback UI truth. Additive, server-only field (a sibling agent
+    // renders it): the most recent active (pending/accepted) assignment's workspaceStatus, or
+    // null when no expert is currently assigned.
+    const [advisorRow] = await db.select({ workspaceStatus: tripExpertAdvisors.workspaceStatus })
+      .from(tripExpertAdvisors)
+      .where(and(
+        eq(tripExpertAdvisors.tripId, trip.id),
+        inArray(tripExpertAdvisors.status, ["pending", "accepted"]),
+      ))
+      .orderBy(desc(tripExpertAdvisors.assignedAt))
+      .limit(1);
+
+    res.json({ ...trip, expertWorkspaceStatus: advisorRow?.workspaceStatus ?? null });
   });
 
 
