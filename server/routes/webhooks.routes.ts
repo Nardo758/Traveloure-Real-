@@ -281,10 +281,13 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
       case "payment_intent.succeeded": {
         const paymentIntent = event.data.object as Stripe.PaymentIntent;
 
-        // ── Step 1: Confirm cart bookings (authoritative path) ──────────────
-        // stripePaymentService.handlePaymentSucceeded() is idempotent — it skips
-        // bookings that are already confirmed and generates confirmation codes for
-        // any that are still in pending_payment status.
+        // ── Step 1: Confirm bookings on BOTH rails (authoritative path) ─────
+        // handlePaymentSucceeded now drives the shared payment promotion
+        // (checkout-claim.service.ts `promotePaidCheckout`) for the CART rail —
+        // service_bookings, resolved by the stamped PaymentIntent id and, for a
+        // claim whose PI was never stamped, by the PI's own bookingIds metadata —
+        // and then the legacy `bookings` rail unchanged. Both are idempotent:
+        // an already-confirmed booking matches 0 rows and is a no-op.
         try {
           await stripePaymentService.handlePaymentSucceeded(paymentIntent);
         } catch (bookingErr: any) {
@@ -292,27 +295,15 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
           // Non-fatal: continue to revenue tracking even if booking confirmation fails
         }
 
-        // ── Step 2: Crash-recovery for service_bookings ─────────────────────
-        // If the checkout server crashed after the Stripe charge but before Step C
-        // (stamping stripe_payment_intent_id) or before the client received the
-        // response, these rows remain at status="payment_pending".
-        // The webhook is the authoritative recovery path.
-        try {
-          const recovered = await db.execute(sql`
-            UPDATE service_bookings
-            SET status       = 'confirmed',
-                confirmed_at = NOW()
-            WHERE stripe_payment_intent_id = ${paymentIntent.id}
-              AND status = 'payment_pending'
-            RETURNING id
-          `);
-          if (recovered.rows.length > 0) {
-            const ids = (recovered.rows as any[]).map((r: any) => r.id).join(', ');
-            console.info(`[RECOVERY] payment_intent.succeeded: confirmed ${recovered.rows.length} payment_pending service_booking(s) [${ids}] via webhook for PI ${paymentIntent.id}`);
-          }
-        } catch (recoveryErr: any) {
-          console.error("payment_intent.succeeded: service_booking crash-recovery error:", recoveryErr.message);
-        }
+        // ── Step 2 REMOVED (legacy-reconciliation lane, task #212) ──────────
+        // A raw inline `UPDATE service_bookings SET status='confirmed' WHERE
+        // stripe_payment_intent_id = … AND status='payment_pending'` used to live here.
+        // It was a SECOND, divergent implementation of the payment promotion: no diary
+        // row (rulings 12/16/18), no actor attribution, no plan-side catch-up, and — because
+        // it keyed exclusively on a stamped PI id — no help whatsoever in the one case the
+        // webhook is the only possible rescuer (server died mid-authorization, PI created,
+        // never stamped). Step 1 now performs the same transition through the ONE shared
+        // promotion, which handles all of the above. Do not reintroduce an inline UPDATE here.
 
         // ── Step 3: Revenue tracking ────────────────────────────────────────
         const sourceType = paymentIntent.metadata?.sourceType as any;
