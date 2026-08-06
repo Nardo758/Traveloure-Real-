@@ -30,7 +30,15 @@ export type TransitionActorType =
   // /api/bookings/confirm-payment) precisely so a diary row answers "which signal promoted this
   // booking?" — the redundancy on the money path is only worth having if it is attributable.
   // No DB CHECK on actor_type (migration 171 posture), so this is a code-only vocabulary add.
-  | "webhook";
+  | "webhook"
+  // Reconciliation-detection lane: the daily Stripe-vs-DB drift job acting as the promotion
+  // caller (the ONE narrow repair it may perform — a PI-succeeded / still-provisional claim
+  // handed to the SAME shared promotion the webhook and client confirm use). Distinct from
+  // `webhook` so a diary row still answers "which signal promoted this booking?" — a promotion
+  // that arrived a day late through the drift scan is a materially different fact from one that
+  // arrived on the webhook, and ops needs to be able to tell them apart. 14 chars: fits
+  // actor_type VARCHAR(20) (migration 171).
+  | "reconciliation";
 
 export type TransitionEventType =
   | "status_transition"
