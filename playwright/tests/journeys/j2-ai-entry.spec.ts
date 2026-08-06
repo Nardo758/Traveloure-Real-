@@ -1,7 +1,12 @@
 import { test, expect, type APIRequestContext } from "@playwright/test";
 import crypto from "crypto";
 import { Pool } from "pg";
-import { assertDisposableDb, assertCheckoutAccepted } from "./_journey-helpers";
+import {
+  assertDisposableDb,
+  assertCheckoutAccepted,
+  assertCheckoutCommittedNothing,
+  STRIPE_UNAVAILABLE,
+} from "./_journey-helpers";
 
 /**
  * JOURNEY SUITE — Journey Wave 1 Tier-1 · J2 AI Entry.
@@ -194,11 +199,27 @@ test.describe("J2 — AI Entry → catalog checkout (matrix-id: J2)", () => {
 
     // ── Step 4: J1-style checkout of that ONE item ─────────────────────────────────────────────
     const idempotencyKey = crypto.randomUUID();
+    const [{ n: cartCountBefore }] = await q<{ n: number }>(
+      `SELECT count(*)::int AS n FROM cart_items WHERE user_id=$1`,
+      [actor.id],
+    );
     const checkoutRes = await request.post(`${BASE_URL}/api/checkout`, {
       data: { tripId, idempotencyKey },
     });
-    // The HTTP envelope is the ONLY thing that depends on Stripe reachability — see
-    // assertCheckoutAccepted. Every DB fact below is asserted unconditionally.
+
+    // Ruling 38: both postures are hard-asserted. Without a PaymentIntent a checkout commits
+    // nothing, so the committed-state facts below only exist in the authorized posture; the
+    // unauthorized posture asserts their ABSENCE instead.
+    if (STRIPE_UNAVAILABLE) {
+      await assertCheckoutCommittedNothing(checkoutRes, "j2", {
+        userId: actor.id,
+        tripId,
+        itemIds: [targetItemId],
+        cartCountBefore: Number(cartCountBefore),
+      });
+      return;
+    }
+
     await assertCheckoutAccepted(checkoutRes, "j2");
 
     // DB fact: exactly ONE booking (only one item was routed), H5 survives to booking.serviceId.
@@ -209,14 +230,21 @@ test.describe("J2 — AI Entry → catalog checkout (matrix-id: J2)", () => {
       platform_fee: string;
       provider_earnings: string;
       status: string;
+      stripe_payment_intent_id: string | null;
     }>(
-      `SELECT id, service_id, total_amount, platform_fee, provider_earnings, status
+      `SELECT id, service_id, total_amount, platform_fee, provider_earnings, status,
+              stripe_payment_intent_id
        FROM service_bookings WHERE traveler_id=$1 AND trip_id=$2`,
       [actor.id, tripId],
     );
     expect(bookings.length, "checkout must create exactly one booking (only one item was routed)").toBe(1);
     const booking = bookings[0];
     expect(booking.status).toBe("payment_pending");
+    // Ruling 38 PROMOTE fact: the PaymentIntent id is stamped before any commitment.
+    expect(
+      booking.stripe_payment_intent_id,
+      "an authorized booking must carry its PaymentIntent id (PROMOTE, not CLAIM)",
+    ).toBeTruthy();
     expect(booking.service_id, "H5 SURVIVES to booking: booking.serviceId equals the item's providerServiceId").toBe(targetSvcId);
 
     // NO FEE LITERAL: the split must resolve against an active fee_bands percent rate read from the DB.

@@ -23,17 +23,27 @@ export const PASSWORD = "TestPassword123!";
  *
  * `JOURNEY_STRIPE_UNAVAILABLE=1` is set by the harness (see
  * `.github/workflows/journey-suite.yml` → the `stripe-gate` step) when the app was booted
- * with a NON-FUNCTIONAL stub `STRIPE_SECRET_KEY`. It is a DECLARED environment fact, never
- * an assertion switch: nothing about the money path's DB assertions changes when it is set.
+ * with a NON-FUNCTIONAL stub `STRIPE_SECRET_KEY`.
  *
- * WHY IT EXISTS AT THE CHECKOUT SEAM (and not only at the PaymentElement, where it started):
- * `POST /api/checkout` itself calls `stripe.paymentIntents.create` (Step B in
- * `server/routes/payments.routes.ts`). With a stub key that call throws and the handler
- * returns 500 — AFTER Step A has already committed every money-path DB fact (booking rows at
- * payment_pending, item→purchased, the checkout diary row, the projection delete). The
- * workflow's original comment claimed only the *PaymentElement confirm* leg needed a real
- * key; that was wrong, and it is why J1/J2 were red at head ea0bbc05. See
- * `assertCheckoutAccepted` for exactly what is (and is not) relaxed.
+ * WHAT IT MEANS NOW (ruling 38 — this changed, and the change is the point):
+ * `POST /api/checkout` calls `stripe.paymentIntents.create`, and since ruling 38 a checkout
+ * that cannot obtain a PaymentIntent **commits nothing** — no booking is authorized, the cart
+ * is untouched, no item is flipped `purchased`, no diary row is written. So with a stub key
+ * there are NO money-path DB facts to assert, because there correctly are none.
+ *
+ * This flag therefore no longer relaxes an assertion; it selects WHICH TRUTHFUL CONTRACT the
+ * spec asserts:
+ *   • real key  ⇒ `assertCheckoutAccepted` — 2xx, success, a PaymentIntent clientSecret, and
+ *     every promote fact downstream.
+ *   • stub key  ⇒ `assertCheckoutCommittedNothing` — the declared 503 AND the absence of every
+ *     one of those facts. Never a skip, never a silent pass: the negative half is asserted
+ *     just as hard as the positive half, and a regression that re-commits state ahead of the
+ *     authorization fails the journey immediately.
+ *
+ * BEFORE ruling 38 this flag was doing something quite different and much weaker: it tolerated
+ * a bare 500 as an accepted checkout outcome and then asserted the money-path rows anyway —
+ * which passed only BECAUSE the handler had already committed them ahead of the Stripe call.
+ * Those assertions encoded the defect. They are gone.
  */
 export const STRIPE_UNAVAILABLE = process.env.JOURNEY_STRIPE_UNAVAILABLE === "1";
 
@@ -271,69 +281,96 @@ export async function routeItem(
 }
 
 /**
- * Assert the outcome of `POST /api/checkout`, and return its parsed body when Stripe produced
- * one (null when Stripe is declared-unavailable and the handler therefore 500'd at Step B).
+ * THE TRUTHFUL SUCCESS CONTRACT for `POST /api/checkout` (ruling 38).
  *
- * WITH A REAL STRIPE KEY (the only posture that proves the whole path) this is the strict
- * original contract: 2xx, `success: true`, and a PaymentIntent `clientSecret`.
+ * Strict, unconditional, in every posture: 2xx, `success: true`, and a PaymentIntent
+ * `clientSecret`. There is no longer a branch that accepts a 500 — a checkout that did not
+ * obtain a PaymentIntent is a checkout that committed nothing, so a spec asserting money-path
+ * rows after one would be asserting the defect.
  *
- * WITH `JOURNEY_STRIPE_UNAVAILABLE=1` the *only* thing relaxed is the HTTP envelope, and it is
- * relaxed into a DIFFERENT EXACT CONTRACT rather than into "anything goes":
- *   • the status must be 2xx **or** exactly 500, and
- *   • a 500 must carry exactly `{"message":"Checkout failed"}` — the declared Stripe-Step-B
- *     failure shape and nothing else.
- * Every substantive money-path assertion in J1/J2 is a DB fact read after this call (booking
- * row + server-computed fee_bands split, item→purchased, checkout diary row, projection
- * deleted), and NONE of them is conditional. A regression that broke checkout anywhere before
- * the Stripe call still fails the journey, because those rows would not exist.
- *
- * This is a declared configuration contract, never a silent pass: the skip is logged, and the
- * caller is handed `null` so it cannot accidentally assert on a PaymentIntent that was never
- * created.
- *
- * PRODUCT DEFECT THIS EXPOSES (filed, not fixed here): when Step B throws, the handler has
- * already committed the bookings, cleared the cart and claimed the slots, then answers a bare
- * 500 with no booking ids. The traveler is stranded — the same idempotencyKey now short-circuits
- * to `{duplicate:true}` with no clientSecret, and a fresh key hits "Cart is empty". The comment
- * at Step B ("the webhook will flip them to confirmed") does not hold, because with no
- * PaymentIntent there is no webhook.
+ * When Stripe is declared unavailable the caller must take the negative branch instead
+ * (`assertCheckoutCommittedNothing`), which asserts the ABSENCE of the same facts just as hard.
  */
 export async function assertCheckoutAccepted(
   res: { status(): number; text(): Promise<string>; json(): Promise<any> },
   label: string,
-): Promise<any | null> {
+): Promise<any> {
   const status = res.status();
-  if (!STRIPE_UNAVAILABLE) {
-    expect(status, `${label}: checkout failed (${status}): ${await res.text()}`).toBeGreaterThanOrEqual(200);
-    expect(status).toBeLessThan(300);
-    const body = await res.json();
-    expect(body.success).toBe(true);
-    expect(body.paymentIntent?.clientSecret, `${label}: checkout must return a PaymentIntent clientSecret`).toBeTruthy();
-    return body;
-  }
+  expect(status, `${label}: checkout failed (${status}): ${await res.text()}`).toBeGreaterThanOrEqual(200);
+  expect(status).toBeLessThan(300);
+  const body = await res.json();
+  expect(body.success).toBe(true);
+  expect(body.paymentIntent?.clientSecret, `${label}: checkout must return a PaymentIntent clientSecret`).toBeTruthy();
+  return body;
+}
 
+/**
+ * THE TRUTHFUL FAILURE CONTRACT (ruling 38) — asserted whenever the app under test cannot reach
+ * Stripe. This is the negative half of the atomicity invariant and is every bit as substantive
+ * as the positive half:
+ *
+ *   • the HTTP answer is the DECLARED 503 `payment_unavailable` (never a bare 500, never a 2xx
+ *     "success" envelope with nothing behind it), and
+ *   • ZERO AUTHORIZED bookings exist, the cart is untouched, no slot is promoted, no item is at
+ *     `purchased`, and no `to_status='purchased'` diary row was written.
+ *
+ * `cartCountBefore` is the caller's pre-checkout cart size — asserting the cart is *unchanged*
+ * is what proves the clear moved behind the authorization.
+ *
+ * Provisional claim rows are deliberately NOT asserted away: they are the §15 atomic claim that
+ * MUST precede the external call (removing it measured 3 real Stripe charges for 3 concurrent
+ * same-key checkouts). They hold no PaymentIntent, are invisible as purchases, and the TTL sweep
+ * reclaims them — proven in server/__tests__/checkout-claim-sweep.db.test.ts.
+ */
+export async function assertCheckoutCommittedNothing(
+  res: { status(): number; text(): Promise<string> },
+  label: string,
+  ctx: { userId: string; tripId: string; itemIds: string[]; cartCountBefore: number },
+): Promise<void> {
+  const status = res.status();
   const text = await res.text();
-  if (status >= 200 && status < 300) {
-    // A real key slipped in after all (e.g. a local run) — hold the strict contract.
-    const body = JSON.parse(text);
-    expect(body.success).toBe(true);
-    return body;
-  }
   expect(
     status,
-    `${label}: with JOURNEY_STRIPE_UNAVAILABLE=1 the only tolerated non-2xx is the declared ` +
-      `Stripe Step-B failure (500). Got ${status}: ${text}`,
-  ).toBe(500);
-  expect(
-    text.trim(),
-    `${label}: a 500 must be the declared Stripe Step-B failure body, not some other server error`,
-  ).toBe('{"message":"Checkout failed"}');
-  console.log(
-    `[${label}] JOURNEY_STRIPE_UNAVAILABLE=1 → POST /api/checkout could not create a Stripe ` +
-      `PaymentIntent (stub key), so it answered the declared 500. Every money-path DB fact ` +
-      `written before the Stripe call is still hard-asserted below. DECLARED, not a silent pass.`,
+    `${label}: with Stripe unavailable the ONLY acceptable answer is the declared 503 ` +
+      `payment_unavailable. Got ${status}: ${text}`,
+  ).toBe(503);
+  const body = JSON.parse(text);
+  expect(body.error, `${label}: the 503 must carry the declared machine-readable code`).toBe("payment_unavailable");
+  expect(body.success, `${label}: a failed checkout must never claim success`).toBe(false);
+
+  const authorized = await scalar<string>(
+    `SELECT count(*)::int FROM service_bookings WHERE traveler_id = $1 AND stripe_payment_intent_id IS NOT NULL`,
+    [ctx.userId],
   );
-  return null;
+  expect(Number(authorized), `${label}: ZERO authorized bookings — nothing is committed without a PaymentIntent`).toBe(0);
+
+  const cartNow = await scalar<string>(`SELECT count(*)::int FROM cart_items WHERE user_id = $1`, [ctx.userId]);
+  expect(Number(cartNow), `${label}: the cart must be EXACTLY as the traveler left it`).toBe(ctx.cartCountBefore);
+
+  const promotedSlots = await scalar<string>(
+    `SELECT count(*)::int FROM service_bookings
+      WHERE traveler_id = $1 AND slot_id IS NOT NULL AND stripe_payment_intent_id IS NOT NULL`,
+    [ctx.userId],
+  );
+  expect(Number(promotedSlots), `${label}: no slot may be promoted onto an authorized booking`).toBe(0);
+
+  const purchased = await rows<{ id: string; routing_status: string; booking_id: string | null }>(
+    `SELECT id, routing_status, booking_id FROM itinerary_items WHERE trip_id = $1 AND routing_status = 'purchased'`,
+    [ctx.tripId],
+  );
+  expect(purchased.length, `${label}: no plan item may claim a purchase that was never authorized`).toBe(0);
+
+  const purchaseDiary = await rows(
+    `SELECT id FROM item_transition_log WHERE trip_id = $1 AND to_status = 'purchased'`,
+    [ctx.tripId],
+  );
+  expect(purchaseDiary.length, `${label}: no to_status='purchased' diary row may be written`).toBe(0);
+
+  console.log(
+    `[${label}] Stripe declared unavailable → POST /api/checkout answered the declared 503 and ` +
+      `committed NOTHING (zero authorized bookings, cart intact, no purchased item, no purchase ` +
+      `diary row). This is the ruling-38 contract, hard-asserted — not a skip.`,
+  );
 }
 
 // ── DB-fact readers (SELECT-only) ───────────────────────────────────────────────────────────

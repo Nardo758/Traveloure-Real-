@@ -20,17 +20,22 @@ name: Journey Suite (Journey Wave 1 · Tier-1)
 # three red journeys (head ea0bbc05). That is theatre, so it is gone: a red journey is now a
 # red run, plus an explicit verdict line in the run summary.
 #
-# Stripe: the money path's DB facts (booking row, item→purchased, diary, projection
-# removal, fee_bands-derived amount) are written at POST /api/checkout BEFORE the Stripe call
-# and are asserted unconditionally. BUT — corrected Journey Wave 1, 2026-08-05 — `POST
-# /api/checkout` ITSELF calls `stripe.paymentIntents.create` (Step B in payments.routes.ts),
-# so with the non-functional stub key below it answers a declared 500 after committing those
-# rows. The specs therefore treat "no real Stripe key" as a DECLARED environment fact
-# (JOURNEY_STRIPE_UNAVAILABLE=1): the HTTP envelope is checked against the exact declared
-# failure shape and every money-path DB assertion still runs. The J1 PaymentElement confirm
-# (card 4242) is skipped under the same flag. Never a silent pass. Supplying a real
-# `sk_test_` STRIPE_SECRET_KEY secret to this workflow restores the strict 2xx +
-# clientSecret contract and the real confirm leg automatically.
+# Stripe (REWRITTEN by DECISIONS.md ruling 38 — the previous text described a defect):
+# `POST /api/checkout` calls `stripe.paymentIntents.create`, and a checkout that cannot obtain
+# a PaymentIntent now COMMITS NOTHING — no authorized booking, cart untouched, no item flipped
+# `purchased`, no diary row. So with the non-functional stub key below there are no money-path
+# DB facts to assert, because there correctly are none. (The old text said those facts were
+# "written BEFORE the Stripe call and asserted unconditionally" — true at the time, and exactly
+# the atomicity violation ruling 38 fixed.)
+#
+# JOURNEY_STRIPE_UNAVAILABLE=1 therefore no longer relaxes anything; it SELECTS which truthful
+# contract the specs assert:
+#   real key ⇒ assertCheckoutAccepted    — 2xx + clientSecret + every PROMOTE fact.
+#   stub key ⇒ assertCheckoutCommittedNothing — the declared 503 payment_unavailable AND the
+#              hard-asserted ABSENCE of all of them. Never a silent pass; the negative half is
+#              asserted as strictly as the positive half.
+# The J1 PaymentElement confirm (card 4242) runs only with a real key. Supplying an `sk_test_`
+# STRIPE_SECRET_KEY secret to this workflow enables the full positive path automatically.
 #
 # Route/spec source of truth: playwright/tests/journeys/*.spec.ts
 # Matrix IDs covered: J1.3, J1.6, J1.7, J1.9, J2 (matrix lint greps `playwright/`).
@@ -170,16 +175,16 @@ jobs:
         id: stripe-gate
         run: |
           # BOTH Stripe legs need a REAL test Stripe secret key: POST /api/checkout creates the
-          # PaymentIntent server-side (Step B), and the J1 PaymentElement confirm needs the
-          # publishable key baked into the bundle. The boot env above uses a non-functional stub,
-          # so unless a real STRIPE_SECRET_KEY secret is provided to this workflow we DECLARE
-          # Stripe unavailable. Every money-path DB assertion still runs; only the HTTP envelope
-          # is checked against the declared Stripe-Step-B failure shape.
+          # PaymentIntent server-side, and the J1 PaymentElement confirm needs the publishable
+          # key baked into the bundle. The boot env above uses a non-functional stub, so unless a
+          # real STRIPE_SECRET_KEY secret is provided we DECLARE Stripe unavailable — which
+          # selects the ruling-38 NEGATIVE contract (declared 503 + zero committed state), not a
+          # relaxed version of the positive one.
           if [ -n "${{ secrets.STRIPE_SECRET_KEY }}" ]; then
             echo "Real STRIPE_SECRET_KEY present → strict checkout contract + PaymentElement confirm leg WILL run."
             echo "stripe_unavailable=0" >> "$GITHUB_OUTPUT"
           else
-            echo "::notice::STRIPE_SECRET_KEY absent in CI → Stripe is DECLARED UNAVAILABLE (JOURNEY_STRIPE_UNAVAILABLE=1). POST /api/checkout cannot create a PaymentIntent, so the specs assert the exact declared 500 shape instead of the 2xx envelope, and the J1 PaymentElement confirm leg is skipped. Every money-path DB fact is still fully asserted. This is a declared environment fact, not a silent pass."
+            echo "::notice::STRIPE_SECRET_KEY absent in CI → Stripe is DECLARED UNAVAILABLE (JOURNEY_STRIPE_UNAVAILABLE=1). POST /api/checkout cannot obtain a PaymentIntent, so per ruling 38 it must commit NOTHING: the specs assert the declared 503 payment_unavailable AND the absence of every money-path fact (zero authorized bookings, cart intact, no purchased item, no purchase diary row). The J1 PaymentElement confirm leg is skipped. This is a hard-asserted negative contract, not a silent pass."
             echo "stripe_unavailable=1" >> "$GITHUB_OUTPUT"
           fi
 
