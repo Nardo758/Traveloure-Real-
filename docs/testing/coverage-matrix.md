@@ -100,7 +100,8 @@ Wave key (brief §7): W1 = Journey Wave 1, build now · W2 = post SLIP phase 4 �
 |---|---|
 | Onboard → service draft→submitted→approved → bookable | J11 → deferred:provider-backoffice-p1 |
 | Back-office bookings view; provider CANNOT read routing_status (contract NEVER row) | J11 + N5 → deferred:provider-backoffice-p1 |
-| Short-link generation (my-offerings-table.tsx:342) → attributed booking → rails band; platform-sourced → full band; rates differ, both from fee_bands | J12 → deferred:provider-backoffice-p1 |
+| Short-link generation (my-offerings-table.tsx:342) → attributed booking → acquisitionRef→short_link chain + attribution REPORTING; attributed and platform-sourced resolve the SAME rate (single-band divergence pin, ruling 45) | J12.1 → deferred:provider-backoffice-p1 (the SPEC is now truthful and buildable — ruling 45 rewrote it from an unpassable dual-rate claim to a single-band divergence pin; the journey itself is still Journey Wave 4 work) |
+| Dual-rate: attributed → rails band vs platform-sourced → full band, rates differ, both from fee_bands — **the mechanism does not exist** (no rails band, no attribution input to decideBandKey, checkout excludes attribution from fee decisions by design). Ruling 45. | J12.2 → deferred:provider-backoffice-p1 |
 | Availability jsonb slot claim (claimed-at-pay) | F-prov-1 → deferred:provider-backoffice-p1 |
 | Confirm completion → review gate opens → booking-gated FK review | J11 → deferred:provider-backoffice-p1 |
 
