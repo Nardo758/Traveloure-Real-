@@ -1352,6 +1352,47 @@ router.get("/api/admin/provider-health", isAuthenticated, async (req, res) => {
   }
 });
 
+// ── Integration configuration status ─────────────────────────────────────────
+// Real "is this integration configured" checks for the Platform Providers admin page — secret
+// PRESENCE only (never values). Previously the page inferred "Connected" from usage/revenue data
+// provenance, which showed Fever as connected regardless of credentials and omitted Resend entirely.
+// Each check mirrors the exact env gate the corresponding service performs (cited inline).
+router.get("/api/admin/integration-status", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser(getUserId(req)!);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const env = process.env;
+    const providers: Record<string, { configured: boolean }> = {
+      // server/services/ai/* — Anthropic client gate
+      anthropic: { configured: !!env.ANTHROPIC_API_KEY },
+      // Grok client gate
+      xai: { configured: !!env.XAI_API_KEY },
+      // server/services/viator.service.ts: `!!VIATOR_API_KEY`
+      viator: { configured: !!env.VIATOR_API_KEY },
+      // server/services/booking-com.service.ts: `!!AFFILIATE_ID`
+      booking: { configured: !!env.BOOKING_COM_AFFILIATE_ID },
+      // 12Go rides via the Travelpayouts network token
+      "12go": { configured: !!env.TRAVELPAYOUTS_TOKEN },
+      // server/services/google-places-photos.service.ts + client maps
+      googlemaps: { configured: !!env.GOOGLE_MAPS_API_KEY },
+      // server/services/serp.service.ts
+      serpapi: { configured: !!env.SERP_API_KEY },
+      // server/services/fever.service.ts: `!!(accountSid && authToken)`
+      fever: { configured: !!(env.IMPACT_ACCOUNT_SID && env.IMPACT_AUTH_TOKEN) },
+      // server/services/email.service.ts: requires the Resend key plus a from-address
+      resend: { configured: !!(env.RESEND_API_KEY && (env.EMAIL_FROM_NOREPLY || env.EMAIL_FROM)) },
+      // Decommissioned (DECISIONS.md ruling 34, 2026-08-05) — never configured regardless of env.
+      amadeus: { configured: false },
+    };
+    res.json({ providers });
+  } catch (err: any) {
+    console.error("Integration status error:", err);
+    res.status(500).json({ message: "Failed to load integration status", error: err.message });
+  }
+});
+
 // ── DMO intake approval queue ("B") ──────────────────────────────────────────
 // Scraped/DMO content is born hidden from experts (expert_workspace_visible=false). An admin must
 // approve raw content INTO the expert library before an expert can curate it or build trips from it.
