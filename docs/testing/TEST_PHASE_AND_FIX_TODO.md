@@ -17,7 +17,7 @@ dispatch's findings-only rule; owners are noted per item.
 | C — server suite | all 29 `server/__tests__/*.test.ts` files, file-by-file vs a cloned DB | **23 files PASS (≈180 tests)**; 6 non-green, all triaged below — **zero product regressions** |
 | D — journeys | `test:journeys` vs prod bundle (J1, J2, J6, J7, J13; ruling-38 Stripe-declared-unavailable contract) | **PASS** — 5/5 specs green (J13 failed once in-batch on a transient AI-unavailable 503, passes clean in isolation; journey-suite is green on GitHub CI at this exact sha and at current main) |
 | D — route gates | non-auth batch: footer-links, navbar-links, crash-filter-unit, dynamic-links, hardcoded-links, earn-smoke, discover-tabs, cart-checkout-redirect, neighborhoods, sessions | **PASS — 253/253** |
-| D — route gates (auth) | app-routes + auth-routes with `PW_AUTH_SETUP=1` + seeded ci-users | see addendum at bottom (run completed after this table was first drafted) |
+| D — route gates (auth) | app-routes + auth-routes with `PW_AUTH_SETUP=1` + seeded ci-users | **PASS — 292/292** |
 | D — verify scripts | verify-neighborhoods, verify-service-offering-types, verify-fee-config-parity, verify-migration-ledger, verify:selection-controls | **PASS** (5/5; the two API-based ones need `BASE_URL` pointed at the running server) |
 
 **Explicitly NOT run (no silent caps):** `e2e-deploy-smoke` / `e2e-staging-*` / `e2e-tests` (they target remote
@@ -101,7 +101,7 @@ guard-with-the-fix convention.
 
 ## Addendum — auth route-gates result
 
-`app-routes` + `auth-routes` (with `PW_AUTH_SETUP=1`, ci-users seeded): **see final session summary** — the batch was
-still running when this file was committed; the outcome is recorded in the session log and, if red, belongs in the
-test-infra todo above. (First attempt failed only in `global-setup` because `scripts/seed-ci-test-users.ts` had not been
-run — an env requirement, not a product failure.)
+`app-routes` + `auth-routes` (with `PW_AUTH_SETUP=1`, ci-users seeded): **PASS — 292/292 (1.4h, single worker)**.
+The only earlier failure was `global-setup` refusing to run before `scripts/seed-ci-test-users.ts` had been executed
+against the target DB — an env requirement, not a product failure. With this, every runnable tier of the test phase
+is green at `ba168d0c`.
