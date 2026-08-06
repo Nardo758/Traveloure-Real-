@@ -515,9 +515,12 @@ async function voidClaim(
 //  1. webhook BEFORE the authorization stamp (server died mid-authorization, Stripe has the PI,
 //     the row is provisional): resolvable ONLY from the PI's own `bookingIds` metadata. The
 //     webhook stamps the PI first via `stampAuthorization` — the SAME atomic conditional the
-//     TTL sweep's Layer-2 recovery uses — then promotes. Allowed for `actor:"webhook"` ONLY:
-//     that PaymentIntent object came from a signature-verified Stripe delivery, so its metadata
-//     is Stripe's word, not a client's. A client may never stamp a PI onto an unstamped row.
+//     TTL sweep's Layer-2 recovery uses — then promotes. Allowed for SERVER-VERIFIED actors
+//     only (`webhook`, `reconciliation` — see SERVER_VERIFIED_ACTORS): that PaymentIntent object
+//     came either from a signature-verified Stripe delivery or from the drift job's own
+//     authenticated read of the Stripe API, so its metadata is Stripe's word, not a client's.
+//     A CLIENT may never stamp a PI onto an unstamped row (ruling 40 amends 39's phrasing here;
+//     the client prohibition is unchanged and still proven by N17c).
 //  2. webhook AFTER the authorization stamp, before payment: normal path — one promotion.
 //  3. webhook AFTER the client confirm (or vice-versa): the loser matches 0 rows ⇒ no-op,
 //     reported as `alreadyConfirmed`. Exactly ONE promotion and ONE diary set.
@@ -533,8 +536,39 @@ async function voidClaim(
 //     first ⇒ the row leaves the sweep's candidate set (`stripe_payment_intent_id IS NULL`)
 //     and the void matches 0 rows. A promote and a void can never both win.
 
-/** Which signal drove this promotion. Recorded on the diary row (rulings 12/16/18). */
-export type PromotionActor = "webhook" | "client";
+/**
+ * Which signal drove this promotion. Recorded on the diary row (rulings 12/16/18).
+ *
+ * `reconciliation` (reconciliation-detection lane) is the daily Stripe-vs-DB drift job. It is a
+ * SERVER-VERIFIED Stripe source exactly as `webhook` is — see `SERVER_VERIFIED_ACTORS` below for
+ * why that distinction, and not the transport, is what ordering 1 actually turns on.
+ */
+export type PromotionActor = "webhook" | "client" | "reconciliation";
+
+/**
+ * Ordering-1 capability (resolve bookings from `pi.metadata.bookingIds` and stamp a PI onto an
+ * unstamped claim) is gated on the PaymentIntent object being STRIPE'S OWN WORD, not a client's.
+ *
+ * Ruling 39 wrote that as "webhook only", because at the time the signature-verified webhook was
+ * the only server-verified source in the codebase. The reconciliation-detection lane adds a
+ * second one: the drift job reads the PaymentIntent from `stripe.paymentIntents.list` using the
+ * platform's OWN secret key. That is the same authority as a signed delivery — arguably stronger,
+ * since it is a pull rather than a push — so it carries the same capability. The rule that
+ * matters and does NOT move: a CLIENT-SUPPLIED PaymentIntent may never resolve or stamp anything
+ * (proven by N17c). See DECISIONS.md ruling 40, which amends 39 on exactly this clause.
+ */
+const SERVER_VERIFIED_ACTORS: ReadonlySet<PromotionActor> = new Set<PromotionActor>([
+  "webhook",
+  "reconciliation",
+]);
+
+/** The diary `actorType` for a promotion actor (item-transition-log vocabulary). A client-driven
+ *  promotion is the traveler's own confirm poll, hence `traveler`. */
+function diaryActorType(actor: PromotionActor): "webhook" | "reconciliation" | "traveler" {
+  if (actor === "webhook") return "webhook";
+  if (actor === "reconciliation") return "reconciliation";
+  return "traveler";
+}
 
 export interface PaymentPromotionResult {
   /** Booking ids THIS call moved `payment_pending → confirmed`. */
@@ -667,9 +701,11 @@ export async function promotePaidCheckout(opts: {
   };
   if (!paymentIntentId) return result;
 
-  // Ordering 1 is a WEBHOOK-ONLY capability: only a signature-verified Stripe delivery may name
-  // bookings that do not yet carry this PI id. A client is confined to rows already stamped.
-  const metadataIds = actor === "webhook" ? (opts.metadataBookingIds ?? []) : [];
+  // Ordering 1 is a SERVER-VERIFIED-SOURCE capability: only a PaymentIntent that is Stripe's own
+  // word — a signature-verified webhook delivery, or the drift job's authenticated read of the PI
+  // from the Stripe API — may name bookings that do not yet carry this PI id. A CLIENT is confined
+  // to rows already stamped (N17c). Ruling 40, amending 39's "webhook only" phrasing.
+  const metadataIds = SERVER_VERIFIED_ACTORS.has(actor) ? (opts.metadataBookingIds ?? []) : [];
 
   let candidates: CandidateRow[];
   try {
@@ -704,9 +740,10 @@ export async function promotePaidCheckout(opts: {
       }
       result.lateAuthorized.push(row.id);
       logger.error(
-        { bookingId: row.id, paymentIntentId },
-        "[checkout-promote] webhook was the FIRST signal of success — PaymentIntent existed but was " +
-          "never stamped (server died mid-authorization). Stamped from the signature-verified webhook, now promoting.",
+        { bookingId: row.id, paymentIntentId, actor },
+        `[checkout-promote] the ${actor} was the FIRST signal of success — PaymentIntent existed but was ` +
+          "never stamped (server died mid-authorization). Stamped from a SERVER-VERIFIED Stripe source " +
+          "(a signed webhook delivery, or the drift job's own authenticated read), now promoting.",
       );
       row.stripePaymentIntentId = paymentIntentId;
     }
@@ -808,7 +845,7 @@ async function promoteOneBooking(
           eventType: "checkout_payment_confirmed",
           fromStatus: "payment_pending",
           toStatus: "confirmed",
-          actorType: actor === "webhook" ? "webhook" : "traveler",
+          actorType: diaryActorType(actor),
           actorId,
         });
         diaryRows = 1;
@@ -873,7 +910,7 @@ async function recordReconciliationException(
           eventType: "checkout_reconcile_exception",
           fromStatus: row.status ?? null,
           toStatus: row.status ?? null,
-          actorType: actor === "webhook" ? "webhook" : "traveler",
+          actorType: diaryActorType(actor),
           actorId: null,
         });
         result.diaryRows += 1;
