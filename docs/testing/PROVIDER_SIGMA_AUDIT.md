@@ -477,12 +477,12 @@ unchanged fact.
 
 | ID | Class | Assertion (fails today, must flip when its fixer merges) | Expiry tag |
 |---|---|---|---|
-| EF-1 | MONEY_INTEGRITY | `POST/PATCH /api/provider/services` with `revenueShareRate:"1.00"` must not change the resolved split; assert the charge-side rate still equals the `fee_bands` row read from the DB | `deferred:#PENDING-PS1` |
-| EF-2 | STATE_DIVERGENCE | provider accept on a `payment_pending`/unstamped claim must be **rejected**, and the row + its slot must be unchanged | `deferred:#PENDING-PS5` |
+| EF-1 | MONEY_INTEGRITY | `POST/PATCH /api/provider/services` with `revenueShareRate:"1.00"` must not change the resolved split; assert the charge-side rate still equals the `fee_bands` row read from the DB | ~~`deferred:#PENDING-PS1`~~ **EXPIRED — flipped to expected-PASS by ruling 42; built as P1/P2** |
+| EF-2 | STATE_DIVERGENCE | provider accept on a `payment_pending`/unstamped claim must be **rejected**, and the row + its slot must be unchanged | ~~`deferred:#PENDING-PS5`~~ **EXPIRED — flipped to expected-PASS by ruling 42; built as P3, with P4 (still-reclaimable) and P5 (single winner)** |
 | EF-3 | STATE_DIVERGENCE | provider cancel of a paid booking must produce a refund row or be rejected | `deferred:#PENDING-PS6` |
 | EF-4 | ABSENCE | every `service_bookings` status transition writes exactly one `item_transition_log` row (itemId per ruling 16, actor recorded) | `deferred:#PENDING-PS8` |
-| EF-5 | ACCESS | `POST /api/vendor-availability/:id/book` by a non-owner, non-purchaser must be rejected; `booked_count` unchanged. **Probe by rejection only** — assert the 4xx and the unchanged count; never assert a successful claim | `deferred:#PENDING-PS10` |
-| EF-6 | MONEY_INTEGRITY | `PROCESSING_FEE_RATE` resolves from a `fee_bands` row; an admin band edit changes the resolved value and a missing band fails loudly (ruling 32's two required proofs) | `deferred:#PENDING-PS2` |
+| EF-5 | ACCESS | ~~`POST /api/vendor-availability/:id/book` by a non-owner, non-purchaser must be rejected~~ **REWRITTEN — the endpoint no longer exists (ruling 42), so a rejection probe is meaningless. Replaced by the route-inventory assertion P6: no route registers it, and `storage.bookSlot` is still checkout's** | ~~`deferred:#PENDING-PS10`~~ **EXPIRED** |
+| EF-6 | MONEY_INTEGRITY | (still expected-fail; the literal is now annotated `fee-literal-debt:#PS2` and REPORTED by the gate on every run) `PROCESSING_FEE_RATE` resolves from a `fee_bands` row; an admin band edit changes the resolved value and a missing band fails loudly (ruling 32's two required proofs) | `deferred:#PENDING-PS2` |
 | EF-7 | MONEY_INTEGRITY | concurrent completion produces exactly ONE `provider_earnings` row and ONE `platform_revenue` row | `deferred:#PENDING-PS4` |
 | EF-8 | CX | the calendar's inbound lane distinguishes provisional / expired / confirmed rather than titling all three "Booked" | `deferred:#PENDING-PS7` |
 
@@ -491,7 +491,7 @@ then be flipped) (2 rows).**
 
 | ID | Pinned fact |
 |---|---|
-| DP-1 | **MI-4** — no `rails`/attribution band exists in `fee_bands` and `decideBandKey` accepts no attribution input, so an attributed and an unattributed booking of the same service resolve to the **identical** rate. Pins the dual-rate model as unbuilt. **Blocks journey J12 as written.** |
+| DP-1 | (ruling 45: J12 rewritten against this pin — `J12.1` asserts the identical-rate reality, `J12.2` carries the dual-rate steps as `deferred:provider-backoffice-p1`) **MI-4** — no `rails`/attribution band exists in `fee_bands` and `decideBandKey` accepts no attribution input, so an attributed and an unattributed booking of the same service resolve to the **identical** rate. Pins the dual-rate model as unbuilt. **Blocks journey J12 as written.** |
 | DP-2 | **AB-2** — a direct DB insert with `approval_status='approved'` succeeds (Layer 2 absent), while every application path clamps (Layer 1 present). Pins ruling 35's single-layer state; flips when **#1042** lands. |
 
 **Explicitly NOT absorbed** (brief §4): bespoke-gate consolidation (§0.2, 13 sites — inventoried only) · ruling-35 DB
@@ -684,3 +684,155 @@ green check with an unstated blind spot is worse than no check, because it is re
 ---
 
 *Phase 0 prepared read-only @ `d4f59bb7`. HARD STOP: findings return for rulings before any assertion code is written.*
+
+---
+
+## 8. RULED + EXECUTED — provider money-hardening lane @ `9382d500` (2026-08-06)
+
+Rulings **42–45** (`docs/DECISIONS.md`) answer Q1/Q3/Q4/Q7/Q9 and execute MI-1, SD-1 and AC-1.
+This section is the write-back; the findings above are preserved verbatim as the record of what was found.
+
+### 8.1 Phase-0 re-verification (audit pinned at `d4f59bb7`; main had moved to `9382d500`)
+
+Per ruling 31 the audit's provenance is re-checked rather than re-derived. Only two commits separate
+the SHAs (`b96385f0` brief transcription, `96014d0a` the audit itself + ruling 41) — **both docs-only**,
+which is itself the explanation for why nothing moved.
+
+| Finding | Verdict at `9382d500` | Evidence |
+|---|---|---|
+| MI-1 `revenueShareRate` client-settable | **STILL HOLDS** (now FIXED) | Not omitted by `insertProviderServiceSchema`; `createProviderService` spread it; `updateProviderService` stripped 6 fields, not it; 3 consumption sites incl. the /api/checkout charge — all as filed |
+| MI-2 `PROCESSING_FEE_RATE` unannotated | **STILL HOLDS** — now annotated `fee-literal-debt:#PS2`, still unbanded | `commission.ts` |
+| MI-3 fee gate case-blind | **HOLDS, WITH A CORRECTION** — see 8.3 | `phase2-fee-gate.sh` |
+| MI-4 dual-rate model absent | **STILL HOLDS** → ruled 45 | no `rails` band; `decideBandKey` opts unchanged |
+| MI-5 completion flip is check-then-act | **STILL HOLDS** — untouched, `#PS4` | `storage.updateServiceBookingStatus` |
+| SD-1 provider accept promotes a provisional claim | **STILL HOLDS** (now FIXED) | `handleOwnerBookingStatus` checked only the target status; `voidClaim`/`promotePaidCheckout` predicates unchanged |
+| SD-2 provider cancel issues no refund | **STILL HOLDS** — deliberately untouched (Q2 unruled) | same handler |
+| SD-3 calendar titles everything "Booked" | **STILL HOLDS** — `#PS7` | `calendar.routes.ts` |
+| SD-4 / SD-5 CLAUDE.md §9/§14 stale | **STILL HOLDS** — doc drift, see 8.5 | `app.use(expertsRoutes)` present |
+| AB-1 no diary row on `service_bookings` transitions | **STILL HOLDS** — `#PS8`; P3 asserts the *rejected* case writes none | — |
+| AB-2 / AB-3 | **STILL HOLD** — `#1042`, `#PS9` | — |
+| AC-1 slot-book endpoint ungated | **STILL HOLDS** (now DELETED) | consumer grep re-run at `9382d500`: zero under `client/src`; only non-code hits are this audit + `EXECUTION_MAP.md` |
+| AC-2 / AC-3 / AC-4 | **STILL HOLD** — `#PS11`, `#PS12`, inventory | — |
+| CX-1 / CX-2 | **STILL HOLD** — Q5 remains unruled | — |
+
+**No finding was contradicted, and no consumer appeared for anything this lane touched.** No hard stop was triggered.
+
+### 8.2 Class sweep beyond `revenueShareRate` (ruling 42)
+
+Method: every `createInsertSchema` in `shared/schema.ts` crossed against every insert schema `.parse`d
+from a request body anywhere in `server/`. **Exactly four schemas are client-parsed**, and that
+intersection is now a CI guard rather than a one-time sweep.
+
+| Schema | Rate/money-bearing fields EXPOSED | Consumer today | Disposition |
+|---|---|---|---|
+| `insertProviderServiceSchema` | `revenueShareRate` | **LIVE** — the /api/checkout charge | **STRIPPED + derived** (MI-1) |
+| `insertLocalExpertFormSchema` | `bookingFeeType`, `bookingFeePercentage`, `bookingFeeFixed`, `bookingFeeHourly`, `minBookingFee`, `feeSettings`, `stripeAccountId`, `stripeAccountStatus`, `stripeConnectStatus`, `canReceivePayments`, `totalEarnings`, `pendingPayout`, `payoutSchedule` | **NONE** (dormant columns) | **STRIPPED** — the ruling is that a rate-bearing field is never client-settable, consumer or not. Mass-assignable at POST `/api/expert-application` + `/api/expert-forms`; `hourlyRate` adjudicated NOT-a-rate (a free-text display string) and annotated |
+| `insertServiceCategorySchema` | `commissionBandKey` (a band SELECTOR) | admin fee taxonomy | **ANNOTATED, not stripped** — admin is the authorized setter. **New finding `#PS14`:** the two admin setters DIVERGE — `admin.routes.ts:2218-2245` validates the key against `fee_bands` and guards the inheritance fallback; `content.routes.ts:807` creates with **no band validation at all** |
+| `insertServiceBookingSchema` | `platformFee`, `insuranceFee`, `providerEarnings`, **`stripePaymentIntentId`**, `status` | **NEW FINDING `#PS15`** | **NOT fixed here.** `POST /api/bookings` (`routes.ts:4588`, no client consumer) spreads the parsed body into `createServiceBooking`, so a client can propose its own platform fee, its own provider earnings, and **its own PaymentIntent id** — which is in direct tension with ruling 41's immovable clause. Amounts, not rates, so outside ruling 42's stated scope; the omit list is also load-bearing for the `InsertServiceBooking` TYPE that checkout writes, so a strip needs a route-level allow-list rather than a schema omit. **Filed, not silently changed** |
+
+**Also filed, adjacent and out of the rate class:** the same `insertLocalExpertFormSchema` exposes the
+PRIVILEGE-GRANT family `canBookOnBehalf`, `isPersonalAssistant`, `paAccessGrantedAt`,
+`paAccessGrantedBy` — mass-assignable by any applicant (`#PS16`). Not touched: it is an authorization
+question, not a money one, and it deserves its own review rather than a ride-along.
+
+### 8.3 Correction to MI-3 (found by building the fix — ruling 43)
+
+The audit's MI-3 snippet lists `commission.ts:42 PROCESSING_FEE_RATE = 0.03` as a hit of "same regex
++ `-i`". **It is not.** With the `[A-Za-z]*` identifier tail, `-i` alone still cannot match it: after
+`FEE` the tail cannot cross the `_` to reach the `=`. Verified in isolation — `-i` alone yields lines
+36 and 38 only. **The finding stands unchanged** (the gate was blind to it, and to SCREAMING_SNAKE
+generally); only the stated remedy was incomplete. Both `-i` **and** `[A-Za-z_]*` are load-bearing,
+and reverting either now fails the committed self-test fixtures.
+
+### 8.4 Task ids — placeholders, and why
+
+**No project task tool exists in this environment** (the tool surface is GitHub/Drive MCP only, and the
+dispatch forbids pushing or opening anything), so §5's `#PENDING-PS*` placeholders are carried forward
+as `#PS*` and the new ones below join them. **Every `#PS*` id in this document and in the source
+annotations is a PLACEHOLDER and must be replaced with a real task number when one can be filed.**
+
+| Placeholder | Class | Status |
+|---|---|---|
+| `#PS1` | MONEY_INTEGRITY | **CLOSED** by ruling 42 (MI-1) |
+| `#PS5` | STATE_DIVERGENCE | **CLOSED** by ruling 42 (SD-1) |
+| `#PS10` | ACCESS | **CLOSED** by ruling 42 (AC-1, deleted) |
+| `#PS2, #PS4, #PS6, #PS7, #PS8, #PS9, #PS11, #PS12` | — | OPEN, unchanged |
+| `#PS3` | guard-coverage | **CLOSED** by ruling 43 (predicate fixed + self-tested + in CI) |
+| **`#PS13`** | STATE_DIVERGENCE (new) | **INVENTORY-RECOVERY LAYER** — SD-1's exposed gap. Bookings got three recovery layers (#433/#434 → rulings 38/39/40); **slots got none of their own.** Capacity is reclaimed only as a side-effect of a booking row being voided, so any path that consumes capacity without a booking row (or that orphans one) leaks it permanently — `releaseSlot` has no scheduled caller and no reconciliation. Detection exists for money drift; there is no equivalent for `vendor_availability_slots.booked_count` vs. its live claims |
+| **`#PS14`** | MONEY_INTEGRITY (new) | The two `commissionBandKey` admin setters diverge; `content.routes.ts:807` validates nothing (see 8.2) |
+| **`#PS15`** | MONEY_INTEGRITY (new) | `POST /api/bookings` mass-assigns `platformFee`/`providerEarnings`/**`stripePaymentIntentId`** (see 8.2) |
+| **`#PS16`** | ACCESS (new) | Expert-application form mass-assigns the PA/booking-on-behalf privilege grants (see 8.2) |
+| **`#PS17`** | infrastructure | **`DATABASE_URL` provisioning for provider-sigma Phase 1** — see 8.6 |
+
+### 8.5 Q-block dispositions
+
+- **Q1 (SD-1)** — RULED 42. (a) confirmed: a provider action may never move a booking out of a
+  provisional state, enforced by the §15 atomic conditional, not a check-then-update. (b) **yes** —
+  the audit's recommendation was taken: P3 asserts the **inventory** consequence (`booked_count`
+  unchanged) separately from the status, and P4 asserts the row stays reclaimable by BOTH recovery
+  layers, so a future partial fix that only guards `status` cannot go green. (c) the audit recommended
+  the checkout-atomicity lane author it; ruling 42 records the resolution of that: the claim machine
+  keeps its **sole author**, and the change here is on the OWNER rail refusing to touch it — no second
+  claim-state-machine implementation exists.
+- **Q2 (SD-2)** — **STILL UNRULED.** Deliberately unchanged; `cancelled` still accepts a `confirmed`
+  booking exactly as before, and the code says so at the allow-list.
+- **Q3 (AC-1)** — RULED 42, option (1) DELETE, with the general rule stated: no consumer + irreversible
+  effect ⇒ delete, do not gate.
+- **Q4 (MI-4/J12)** — RULED 45. Code's posture is intended; J12 rewritten (`J12.1` pin / `J12.2`
+  deferred); headline requirement transfers to provider back-office Phase 1.
+- **Q5 (CX-1 shell)** — **STILL UNRULED.** Untouched by this lane.
+- **Q6 (§9 stale)** — see 8.5's note below; CLAUDE.md is not edited by this lane.
+- **Q7 (fixture ownership)** — RULED 44: provider-sigma owns it, Wave 4 consumes; reverses the prior
+  disposition, ledger-noted as required.
+- **Q8 (dev DB)** — see 8.6.
+- **Q9 (guard negative space)** — RULED 43: adopted, applied to all fourteen registry entries, plus
+  runtime printing and committed predicate fixtures.
+
+**CLAUDE.md §9 and §14 (SD-4/SD-5) remain uncorrected.** Both are *durable invariant statements* in
+CLAUDE.md, and per ruling 26 plus the Coordination Prevention rule a correction there is the
+decision-maker's to make; this lane recorded the finding rather than editing the document.
+**§9's "dark" framing is wrong twice over** — `experts.routes.ts` is mounted at `routes.ts:953`, and
+`check-unmounted-routers.cjs` reports **0 dark routers on main at all**.
+
+### 8.6 `DATABASE_URL` — disposition (Q8)
+
+**The DEV database is OWNER-SIDE and was NOT reachable.** `DATABASE_URL` is unset, appears in no file
+(only `.env.example` / `.env.e2e.example`), and no credential source exists that an agent can reach.
+Nothing in this lane read or wrote the dev DB.
+
+**What WAS wired, in this lane:** a local disposable PostgreSQL 16 (present in the image), with the
+**full 178-migration chain applied from `server/migrations/`** — which is what made every assertion in
+this lane a real DB fact rather than a mock, and let the three existing suites be re-proven green. This
+is exactly the host the suites' own `assertDisposableDb()` recognises (`localhost`), so it required no
+weakening of any safety guard. It is **ephemeral**: it dies with the container and is not a substitute
+for the dev bench.
+
+**Still owner-side, and still blocking Phase 1 (`#PS17`):** the §E fixture inventory above is
+source-derived and its `UNVERIFIED (no DB)` marks stand — a local schema-only DB cannot tell you what
+the shared dev bench actually contains, which is precisely the question a reconciling seeder must
+answer before it decides to consume rather than re-seed.
+
+### 8.7 SD-1 stranded-row determination — REPORTED, not guessed
+
+Whether any dev rows were already stranded by SD-1 **could not be determined**: the dev DB is
+unreachable (8.6), and the local DB is freshly migrated and empty. **No quarantine was performed and
+none was invented.** The detection query below was written and executed (0 rows locally, proving it
+runs), and is the exact one to run against dev before Phase 1 seeds anything:
+
+```sql
+-- Rows SD-1 could have stranded: promoted to a paid-equivalent status with no PaymentIntent, while
+-- holding checkout-claimed slot capacity. `slot_id` is the discriminator — it is stamped ONLY after
+-- the checkout's atomic bookSlot claim (C3, migration 145), so a request-rail booking that a provider
+-- legitimately accepted without payment carries NULL and is correctly excluded.
+SELECT b.id, b.status, b.slot_id, b.created_at, b.confirmed_at, s.booked_count, s.capacity
+FROM service_bookings b
+LEFT JOIN vendor_availability_slots s ON s.id = b.slot_id
+WHERE b.status = 'confirmed'
+  AND b.stripe_payment_intent_id IS NULL
+  AND b.slot_id IS NOT NULL;
+```
+
+**Recommended disposition if it returns rows:** do **not** auto-repair. Ruling 40's DETECT-DON'T-REPAIR
+applies with full force — this is the same shape as its `booking_confirmed_no_pi` classification, the
+drift job already records it, and a fourth unreviewed writer on the money path is exactly what that
+rule forbids. Quarantine by hand, per row, with the slot released deliberately.

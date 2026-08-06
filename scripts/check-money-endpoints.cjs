@@ -42,9 +42,21 @@ const NAME_RE = /(payment|booking|checkout|refund|payout|cart|fee|promo|expert-r
 const MONEY_OP_RE = /(stripe|payment[_]?intent|\btransfers?\.create|createTransfer|\brefunds?\.create|createRefund|\bcharges?\.create|createCharge|\bpayouts?\b|createExpertEarning|createProviderEarning|createAffiliateEarning|platform_revenue|providerEarnings|expertEarnings|affiliateEarnings|\.capture\(|capturePayment|confirmPayment|checkout\.sessions?|processPayment|recordPromoUsage)/i;
 // the client-trusted read we forbid in a money context.
 const BODY_RE = /req\.body/;
-const FIELD_RE = /\b(amount|price|userId)\b/;
+// The client-trusted FIELD set. `amount|price|userId` is §14's original wording — the AMOUNT and the
+// IDENTITY. `rate|share|commission|split` is the ruling-42 widening: the provider-sigma audit (MI-1)
+// found `provider_services.revenueShareRate` — a client-settable COMMISSION SPLIT — reaching the real
+// Stripe charge as "the final override" over the fee_bands-resolved rate, and this guard passed
+// truthfully the whole time because a RATE is not an amount, a price or an identity. A rate multiplies
+// the amount; letting the client pick it is the same defect one derivative up.
+//
+// Matching is camelCase/snake_case SEGMENT-aware, not substring: `revenueShareRate` and
+// `commission_rate` hit, while `separate` (contains "rate") and `shared` (contains "share") do not.
+const FIELD_RE = /\b(amount|price|userId)\b|(?:^|[^A-Za-z])(rate|share|commission|split)s?(?![a-z])|(?:[a-z0-9_])(Rate|Share|Commission|Split)s?(?![a-z])|_(RATE|SHARE|COMMISSION|SPLIT)S?(?![A-Z])/;
 const HANDLER_RE = /\b(app|router)\.(get|post|put|patch|delete)\s*\(/;
 const ALLOW = 'money-derive-ok';
+// Rate-bearing COLUMN predicate for the schema-side mass-assignment pass below (declared here so
+// the self-test can reach it). Segment-aware, same vocabulary as FIELD_RE.
+const RATE_COL_RE = /(?:^|[^A-Za-z])(rate|share|commission|split)s?(?![a-z])|(?:[a-z0-9_])(Rate|Share|Commission|Split)s?(?![a-z])/;
 
 // ─── Commission literal guard ────────────────────────────────────────────────
 // Numeric literals that express the 90/10 or 75/25 commission split must only
@@ -61,6 +73,47 @@ const COMMISSION_FILE_RE = /(commission|payment|payout|checkout|fee)/i;
 const COMMISSION_EXEMPT_RE = /(server[/\\]seeds[/\\]|[/\\]migrations[/\\]|\.spec\.|\.test\.|__tests__)/;
 
 const commissionViolations = [];
+
+// ─── Self-test (`--self-test`) — COMMITTED fixtures, ledger-lint precedent ───────────
+// A guard whose predicate is wrong passes truthfully forever (MI-3, AC-2, the PR #435 near-miss).
+// These fixtures are the standing proof that the ruling-42 widening does what it claims and that it
+// did not buy coverage with false positives. Run in CI next to the guard itself.
+function selfTest() {
+  const cases = [
+    // [subject, regex, expected, why]
+    ['const rate = req.body.revenueShareRate;', FIELD_RE, true, 'camelCase rate field (the MI-1 shape)'],
+    ['const r = req.body.commission_rate;', FIELD_RE, true, 'snake_case rate field'],
+    ['const s = req.body.expertShare;', FIELD_RE, true, 'camelCase share field'],
+    ['const s = req.body.split;', FIELD_RE, true, 'bare split field'],
+    ['const c = req.body.commission;', FIELD_RE, true, 'bare commission field'],
+    ['const a = req.body.amount;', FIELD_RE, true, 'original §14 amount coverage — no regression'],
+    ['const u = req.body.userId;', FIELD_RE, true, 'original §14 identity coverage — no regression'],
+    // Negatives: substring collisions that must NOT be flagged, or the widening is unusable.
+    ['const x = req.body.separateInvoices;', FIELD_RE, false, '"separate" contains "rate"'],
+    ['const x = req.body.sharedWithUserIds;', FIELD_RE, false, '"shared" contains "share" (and userIds is plural, not the §14 field)'],
+    ['const x = req.body.itinerary;', FIELD_RE, false, 'unrelated field'],
+    // Rate-COLUMN predicate (the schema-side pass).
+    ['revenueShareRate', RATE_COL_RE, true, 'the MI-1 column'],
+    ['commissionBandKey', RATE_COL_RE, true, 'a band selector'],
+    ['platformFeeRate', RATE_COL_RE, true, 'trailing Rate segment'],
+    ['shareToken', RATE_COL_RE, true, 'name-matched; adjudicated by annotation, not by the regex'],
+    ['separateAddress', RATE_COL_RE, false, '"separate" must not match'],
+    ['sharedByUserId', RATE_COL_RE, false, '"shared" must not match'],
+    ['totalAmount', RATE_COL_RE, false, 'an amount is not a rate'],
+  ];
+  let bad = 0;
+  for (const [subject, re, expected, why] of cases) {
+    const got = re.test(subject);
+    if (got !== expected) {
+      bad++;
+      console.error(`SELF-TEST FAIL: ${JSON.stringify(subject)} → ${got}, expected ${expected} (${why})`);
+    }
+  }
+  if (bad) process.exit(1);
+  console.log(`self-test OK (${cases.length} predicate fixtures: rate/share/commission/split positives, substring-collision negatives, §14 no-regression)`);
+  process.exit(0);
+}
+if (process.argv.includes('--self-test')) selfTest();
 
 function walk(dir, out) {
   const abs = path.join(ROOT, dir);
@@ -136,7 +189,101 @@ for (const rel of files) {
   });
 }
 
+// ─── Rate-bearing mass-assignment guard (ruling 42, MI-1's actual shape) ─────────────
+// WHY THIS EXISTS AND THE req.body PREDICATE ABOVE IS NOT ENOUGH.
+// MI-1 was `provider_services.revenueShareRate`: a commission split the client could set, which
+// then beat the fee_bands-resolved rate at the real Stripe charge. Widening FIELD_RE to include
+// rate/share/commission/split does NOT catch it — and that is not a bug in the widening, it is the
+// finding. The route never writes `req.body.revenueShareRate`; it writes
+// `insertProviderServiceSchema.parse(req.body)` and SPREADS the result. The privileged field enters
+// through the SCHEMA, so no line ever contains both `req.body` and the field name, and a line-level
+// grep is structurally blind to it.
+//
+// So this check works the other way round: find every zod insert schema that (a) EXPOSES a
+// rate-bearing column — i.e. does not `.omit()` it — and (b) is `.parse()`d from a request body
+// anywhere in server/. That intersection IS the class "a client can set a rate".
+//
+// Escape hatch: a genuinely intentional privileged setter (an ADMIN band editor, say) carries
+// `money-derive-ok` on the COLUMN's own line in shared/schema.ts, next to the reason.
+const SCHEMA_FILE = 'shared/schema.ts';
+const rateAssignViolations = [];
+
+if (fs.existsSync(path.join(ROOT, SCHEMA_FILE))) {
+  const schemaSrc = fs.readFileSync(path.join(ROOT, SCHEMA_FILE), 'utf8');
+  const schemaLines = schemaSrc.split('\n');
+
+  // table name -> [{col, line}] of rate-bearing, non-exempt columns
+  const tableRateCols = {};
+  let curTable = null;
+  schemaLines.forEach((l, i) => {
+    const t = l.match(/^export const (\w+)\s*=\s*pgTable\(/);
+    if (t) { curTable = t[1]; tableRateCols[curTable] = []; return; }
+    if (!curTable) return;
+    if (/^\}\)/.test(l)) { curTable = null; return; }
+    const c = l.match(/^\s{2}(\w+):\s*(?:decimal|numeric|integer|real|doublePrecision|varchar|text|jsonb)\(/);
+    if (c && RATE_COL_RE.test(c[1]) && !l.includes(ALLOW)) {
+      tableRateCols[curTable].push({ col: c[1], line: i + 1 });
+    }
+  });
+
+  // insert schemas + what they omit
+  const insertSchemas = [];
+  const schemaRe = /export const (\w+)\s*=\s*createInsertSchema\((\w+)\)([\s\S]*?);\n/g;
+  let m;
+  while ((m = schemaRe.exec(schemaSrc))) {
+    const omitBlock = m[3].match(/\.omit\(\{([\s\S]*?)\}\)/);
+    insertSchemas.push({
+      name: m[1],
+      table: m[2],
+      omitted: omitBlock ? [...omitBlock[1].matchAll(/(\w+):\s*true/g)].map((x) => x[1]) : [],
+    });
+  }
+
+  // which of them are parsed from a request body anywhere under server/
+  const serverFiles = [];
+  walk('server', serverFiles);
+  const parsedFromBody = new Set();
+  const parseSites = {};
+  for (const rel of serverFiles) {
+    if (/[/\\]__tests__[/\\]|\.test\.ts$/.test(rel)) continue;
+    const txt = fs.readFileSync(path.join(ROOT, rel), 'utf8');
+    txt.split('\n').forEach((line, i) => {
+      const mm = line.match(/\b(insert\w+Schema)\s*(?:\.partial\(\))?\s*\.parse\s*\(([^)]*)\)/);
+      if (mm && /req\.body|body\b/.test(mm[2])) {
+        parsedFromBody.add(mm[1]);
+        (parseSites[mm[1]] = parseSites[mm[1]] || []).push(`${rel}:${i + 1}`);
+      }
+    });
+  }
+
+  for (const s of insertSchemas) {
+    if (!parsedFromBody.has(s.name)) continue;
+    for (const c of tableRateCols[s.table] || []) {
+      if (s.omitted.includes(c.col)) continue;
+      rateAssignViolations.push({
+        schema: s.name,
+        table: s.table,
+        col: c.col,
+        where: `${SCHEMA_FILE}:${c.line}`,
+        sites: (parseSites[s.name] || []).join(', '),
+      });
+    }
+  }
+}
+
 let failed = false;
+
+if (rateAssignViolations.length) {
+  failed = true;
+  console.error('❌ Rate-bearing mass-assignment guard: a client-parsed insert schema EXPOSES a commission/rate column.');
+  console.error('   Rates resolve from fee_bands ONLY; a rate-bearing field is never client-settable (ruling 42).');
+  console.error('   Fix: add `<column>: true` to that schema\'s .omit({…}) and derive the value server-side.');
+  console.error('   If the setter is genuinely privileged-by-design (an admin band editor), put a');
+  console.error('   `money-derive-ok` comment on the COLUMN line in shared/schema.ts with the reason.\n');
+  for (const v of rateAssignViolations) {
+    console.error(`   ${v.where}  ${v.table}.${v.col} exposed by ${v.schema}, parsed from a request body at: ${v.sites}`);
+  }
+}
 
 if (violations.length) {
   failed = true;
@@ -160,5 +307,22 @@ if (failed) process.exit(1);
 console.log(
   `✅ Money-endpoint guard (operation-scoped): scanned ${files.length} files ` +
   `(${moneyNamedCount} money-named + ${files.length - moneyNamedCount} scanned for money-operation handlers) ` +
-  `— no client-trusted amount/identity, no bare commission literals.`
+  `— no client-trusted amount/identity/rate, no bare commission literals, no rate-bearing mass assignment.`
+);
+console.log(
+  '   NEGATIVE SPACE (ruling 43 — what this guard does NOT cover):\n' +
+  '   · req.body check is LINE-LOCAL — a body value read on one line and used on another is invisible,\n' +
+  '     and destructuring (`const { amount } = req.body`) only trips it because both words share a line.\n' +
+  '   · Only server/routes + server/services + server/routes.ts are scanned; server/jobs, server/utils,\n' +
+  '     server/storage.ts and any client code are OUT of scope.\n' +
+  '   · MONEY_OP_RE is a NAME heuristic. A handler that moves money through an indirectly-named helper\n' +
+  '     is not recognised as a money handler, so body reads inside it are not flagged.\n' +
+  '   · Handler ranges are delimited by the NEXT app./router. registration, so a body read in a helper\n' +
+  '     declared between two routes is attributed to the preceding route, not to its real caller.\n' +
+  '   · The commission-literal pass only knows the values 0.9/0.1/0.75/0.25 in commission/payment/fee/\n' +
+  '     payout/checkout-NAMED files — any other rate value, or the same value elsewhere, is invisible.\n' +
+  '   · The rate-bearing mass-assignment pass reads shared/schema.ts only: a privileged field on a\n' +
+  '     HAND-WRITTEN zod object (not createInsertSchema) or in another schema file is out of scope, as is\n' +
+  '     any rate column whose name contains none of rate/share/commission/split.\n' +
+  '   · Nothing here proves the resolved rate is CORRECT — only that the client did not choose it.'
 );

@@ -2,7 +2,8 @@ import { db } from "./db";
 import { sql } from "drizzle-orm";
 import { availableAtFor } from "./config/earnings-hold.config";
 import { isTripAdvisor } from "./utils/trip-advisor";
-import { PROCESSING_FEE_RATE, resolveCommissionRates } from "./services/commission";
+import { PROCESSING_FEE_RATE, resolveCommissionRates, resolveServiceOwnerShareRate } from "./services/commission";
+import { isProviderRole } from "@shared/roles";
 import { 
   trips, generatedItineraries, touristPlaceResults, touristPlacesSearches,
   userAndExpertChats, helpGuideTrips, vendors,
@@ -246,7 +247,7 @@ export interface IStorage {
   getServiceBookings(filters: { providerId?: string; travelerId?: string; status?: string }): Promise<ServiceBooking[]>;
   getServiceBooking(id: string): Promise<ServiceBooking | undefined>;
   createServiceBooking(booking: InsertServiceBooking): Promise<ServiceBooking>;
-  updateServiceBookingStatus(id: string, status: string, reason?: string): Promise<ServiceBooking | undefined>;
+  updateServiceBookingStatus(id: string, status: string, reason?: string, expectedFromStatuses?: readonly string[]): Promise<ServiceBooking | undefined>;
   updateServiceBookingMetadata(id: string, metadata: Record<string, any>): Promise<ServiceBooking | undefined>;
 
   // Service Reviews
@@ -1197,8 +1198,27 @@ export class DatabaseStorage implements IStorage {
       if (!known) serviceOfferingTypeId = null;
     }
 
+    // ── MI-1 layer 2: revenueShareRate is DERIVED, never accepted ────────────────────────────
+    // `insertProviderServiceSchema` now omits it (layer 1), but the strip lives here too so every
+    // caller is covered — the same reasoning as the approval-lifecycle strip in
+    // updateProviderService below. The column previously took whatever the request body carried
+    // and won as "the final override" over the fee_bands split at the real Stripe charge.
+    const derivedShareRate = await this.deriveServiceRevenueShareRate(
+      service.userId,
+      (service as any).categoryId ?? null,
+    );
+    const { revenueShareRate: _clientRate, ...serviceWithoutRate } = service as Record<string, unknown>;
+
     const [newService] = await db.insert(providerServices)
-      .values({ ...service, approvalStatus: bornApprovalStatus, serviceOfferingTypeId, trackingNumber })
+      .values({
+        ...(serviceWithoutRate as any),
+        approvalStatus: bornApprovalStatus,
+        serviceOfferingTypeId,
+        trackingNumber,
+        // null ⇒ the resolver was unreachable; leave the column to its DB default rather than
+        // invent a rate. `safeParseRate` at checkout then falls through to the live band anyway.
+        ...(derivedShareRate === null ? {} : { revenueShareRate: String(derivedShareRate) }),
+      })
       .returning();
     
     // Auto-register in content tracking system
@@ -1215,6 +1235,42 @@ export class DatabaseStorage implements IStorage {
     return newService;
   }
 
+  /**
+   * MI-1 (ruling 42): resolve a provider service's owner share from `fee_bands` — the ONLY source a
+   * rate may come from (§8). Mirrors the /api/checkout per-item resolution exactly by delegating to
+   * `resolveServiceOwnerShareRate`, which delegates to `resolveCommissionRates`; the owner's role is
+   * read from the DB (never from the request) so a provider-owned listing lands on the provider band.
+   * Returns null when the rate cannot be resolved — the caller then leaves the column untouched.
+   */
+  private async deriveServiceRevenueShareRate(
+    ownerUserId: string | null | undefined,
+    categoryId: string | null,
+  ): Promise<number | null> {
+    try {
+      let ownerIsProvider = false;
+      if (ownerUserId) {
+        const [ownerRow] = await db
+          .select({ role: users.role })
+          .from(users)
+          .where(eq(users.id, ownerUserId))
+          .limit(1);
+        ownerIsProvider = isProviderRole(ownerRow?.role);
+      }
+      let feeCategory: string | null = null;
+      if (categoryId) {
+        const rows = await this.getServiceCategorySlugsByIds([categoryId]);
+        feeCategory = rows[0]?.slug ?? null;
+      }
+      return await resolveServiceOwnerShareRate({
+        ownerUserId: ownerUserId ?? null,
+        ownerIsProvider,
+        feeCategory,
+      });
+    } catch {
+      return null;
+    }
+  }
+
   async updateProviderService(id: string, updates: Partial<InsertProviderService>): Promise<ProviderService | undefined> {
     // ── D1a/F2: the approval lifecycle is NOT self-settable on the update path ──────────────
     // Found by the adversarial suite (scripts/journeys/adversarial-money-access.mjs, case C16b):
@@ -1227,9 +1283,14 @@ export class DatabaseStorage implements IStorage {
     // Stripped here in STORAGE (not the route) so every caller is covered. The real admin
     // approve/reject path is unaffected: it uses its own dedicated `db.update(...).set({
     // approvalStatus })` writers below, never this generic updater.
+    // MI-1 layer 2, UPDATE half (ruling 42). The audit found `revenueShareRate` stripped on NEITHER
+    // the create-clamp nor the update-strip; the update path was the easier of the two to reach,
+    // since `insertProviderServiceSchema.partial()` let a single-field PATCH set nothing but the
+    // commission split on an already-approved listing. Stripped in STORAGE, not the route, so every
+    // caller is covered — same placement rationale as the approval-lifecycle strip.
     const {
       approvalStatus: _as, submittedAt: _sa, reviewedAt: _ra, reviewedBy: _rb,
-      rejectionReason: _rr, userId: _uid, ...safeUpdates
+      rejectionReason: _rr, userId: _uid, revenueShareRate: _rsr, ...safeUpdates
     } = updates as Record<string, unknown>;
     let patch: Partial<InsertProviderService> = safeUpdates as Partial<InsertProviderService>;
     if (Object.prototype.hasOwnProperty.call(updates, 'serviceOfferingTypeId') && (updates as any).serviceOfferingTypeId) {
@@ -1237,6 +1298,14 @@ export class DatabaseStorage implements IStorage {
         .from(serviceOfferingTypes)
         .where(eq(serviceOfferingTypes.id, (updates as any).serviceOfferingTypeId));
       if (!known) patch = { ...safeUpdates, serviceOfferingTypeId: null as any } as Partial<InsertProviderService>;
+    }
+    // A patch whose every key was stripped is a NO-OP, not an error. Drizzle's `.set({})` throws
+    // "No values to set", which would surface as a 500 on a PATCH that legitimately contained
+    // nothing but privileged fields — e.g. `{revenueShareRate}` alone, now that MI-1 strips it, or
+    // `{approvalStatus}` alone, which had the same latent shape before this lane. Answer with the
+    // unchanged row: the request asked for nothing the caller is allowed to change, and got it.
+    if (Object.keys(patch as Record<string, unknown>).length === 0) {
+      return await this.getProviderServiceById(id);
     }
     const [updated] = await db.update(providerServices)
       .set(patch)
@@ -1613,7 +1682,29 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async updateServiceBookingStatus(id: string, status: string, reason?: string): Promise<ServiceBooking | undefined> {
+  /**
+   * SD-1 (provider money-hardening lane, ruling 42) — `expectedFromStatuses`.
+   *
+   * When supplied, the write becomes the §15 ATOMIC CONDITIONAL
+   * (`UPDATE … WHERE id = ? AND status IN (<expected>)`) instead of an unconditional
+   * `WHERE id = ?`, and the transition ITSELF is the concurrency guard: a caller whose row is no
+   * longer in an expected state matches 0 rows and gets `undefined`, rather than overwriting
+   * whatever state the row actually reached. A caller that omits it keeps the previous
+   * unconditional behaviour verbatim (admin complete, dispute, traveler cancel) — no regression.
+   *
+   * This is NOT a second claim state machine. The claim machine (`checkout-claim.service.ts`) stays
+   * the sole author of provisional-claim transitions; this parameter is how the OWNER rail refuses
+   * to touch a row the claim machine owns. Why it had to exist: `PATCH /api/provider/bookings/
+   * :id/status` checked the TARGET status and never the CURRENT one, so a provider clicking Accept
+   * on a `payment_pending` / unstamped provisional claim (§15b — visible to them in Inbox and on
+   * the calendar) flipped it to `confirmed`. After that flip BOTH recovery predicates match zero
+   * rows — `voidClaim`'s `status='payment_pending' AND stripe_payment_intent_id IS NULL` and
+   * `promotePaidCheckout`'s `status='payment_pending' AND stripe_payment_intent_id=<pi>` — so the
+   * TTL sweep could never reclaim the slot and a genuinely-successful later payment could never
+   * promote. The `vendor_availability_slots.booked_count` taken at claim time was destroyed for
+   * good, with no code path to give it back.
+   */
+  async updateServiceBookingStatus(id: string, status: string, reason?: string, expectedFromStatuses?: readonly string[]): Promise<ServiceBooking | undefined> {
     // Read prior status before applying any update so side-effects are idempotent.
     const prior = await this.getServiceBooking(id);
     if (!prior) return undefined;
@@ -1626,12 +1717,19 @@ export class DatabaseStorage implements IStorage {
       updates.cancelledAt = new Date();
       if (reason) updates.cancellationReason = reason;
     }
-    
+
+    const guard = expectedFromStatuses && expectedFromStatuses.length > 0
+      ? and(eq(serviceBookings.id, id), inArray(serviceBookings.status, expectedFromStatuses as string[]))
+      : eq(serviceBookings.id, id);
+
     const [updated] = await db.update(serviceBookings)
       .set(updates)
-      .where(eq(serviceBookings.id, id))
+      .where(guard)
       .returning();
 
+    // 0 rows: either the id vanished, or (with a guard) a concurrent writer moved the row out of
+    // every expected state first. Either way this caller lost — and critically, NONE of the
+    // side-effects below run, so a lost race mints no earnings and no revenue row.
     if (!updated) return undefined;
 
     // Only fire completion side-effects on the FIRST transition to "completed".

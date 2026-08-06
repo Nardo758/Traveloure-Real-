@@ -415,7 +415,7 @@ export const localExpertForms = pgTable("local_expert_forms", {
   // Availability
   availability: varchar("availability", { length: 50 }),
   responseTime: varchar("response_time", { length: 50 }),
-  hourlyRate: varchar("hourly_rate", { length: 50 }),
+  hourlyRate: varchar("hourly_rate", { length: 50 }), // money-derive-ok: a free-text DISPLAY string the applicant writes about themselves (seeded values look like "$80-150/hour"), not a fraction and not a platform take. No server code reads it into any fee, amount or payout decision — verified repo-wide (ruling 42 class sweep). Name-matched by the rate-bearing guard; adjudicated not-a-rate.
   // Legacy fields (keeping for compatibility)
   yearsInCity: integer("years_in_city").default(0),
   offerService: boolean("offer_service").default(false),
@@ -555,7 +555,18 @@ export const serviceCategories = pgTable("service_categories", {
   categoryKey: varchar("category_key", { length: 100 }),                    // brief's join key; unique when non-null
   sourceType: varchar("source_type", { length: 30 }),                       // 'platform_provider' | 'affiliate'
   launchTier: varchar("launch_tier", { length: 20 }),                       // 'core' | 'secondary' | 'segment'
-  commissionBandKey: varchar("commission_band_key", { length: 100 }),       // → fee_bands.bandKey (tiered policy only)
+  // money-derive-ok: this SELECTS a fee_bands row rather than carrying a rate, and its setter is
+  // ADMIN by design — that is the fee-band admin surface, not a client path. All three parse sites
+  // of insertServiceCategorySchema are admin-gated (admin.routes.ts under the blanket requireAdmin;
+  // content.routes.ts:807 behind an explicit DB role check). Ruling 42's rule is that a rate-bearing
+  // field is never CLIENT-settable; an authenticated admin editing bands is the intended path.
+  // FILED (ruling-42 class sweep, #PS14 — NOT fixed here, it is fee taxonomy and owes a doc-first
+  // decision per Coordination Prevention): the two admin setters DIVERGE. admin.routes.ts:2218-2245
+  // rejects a commissionBandKey that matches no fee_bands row and refuses to clear it unless
+  // platform_settings.default_commission_band_key is set and active; content.routes.ts:807 parses
+  // the same schema on CREATE with no band validation at all, so a category can be born pointing at
+  // a band that does not exist.
+  commissionBandKey: varchar("commission_band_key", { length: 100 }),       // → fee_bands.bandKey (tiered policy only) — money-derive-ok: see the note above (admin-by-design setter)
   insuranceBand: integer("insurance_band"),                                 // 1 | 2 | 3 (platform_provider only)
   riskProfile: varchar("risk_profile", { length: 20 }),                     // 'low' | 'moderate' | 'high'
   requiresBackgroundCheck: boolean("requires_background_check").default(false),
@@ -1525,6 +1536,27 @@ export const insertLocalExpertFormSchema = createInsertSchema(localExpertForms).
   verifiedInfluencer: true,
   influencerTier: true,
   referralCode: true,
+  // MI-1 class sweep (provider money-hardening lane, ruling 42): the rate/fee-bearing and
+  // payment-identity families on this table were mass-assignable — `insertLocalExpertFormSchema
+  // .parse(req.body)` is spread verbatim into create/update at POST /api/expert-application and
+  // POST /api/expert-forms (server/routes.ts), so any authenticated applicant could set their own
+  // booking-fee rate, their Stripe Connect linkage, and their earnings/payout balances. No client
+  // sends any of them and no server code reads them today (dormant), which is exactly why it had
+  // not surfaced — the ruling is that a rate-bearing field is never client-settable on ANY schema,
+  // consumer or not. These are server/admin-managed, same posture as the influencer block above.
+  bookingFeeType: true,
+  bookingFeePercentage: true,
+  bookingFeeFixed: true,
+  bookingFeeHourly: true,
+  minBookingFee: true,
+  feeSettings: true,
+  stripeAccountId: true,
+  stripeAccountStatus: true,
+  stripeConnectStatus: true,
+  canReceivePayments: true,
+  totalEarnings: true,
+  pendingPayout: true,
+  payoutSchedule: true,
 }).extend({
   // Role-vocabulary audit (Jul 27, 2026): expertType MUST be validated against the enum.
   // The admin approval path copies expertType into users.role verbatim, so an unvalidated
@@ -1536,7 +1568,14 @@ export const insertLocalExpertFormSchema = createInsertSchema(localExpertForms).
 export const insertServiceProviderFormSchema = createInsertSchema(serviceProviderForms).omit({ id: true, userId: true, status: true, rejectionMessage: true, createdAt: true });
 export const insertServiceCategorySchema = createInsertSchema(serviceCategories).omit({ id: true, createdAt: true });
 export const insertServiceSubcategorySchema = createInsertSchema(serviceSubcategories).omit({ id: true, createdAt: true });
-export const insertProviderServiceSchema = createInsertSchema(providerServices).omit({ id: true, userId: true, formStatus: true, bookingsCount: true, totalRevenue: true, averageRating: true, reviewCount: true, createdAt: true, updatedAt: true }).extend({
+// MI-1 (provider money-hardening lane, ruling 42): `revenueShareRate` is a COMMISSION SPLIT and is
+// therefore NOT client-settable — this is layer 1 of the strip-and-clamp. It was previously exposed
+// here, parsed straight off `req.body` by POST/PATCH /api/provider/services, spread into the row, and
+// read at `payments.routes.ts` as "the final override (takes priority over config)" over the
+// fee_bands-resolved split at the real Stripe charge — a client-supplied rate reaching a payment
+// decision (§14 in substance, §8 in spirit). No UI ever sent it. Layer 2 is the storage-level
+// derivation in `createProviderService`/`updateProviderService`, so every caller is covered.
+export const insertProviderServiceSchema = createInsertSchema(providerServices).omit({ id: true, userId: true, formStatus: true, bookingsCount: true, totalRevenue: true, averageRating: true, reviewCount: true, createdAt: true, updatedAt: true, revenueShareRate: true }).extend({
   // X1: app-enforced vocabulary (migration 144 has no DB CHECK) — reject anything outside the set here.
   cancellationPolicyType: z.enum(cancellationPolicyTypeEnum).nullable().optional(),
 });

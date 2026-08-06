@@ -4624,6 +4624,28 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // traveler/escrow-driven (POST /api/bookings/:id/confirm-completion + the release
   // job). Applied to BOTH the expert and provider status endpoints.
   const OWNER_SETTABLE_BOOKING_STATUSES = ["confirmed", "cancelled"];
+  // ── SD-1 (provider money-hardening lane, ruling 42): the FROM-state allow-list ────────────────
+  // The handler previously checked only the TARGET status, never the CURRENT one. `service_bookings`
+  // rows in `payment_pending` with no `stripe_payment_intent_id` are UNAUTHORIZED PROVISIONAL CLAIMS
+  // by construction (§15b / ruling 38) — written before the Stripe call, and visible to the provider
+  // (GET /api/provider/bookings applies no status filter; the calendar renders them "Booked"). A
+  // provider clicking Accept on one promoted a purchase nobody had paid for, and — because both
+  // recovery predicates key on `status='payment_pending'` — permanently stranded the availability
+  // slot the claim had consumed: `voidClaim` and `promotePaidCheckout` both matched 0 rows
+  // afterwards, and nothing in the codebase gives `vendor_availability_slots.booked_count` back.
+  //
+  // A provisional claim is UNACCEPTABLE INPUT — rejected, never promoted. The owner rail does not
+  // participate in the claim state machine at all; `checkout-claim.service.ts` remains its sole
+  // author. `expired` (a swept claim) and the terminal states are likewise not owner-movable.
+  const OWNER_BOOKING_TRANSITIONS: Record<string, readonly string[]> = {
+    // Accept: only a request-rail booking awaiting the owner's answer.
+    confirmed: ["pending"],
+    // Decline / cancel: an unanswered request, or an already-accepted booking. NOTE this keeps the
+    // pre-existing cancel-a-confirmed-booking behaviour verbatim — the missing-refund question on
+    // that edge is a SEPARATE, still-unruled finding (audit SD-2 / Q2) and is deliberately not
+    // changed here rather than silently altered under cover of this fix.
+    cancelled: ["pending", "confirmed"],
+  };
   const handleOwnerBookingStatus = async (req: any, res: any) => {
     try {
       const userId = getUserId(req)!;
@@ -4637,7 +4659,22 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           message: "You can only accept (confirmed) or decline (cancelled) a booking. Completion is confirmed by the traveler.",
         });
       }
-      const updated = await storage.updateServiceBookingStatus(req.params.id, status, reason);
+      const allowedFrom = OWNER_BOOKING_TRANSITIONS[status];
+      // Fast, legible rejection. This is NOT the guard — it is the good error message. The GUARD is
+      // the atomic conditional below (§15: a check-then-update is the TOCTOU bug, not a guard), so a
+      // concurrent caller that also passes this check still loses at the UPDATE.
+      if (!allowedFrom.includes(booking.status ?? "")) {
+        return res.status(409).json({
+          message: `This booking is "${booking.status}" and cannot be moved to "${status}". A checkout still awaiting payment is not yours to accept — it resolves itself when the traveler pays, or is released automatically if they do not.`,
+          currentStatus: booking.status,
+        });
+      }
+      const updated = await storage.updateServiceBookingStatus(req.params.id, status, reason, allowedFrom);
+      if (!updated) {
+        // Lost the atomic race (or the row vanished): another actor moved it first. Exactly one
+        // caller wins; the loser changes nothing and fires no side-effects.
+        return res.status(409).json({ message: "This booking changed before your update was applied. Reload and try again." });
+      }
 
       // E1: trip-share bridge. When an EXPERT accepts a booking that carries a
       // tripId (routes.ts /api/expert-booking-requests stores it on the
@@ -6698,16 +6735,19 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     }
   });
 
-  app.post("/api/vendor-availability/:id/book", isAuthenticated, async (req, res) => {
-    try {
-      const slot = await storage.bookSlot(req.params.id);
-      if (!slot) return res.status(404).json({ message: "Slot not found" });
-      res.json(slot);
-    } catch (error) {
-      console.error("Error booking slot:", error);
-      res.status(500).json({ message: "Failed to book slot" });
-    }
-  });
+  // ── AC-1 (provider money-hardening lane, ruling 42): `POST /api/vendor-availability/:id/book`
+  //    is DELETED, not hardened. ────────────────────────────────────────────────────────────────
+  // The whole handler was `storage.bookSlot(req.params.id)` behind `isAuthenticated` and nothing
+  // else: no ownership check, no purchase, no booking row — so any authenticated account could
+  // increment any provider's `booked_count` and flip their slots to `fully_booked`, exhausting a
+  // competitor's sellable inventory. It was IRREVERSIBLE by design: the TTL sweep reclaims capacity
+  // by iterating provisional `service_bookings` rows and releasing `row.slotId`, and this endpoint
+  // created no row, so there was nothing to sweep and `storage.releaseSlot` had no reachable caller.
+  // It had ZERO consumers — `vendor-availability` appears nowhere under `client/src`.
+  // An endpoint with no consumer and an irreversible effect is deleted rather than gated: gating it
+  // would have preserved a second, unaudited way to consume inventory alongside the checkout spine.
+  // The legitimate claim path is unchanged and untouched: `storage.bookSlot` is still the atomic
+  // conditional the checkout calls (`payments.routes.ts`), paired with `releaseSlot` and the sweep.
 
   // Coordination States
   app.get("/api/coordination-states", isAuthenticated, async (req, res) => {
