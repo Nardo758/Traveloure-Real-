@@ -22,7 +22,7 @@ import {
   insertServiceTemplateSchema, insertServiceBookingSchema, insertServiceReviewSchema,
   itineraryComparisons, itineraryVariants, itineraryVariantItems, itineraryVariantMetrics,
   userExperienceItems, userExperiences, providerServices, cartItems, trips,
-  serviceBookings, serviceReviews, reviewModerationLogs, notifications, wallets, creditTransactions, serviceProviderForms,
+  serviceBookings, serviceReviews, reviewModerationLogs, notifications, adminNotifications as adminNotificationsTable, wallets, creditTransactions, serviceProviderForms,
   insertCustomVenueSchema, insertGeneratedItinerarySchema,
   insertTemporalAnchorSchema, insertDayBoundarySchema, insertEnergyTrackingSchema,
   temporalAnchors, itineraryItems, generatedItineraries,
@@ -4914,9 +4914,14 @@ router.get("/api/admin/notifications", isAuthenticated, async (req, res) => {
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
-      const adminNotifications = await getAdminNotifications(userId);
+      const [userNotifs, adminAlerts] = await Promise.all([
+        getAdminNotifications(userId),
+        db.select().from(adminNotificationsTable)
+          .orderBy(desc(adminNotificationsTable.createdAt))
+          .limit(50),
+      ]);
 
-      const enriched = adminNotifications.map(n => ({
+      const enrichedUser = userNotifs.map(n => ({
         id: n.id,
         type: n.type?.includes("warning") || n.type?.includes("dispute") ? "warning"
           : n.type?.includes("success") || n.type?.includes("payment") ? "success"
@@ -4926,10 +4931,35 @@ router.get("/api/admin/notifications", isAuthenticated, async (req, res) => {
         title: n.title || "Notification",
         message: n.message || "",
         time: n.createdAt ? getRelativeTime(n.createdAt) : "Unknown",
+        createdAt: n.createdAt,
         read: n.isRead || false,
       }));
 
-      res.json(enriched);
+      // Platform-level alerts (reconciliation mismatches, unassigned leads,
+      // service requests, etc.) live in admin_notifications with numeric ids;
+      // prefix them so PATCH can route to the right table.
+      const alertCategory = (type: string) =>
+        type.includes("reconciliation") ? "Reconciliation"
+          : type.includes("lead") || type.includes("expert") ? "Lead Routing"
+          : type.includes("service") ? "Service Requests"
+          : "Platform Alert";
+      const enrichedAlerts = adminAlerts.map(n => ({
+        id: `alert-${n.id}`,
+        type: n.type?.includes("mismatch") || n.type?.includes("reconciliation") ? "warning"
+          : "alert",
+        category: alertCategory(n.type || ""),
+        title: n.destination ? `${alertCategory(n.type || "")}: ${n.destination}` : alertCategory(n.type || ""),
+        message: [n.message, n.reason].filter(Boolean).join(" — "),
+        time: n.createdAt ? getRelativeTime(n.createdAt) : "Unknown",
+        createdAt: n.createdAt,
+        read: n.isRead || false,
+      }));
+
+      const merged = [...enrichedUser, ...enrichedAlerts]
+        .sort((a, b) => new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime())
+        .map(({ createdAt, ...rest }) => rest);
+
+      res.json(merged);
     } catch (err) {
       console.error("Admin notifications error:", err);
       res.status(500).json({ message: "Failed to fetch notifications" });
