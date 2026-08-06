@@ -2922,7 +2922,41 @@ router.delete("/api/admin/services/:id", isAuthenticated, async (req, res) => {
 
       const row = await getProviderServiceById(req.params.id);
       if (!row) return res.status(404).json({ message: "Service not found" });
-      await deleteProviderService(req.params.id);
+
+      // Financial-history guard: service_bookings.service_id is ON DELETE CASCADE, so a
+      // hard delete would silently destroy historical bookings (and the platform_fee
+      // snapshots the revenue dashboard sums). If any bookings reference this service,
+      // soft-delete instead — mark it suspended so it disappears from public surfaces
+      // while every historical record keeps its reference intact.
+      //
+      // Runs in a single transaction with the service row locked FOR UPDATE: a booking
+      // INSERT takes a FK KEY SHARE lock on this row, which conflicts with FOR UPDATE,
+      // so a concurrent checkout blocks until we commit — it can never slip a booking
+      // in between the count and the delete (post-delete it fails the FK honestly).
+      const outcome = await db.transaction(async (tx) => {
+        await tx.execute(sql`SELECT id FROM provider_services WHERE id = ${req.params.id} FOR UPDATE`);
+        const [{ bookingCount }] = await tx
+          .select({ bookingCount: sql<number>`count(*)::int` })
+          .from(serviceBookings)
+          .where(eq(serviceBookings.serviceId, req.params.id));
+        if (bookingCount > 0) {
+          await tx
+            .update(providerServices)
+            .set({ status: "suspended", updatedAt: new Date() })
+            .where(eq(providerServices.id, req.params.id));
+          return { softDeleted: true as const, bookingCount };
+        }
+        await tx.delete(providerServices).where(eq(providerServices.id, req.params.id));
+        return { softDeleted: false as const, bookingCount: 0 };
+      });
+
+      if (outcome.softDeleted) {
+        return res.json({
+          ok: true,
+          softDeleted: true,
+          message: `Service has ${outcome.bookingCount} booking(s) — it was archived (suspended) instead of deleted so booking history stays intact.`,
+        });
+      }
       res.json({ ok: true });
     } catch (err: any) {
       // Migration 151 (§17): bundle_components.component_service_id is ON DELETE RESTRICT —
@@ -5305,10 +5339,24 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
       }
       const before = current.rows[0] as any;
 
+      // Reject present-but-invalid rate fields outright. Previously a non-numeric
+      // defaultRate (e.g. "abc") silently fell back to the stored value and returned
+      // 200 ok — a false "saved" that dropped the admin's intended change. Omitting a
+      // field still means "leave unchanged"; only present values must be finite numbers.
+      if (defaultRate !== undefined && (typeof defaultRate !== "number" || !Number.isFinite(defaultRate))) {
+        return res.status(400).json({ error: "defaultRate must be a finite number", received: defaultRate });
+      }
+      if (minRate !== undefined && minRate !== null && (typeof minRate !== "number" || !Number.isFinite(minRate))) {
+        return res.status(400).json({ error: "minRate must be a finite number or null", received: minRate });
+      }
+      if (maxRate !== undefined && maxRate !== null && (typeof maxRate !== "number" || !Number.isFinite(maxRate))) {
+        return res.status(400).json({ error: "maxRate must be a finite number or null", received: maxRate });
+      }
+
       // Apply min/max validation against the proposed (or unchanged) default_rate.
-      const nextDefault = typeof defaultRate === "number" ? defaultRate : Number(before.default_rate);
-      const nextMin = minRate === undefined ? (before.min_rate === null ? null : Number(before.min_rate)) : (minRate === null ? null : Number(minRate));
-      const nextMax = maxRate === undefined ? (before.max_rate === null ? null : Number(before.max_rate)) : (maxRate === null ? null : Number(maxRate));
+      const nextDefault = defaultRate !== undefined ? defaultRate : Number(before.default_rate);
+      const nextMin = minRate === undefined ? (before.min_rate === null ? null : Number(before.min_rate)) : (minRate === null ? null : minRate);
+      const nextMax = maxRate === undefined ? (before.max_rate === null ? null : Number(before.max_rate)) : (maxRate === null ? null : maxRate);
       if (nextMin !== null && nextDefault < nextMin) {
         return res.status(400).json({ error: "default_rate below min_rate", nextDefault, nextMin });
       }
