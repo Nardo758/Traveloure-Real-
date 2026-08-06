@@ -14,8 +14,10 @@ import {
   Trash2,
   Loader2
 } from "lucide-react";
-import { useState, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 interface Notification {
   id: string;
@@ -42,18 +44,34 @@ const typeColors: Record<string, string> = {
 };
 
 export default function AdminNotifications() {
-  const { data: notificationsData, isLoading } = useQuery<Array<{
-    id: string; type: string; category: string; title: string; message: string; time: string; read: boolean;
-  }>>({ queryKey: ["/api/admin/notifications"] });
+  const { data: notificationsData, isLoading } = useQuery<Notification[]>({
+    queryKey: ["/api/admin/notifications"],
+  });
 
-  const [notifications, setNotifications] = useState<Notification[]>([]);
   const [filter, setFilter] = useState<string | null>(null);
+  const { toast } = useToast();
+  const notifications = notificationsData ?? [];
 
-  useEffect(() => {
-    if (notificationsData) {
-      setNotifications(notificationsData as Notification[]);
-    }
-  }, [notificationsData]);
+  const invalidate = () =>
+    queryClient.invalidateQueries({ queryKey: ["/api/admin/notifications"] });
+
+  const markReadMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("PATCH", `/api/admin/notifications/${id}/read`),
+    onSuccess: invalidate,
+    onError: () => toast({ title: "Failed to mark notification as read", variant: "destructive" }),
+  });
+
+  const markAllReadMutation = useMutation({
+    mutationFn: () => apiRequest("PATCH", "/api/admin/notifications/read-all"),
+    onSuccess: invalidate,
+    onError: () => toast({ title: "Failed to mark all as read", variant: "destructive" }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("DELETE", `/api/admin/notifications/${id}`),
+    onSuccess: invalidate,
+    onError: () => toast({ title: "Failed to delete notification", variant: "destructive" }),
+  });
 
   if (isLoading) {
     return (
@@ -71,19 +89,9 @@ export default function AdminNotifications() {
     ? notifications.filter(n => n.type === filter)
     : notifications;
 
-  const markAsRead = (id: string) => {
-    setNotifications(notifications.map(n =>
-      n.id === id ? { ...n, read: true } : n
-    ));
-  };
-
-  const markAllAsRead = () => {
-    setNotifications(notifications.map(n => ({ ...n, read: true })));
-  };
-
-  const deleteNotification = (id: string) => {
-    setNotifications(notifications.filter(n => n.id !== id));
-  };
+  const markAsRead = (id: string) => markReadMutation.mutate(id);
+  const markAllAsRead = () => markAllReadMutation.mutate();
+  const deleteNotification = (id: string) => deleteMutation.mutate(id);
 
   return (
     <AdminLayout title="Notifications">
