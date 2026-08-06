@@ -46,7 +46,13 @@ Priorities: **P0** = fix before any real provider touches the platform; **P1** =
 **P2** = quality-of-life, schedule with back-office Phase 1; **P3** = pending a ruling first. UX ids reference
 `PROVIDER_UX_WALKTHROUGH.md`; none of these are started — this is scope, not progress.
 
-### P0 — trust/data-loss/money (5 items)
+> **Pass 2 addendum (Aug 6):** the money-path walk added the P0/P1 items marked `[P2]` below and three new rulings
+> (Q6 booking control, Q7 Money source of truth, Q8 expired-claim hygiene) — see `PROVIDER_UX_WALKTHROUGH.md` Pass 2.
+
+### P0 — trust/data-loss/money (7 items)
+
+- [ ] **[P2] One source of truth for the Money station** (P2-B1). Four panels currently give four different balances over the same ledger ($0 / $60 / $105 / $120 on one screen) with Request Payout disabled while "Available to pay out $60" shows. Blocked on ruling **Q7** for which panel wins; the fix is derivation, not copy. *Owner: money surfaces.*
+- [ ] **[P2] Exclude expired claims from every provider-facing surface** (P2-B2/B3, ruling **Q8**). Voided checkout claims currently render as "Booked" calendar events and count in Customers ("2 bookings · $160 booked value"), Repeat badges, and Revenue Share gross. One predicate fix (`status='expired'` excluded) closes all four surfaces. *Owner: console; sigma confirms the DB-side census.*
 
 - [ ] **Fix Logout in the provider console** (walkthrough B1). `/api/logout` is swallowed by the SPA catch-all; session survives. Make logout actually terminate the session and land somewhere sane. *Owner: console/back-office. Add a regression pin: logout → session cookie invalid.*
 - [ ] **Give the pending application a permanent home** (B2 + B5 + F11 + I3 — one work item). `/provider-status` must be linked (dashboard tile + `/become-provider` redirect when an application exists), the wizard must stop offering a blank re-fill to an already-applied user, and the raw-JSON duplicate toast goes away as a side effect. *Owner: back-office Phase 1; pairs with ruling Q3.*
@@ -54,7 +60,12 @@ Priorities: **P0** = fix before any real provider touches the platform; **P1** =
 - [ ] **Reject non-positive prices at both client and server** (B4). `-50/hr` currently reaches a `Submitted` listing. Server-side floor on the service-create/update endpoints + client field validation. *Owner: catalog; sigma to confirm the DB layer; add a regression test (see §3).*
 - [ ] **Close the post-signup double-submit gap** (F3). After in-wizard account creation, either auto-submit the registration or show an explicit "one more step — Submit Registration" state; don't reset the terms checkbox silently. *Owner: onboarding. (Note: commit `a8d59b2` on current main — "guests no longer lose their application at submit" — may already touch this path; re-verify at head before scoping.)*
 
-### P1 — pre-beta (7 items)
+### P1 — pre-beta (11 items)
+
+- [ ] **[P2] Decide and build booking control** (P2-D1, ruling **Q6** first): either an accept/decline/cancel affordance, or rewrite the Inbox's "everything that needs your response" promise for the instant-book model. The dispatch pre-declared the missing decline high-severity. *Owner: back-office Phase 1.*
+- [ ] **[P2] Booking detail with the operational facts** (P2-B4): service **date and time**, party size, traveler context per the booking-brief pattern — the History card currently shows only the request date and is inert. *Owner: console.*
+- [ ] **[P2] Render claimed (unauthorized) slots distinctly from confirmed** (P2-F1, sigma §C8 pairing) — a held-not-paid state on calendar/panel, so the provider's view can't contradict the traveler's "nothing was booked". *Owner: console.*
+- [ ] **[P2] Fix the Money zero-state split default** (P2-D2): a new provider's first Money view fabricates "Platform 70% | You 30%"; with real data the same widget says 25/75. Render nothing (or the real configured split) at zero data. *Owner: money surfaces.*
 
 - [ ] **Unsaved-work guard on the service form** (F2) — port the expert workspace's three-layer guard. *Owner: catalog.*
 - [ ] **Name the step-3 blockers and scope the attestations** (F1) — show which required attestations are missing instead of a dead Next; pending ruling **Q5** on whether insurance/licenses apply to all 60 offering types. *Owner: onboarding.*
@@ -64,7 +75,10 @@ Priorities: **P0** = fix before any real provider touches the platform; **P1** =
 - [ ] **Human-readable error toasts** (F10) — map API errors to copy; never render `{"message":…}` or a bare 500 to a provider. *Owner: console shell (one toast layer fixes all instances).*
 - [ ] **Filter the offering picker by the chosen category and unify category vocabulary** (F6) — "Transportation" / "Transportation & Logistics" / "Transportation & Driving" should be one name; picker should respect the `?category=` it was launched with. *Owner: catalog.*
 
-### P2 — schedule with back-office Phase 1 (6 items)
+### P2 — schedule with back-office Phase 1 (8 items)
+
+- [ ] **[P2] Preserve booking context through traveler signup** (P2-F2): account creation at the booking gate dumps the traveler to /dashboard, losing the selected slot — a lost provider sale. *(Traveler surface, but it sits on the provider's funnel.)*
+- [ ] **[P2] Stop "Unknown" leaking to travelers** (P2-F3) on the offering page and cart line; fix or hide the incoherent optimizer teaser ("up to 21% savings (~$0.17 less)", P2-F4).
 
 - [ ] **Market-aware Neighborhoods selector** (F7) — provider's own market first, other cities collapsed/searchable.
 - [ ] **Pre-select the wizard's category from the chosen /earn offering** (F8).
