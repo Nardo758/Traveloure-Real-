@@ -178,6 +178,7 @@ import { getRoleHomePath, userHasRequiredRole } from "@/lib/role-utils";
 import { useClaimGuestTrips } from "@/hooks/use-claim-guest-trips";
 import { useClaimGuestConcierge } from "@/hooks/use-claim-guest-concierge";
 import { captureAcquisitionRef } from "@/lib/acquisition";
+import { sanitizeReturnTo } from "@/lib/safe-return-to";
 
 // Fallback shown while a lazily-loaded route chunk is being fetched.
 // Routes are code-split (React.lazy) so the browser and the Vite dev server
@@ -251,12 +252,11 @@ function LoginRoute() {
   useEffect(() => {
     if (isLoading) return;
     const params = new URLSearchParams(window.location.search);
-    const rawReturnTo = params.get("returnTo") || params.get("redirect");
-    // Only allow same-origin relative paths (prevent open redirects)
-    const returnTo =
-      rawReturnTo && rawReturnTo.startsWith("/") && !rawReturnTo.startsWith("//")
-        ? rawReturnTo
-        : undefined;
+    // Only allow same-origin destinations (prevent open redirects); see
+    // sanitizeReturnTo for how "/\evil.com"-style tricks are caught.
+    const returnTo = sanitizeReturnTo(
+      params.get("returnTo") || params.get("redirect"),
+    );
 
     if (user) {
       navigate(returnTo ?? "/", { replace: true });
