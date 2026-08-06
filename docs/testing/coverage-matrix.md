@@ -140,6 +140,7 @@ Wave key (brief §7): W1 = Journey Wave 1, build now · W2 = post SLIP phase 4 �
 |---|---|
 | item_transition_log UPDATE/DELETE via app — no route exists (inventory assertion) | N12 |
 | Mutation via getTripRole path — none remain (inventory assertion) | N15 |
+| Checkout commits NOTHING without a PaymentIntent (zero AUTHORIZED bookings, cart intact, no slot promoted, no item `purchased`, no `to_status='purchased'` row, no provider notification; a clean retry is never a false success) | N16 (ruling 38); EX: checkout-claim-sweep.db.test.ts proves the TTL reclaim is idempotent, race-safe and cannot void a paid booking |
 
 ## Existing-coverage absorption (Phase 0 item 2 — nothing deleted)
 | Existing suite | Disposition |

@@ -26,6 +26,7 @@ import { grokDiscoveryService } from "./services/grok-discovery.service";
 import { setupWebSocket } from "./websocket";
 import { cacheSchedulerService } from "./services/cache-scheduler.service";
 import { bookingExpiryScheduler } from "./services/booking-expiry-scheduler.service";
+import { checkoutClaimSweepScheduler } from "./services/checkout-claim.service";
 import { adminDigestScheduler } from "./services/admin-digest-scheduler.service";
 import { earningsReleaseScheduler } from "./services/earnings-release-scheduler.service";
 import { dmoIngestScheduler } from "./services/dmo-ingest-scheduler.service";
@@ -559,6 +560,13 @@ if (process.env.NODE_ENV === "production") {
 
     bookingExpiryScheduler.start();
     logger.info("Booking expiry scheduler started");
+
+    // Ruling 38 (checkout atomicity): reclaim checkout claims that never reached an
+    // authorization — voids the provisional booking and hands its slot capacity back, with a
+    // diary row per void. Race-safe against a late authorization and never voids a row whose
+    // PaymentIntent Stripe actually holds (see checkout-claim.service.ts).
+    checkoutClaimSweepScheduler.start();
+    logger.info("Checkout claim sweep scheduler started");
 
     adminDigestScheduler.start();
     logger.info("Admin digest scheduler started");
