@@ -422,6 +422,61 @@ router.get("/api/admin/bookings/stuck-pending", isAuthenticated, async (req, res
 });
 
 /**
+ * GET /api/admin/bookings/reconciliation-exceptions
+ *
+ * The OPS SURFACE for the reconciliation-exception state (legacy-reconciliation lane,
+ * tasks #212/#213). A payment signal — the Stripe webhook, or the client's confirm-payment
+ * fallback — arrived for a booking that could NOT be promoted, canonically a LATE webhook for a
+ * claim the TTL sweep already voided. Ruling 38 §15b: the void wins, the row is never
+ * resurrected. But if that PaymentIntent genuinely succeeded, real money moved with no booking
+ * behind it, so the exception is recorded on the row (`booking_details.reconciliationException`)
+ * and surfaced here — ops-visible, never silent.
+ *
+ * EVERY ROW HERE NEEDS A HUMAN: check the paymentIntentId in the Stripe dashboard. Succeeded ⇒
+ * refund it or re-create the booking manually. Not succeeded ⇒ nothing moved; the row can be
+ * dismissed.
+ */
+router.get("/api/admin/bookings/reconciliation-exceptions", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser(getUserId(req)!);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const result = await db.execute(sql`
+      SELECT
+        sb.id,
+        sb.traveler_id,
+        sb.status,
+        sb.total_amount,
+        sb.stripe_payment_intent_id,
+        sb.booking_details->'reconciliationException' AS exception,
+        sb.created_at,
+        sb.updated_at,
+        u.email      AS traveler_email,
+        u.first_name AS traveler_first_name,
+        u.last_name  AS traveler_last_name,
+        ps.service_name
+      FROM service_bookings sb
+      LEFT JOIN users u ON u.id = sb.traveler_id
+      LEFT JOIN provider_services ps ON ps.id = sb.service_id
+      WHERE sb.booking_details ? 'reconciliationException'
+      ORDER BY sb.updated_at DESC
+      LIMIT 200
+    `);
+    res.json({
+      bookings: result.rows,
+      count: result.rows.length,
+      note:
+        "A payment signal arrived for a booking that could not be promoted (the row was NOT resurrected). " +
+        "Check each paymentIntentId in Stripe: succeeded ⇒ refund or re-book manually; not succeeded ⇒ dismiss.",
+    });
+  } catch (err) {
+    console.error("Reconciliation exceptions error:", err);
+    res.status(500).json({ message: "Failed to fetch reconciliation exceptions" });
+  }
+});
+
+/**
  * GET /api/admin/webhooks/unprocessed
  * Returns webhook_events rows where processed=false.
  * Covers two cases: events that never arrived (gap vs Stripe API)

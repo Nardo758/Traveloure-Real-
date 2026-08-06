@@ -560,6 +560,20 @@ class StripePaymentService {
   /**
    * Handle successful payment — authoritative confirmation path via Stripe webhook.
    * Idempotent: already-confirmed bookings are skipped.
+   *
+   * TWO RAILS, BOTH SERVED (task #212, legacy-reconciliation lane)
+   * ─────────────────────────────────────────────────────────────
+   * This handler used to query ONLY the legacy `bookings` table. That table is still live — the
+   * `/booking-demo` and `/itinerary-comparison/:id` flows write it through
+   * `POST /api/bookings/process-cart` — so its loop below is KEPT verbatim. But the CART CHECKOUT
+   * rail (`POST /api/checkout`) writes `service_bookings`, and its PaymentIntent metadata carries
+   * `service_bookings` ids. Passing those ids to `SELECT … FROM bookings` matched zero rows, so
+   * the documented "authoritative confirmation path" did nothing at all for a cart checkout
+   * (ruling 38 filed this as #212; the TTL sweep was left as the only recovery mechanism).
+   *
+   * Both rails now run: the cart rail through the ONE shared promotion (`promotePaidCheckout`,
+   * the same implementation `POST /api/bookings/confirm-payment` drives — #213), then the legacy
+   * rail unchanged. The two id spaces do not overlap, and each path no-ops on ids it does not own.
    */
   async handlePaymentSucceeded(paymentIntent: Stripe.PaymentIntent) {
     const { userId, bookingIds, isDeposit } = paymentIntent.metadata;
@@ -569,13 +583,39 @@ class StripePaymentService {
       UPDATE payment_intents SET status = 'succeeded' WHERE stripe_payment_intent_id = ${paymentIntent.id}
     `);
 
+    // ── CART-CHECKOUT RAIL (service_bookings) — the shared payment promotion ──────────────
+    // Resolved by the row's server-stamped `stripe_payment_intent_id`, and additionally by the
+    // PI's own `bookingIds` metadata so the webhook can still recover a booking whose PI was
+    // created but never stamped (server died mid-authorization) — the case where the webhook is
+    // the FIRST signal of success. Idempotent by atomic conditional: a booking the client
+    // already confirmed matches 0 rows and is a no-op, never a double flip.
+    try {
+      const { promotePaidCheckout } = await import('./checkout-claim.service');
+      await promotePaidCheckout({
+        paymentIntentId: paymentIntent.id,
+        actor: 'webhook',
+        metadataBookingIds: (bookingIds ?? '').split(',').map((id: string) => id.trim()).filter(Boolean),
+      });
+    } catch (promoteErr: any) {
+      // Never let the cart rail take the legacy rail (or the webhook) down.
+      console.error('[webhook] cart-checkout payment promotion failed:', promoteErr?.message ?? promoteErr);
+    }
+
     if (!bookingIds) {
       console.log(`[webhook] payment_intent.succeeded: no bookingIds in metadata for ${paymentIntent.id}`);
       return;
     }
 
+    // ── LEGACY RAIL (`bookings`) — process-cart / booking-demo flow. Unchanged. ────────────
     const bookingIdList = bookingIds.split(',').map((id: string) => id.trim()).filter(Boolean);
     for (const bookingId of bookingIdList) {
+      // `bookings.id` is a UUID column; `service_bookings.id` is a varchar. A cart-checkout PI
+      // carries service_bookings ids, so a non-UUID id would make the comparison below THROW
+      // (22P02) and abandon every remaining id in the list. The cart rail already ran above, so
+      // this only protects the legacy rail from ids it does not own — skip them silently.
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(bookingId)) {
+        continue;
+      }
       // Idempotency: skip bookings that are already confirmed
       const existing = await db.execute(sql`
         SELECT status FROM bookings WHERE id = ${bookingId} LIMIT 1
