@@ -240,6 +240,42 @@ function ProtectedRoute({ component: Component, skipTermsCheck = false, required
   return <Component {...rest} />;
 }
 
+/* Direct /login URL (bookmarks, emailed links, redirects): open the sign-in
+   modal over the landing page instead of falling through to the 404 route.
+   Honors ?returnTo=/path so the user lands where they were headed after auth. */
+function LoginRoute() {
+  const { user, isLoading } = useAuth();
+  const { openSignInModal } = useSignInModal();
+  const [, navigate] = useLocation();
+
+  useEffect(() => {
+    if (isLoading) return;
+    const params = new URLSearchParams(window.location.search);
+    const rawReturnTo = params.get("returnTo") || params.get("redirect");
+    // Only allow same-origin relative paths (prevent open redirects)
+    const returnTo =
+      rawReturnTo && rawReturnTo.startsWith("/") && !rawReturnTo.startsWith("//")
+        ? rawReturnTo
+        : undefined;
+
+    if (user) {
+      navigate(returnTo ?? "/", { replace: true });
+      return;
+    }
+    if (returnTo) {
+      sessionStorage.setItem("traveloure_return_to", returnTo);
+    }
+    navigate("/", { replace: true });
+    openSignInModal({
+      title: "Sign in to your account",
+      description: "Welcome back! Sign in to continue planning your travels.",
+      returnTo,
+    });
+  }, [isLoading, user, openSignInModal, navigate]);
+
+  return <PageLoader />;
+}
+
 function ChatWithRoleLayout() {
   return (
     <ConsoleAwareLayout title="Messages">
@@ -283,6 +319,9 @@ function Router() {
       </Route>
       <Route path="/optimize">
         <Redirect to="/concierge?tier=ai" />
+      </Route>
+      <Route path="/login">
+        <LoginRoute />
       </Route>
       <Route path="/reset-password">
         <ResetPasswordPage />
