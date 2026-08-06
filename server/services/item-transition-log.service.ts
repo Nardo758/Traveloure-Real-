@@ -24,7 +24,13 @@ export type TransitionActorType =
   | "checkout"
   | "refund"
   | "optimizer"
-  | "system";
+  | "system"
+  // Legacy-reconciliation lane (tasks #212/#213): the Stripe `payment_intent.succeeded` webhook
+  // acting as the reconciliation caller. Distinct from `traveler` (the client polling
+  // /api/bookings/confirm-payment) precisely so a diary row answers "which signal promoted this
+  // booking?" — the redundancy on the money path is only worth having if it is attributable.
+  // No DB CHECK on actor_type (migration 171 posture), so this is a code-only vocabulary add.
+  | "webhook";
 
 export type TransitionEventType =
   | "status_transition"
@@ -42,7 +48,20 @@ export type TransitionEventType =
   // an expired claim never reached it). Item-grained when the claim carried a plan item,
   // trip-grained (itemId NULL, ruling 16) otherwise. Written in the SAME transaction as the void
   // so reclaimed inventory is auditable rather than silently reappearing.
-  | "checkout_claim_expired";
+  | "checkout_claim_expired"
+  // Legacy-reconciliation lane (#212/#213): the PAYMENT promotion — a checkout claim that was
+  // authorized and has now been PAID moves `payment_pending → confirmed`. Written in the SAME
+  // transaction as that flip (rulings 12/18) by whichever signal won the race, with `actorType`
+  // recording which one (`webhook` | `traveler`). from/to carry the BOOKING statuses, not the
+  // item's routing_status (the item's own `ready_for_checkout → purchased` edge was already
+  // written at authorization time by markItemPurchased — this event is the money leg).
+  | "checkout_payment_confirmed"
+  // Legacy-reconciliation lane (#212/#213): a payment signal arrived for a booking that is NOT
+  // in a promotable state — canonically a LATE webhook for a row the TTL sweep already voided.
+  // The row is NEVER resurrected (void wins after TTL); the exception is recorded here and on
+  // the booking row so it is ops-visible rather than silent. NOTE: kept ≤30 chars — event_type
+  // is varchar(30) (migration 171), so `checkout_reconciliation_exception` would not fit.
+  | "checkout_reconcile_exception";
 
 /** The executor shape both `db` and a drizzle `tx` satisfy — callers inside a transaction MUST
  *  pass their `tx` (ruling 18: same-transaction pair), everything else may pass `db`. */

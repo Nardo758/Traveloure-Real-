@@ -97,6 +97,28 @@ against Stripe (found ⇒ promote, definitively-absent ⇒ void, unreachable ⇒
 `server/services/checkout-claim.service.ts`; proven by `server/__tests__/checkout-claim-sweep.db.test.ts` and
 journey negative **N16**.
 
+**§15c — ONE payment promotion, TWO callers (ruling 39; tasks #212/#213 CLOSED).** Ruling 38 recorded that both
+documented reconciliation paths were **inert for cart checkout** — `handlePaymentSucceeded` and
+`POST /api/bookings/confirm-payment` queried the legacy **`bookings`** table with `service_bookings` ids and matched
+nothing — which left the TTL sweep as the **only** recovery mechanism on the money path. Both now drive
+`promotePaidCheckout` (`server/services/checkout-claim.service.ts`, step 5 of the same spine): **one promotion
+implementation, two callers**, so the webhook and the client fallback can never diverge on what "confirmed" means.
+Rules that must not be weakened: (1) the promotion is an **atomic conditional** —
+`UPDATE … SET status='confirmed' WHERE status='payment_pending' AND stripe_payment_intent_id=<pi>` — so a double
+signal is exactly **one** flip and one diary row, the loser a no-op; (2) **only the webhook** may resolve a booking
+from the PaymentIntent's `bookingIds` metadata and stamp a PI onto an unstamped claim (a signature-verified Stripe
+delivery is Stripe's word; a client-supplied PI is not) — this is what rescues the server-died-mid-authorization
+window, where nothing keyed on `stripe_payment_intent_id` can find the row; (3) a **late signal never resurrects a
+voided row** — void wins after TTL, and the signal lands in a **reconciliation-exception** state
+(`bookingDetails.reconciliationException` + a `checkout_reconcile_exception` diary row + `logger.error`, surfaced by
+`GET /api/admin/bookings/reconciliation-exceptions`) — ops-visible, never silent; (4) the promotion is the **money
+leg only** — it must never re-run `promoteAuthorizedCheckout`'s non-idempotent effects (counter increments, provider
+emails); the one effect it does retry is `markItemPurchased`, an atomic conditional flip and therefore safe.
+The legacy `bookings` rail is **still live** (`/booking-demo`, `/itinerary-comparison/:id` →
+`POST /api/bookings/process-cart`) — do **not** delete it while making the cart rail work; both rails run, each
+no-ops on ids it does not own. Proven by `server/__tests__/checkout-payment-promotion.db.test.ts` (negatives
+**N17/N18/N19**); the sweep's 9/9 suite is untouched and still green — redundancy means every layer stands alone.
+
 ### §16 — Affiliate-outbound rule (agent-booking, ratified Jul 23, 2026)
 
 **GOVERNING RULE (decision-maker directive):** affiliate/partner content must behave like the Discover feeds —
