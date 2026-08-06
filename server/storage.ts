@@ -1654,8 +1654,33 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createServiceBooking(booking: InsertServiceBooking): Promise<ServiceBooking> {
+    // ── PS15 layer 2 (ruling 46): a booking is never BORN with a PaymentIntent ────────────────
+    // `stripe_payment_intent_id` is a SERVER_VERIFIED_ACTORS-only field (ruling 41: the gate is the
+    // PROVENANCE of the id, not the transport that carried it). Its sole production writer is
+    // `stampAuthorization` (`checkout-claim.service.ts`), an atomic conditional UPDATE on the
+    // provisional predicate that runs AFTER `paymentIntents.create` — and only ever on a row whose
+    // §15b pre-flight `bookingDetails.stripeAttemptAt` marker was already written.
+    //
+    // Stripped in STORAGE, not only at the route, so every caller is covered — the same placement
+    // rationale as the approval-lifecycle and MI-1 strips above. Layer 1 is the `.omit()` on
+    // `insertServiceBookingSchema`; this layer also covers the two internal callers that pass
+    // `as any` (`payments.routes.ts:926`, `routes.ts:1430`), which a type-level omit cannot reach.
+    //
+    // NOT a compatibility break: verified at 281d355c that no caller passes this field. A booking
+    // that legitimately needs a PI gets it from the claim machine, one state transition later.
+    const { stripePaymentIntentId: _clientSuppliedPi, ...safeBooking } =
+      booking as InsertServiceBooking & { stripePaymentIntentId?: unknown };
+    if (_clientSuppliedPi !== undefined && _clientSuppliedPi !== null) {
+      // Ops-visible, never silent: reaching here means a caller tried to birth an authorized-looking
+      // booking. Nothing downstream can distinguish that row from a real one after the fact, which
+      // is exactly why the value is dropped here rather than recorded.
+      console.error(
+        '[PS15] createServiceBooking: DROPPED a caller-supplied stripePaymentIntentId — this field is ' +
+        'written only by stampAuthorization (ruling 41/46). Caller must not set it.',
+      );
+    }
     const trackingNumber = await this.generateTrackingNumber('TRV');
-    const [newBooking] = await db.insert(serviceBookings).values({ ...booking, trackingNumber }).returning();
+    const [newBooking] = await db.insert(serviceBookings).values({ ...safeBooking, trackingNumber }).returning();
     
     // Auto-register in content tracking system
     await this.registerContent({

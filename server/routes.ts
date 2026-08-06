@@ -20,7 +20,7 @@ import {
   insertLocalExpertFormSchema, insertServiceProviderFormSchema,
   insertProviderServiceSchema, insertServiceCategorySchema,
   insertServiceSubcategorySchema, insertFaqSchema,
-  insertServiceTemplateSchema, insertServiceBookingSchema, insertServiceReviewSchema,
+  insertServiceTemplateSchema, insertServiceBookingSchema, createBookingRequestSchema, insertServiceReviewSchema,
   itineraryComparisons, itineraryVariants, itineraryVariantItems, itineraryVariantMetrics,
   userExperienceItems, userExperiences, providerServices, cartItems, trips,
   serviceBookings, serviceReviews, notifications, serviceProviderForms,
@@ -156,6 +156,7 @@ import {
   resolveCommissionRates,
   calcInsuranceFee,
   getConciergeBookingRate,
+  resolveServiceOwnerShareRate,
   type CommissionRates,
 } from "./services/commission";
 import { calculateCommission, BookingType } from "./utils/commissionCalculator";
@@ -4584,27 +4585,48 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     });
   });
 
-  // Create a booking
+  // Create a booking. Body allowlist: `createBookingRequestSchema` (module scope, PS15/ruling 46).
   app.post("/api/bookings", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req)!;
-      const input = insertServiceBookingSchema.parse(req.body);
-      
+      const input = createBookingRequestSchema.parse(req.body);
+
       // Verify service exists and is active
       const service = await storage.getProviderServiceById(input.serviceId);
       if (!service || service.status !== "active") {
         return res.status(404).json({ message: "Service not found or not available" });
       }
-      
+
+      // §14: the amount comes from the server-side catalog record, never from req.body.
+      const totalAmount = Number(service.price) || 0;
+      // §8/ruling 42: the split comes from fee_bands through the one existing resolver. A null
+      // resolution leaves the derived columns at their DB defaults rather than inventing a rate.
+      const ownerShareRate = await resolveServiceOwnerShareRate({
+        ownerUserId: service.userId ?? null,
+        ownerIsProvider: isProviderRole(
+          (await storage.getUser(service.userId ?? ""))?.role,
+        ),
+        feeCategory: service.categoryId
+          ? (await storage.getServiceCategorySlugsByIds([service.categoryId]))[0]?.slug ?? null
+          : null,
+      });
+
       const booking = await storage.createServiceBooking({
         ...input,
         travelerId: userId,
         providerId: service.userId,
+        totalAmount: totalAmount.toFixed(2),
+        ...(ownerShareRate !== null
+          ? {
+              platformFee: (totalAmount * (1 - ownerShareRate)).toFixed(2),
+              providerEarnings: (totalAmount * ownerShareRate).toFixed(2),
+            }
+          : {}),
       });
-      
+
       // Increment service bookings count
-      await storage.incrementServiceBookings(service.id, Number(service.price) || 0);
-      
+      await storage.incrementServiceBookings(service.id, totalAmount);
+
       res.status(201).json(booking);
     } catch (err) {
       if (err instanceof z.ZodError) {

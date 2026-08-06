@@ -57,6 +57,20 @@ const ALLOW = 'money-derive-ok';
 // Rate-bearing COLUMN predicate for the schema-side mass-assignment pass below (declared here so
 // the self-test can reach it). Segment-aware, same vocabulary as FIELD_RE.
 const RATE_COL_RE = /(?:^|[^A-Za-z])(rate|share|commission|split)s?(?![a-z])|(?:[a-z0-9_])(Rate|Share|Commission|Split)s?(?![a-z])/;
+// PAYMENT-IDENTITY column predicate (PS15, ruling 46) — the same schema-mediated pass, one class
+// wider. `revenueShareRate` taught that a privileged column reachable through a `.parse(req.body)`
+// spread is invisible to any line-level grep; PS15 was the same shape on a field that is not a rate
+// at all. `service_bookings.stripePaymentIntentId` is a SERVER_VERIFIED_ACTORS-only field (rulings
+// 39/40/41: the gate is the PROVENANCE of the id) and was exposed by `insertServiceBookingSchema`,
+// parsed off the body at POST /api/bookings and spread into the insert — so a client could BIRTH a
+// booking already carrying its own PaymentIntent. Matches the Stripe-object linkage family
+// (`stripePaymentIntentId`, `stripeChargeId`, `stripeAccountId`, `stripe_transfer_id`, …) and the
+// generic `paymentIntentId`. Admin/server-by-design setters carry `money-derive-ok` on the COLUMN
+// line, exactly as the rate pass does. Deliberately anchored and narrow: it matches Stripe-object
+// IDENTIFIERS only, not `stripeAccountStatus` or `stripeConnectStatus` (privileged too, and already
+// stripped by ruling 42 — but a status is not a linkage id and widening this to every `stripe*`
+// column would make the predicate unusable rather than more truthful).
+const PAYMENT_ID_COL_RE = /^(stripe[A-Z]\w*Id|paymentIntentId)$/;
 
 // ─── Commission literal guard ────────────────────────────────────────────────
 // Numeric literals that express the 90/10 or 75/25 commission split must only
@@ -100,6 +114,19 @@ function selfTest() {
     ['separateAddress', RATE_COL_RE, false, '"separate" must not match'],
     ['sharedByUserId', RATE_COL_RE, false, '"shared" must not match'],
     ['totalAmount', RATE_COL_RE, false, 'an amount is not a rate'],
+    // PAYMENT-IDENTITY column predicate (PS15, ruling 46) — the pass that would have caught PS15.
+    // A rate is not the only privileged thing a schema-mediated spread can hand to a client.
+    ['stripePaymentIntentId', PAYMENT_ID_COL_RE, true, 'THE PS15 column — a server-verified-only PaymentIntent id'],
+    ['stripeChargeId', PAYMENT_ID_COL_RE, true, 'Stripe charge linkage'],
+    ['stripeAccountId', PAYMENT_ID_COL_RE, true, 'Connect account linkage (the ruling-42 dormant family)'],
+    ['stripeRefundId', PAYMENT_ID_COL_RE, true, 'refund linkage — the reconciliation job keys on it'],
+    ['paymentIntentId', PAYMENT_ID_COL_RE, true, 'the un-prefixed spelling'],
+    // Negatives: over-matching here would make the pass unusable, so pin what it must NOT claim.
+    ['stripeAccountStatus', PAYMENT_ID_COL_RE, false, 'a status is not a linkage id (privileged, but ruling 42 stripped it by name)'],
+    ['stripeConnectStatus', PAYMENT_ID_COL_RE, false, 'likewise a status'],
+    ['canReceivePayments', PAYMENT_ID_COL_RE, false, 'a payments-adjacent boolean is not an id'],
+    ['tripId', PAYMENT_ID_COL_RE, false, 'an ordinary FK must not be flagged'],
+    ['travelerId', PAYMENT_ID_COL_RE, false, 'an ordinary identity column — §14 handles it, not this pass'],
   ];
   let bad = 0;
   for (const [subject, re, expected, why] of cases) {
@@ -110,7 +137,11 @@ function selfTest() {
     }
   }
   if (bad) process.exit(1);
-  console.log(`self-test OK (${cases.length} predicate fixtures: rate/share/commission/split positives, substring-collision negatives, §14 no-regression)`);
+  console.log(
+    `self-test OK (${cases.length} predicate fixtures: rate/share/commission/split positives, ` +
+    `payment-identity positives (stripe<Thing>Id / paymentIntentId — ruling 46), ` +
+    `substring-collision + status/grant/FK negatives, §14 no-regression)`,
+  );
   process.exit(0);
 }
 if (process.argv.includes('--self-test')) selfTest();
@@ -212,7 +243,9 @@ if (fs.existsSync(path.join(ROOT, SCHEMA_FILE))) {
   const schemaSrc = fs.readFileSync(path.join(ROOT, SCHEMA_FILE), 'utf8');
   const schemaLines = schemaSrc.split('\n');
 
-  // table name -> [{col, line}] of rate-bearing, non-exempt columns
+  // table name -> [{col, line, why}] of PRIVILEGED, non-exempt columns.
+  // Two predicates, one pass: rate-bearing (ruling 42) and payment-identity (ruling 46). Both are
+  // the same class — a privileged column a client can set because a denylist schema forgot it.
   const tableRateCols = {};
   let curTable = null;
   schemaLines.forEach((l, i) => {
@@ -221,8 +254,11 @@ if (fs.existsSync(path.join(ROOT, SCHEMA_FILE))) {
     if (!curTable) return;
     if (/^\}\)/.test(l)) { curTable = null; return; }
     const c = l.match(/^\s{2}(\w+):\s*(?:decimal|numeric|integer|real|doublePrecision|varchar|text|jsonb)\(/);
-    if (c && RATE_COL_RE.test(c[1]) && !l.includes(ALLOW)) {
-      tableRateCols[curTable].push({ col: c[1], line: i + 1 });
+    if (!c || l.includes(ALLOW)) return;
+    if (RATE_COL_RE.test(c[1])) {
+      tableRateCols[curTable].push({ col: c[1], line: i + 1, why: 'rate-bearing (ruling 42)' });
+    } else if (PAYMENT_ID_COL_RE.test(c[1])) {
+      tableRateCols[curTable].push({ col: c[1], line: i + 1, why: 'payment-identity, server-verified actors only (ruling 46)' });
     }
   });
 
@@ -264,6 +300,7 @@ if (fs.existsSync(path.join(ROOT, SCHEMA_FILE))) {
         schema: s.name,
         table: s.table,
         col: c.col,
+        why: c.why,
         where: `${SCHEMA_FILE}:${c.line}`,
         sites: (parseSites[s.name] || []).join(', '),
       });
@@ -275,13 +312,16 @@ let failed = false;
 
 if (rateAssignViolations.length) {
   failed = true;
-  console.error('❌ Rate-bearing mass-assignment guard: a client-parsed insert schema EXPOSES a commission/rate column.');
-  console.error('   Rates resolve from fee_bands ONLY; a rate-bearing field is never client-settable (ruling 42).');
-  console.error('   Fix: add `<column>: true` to that schema\'s .omit({…}) and derive the value server-side.');
+  console.error('❌ Privileged-field mass-assignment guard: a client-parsed insert schema EXPOSES a privileged column.');
+  console.error('   Rates resolve from fee_bands ONLY and are never client-settable (ruling 42); a PaymentIntent/');
+  console.error('   Stripe-object id is written only by a SERVER-VERIFIED actor (rulings 41/46).');
+  console.error('   Fix: add `<column>: true` to that schema\'s .omit({…}) and derive/strip server-side —');
+  console.error('   and prefer a pick-based ALLOWLIST schema at the route, so the next privileged column is');
+  console.error('   unreachable by default rather than reachable until someone remembers to omit it.');
   console.error('   If the setter is genuinely privileged-by-design (an admin band editor), put a');
   console.error('   `money-derive-ok` comment on the COLUMN line in shared/schema.ts with the reason.\n');
   for (const v of rateAssignViolations) {
-    console.error(`   ${v.where}  ${v.table}.${v.col} exposed by ${v.schema}, parsed from a request body at: ${v.sites}`);
+    console.error(`   ${v.where}  ${v.table}.${v.col} [${v.why}] exposed by ${v.schema}, parsed from a request body at: ${v.sites}`);
   }
 }
 
@@ -321,8 +361,14 @@ console.log(
   '     declared between two routes is attributed to the preceding route, not to its real caller.\n' +
   '   · The commission-literal pass only knows the values 0.9/0.1/0.75/0.25 in commission/payment/fee/\n' +
   '     payout/checkout-NAMED files — any other rate value, or the same value elsewhere, is invisible.\n' +
-  '   · The rate-bearing mass-assignment pass reads shared/schema.ts only: a privileged field on a\n' +
+  '   · The privileged-field mass-assignment pass reads shared/schema.ts only: a privileged field on a\n' +
   '     HAND-WRITTEN zod object (not createInsertSchema) or in another schema file is out of scope, as is\n' +
-  '     any rate column whose name contains none of rate/share/commission/split.\n' +
+  '     any rate column whose name contains none of rate/share/commission/split and any payment-identity\n' +
+  '     column not spelled stripe<Thing>Id / paymentIntentId (a `status`, a boolean grant, or an amount\n' +
+  '     column is NOT covered — ruling 42 stripped that family by NAME, not by predicate).\n' +
+  '   · It only knows the RATE and PAYMENT-IDENTITY classes. Every other privileged column an\n' +
+  '     .omit()-based schema forgets — an amount, a status, an authorization grant (#PS16) — is still\n' +
+  '     reachable and still invisible here. That is the standing class ruling 46 records, and the\n' +
+  '     structural answer is a pick-based ALLOWLIST schema, which no grep can substitute for.\n' +
   '   · Nothing here proves the resolved rate is CORRECT — only that the client did not choose it.'
 );

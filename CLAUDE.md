@@ -73,6 +73,10 @@ safe read (e.g. a server-capped payout *withdrawal* of the user's own balance, o
 **EXTENDED ONE DERIVATIVE UP BY §18 (ruling 42):** the same prohibition now covers the **RATE** that
 multiplies the amount — a commission split / fee percentage / band selector is never client-settable,
 and the guard predicate and its schema-mediated blind spot are described there. Read §14 and §18 together.
+**GENERALIZED BY §19 (ruling 46):** amount, identity and rate are three instances of one class —
+**privileged-field mass-assignment through a denylist (`.omit()`) schema** — whose structural fix is a
+pick-based **allowlist** body schema. §19 also binds ruling 41's `stripePaymentIntentId` clause on the
+booking-BIRTH side. Read §14, §18 and §19 together.
 **NOT in this cluster (named, separate lanes):** F2 born-approved wizard (D1a/Phase-3, root cause = the
 `provider_services.approvalStatus` default); the idempotency cluster (payout double-transfer, `/confirm` TOCTOU,
 `/checkout` dup-bookings — see §15); marketplace Phase B surfacing.
@@ -234,6 +238,59 @@ load-bearing. Because a wrong predicate is invisible by construction, both guard
 `--self-test` fixtures that run in CI **immediately before** the guard itself (the ledger-lint
 precedent). The gate also honours ruling 32's second disposition: `fee-literal-debt:#<task>` exempts a
 line from failing but is **reported on every run**, so filed debt never becomes a silent baseline.
+
+### §19 — Privileged-field mass-assignment is a STANDING CLASS; the fix shape is an ALLOWLIST (ruling 46)
+
+**GOVERNING RULE:** §14 forbids a client-supplied amount/price/identity from reaching a money
+decision; §18 extended it to the RATE. §19 states the **shape** all three share and fixes it
+structurally: **a privileged column is client-settable BY DEFAULT under a denylist (`.omit()`)
+schema, and nobody edits an omit list for a column that did not exist when it was written.** The
+required fix shape for a client-reachable body is an **ALLOWLIST — a pick-based schema** — so a new
+privileged column is unreachable until someone deliberately names it.
+
+**Three instances, one class:** `provider_services.revenueShareRate` (§18/ruling 42); the dormant
+fee/payout/Stripe-linkage family on `insertLocalExpertFormSchema` (same sweep); and
+`service_bookings.stripePaymentIntentId` at `POST /api/bookings` (ruling 46). **Posture as of
+ruling 46:** all **186** `createInsertSchema(...)` calls in `shared/schema.ts` are `.omit()`-based and
+**ZERO** are `.pick()`-based. Converting the layer is filed as **`#PS18`** with a committed negative
+fixture (`booking-birth-provenance.db.test.ts` **B6**); until it lands, every one of those schemas is
+a denylist and must be read as one.
+
+**§19a — `stripePaymentIntentId` is written ONLY by the shared promotion path.** Ruling 41's clause
+stands with **no carve-out**, and it binds on the **BIRTH** side as well as the promotion side. A
+booking-create endpoint accepting the field from `req.body` **is the violation, not a tension**:
+`POST /api/bookings` `.parse`d the `.omit()`-based `insertServiceBookingSchema` off the body and
+SPREAD it into `createServiceBooking`, so a crafted request birthed a booking already carrying its
+own PaymentIntent. That is **not a promotion**, so **N17c can never catch it** — and the row then
+looks authorized to every consumer keyed on that column (the sweep skips it, `promotePaidCheckout`
+matches it, the drift job trusts it as linkage). Stripped in **three** layers: the schema `.omit()`,
+the storage strip in `createServiceBooking` (which covers the internal `as any` callers a type-level
+omit cannot reach), and the route allowlist. `stampAuthorization`/`resolveAndStamp`
+(`checkout-claim.service.ts`) remain the column's **sole** writers.
+
+**§19b — the rows already on disk get DETECTION, never silent trust or silent repair.** A fix stops
+new rows and says nothing about old ones (§17). Drift kind **`payment_provenance_unverified`**
+(`warning`, cart rail; `GET /api/admin/reconciliation/exceptions`). **Its predicate follows ruling
+41's invariant as STATED — the PROVENANCE of the id, not one implementation of it — so TWO
+independent forms each clear a row:** the §15b pre-flight `bookingDetails.stripeAttemptAt` marker
+(the spine wrote it), **or** Stripe's own `metadata.bookingIds` naming the booking when the job reads
+the PaymentIntent with the platform's own secret key (§17b). Corroboration is not a forger's
+loophole — `metadata.bookingIds` is written server-side by `createPaymentIntent`, so a lifted
+PaymentIntent names the bookings it actually paid for and never the row it was planted on, and a
+PaymentIntent absent from Stripe is never seen at all. **Do not narrow this to the marker alone:**
+that would indict every legitimate booking whose PI predates ruling 38 but which Stripe can still
+vouch for. Once a row fails both, the PS15 mass-assignment, a seeded fixture, and a pre-ruling-38 row
+are **indistinguishable** — which is why the kind is *unverified*, not *forged*, and why the job does
+nothing about it.
+
+**§19c — guard.** `scripts/check-money-endpoints.cjs`'s schema-mediated pass carries a
+PAYMENT-IDENTITY column predicate (`stripe<Thing>Id` / `paymentIntentId`) beside the rate one, with
+committed `--self-test` fixtures (§18d). It knows those **two** classes and nothing else — an amount,
+a `status`, an authorization grant (`#PS16`) is still invisible to it. That stated blind spot is the
+reason the answer is `#PS18`, not a wider grep.
+
+Proven by `server/__tests__/booking-birth-provenance.db.test.ts` (**B1–B6**, 7 proofs); sweep 9/9,
+promotion 11/11 incl. **N17c**, detection 15/15 and ruling 42's P1–P6 untouched and green.
 
 ### §16 — Affiliate-outbound rule (agent-booking, ratified Jul 23, 2026)
 

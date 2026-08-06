@@ -87,6 +87,7 @@ const KIND_LABELS: Record<string, string> = {
   booking_confirmed_pi_not_succeeded: "Booking says paid — PaymentIntent not succeeded",
   amount_mismatch: "Charged amount ≠ server-derived total",
   refund_not_reversed: "Stripe refund with no reversal in the database",
+  payment_provenance_unverified: "PaymentIntent id the checkout never wrote — provenance unverifiable",
   stripe_charge_no_booking: "Legacy: Stripe charge — no matching booking",
   booking_no_stripe_charge: "Legacy: booking confirmed — no Stripe charge",
 };

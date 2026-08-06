@@ -1585,17 +1585,72 @@ export const insertCreditTransactionSchema = createInsertSchema(creditTransactio
 
 // Service Templates, Bookings, Reviews schemas
 export const insertServiceTemplateSchema = createInsertSchema(serviceTemplates).omit({ id: true, usageCount: true, averageRating: true, createdAt: true });
-// travelerId and providerId are set server-side from auth context and service lookup
-export const insertServiceBookingSchema = createInsertSchema(serviceBookings).omit({ 
-  id: true, 
+// travelerId and providerId are set server-side from auth context and service lookup.
+//
+// ── PS15 (ruling 46) — `stripePaymentIntentId` is a SERVER_VERIFIED_ACTORS-only field ─────────
+// Ruling 41 states the invariant as PROVENANCE, not transport: a PaymentIntent id may resolve or
+// stamp a booking only when the platform itself obtained it from Stripe as a verified actor, and
+// "a CLIENT-supplied PaymentIntent id may never resolve or stamp anything." This schema was
+// `.parse`d straight off `req.body` at POST /api/bookings and the result SPREAD into
+// `createServiceBooking`, so a crafted request could BIRTH a booking already carrying its own PI —
+// which ruling 41's clause forbids on the promotion side but had no counterpart on the birth side.
+// A born-stamped row is not a promotion, so it never trips N17c; it is simply a row that looks
+// authorized to every consumer that keys on this column (the sweep skips it, `promotePaidCheckout`
+// matches it, the drift job trusts it as linkage).
+//
+// This is layer 1 of the strip. Safe to omit outright — verified at 281d355c that NO caller of
+// `createServiceBooking` passes it: `payments.routes.ts:926` (checkout) and `routes.ts:1430` both
+// omit it, and the column's SOLE production writer is `stampAuthorization`
+// (`checkout-claim.service.ts:177`), an atomic conditional UPDATE that runs after the Stripe call.
+// (The audit's PS15 note cautioned that this omit list is load-bearing for the `InsertServiceBooking`
+// TYPE that checkout writes — true of `platformFee`/`insuranceFee`/`providerEarnings`/`status`,
+// which checkout DOES pass, and NOT true of this field. Those are handled by the route-level
+// allowlist at POST /api/bookings instead.) Layer 2 is the storage-level strip in
+// `createServiceBooking`, so every caller is covered.
+export const insertServiceBookingSchema = createInsertSchema(serviceBookings).omit({
+  id: true,
   travelerId: true,  // Set server-side from authenticated user
   providerId: true,  // Set server-side from service lookup
-  confirmedAt: true, 
-  completedAt: true, 
-  cancelledAt: true, 
-  createdAt: true, 
-  updatedAt: true 
+  stripePaymentIntentId: true,  // PS15/ruling 46 — server-verified actors only, via stampAuthorization
+  confirmedAt: true,
+  completedAt: true,
+  cancelledAt: true,
+  createdAt: true,
+  updatedAt: true
 });
+// ── PS15 (ruling 46): POST /api/bookings admits an ALLOWLIST, not a denylist ────────────────────
+// `POST /api/bookings` (server/routes.ts) used to `insertServiceBookingSchema.parse(req.body)` and
+// SPREAD the result into `createServiceBooking`. That schema is `.omit()`-based — a DENYLIST — so
+// every column its omit list did not happen to name was client-settable BY CONSTRUCTION:
+// `stripePaymentIntentId` (ruling 41's immovable clause; now also stripped above and in storage),
+// `platformFee`, `insuranceFee`, `providerEarnings`, `totalAmount`, `status`, `idempotencyKey`,
+// `slotId`, `source`, `acquisitionRef`, `trackingNumber`, `crossSellSourceContentId`.
+//
+// A denylist schema fails OPEN: the day a privileged column is added to `service_bookings`, it is
+// reachable from that body until someone remembers to omit it — and nobody edits an omit list for a
+// column that did not exist when it was written. That is the standing class ruling 46 records, third
+// instance (`revenueShareRate`, the MI-1 sweep's dormant fee/payout family, this). A pick-based
+// schema fails CLOSED: a new column is unreachable until it is deliberately named here.
+//
+// NOT admitted, and why each one: `status` (this rail creates a booking REQUEST, born `pending` from
+// the column default — it must never birth a `payment_pending` claim, §15b, a state that belongs to
+// `checkout-claim.service.ts`); `idempotencyKey`/`slotId` (the checkout spine's own claim machinery,
+// §15/§18c); the amount family and `stripePaymentIntentId` (§14 and rulings 41+46 — server-derived
+// or server-written, never proposed by a caller).
+//
+// EXTEND DELIBERATELY. `booking-birth-provenance.db.test.ts` B6 asserts this exact key set, so
+// widening it is a decision someone makes on purpose rather than a column that leaks in from
+// elsewhere. (Note for the guard's negative space: `scripts/check-money-endpoints.cjs` detects
+// body-parsed schemas by the `insert*Schema` NAME, so a derived schema like this one is outside its
+// parse pass — B6 is what covers it.)
+export const createBookingRequestSchema = insertServiceBookingSchema.pick({
+  serviceId: true,
+  tripId: true,
+  contractId: true,
+  bookingDetails: true,
+  bookingMetadata: true,
+});
+
 export const insertServiceReviewSchema = createInsertSchema(serviceReviews).omit({ id: true, responseText: true, responseAt: true, createdAt: true, status: true, flagReason: true, moderatedBy: true, moderatedAt: true }).extend({
   rating: z.number().int().min(1, "Rating must be at least 1 star").max(5, "Rating cannot exceed 5 stars"),
 });
@@ -5886,6 +5941,21 @@ export const RECONCILIATION_EXCEPTION_KINDS = [
   "amount_mismatch",
   /** Stripe holds a refund whose reversal never landed in the DB (`refunds` row / status). */
   "refund_not_reversed",
+  /** PS15 / ruling 46 — UNVERIFIABLE PAYMENT PROVENANCE. A booking carries a
+   *  `stripe_payment_intent_id` with NO `bookingDetails.stripeAttemptAt` marker behind it.
+   *
+   *  Every PI the checkout spine writes is preceded by that §15b pre-flight marker
+   *  (`markStripeAttempt` runs immediately before `paymentIntents.create`; `stampAuthorization`
+   *  and the ordering-1 `resolveAndStamp` only ever act on rows that already carry it). A stamped
+   *  row WITHOUT it was written by something that is not the spine — the PS15 mass-assignment on
+   *  `POST /api/bookings` (closed by ruling 46), a seed (`beta-reviews-bookings.ts` mints synthetic
+   *  `pi_…` values), or a row predating ruling 38.
+   *
+   *  Those are INDISTINGUISHABLE after the fact, and that is the whole point of the classification:
+   *  the platform cannot prove the id came from Stripe, so it neither trusts it nor repairs it
+   *  (§17 DETECT, DON'T REPAIR). It is a `warning`, not `critical` — the row may be perfectly fine;
+   *  what is not fine is that nothing can tell. */
+  "payment_provenance_unverified",
   // ── LEGACY rail (`bookings` — still live via /booking-demo and process-cart) ───────────────
   "stripe_charge_no_booking",
   "booking_no_stripe_charge",

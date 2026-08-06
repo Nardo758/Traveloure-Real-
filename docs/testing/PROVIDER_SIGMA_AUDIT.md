@@ -728,7 +728,7 @@ intersection is now a CI guard rather than a one-time sweep.
 | `insertProviderServiceSchema` | `revenueShareRate` | **LIVE** — the /api/checkout charge | **STRIPPED + derived** (MI-1) |
 | `insertLocalExpertFormSchema` | `bookingFeeType`, `bookingFeePercentage`, `bookingFeeFixed`, `bookingFeeHourly`, `minBookingFee`, `feeSettings`, `stripeAccountId`, `stripeAccountStatus`, `stripeConnectStatus`, `canReceivePayments`, `totalEarnings`, `pendingPayout`, `payoutSchedule` | **NONE** (dormant columns) | **STRIPPED** — the ruling is that a rate-bearing field is never client-settable, consumer or not. Mass-assignable at POST `/api/expert-application` + `/api/expert-forms`; `hourlyRate` adjudicated NOT-a-rate (a free-text display string) and annotated |
 | `insertServiceCategorySchema` | `commissionBandKey` (a band SELECTOR) | admin fee taxonomy | **ANNOTATED, not stripped** — admin is the authorized setter. **New finding `#PS14`:** the two admin setters DIVERGE — `admin.routes.ts:2218-2245` validates the key against `fee_bands` and guards the inheritance fallback; `content.routes.ts:807` creates with **no band validation at all** |
-| `insertServiceBookingSchema` | `platformFee`, `insuranceFee`, `providerEarnings`, **`stripePaymentIntentId`**, `status` | **NEW FINDING `#PS15`** | **NOT fixed here.** `POST /api/bookings` (`routes.ts:4588`, no client consumer) spreads the parsed body into `createServiceBooking`, so a client can propose its own platform fee, its own provider earnings, and **its own PaymentIntent id** — which is in direct tension with ruling 41's immovable clause. Amounts, not rates, so outside ruling 42's stated scope; the omit list is also load-bearing for the `InsertServiceBooking` TYPE that checkout writes, so a strip needs a route-level allow-list rather than a schema omit. **Filed, not silently changed** |
+| `insertServiceBookingSchema` | `platformFee`, `insuranceFee`, `providerEarnings`, **`stripePaymentIntentId`**, `status` | `#PS15` — **CLOSED by ruling 46** | **FIXED (PS15 lane, `281d355c`+1).** `POST /api/bookings` (`routes.ts:4588`, no client consumer) spread the parsed body into `createServiceBooking`, so a client could propose its own platform fee, its own provider earnings, and **its own PaymentIntent id**. Ruling 46 adjudicates that last one as a **VIOLATION of ruling 41, not a tension**. Two corrections to this row, found by executing it: (a) the omit list is load-bearing for the `InsertServiceBooking` TYPE only for `platformFee`/`insuranceFee`/`providerEarnings`/`status` — **not** for `stripePaymentIntentId`, since NO caller of `createServiceBooking` passes it and its sole production writer is `stampAuthorization`, so the clean schema `.omit()` applies; (b) a route-level allow-list was needed anyway, and is now **pick-based** — the structural answer to the class (`#PS18`). `totalAmount` also joined the strip (§14: it was body-trusted while `service.price` fed the revenue counter one line later). |
 
 **Also filed, adjacent and out of the rate class:** the same `insertLocalExpertFormSchema` exposes the
 PRIVILEGE-GRANT family `canBookOnBehalf`, `isPersonalAssistant`, `paAccessGrantedAt`,
@@ -760,7 +760,8 @@ annotations is a PLACEHOLDER and must be replaced with a real task number when o
 | `#PS3` | guard-coverage | **CLOSED** by ruling 43 (predicate fixed + self-tested + in CI) |
 | **`#PS13`** | STATE_DIVERGENCE (new) | **INVENTORY-RECOVERY LAYER** — SD-1's exposed gap. Bookings got three recovery layers (#433/#434 → rulings 38/39/40); **slots got none of their own.** Capacity is reclaimed only as a side-effect of a booking row being voided, so any path that consumes capacity without a booking row (or that orphans one) leaks it permanently — `releaseSlot` has no scheduled caller and no reconciliation. Detection exists for money drift; there is no equivalent for `vendor_availability_slots.booked_count` vs. its live claims |
 | **`#PS14`** | MONEY_INTEGRITY (new) | The two `commissionBandKey` admin setters diverge; `content.routes.ts:807` validates nothing (see 8.2) |
-| **`#PS15`** | MONEY_INTEGRITY (new) | `POST /api/bookings` mass-assigns `platformFee`/`providerEarnings`/**`stripePaymentIntentId`** (see 8.2) |
+| **`#PS15`** | MONEY_INTEGRITY (new) | **CLOSED** by ruling 46 (PS15 lane) — the PI field stripped in three layers, the body converted to a pick-based allowlist, and `payment_provenance_unverified` added to the drift vocabulary for the rows already on disk |
+| **`#PS18`** | ARCHITECTURE (new) | **SCHEMA-POSTURE CONVERSION — the structural answer to the standing class (ruling 46 / CLAUDE.md §19).** All **186** `createInsertSchema(...)` calls in `shared/schema.ts` are `.omit()`-based; **ZERO** are `.pick()`-based. A denylist schema fails OPEN — a privileged column added to a table later is client-settable until someone remembers to omit it, which is how `revenueShareRate`, the dormant fee/payout family, and `stripePaymentIntentId` all became mass-assignable without anyone deciding they should be. Scope: convert every schema that is `.parse`d from a request body (exactly four at ruling 42's sweep, plus any derived body schema) to pick-based allowlists, then make new-schema-must-be-pick a guard. **Committed evidence, built by the PS15 lane while the trace was fresh:** `server/__tests__/booking-birth-provenance.db.test.ts` **B6** — the same fake privileged column, reachable under `.omit()`, unreachable under `.pick()`, plus a key-set assertion on the one allowlist that exists. NOT a grep-fixable class: the money guard's mass-assignment pass knows only the RATE and PAYMENT-IDENTITY predicates, and says so in its negative space. |
 | **`#PS16`** | ACCESS (new) | Expert-application form mass-assigns the PA/booking-on-behalf privilege grants (see 8.2) |
 | **`#PS17`** | infrastructure | **`DATABASE_URL` provisioning for provider-sigma Phase 1** — see 8.6 |
 
@@ -836,3 +837,101 @@ WHERE b.status = 'confirmed'
 applies with full force — this is the same shape as its `booking_confirmed_no_pi` classification, the
 drift job already records it, and a fourth unreviewed writer on the money path is exactly what that
 rule forbids. Quarantine by hand, per row, with the slot released deliberately.
+
+---
+
+## 9. `#PS15` execution — booking-birth provenance (PS15 lane, ruling 46, base `281d355c`)
+
+### 9.1 Phase-0 trace (re-verified at `281d355c`; nothing contradicted the brief)
+
+| Question | Answer (file:line) |
+|---|---|
+| Which schema admits `stripePaymentIntentId`? | `insertServiceBookingSchema`, `shared/schema.ts:1589` — `.omit()`-based, and the omit list never named it |
+| INSERT path | `server/routes.ts:4591` `insertServiceBookingSchema.parse(req.body)` → spread into `storage.createServiceBooking` at `:4599` |
+| UPDATE path | **NONE EXISTS.** There is no `updateServiceBooking` and no `PATCH /api/bookings`. The only writers of `service_bookings` are `createServiceBooking`, `updateServiceBookingMetadata` (jsonb merge, fixed shape), `updateServiceBookingStatus` (status only), and the dispute handler's `bookingMetadata` merge (`bookings.ts:677`) — **none takes a body-parsed insert schema**. So the update half of the brief's requirement is satisfied by absence, verified rather than assumed |
+| Sibling endpoints sharing the schema | **NONE.** `insertServiceBookingSchema` is imported by `trips.routes.ts:28`, `admin.routes.ts:22`, `experts.routes.ts:32`, `content.routes.ts:72`, `payments.routes.ts:29` and `routes.ts:23` — **all six are unused imports**; `routes.ts:4591` is the ONLY `.parse` site in the repo |
+| Sole production writer of the column | `stampAuthorization`, `server/services/checkout-claim.service.ts:177` — an atomic conditional UPDATE on the provisional predicate, after the Stripe call |
+
+### 9.2 Caller audit — does any legitimate flow ride the mass-assignment?
+
+**No.** Every caller was enumerated and each moved or was already clean; none earned an exemption.
+
+| Caller | file:line | Passes `stripePaymentIntentId`? | Disposition |
+|---|---|---|---|
+| `POST /api/bookings` (the defect) | `routes.ts:4591`→`:4599` | **YES, from `req.body`** | **FIXED** — pick-based allowlist; the field is unreachable |
+| Cart checkout | `payments.routes.ts:926` | No | Unchanged. It stamps the PI later via `stampAuthorization`, which is the correct rail |
+| Expert/provider booking request | `routes.ts:1430` (`as any`) | No | Unchanged; now also covered by the storage strip |
+| Transport commerce | `stripe.service.ts:116` (direct drizzle insert) | No | Unchanged — writes no PI at all |
+| Beta seeder | `seeds/beta-reviews-bookings.ts:362` (direct drizzle insert) | **YES**, synthetic `pi_…` | **Left as-is deliberately.** It bypasses both the schema and `createServiceBooking`, so it is not a client-reachable path. It IS a known producer of indeterminate-provenance rows, and is named in the `payment_provenance_unverified` classification's own comment so the first hits on a seeded bench are not mistaken for an attack |
+| Client code | — | — | **ZERO consumers of bare `POST /api/bookings`** — every `client/src` hit is a sub-path (`/process-cart`, `/confirm-payment`, `/bulk-status`, `/:id/dispute`, …) |
+
+**No legitimate caller had to be re-pointed**; the one that rode the mass-assignment was the defect itself.
+
+### 9.3 Schema posture — the real finding
+
+**186 `createInsertSchema(...)` calls in `shared/schema.ts`. `.omit()`-based: 186 — every single one. `.pick()`-based: ZERO.**
+The whole client-reachable schema layer is a **denylist**. Filed as **`#PS18`** (see §8.4), with committed
+evidence (**B6**) built here. Not converted by this lane, per the brief.
+
+### 9.4 Archaeology — REPORTED, not guessed (and the prod question)
+
+**Counts against the shared dev bench: NOT OBTAINABLE.** `DATABASE_URL` is still unset and the bench is
+still owner-side (§8.6, `#PS17`) — unchanged at `281d355c`. The Stripe MCP connector visible in the
+environment was **deliberately not used** (unverified account binding; standing rule is Stripe test mode
+only). The query below was written and executed against the lane's local, freshly-migrated Postgres:
+**A=0 total rows, B=0 stamped, C=0 spine-attributable, D=0 indeterminate** — which proves the QUERY runs,
+and proves nothing whatever about the population.
+
+```sql
+-- Provenance of service_bookings.stripe_payment_intent_id. A PI the checkout spine wrote ALWAYS
+-- carries the §15b pre-flight marker (markStripeAttempt runs immediately before
+-- paymentIntents.create; both stamping paths act only on rows that already have it).
+SELECT
+  count(*) FILTER (WHERE stripe_payment_intent_id IS NOT NULL)                     AS stamped,
+  count(*) FILTER (WHERE stripe_payment_intent_id IS NOT NULL
+                     AND booking_details ? 'stripeAttemptAt')                      AS spine_attributable,
+  count(*) FILTER (WHERE stripe_payment_intent_id IS NOT NULL
+                     AND NOT (COALESCE(booking_details,'{}'::jsonb) ? 'stripeAttemptAt')) AS indeterminate
+FROM service_bookings;
+
+-- Characterization of the indeterminate set (status / whether it carries a checkout key / whether it
+-- holds slot capacity / age range) — the shape that tells a human WHICH cause is likely.
+SELECT status, (idempotency_key IS NOT NULL) AS has_checkout_key, (slot_id IS NOT NULL) AS holds_slot,
+       count(*) AS n, min(created_at) AS earliest, max(created_at) AS latest
+FROM service_bookings
+WHERE stripe_payment_intent_id IS NOT NULL
+  AND NOT (COALESCE(booking_details,'{}'::jsonb) ? 'stripeAttemptAt')
+GROUP BY 1,2,3 ORDER BY n DESC;
+```
+
+**Expected characterization when it IS run,** stated in advance so the result is interpretable rather
+than alarming: three causes produce the identical signature and cannot be separated after the fact —
+(1) rows predating ruling 38 (`markStripeAttempt` is new as of `2026-08-06`), which on any bench with
+history will be the **large majority**; (2) `seeds/beta-reviews-bookings.ts` rows, identifiable by their
+`pending`/`confirmed` status with **no** `idempotency_key` and **no** `slot_id`; (3) the PS15
+mass-assignment. A genuine PS15 row is the one that is **recent** AND carries a PI Stripe has never
+heard of — which is exactly the residue the new `payment_provenance_unverified` classification isolates,
+because it also clears any row Stripe's own `metadata.bookingIds` vouches for.
+
+> **THE PROD QUESTION, as put to the decision-maker.** *This lane cannot query prod and did not try.*
+> On production, how many `service_bookings` rows carry a `stripe_payment_intent_id` with no
+> `stripeAttemptAt` marker, and of those, how many are **recent enough to postdate ruling 38** (i.e.
+> cannot be explained as legacy)? Any row in that residue is one where the platform cannot prove the
+> PaymentIntent came from Stripe. **Do not repair whatever it returns** — ruling 40's DETECT-DON'T-REPAIR
+> applies with full force, and from now on the drift job records exactly this set as
+> `payment_provenance_unverified` on `/admin/reconciliation`, bounded by the scan window so the backlog
+> is not indicted wholesale. The decision needed is only whether to run a **one-off full-table pass** of
+> the query above to size the historical set, which is a read and safe.
+
+### 9.5 What changed
+
+`shared/schema.ts` (omit + the new `createBookingRequestSchema` allowlist + the
+`payment_provenance_unverified` kind) · `server/storage.ts` (`createServiceBooking` strip, layer 2) ·
+`server/routes.ts` (`POST /api/bookings`: allowlist parse, server-derived `totalAmount` and split via
+the existing `resolveServiceOwnerShareRate`) · `server/jobs/stripeReconciliation.ts` (the B2 provenance
+pass + the `has_stripe_attempt` column on the cart read) · `client/src/pages/admin/reconciliation.tsx`
+and `server/services/email.service.ts` (the new kind's plain-language label on both ops surfaces) ·
+`scripts/check-money-endpoints.cjs` (payment-identity predicate + 10 self-test fixtures + restated
+negative space) · `server/__tests__/booking-birth-provenance.db.test.ts` (**B1–B6**, 7 proofs).
+**No migration, no schema DDL** — `RECONCILIATION_EXCEPTION_KINDS` deliberately has no DB CHECK
+(migration-159/171/177 posture), so there is no publish-time push trap.

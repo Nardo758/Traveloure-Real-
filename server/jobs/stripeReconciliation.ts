@@ -183,6 +183,12 @@ interface CartBookingRow {
   travelerId: string | null;
   createdAt: Date | null;
   hasReconciliationException: boolean;
+  /** PS15 / ruling 46 — the §15b pre-flight marker `bookingDetails.stripeAttemptAt`. Its presence
+   *  is the ONLY evidence in the row that this booking's PaymentIntent came from the checkout
+   *  spine (`markStripeAttempt` writes it immediately before `paymentIntents.create`, and both
+   *  stamping paths act only on rows that already carry it). A stamped row without it has
+   *  UNVERIFIABLE payment provenance — see the `payment_provenance_unverified` classification. */
+  hasStripeAttempt: boolean;
 }
 
 function mapCartRow(r: any): CartBookingRow {
@@ -196,12 +202,14 @@ function mapCartRow(r: any): CartBookingRow {
     travelerId: r.traveler_id ?? null,
     createdAt: r.created_at ? new Date(String(r.created_at)) : null,
     hasReconciliationException: Boolean(r.has_recon_exception),
+    hasStripeAttempt: Boolean(r.has_stripe_attempt),
   };
 }
 
 const CART_COLUMNS = sql`
   id, status, stripe_payment_intent_id, total_amount, platform_fee, idempotency_key,
-  traveler_id, created_at, (booking_details ? 'reconciliationException') AS has_recon_exception
+  traveler_id, created_at, (booking_details ? 'reconciliationException') AS has_recon_exception,
+  (COALESCE(booking_details, '{}'::jsonb) ? 'stripeAttemptAt') AS has_stripe_attempt
 `;
 
 // ── The job ──────────────────────────────────────────────────────────────────────────────────
@@ -550,6 +558,83 @@ async function scanCartRail(args: {
         },
       });
     }
+  }
+
+  // ── B2. PROVENANCE drift: a PaymentIntent id nothing can vouch for (PS15, ruling 46) ────────
+  // Rulings 39/40/41 gate the ordering-1 capability on the PROVENANCE of the PaymentIntent id —
+  // that the platform itself obtained it from Stripe as a verified actor — and hold, immovably,
+  // that a CLIENT-supplied PaymentIntent id may never resolve or stamp anything. Ruling 41 proved
+  // the PROMOTION side of that clause (N17c). PS15 was the BIRTH side: `POST /api/bookings` spread
+  // a body-parsed `insertServiceBookingSchema` into `createServiceBooking`, so a crafted request
+  // could create a booking already carrying its own PI. Ruling 46 closes that (schema `.omit()`,
+  // storage strip, route allowlist) — but a fix stops NEW rows and says nothing about rows already
+  // on disk, and the detector's job is exactly the rows already on disk (§17).
+  //
+  // THE PREDICATE follows ruling 41's invariant as STATED — the PROVENANCE of the id, i.e. that the
+  // platform itself obtained it from Stripe — rather than any one implementation of it. So there are
+  // TWO independent forms of server provenance, and EITHER clears the row:
+  //
+  //   (1) THE §15b PRE-FLIGHT MARKER. `markStripeAttempt` writes `bookingDetails.stripeAttemptAt`
+  //       immediately BEFORE `paymentIntents.create` — the marker the sweep already relies on to
+  //       know a row may have reached Stripe — and BOTH stamping paths (`stampAuthorization` and the
+  //       ordering-1 `resolveAndStamp`) only ever act on rows the checkout already marked. Its
+  //       presence means the spine wrote this PI.
+  //   (2) STRIPE'S OWN CORROBORATION. The drift job reads the PaymentIntent from the Stripe API with
+  //       the platform's OWN secret key — a `SERVER_VERIFIED_ACTORS` read (§17b/ruling 40). If that
+  //       PaymentIntent's `metadata.bookingIds` NAMES this booking, then Stripe is vouching for the
+  //       linkage and the provenance is established independently of any marker. Ruling 41 exists
+  //       precisely so this does not have to be re-litigated per actor.
+  //
+  // Corroboration is not a loophole a forger can walk through: `metadata.bookingIds` is written by
+  // `createPaymentIntent` server-side, so a real PaymentIntent lifted from somewhere else names the
+  // bookings it actually paid for — never the row it was planted on — and a PaymentIntent that does
+  // not exist at Stripe is never seen at all. Both fail (2), as they must.
+  //
+  // WHAT THIS CANNOT TELL YOU, stated rather than hidden: once a row fails both, the PS15
+  // mass-assignment, a seed (`server/seeds/beta-reviews-bookings.ts` mints synthetic `pi_…` values),
+  // and a row predating ruling 38 produce the IDENTICAL signature. That indistinguishability IS the
+  // finding — it is why the kind is *unverified* and not *forged*, why it is a `warning`, and why
+  // the job does nothing about it. DETECT, DON'T REPAIR (§17): no promotion, no void, no refund, no
+  // silent trust. A human reads the row and decides.
+  //
+  // Also note what bounds the blast radius on a first production run: `loadCartBookings` only loads
+  // rows created inside the scan window OR named by an in-window PaymentIntent, so a backlog of old
+  // bookings is not dragged in and indicted wholesale.
+  for (const r of rows) {
+    if (!inScope(r.id)) continue;
+    if (!r.stripePaymentIntentId) continue;
+    if (r.hasStripeAttempt) continue; // (1) the spine wrote it
+    const pi = piById.get(r.stripePaymentIntentId);
+    if (pi && splitBookingIds(pi.metadata?.bookingIds).includes(r.id)) continue; // (2) Stripe vouches
+    exceptions.push({
+      rail: "cart",
+      kind: "payment_provenance_unverified",
+      severity: "warning",
+      // Keyed on the (booking, PI) PAIR, not the run: append-only + ON CONFLICT DO NOTHING means a
+      // row that stays unverifiable for a month is ONE exception stamped with the run that first
+      // saw it, while `exceptions_detected` keeps reporting it (§17 rule 1).
+      dedupeKey: `cart:payment_provenance_unverified:${r.id}:${r.stripePaymentIntentId}`,
+      bookingId: r.id,
+      paymentIntentId: r.stripePaymentIntentId,
+      expectedAmount: round2(parseFloat(r.totalAmount || "0") + parseFloat(r.platformFee || "0")),
+      currency: pi?.currency ?? null,
+      details: {
+        bookingStatus: r.status,
+        // Whether Stripe knows this id at all is the single most useful triage fact, so record it —
+        // but only for PIs inside the scan window. "Not in this window's listing" is NOT "absent
+        // from Stripe", and guessing about unseen PIs is the discipline the sweep established.
+        paymentIntentSeenInWindow: Boolean(pi),
+        paymentIntentStatus: pi?.status ?? null,
+        hasCheckoutIdempotencyKey: Boolean(r.idempotencyKey),
+        note:
+          "This booking carries a PaymentIntent id that neither form of server provenance supports: " +
+          "no `bookingDetails.stripeAttemptAt` pre-flight marker (so the checkout spine did not " +
+          "write it) AND no corroborating `metadata.bookingIds` from Stripe naming this booking. " +
+          "Indistinguishable causes: the PS15 mass-assignment on POST /api/bookings (closed by " +
+          "ruling 46), a seeded fixture, or a row predating ruling 38. Not repaired and not trusted " +
+          "— a human decides (rulings 41/46, §17 DETECT-DON'T-REPAIR).",
+      },
+    });
   }
 
   // ── C. REFUND drift: Stripe reversed money the DB never recorded (rulings 12/18) ────────────
