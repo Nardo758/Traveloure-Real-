@@ -1054,16 +1054,118 @@ router.get("/api/admin/reconciliation/run-now", isAuthenticated, async (req, res
   }
   try {
     const { runStripeReconciliation } = await import("../jobs/stripeReconciliation");
-    const result = await runStripeReconciliation();
+    const result = await runStripeReconciliation({ triggeredBy: "manual" });
     res.json({
       ...result,
-      note: result.mismatches.length > 0
-        ? "Mismatches logged to admin_notifications. Cross-check each in the Stripe dashboard."
-        : "Clean — all charges and confirmed bookings align.",
+      note: result.status === "skipped"
+        ? "Skipped — STRIPE_SECRET_KEY is not set, so nothing was compared. The run is recorded as skipped."
+        : result.exceptions.length > 0
+          ? `${result.exceptions.length} drift exception(s) detected (${result.newExceptions} newly recorded). ` +
+            "They are persisted — see the Drift exceptions panel below. Cross-check each in the Stripe dashboard."
+          : "Clean — every Stripe charge, PaymentIntent and refund in the window aligns with the database.",
     });
   } catch (err: any) {
     console.error("Reconciliation run-now error:", err);
     res.status(500).json({ message: "Failed to run reconciliation", error: err.message });
+  }
+});
+
+/**
+ * GET /api/admin/reconciliation/exceptions
+ *
+ * THE PERSISTED DRIFT SURFACE (reconciliation-detection lane, ruling 40). The daily job scans
+ * BOTH rails — cart checkout (`service_bookings`) and the still-live legacy `bookings` — and
+ * writes one APPEND-ONLY row per distinct drift fact. Log lines are not a surface: a drift found
+ * at 03:00 has to still be readable at 09:00 without grepping a container.
+ *
+ * SIBLING, NOT REPLACEMENT, of GET /api/admin/bookings/reconciliation-exceptions (ruling 39):
+ * that one shows exceptions a PAYMENT SIGNAL recorded on a booking row it could not promote — it
+ * can only ever describe a row that exists. This one is the SCAN's output and can describe money
+ * with no row behind it at all. Both are listed on /admin/reconciliation.
+ *
+ * EVERY ROW HERE NEEDS A HUMAN. This job never repairs (its one narrow exception, a
+ * PI-succeeded/still-provisional claim, goes through the existing shared promotion and therefore
+ * does not appear here unless that promotion failed).
+ *
+ * Query: ?limit= (default 100, max 500) · ?kind= · ?rail=cart|legacy · ?since=<ISO>
+ */
+router.get("/api/admin/reconciliation/exceptions", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser(getUserId(req)!);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const limit = Math.min(Math.max(parseInt(String(req.query.limit ?? "100"), 10) || 100, 1), 500);
+    const kind = typeof req.query.kind === "string" && req.query.kind ? req.query.kind : null;
+    const rail = req.query.rail === "cart" || req.query.rail === "legacy" ? req.query.rail : null;
+    const since = typeof req.query.since === "string" && req.query.since ? new Date(req.query.since) : null;
+
+    const result = await db.execute(sql`
+      SELECT id, run_id, detected_at, rail, kind, severity, booking_id, payment_intent_id,
+             charge_id, expected_amount, actual_amount, currency, details
+      FROM reconciliation_exceptions
+      WHERE TRUE
+        ${kind ? sql`AND kind = ${kind}` : sql``}
+        ${rail ? sql`AND rail = ${rail}` : sql``}
+        ${since && !isNaN(since.getTime()) ? sql`AND detected_at >= ${since.toISOString()}` : sql``}
+      ORDER BY detected_at DESC
+      LIMIT ${limit}
+    `);
+
+    // The LAST RUN is part of the answer, not a separate question: an empty list means "clean"
+    // only if a run actually happened. Without this, a dead scheduler renders identically to a
+    // healthy platform — the exact failure this lane exists to close.
+    const lastRun = await db.execute(sql`
+      SELECT id, started_at, finished_at, triggered_by, status, window_start,
+             scanned_payment_intents, scanned_charges, scanned_refunds,
+             scanned_cart_bookings, scanned_legacy_bookings,
+             exceptions_detected, exceptions_new, promoted, note
+      FROM reconciliation_runs
+      ORDER BY started_at DESC
+      LIMIT 1
+    `);
+
+    res.json({
+      exceptions: result.rows,
+      count: result.rows.length,
+      lastRun: lastRun.rows[0] ?? null,
+      note:
+        "Drift between Stripe and the database, detected by the daily scan across BOTH booking rails. " +
+        "Append-only: a drift that persists is ONE row stamped with the run that first saw it. " +
+        "Nothing here has been auto-repaired — check each paymentIntentId in Stripe before acting.",
+    });
+  } catch (err: any) {
+    console.error("Reconciliation exceptions list error:", err);
+    res.status(500).json({ message: "Failed to fetch reconciliation exceptions", error: err.message });
+  }
+});
+
+/**
+ * GET /api/admin/reconciliation/runs
+ *
+ * The run log. A clean pass is RECORDED, so "no exceptions" and "the job has not run since the
+ * deploy three weeks ago" are distinguishable — which they were not before this lane.
+ */
+router.get("/api/admin/reconciliation/runs", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser(getUserId(req)!);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const limit = Math.min(Math.max(parseInt(String(req.query.limit ?? "30"), 10) || 30, 1), 200);
+    const result = await db.execute(sql`
+      SELECT id, started_at, finished_at, triggered_by, status, window_start,
+             scanned_payment_intents, scanned_charges, scanned_refunds,
+             scanned_cart_bookings, scanned_legacy_bookings,
+             exceptions_detected, exceptions_new, promoted, note
+      FROM reconciliation_runs
+      ORDER BY started_at DESC
+      LIMIT ${limit}
+    `);
+    res.json({ runs: result.rows, count: result.rows.length });
+  } catch (err: any) {
+    console.error("Reconciliation runs list error:", err);
+    res.status(500).json({ message: "Failed to fetch reconciliation runs", error: err.message });
   }
 });
 

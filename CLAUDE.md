@@ -119,6 +119,54 @@ The legacy `bookings` rail is **still live** (`/booking-demo`, `/itinerary-compa
 no-ops on ids it does not own. Proven by `server/__tests__/checkout-payment-promotion.db.test.ts` (negatives
 **N17/N18/N19**); the sweep's 9/9 suite is untouched and still green — redundancy means every layer stands alone.
 
+### §17 — Drift DETECTION rule (one job, both rails; detect, don't repair — ruling 40)
+
+**GOVERNING RULE:** the daily Stripe-vs-DB reconciliation job (`server/jobs/stripeReconciliation.ts`) scans
+**BOTH booking rails** — cart checkout (`service_bookings`) and the still-live legacy `bookings` — and its
+findings are **persisted rows**, never only log lines. Until this landed the scan read the legacy table only,
+so **cart-checkout charges (the primary checkout) were invisible to it**: `service_bookings` ids never appear
+in the legacy table, so the queries matched zero rows and errored on nothing — the same disjoint-id-space
+failure §15c fixed on the promotion side, one layer up. Recovery was three-layered while **detection was
+one-eyed**.
+
+**DETECT, DON'T REPAIR.** The job writes exception rows; it never promotes at will, voids, refunds, cancels or
+invents a booking. Repair belongs to the three recovery layers (§15b/§15c) plus a human — a detector that also
+repairs is a fourth, unreviewed writer on the money path. **ONE narrow exception:** a PaymentIntent Stripe says
+succeeded whose booking is still an unpromoted claim is handed to the **EXISTING shared** `promotePaidCheckout`
+with `actor="reconciliation"`, diary-logged — that is recovery layer 2's own logic arriving late, not new
+repair code. Nothing else.
+
+**Rules that must not be weakened:**
+1. **Exceptions are APPEND-ONLY** (`reconciliation_exceptions`, migration 177). No UPDATE, no DELETE path.
+   Re-detection is absorbed by the UNIQUE `dedupe_key` + `ON CONFLICT DO NOTHING`, so a drift that persists a
+   month is ONE row stamped with the run that FIRST saw it — while the run row records `exceptions_detected`
+   separately from `exceptions_new`, so "still drifting" stays visible without mutating a recorded fact.
+2. **Every pass writes a `reconciliation_runs` row — including a clean one and a skipped one.** Silence must
+   be distinguishable from the job not having run; the previous version logged "Clean" to stdout and left no
+   durable trace, so a healthy quiet day and a scheduler dead since the last deploy rendered identically.
+3. **The expected charge is SERVER-DERIVED** — `SUM(total_amount + platform_fee)` over the PaymentIntent's own
+   booking rows (§14), with a tolerance that is the checkout's accumulated `.toFixed(2)` rounding, **not** a
+   rate (§8). Never taken from Stripe, never from a client.
+4. **No new writes were required on the checkout path.** The scan keys on linkage that already exists:
+   `service_bookings.stripe_payment_intent_id`, `pi.metadata.bookingIds`, the `idempotency_key` sibling
+   convention (`key`, `key#1`, …), `refunds.stripe_refund_id`, and the legacy `charge.metadata.bookingId`.
+   Adding a write to make detection easier would put the detector inside the thing it audits.
+5. **`GET /api/admin/reconciliation/exceptions` is a SIBLING of `GET /api/admin/bookings/reconciliation-exceptions`
+   (§15c), not a replacement.** That one shows exceptions a payment SIGNAL recorded on a booking row it could
+   not promote — it can only ever describe a row that exists. This one is the SCAN's output and can describe
+   money with no row behind it at all. Both are listed on `/admin/reconciliation`.
+
+**§17b — amends §15c's "webhook only" clause.** Ordering-1 capability (resolve bookings from
+`pi.metadata.bookingIds` and stamp a PI onto an unstamped claim) is gated on the PaymentIntent being **Stripe's
+own word**, and is now open to `SERVER_VERIFIED_ACTORS` = `{webhook, reconciliation}`: a signature-verified
+delivery, **or** the drift job's authenticated read of the PaymentIntent from the Stripe API with the platform's
+own secret key. Ruling 39 wrote "webhook only" because the signed delivery was then the only server-verified
+source that existed. **The clause that does NOT move: a CLIENT-supplied PaymentIntent may never resolve or stamp
+anything** (proven by N17c). See ruling 40.
+
+Proven by `server/__tests__/reconciliation-detection.db.test.ts` (negatives **N20/N21/N22**, 15 proofs); the
+sweep's 9/9 and the promotion suite's 11/11 are untouched and green.
+
 ### §16 — Affiliate-outbound rule (agent-booking, ratified Jul 23, 2026)
 
 **GOVERNING RULE (decision-maker directive):** affiliate/partner content must behave like the Discover feeds —

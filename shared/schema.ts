@@ -5783,6 +5783,113 @@ export const refunds = pgTable("refunds", {
   paymentIntentIdx: index("idx_refunds_payment_intent").on(table.stripePaymentIntentId),
 }));
 
+// ══ RECONCILIATION DETECTION (migration 177, reconciliation-detection lane) ═════════════════
+//
+// The daily Stripe-vs-DB drift job's ops-visible output. Recovery on the money path is
+// three-layered (ruling 38's TTL sweep, ruling 39's webhook + client-confirm promotion) but
+// DETECTION used to be one-eyed — `server/jobs/stripeReconciliation.ts` scanned only the legacy
+// `bookings` table, so cart checkout (the primary checkout) never appeared in a drift report.
+//
+// Declared HERE, not only in migration 177: the deploy push is authoritative over tables AND
+// indexes it does not find in this file and will drop them, after which the stamped migration
+// never recreates them (CLAUDE.md deploy-push rule, both variants).
+
+/** One row per reconciliation pass — written for EVERY pass, including a clean one. A zero-
+ *  exception run and a job that never ran must not look the same from the admin surface. */
+export const reconciliationRuns = pgTable(
+  "reconciliation_runs",
+  {
+    id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+    startedAt: timestamp("started_at").defaultNow().notNull(),
+    finishedAt: timestamp("finished_at"),
+    /** scheduled | manual | test — `trigger` is a reserved word, hence the column name. */
+    triggeredBy: varchar("triggered_by", { length: 20 }).notNull().default("scheduled"),
+    /** running | completed | skipped | failed */
+    status: varchar("status", { length: 20 }).notNull().default("running"),
+    windowStart: timestamp("window_start"),
+    scannedPaymentIntents: integer("scanned_payment_intents").notNull().default(0),
+    scannedCharges: integer("scanned_charges").notNull().default(0),
+    scannedRefunds: integer("scanned_refunds").notNull().default(0),
+    scannedCartBookings: integer("scanned_cart_bookings").notNull().default(0),
+    scannedLegacyBookings: integer("scanned_legacy_bookings").notNull().default(0),
+    /** Every drift found this pass, including ones already on record from an earlier pass. */
+    exceptionsDetected: integer("exceptions_detected").notNull().default(0),
+    /** Rows this pass actually inserted (detected minus already-recorded). */
+    exceptionsNew: integer("exceptions_new").notNull().default(0),
+    /** The ONE narrow repair this job may perform — PI-succeeded / row-still-provisional handed
+     *  to the EXISTING shared promotion (`promotePaidCheckout`, actor `reconciliation`). */
+    promoted: integer("promoted").notNull().default(0),
+    note: text("note"),
+  },
+  (table) => ({
+    startedIdx: index("recon_runs_started_idx").on(table.startedAt),
+  }),
+);
+
+/** The canonical drift vocabulary. No DB CHECK (migration-159/171 posture) — this is the source
+ *  of truth, and the admin surface renders from it. */
+export const RECONCILIATION_EXCEPTION_KINDS = [
+  // ── CART rail (service_bookings) ──────────────────────────────────────────────────────────
+  /** A PaymentIntent succeeded and NO service_bookings row can be resolved from it (neither by
+   *  stamped PI id nor by its own `bookingIds` metadata). Customer billed, no record. */
+  "pi_succeeded_no_booking",
+  /** A PaymentIntent succeeded but its booking is still an unpromoted claim. The ONE case the
+   *  job may hand to the shared promotion; recorded as an exception when that fails. */
+  "pi_succeeded_claim_provisional",
+  /** A PaymentIntent succeeded and its booking is VOIDED/terminal (ruling 39's late-signal
+   *  reconciliation-exception state). Never resurrected — a human decides refund vs. re-book. */
+  "pi_succeeded_booking_voided",
+  /** A booking is `confirmed` (or otherwise paid-equivalent) with NO PaymentIntent stamped. */
+  "booking_confirmed_no_pi",
+  /** A booking is `confirmed` but its PaymentIntent is not in a succeeded state at Stripe. */
+  "booking_confirmed_pi_not_succeeded",
+  /** Stripe's captured amount and the server-derived total of the PI's booking rows disagree. */
+  "amount_mismatch",
+  /** Stripe holds a refund whose reversal never landed in the DB (`refunds` row / status). */
+  "refund_not_reversed",
+  // ── LEGACY rail (`bookings` — still live via /booking-demo and process-cart) ───────────────
+  "stripe_charge_no_booking",
+  "booking_no_stripe_charge",
+] as const;
+export type ReconciliationExceptionKind = (typeof RECONCILIATION_EXCEPTION_KINDS)[number];
+
+/** One row per DISTINCT drift fact. APPEND-ONLY: no app code carries an UPDATE or DELETE path
+ *  (item_transition_log / ruling 11 posture). Re-detection on a later pass is absorbed by the
+ *  UNIQUE `dedupeKey` (`ON CONFLICT DO NOTHING`), so a month-long drift is ONE row, while the
+ *  run rows keep recording that it is still being seen. */
+export const reconciliationExceptions = pgTable(
+  "reconciliation_exceptions",
+  {
+    id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+    runId: varchar("run_id").notNull().references(() => reconciliationRuns.id, { onDelete: "cascade" }),
+    detectedAt: timestamp("detected_at").defaultNow().notNull(),
+    /** cart (service_bookings) | legacy (bookings) */
+    rail: varchar("rail", { length: 20 }).notNull(),
+    kind: varchar("kind", { length: 60 }).notNull(),
+    /** critical | warning */
+    severity: varchar("severity", { length: 20 }).notNull().default("critical"),
+    dedupeKey: text("dedupe_key").notNull(),
+    /** Soft reference, NO FK — the job must be able to name a booking id that does not exist
+     *  (that is one of the drift cases), and an audit row outlives the row it indicts. */
+    bookingId: varchar("booking_id"),
+    paymentIntentId: varchar("payment_intent_id", { length: 255 }),
+    chargeId: varchar("charge_id", { length: 255 }),
+    /** DOLLARS — same precision/scale as service_bookings.total_amount. */
+    expectedAmount: decimal("expected_amount", { precision: 10, scale: 2 }),
+    actualAmount: decimal("actual_amount", { precision: 10, scale: 2 }),
+    currency: varchar("currency", { length: 10 }),
+    details: jsonb("details").notNull().default({}),
+  },
+  (table) => ({
+    dedupeIdx: uniqueIndex("recon_exc_dedupe_idx").on(table.dedupeKey),
+    detectedIdx: index("recon_exc_detected_idx").on(table.detectedAt),
+    runIdx: index("recon_exc_run_idx").on(table.runId),
+  }),
+);
+
+export type ReconciliationRun = typeof reconciliationRuns.$inferSelect;
+export type ReconciliationException = typeof reconciliationExceptions.$inferSelect;
+
 // AI cost tracking (migration 025b). MUST stay byte-for-byte equivalent to
 // server/migrations/025b_ai_cost_tracking.sql — the deploy runs an automatic drizzle-kit push
 // from this file, and the push is authoritative over BOTH tables and indexes it does not find
