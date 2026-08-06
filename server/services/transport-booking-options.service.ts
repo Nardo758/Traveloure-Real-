@@ -273,7 +273,7 @@ async function populateMultiDayPasses(
 // 031_transport_commerce_fee_config migration has run.
 // ============================================================================
 
-const TRANSPORT_COMMISSION_DEFAULT = 0.10; // 10% — within spec range 4-12%
+const TRANSPORT_COMMISSION_DEFAULT = 0.10; // fee-literal-ok: documented last-resort fallback BEHIND the booking_fee_configs lookup in resolveTransportCommissionRate() below — the §8 safe-failure posture (same as coordination_floor and getFee's DEFAULT_FEE_CENTS). Surfaced by the ruling-42 fee-gate predicate fix; 10% is within spec range 4-12%
 const AFFILIATE_MARGIN_DEFAULTS: Record<string, number> = {
   "12go": 0.12,
   omio: 0.08,
