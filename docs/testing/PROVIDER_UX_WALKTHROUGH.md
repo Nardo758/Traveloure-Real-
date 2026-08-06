@@ -1,10 +1,13 @@
-# Provider-UX-Walkthrough — Pass 1 Findings (pre-money surfaces)
+# Provider-UX-Walkthrough — Findings (Pass 1 + Pass 2)
 
-**Lane:** `Provider-UX-Walkthrough` · **Pass 1 of 2** (Pass 2 remains BLOCKED on the provider-sigma Phase 2 Stripe-Connect fixture)
-**walked@`ba168d0c5039f61cb518bb3ec9e6b51eb96a8ccb`** (main at Pass start, Aug 6 2026 08:04 ET).
-Main moved mid-Pass to `d4f59bb7` (PR #435, reconciliation drift job — server-side money rail only; no provider-console
-surface in its diff scope was walked after the move, so every finding below is as-of `ba168d0c`.)
-**Status:** Pass 1 complete. **HARD STOP** — awaiting Leon's review before Pass 2.
+**Lane:** `Provider-UX-Walkthrough` · **Both passes complete.**
+**walked@`ba168d0c5039f61cb518bb3ec9e6b51eb96a8ccb`** (main at Pass-1 start, Aug 6 2026 08:04 ET; Pass 2 walked the same
+sha the same day). Main moved mid-Pass-1 to `d4f59bb7` (PR #435, reconciliation drift job — server-side money rail only;
+no provider-console surface in its diff scope was walked after the move, so every finding is as-of `ba168d0c`.)
+**Status:** Pass 1 complete (reviewed); **Pass 2 complete** — dispatched on the decision-maker's explicit unblock
+("continue with phase two"), with the sigma Phase 2 Stripe-Connect fixture substituted by a sandbox-constructed
+equivalent (see the Pass 2 section's environment note). Stripe-dependent legs are graded only as far as the ruling-38
+declared-unavailable contract allows and are explicitly marked env-limited.
 
 ## Environment & method (hermetic sandbox)
 
@@ -133,8 +136,107 @@ and the discovery that Logout doesn't log them out (B1).
 - **Q4 (benchmark provenance):** Performance's "Category Average $280 / Top Performers $450" render against a zero-data account — live numbers or placeholders? (Screen can't tell; not investigated per no-code-reading rule.)
 - **Q5 (attestation scope):** Are the step-3 insurance/licenses attestations intended to be universal across all 60 offering types (F1), or offering-conditional?
 
-## Pass 2 preconditions (unchanged from dispatch)
+---
 
-Blocked on BOTH: (a) this Pass-1 review, and (b) the provider-sigma Phase 2 booking-ready Stripe-Connect fixture registered
-in the bench. Pass 2 will additionally need a real `sk_test` key in the sandbox for the Stripe-adjacent surfaces this Pass
-could only observe erroring (Verify Owner ID, Connect onboarding, Request Payout).
+# Pass 2 — money-path experience (walked Aug 6, 2026, same sha)
+
+## Environment note (what substituted for the sigma fixture)
+
+The sigma Phase 2 fixture does not exist in this sandbox and no real Stripe test key was available. The fixture used
+instead: `ux-walkthrough-1` (approved provider) + the `ux-walkthrough Airport Transfer KIX–Kyoto` service **approved and
+activated through the real admin UI** (`/admin/service-approvals` — toast: "Service approved · It's now live and
+bookable") + the existing Aug-20 slot (capacity 3). Traveler side: a fresh `ux-walkthrough-traveler-1@traveloure.test`
+account per the dispatch's open-decision-3 recommendation. Money motion was produced by the **real checkout claim rail**
+under the ruling-38 declared-unavailable contract (stub key → claim written, Stripe 503, nothing committed), plus two
+pieces of explicit fixture surgery mirroring documented server behavior: one claim promoted to `confirmed` with a
+stamped fake PI (§15c money-leg only — so **no app-layer emails/counters fired**; their timing is env-untestable), and
+two `provider_earnings` rows seeded to a known state ($60 `releasable` + $45 `held`).
+**Env-limited (explicitly NOT graded):** Stripe Connect onboarding, real payout execution, the PaymentElement leg, the
+"New Booking Request" email's post-authorization timing (#433), and the marked-row quarantine path of the sweep.
+
+## Pass 2 findings
+
+### BROKEN
+
+| id | sev | surface | sha | screenshot | description |
+|---|---|---|---|---|---|
+| P2-B1 | high | Money station (`/provider/money`) | ba168d0c | `p2-28-money-with-earnings.png` | Against a known ledger ($60 releasable + $45 held), the page tells **four contradictory stories at once**: top cards "Total Earnings **$0.00** · Pending **$60.00** · Available **$0.00**"; Earnings Ledger "Available to pay out **$60.00** · Held in escrow $45.00 · Total earned **$105.00**"; Revenue Share "Gross $160.00 · Your Share **$120.00**"; Payout panel "Available Balance **$0.00**" with Request Payout disabled — while the ledger on the same screen says $60 is payable. A provider cannot answer "how much money do I have?" — the dispatch's own bar ("money confusion is trust erosion") is not met. |
+| P2-B2 | med-high | Provider Calendar | ba168d0c | `p2-19-calendar-after-sweep.png` (ghost after void), `p2-23-calendar-confirmed.png`/`p2-26-calendar-bookings-filter.png` (two "Booked" chips, one real booking) | **Expired (TTL-voided) checkout claims render as red "Booked" events.** The slot *count* corrects on void (3 open — good), but the event chip persists, so after one void + one real booking, Aug 20 shows two "Booked" chips for one paying traveler. The provider's timeline shows bookings that were never paid and will never arrive. |
+| P2-B3 | med | Customers station + Revenue Share | ba168d0c | `p2-27-customers-with-booking.png`, `p2-28-money-with-earnings.png` | The same expired-claim pollution reaches the aggregates: Customers shows "**2 bookings · $160 booked value**" and a "**Repeat**" badge (Today: "Repeat Customers 1") off ONE real booking; Revenue Share grosses $160/"Your Share $120". The traveler was told "nothing was booked"; the provider's stats say otherwise. *(Data-honesty face → sigma.)* |
+| P2-B4 | med | Booking record (Inbox → History) | ba168d0c | `p2-24-inbox-history.png` | There is **no booking detail view**. The fullest surface is an inert History card showing traveler name, service, money split, and "Requested 8/6/2026" — the *request* date. **The service date and time appear nowhere on the card**, nor party size or traveler context (the booking-brief pattern is absent); the only place the provider can learn *when to show up* is the calendar chip. Clicking the card does nothing. *(Positive within the same card: no trip-plan/routing state leaks — the NEVER row holds on-screen.)* |
+
+**P2-B1 repro:** 1. Seed/have earnings in both `releasable` and `held` states. 2. Open `/provider/money`. 3. Compare the four panels' numbers (top cards vs Payout Information vs Revenue Share vs Earnings Ledger). 4. Note Request Payout is disabled while "Available to pay out" is non-zero.
+**P2-B2 repro:** 1. As a traveler, book a slot and let checkout fail at the payment leg (claim written, unauthorized). 2. Let the TTL sweep void it (30 min TTL, 5-min tick). 3. Open the provider calendar: the slot count is restored, but a red "Booked · <service>" chip remains on the date.
+**P2-B3 repro:** after step 2 above, open `/provider/customers` — the voided claim counts as a booking and adds its amount to "booked value".
+
+### DIVERGED
+
+| id | sev | surface | sha | screenshot | reference | description |
+|---|---|---|---|---|---|---|
+| P2-D1 | high | Entire booking flow, provider side | ba168d0c | `p2-16-inbox-during-claim.png`, `p2-22-inbox-confirmed.png` | dispatch §7 (pre-declared high) | **No accept, decline, or cancel affordance exists anywhere.** Bookings arrive instant-confirmed; the Inbox — whose subtitle is "Everything that needs your response" — showed an empty queue at every stage (claim, confirmed), and the History card is inert. The dispatch's own words: *a provider who cannot say no will say it off-platform.* → **Q6**. |
+| P2-D2 | med | Money station zero-state | ba168d0c | `p1-48-station-money.png` (Pass 1, zero data) vs `p2-28-money-with-earnings.png` | Pass-1 D2, refined | The "Platform 70% \| You 30%" split Pass 1 recorded is the **zero-data default** — with real earnings the same widget renders "Platform Fee (25%) · Your Share (75%) · Platform 25% \| You 75%". So a brand-new provider's first look at Money shows a fabricated, far-worse-than-real split. The `/earn` "keep up to 94%" remains a third story. |
+
+### FRICTION
+
+| id | sev | surface | sha | screenshot | description |
+|---|---|---|---|---|---|
+| P2-F1 | med | Calendar/catalog during the claim window | ba168d0c | `p2-17-calendar-during-claim.png`, `p2-18-catalog-avail-during-claim.png` | An **unauthorized** claim renders identically to a paid booking: slot "3 open"→"2 open", panel "1 / 3 booked · available" — no distinct "held/claimed" state — while the traveler simultaneously sees "nothing was booked." Correctly, Inbox/Today surface nothing pre-authorization (the observable half of the #433 posture holds). The PROMOTE panel even mints a posting opportunity from the phantom count. *(UX face of sigma §C8.)* |
+| P2-F2 | med | Traveler mid-booking signup | ba168d0c | `p2-11-after-traveler-signup.png` | Creating an account at the booking gate dumps the traveler to `/dashboard`, abandoning the offering page and selected slot entirely — the booking must be rebuilt from scratch. Same context-loss family as Pass-1 F3, now costing the *provider* a sale. |
+| P2-F3 | low | Offering page + cart line | ba168d0c | `p2-08-offering-page.png`, `p2-12-checkout-attempt.png` | A literal "**Unknown**" renders under the service title and on the cart line (unset location default leaking to travelers). |
+| P2-F4 | low | Cart optimizer teaser | ba168d0c | `p2-12-checkout-attempt.png` | "Preview: up to 21% savings (~$0.17 less)" + "Plan score 15/100" on a single-item $100 cart — incoherent math presented as a $5.99 upsell. *(Traveler-side, adjacent; recorded because it sits on the provider's sales path.)* |
+
+### What worked (Pass 2)
+
+- **The ruling-38 traveler contract is exemplary on-screen:** "Payment provider unavailable — nothing was charged and nothing was booked. Your cart is exactly as you left it." And the cart truly was intact. (`p2-14`) The provider console's raw-JSON toasts (Pass-1 F10) now look like a solvable copy gap, not a platform norm.
+- **TTL void releases capacity correctly and immediately** — "3 open"/"0 / 3 booked" after the sweep; no capacity ghost (the ghost is the *event chip*, P2-B2). (`p2-19`, `p2-20`)
+- **Approval → live is instant and legible provider-side:** checklist ticks to "4 of 5", storefront banner flips to "Live · 1 approved service" with Preview/Copy/WhatsApp/X share tooling and honest caption. (`p2-05`, `p2-06`)
+- **The storefront and offering page are the platform's best surfaces:** correct attribution, trust panel ("Payment held until your booking completes… admin-reviewed… book and message in one place"), honest no-cancellation-policy fallback, and a deliberately numberless fee line — "A platform service fee is deducted from each booking; the provider receives the remainder." (`p2-07`, `p2-08`)
+- **History card money line is clear in isolation:** "You earn $60.00 · Booking total $80.00 · platform fee $20.00." (`p2-24`)
+
+## Fee-copy ledger (recorded verbatim, display only — verification is sigma's)
+
+| Surface | Copy/numbers shown |
+|---|---|
+| `/earn` provider track | "keep up to 94%" (Service Provider) · "keep 75%+" (Trip Planner / Local Expert) |
+| Traveler cart & payment | Subtotal $80.00 · **Platform fee $20.00** · Total $100.00 |
+| Provider History card | "You earn $60.00 · Booking total $80.00 · platform fee $20.00" |
+| Money, zero data (Pass 1) | "Platform 70% \| You 30%" |
+| Money, with data (Pass 2) | "Platform Fee (25%) −$40.00 · Your Share (75%) · Platform 25% \| You 75%" |
+| DB row (fixture observation) | total_amount 80.00 · platform_fee 20.00 · provider_earnings 60.00 |
+
+Net effect as displayed: the traveler pays **$100**, the provider is told they earn **$60** — the platform's take reads
+as **$40 of $100 (40%)** across the two sides' screens, while `/earn` promises "keep up to 94%". No two surfaces agree.
+→ **Q2/Q7**.
+
+## Pass 2 cross-references (sigma pairing)
+
+| This lane | Sigma item | Pairing |
+|---|---|---|
+| P2-F1 + P2-B2 (claim indistinct; expired ghosts) | **§C8** slot visibility | This lane records the human-visible states (open/claimed/confirmed/voided); sigma asserts the DB facts underneath. |
+| Money "Request Payout" disabled at its own $0; Connect "Not connected"; no transfer executed | **§C9** payout posture | The self-service affordance **renders** but was inert in every observed state; real-execution verification stays blocked on a genuine Stripe fixture. |
+| Email ledger below | **§D12** | Event-for-event. |
+| P2-B3 (phantom aggregates), fee-copy ledger | sigma data-honesty / `fee_bands` | Displays recorded verbatim; truth is sigma's lane. |
+
+**Hermetic email ledger (Pass 2):** traveler registration → welcome + verification (intercepted). Claim creation →
+**no email** (correct pre-authorization silence). Authorization/promotion → *untestable here* (fixture promotion
+bypassed the app layer); the #433 post-authorization-only assertion for "New Booking Request" remains open for a
+real-Stripe environment.
+
+## Updated narrative — the full onboarding-through-payout answer
+
+Pass 1's verdict stands: the provider survives onboarding, nearly quits during the invisible pending window, and finds a
+genuinely good console on the other side. Pass 2 completes the arc: **selling works better than getting paid.** The
+storefront and offering pages are the platform's most polished surfaces, approval-to-live is instant, and the checkout
+rail's failure behavior toward travelers is textbook honest. But the moment money exists, the console stops being
+trustworthy: the calendar shows bookings that never happened (P2-B2), Customers counts phantoms (P2-B3), and Money
+gives four mutually contradictory balances with a dead payout button under them (P2-B1). A Kyoto provider's first paid
+week ends with the question this console cannot answer: *"how much did I actually make, and when do I get it?"* — asked
+about numbers that don't match on one screen, regarding a booking whose date they can only find on a calendar chip
+(P2-B4), which they could not have declined (P2-D1). Pass 1's quit-point was the approval wait; Pass 2's is the first
+reconciliation of Money against memory.
+
+## Pass 2 questions for ruling (continuing the Pass-1 numbering)
+
+- **Q6 (booking control):** Is instant-book with no provider accept/decline/cancel the intended beta model (P2-D1)? If yes, the Inbox's "everything that needs your response" framing needs to change; if no, the affordance is a pre-beta build item.
+- **Q7 (Money source of truth):** Which of the four Money panels is authoritative — and should the others derive from it or disappear? (P2-B1; the Earnings Ledger's four-line model reads clearest as-built.)
+- **Q8 (expired-claim hygiene):** Should `status='expired'` rows be excluded from every provider-facing surface — calendar events, Customers, booked value, Revenue Share? (Recommendation: yes, everywhere; P2-B2/B3.)
