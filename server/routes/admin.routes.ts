@@ -228,6 +228,20 @@ const requireAdminLocal = async (req: any, res: any, next: any) => {
   next();
 };
 
+router.post("/api/admin/gems/backfill-photos", isAuthenticated, requireAdminLocal, async (req, res) => {
+  try {
+    const { grokDiscoveryService } = await import("../services/grok-discovery.service");
+    const result = await grokDiscoveryService.backfillGemPhotos();
+    res.json({
+      message: `Backfill complete: ${result.processed} gem(s) processed, ${result.updated} updated, ${result.failed} failed.`,
+      ...result,
+    });
+  } catch (err: any) {
+    console.error("Gem photo backfill failed:", err);
+    res.status(500).json({ message: err?.message ?? "Gem photo backfill failed" });
+  }
+});
+
 router.get("/api/admin/commission-test", isAuthenticated, async (req, res) => {
   const userId = getUserId(req)!;
   const user = await getFullAdminUser(userId);
