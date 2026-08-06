@@ -21,7 +21,7 @@ import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 
 interface Mismatch {
-  type: "stripe_charge_no_booking" | "booking_no_stripe_charge";
+  type: string;
   chargeId?: string;
   bookingId?: string;
   paymentIntentId?: string;
@@ -31,11 +31,65 @@ interface Mismatch {
 
 interface ReconciliationResult {
   mismatches: Mismatch[];
+  status: "completed" | "skipped" | "failed";
+  newExceptions: number;
+  promoted: number;
+  checkedPaymentIntents: number;
   checkedCharges: number;
+  checkedRefunds: number;
+  checkedCartBookings: number;
   checkedBookings: number;
   ranAt: string;
   note: string;
 }
+
+/** A persisted drift fact (reconciliation-detection lane). Append-only — a drift that persists
+ *  across passes is ONE row stamped with the run that first saw it. */
+interface DriftException {
+  id: string;
+  run_id: string;
+  detected_at: string;
+  rail: "cart" | "legacy";
+  kind: string;
+  severity: "critical" | "warning";
+  booking_id: string | null;
+  payment_intent_id: string | null;
+  charge_id: string | null;
+  expected_amount: string | null;
+  actual_amount: string | null;
+  currency: string | null;
+  details: Record<string, unknown> | null;
+}
+
+interface ReconciliationRun {
+  id: string;
+  started_at: string;
+  finished_at: string | null;
+  triggered_by: string;
+  status: string;
+  exceptions_detected: number;
+  exceptions_new: number;
+  promoted: number;
+  scanned_payment_intents: number;
+  scanned_cart_bookings: number;
+  scanned_legacy_bookings: number;
+  note: string | null;
+}
+
+/** Plain-language labels for the drift vocabulary (shared/schema.ts
+ *  RECONCILIATION_EXCEPTION_KINDS). An ops surface that shows only the enum name makes the
+ *  reader look up what it means, which is how a critical row gets skimmed past. */
+const KIND_LABELS: Record<string, string> = {
+  pi_succeeded_no_booking: "Payment succeeded — NO booking exists",
+  pi_succeeded_claim_provisional: "Payment succeeded — booking still an unpromoted claim",
+  pi_succeeded_booking_voided: "Payment succeeded — booking is voided/terminal",
+  booking_confirmed_no_pi: "Booking says paid — no PaymentIntent at all",
+  booking_confirmed_pi_not_succeeded: "Booking says paid — PaymentIntent not succeeded",
+  amount_mismatch: "Charged amount ≠ server-derived total",
+  refund_not_reversed: "Stripe refund with no reversal in the database",
+  stripe_charge_no_booking: "Legacy: Stripe charge — no matching booking",
+  booking_no_stripe_charge: "Legacy: booking confirmed — no Stripe charge",
+};
 
 interface UnprocessedWebhook {
   id: string;
@@ -82,6 +136,21 @@ export default function AdminReconciliation() {
     queryKey: ["/api/admin/disputes"],
   });
 
+  // PERSISTED drift exceptions + the last recorded run (reconciliation-detection lane).
+  // The `lastRun` half is load-bearing: an empty list means "clean" ONLY if a run happened.
+  const {
+    data: driftData,
+    isLoading: driftLoading,
+    refetch: refetchDrift,
+  } = useQuery<{
+    exceptions: DriftException[];
+    count: number;
+    lastRun: ReconciliationRun | null;
+    note: string;
+  }>({
+    queryKey: ["/api/admin/reconciliation/exceptions"],
+  });
+
   // Trigger reconciliation now
   const runNowMutation = useMutation({
     mutationFn: () => apiRequest("GET", "/api/admin/reconciliation/run-now"),
@@ -90,6 +159,7 @@ export default function AdminReconciliation() {
       setLastRunResult(data);
       refetchWebhooks();
       refetchDisputes();
+      refetchDrift();
       toast({
         title: data.mismatches.length === 0 ? "Reconciliation clean" : "Mismatches found",
         description: data.note,
@@ -144,6 +214,8 @@ export default function AdminReconciliation() {
   const unprocessedCount = webhookData?.count ?? 0;
   const mismatchCount = lastRunResult?.mismatches.length ?? 0;
   const disputeCount = disputeData?.count ?? 0;
+  const driftCount = driftData?.count ?? 0;
+  const lastRun = driftData?.lastRun ?? null;
 
   return (
     <AdminLayout>
@@ -225,14 +297,16 @@ export default function AdminReconciliation() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs text-gray-500 uppercase tracking-wide">Last Run</p>
+                  {/* Reads the PERSISTED run row, not just this browser session's click — a
+                      reload used to reset this to "Never" whether or not the job was healthy. */}
                   <p className="text-sm font-semibold text-gray-900 mt-1" data-testid="text-last-run">
-                    {lastRunResult
-                      ? new Date(lastRunResult.ranAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                    {lastRun
+                      ? new Date(lastRun.started_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
                       : "Never"}
                   </p>
-                  {lastRunResult && (
+                  {lastRun && (
                     <p className="text-xs text-gray-400">
-                      {new Date(lastRunResult.ranAt).toLocaleDateString()}
+                      {new Date(lastRun.started_at).toLocaleDateString()}
                     </p>
                   )}
                 </div>
@@ -406,6 +480,155 @@ export default function AdminReconciliation() {
                 ⚠ Do NOT refund or initiate payout clawbacks without first confirming the dispute outcome in the Stripe dashboard.
                 Each row above has a direct link.
               </p>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* PERSISTED drift exceptions — the durable surface (reconciliation-detection lane).
+            The panel below this one is the EPHEMERAL last-run view; this one survives a reload,
+            a redeploy and the night shift. */}
+        <Card className={driftCount > 0 ? "border-amber-300" : ""}>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-base flex items-center gap-2">
+                  {driftCount === 0
+                    ? <CheckCircle2 className="h-4 w-4 text-green-600" />
+                    : <AlertTriangle className="h-4 w-4 text-amber-600" />}
+                  Stripe ↔ Database Drift (recorded)
+                  {driftCount > 0 && (
+                    <Badge variant="destructive" className="ml-1">{driftCount}</Badge>
+                  )}
+                </CardTitle>
+                <CardDescription className="mt-1">
+                  {driftData?.note ??
+                    "Drift detected by the daily scan across both booking rails. Append-only; nothing here is auto-repaired."}
+                </CardDescription>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => refetchDrift()}
+                disabled={driftLoading}
+                data-testid="button-refresh-drift"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${driftLoading ? "animate-spin" : ""}`} />
+                Refresh
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {/* "No exceptions" is only good news if the job actually ran. */}
+            {!lastRun ? (
+              <div className="flex items-start gap-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-4 py-3 mb-4">
+                <XCircle className="h-4 w-4 mt-0.5 shrink-0" />
+                <span data-testid="text-no-run-recorded">
+                  <strong>No reconciliation run has ever been recorded.</strong> An empty drift list below
+                  means nothing until a run appears here — the scan may not be running at all.
+                </span>
+              </div>
+            ) : (
+              <div className="text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-lg px-4 py-3 mb-4" data-testid="text-last-recorded-run">
+                Last recorded run: <strong>{new Date(lastRun.started_at).toLocaleString()}</strong>
+                {" · "}{lastRun.triggered_by}{" · "}
+                <span className={lastRun.status === "completed" ? "text-green-700" : "text-amber-700"}>
+                  {lastRun.status}
+                </span>
+                {" · "}scanned {lastRun.scanned_payment_intents} PaymentIntent(s),{" "}
+                {lastRun.scanned_cart_bookings} cart + {lastRun.scanned_legacy_bookings} legacy booking(s)
+                {" · "}{lastRun.exceptions_detected} detected ({lastRun.exceptions_new} new)
+                {lastRun.promoted > 0 && (
+                  <> · <strong>{lastRun.promoted}</strong> paid claim(s) recovered via the shared promotion</>
+                )}
+                {lastRun.note && <> · {lastRun.note}</>}
+              </div>
+            )}
+
+            {driftLoading ? (
+              <div className="flex items-center gap-2 text-sm text-gray-500 py-4">
+                <Loader2 className="h-4 w-4 animate-spin" /> Loading drift exceptions…
+              </div>
+            ) : driftCount === 0 ? (
+              <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 rounded-lg px-4 py-3">
+                <CheckCircle2 className="h-4 w-4" />
+                No recorded drift between Stripe and the database.
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-amber-200 bg-amber-50">
+                      <th className="text-left py-2 px-3 text-xs font-semibold text-amber-900">Detected</th>
+                      <th className="text-left py-2 px-3 text-xs font-semibold text-amber-900">Rail</th>
+                      <th className="text-left py-2 px-3 text-xs font-semibold text-amber-900">What drifted</th>
+                      <th className="text-left py-2 px-3 text-xs font-semibold text-amber-900">Booking</th>
+                      <th className="text-left py-2 px-3 text-xs font-semibold text-amber-900">Expected</th>
+                      <th className="text-left py-2 px-3 text-xs font-semibold text-amber-900">At Stripe</th>
+                      <th className="text-left py-2 px-3 text-xs font-semibold text-amber-900">Stripe</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {driftData?.exceptions.map((e) => (
+                      <tr
+                        key={e.id}
+                        className={`border-b border-amber-100 ${e.severity === "critical" ? "hover:bg-red-50" : "hover:bg-amber-50"}`}
+                        data-testid={`row-drift-${e.id}`}
+                      >
+                        <td className="py-2 px-3 text-xs text-gray-500 whitespace-nowrap">
+                          {new Date(e.detected_at).toLocaleString([], {
+                            month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
+                          })}
+                        </td>
+                        <td className="py-2 px-3">
+                          <Badge variant="outline" className="text-xs">{e.rail}</Badge>
+                        </td>
+                        <td className="py-2 px-3">
+                          <p className={`text-xs font-medium ${e.severity === "critical" ? "text-red-700" : "text-amber-700"}`}>
+                            {KIND_LABELS[e.kind] ?? e.kind}
+                          </p>
+                          <p className="text-[11px] text-gray-400 font-mono">{e.kind}</p>
+                        </td>
+                        <td className="py-2 px-3 font-mono text-[11px] text-gray-600 max-w-[140px] truncate">
+                          {e.booking_id ?? "—"}
+                        </td>
+                        <td className="py-2 px-3 text-xs text-gray-700">
+                          {e.expected_amount != null ? `$${parseFloat(e.expected_amount).toFixed(2)}` : "—"}
+                        </td>
+                        <td className="py-2 px-3 text-xs text-gray-700 font-medium">
+                          {e.actual_amount != null ? `$${parseFloat(e.actual_amount).toFixed(2)}` : "—"}
+                        </td>
+                        <td className="py-2 px-3">
+                          {e.payment_intent_id ? (
+                            <a
+                              href={`https://dashboard.stripe.com/payments/${e.payment_intent_id}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline"
+                              data-testid={`link-drift-stripe-${e.id}`}
+                            >
+                              PI <ExternalLink className="h-3 w-3" />
+                            </a>
+                          ) : e.charge_id ? (
+                            <a
+                              href={`https://dashboard.stripe.com/charges/${e.charge_id}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline"
+                              data-testid={`link-drift-stripe-${e.id}`}
+                            >
+                              Charge <ExternalLink className="h-3 w-3" />
+                            </a>
+                          ) : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                <p className="mt-3 text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+                  ⚠ The scan DETECTS; it never repairs. Confirm each PaymentIntent in the Stripe dashboard
+                  before refunding, cancelling or re-creating anything.
+                </p>
+              </div>
             )}
           </CardContent>
         </Card>
@@ -586,9 +809,26 @@ export default function AdminReconciliation() {
           </CardHeader>
           <CardContent className="text-xs text-gray-500 space-y-2">
             <p>
-              <strong className="text-gray-700">Charge ↔ Booking drift</strong> — Fetches the last 100 Stripe charges
-              (last 24 h) and compares against bookings created in the same window. Flags succeeded charges with no
-              matching booking row, and confirmed bookings with no succeeded charge.
+              <strong className="text-gray-700">Stripe ↔ Database drift</strong> — Fetches the last 24 h of Stripe
+              PaymentIntents, charges and refunds and compares them against <em>both</em> booking rails: cart
+              checkout (<code className="bg-gray-100 px-1 rounded">service_bookings</code>) and the legacy
+              <code className="bg-gray-100 px-1 rounded">bookings</code> table. Until this lane the scan read the
+              legacy table only, so cart checkout — the primary checkout — was invisible to it. Nine
+              classifications: payment with no booking, payment with an unpromoted claim, payment against a voided
+              booking, booking with no PaymentIntent, booking whose PaymentIntent is not succeeded, charged amount ≠
+              server-derived total, refund with no reversal, plus the two original legacy checks.
+            </p>
+            <p>
+              <strong className="text-gray-700">Detect, don't repair</strong> — Findings are written as append-only
+              rows and shown above; the job never voids, refunds or invents a booking. Its one exception is a
+              PaymentIntent that succeeded while its booking is still an unpromoted claim, which is handed to the
+              same shared promotion the Stripe webhook uses (recorded in the diary with actor{" "}
+              <code className="bg-gray-100 px-1 rounded">reconciliation</code>).
+            </p>
+            <p>
+              <strong className="text-gray-700">Every run is recorded</strong> — including a clean one, so "no drift"
+              is distinguishable from "the job has not run". If the banner above says no run has ever been recorded,
+              treat an empty list as unknown, not as healthy.
             </p>
             <p>
               <strong className="text-gray-700">Unprocessed webhooks</strong> — Shows events in the{" "}
@@ -598,8 +838,11 @@ export default function AdminReconciliation() {
             </p>
             <p>
               <strong className="text-gray-700">Daily schedule</strong> — Reconciliation runs automatically every 24 h,
-              offset 1 hour from the admin digest. Mismatches are stored in{" "}
-              <code className="bg-gray-100 px-1 rounded">admin_notifications</code> and appear in the digest email.
+              offset 1 hour from the admin digest. Findings are persisted to{" "}
+              <code className="bg-gray-100 px-1 rounded">reconciliation_exceptions</code> (with a{" "}
+              <code className="bg-gray-100 px-1 rounded">reconciliation_runs</code> row per pass) and also summarised
+              into <code className="bg-gray-100 px-1 rounded">admin_notifications</code> so they appear in the digest
+              email.
             </p>
           </CardContent>
         </Card>
