@@ -35,7 +35,14 @@ export type TransitionEventType =
   // Task 1028 (Console Sigma ABSENCE fix): trip-scoped (itemId NULL, ruling 16) expert workspace
   // draft → in_review → delivered transitions, logged in the same transaction as the flip
   // (rulings 12/18) so disputes over when work was delivered have an audit trail.
-  | "workspace_status_transition";
+  | "workspace_status_transition"
+  // Ruling 38 (checkout atomicity): the TTL reclaim of a checkout claim that never reached an
+  // authorization — booking voided, slot capacity handed back. from/to status are NULL because
+  // the item's own routing_status never moved (the purchased flip lives AFTER authorization, so
+  // an expired claim never reached it). Item-grained when the claim carried a plan item,
+  // trip-grained (itemId NULL, ruling 16) otherwise. Written in the SAME transaction as the void
+  // so reclaimed inventory is auditable rather than silently reappearing.
+  | "checkout_claim_expired";
 
 /** The executor shape both `db` and a drizzle `tx` satisfy — callers inside a transaction MUST
  *  pass their `tx` (ruling 18: same-transaction pair), everything else may pass `db`. */

@@ -1,5 +1,5 @@
 /**
- * JOURNEY SUITE — Tier 3 contract negatives (Wave 1).
+ * JOURNEY SUITE — Tier 3 contract negatives (Journey Wave 1).
  *
  * Governing docs: docs/planning/JOURNEY_TEST_SUITE_BRIEF.md §4 (N1–N15) + §5/§9,
  * docs/briefs/ROUTING_STATE_CONTRACT.md (WRITES/READS/NEVER cells = the negative source),
@@ -233,7 +233,7 @@ test("N1: a non-owner cannot set ready_for_checkout via the routing endpoint; it
 // seeded trip whose item is routed to ready_for_checkout keeps that value across the closest
 // mutation we can drive as the owner (the finalize path, which shares the diary vocabulary but
 // is declared to NOT touch routing_status). Before/after diff = zero routing_status changes.
-// (Full 3-variant optimizer apply is J6/Wave-1 journey scope; here we lock the contract row
+// (Full 3-variant optimizer apply is J6/Journey Wave 1 journey scope; here we lock the contract row
 // that apply/optimizer are NEVER writers of routing_status by proving a routed value survives.)
 // ---------------------------------------------------------------------------
 test("N2: routing_status values are unchanged by non-routing owner mutations (finalize) — before/after diff is zero", async () => {
@@ -315,7 +315,7 @@ test("N4: no route file writes cart_items except via the projection writer (rout
 // bookings payload must not carry routing_status anywhere (deep JSON scan). On current main a
 // provider session with no bookings returns []; the deep-scan of the full provider bookings
 // payload contains no `routing_status`/`routingStatus` key. (Populated-booking provider payloads
-// are Wave-4 J11 scope; the NEVER-key absence is provable now on the live endpoint shape.)
+// are Journey Wave 4 / J11 scope; the NEVER-key absence is provable now on the live shape.)
 // ---------------------------------------------------------------------------
 test("N5: the provider bookings payload never exposes routing_status (deep JSON scan)", async () => {
   const provider = await registerActor("provider");
@@ -613,4 +613,193 @@ test("N15: no routing_status writer routes access through getTripRole (inventory
   // absence in the writers is meaningful). It gates non-routing itinerary-item edits.
   const trips = await fs.readFile(path.resolve("server/routes/trips.routes.ts"), "utf8");
   assert.ok(/\bgetTripRole\s*\(/.test(trips), "getTripRole must be a live gate elsewhere — positive control for the writer-absence assertion");
+});
+
+// ---------------------------------------------------------------------------
+// matrix-id: N16
+// MONEY-PATH ATOMICITY (DECISIONS.md ruling 38 — the permanent negative).
+//
+// THE DEFECT THIS LOCKS OUT: `POST /api/checkout` used to commit every irreversible effect —
+// booking rows, the cart clear, the plan item's `purchased` flip + its diary row, the provider's
+// notification and email — BEFORE `stripe.paymentIntents.create`, the one operation that can
+// fail. When it failed the traveler got a bare 500 with no booking ids, the same key
+// short-circuited to `{duplicate:true}` (which the cart page rendered as "Booking created!") and
+// a fresh key hit "Cart is empty". The comment promising "the webhook will flip them to
+// confirmed" could not hold: with no PaymentIntent there is never a webhook.
+//
+// THE CONTRACT NOW: a checkout commits NOTHING until a PaymentIntent exists.
+//
+// This test asserts the truthful contract in WHICHEVER posture the server under test is in, and
+// hard-fails on any third outcome — it is never a skip and never a silent pass:
+//
+//   • Stripe reachable  ⇒ 201 + clientSecret, and the PROMOTE facts are all present: the booking
+//                         is AUTHORIZED (stripe_payment_intent_id NOT NULL) and the cart is
+//                         cleared. Plus §15: the same key replayed returns the SAME
+//                         PaymentIntent and creates no second booking set.
+//   • Stripe unreachable ⇒ 503 `payment_unavailable`, and NONE of the commitments exist:
+//                         zero AUTHORIZED bookings, cart intact, no slot promoted, no item at
+//                         `purchased`, zero `to_status='purchased'` transition rows, no provider
+//                         notification — and a clean retry with the same key still succeeds or
+//                         re-fails identically, never a false success.
+//
+// The provisional claim rows the failed attempt leaves behind are deliberately NOT asserted away:
+// they are the §15 atomic claim that MUST precede the external call (removing it was measured at
+// 3 real Stripe charges for 3 concurrent same-key checkouts). They carry no PaymentIntent, are
+// invisible as purchases, and the TTL sweep reclaims them — proven separately and exhaustively in
+// server/__tests__/checkout-claim-sweep.db.test.ts.
+//
+// No fee literals: the amount assertion resolves against the live fee_bands row, per §9.
+// ---------------------------------------------------------------------------
+test("N16: a checkout that cannot obtain a PaymentIntent commits NOTHING (no authorized booking, cart intact, no purchased item, no purchase diary row); a clean retry is never a false success", async () => {
+  const buyer = await registerActor("n16-buyer");
+
+  // A real approved+active priced catalog service — same fixture posture as J1's pickCatalogService.
+  const svc = await readPool.query(
+    `SELECT id, price, service_name FROM provider_services
+      WHERE approval_status='approved' AND status='active'
+        AND price IS NOT NULL AND CAST(price AS FLOAT) > 0
+      ORDER BY random() LIMIT 1`,
+  );
+  assert.ok(svc.rows[0], "expected at least one approved+active priced provider_service in the DB");
+  const serviceId = svc.rows[0].id as string;
+
+  const addRes = await api("/api/cart", buyer.cookie, "POST", { serviceId, quantity: 1 });
+  assert.ok(addRes.status >= 200 && addRes.status < 300, `add-to-cart failed (${addRes.status}): ${await addRes.clone().text()}`);
+
+  const cartBefore = await cartItemCount(buyer.id);
+  assert.ok(cartBefore > 0, "precondition: the buyer has a non-empty cart");
+
+  // Read-only DB facts this negative is about.
+  const authorizedBookings = async () => {
+    const r = await readPool.query(
+      `SELECT count(*)::int AS n FROM service_bookings
+        WHERE traveler_id = $1 AND stripe_payment_intent_id IS NOT NULL`,
+      [buyer.id],
+    );
+    return r.rows[0].n as number;
+  };
+  const purchasedItems = async () => {
+    const r = await readPool.query(
+      `SELECT count(*)::int AS n FROM itinerary_items i
+         JOIN trips t ON t.id = i.trip_id
+        WHERE t.user_id = $1 AND i.routing_status = 'purchased'`,
+      [buyer.id],
+    );
+    return r.rows[0].n as number;
+  };
+  const purchaseDiaryRows = async () => {
+    const r = await readPool.query(
+      `SELECT count(*)::int AS n FROM item_transition_log l
+         JOIN trips t ON t.id = l.trip_id
+        WHERE t.user_id = $1 AND l.to_status = 'purchased'`,
+      [buyer.id],
+    );
+    return r.rows[0].n as number;
+  };
+  const providerNotifications = async () => {
+    const r = await readPool.query(
+      `SELECT count(*)::int AS n FROM notifications
+        WHERE type = 'booking_request'
+          AND related_id IN (SELECT id FROM service_bookings WHERE traveler_id = $1)`,
+      [buyer.id],
+    );
+    return r.rows[0].n as number;
+  };
+  const promotedSlots = async () => {
+    const r = await readPool.query(
+      `SELECT count(*)::int AS n FROM service_bookings
+        WHERE traveler_id = $1 AND slot_id IS NOT NULL AND stripe_payment_intent_id IS NOT NULL`,
+      [buyer.id],
+    );
+    return r.rows[0].n as number;
+  };
+
+  const key = crypto.randomUUID();
+  const res = await api("/api/checkout", buyer.cookie, "POST", { idempotencyKey: key });
+  const bodyText = await res.clone().text();
+
+  if (res.status === 503) {
+    // ── STRIPE UNAVAILABLE: the negative contract. ──────────────────────────────────────────
+    const body = JSON.parse(bodyText);
+    assert.equal(body.error, "payment_unavailable", `a 503 must be the declared authorization failure: ${bodyText}`);
+    assert.equal(body.success, false, "and must never claim success");
+
+    assert.equal(await authorizedBookings(), 0, "ZERO authorized bookings — nothing may be committed without a PaymentIntent");
+    assert.equal(await cartItemCount(buyer.id), cartBefore, "the cart must be EXACTLY as the traveler left it");
+    assert.equal(await promotedSlots(), 0, "no slot may be promoted onto an authorized booking");
+    assert.equal(await purchasedItems(), 0, "no plan item may claim a purchase");
+    assert.equal(await purchaseDiaryRows(), 0, "no to_status='purchased' transition row may exist");
+    assert.equal(await providerNotifications(), 0, "no provider may be notified of a booking that was never paid for");
+
+    // A clean retry must never be a false success. Same key ⇒ the server re-drives the existing
+    // claim; it may fail again identically, but it may NEVER answer 2xx without a clientSecret
+    // (the exact shape the cart page used to render as "Booking created!").
+    const retry = await api("/api/checkout", buyer.cookie, "POST", { idempotencyKey: key });
+    const retryText = await retry.clone().text();
+    if (retry.status >= 200 && retry.status < 300) {
+      const retryBody = JSON.parse(retryText);
+      assert.ok(
+        retryBody?.paymentIntent?.clientSecret,
+        `a 2xx retry MUST carry a PaymentIntent clientSecret — a bare success envelope is the false-success bug: ${retryText}`,
+      );
+    } else {
+      assert.equal(retry.status, 503, `a failing retry must re-fail as the declared 503, got ${retry.status}: ${retryText}`);
+      assert.equal(await authorizedBookings(), 0, "the retry must not commit anything either");
+      assert.equal(await cartItemCount(buyer.id), cartBefore, "and must leave the cart intact");
+    }
+    return;
+  }
+
+  // ── STRIPE REACHABLE: the positive promote contract + §15 idempotency. ────────────────────
+  assert.ok(res.status >= 200 && res.status < 300, `checkout must be either 2xx or the declared 503, got ${res.status}: ${bodyText}`);
+  const body = JSON.parse(bodyText);
+  assert.equal(body.success, true);
+  assert.ok(body.paymentIntent?.clientSecret, `a successful checkout must return a PaymentIntent clientSecret: ${bodyText}`);
+
+  const authorized = await readPool.query(
+    `SELECT id, status, stripe_payment_intent_id, total_amount, platform_fee, provider_earnings
+       FROM service_bookings WHERE traveler_id = $1`,
+    [buyer.id],
+  );
+  assert.ok(authorized.rows.length > 0, "a successful checkout writes booking rows");
+  for (const row of authorized.rows) {
+    assert.ok(
+      row.stripe_payment_intent_id,
+      "PROMOTE: every booking of an authorized checkout carries its PaymentIntent id (this is what re-arms the webhook)",
+    );
+  }
+  assert.equal(await cartItemCount(buyer.id), 0, "PROMOTE: the cart is cleared only after authorization");
+
+  // No fee literal: the split must resolve against the live fee_bands row read from the DB.
+  const band = await expertStandardBand();
+  assert.ok(band && band.rateType === "percent", "fee_bands expert_standard must be an active percent band");
+  const first = authorized.rows[0];
+  const total = Number(first.total_amount);
+  const platformFee = Number(first.platform_fee);
+  assert.ok(total > 0, "the charge is server-computed from the catalog price");
+  assert.ok(
+    Math.abs(Number(first.provider_earnings) - (total - platformFee)) < 0.01,
+    "provider_earnings = total − platform_fee (server-derived split)",
+  );
+  const bandRates = await readPool.query(
+    `SELECT CAST(default_rate AS FLOAT) AS rate FROM fee_bands WHERE is_active = true AND rate_type = 'percent'`,
+  );
+  assert.ok(
+    bandRates.rows.some((r: any) => Math.abs(Number(r.rate) - platformFee / total) < 0.0001),
+    "the platform-fee rate must equal an active fee_bands percent rate — proves band resolution, no literal",
+  );
+
+  // §15: the SAME key replayed produces the SAME single effect — the same PaymentIntent, and no
+  // second booking set.
+  const replay = await api("/api/checkout", buyer.cookie, "POST", { idempotencyKey: key });
+  const replayText = await replay.clone().text();
+  assert.ok(replay.status >= 200 && replay.status < 300, `a replay must not error, got ${replay.status}: ${replayText}`);
+  const replayBody = JSON.parse(replayText);
+  assert.equal(
+    replayBody.paymentIntent?.paymentIntentId ?? body.paymentIntent.paymentIntentId,
+    body.paymentIntent.paymentIntentId,
+    "a replay must return the SAME PaymentIntent, never a second one",
+  );
+  const after = await readPool.query(`SELECT count(*)::int AS n FROM service_bookings WHERE traveler_id = $1`, [buyer.id]);
+  assert.equal(after.rows[0].n, authorized.rows.length, "a replay must not create a second booking set");
 });

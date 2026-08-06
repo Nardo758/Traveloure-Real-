@@ -1,23 +1,41 @@
-name: Journey Suite (Wave-1 Tier-1)
+name: Journey Suite (Journey Wave 1 · Tier-1)
 
-# Runs the Wave-1 Tier-1 traveler journeys (J1 golden path, J2 AI entry) end-to-end
+# Runs the Journey Wave 1 Tier-1 traveler journeys (J1 golden path, J2 AI entry) end-to-end
 # against a freshly-built production bundle backed by a THROWAWAY Postgres service.
+#
+# NAMING (ruling 37): "Journey Wave 1" is always written in full. The unqualified form
+# collides with the QA Punch List's own wave series (docs/planning/QA_PUNCH_LIST.md) and with
+# the Amadeus decommission (ruling 34) that rode the same squash, PR #421 — which made a real
+# status question unanswerable. Guarded by scripts/check-coverage-matrix.cjs rule 5.
 #
 # Every step in these specs asserts a DB FACT via a read-only pg pool (DATABASE_URL);
 # UI checks supplement only. Fresh registered users + fresh trips are minted per test
 # via the app's own HTTP APIs (never shared fixtures, never direct app-table writes).
 #
-# This gate is NON-BLOCKING by design (Wave-1 shakeout): it runs on push-to-main and
-# nightly, surfaces failures in the run summary + uploaded report, but does not gate
-# merges. Promote to a required check only once the journeys are proven stable.
+# NON-BLOCKING, BUT NOT INVISIBLE (changed Journey Wave 1, 2026-08-05). This workflow triggers
+# on push-to-main / nightly / dispatch only — it is NOT a `pull_request` check, so it can never
+# gate a merge no matter what it concludes. The job-level `continue-on-error: true` it used to
+# carry therefore bought no merge-safety at all; all it did was report run conclusion = SUCCESS
+# while the job conclusion was FAILURE, so a human scanning the Actions list saw green over
+# three red journeys (head ea0bbc05). That is theatre, so it is gone: a red journey is now a
+# red run, plus an explicit verdict line in the run summary.
 #
-# Stripe: the money path's DB facts (booking row, item→purchased, diary, projection
-# removal, fee_bands-derived amount) are written at POST /api/checkout and are asserted
-# unconditionally. The J1 Stripe *PaymentElement* confirm (card 4242) needs a real TEST
-# Stripe secret key + publishable key baked into the bundle. When STRIPE_SECRET_KEY is
-# absent (the default CI posture — the boot env below uses a non-functional stub), the
-# Stripe UI-confirm leg is EXPLICITLY skipped via JOURNEY_SKIP_STRIPE_UI=1 (never a
-# silent pass). Locally, with real test keys present, it runs for real.
+# Stripe (REWRITTEN by DECISIONS.md ruling 38 — the previous text described a defect):
+# `POST /api/checkout` calls `stripe.paymentIntents.create`, and a checkout that cannot obtain
+# a PaymentIntent now COMMITS NOTHING — no authorized booking, cart untouched, no item flipped
+# `purchased`, no diary row. So with the non-functional stub key below there are no money-path
+# DB facts to assert, because there correctly are none. (The old text said those facts were
+# "written BEFORE the Stripe call and asserted unconditionally" — true at the time, and exactly
+# the atomicity violation ruling 38 fixed.)
+#
+# JOURNEY_STRIPE_UNAVAILABLE=1 therefore no longer relaxes anything; it SELECTS which truthful
+# contract the specs assert:
+#   real key ⇒ assertCheckoutAccepted    — 2xx + clientSecret + every PROMOTE fact.
+#   stub key ⇒ assertCheckoutCommittedNothing — the declared 503 payment_unavailable AND the
+#              hard-asserted ABSENCE of all of them. Never a silent pass; the negative half is
+#              asserted as strictly as the positive half.
+# The J1 PaymentElement confirm (card 4242) runs only with a real key. Supplying an `sk_test_`
+# STRIPE_SECRET_KEY secret to this workflow enables the full positive path automatically.
 #
 # Route/spec source of truth: playwright/tests/journeys/*.spec.ts
 # Matrix IDs covered: J1.3, J1.6, J1.7, J1.9, J2 (matrix lint greps `playwright/`).
@@ -42,9 +60,9 @@ jobs:
   journeys:
     name: journeys (J1 golden path + J2 AI entry)
     runs-on: ubuntu-latest
-    # Non-blocking gate: a red run is informational (surfaced in summary + report),
-    # not a merge blocker. Remove this once the suite is promoted to a required check.
-    continue-on-error: true
+    # NO `continue-on-error` — see the header. This workflow has no `pull_request` trigger, so
+    # it cannot block a merge in any case; masking the job conclusion only made the RUN read
+    # green over red specs. Red tests must be red at a glance in the Actions list.
     timeout-minutes: 25
     services:
       postgres:
@@ -153,22 +171,25 @@ jobs:
           [ "$missing" = "0" ] && echo "Journey spec files present ✅"
           exit $missing
 
-      - name: Decide Stripe UI-confirm gating (explicit skip, never a silent pass)
+      - name: Declare Stripe availability (explicit, never a silent pass)
         id: stripe-gate
         run: |
-          # The Stripe PaymentElement confirm leg needs a REAL test Stripe secret key +
-          # publishable key baked into the bundle. The boot env above uses a non-functional
-          # stub, so unless a real STRIPE_SECRET_KEY secret is provided to this workflow we
-          # skip the UI-confirm leg EXPLICITLY (the money-path DB facts are still asserted).
+          # BOTH Stripe legs need a REAL test Stripe secret key: POST /api/checkout creates the
+          # PaymentIntent server-side, and the J1 PaymentElement confirm needs the publishable
+          # key baked into the bundle. The boot env above uses a non-functional stub, so unless a
+          # real STRIPE_SECRET_KEY secret is provided we DECLARE Stripe unavailable — which
+          # selects the ruling-38 NEGATIVE contract (declared 503 + zero committed state), not a
+          # relaxed version of the positive one.
           if [ -n "${{ secrets.STRIPE_SECRET_KEY }}" ]; then
-            echo "Real STRIPE_SECRET_KEY present → Stripe PaymentElement confirm leg WILL run."
-            echo "skip_stripe_ui=0" >> "$GITHUB_OUTPUT"
+            echo "Real STRIPE_SECRET_KEY present → strict checkout contract + PaymentElement confirm leg WILL run."
+            echo "stripe_unavailable=0" >> "$GITHUB_OUTPUT"
           else
-            echo "::notice::STRIPE_SECRET_KEY absent in CI → J1 Stripe PaymentElement confirm leg is EXPLICITLY skipped (JOURNEY_SKIP_STRIPE_UI=1). Money-path DB facts are still fully asserted. This is a declared skip, not a silent pass."
-            echo "skip_stripe_ui=1" >> "$GITHUB_OUTPUT"
+            echo "::notice::STRIPE_SECRET_KEY absent in CI → Stripe is DECLARED UNAVAILABLE (JOURNEY_STRIPE_UNAVAILABLE=1). POST /api/checkout cannot obtain a PaymentIntent, so per ruling 38 it must commit NOTHING: the specs assert the declared 503 payment_unavailable AND the absence of every money-path fact (zero authorized bookings, cart intact, no purchased item, no purchase diary row). The J1 PaymentElement confirm leg is skipped. This is a hard-asserted negative contract, not a silent pass."
+            echo "stripe_unavailable=1" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Run journey suite (test:journeys)
+        id: run-journeys
         run: npm run test:journeys -- --project=chromium
         env:
           BASE_URL: http://localhost:5000
@@ -184,8 +205,8 @@ jobs:
           # JOURNEY_DB_WRITES_OK=1 THEMSELVES (only against a disposable dev DB); the guard refuses
           # any non-localhost DB without this flag so it can never delete against a shared/prod DB.
           JOURNEY_DB_WRITES_OK: '1'
-          # Explicit Stripe-UI gating decided above (1 = skip the PaymentElement confirm leg).
-          JOURNEY_SKIP_STRIPE_UI: ${{ steps.stripe-gate.outputs.skip_stripe_ui }}
+          # Declared Stripe availability decided above (1 = the app was booted with a stub key).
+          JOURNEY_STRIPE_UNAVAILABLE: ${{ steps.stripe-gate.outputs.stripe_unavailable }}
 
       - name: Upload report
         if: always()
@@ -194,3 +215,25 @@ jobs:
           name: journey-suite-report
           path: playwright-report/
           retention-days: 14
+
+      - name: Journey suite verdict (the run must never read green over red specs)
+        if: always()
+        run: |
+          # THE MASK THIS REPLACES: this job used to carry `continue-on-error: true`, which left
+          # the RUN conclusion = success while the JOB conclusion = failure. Anyone scanning the
+          # Actions list saw a green ✓ over three failing journeys. This step states the verdict
+          # in the run summary AND propagates a red spec run into a red job, so the two can never
+          # disagree again. It is `if: always()` so the verdict is written even when an earlier
+          # step (build, DB setup, server boot) is what broke.
+          outcome='${{ steps.run-journeys.outcome }}'
+          if [ "$outcome" = "success" ]; then
+            echo "### ✅ Journey Wave 1 — Tier-1 journeys PASSED" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "Stripe declared unavailable: \`${{ steps.stripe-gate.outputs.stripe_unavailable }}\` (1 = stub key; money-path DB facts still fully asserted)." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo "### ❌ Journey Wave 1 — Tier-1 journeys FAILED (\`run-journeys\` outcome: ${outcome:-not-reached})" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Download the **journey-suite-report** artifact for the per-spec failures. This run is RED on purpose — a non-blocking gate is still an honest one." >> "$GITHUB_STEP_SUMMARY"
+          echo "::error::Journey Wave 1 Tier-1 journeys did not pass (run-journeys outcome: ${outcome:-not-reached})."
+          exit 1
