@@ -201,6 +201,7 @@ export default function AdminUsers() {
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <Input
                   placeholder="Search users by name or email..."
+                  aria-label="Search users by name or email"
                   value={searchQuery}
                   onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
                   className="pl-10"
@@ -249,13 +250,13 @@ export default function AdminUsers() {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-gray-200">
-                    <th className="text-left py-3 px-2 text-sm font-medium text-gray-500">User</th>
-                    <th className="text-left py-3 px-2 text-sm font-medium text-gray-500">Role</th>
-                    <th className="text-left py-3 px-2 text-sm font-medium text-gray-500">Status</th>
-                    <th className="text-left py-3 px-2 text-sm font-medium text-gray-500">Joined</th>
-                    <th className="text-left py-3 px-2 text-sm font-medium text-gray-500">Trips</th>
-                    <th className="text-left py-3 px-2 text-sm font-medium text-gray-500">Spent</th>
-                    <th className="text-right py-3 px-2 text-sm font-medium text-gray-500">Actions</th>
+                    <th scope="col" className="text-left py-3 px-2 text-sm font-medium text-gray-500">User</th>
+                    <th scope="col" className="text-left py-3 px-2 text-sm font-medium text-gray-500">Role</th>
+                    <th scope="col" className="text-left py-3 px-2 text-sm font-medium text-gray-500">Status</th>
+                    <th scope="col" className="text-left py-3 px-2 text-sm font-medium text-gray-500">Joined</th>
+                    <th scope="col" className="text-left py-3 px-2 text-sm font-medium text-gray-500">Trips</th>
+                    <th scope="col" className="text-left py-3 px-2 text-sm font-medium text-gray-500">Spent</th>
+                    <th scope="col" className="text-right py-3 px-2 text-sm font-medium text-gray-500">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -298,6 +299,7 @@ export default function AdminUsers() {
                             variant="ghost"
                             size="icon"
                             onClick={() => setViewUser(user)}
+                            aria-label={`View ${user.name}`}
                             data-testid={`button-view-${user.id}`}
                           >
                             <Eye className="w-4 h-4" />
@@ -314,7 +316,7 @@ export default function AdminUsers() {
                           </Button>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" data-testid={`button-more-${user.id}`}>
+                              <Button variant="ghost" size="icon" aria-label={`More actions for ${user.name}`} data-testid={`button-more-${user.id}`}>
                                 <MoreVertical className="w-4 h-4" />
                               </Button>
                             </DropdownMenuTrigger>
