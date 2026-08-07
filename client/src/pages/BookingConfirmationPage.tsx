@@ -30,11 +30,46 @@ const getStripe = () => {
 
 type PageState = 'loading' | 'success' | 'processing' | 'failed' | 'canceled' | 'no_params';
 
+interface ConfirmedBookingSummary {
+  id: string;
+  trackingNumber: string | null;
+  totalAmount: string | null;
+  serviceId: string | null;
+}
+
 export default function BookingConfirmationPage() {
   const [, navigate] = useLocation();
   const [state, setState] = useState<PageState>('loading');
   const [paymentIntentId, setPaymentIntentId] = useState<string>('');
   const [errorMessage, setErrorMessage] = useState<string>('');
+  const [confirmedBookings, setConfirmedBookings] = useState<ConfirmedBookingSummary[]>([]);
+
+  // #1053: surface the traveler's confirmation number(s). The TRV-… tracking number was
+  // stored on every booking but never shown anywhere post-payment. Best-effort: if this
+  // fetch fails the success state still renders (payment truth comes from Stripe above).
+  useEffect(() => {
+    if (state !== 'success' || !paymentIntentId) return;
+    let cancelled = false;
+    fetch('/api/my-bookings', { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((rows: any[]) => {
+        if (cancelled || !Array.isArray(rows)) return;
+        setConfirmedBookings(
+          rows
+            .filter((b) => b?.stripePaymentIntentId === paymentIntentId)
+            .map((b) => ({
+              id: b.id,
+              trackingNumber: b.trackingNumber ?? null,
+              totalAmount: b.totalAmount ?? null,
+              serviceId: b.serviceId ?? null,
+            })),
+        );
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [state, paymentIntentId]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -50,24 +85,38 @@ export default function BookingConfirmationPage() {
 
     if (piId) setPaymentIntentId(piId);
 
-    if (redirectStatus === 'succeeded') {
-      setState('success');
-      return;
-    }
-
-    if (redirectStatus === 'failed') {
-      setState('failed');
-      setErrorMessage('Your payment could not be completed. Please try again with a different card.');
-      return;
-    }
-
-    if (redirectStatus === 'canceled') {
-      setState('canceled');
-      return;
-    }
-
-    // For any other redirect_status (or missing) try to retrieve the PI to get authoritative status
+    // Scrub the client secret (and status) from the address bar / history — it has served its
+    // purpose once read. Standard Stripe redirect hygiene.
     if (clientSecret) {
+      const clean = new URL(window.location.href);
+      clean.searchParams.delete('payment_intent_client_secret');
+      clean.searchParams.delete('redirect_status');
+      window.history.replaceState({}, '', clean.toString());
+    }
+
+    // NEVER trust redirect_status alone for success — it is a client-forgeable URL param. When we
+    // have the client secret, Stripe's own retrievePaymentIntent below is the source of truth for
+    // ALL statuses. redirect_status is only used as a fallback for non-success outcomes when no
+    // client secret is available.
+    if (!clientSecret) {
+      if (redirectStatus === 'failed') {
+        setState('failed');
+        setErrorMessage('Your payment could not be completed. Please try again with a different card.');
+        return;
+      }
+      if (redirectStatus === 'canceled') {
+        setState('canceled');
+        return;
+      }
+      // succeeded (or anything else) without a client secret is unverifiable — don't render a
+      // confirmed screen off an unverified param.
+      setState('failed');
+      setErrorMessage('Unable to verify payment status. Please check your bookings page or your email for confirmation.');
+      return;
+    }
+
+    // Retrieve the PI from Stripe to get the authoritative status
+    {
       getStripe().then(async (stripe) => {
         if (!stripe) { setState('failed'); return; }
         const { paymentIntent, error } = await stripe.retrievePaymentIntent(clientSecret);
@@ -98,9 +147,6 @@ export default function BookingConfirmationPage() {
       }).catch(() => setState('failed'));
       return;
     }
-
-    setState('failed');
-    setErrorMessage('Unable to determine payment status. Please check your email for confirmation or contact support.');
   }, []);
 
   // Redirect to dashboard immediately if no params
@@ -134,6 +180,24 @@ export default function BookingConfirmationPage() {
             <p className="text-gray-600 mb-2">
               Your payment was successful and your booking is confirmed.
             </p>
+            {confirmedBookings.length > 0 && (
+              <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 mb-4 text-left" data-testid="confirmation-numbers">
+                <p className="text-xs uppercase tracking-wide text-gray-500 mb-2">
+                  {confirmedBookings.length > 1 ? 'Confirmation numbers' : 'Confirmation number'}
+                </p>
+                {confirmedBookings.map((b) => (
+                  <div key={b.id} className="flex items-center justify-between py-1" data-testid={`confirmation-number-${b.id}`}>
+                    <span className="font-mono font-semibold text-gray-900 tracking-wider">
+                      {b.trackingNumber || b.id}
+                    </span>
+                    {b.totalAmount && <span className="text-sm text-gray-500">${b.totalAmount}</span>}
+                  </div>
+                ))}
+                <p className="text-xs text-gray-400 mt-2">
+                  Keep this number handy — quote it to your provider or support.
+                </p>
+              </div>
+            )}
             {paymentIntentId && (
               <p className="text-xs text-gray-400 font-mono mb-6">
                 Ref: {paymentIntentId.substring(0, 24)}…
