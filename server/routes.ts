@@ -88,7 +88,7 @@ import { isExpertRole, isProviderRole } from "@shared/roles";
 import Stripe from "stripe";
 import { sharedCache } from "./services/shared-cache.service";
 import { vaultAndStripItems } from "./services/affiliate-url-vault.service";
-import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, createPublicProfile, getDisplayName, redactContactInfo } from "./utils/data-sanitizer";
+import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, createPublicProfile, getDisplayName, redactContactInfo, pickPublicFields, EXPERT_APPLICATION_PUBLIC_FIELDS } from "./utils/data-sanitizer";
 import { transportLegs, sharedItineraries, mapsExportCache, expertUpdatedItineraries, affiliateProducts, contentRegistry } from "@shared/schema";
 import { calculateTransportLegs, regenerateMapsUrlsFromLegs } from "./services/transport-leg-calculator";
 import { buildGoogleNavUrl, buildAppleNavUrl } from "./services/maps-url-builder";
@@ -1680,7 +1680,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           )
             .then((s) => storage.updateLocalExpertFormKnowledgeScore(form!.id, s))
             .catch((e: any) => console.error("[expertise-scoring] persist failed:", e?.message));
-          return res.status(200).json(form);
+          // CC-8: project the response — see EXPERT_APPLICATION_PUBLIC_FIELDS for why.
+          return res.status(200).json(pickPublicFields(form!, EXPERT_APPLICATION_PUBLIC_FIELDS));
         }
         return res.status(400).json({ message: "You already have an application submitted" });
       }
@@ -1697,7 +1698,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       )
         .then((s) => storage.updateLocalExpertFormKnowledgeScore(form.id, s))
         .catch((e: any) => console.error("[expertise-scoring] persist failed:", e?.message));
-      res.status(201).json(form);
+      // CC-8: project the response — see EXPERT_APPLICATION_PUBLIC_FIELDS for why.
+      res.status(201).json(pickPublicFields(form, EXPERT_APPLICATION_PUBLIC_FIELDS));
     } catch (err) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });
@@ -1729,7 +1731,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           )
             .then((s) => storage.updateLocalExpertFormKnowledgeScore(form!.id, s))
             .catch((e: any) => console.error("[expertise-scoring] persist failed:", e?.message));
-          return res.status(200).json(form);
+          // CC-8: project the response — see EXPERT_APPLICATION_PUBLIC_FIELDS for why.
+          return res.status(200).json(pickPublicFields(form!, EXPERT_APPLICATION_PUBLIC_FIELDS));
         }
         return res.status(400).json({ message: "You already have an application submitted" });
       }
@@ -1745,7 +1748,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       )
         .then((s) => storage.updateLocalExpertFormKnowledgeScore(form.id, s))
         .catch((e: any) => console.error("[expertise-scoring] persist failed:", e?.message));
-      res.status(201).json(form);
+      // CC-8: project the response — see EXPERT_APPLICATION_PUBLIC_FIELDS for why.
+      res.status(201).json(pickPublicFields(form, EXPERT_APPLICATION_PUBLIC_FIELDS));
     } catch (err) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });
