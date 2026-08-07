@@ -1,7 +1,7 @@
 import { db } from "./db";
 import { sql } from "drizzle-orm";
 import { availableAtFor } from "./config/earnings-hold.config";
-import { isTripAdvisor } from "./utils/trip-advisor";
+import { isTripAdvisor, isTripAdvisorWithWriteAccess } from "./utils/trip-advisor";
 import { PROCESSING_FEE_RATE, resolveCommissionRates, resolveServiceOwnerShareRate } from "./services/commission";
 import { isProviderRole } from "@shared/roles";
 import { 
@@ -393,6 +393,10 @@ export interface IStorage {
 
   // Expert Workspace
   isExpertAssignedToTrip(tripId: string, expertId: string): Promise<boolean>;
+  // WRITE-access variant (ruling, Aug 7 2026 — "a PENDING advisor may not write"): excludes
+  // 'pending' from the allow-list. Use this to gate trip-item mutation paths that grant access
+  // via the advisor role; use `isExpertAssignedToTrip` above for read surfaces.
+  isExpertAssignedToTripForWrite(tripId: string, expertId: string): Promise<boolean>;
 
   // Destination Calendar Events
   getDestinationEvents(country: string, city?: string, status?: string): Promise<DestinationEvent[]>;
@@ -4958,6 +4962,12 @@ export class DatabaseStorage implements IStorage {
   // propagated that over-grant to every trip-logistics endpoint. L20 Part A.
   async isExpertAssignedToTrip(tripId: string, expertId: string): Promise<boolean> {
     return isTripAdvisor(tripId, expertId);
+  }
+
+  // WRITE-access variant — delegates to the CANONICAL write-access advisor predicate
+  // (server/utils/trip-advisor.ts). 'pending' does NOT pass here (ruling, Aug 7 2026).
+  async isExpertAssignedToTripForWrite(tripId: string, expertId: string): Promise<boolean> {
+    return isTripAdvisorWithWriteAccess(tripId, expertId);
   }
 
   async createTripExpertAdvisor(data: { tripId: string; localExpertId: string; message?: string; status?: string }): Promise<any> {

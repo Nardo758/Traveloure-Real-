@@ -21,13 +21,22 @@
 import { storage } from "../storage";
 import { verifyTripOwnership } from "./trip-ownership";
 import { isTripAuthor } from "./trip-authorship";
-import { isTripAdvisor } from "./trip-advisor";
+import { isTripAdvisor, isTripAdvisorWithWriteAccess } from "./trip-advisor";
 import { logger } from "../infrastructure/logger";
 
+/**
+ * `requireWriteAccess` (ruling, Aug 7 2026 — "a PENDING advisor may not write"): defaults to
+ * `false`, which is BYTE-IDENTICAL to this function's pre-existing behaviour (the advisor branch
+ * accepts pending/accepted/assigned) — every one of this helper's ~30 existing call sites (day
+ * schedules, temporal anchors, transport legs, budget, etc.) is unaffected. Pass `true` ONLY at a
+ * trip-item MUTATION call site (itinerary reorder/optimize-order) to route the advisor branch
+ * through the WRITE allow-list instead (accepted/assigned, NOT pending).
+ */
 export async function authorizeTripLogistics(
   tripId: string,
   userId: string | undefined | null,
   route: string,
+  options?: { requireWriteAccess?: boolean },
 ): Promise<{ status: number; message: string } | null> {
   if (!userId) return { status: 401, message: "Not authenticated" };
 
@@ -38,7 +47,11 @@ export async function authorizeTripLogistics(
   // the CANONICAL predicate (server/utils/trip-advisor.ts). Called directly rather than through
   // `storage.isExpertAssignedToTrip` so the status allow-list this gate depends on is explicit
   // at the call site: pending/accepted/assigned PASS, rejected and any unknown status DENY.
-  if (await isTripAdvisor(tripId, userId)) return null;
+  // `requireWriteAccess` narrows the allow-list to accepted/assigned (see header note).
+  const advisorGrants = options?.requireWriteAccess
+    ? await isTripAdvisorWithWriteAccess(tripId, userId)
+    : await isTripAdvisor(tripId, userId);
+  if (advisorGrants) return null;
 
   // Authoring mode (ready-made brief §2): the expert who AUTHORS this trip. Explicit named check —
   // deliberately NOT routed through getTripRole (known pre-launch bypass).

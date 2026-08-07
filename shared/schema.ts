@@ -3473,6 +3473,16 @@ export const itineraryItems = pgTable("itinerary_items", {
   // Suggestion tracking
   suggestedBy: varchar("suggested_by", { length: 20 }), // 'ai', 'expert', 'user'
 
+  // Provenance (migration 181, D2 ratified Aug 7 2026). App-enforced value set = 'ai' | 'traveler'
+  // | 'expert' — deliberately NO DB CHECK (publish-time push trap, same posture as
+  // `routingStatus`/`transportProvided` above). Nullable: NULL means either (a) a legacy row
+  // born before this column existed, or (b) a truly-internal/dead write path this lane
+  // deliberately left unstamped — both are ambiguous by construction and are treated as such
+  // (see the regenerate-delete predicate below, which only trusts a NON-NULL origin). Server-
+  // derived only (§14 posture) — every user-facing create route strips a client-supplied value
+  // and re-stamps it from session/assignment state, never from `req.body`.
+  origin: varchar("origin", { length: 20 }),
+
   // Gem link (migration 133, authoring brief §3a — design room only). Soft reference (no FK: two gem
   // tables exist — ai_discovered_gems + travel_pulse_hidden_gems; source disambiguation is future work).
   gemId: varchar("gem_id"),
@@ -3777,7 +3787,10 @@ export const userSpontaneityPreferences = pgTable("user_spontaneity_preferences"
 export const insertTripParticipantSchema = createInsertSchema(tripParticipants).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertVendorContractSchema = createInsertSchema(vendorContracts).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertTripTransactionSchema = createInsertSchema(tripTransactions).omit({ id: true, createdAt: true, updatedAt: true });
-export const insertItineraryItemSchema = createInsertSchema(itineraryItems).omit({ id: true, createdAt: true, updatedAt: true });
+// `origin` is OMITTED (D2/§14/§19 posture): it is a provenance column stamped server-side only —
+// never client-settable via this schema. Every create route strips whatever the client sent and
+// re-derives it explicitly (mirroring the pre-existing `suggestedBy` derivation).
+export const insertItineraryItemSchema = createInsertSchema(itineraryItems).omit({ id: true, createdAt: true, updatedAt: true, origin: true });
 export const insertTripEmergencyContactSchema = createInsertSchema(tripEmergencyContacts).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertTripAlertSchema = createInsertSchema(tripAlerts).omit({ id: true, createdAt: true, updatedAt: true });
 

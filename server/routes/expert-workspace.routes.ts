@@ -466,6 +466,7 @@ router.post(
         dayNumber: Math.floor(idx / PER_DAY) + 1,
         locationName: row.city || null,
         suggestedBy: "expert",
+        origin: "expert",
         status: "planned",
         isFlexible: true,
       } as any);

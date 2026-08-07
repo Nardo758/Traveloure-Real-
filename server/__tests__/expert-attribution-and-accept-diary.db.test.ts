@@ -1,15 +1,25 @@
 /**
  * CC-1 + EX-3 — expert provenance on itinerary-item CREATE, and the accept-transition diary row.
+ * D1 + D2 (ratified Aug 7 2026) — "a PENDING advisor may not write" + `itinerary_items.origin`.
  *
  * CC-1: `POST /api/trips/:tripId/itinerary-items` (server/routes.ts, the mounted/authoritative
  * handler — trips.routes.ts's duplicate copy is shadowed per the §9 mount-order-dead note and
  * never serves traffic) now derives `itineraryItems.suggestedBy` server-side from the SESSION
- * user's `trip_expert_advisors` standing (via `storage.isExpertAssignedToTrip`, the canonical
- * `isTripAdvisor` allow-list predicate), never from `req.body` (§14 posture). The tests below
- * reproduce the route's own derivation using the SAME exported building blocks the route calls
- * (`insertItineraryItemSchema`, `storage.isExpertAssignedToTrip`, `storage.createItineraryItem`)
- * — the same "reproduce the route, don't reimplement it" approach as
- * booking-birth-provenance.db.test.ts's `postBooking` helper.
+ * user's `trip_expert_advisors` standing (via `storage.isExpertAssignedToTripForWrite`, the
+ * canonical `isTripAdvisorWithWriteAccess` allow-list predicate — D1), never from `req.body`
+ * (§14 posture). The tests below reproduce the route's own derivation using the SAME exported
+ * building blocks the route calls (`insertItineraryItemSchema`, `storage.isExpertAssignedToTrip`
+ * / `storage.isExpertAssignedToTripForWrite`, `storage.createItineraryItem`) — the same
+ * "reproduce the route, don't reimplement it" approach as booking-birth-provenance.db.test.ts's
+ * `postBooking` helper.
+ *
+ * D1: the route's access gate (`owned || assigned || authored`) now resolves `assigned` via the
+ * WRITE-access predicate — a PENDING advisor no longer passes it (403), only accepted/assigned
+ * advisors do (201).
+ *
+ * D2: the route also derives `itineraryItems.origin` ('ai'|'traveler'|'expert') server-side from
+ * the same WRITE-gated `isAdvisor` flag, mirroring `suggestedBy`'s derivation exactly — a
+ * client-sent `origin` is stripped and ignored.
  *
  * EX-3: `storage.acceptTripAssignment` (the pending -> accepted atomic flip) now writes one
  * append-only `item_transition_log` row in the SAME transaction as the flip, mirroring task
@@ -28,16 +38,25 @@ import crypto from "node:crypto";
 import { sql } from "drizzle-orm";
 import { db } from "../db";
 import { storage } from "../storage";
-import { insertItineraryItemSchema } from "@shared/schema";
+import { insertItineraryItemSchema, itineraryItems } from "@shared/schema";
+import { eq, and, or, isNull, ne } from "drizzle-orm";
 
 const RUN = crypto.randomUUID().slice(0, 8);
 const ids = {
   owner: `eap-${RUN}-owner`,
   expert: `eap-${RUN}-expert`,
   trip: `eap-${RUN}-trip`,
+  // D1: a SEPARATE trip whose advisor assignment stays 'pending' until T6 explicitly accepts it —
+  // isolated from `ids.trip` so T1's accept transition (T1 runs first) doesn't contaminate the
+  // pending-gate assertions.
+  trip2: `eap-${RUN}-trip2`,
+  // D2: a SEPARATE trip used only for the regenerate-delete-predicate test (T8), so its item set
+  // isn't polluted by the items T3/T4/T5/T7 create on `ids.trip`.
+  trip3: `eap-${RUN}-trip3`,
 };
 const createdItemIds: string[] = [];
 let assignmentId = "";
+let assignment2Id = "";
 
 // ── Disposable-DB guard (mirrors booking-birth-provenance.db.test.ts; never defaults open) ──────
 const DISPOSABLE_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "0.0.0.0", ""]);
@@ -67,16 +86,27 @@ async function assertDisposableDb(): Promise<void> {
   }
 }
 
-/** Reproduces EXACTLY what the routes.ts CREATE handler does with a body, post-fix: parse via the
- *  exported insert schema, strip whatever the client sent for suggestedBy, and re-derive it from
- *  `isAdvisor` (computed the same way the route computes it — never from the body). */
+/** Reproduces EXACTLY what the routes.ts CREATE handler does with a body, post D1+D2:
+ *  (1) the access gate — `owned || assigned` where `assigned` is now WRITE-gated
+ *      (`storage.isExpertAssignedToTripForWrite`, D1) instead of read-gated — a pending advisor
+ *      fails this and gets `{ status: 403 }`, never reaching the insert;
+ *  (2) parse via the exported insert schema (which OMITS `origin` at the schema layer, D2 layer
+ *      1), strip whatever the client sent for `suggestedBy`/`origin`, and re-derive BOTH from
+ *      `isAdvisor` (the SAME write-gated flag computed for the access gate — never from the
+ *      body, §14). Returns `{ status: 403 }` or `{ status: 201, item }`, mirroring the route's
+ *      HTTP contract without standing up an HTTP server (same DB-layer-reproduction approach as
+ *      the rest of this file / booking-birth-provenance.db.test.ts's `postBooking`). */
 async function postItineraryItem(
   actingUserId: string,
   tripId: string,
   body: Record<string, unknown>,
-): Promise<any> {
+): Promise<{ status: number; item?: any }> {
   const owned = actingUserId === ids.owner;
-  const isAdvisor = owned ? false : await storage.isExpertAssignedToTrip(tripId, actingUserId);
+  const isAdvisor = owned ? false : await storage.isExpertAssignedToTripForWrite(tripId, actingUserId);
+  const assigned = owned || isAdvisor;
+  if (!assigned) {
+    return { status: 403 };
+  }
   const parsed = insertItineraryItemSchema.safeParse({ ...body, tripId });
   assert.ok(parsed.success, `fixture body must parse: ${JSON.stringify((parsed as any).error?.errors)}`);
   const itemData = parsed.data as any;
@@ -84,9 +114,30 @@ async function postItineraryItem(
   if (isAdvisor) {
     itemData.suggestedBy = "expert";
   }
+  delete itemData.origin;
+  itemData.origin = isAdvisor ? "expert" : "traveler";
   const item = await storage.createItineraryItem(itemData);
   createdItemIds.push(item.id);
-  return item;
+  return { status: 201, item };
+}
+
+/** Reproduces EXACTLY the regenerate-delete predicate (server/routes.ts, D2/T1-1): delete rows
+ *  whose `origin = 'ai'`, OR whose `origin IS NULL` and the legacy `suggestedBy`-based heuristic
+ *  says "not expert" — sparing `origin = 'traveler'`, `origin = 'expert'`, and legacy
+ *  `suggestedBy = 'expert'` rows. */
+async function regenerateDeleteItineraryItems(tripId: string): Promise<void> {
+  await db.delete(itineraryItems).where(
+    and(
+      eq(itineraryItems.tripId, tripId),
+      or(
+        eq(itineraryItems.origin, "ai"),
+        and(
+          isNull(itineraryItems.origin),
+          or(isNull(itineraryItems.suggestedBy), ne(itineraryItems.suggestedBy, "expert")),
+        ),
+      ),
+    ),
+  );
 }
 
 before(async () => {
@@ -103,6 +154,14 @@ before(async () => {
     INSERT INTO trips (id, user_id, title, destination, start_date, end_date)
     VALUES (${ids.trip}, ${ids.owner}, 'EAP fixture trip', 'Lisbon', CURRENT_DATE + 10, CURRENT_DATE + 15)
   `);
+  await db.execute(sql`
+    INSERT INTO trips (id, user_id, title, destination, start_date, end_date)
+    VALUES (${ids.trip2}, ${ids.owner}, 'EAP fixture trip 2 (D1 pending-gate)', 'Porto', CURRENT_DATE + 10, CURRENT_DATE + 15)
+  `);
+  await db.execute(sql`
+    INSERT INTO trips (id, user_id, title, destination, start_date, end_date)
+    VALUES (${ids.trip3}, ${ids.owner}, 'EAP fixture trip 3 (D2 regenerate)', 'Faro', CURRENT_DATE + 10, CURRENT_DATE + 15)
+  `);
   const created = await storage.createTripExpertAdvisor({
     tripId: ids.trip,
     localExpertId: ids.expert,
@@ -110,15 +169,24 @@ before(async () => {
   });
   assignmentId = created.id;
   assert.equal(created.status, "pending", "fixture assignment must start pending");
+
+  const created2 = await storage.createTripExpertAdvisor({
+    tripId: ids.trip2,
+    localExpertId: ids.expert,
+    message: "fixture assignment 2 (D1 pending-gate)",
+  });
+  assignment2Id = created2.id;
+  assert.equal(created2.status, "pending", "fixture assignment 2 must start pending");
 });
 
 after(async () => {
-  await db.execute(sql`DELETE FROM item_transition_log WHERE trip_id = ${ids.trip}`).catch(() => {});
+  await db.execute(sql`DELETE FROM item_transition_log WHERE trip_id IN (${ids.trip}, ${ids.trip2}, ${ids.trip3})`).catch(() => {});
   for (const id of createdItemIds) {
     await db.execute(sql`DELETE FROM itinerary_items WHERE id = ${id}`).catch(() => {});
   }
-  await db.execute(sql`DELETE FROM trip_expert_advisors WHERE trip_id = ${ids.trip}`).catch(() => {});
-  await db.execute(sql`DELETE FROM trips WHERE id = ${ids.trip}`).catch(() => {});
+  await db.execute(sql`DELETE FROM itinerary_items WHERE trip_id IN (${ids.trip}, ${ids.trip2}, ${ids.trip3})`).catch(() => {});
+  await db.execute(sql`DELETE FROM trip_expert_advisors WHERE trip_id IN (${ids.trip}, ${ids.trip2}, ${ids.trip3})`).catch(() => {});
+  await db.execute(sql`DELETE FROM trips WHERE id IN (${ids.trip}, ${ids.trip2}, ${ids.trip3})`).catch(() => {});
   await db.execute(sql`DELETE FROM users WHERE id IN (${ids.owner}, ${ids.expert})`).catch(() => {});
 });
 
