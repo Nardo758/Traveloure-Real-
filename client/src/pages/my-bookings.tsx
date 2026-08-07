@@ -84,6 +84,7 @@ interface Booking {
   cancellationReason: string | null;
   createdAt: string;
   confirmationCode: string | null;
+  trackingNumber: string | null;
   hasReview?: boolean;
 }
 
@@ -685,10 +686,13 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
 
             {isConfirmedOrBeyond && (
               <div className="mb-2">
-                {booking.confirmationCode ? (
+                {(booking.confirmationCode || booking.trackingNumber) ? (
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-xs text-muted-foreground">Confirmation:</span>
-                    <ConfirmationCodeBadge code={booking.confirmationCode} bookingId={booking.id} />
+                    {/* #1053: cart-rail bookings never carry confirmationCode (legacy-rail field)
+                        but always have a TRV-… trackingNumber — show it instead of the
+                        "not yet available / contact support" dead end. */}
+                    <ConfirmationCodeBadge code={(booking.confirmationCode || booking.trackingNumber)!} bookingId={booking.id} />
                   </div>
                 ) : (
                   <p className="text-xs text-muted-foreground" data-testid={`no-code-${booking.id}`}>

@@ -962,6 +962,21 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
             platformFee: totalPlatformFeeAmt.toFixed(2),
             insuranceFee: insuranceFeeAmt.toFixed(2),
             providerEarnings: netExpertEarningsAmt.toFixed(2),
+            // #1052: itemized RECORD of the fee legs that compose the stored figures above.
+            // `platformFee` (column) remains the COMBINED platform take (base + insurance +
+            // concierge) — nothing that reads it changes — but the breakdown was previously
+            // unrecoverable (the concierge leg was folded in with bookingMetadata left `{}`),
+            // so reporting/refunds had no source of truth for the concierge amount. Pure
+            // bookkeeping: charge math is untouched (baseAmount + the three legs == the same
+            // totalAmount + platformFee the row already stores).
+            bookingMetadata: {
+              feeBreakdown: {
+                baseAmount: price.toFixed(2),
+                basePlatformFee: basePlatformFeeAmt.toFixed(2),
+                insuranceFee: insuranceFeeAmt.toFixed(2),
+                conciergeFee: conciergeFeaAmt.toFixed(2),
+              },
+            },
             status: "payment_pending",
             // S4: first real writer of the attribution columns (source existed unwritten).
             source: acquisitionSource,

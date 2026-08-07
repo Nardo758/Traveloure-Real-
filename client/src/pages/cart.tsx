@@ -2515,7 +2515,12 @@ export default function CartPage() {
                             await confirmCheckoutPayment(checkoutBookingIds, paymentIntentId).catch(() => {});
                             queryClient.invalidateQueries({ queryKey: ["/api/my-bookings"] });
                             toast({ title: "Payment successful!", description: "Your booking has been confirmed." });
-                            setLocation("/bookings");
+                            // #1053: land on the SAME confirmation page the 3DS redirect-back
+                            // path uses (it now surfaces the TRV-… confirmation number), instead
+                            // of dropping the traveler on /bookings with no reference to quote.
+                            setLocation(
+                              `/booking/confirmation?payment_intent=${encodeURIComponent(paymentIntentId)}&payment_intent_client_secret=${encodeURIComponent(checkoutPaymentIntent.clientSecret)}&redirect_status=succeeded`
+                            );
                           }}
                           onError={(error) => {
                             toast({ variant: "destructive", title: "Payment failed", description: error });
