@@ -1431,26 +1431,12 @@ router.post("/api/trips/:tripId/itinerary-items", isAuthenticated, async (req, r
   });
 
 
-router.patch("/api/itinerary-items/:id", isAuthenticated, async (req, res) => {
-    try {
-      const userId = getUserId(req)!;
-      const userName = (req.user as any).claims.name || "User";
-      const existing = await itineraryIntelligenceService.getItem(req.params.id);
-      if (!existing) {
-        return res.status(404).json({ message: "Itinerary item not found" });
-      }
-      const tripRole = await getTripRole(existing.tripId, userId);
-      if (!canMutateTrip(tripRole)) {
-        return res.status(403).json({ message: tripRole === "friend" ? "Friends can only suggest changes, not edit activities directly" : "Access denied" });
-      }
-      const item = await itineraryIntelligenceService.updateItem(req.params.id, req.body);
-      const changedFields = Object.keys(req.body).filter(k => k !== 'id').join(', ');
-      logItineraryChange(existing.tripId, userName, `Updated "${existing.title}" (${changedFields})`, "edit", tripRole!, req.params.id);
-      res.json(item);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to update itinerary item" });
-    }
-  });
+// RETIRED (V4 rail-unification, Aug 7 2026): this was already a §9 mount-order-dead twin of
+// `PATCH /api/itinerary-items/:id` in routes.ts (routes.ts registers first and always won —
+// this copy never served traffic). The LIVE copy in routes.ts is now retired too (zero live
+// callers; see its comment there for the full rationale) in favor of the canonical
+// `PATCH /api/trips/:tripId/itinerary-items/:itemId` below. Removed here rather than left as a
+// dead duplicate of retired code.
 
 
 router.post("/api/itinerary-items/:id/backup", isAuthenticated, async (req, res) => {
@@ -1624,25 +1610,9 @@ router.post("/api/trips/:tripId/activate-transport", isAuthenticated, async (req
   });
 
 
-router.delete("/api/itinerary-items/:id", isAuthenticated, async (req, res) => {
-    try {
-      const userId = getUserId(req)!;
-      const userName = (req.user as any).claims.name || "User";
-      const existing = await itineraryIntelligenceService.getItem(req.params.id);
-      if (!existing) {
-        return res.status(404).json({ message: "Itinerary item not found" });
-      }
-      const tripRole = await getTripRole(existing.tripId, userId);
-      if (!canMutateTrip(tripRole)) {
-        return res.status(403).json({ message: tripRole === "friend" ? "Friends cannot remove activities" : "Access denied" });
-      }
-      await itineraryIntelligenceService.deleteItem(req.params.id);
-      logItineraryChange(existing.tripId, userName, `Removed "${existing.title}"`, "remove", tripRole!, req.params.id);
-      res.status(204).send();
-    } catch (error) {
-      res.status(500).json({ message: "Failed to delete itinerary item" });
-    }
-  });
+// RETIRED (V4 rail-unification, Aug 7 2026): §9 mount-order-dead twin of
+// `DELETE /api/itinerary-items/:id` in routes.ts, which is itself now retired — see the PATCH
+// removal note above and routes.ts's comment for the full rationale.
 
   // --- Emergency Routes ---
 
