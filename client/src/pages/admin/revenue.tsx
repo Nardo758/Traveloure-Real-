@@ -390,7 +390,7 @@ export default function AdminRevenue() {
           </div>
           <div className="flex items-center gap-3">
             <Select value={period} onValueChange={setPeriod}>
-              <SelectTrigger className="w-40" data-testid="select-period">
+              <SelectTrigger className="w-40" aria-label="Filter revenue by period" data-testid="select-period">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -1158,7 +1158,7 @@ export default function AdminRevenue() {
                   </CardDescription>
                 </div>
                 <Select value={txnStatusFilter} onValueChange={setTxnStatusFilter}>
-                  <SelectTrigger className="w-36" data-testid="select-txn-status">
+                  <SelectTrigger className="w-36" aria-label="Filter transactions by status" data-testid="select-txn-status">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>

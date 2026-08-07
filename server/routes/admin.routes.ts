@@ -22,7 +22,7 @@ import {
   insertServiceTemplateSchema, insertServiceBookingSchema, insertServiceReviewSchema,
   itineraryComparisons, itineraryVariants, itineraryVariantItems, itineraryVariantMetrics,
   userExperienceItems, userExperiences, providerServices, cartItems, trips,
-  serviceBookings, serviceReviews, reviewModerationLogs, notifications, wallets, creditTransactions, serviceProviderForms,
+  serviceBookings, serviceReviews, reviewModerationLogs, notifications, adminNotifications as adminNotificationsTable, wallets, creditTransactions, serviceProviderForms,
   insertCustomVenueSchema, insertGeneratedItinerarySchema,
   insertTemporalAnchorSchema, insertDayBoundarySchema, insertEnergyTrackingSchema,
   temporalAnchors, itineraryItems, generatedItineraries,
@@ -227,6 +227,20 @@ const requireAdminLocal = async (req: any, res: any, next: any) => {
   if (!user || user.role !== "admin") return res.status(403).json({ message: "Admin access required" });
   next();
 };
+
+router.post("/api/admin/gems/backfill-photos", isAuthenticated, requireAdminLocal, async (req, res) => {
+  try {
+    const { grokDiscoveryService } = await import("../services/grok-discovery.service");
+    const result = await grokDiscoveryService.backfillGemPhotos();
+    res.json({
+      message: `Backfill complete: ${result.processed} gem(s) processed, ${result.updated} updated, ${result.failed} failed.`,
+      ...result,
+    });
+  } catch (err: any) {
+    console.error("Gem photo backfill failed:", err);
+    res.status(500).json({ message: err?.message ?? "Gem photo backfill failed" });
+  }
+});
 
 router.get("/api/admin/commission-test", isAuthenticated, async (req, res) => {
   const userId = getUserId(req)!;
@@ -1335,6 +1349,47 @@ router.get("/api/admin/provider-health", isAuthenticated, async (req, res) => {
   } catch (err: any) {
     console.error("Provider health error:", err);
     res.status(500).json({ message: "Failed to load provider health", error: err.message });
+  }
+});
+
+// ── Integration configuration status ─────────────────────────────────────────
+// Real "is this integration configured" checks for the Platform Providers admin page — secret
+// PRESENCE only (never values). Previously the page inferred "Connected" from usage/revenue data
+// provenance, which showed Fever as connected regardless of credentials and omitted Resend entirely.
+// Each check mirrors the exact env gate the corresponding service performs (cited inline).
+router.get("/api/admin/integration-status", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser(getUserId(req)!);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const env = process.env;
+    const providers: Record<string, { configured: boolean }> = {
+      // server/services/ai/* — Anthropic client gate
+      anthropic: { configured: !!env.ANTHROPIC_API_KEY },
+      // Grok client gate
+      xai: { configured: !!env.XAI_API_KEY },
+      // server/services/viator.service.ts: `!!VIATOR_API_KEY`
+      viator: { configured: !!env.VIATOR_API_KEY },
+      // server/services/booking-com.service.ts: `!!AFFILIATE_ID`
+      booking: { configured: !!env.BOOKING_COM_AFFILIATE_ID },
+      // 12Go rides via the Travelpayouts network token
+      "12go": { configured: !!env.TRAVELPAYOUTS_TOKEN },
+      // server/services/google-places-photos.service.ts + client maps
+      googlemaps: { configured: !!env.GOOGLE_MAPS_API_KEY },
+      // server/services/serp.service.ts
+      serpapi: { configured: !!env.SERP_API_KEY },
+      // server/services/fever.service.ts: `!!(accountSid && authToken)`
+      fever: { configured: !!(env.IMPACT_ACCOUNT_SID && env.IMPACT_AUTH_TOKEN) },
+      // server/services/email.service.ts: requires the Resend key plus a from-address
+      resend: { configured: !!(env.RESEND_API_KEY && (env.EMAIL_FROM_NOREPLY || env.EMAIL_FROM)) },
+      // Decommissioned (DECISIONS.md ruling 34, 2026-08-05) — never configured regardless of env.
+      amadeus: { configured: false },
+    };
+    res.json({ providers });
+  } catch (err: any) {
+    console.error("Integration status error:", err);
+    res.status(500).json({ message: "Failed to load integration status", error: err.message });
   }
 });
 
@@ -3079,7 +3134,41 @@ router.delete("/api/admin/services/:id", isAuthenticated, async (req, res) => {
 
       const row = await getProviderServiceById(req.params.id);
       if (!row) return res.status(404).json({ message: "Service not found" });
-      await deleteProviderService(req.params.id);
+
+      // Financial-history guard: service_bookings.service_id is ON DELETE CASCADE, so a
+      // hard delete would silently destroy historical bookings (and the platform_fee
+      // snapshots the revenue dashboard sums). If any bookings reference this service,
+      // soft-delete instead — mark it suspended so it disappears from public surfaces
+      // while every historical record keeps its reference intact.
+      //
+      // Runs in a single transaction with the service row locked FOR UPDATE: a booking
+      // INSERT takes a FK KEY SHARE lock on this row, which conflicts with FOR UPDATE,
+      // so a concurrent checkout blocks until we commit — it can never slip a booking
+      // in between the count and the delete (post-delete it fails the FK honestly).
+      const outcome = await db.transaction(async (tx) => {
+        await tx.execute(sql`SELECT id FROM provider_services WHERE id = ${req.params.id} FOR UPDATE`);
+        const [{ bookingCount }] = await tx
+          .select({ bookingCount: sql<number>`count(*)::int` })
+          .from(serviceBookings)
+          .where(eq(serviceBookings.serviceId, req.params.id));
+        if (bookingCount > 0) {
+          await tx
+            .update(providerServices)
+            .set({ status: "suspended", updatedAt: new Date() })
+            .where(eq(providerServices.id, req.params.id));
+          return { softDeleted: true as const, bookingCount };
+        }
+        await tx.delete(providerServices).where(eq(providerServices.id, req.params.id));
+        return { softDeleted: false as const, bookingCount: 0 };
+      });
+
+      if (outcome.softDeleted) {
+        return res.json({
+          ok: true,
+          softDeleted: true,
+          message: `Service has ${outcome.bookingCount} booking(s) — it was archived (suspended) instead of deleted so booking history stays intact.`,
+        });
+      }
       res.json({ ok: true });
     } catch (err: any) {
       // Migration 151 (§17): bundle_components.component_service_id is ON DELETE RESTRICT —
@@ -4880,9 +4969,14 @@ router.get("/api/admin/notifications", isAuthenticated, async (req, res) => {
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
-      const adminNotifications = await getAdminNotifications(userId);
+      const [userNotifs, adminAlerts] = await Promise.all([
+        getAdminNotifications(userId),
+        db.select().from(adminNotificationsTable)
+          .orderBy(desc(adminNotificationsTable.createdAt))
+          .limit(50),
+      ]);
 
-      const enriched = adminNotifications.map(n => ({
+      const enrichedUser = userNotifs.map(n => ({
         id: n.id,
         type: n.type?.includes("warning") || n.type?.includes("dispute") ? "warning"
           : n.type?.includes("success") || n.type?.includes("payment") ? "success"
@@ -4892,10 +4986,35 @@ router.get("/api/admin/notifications", isAuthenticated, async (req, res) => {
         title: n.title || "Notification",
         message: n.message || "",
         time: n.createdAt ? getRelativeTime(n.createdAt) : "Unknown",
+        createdAt: n.createdAt,
         read: n.isRead || false,
       }));
 
-      res.json(enriched);
+      // Platform-level alerts (reconciliation mismatches, unassigned leads,
+      // service requests, etc.) live in admin_notifications with numeric ids;
+      // prefix them so PATCH can route to the right table.
+      const alertCategory = (type: string) =>
+        type.includes("reconciliation") ? "Reconciliation"
+          : type.includes("lead") || type.includes("expert") ? "Lead Routing"
+          : type.includes("service") ? "Service Requests"
+          : "Platform Alert";
+      const enrichedAlerts = adminAlerts.map(n => ({
+        id: `alert-${n.id}`,
+        type: n.type?.includes("mismatch") || n.type?.includes("reconciliation") ? "warning"
+          : "alert",
+        category: alertCategory(n.type || ""),
+        title: n.destination ? `${alertCategory(n.type || "")}: ${n.destination}` : alertCategory(n.type || ""),
+        message: [n.message, n.reason].filter(Boolean).join(" — "),
+        time: n.createdAt ? getRelativeTime(n.createdAt) : "Unknown",
+        createdAt: n.createdAt,
+        read: n.isRead || false,
+      }));
+
+      const merged = [...enrichedUser, ...enrichedAlerts]
+        .sort((a, b) => new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime())
+        .map(({ createdAt, ...rest }) => rest);
+
+      res.json(merged);
     } catch (err) {
       console.error("Admin notifications error:", err);
       res.status(500).json({ message: "Failed to fetch notifications" });
@@ -5462,10 +5581,24 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
       }
       const before = current.rows[0] as any;
 
+      // Reject present-but-invalid rate fields outright. Previously a non-numeric
+      // defaultRate (e.g. "abc") silently fell back to the stored value and returned
+      // 200 ok — a false "saved" that dropped the admin's intended change. Omitting a
+      // field still means "leave unchanged"; only present values must be finite numbers.
+      if (defaultRate !== undefined && (typeof defaultRate !== "number" || !Number.isFinite(defaultRate))) {
+        return res.status(400).json({ error: "defaultRate must be a finite number", received: defaultRate });
+      }
+      if (minRate !== undefined && minRate !== null && (typeof minRate !== "number" || !Number.isFinite(minRate))) {
+        return res.status(400).json({ error: "minRate must be a finite number or null", received: minRate });
+      }
+      if (maxRate !== undefined && maxRate !== null && (typeof maxRate !== "number" || !Number.isFinite(maxRate))) {
+        return res.status(400).json({ error: "maxRate must be a finite number or null", received: maxRate });
+      }
+
       // Apply min/max validation against the proposed (or unchanged) default_rate.
-      const nextDefault = typeof defaultRate === "number" ? defaultRate : Number(before.default_rate);
-      const nextMin = minRate === undefined ? (before.min_rate === null ? null : Number(before.min_rate)) : (minRate === null ? null : Number(minRate));
-      const nextMax = maxRate === undefined ? (before.max_rate === null ? null : Number(before.max_rate)) : (maxRate === null ? null : Number(maxRate));
+      const nextDefault = defaultRate !== undefined ? defaultRate : Number(before.default_rate);
+      const nextMin = minRate === undefined ? (before.min_rate === null ? null : Number(before.min_rate)) : (minRate === null ? null : minRate);
+      const nextMax = maxRate === undefined ? (before.max_rate === null ? null : Number(before.max_rate)) : (maxRate === null ? null : maxRate);
       if (nextMin !== null && nextDefault < nextMin) {
         return res.status(400).json({ error: "default_rate below min_rate", nextDefault, nextMin });
       }

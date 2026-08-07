@@ -364,12 +364,60 @@ export async function getTripByShareToken(token: string): Promise<{ row: any; sh
     FROM shared_trips st
     JOIN trips t ON t.id = st.trip_id
     LEFT JOIN generated_itineraries gi ON gi.trip_id = t.id AND gi.status = 'generated'
+      AND gi.created_at = (
+        SELECT MAX(gi2.created_at) FROM generated_itineraries gi2
+        WHERE gi2.trip_id = t.id AND gi2.status = 'generated'
+      )
     WHERE st.share_token = ${token}
       AND (st.expires_at IS NULL OR st.expires_at > NOW())
     LIMIT 1
   `);
   if (!result.rows || result.rows.length === 0) return null;
   const row = result.rows[0] as any;
+
+  // Prefer live itinerary_items over the generated_itineraries snapshot so that any
+  // manual edit (add/remove/reorder) is immediately visible on the share page without
+  // requiring a regenerate.
+  const itemsResult = await db.execute(sql`
+    SELECT title, description, item_type, day_number, start_time, location_name, estimated_cost
+    FROM itinerary_items
+    WHERE trip_id = ${String(row.id)}
+    ORDER BY day_number ASC, sort_order ASC, start_time ASC NULLS LAST, created_at ASC
+  `);
+  const items = (itemsResult.rows ?? []) as Array<{
+    title: string;
+    description: string | null;
+    item_type: string | null;
+    day_number: number;
+    start_time: string | null;
+    location_name: string | null;
+    estimated_cost: string | null;
+  }>;
+
+  if (items.length > 0) {
+    // Synthesize itinerary_data from live itinerary_items so the share page always
+    // reflects the current plan.
+    const dayMap = new Map<number, { day: number; title: string; activities: any[] }>();
+    for (const item of items) {
+      const dayNum = item.day_number;
+      if (!dayMap.has(dayNum)) {
+        dayMap.set(dayNum, { day: dayNum, title: `Day ${dayNum}`, activities: [] });
+      }
+      dayMap.get(dayNum)!.activities.push({
+        time: item.start_time ?? undefined,
+        title: item.title,
+        description: item.description ?? undefined,
+        type: item.item_type ?? "activity",
+        locationName: item.location_name ?? undefined,
+        estimatedCost: item.estimated_cost != null ? Number(item.estimated_cost) : undefined,
+      });
+    }
+    const days = Array.from(dayMap.values()).sort((a, b) => a.day - b.day);
+    row.itinerary_data = { days };
+  }
+  // If no itinerary_items exist, row.itinerary_data already holds the
+  // generated_itineraries snapshot (or null) from the JOIN above.
+
   return { row, sharedTripId: String(row.shared_trip_id) };
 }
 

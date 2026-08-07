@@ -14,6 +14,7 @@ import { LogIn, Mail, Lock, User, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { getRoleHomePath } from "@/lib/role-utils";
+import { sanitizeReturnTo } from "@/lib/safe-return-to";
 
 interface SignInModalProps {
   open: boolean;
@@ -138,7 +139,11 @@ export function SignInModal({
       if (sessionReturnTo) sessionStorage.removeItem("traveloure_return_to");
 
       const role = data.user?.role ?? "user";
-      window.location.href = returnTo ?? sessionReturnTo ?? getRoleHomePath(role);
+      // Sanitize at redirect time so a crafted returnTo (e.g. "/\evil.com")
+      // can never navigate off-site, regardless of where the value came from.
+      const safeDest =
+        sanitizeReturnTo(returnTo) ?? sanitizeReturnTo(sessionReturnTo);
+      window.location.href = safeDest ?? getRoleHomePath(role);
     } catch (error: any) {
       const msg = error.message || "Something went wrong";
       // TEST 10 — set in-DOM error for aria-live announcement; also toast for visual users
