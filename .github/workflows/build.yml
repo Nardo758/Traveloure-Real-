@@ -42,13 +42,13 @@ jobs:
       # the next lane. Coming in UNDER the ceiling therefore fails too — with the
       # instruction to lower it here.
       #
-      # 197 measured on 2026-08-05 @ ea0bbc05 (was 199 before PR #430 removed two
-      # errors with a dead code branch). Before this step existed the discipline
+      # 194 measured on 2026-08-07 (fix waves 1-2 removed three errors; was 197
+      # @ ea0bbc05, 199 before PR #430). Before this step existed the discipline
       # had no machine enforcement at all — every "baseline" in the repo was a
       # stale prose number (191/209/254/~137, none of them current).
       - name: tsc baseline ratchet (down-only)
         env:
-          TSC_BASELINE: '197'
+          TSC_BASELINE: '194'
         run: |
           count=$(npx tsc --noEmit 2>&1 | grep -c "error TS" || true)
           echo "tsc --noEmit: $count error(s); baseline ceiling: $TSC_BASELINE"
