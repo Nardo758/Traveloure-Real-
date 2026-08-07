@@ -189,9 +189,9 @@ function PolicyToggle({ setting }: { setting: PlatformSetting }) {
     >
       <div className="flex items-start justify-between gap-3 mb-2">
         <div>
-          <code className="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">{setting.setting_key}</code>
+          <code id={`setting-label-${setting.setting_key}`} className="font-mono text-xs bg-gray-100 px-1.5 py-0.5 rounded">{setting.setting_key}</code>
           {setting.description && (
-            <p className="text-xs text-gray-500 mt-1.5 max-w-xl">{setting.description}</p>
+            <p id={`setting-desc-${setting.setting_key}`} className="text-xs text-gray-500 mt-1.5 max-w-xl">{setting.description}</p>
           )}
         </div>
       </div>
@@ -199,7 +199,12 @@ function PolicyToggle({ setting }: { setting: PlatformSetting }) {
       <div className="flex items-center gap-2 mt-3">
         {isPolicy ? (
           <Select value={value} onValueChange={setValue}>
-            <SelectTrigger className="w-48" data-testid={`platform-setting-value-${setting.setting_key}`}>
+            <SelectTrigger
+              className="w-48"
+              aria-labelledby={`setting-label-${setting.setting_key}`}
+              aria-describedby={setting.description ? `setting-desc-${setting.setting_key}` : undefined}
+              data-testid={`platform-setting-value-${setting.setting_key}`}
+            >
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -212,6 +217,8 @@ function PolicyToggle({ setting }: { setting: PlatformSetting }) {
             value={value}
             onChange={(e) => setValue(e.target.value)}
             className="w-72 text-sm"
+            aria-labelledby={`setting-label-${setting.setting_key}`}
+            aria-describedby={setting.description ? `setting-desc-${setting.setting_key}` : undefined}
             data-testid={`platform-setting-value-${setting.setting_key}`}
           />
         )}
