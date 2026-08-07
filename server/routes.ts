@@ -1286,14 +1286,25 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // alongside the stale AI set. Now the delete PRESERVES expert-attributed rows — their
       // dayNumber/sortOrder are untouched, so they simply keep occupying their existing day/slot
       // while the freshly-generated set is inserted alongside them.
-      // PROVENANCE LIMITATION (documented, not fixed here): traveler-manually-added items are
-      // NOT distinguishable from AI-generated items — both carry `suggestedBy = null` — so a
-      // regenerate still wipes manual additions too. Closing that gap needs a new provenance
-      // value/column, which is a schema change requiring decision-maker sign-off (out of scope).
+      // D2 (origin provenance, ratified Aug 7 2026): the PROVENANCE LIMITATION noted here
+      // previously — traveler-manually-added items were NOT distinguishable from AI-generated
+      // ones, both carrying `suggestedBy = null` — is now closed by `itinerary_items.origin`.
+      // New rows are stamped 'ai' (this insert loop) or 'traveler' (every user-facing create
+      // site) going forward, so the delete now ALSO spares `origin = 'traveler'` rows. Legacy
+      // rows with `origin IS NULL` are ambiguous by construction (born before this column
+      // existed) and keep the pre-existing replaced behavior — the same
+      // `suggestedBy <> 'expert'` fallback as before, now reached only when `origin` itself
+      // gives no answer.
       await db.delete(itineraryItems).where(
         and(
           eq(itineraryItems.tripId, trip.id),
-          or(isNull(itineraryItems.suggestedBy), ne(itineraryItems.suggestedBy, "expert")),
+          or(
+            eq(itineraryItems.origin, "ai"),
+            and(
+              isNull(itineraryItems.origin),
+              or(isNull(itineraryItems.suggestedBy), ne(itineraryItems.suggestedBy, "expert")),
+            ),
+          ),
         ),
       );
 
@@ -1311,6 +1322,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             locationName: activity.locationName || destination,
             estimatedCost: activity.estimatedCost != null ? String(activity.estimatedCost) : null,
             currency: "USD",
+            origin: "ai",
           });
         }
       }
@@ -6063,6 +6075,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           locationName: meta.city || meta.location || serviceLocation,
           notes: cartItem.notes || null,
           suggestedBy: "user",
+          origin: "traveler",
           status: "planned",
           isFlexible: true,
           estimatedCost,
@@ -7986,6 +7999,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             estimatedCost: activity.estimatedCost != null ? String(activity.estimatedCost) : null,
             currency: "USD",
             suggestedBy: "ai",
+            origin: "ai",
           }).returning();
           qsInsertedItems.push({ ...activity, id: inserted.id });
         }
@@ -8934,7 +8948,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // Split out from the OR'd `assigned` boolean below so the mode-flip gate can target the
       // advisor-only path — never the owner (owned ? true : ...) short-circuits, so `isAdvisor`
       // is deliberately NOT that combined flag.
-      const isAdvisor = owned ? false : await storage.isExpertAssignedToTrip(tripId, userId);
+      // D1 (ruling, Aug 7 2026 — "a PENDING advisor may not write"): this is a trip-item
+      // MUTATION path, so it is gated on WRITE access (accepted/assigned) — NOT
+      // `storage.isExpertAssignedToTrip` (read access, includes pending). A pending advisor no
+      // longer reaches `assigned` here and falls through to the 403 below (or the author branch).
+      const isAdvisor = owned ? false : await storage.isExpertAssignedToTripForWrite(tripId, userId);
       const assigned = owned || isAdvisor;
       // Authoring mode (ready-made brief §2): the trip's author may build it.
       const authored = (owned || assigned) ? false : await isTripAuthor(tripId, userId);
@@ -8958,6 +8976,12 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (isAdvisor) {
         itemData.suggestedBy = "expert";
       }
+      // D2 (origin provenance, ratified Aug 7 2026): server-derived, never client-trusted — the
+      // schema already omits `origin` (shared/schema.ts), this is the explicit re-derivation
+      // mirroring `suggestedBy` immediately above. `isAdvisor` here is the WRITE-gated flag, so
+      // an item can only be stamped 'expert' by a caller who actually has write access.
+      delete itemData.origin;
+      itemData.origin = isAdvisor ? "expert" : "traveler";
       const item = await storage.createItineraryItem(itemData);
       logItineraryChange(tripId, userName, `Added "${item.title}"`, "add", owned ? "owner" : "expert", item.id);
 
@@ -9045,14 +9069,16 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const userName = (req.user as any).claims.name || "User";
       // SECURITY: this mutates another user's itinerary ordering; `isAuthenticated` alone was the
       // only gate. Canonical authorization, matching the sibling itinerary-item handlers above.
-      const denied = await authorizeTripLogistics(req.params.tripId, userId, "POST /api/trips/:tripId/itinerary/reorder");
+      // D1 (ruling, Aug 7 2026): a trip-item MUTATION path — `requireWriteAccess: true` narrows
+      // the advisor branch to accepted/assigned (no pending).
+      const denied = await authorizeTripLogistics(req.params.tripId, userId, "POST /api/trips/:tripId/itinerary/reorder", { requireWriteAccess: true });
       if (denied) return res.status(denied.status).json({ message: denied.message });
       // FABLE-REVIEW: the mode-flip gate (QA_PUNCH_LIST item 18), same derivation as the
       // item-create handler's `isAdvisor` above — never the owner, never the author. Computed
       // AFTER authorizeTripLogistics has already passed, so it narrows nothing that handler
       // grants; it only refuses the advisor branch once the assignment's plan is approved.
       const owned = await verifyTripOwnership(req.params.tripId, userId);
-      const isAdvisor = owned ? false : await storage.isExpertAssignedToTrip(req.params.tripId, userId);
+      const isAdvisor = owned ? false : await storage.isExpertAssignedToTripForWrite(req.params.tripId, userId);
       if (isAdvisor && await isPlanApprovedForExpert(req.params.tripId, userId)) {
         return res.status(409).json(PLAN_APPROVED_SUGGEST_INSTEAD_ERROR);
       }
@@ -9077,7 +9103,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const userId = getUserId(req)!;
       // SECURITY: same omission as the reorder handler above — `isAuthenticated` only, no trip
       // authorization, so any authenticated user could compute an optimized order for any trip.
-      const denied = await authorizeTripLogistics(req.params.tripId, userId, "POST /api/trips/:tripId/itinerary/optimize-order");
+      // D1 (ruling, Aug 7 2026): treated as a trip-item MUTATION path (see comment below) —
+      // `requireWriteAccess: true` narrows the advisor branch to accepted/assigned.
+      const denied = await authorizeTripLogistics(req.params.tripId, userId, "POST /api/trips/:tripId/itinerary/optimize-order", { requireWriteAccess: true });
       if (denied) return res.status(denied.status).json({ message: denied.message });
       // FABLE-REVIEW: the mode-flip gate (QA_PUNCH_LIST item 18) — same derivation as the
       // reorder handler above (itself mirroring the item-create handler's `isAdvisor`). This
@@ -9085,7 +9113,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // advisor on an approved plan can't even fish for a machine order to hand-apply via
       // the reorder endpoint under a different guise.
       const owned = await verifyTripOwnership(req.params.tripId, userId);
-      const isAdvisor = owned ? false : await storage.isExpertAssignedToTrip(req.params.tripId, userId);
+      const isAdvisor = owned ? false : await storage.isExpertAssignedToTripForWrite(req.params.tripId, userId);
       if (isAdvisor && await isPlanApprovedForExpert(req.params.tripId, userId)) {
         return res.status(409).json(PLAN_APPROVED_SUGGEST_INSTEAD_ERROR);
       }

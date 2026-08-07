@@ -4310,6 +4310,7 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
               estimatedCost: activity.estimatedCost != null ? String(activity.estimatedCost) : null,
               currency: "USD",
               suggestedBy: "ai",
+              origin: "ai",
             }).returning();
             insertedItems.push({ ...activity, id: inserted.id });
           }
@@ -6948,6 +6949,9 @@ router.patch("/api/affiliate-booking-requests/:id", isAuthenticated, async (req,
           estimatedCost: updated.price ?? null,
           actualCost: updated.price ?? null,
           suggestedBy: "expert",
+          // D2: confirmed by the assigned booking agent/expert (isExpertAssignedToTrip-gated
+          // above) on the traveler's behalf — provenance is the expert.
+          origin: "expert",
         } as any);
       }
 
