@@ -649,8 +649,8 @@ export async function createExpertAssignmentNotification(
     INSERT INTO notifications (id, user_id, type, title, message, data, is_read, created_at)
     VALUES (
       ${crypto.randomUUID()}, ${expertUserId}, 'booking_request',
-      'New trip assignment',
-      ${`You've been assigned to ${tripLabel}. Open the workspace to start planning.`},
+      'New trip request',
+      ${`You've been invited to advise on ${tripLabel} — accept it in your Inbox to get started.`},
       ${JSON.stringify({ tripId, workspacePath: `/expert/workspace/${tripId}` })}::jsonb,
       false, NOW()
     )

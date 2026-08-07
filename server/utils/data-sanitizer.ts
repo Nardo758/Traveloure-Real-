@@ -290,6 +290,25 @@ export function pickPublicFields<T extends Record<string, any>, K extends keyof 
 }
 
 /**
+ * Denylist projector — returns a shallow copy of the source with the listed keys removed.
+ * Deliberately narrower than `pickPublicFields`: use this ONLY when a single, specifically-
+ * verified field is the leak (e.g. CC-8's `provider_services.revenueShareRate` on
+ * POST /api/provider/services) and the source table is large/actively read by many
+ * unaudited consumers, where reconstructing a full allowlist risks dropping a field some
+ * other caller depends on. Prefer `pickPublicFields` when the full consumer set is known.
+ */
+export function omitFields<T extends Record<string, any>, K extends keyof T>(
+  source: T,
+  fields: readonly K[],
+): Omit<T, K> {
+  const result = { ...source };
+  for (const field of fields) {
+    delete result[field];
+  }
+  return result;
+}
+
+/**
  * CC-8: POST /api/expert-application (and its /api/expert-forms alias) echoed the
  * full local_expert_forms row back — including admin/financial/verification
  * internals (totalEarnings, pendingPayout, feeSettings, stripeAccountId,

@@ -88,7 +88,7 @@ import { isExpertRole, isProviderRole } from "@shared/roles";
 import Stripe from "stripe";
 import { sharedCache } from "./services/shared-cache.service";
 import { vaultAndStripItems } from "./services/affiliate-url-vault.service";
-import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, createPublicProfile, getDisplayName, redactContactInfo, pickPublicFields, EXPERT_APPLICATION_PUBLIC_FIELDS } from "./utils/data-sanitizer";
+import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, createPublicProfile, getDisplayName, redactContactInfo, pickPublicFields, EXPERT_APPLICATION_PUBLIC_FIELDS, omitFields } from "./utils/data-sanitizer";
 import { transportLegs, sharedItineraries, mapsExportCache, expertUpdatedItineraries, affiliateProducts, contentRegistry } from "@shared/schema";
 import { calculateTransportLegs, regenerateMapsUrlsFromLegs } from "./services/transport-leg-calculator";
 import { buildGoogleNavUrl, buildAppleNavUrl } from "./services/maps-url-builder";
@@ -1651,10 +1651,13 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // === Expert Application Routes ===
   
   // Get current user's expert application
+  // CC-8: verified no client surface calls this route at all (the expert console's status
+  // pages read /api/expert/application-status instead — see EXPERT_APPLICATION_PUBLIC_FIELDS'
+  // comment); projected anyway rather than left as a directly-reachable full-row internals leak.
   app.get("/api/expert-application", isAuthenticated, async (req, res) => {
     const userId = getUserId(req)!;
     const form = await storage.getLocalExpertForm(userId);
-    res.json(form || null);
+    res.json(form ? pickPublicFields(form, EXPERT_APPLICATION_PUBLIC_FIELDS) : null);
   });
 
   // Submit expert application
@@ -2125,7 +2128,12 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
 
-      res.status(201).json(service);
+      // CC-8: revenueShareRate is a commission split (§18) — never client-settable AND never
+      // client-visible. ServiceForm.tsx's create mutation only reads service.id/status/
+      // approvalStatus from this response (verified); omit just this one verified field
+      // rather than a full allowlist — provider_services is large and read by several
+      // other unaudited surfaces this endpoint's response itself does not feed.
+      res.status(201).json(omitFields(service, ["revenueShareRate"] as const));
     } catch (err) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });
