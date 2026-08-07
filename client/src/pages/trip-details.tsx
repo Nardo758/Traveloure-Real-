@@ -10,6 +10,10 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -136,6 +140,21 @@ export default function TripDetails() {
   // the live generate-itinerary endpoint so a trip with no plan can actually self-generate.
   const generatePlan = useGenerateItinerary();
   const { data: generatedItinerary, isLoading: itineraryLoading, isError: itineraryError, refetch: refetchItinerary } = useGeneratedItinerary(id || "");
+  // T1-1: gates the regenerate confirmation dialog — true only once there's a plan with actual
+  // activities to lose. First generation (no itinerary yet) skips the dialog entirely.
+  // `as any`: itineraryData is a free-shape jsonb column typed `{}` at the ORM layer (see the
+  // pre-existing identical casts a few hundred lines below, e.g. `itinerary.days.map(...)`) —
+  // matching the file's existing convention rather than introducing a new typing approach.
+  const hasExistingItineraryItems = !!(generatedItinerary?.itineraryData as any)?.days?.some(
+    (d: any) => (d.activities?.length ?? 0) > 0
+  );
+  const handleRegenerateClick = () => {
+    if (hasExistingItineraryItems) {
+      setShowRegenerateConfirm(true);
+    } else {
+      generatePlan.mutate(trip!.id);
+    }
+  };
   const { toast } = useToast();
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState(initialTab);
@@ -154,6 +173,10 @@ export default function TripDetails() {
   const [rejectTargetId, setRejectTargetId] = useState<string | null>(null);
   const [rejectionNote, setRejectionNote] = useState("");
   const [showPlanningModal, setShowPlanningModal] = useState(false);
+  // T1-1: confirm before "Regenerate Plan" destructively rebuilds the itinerary. Only shown
+  // when there's an existing plan to lose (see `hasExistingItineraryItems` below) — first-time
+  // generation has nothing to warn about.
+  const [showRegenerateConfirm, setShowRegenerateConfirm] = useState(false);
   const suggestionsRef = useRef<HTMLDivElement | null>(null);
   // G7: "Plan ready" banner
   const [showOptimizedBanner, setShowOptimizedBanner] = useState(justOptimized);
@@ -596,8 +619,8 @@ export default function TripDetails() {
                       )}
                       Share with friends
                     </Button>
-                    <Button 
-                      onClick={() => generatePlan.mutate(trip.id)}
+                    <Button
+                      onClick={handleRegenerateClick}
                       disabled={generatePlan.isPending}
                       data-testid="button-regenerate"
                     >
@@ -719,14 +742,24 @@ export default function TripDetails() {
 
                         const templateConfig = getTemplateConfig(trip?.eventType);
 
+                        // T5-1 fix: this previously read id/destination/title/dates/travelers/
+                        // budget off `itinerary` (= generatedItinerary.itineraryData, the AI
+                        // JSON blob), which only ever contains `{ days, anchorValidation }` — every
+                        // one of those fields was `undefined` (id became the literal string
+                        // "undefined"). That was latent while PlanCard was always handed a static
+                        // `days` prop (its `trip.id`-keyed queries — plancard DTO, expert-advisor,
+                        // suggestions — were only reachable via `!daysProp`/unconditional paths that
+                        // silently 404'd and got swallowed). Now that PlanCard fetches the live DTO
+                        // from `trip.id`, this MUST be the real trip id — sourced from the page's
+                        // own `useTrip` result, not the itinerary blob.
                         const planCardTrip: PlanCardTrip = {
-                          id: String(itinerary.id),
-                          destination: itinerary.destination,
-                          title: itinerary.title,
-                          startDate: (() => { const d = new Date(itinerary.startDate); return isValid(d) ? format(d, "yyyy-MM-dd") : ""; })(),
-                          endDate: (() => { const d = new Date(itinerary.endDate); return isValid(d) ? format(d, "yyyy-MM-dd") : ""; })(),
-                          numberOfTravelers: itinerary.travelers,
-                          budget: itinerary.budget,
+                          id: trip.id,
+                          destination: trip.destination ?? itinerary.destination,
+                          title: trip.title ?? itinerary.title,
+                          startDate: (() => { const d = new Date(trip.startDate); return isValid(d) ? format(d, "yyyy-MM-dd") : ""; })(),
+                          endDate: (() => { const d = new Date(trip.endDate); return isValid(d) ? format(d, "yyyy-MM-dd") : ""; })(),
+                          numberOfTravelers: trip.numberOfTravelers ?? itinerary.travelers,
+                          budget: trip.budget ?? itinerary.budget,
                         };
 
                         const planCardDays: PlanCardDay[] = itinerary.days.map((d: any) => ({
@@ -802,11 +835,21 @@ export default function TripDetails() {
                           : -1;
 
                         return (
+                          // T5-1: no `days` prop — PlanCard(stage="full") fetches the LIVE
+                          // `/api/trips/:id/plancard` DTO itself and builds `days` from it
+                          // (PlanCard.tsx:743-782, `enabled: !daysProp && stage !== "proposal"`)
+                          // whenever it isn't handed one. Previously this page always passed the
+                          // STATIC `planCardDays` built from `generated_itineraries.itinerary_data`,
+                          // which starved the DTO fetch — PlanApprovalBanner never got
+                          // `plancardData?.meta?.planApproval` and RoutingBadge never got
+                          // `activity.routingStatus` (both DTO-only fields, absent from the static
+                          // blob). `planCardDays`/`planCardTrip` above are kept only for
+                          // `initialDayIndex`'s day-number lookup, a page-owned concern unrelated to
+                          // which days source renders.
                           <PlanCard
                             role="owner"
                             stage="full"
                             trip={planCardTrip}
-                            days={planCardDays}
                             initialSelectedDay={initialDayIndex >= 0 ? initialDayIndex : 0}
                           />
                         );
@@ -1554,6 +1597,34 @@ export default function TripDetails() {
         mode="single"
         userId={user?.id || ''}
       />
+
+      {/* T1-1: confirm before Regenerate destructively rebuilds the plan. Only reachable via
+          handleRegenerateClick, which itself only opens this when hasExistingItineraryItems —
+          first-time generation never shows it. */}
+      <AlertDialog open={showRegenerateConfirm} onOpenChange={setShowRegenerateConfirm}>
+        <AlertDialogContent data-testid="dialog-regenerate-confirm">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Regenerate this plan?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This replaces the current AI-generated activities with a freshly generated plan.
+              Any items an expert has added to your trip are kept. Manually-added items may be
+              replaced along with the rest of the plan.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-regenerate-cancel">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setShowRegenerateConfirm(false);
+                generatePlan.mutate(trip.id);
+              }}
+              data-testid="button-regenerate-confirm"
+            >
+              Regenerate Plan
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

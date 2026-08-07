@@ -43,6 +43,7 @@ import {
 } from "./plancard-types";
 import { RoutingActions, RoutingBadge } from "./ActivitiesSection";
 import { ModeIcon } from "./plancard-types";
+import { PlanApprovalBanner } from "./PlanApprovalBanner";
 import {
   EXPERT_NOTE_TINT,
   OPTIMIZED_TINT,
@@ -622,6 +623,15 @@ export function SlipView({
       {/* R-F: Trip Card presented as the primary surface once the rule fires. The slip itself
           stays fully reachable below — this is a presentation flip, not a navigation away. */}
       {isPrimary && data.trip && <TripCardPrimaryBanner trip={data.trip} isOwner={isOwner} />}
+
+      {/* Plan-approval delivery handshake (CC-11 fix, migration 164 / CLAUDE.md §18) — same
+          component and same owner-only gate PlanCard.tsx:958-960 uses, fed from this page's own
+          plancard DTO fetch (`meta.planApproval`, same queryKey — see slip-view.tsx). Mounted
+          unconditionally like PlanCard: PlanApprovalBanner itself decides visibility from
+          workspaceStatus/status (PlanApprovalBanner.tsx:84-88). This is the bell-notification
+          landing surface (resolveNotificationLink rewrites /trip/:id → /plans/:tripId), so
+          without this mount the delivery handshake had no Approve/Request-changes control here. */}
+      {isOwner && <PlanApprovalBanner tripId={tripId} planApproval={data.meta?.planApproval} />}
 
       <div className="flex items-start justify-between gap-3 flex-wrap">
         <SlipHeader data={data} hasOptimized={hasOptimized} />

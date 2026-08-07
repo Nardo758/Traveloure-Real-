@@ -200,7 +200,9 @@ test.describe("J13 — Trip share (owner → public read-only view)", () => {
         dayNumber: 1,
         startTime: "03:00 PM",
         locationName: "Secret Garden, Lisbon",
-        estimatedCost: 12,
+        // decimal columns parse as STRINGS (drizzle-zod) — a bare number is a 400 "Invalid data".
+        // This exact line broke the suite from 7f6ba474 (the PR #440 rescue) until now.
+        estimatedCost: "12.00",
         status: "planned",
       },
     });

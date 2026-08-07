@@ -37,8 +37,24 @@ import { db } from "../db";
 import { and, eq, inArray } from "drizzle-orm";
 import { tripExpertAdvisors } from "@shared/schema";
 
-/** Advisor statuses that GRANT per-trip access. Closed allow-list — see file header. */
+/**
+ * Advisor statuses that GRANT per-trip READ access. Closed allow-list — see file header.
+ * `TRIP_ADVISOR_ACCESS_STATUSES` is the pre-existing name and stays the READ set (unchanged
+ * value/semantics) so the ~50 existing read-surface consumers are untouched by construction.
+ */
 export const TRIP_ADVISOR_ACCESS_STATUSES = ["pending", "accepted", "assigned"] as const;
+export const TRIP_ADVISOR_READ_ACCESS_STATUSES = TRIP_ADVISOR_ACCESS_STATUSES;
+
+/**
+ * Advisor statuses that GRANT per-trip WRITE access (ruling, Aug 7 2026 — "a PENDING advisor
+ * may not write"). A trip's owner still SEES an invited-but-unaccepted expert's standing (the
+ * expert must see the assigned trip in Inbox/assigned-trips to decide, so 'pending' stays in
+ * the READ set above) but a pending advisor may not create/edit/reorder itinerary items or any
+ * other trip-item mutation until they accept (or are admin-confirmed 'assigned'). Deliberately a
+ * SEPARATE constant, not a filter applied ad hoc at call sites, so the write allow-list can't
+ * silently drift from the read one.
+ */
+export const TRIP_ADVISOR_WRITE_ACCESS_STATUSES = ["accepted", "assigned"] as const;
 
 /** Advisor statuses that explicitly DENY. Documentary — anything not in the allow-list denies. */
 export const TRIP_ADVISOR_DENIED_STATUSES = ["rejected"] as const;
@@ -50,12 +66,23 @@ export const TRIP_ADVISOR_DENIED_STATUSES = ["rejected"] as const;
 export function tripAdvisorStatusGrantsAccess(status: unknown): boolean {
   return (
     typeof status === "string" &&
-    (TRIP_ADVISOR_ACCESS_STATUSES as readonly string[]).includes(status)
+    (TRIP_ADVISOR_READ_ACCESS_STATUSES as readonly string[]).includes(status)
+  );
+}
+
+/** Same as `tripAdvisorStatusGrantsAccess`, but against the WRITE allow-list (no 'pending'). */
+export function tripAdvisorStatusGrantsWriteAccess(status: unknown): boolean {
+  return (
+    typeof status === "string" &&
+    (TRIP_ADVISOR_WRITE_ACCESS_STATUSES as readonly string[]).includes(status)
   );
 }
 
 /**
- * True when `userId` holds an access-granting `trip_expert_advisors` row on `tripId`.
+ * True when `userId` holds a READ-access-granting `trip_expert_advisors` row on `tripId`
+ * (pending/accepted/assigned). This is the pre-existing predicate, unchanged — it is what every
+ * trip-logistics/plancard/assigned-trips READ surface authorizes against, and 'pending' must
+ * keep passing here so an invited expert can see the trip while deciding.
  *
  * The status filter is the SQL projection of the allow-list above, so `inArray` naturally
  * excludes NULL and every unrecognised value (fail-closed at the query level too — the
@@ -73,7 +100,32 @@ export async function isTripAdvisor(
       and(
         eq(tripExpertAdvisors.tripId, tripId),
         eq(tripExpertAdvisors.localExpertId, userId),
-        inArray(tripExpertAdvisors.status, [...TRIP_ADVISOR_ACCESS_STATUSES]),
+        inArray(tripExpertAdvisors.status, [...TRIP_ADVISOR_READ_ACCESS_STATUSES]),
+      ),
+    )
+    .limit(1);
+  return !!row;
+}
+
+/**
+ * True when `userId` holds a WRITE-access-granting `trip_expert_advisors` row on `tripId`
+ * (accepted/assigned — NOT pending). Use this, never `isTripAdvisor`, to gate a trip-item
+ * MUTATION path that grants access via the advisor role (create/edit/delete/reorder itinerary
+ * items). Read surfaces keep using `isTripAdvisor` above.
+ */
+export async function isTripAdvisorWithWriteAccess(
+  tripId: string | undefined | null,
+  userId: string | undefined | null,
+): Promise<boolean> {
+  if (!tripId || !userId) return false;
+  const [row] = await db
+    .select({ id: tripExpertAdvisors.id })
+    .from(tripExpertAdvisors)
+    .where(
+      and(
+        eq(tripExpertAdvisors.tripId, tripId),
+        eq(tripExpertAdvisors.localExpertId, userId),
+        inArray(tripExpertAdvisors.status, [...TRIP_ADVISOR_WRITE_ACCESS_STATUSES]),
       ),
     )
     .limit(1);

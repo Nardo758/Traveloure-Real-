@@ -45,6 +45,11 @@ This document captures architectural decisions to maintain consistency across co
    200-HTML (the Vite catch-all), NOT 404** — never use a 404 as a "route is dead" signal.
 11. **Auth/env.** Passport serializers register in **all** environments, not just Replit (fix #133) — email/password login
     works off-Replit. The `package-lock.json` `replit.local` pollution is scrubbed durably (#134; see Lockfile purity).
+12. **A PENDING advisor may not write.** Trip-item mutation paths (create/edit/delete/reorder) gate the advisor branch
+    on WRITE-access statuses (`accepted`/`assigned`, not `pending` — `TRIP_ADVISOR_WRITE_ACCESS_STATUSES`); read
+    surfaces (assigned-trips, trip GET, plancard) keep granting `pending`. `itinerary_items.origin`
+    (`'ai'|'traveler'|'expert'`, app-enforced, no CHECK — publish-trap avoidance, migration 181) is stamped
+    server-side at create; both ratified Aug 7 2026. Regenerate preserves `origin='traveler'` and `suggestedBy='expert'`.
 
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 

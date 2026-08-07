@@ -110,7 +110,7 @@ import {
   resolveCommissionRates,
   type CommissionRates,
 } from "../services/commission";
-import { getTripRole, canMutateTrip } from "../utils/trip-role";
+import { getTripRole, getTripWriteRole, canMutateTrip } from "../utils/trip-role";
 import { isTripAuthor } from "../utils/trip-authorship";
 // Plan-approval mode-flip (migration 164, QA_PUNCH_LIST W2-A item 13): see routes.ts's import of
 // the same module for the full rationale. Advisor-only gate — never owner, never author.
@@ -3167,7 +3167,10 @@ router.patch("/api/trips/:tripId/itinerary-items/:itemId", isAuthenticated, asyn
     try {
       const userId = getUserId(req)!;
       const { tripId, itemId } = req.params;
-      const tripRole = await getTripRole(tripId, userId);
+      // D1 (ruling, Aug 7 2026 — "a PENDING advisor may not write"): this is a trip-item
+      // MUTATION path, so it resolves the advisor branch through the WRITE allow-list
+      // (`getTripWriteRole` — accepted/assigned, NOT pending) instead of `getTripRole`.
+      const tripRole = await getTripWriteRole(tripId, userId);
       // Authoring mode (ready-made brief §2/§4): PARALLEL named author branch beside getTripRole —
       // the helper is deliberately untouched (known pre-launch bypass, separate fix).
       const authorMayMutate = canMutateTrip(tripRole) ? false : await isTripAuthor(tripId, userId);
@@ -3182,8 +3185,10 @@ router.patch("/api/trips/:tripId/itinerary-items/:itemId", isAuthenticated, asyn
       }
       const existing = await storage.getItineraryItemByIdAndTrip(itemId, tripId);
       if (!existing) return res.status(404).json({ message: "Item not found in this trip" });
-      // Strip immutable/ownership fields to prevent mass-assignment
-      const { id: _id, tripId: _tripId, createdAt: _createdAt, updatedAt: _updatedAt, suggestedBy: _sb, ...safeBody } = req.body as any;
+      // Strip immutable/ownership fields to prevent mass-assignment. `origin` (D2, ratified Aug 7
+      // 2026) is provenance stamped only at CREATE time — a PATCH must never let a client
+      // retroactively rewrite it.
+      const { id: _id, tripId: _tripId, createdAt: _createdAt, updatedAt: _updatedAt, suggestedBy: _sb, origin: _origin, ...safeBody } = req.body as any;
       const updated = await storage.updateItineraryItem(itemId, safeBody);
       if (!updated) return res.status(404).json({ message: "Item not found" });
       res.json(updated);
@@ -3198,7 +3203,8 @@ router.delete("/api/trips/:tripId/itinerary-items/:itemId", isAuthenticated, asy
     try {
       const userId = getUserId(req)!;
       const { tripId, itemId } = req.params;
-      const tripRole = await getTripRole(tripId, userId);
+      // D1 (ruling, Aug 7 2026): trip-item MUTATION path — WRITE-gated role (see PATCH above).
+      const tripRole = await getTripWriteRole(tripId, userId);
       // Authoring mode (ready-made brief §2/§4): parallel named author branch (see PATCH above).
       const authorMayMutate = canMutateTrip(tripRole) ? false : await isTripAuthor(tripId, userId);
       if (!canMutateTrip(tripRole) && !authorMayMutate) {

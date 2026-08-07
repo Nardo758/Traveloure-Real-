@@ -363,6 +363,16 @@ export interface PlanCardData {
    * full TripPlanMeta shape so this stays a thin, additive read.
    */
   meta?: { planApproval?: TripPlanPlanApproval | null };
+  /**
+   * QA_PUNCH_LIST item 13 (the final-dress flip) — the plancard route's `trip.finalizedAt`
+   * passthrough (migration 173 / R-F), narrowed to the one field PlanCard's dress logic needs
+   * rather than the full SlipTrip shape (SlipView.tsx already reads the wider shape for its own
+   * surface). Feeds `shared/trip-primary-surface.ts` alongside the page-supplied trip's own
+   * startDate/endDate so the "polished final" dress also fires once R-F's finalized-primacy rule
+   * fires — same rule the Slip's "Your Trip Card is ready" banner uses. Absent/undefined on older
+   * responses → `tripCardIsPrimary` degrades to its date-only arms, never throws.
+   */
+  trip?: { finalizedAt?: string | null };
 }
 
 export interface PlanCardTrip {

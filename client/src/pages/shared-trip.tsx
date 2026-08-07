@@ -118,8 +118,12 @@ export default function SharedTripPage() {
                 <MapPin className="w-3 h-3 mr-1" />
                 {trip.destination}
               </Badge>
-              <Badge className="bg-white/15 backdrop-blur-md text-white border-0 capitalize">
-                {trip.status}
+              {/* CC-2a: the trip's internal workflow status (e.g. "Draft") is never shown to a
+                  public viewer — it's an owner-side concept, not a viewer-appropriate fact. Show
+                  the trip duration instead; the layout keeps its two-pill shape. */}
+              <Badge className="bg-white/15 backdrop-blur-md text-white border-0">
+                <Clock className="w-3 h-3 mr-1" />
+                {duration} {duration === 1 ? "day" : "days"} trip
               </Badge>
             </div>
             <h1 className="text-3xl md:text-4xl font-bold text-white mb-3">{trip.title}</h1>

@@ -158,6 +158,7 @@ router.post("/api/itinerary-comparisons/:id/apply-to-trip", isAuthenticated, asy
           currency: "USD",
           sortOrder: item.sortOrder ?? 0,
           suggestedBy: "AI Optimizer",
+          origin: "ai",
           latitude: item.latitude ? String(item.latitude) : null,
           longitude: item.longitude ? String(item.longitude) : null,
         })));

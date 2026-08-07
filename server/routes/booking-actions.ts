@@ -1032,6 +1032,9 @@ router.patch('/trips/:id/suggestions/:suggestionId', isAuthenticated, async (req
         itemType: suggestion.type || 'activity',
         dayNumber: suggestion.day_number ?? 1,
         estimatedCost: suggestion.estimated_cost ?? undefined,
+        // D2: the suggestion this materializes is the expert-curated proposal the traveler just
+        // approved (`expertCurated: true` above) — provenance is the expert who suggested it.
+        origin: 'expert',
       } as any);
       createdItemId = created.id;
     }

@@ -1,7 +1,7 @@
 import { db } from "./db";
 import { sql } from "drizzle-orm";
 import { availableAtFor } from "./config/earnings-hold.config";
-import { isTripAdvisor } from "./utils/trip-advisor";
+import { isTripAdvisor, isTripAdvisorWithWriteAccess } from "./utils/trip-advisor";
 import { PROCESSING_FEE_RATE, resolveCommissionRates, resolveServiceOwnerShareRate } from "./services/commission";
 import { isProviderRole } from "@shared/roles";
 import { 
@@ -393,6 +393,10 @@ export interface IStorage {
 
   // Expert Workspace
   isExpertAssignedToTrip(tripId: string, expertId: string): Promise<boolean>;
+  // WRITE-access variant (ruling, Aug 7 2026 — "a PENDING advisor may not write"): excludes
+  // 'pending' from the allow-list. Use this to gate trip-item mutation paths that grant access
+  // via the advisor role; use `isExpertAssignedToTrip` above for read surfaces.
+  isExpertAssignedToTripForWrite(tripId: string, expertId: string): Promise<boolean>;
 
   // Destination Calendar Events
   getDestinationEvents(country: string, city?: string, status?: string): Promise<DestinationEvent[]>;
@@ -1601,10 +1605,17 @@ export class DatabaseStorage implements IStorage {
   async duplicateService(id: string, userId: string): Promise<ProviderService | undefined> {
     const original = await this.getProviderServiceById(id);
     if (!original) return undefined;
-    
-    const { id: _, createdAt, updatedAt, bookingsCount, totalRevenue, averageRating, reviewCount, ...serviceData } = original;
+
+    // T3-1: trackingNumber is UNIQUE — spreading the original row into the insert
+    // without stripping it collides on every call (the insert always 500'd). Strip it
+    // here and mint a fresh one below, same convention as every other create* path
+    // (createTrip/createServiceBooking/etc. all call generateTrackingNumber('TRV')
+    // rather than carry over an existing value).
+    const { id: _, createdAt, updatedAt, bookingsCount, totalRevenue, averageRating, reviewCount, trackingNumber: _trackingNumber, ...serviceData } = original;
+    const trackingNumber = await this.generateTrackingNumber('TRV');
     const [newService] = await db.insert(providerServices).values({
       ...serviceData,
+      trackingNumber,
       serviceName: `${original.serviceName} (Copy)`,
       status: "draft",
       // F2: a duplicate must NOT inherit the original's approval_status — a copy of an approved
@@ -4953,6 +4964,12 @@ export class DatabaseStorage implements IStorage {
     return isTripAdvisor(tripId, expertId);
   }
 
+  // WRITE-access variant — delegates to the CANONICAL write-access advisor predicate
+  // (server/utils/trip-advisor.ts). 'pending' does NOT pass here (ruling, Aug 7 2026).
+  async isExpertAssignedToTripForWrite(tripId: string, expertId: string): Promise<boolean> {
+    return isTripAdvisorWithWriteAccess(tripId, expertId);
+  }
+
   async createTripExpertAdvisor(data: { tripId: string; localExpertId: string; message?: string; status?: string }): Promise<any> {
     const [created] = await db.insert(tripExpertAdvisors).values({
       tripId: data.tripId,
@@ -5228,16 +5245,34 @@ export class DatabaseStorage implements IStorage {
 
   // Atomically accept a pending advisory assignment (owner + pending guard in one UPDATE — §15).
   // Returns undefined if the row isn't the expert's or isn't pending → caller 409s, no double-accept.
+  // EX-3: writes an append-only item_transition_log row in the SAME transaction as the flip
+  // (rulings 12/18), mirroring task #1028's updateExpertAssignmentWorkspaceStatus above —
+  // trip-scoped (itemId NULL, ruling 16), actorType "expert", actorId = the accepting expert
+  // (the same `expertId` the atomic conditional itself is keyed on, never req.body — §14). The
+  // atomic conditional (WHERE status='pending') is unchanged — the log write only follows a win.
   async acceptTripAssignment(assignmentId: string, expertId: string): Promise<any> {
-    const [updated] = await db.update(tripExpertAdvisors)
-      .set({ status: "accepted" })
-      .where(and(
-        eq(tripExpertAdvisors.id, assignmentId),
-        eq(tripExpertAdvisors.localExpertId, expertId),
-        eq(tripExpertAdvisors.status, "pending"),
-      ))
-      .returning();
-    return updated;
+    return db.transaction(async (tx) => {
+      const [updated] = await tx.update(tripExpertAdvisors)
+        .set({ status: "accepted" })
+        .where(and(
+          eq(tripExpertAdvisors.id, assignmentId),
+          eq(tripExpertAdvisors.localExpertId, expertId),
+          eq(tripExpertAdvisors.status, "pending"),
+        ))
+        .returning();
+      if (updated) {
+        await logItemTransition(tx, {
+          tripId: updated.tripId,
+          itemId: null, // trip-scoped event (ruling 16)
+          eventType: "assignment_accepted",
+          fromStatus: "pending",
+          toStatus: "accepted",
+          actorType: "expert",
+          actorId: expertId,
+        });
+      }
+      return updated;
+    });
   }
 
   // ─── Content Placement Rules ─────────────────────────────────────────────
