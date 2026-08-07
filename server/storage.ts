@@ -883,7 +883,7 @@ export class DatabaseStorage implements IStorage {
   async createChat(chat: any): Promise<UserAndExpertChat> {
     const trackingNumber = await this.generateTrackingNumber('TRV');
     const [newChat] = await db.insert(userAndExpertChats).values({ ...chat, trackingNumber }).returning();
-    
+
     // Auto-register chat in content tracking system
     await this.registerContent({
       trackingNumber,
@@ -894,7 +894,30 @@ export class DatabaseStorage implements IStorage {
       status: 'published',
       metadata: { senderId: chat.senderId, receiverId: chat.receiverId },
     });
-    
+
+    // MT-2: notify the recipient of a new direct message. This is the single shared
+    // write path for both the /ws socket "chat" handler and POST /api/chats, so firing
+    // the notification here (rather than duplicating it in each caller) guarantees it
+    // fires exactly once per message. Mirrors the per-item-comment notification shape
+    // (booking-actions.ts) and messages.service.ts's "message_received" type/data
+    // convention. Best-effort: a notification failure must never fail the message
+    // create, which has already committed above.
+    if (newChat.receiverId) {
+      try {
+        await this.createNotification({
+          userId: newChat.receiverId,
+          type: 'message_received',
+          title: 'New message',
+          message: 'You have a new message',
+          relatedId: newChat.id,
+          relatedType: 'message',
+          data: { clientId: newChat.senderId },
+        } as any);
+      } catch (err) {
+        console.error('Failed to create message notification:', err);
+      }
+    }
+
     return newChat;
   }
 
