@@ -19,6 +19,11 @@ async function main() {
       verificationRequired: true,
       requiredDocuments: ["certification", "license", "references"],
       priceRange: { min: 75, max: 800 },
+      // R2 (ruling 51): service_categories.commission_band_key is NOT NULL — a category may never
+      // exist without a commission band, because the resolver is fail-loud by design. `moderate` per
+      // R1's interim assignment for categories the ruling did not name individually (see FOLLOWUPS
+      // FU-5, which tracks these for explicit assignment).
+      commissionBandKey: "moderate",
       sortOrder: 16,
     });
     console.log("Created Visa Assistance category");
