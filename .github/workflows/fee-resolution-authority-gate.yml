@@ -68,8 +68,9 @@ jobs:
       # category's band and applies the NOT NULL. The pins assert against whatever the bands hold,
       # so a re-priced band is not a test edit.
       #
-      # Uses the composite action, not an inline `migrate-entry.ts` step — ci-db-setup-lint forbids
-      # inline DB setup so every workflow gets the same migration + sessions-table sequence.
+      # Uses the composite action, never an inline migration-script step — ci-db-setup-lint forbids
+      # inline DB setup (and its grep is comment-blind, so the script name must not appear here)
+      # so every workflow gets the same migration + sessions-table sequence.
       - name: Set up CI database (migrations + sessions table)
         uses: ./.github/actions/ci-db-setup
         with:
