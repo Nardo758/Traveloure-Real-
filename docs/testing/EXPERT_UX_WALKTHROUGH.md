@@ -48,7 +48,7 @@ fixed.** All seed rows written by this run were deleted in teardown.
 
 ## 2. Findings
 
-### EX-1 — Logout is a no-op off-Replit; the expert stays logged in and sees a raw 404 (P0, CONFIRMED)
+### EX-1 — Logout is a no-op off-Replit; the expert stays logged in and sees a raw 404 (P0, CONFIRMED — **FIXED same day**: use-auth/admin/ea sidebars → POST /api/auth/logout; re-proven in the sandbox: click → `/`, session 401; pinned by `logout-endpoint-pin.test.ts` in CI)
 
 Clicking **Logout** in the expert sidebar navigates to **`GET /api/logout`**, which **does not exist**
 off-Replit. The expert is shown a raw JSON error page —
@@ -72,7 +72,7 @@ the same `/api/logout` — every console's logout is broken off-Replit. *Owner: 
 `use-auth` logout at `POST /api/auth/logout`; add a regression pin (authenticated session → logout →
 `/api/auth/user` 401).*
 
-### EX-2 — A non-positive price reaches a live, submitted listing (P0, CONFIRMED = provider B4)
+### EX-2 — A non-positive price reaches a live, submitted listing (P0, CONFIRMED = provider B4 — **FIXED same day**: schema floor (negatives, survives .partial()) + PRICE_REQUIRED publish gates on POST/PATCH + storage backstops; re-proven: -50/-99→400, 0-draft→201, 0-active→400, 40-active→201; pinned by `service-price-floor.test.ts` in CI)
 
 `POST /api/provider/services` — CLAUDE.md §5's single shared offering-create endpoint for **both**
 experts and providers — accepts and persists non-positive prices with no server floor. Direct probes

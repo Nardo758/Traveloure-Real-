@@ -1177,6 +1177,14 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createProviderService(service: InsertProviderService & { userId: string }): Promise<ProviderService> {
+    // EX-2 layer 2 (docs/testing/EXPERT_UX_WALKTHROUGH.md): a NEGATIVE price never reaches a row —
+    // the schema floor is layer 1, but this backstop lives here so every caller is covered (the
+    // same placement rationale as the approval-lifecycle clamp below). Zero stays legal at the
+    // storage layer: it is the price-not-set draft state; "no zero-price listing goes LIVE" is the
+    // route-level publish gate.
+    if (service.price != null && !(Number.isFinite(Number(service.price)) && Number(service.price) >= 0)) {
+      throw new Error(`createProviderService: price must be a non-negative number, got "${service.price}"`);
+    }
     const trackingNumber = await this.generateTrackingNumber('TRV');
     // F2 born-state clamp (approval lifecycle D1a): a create can NEVER produce an approved listing.
     // The client-supplied approvalStatus (insertProviderServiceSchema still exposes it — the mass-assign
@@ -1272,6 +1280,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateProviderService(id: string, updates: Partial<InsertProviderService>): Promise<ProviderService | undefined> {
+    // EX-2 layer 2, UPDATE half — same backstop as createProviderService: negative price never
+    // reaches a row from any caller. Zero allowed (draft state); publish gating is the route's job.
+    if (updates.price != null && !(Number.isFinite(Number(updates.price)) && Number(updates.price) >= 0)) {
+      throw new Error(`updateProviderService: price must be a non-negative number, got "${updates.price}"`);
+    }
     // ── D1a/F2: the approval lifecycle is NOT self-settable on the update path ──────────────
     // Found by the adversarial suite (scripts/journeys/adversarial-money-access.mjs, case C16b):
     // `PATCH /api/provider/services/:id` parses the body with `insertProviderServiceSchema

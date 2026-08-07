@@ -18,7 +18,21 @@ async function fetchUser(): Promise<User | null> {
 }
 
 async function logout(): Promise<void> {
-  window.location.href = "/api/logout";
+  // EX-1 (expert walkthrough, docs/testing/EXPERT_UX_WALKTHROUGH.md): the old
+  // implementation navigated to GET /api/logout, a route that only exists when
+  // REPL_ID is set — setupAuth early-returns (replitAuth.ts:130) before
+  // registering it off-Replit, so logout 404'd and the session SURVIVED.
+  // POST /api/auth/logout (emailAuth.ts) is registered in EVERY environment and
+  // destroys any passport session (email or OIDC). Redirect only on success —
+  // redirecting on failure would show a logged-out UI over a live session.
+  const response = await fetch("/api/auth/logout", {
+    method: "POST",
+    credentials: "include",
+  });
+  if (!response.ok) {
+    throw new Error(`Logout failed: ${response.status}`);
+  }
+  window.location.href = "/";
 }
 
 async function updateUserCurrency(currency: string): Promise<User> {
