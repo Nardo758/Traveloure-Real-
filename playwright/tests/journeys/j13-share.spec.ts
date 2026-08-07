@@ -5,29 +5,24 @@
  *
  * Governing docs: docs/planning/JOURNEY_TEST_SUITE_BRIEF.md §2 (J13).
  * Server authority:
- *   POST /api/trips/:id/share        server/routes/booking-actions.ts:514 (owner-only; upserts shared_trips)
- *   GET  /api/trips/shared/:token    server/routes/booking-actions.ts:565 (PUBLIC; logs a shared_trip_views row)
- *   getTripByShareToken              server/services/booking-actions.service.ts:357
- *     → LEFT JOIN generated_itineraries gi ON gi.trip_id = t.id AND gi.status='generated'
- *       ⇒ the shared view reads gi.itinerary_data LIVE at read time.
+ *   POST /api/trips/:id/share        server/routes/booking-actions.ts (owner-only; upserts shared_trips)
+ *   GET  /api/trips/shared/:token    server/routes/booking-actions.ts (PUBLIC; logs a shared_trip_views row)
+ *   getTripByShareToken              server/services/booking-actions.service.ts
+ *     → synthesises itinerary_data from itinerary_items (live plan) when items exist,
+ *       falling back to generated_itineraries.itinerary_data when no items are present.
+ *       This means ANY itinerary_item edit (add/remove/reorder) is immediately visible
+ *       on the share page without a regenerate call.
  *   Renderer: client/src/pages/shared-trip.tsx  (route /trips/shared/:token, App.tsx:362).
  *
  * ─────────────────────────────────────────────────────────────────────────────────────────────
  * FINDING J13-renderer (brief drift, recorded not patched): the brief §2 J13 says the share page
  *   "renders ItineraryCard". It does NOT. shared-trip.tsx renders a BESPOKE day/activity list
- *   built from generated_itineraries.itinerary_data (testids shared-day-${day} /
- *   shared-activity-${day}-${idx}), never <ItineraryCard/> and never the live itinerary_items.
+ *   built from the API response's itinerary_data (testids shared-day-${day} /
+ *   shared-activity-${day}-${idx}), never <ItineraryCard/>.
  *   This spec asserts the ACTUAL renderer and its actual testids.
  *
- * FINDING J13-edit-source (brief drift, recorded not patched): the brief describes a post-share
- *   "slip edit" (an itinerary_item edit) reflecting into the share view. The share view does NOT
- *   read itinerary_items — it reads generated_itineraries.itinerary_data. So the LIVE-reflection
- *   assertion is driven the ONLY way it can be: re-running POST /api/trips/:id/generate-itinerary
- *   (which upserts the same generated_itineraries row) and asserting the public view reflects the
- *   new itinerary_data on reload. An itinerary_item-only edit would NOT surface here.
- *
  * Read-only / inertness facts asserted from the renderer source (shared-trip.tsx):
- *   • status pill is a plain <Badge>{trip.status}</Badge> (line 122) — INERT (no onClick/href).
+ *   • status pill is a plain <Badge>{trip.status}</Badge> — INERT (no onClick/href).
  *   • NO routing controls exist (no route buttons, no status dropdowns) — the page has no writers.
  *   • NO transition-log / diary footer exists.
  *   • a read-only banner data-testid="banner-shared-view" is always present.
@@ -188,38 +183,42 @@ test.describe("J13 — Trip share (owner → public read-only view)", () => {
     // The ONLY CTAs are the plan-your-own buttons (no owner/edit affordances).
     await expect(page.getByTestId("button-plan-own-trip")).toBeVisible();
 
-    // ── Post-share edit reflection: regenerate itinerary_data, reload public view, see it change ─
-    const before = await scalar<string>(
-      `SELECT md5(itinerary_data::text) FROM generated_itineraries WHERE trip_id = $1 AND status='generated' ORDER BY created_at DESC LIMIT 1`,
+    // ── Post-share edit reflection: add an itinerary_item, reload public view, see it appear ─────
+    // The share page now reads from itinerary_items (live plan), not generated_itineraries.
+    // Any item edit by the owner must be visible on the next page load — no regenerate required.
+    const beforeItemCount = await scalar<string>(
+      `SELECT count(*)::text FROM itinerary_items WHERE trip_id = $1`,
       [tripId],
     );
-    // Regenerate with different preferences → upserts the SAME generated_itineraries row (live source).
-    await generateItinerary(owner, tripId, "focus entirely on museums and quiet cafes, 6 activities per day");
-    const after = await scalar<string>(
-      `SELECT md5(itinerary_data::text) FROM generated_itineraries WHERE trip_id = $1 AND status='generated' ORDER BY created_at DESC LIMIT 1`,
+
+    // Owner adds a new activity directly (no regenerate).
+    const addItemRes = await owner.post(`${BASE_URL}/api/trips/${tripId}/itinerary-items`, {
+      data: {
+        title: "J13 Live-Edit Activity — Secret Garden Visit",
+        description: "Added after sharing to verify live reflection.",
+        itemType: "sightseeing",
+        dayNumber: 1,
+        startTime: "03:00 PM",
+        locationName: "Secret Garden, Lisbon",
+        estimatedCost: 12,
+        status: "planned",
+      },
+    });
+    expect(addItemRes.status(), `add item failed: ${await addItemRes.text()}`).toBe(201);
+
+    const afterItemCount = await scalar<string>(
+      `SELECT count(*)::text FROM itinerary_items WHERE trip_id = $1`,
       [tripId],
     );
-    // FINDING J13-edit-source: reflection is via generated_itineraries (the share view's real
-    // source), not itinerary_items. The edit MUST change the stored plan for a meaningful reload
-    // assertion; if the AI happened to return byte-identical JSON this is a soft skip.
-    if (before === after) {
-      test.info().annotations.push({
-        type: "note",
-        description: "FINDING J13-edit-source: regenerate produced byte-identical itinerary_data (AI non-determinism); live-reload delta not observable this run.",
-      });
-    } else {
-      await page.reload({ waitUntil: "domcontentloaded" });
-      // Still a valid read-only render after the live edit (day blocks reflect the NEW data).
-      await expect(page.getByTestId("banner-shared-view")).toBeVisible({ timeout: 30_000 });
-      const reloadedDays = await page.locator('[data-testid^="shared-day-"]').count();
-      const newDayCount = Number(
-        (await scalar<string>(
-          `SELECT jsonb_array_length(itinerary_data->'days')::text FROM generated_itineraries WHERE trip_id = $1 AND status='generated' ORDER BY created_at DESC LIMIT 1`,
-          [tripId],
-        )) || "0",
-      );
-      expect(reloadedDays).toBe(newDayCount);
-    }
+    expect(Number(afterItemCount)).toBe(Number(beforeItemCount) + 1);
+
+    // Reload the public share page — the new item must appear without any regenerate call.
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await expect(page.getByTestId("banner-shared-view")).toBeVisible({ timeout: 30_000 });
+
+    // Day 1 block must still render and the new activity must be findable by title.
+    await expect(page.getByTestId("shared-day-1")).toBeVisible();
+    await expect(page.getByText("J13 Live-Edit Activity — Secret Garden Visit")).toBeVisible();
 
     await viewerContext.close();
     await owner.dispose();

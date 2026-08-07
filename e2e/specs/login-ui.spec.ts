@@ -45,3 +45,41 @@ test('SignInModal logs an expert in and redirects to the expert console', async 
   await expect(page).toHaveURL(/\/expert\/dashboard/, { timeout: 30_000 });
   await expect(page).not.toHaveURL(/\/login/);
 });
+
+// Direct /login URL (bookmarks, emailed links) must open the sign-in modal
+// instead of the 404 page.
+test('/login opens the sign-in modal directly', async ({ page }) => {
+  await page.goto('/login', { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('[data-testid="link-logo"]', { timeout: 120_000 });
+  await expect(page.getByTestId('modal-sign-in')).toBeVisible({ timeout: 30_000 });
+});
+
+// /login?returnTo=/pricing → sign in → land on /pricing (password path).
+test('/login?returnTo returns the user to the requested page after sign-in', async ({ page }) => {
+  await page.goto('/login?returnTo=/pricing', { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('[data-testid="link-logo"]', { timeout: 120_000 });
+  await expect(page.getByTestId('modal-sign-in')).toBeVisible({ timeout: 30_000 });
+
+  await page.getByTestId('input-email').fill(ACCOUNTS.expert.email);
+  await page.getByTestId('input-password').fill(PASSWORD);
+  await page.getByTestId('button-auth-submit').click();
+
+  await expect(page).toHaveURL(/\/pricing/, { timeout: 30_000 });
+});
+
+// Open-redirect guard: a crafted returnTo (backslash authority trick) must be
+// discarded — after sign-in the user stays on this origin (role home), never
+// navigated off-site.
+test('/login rejects an off-site returnTo (open redirect guard)', async ({ page, baseURL }) => {
+  await page.goto('/login?returnTo=/%5Cevil.com', { waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('[data-testid="link-logo"]', { timeout: 120_000 });
+  await expect(page.getByTestId('modal-sign-in')).toBeVisible({ timeout: 30_000 });
+
+  await page.getByTestId('input-email').fill(ACCOUNTS.expert.email);
+  await page.getByTestId('input-password').fill(PASSWORD);
+  await page.getByTestId('button-auth-submit').click();
+
+  // Falls back to the expert role home on our origin
+  await expect(page).toHaveURL(/\/expert\/dashboard/, { timeout: 30_000 });
+  expect(page.url().startsWith(baseURL!)).toBe(true);
+});
