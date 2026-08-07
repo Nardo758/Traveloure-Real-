@@ -20,3 +20,4 @@
 - [Fee-band scope split](fee-band-scope-split.md) — EXPERIENCE_CART 0.30 was display-only; real charges resolve per-item via resolveCommissionRates; new bands must state which surface they control or review rejects.
 - [Journey suite conventions](journey-suite-wave1.md) — --workers=1 + JOURNEY_DB_WRITES_OK=1 locally; fee gates payable in Stripe test mode via connector key; OPEN: optimizer AI generation broken (J1 gate path).
 - [Kyoto bench fixture](kyoto-bench-fixture.md) — durable dev-DB expert kyoto-temples@traveloure.test with lifecycle provenance; never seed Kyoto experts by bare role flip; no DB CHECK on application status.
+- [Fixes vs running-code divergence](fix-vs-running-code-divergence.md) — "verified" in-session admin fixes can be absent from running main after Nardo758 merges; always re-verify critical guards live before sign-off.

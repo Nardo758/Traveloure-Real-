@@ -3079,8 +3079,44 @@ router.delete("/api/admin/services/:id", isAuthenticated, async (req, res) => {
 
       const row = await getProviderServiceById(req.params.id);
       if (!row) return res.status(404).json({ message: "Service not found" });
-      await deleteProviderService(req.params.id);
-      res.json({ ok: true });
+
+      // service_bookings.service_id is ON DELETE CASCADE, so a hard delete of a
+      // service with historical bookings silently destroys those booking records.
+      // Guard it: if any bookings reference this service, soft-delete (suspend) it
+      // instead of hard-deleting. Only truly unused services are hard-deleted.
+      // Row-lock the service inside a transaction to close the delete/checkout race.
+      const result = await db.transaction(async (tx) => {
+        await tx
+          .select({ id: providerServices.id })
+          .from(providerServices)
+          .where(eq(providerServices.id, req.params.id))
+          .for("update");
+
+        const [{ value: bookingCount }] = await tx
+          .select({ value: count() })
+          .from(serviceBookings)
+          .where(eq(serviceBookings.serviceId, req.params.id));
+
+        if (bookingCount > 0) {
+          await tx
+            .update(providerServices)
+            .set({ status: "suspended" })
+            .where(eq(providerServices.id, req.params.id));
+          return { softDeleted: true, bookingCount } as const;
+        }
+
+        await tx.delete(providerServices).where(eq(providerServices.id, req.params.id));
+        return { softDeleted: false, bookingCount: 0 } as const;
+      });
+
+      if (result.softDeleted) {
+        return res.json({
+          ok: true,
+          softDeleted: true,
+          message: `Service has ${result.bookingCount} booking(s) and was suspended (hidden) rather than deleted, to preserve booking history.`,
+        });
+      }
+      res.json({ ok: true, softDeleted: false });
     } catch (err: any) {
       // Migration 151 (§17): bundle_components.component_service_id is ON DELETE RESTRICT —
       // a service inside a bundle can't be deleted until removed from it. Surface the FK
