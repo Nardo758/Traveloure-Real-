@@ -67,10 +67,15 @@ jobs:
       # Migrations are the fixture: 178 seeds the traveler-fee and rails bands, 180 backfills every
       # category's band and applies the NOT NULL. The pins assert against whatever the bands hold,
       # so a re-priced band is not a test edit.
-      - name: Apply migrations
-        run: npx tsx server/migrations/migrate-entry.ts
-        env:
-          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+      #
+      # Uses the composite action, not an inline `migrate-entry.ts` step — ci-db-setup-lint forbids
+      # inline DB setup so every workflow gets the same migration + sessions-table sequence.
+      - name: Set up CI database (migrations + sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          # No authenticated routes here — the pins call the resolver directly.
+          seed-ci-users: 'false'
 
       - name: Resolver authority pins
         run: npx tsx --test server/__tests__/fee-resolution-authority.db.test.ts
