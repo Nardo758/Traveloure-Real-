@@ -48,7 +48,7 @@ jobs:
       # stale prose number (191/209/254/~137, none of them current).
       - name: tsc baseline ratchet (down-only)
         env:
-          TSC_BASELINE: '194'
+          TSC_BASELINE: '190'
         run: |
           count=$(npx tsc --noEmit 2>&1 | grep -c "error TS" || true)
           echo "tsc --noEmit: $count error(s); baseline ceiling: $TSC_BASELINE"
