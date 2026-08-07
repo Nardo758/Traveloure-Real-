@@ -73,6 +73,30 @@ UPDATE fee_bands
  WHERE band_key = 'beta_flat'
    AND is_active = true;
 
+-- ── 4b. Repoint the settings that NAME the deactivated band ──────────────────────────────────
+-- Deactivating a band is not enough on its own: `platform_settings.default_commission_band_key`
+-- and `active_provider_commission_policy` both held the literal 'beta_flat', and the resolver reads
+-- them BEFORE any code fallback — so the band went inactive while two settings still pointed at it,
+-- and every provider line that reached them threw `commission band missing: bandKey=beta_flat`.
+-- (Found by `verify-fee-config-parity` in CI, which is precisely its job.)
+--
+-- `expert_standard` is the documented last-resort default the EXPERT_SHARE_RATE / PLATFORM_FEE_RATE
+-- code constants already mirror (commission.ts:51-52), so this restores the behaviour those
+-- constants describe rather than inventing a rate. Per-category bands (ruling 48, migration 180)
+-- are what actually resolve a provider line; this default is the floor beneath them.
+-- Predicate-guarded, so an admin who has already chosen a different default is never overwritten.
+UPDATE platform_settings
+   SET setting_value = 'expert_standard', updated_at = now()
+ WHERE setting_key = 'default_commission_band_key'
+   AND setting_value = 'beta_flat';
+
+-- The tiered policy is the one that resolves per-category bands (ruling 48). The 'beta_flat' policy
+-- named a band that no longer exists as an active row.
+UPDATE platform_settings
+   SET setting_value = 'tiered', updated_at = now()
+ WHERE setting_key = 'active_provider_commission_policy'
+   AND setting_value = 'beta_flat';
+
 -- ── 5. provider_services.revenue_share_rate — the "0.75" literal default is DELETED (D0) ──────
 -- Audit Q9: this per-service snapshot was the FIRST operand at payments.routes.ts:826/877/1090
 -- ("the final override"), so fee_bands never decided the rate — which defeated ruling 32's proof
