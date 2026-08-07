@@ -17,7 +17,7 @@
 import { db } from "../db";
 import { eq, and } from "drizzle-orm";
 import { tripCollaborators } from "@shared/schema";
-import { isTripAdvisor } from "./trip-advisor";
+import { isTripAdvisor, isTripAdvisorWithWriteAccess } from "./trip-advisor";
 
 export type TripRole = "owner" | "expert" | "friend" | null;
 
@@ -48,6 +48,38 @@ export async function getTripRole(tripId: string, userId: string): Promise<TripR
   //    admin lead-confirm) — L20 Part A. Only the status predicate changed; the role-string
   //    return semantics of this function are untouched.
   if (await isTripAdvisor(tripId, userId)) {
+    return "expert";
+  }
+
+  return null;
+}
+
+/**
+ * WRITE-gated sibling of `getTripRole` (ruling, Aug 7 2026 — "a PENDING advisor may not write").
+ * Identical to `getTripRole` except the advisor branch is resolved against the WRITE allow-list
+ * (`isTripAdvisorWithWriteAccess` — accepted/assigned, NOT pending) instead of the read one. Use
+ * this for trip-item MUTATION endpoints (create/edit/delete/reorder); `getTripRole` above stays
+ * the read-surface resolver (plancard, trip GET, assigned-trips list) so a pending advisor can
+ * still see the trip while deciding whether to accept.
+ *
+ * A pending advisor resolves to `null` here (no `trip_collaborators` row, and the advisor branch
+ * does not pass) — `canMutateTrip(null)` is false, so the caller falls through to the generic
+ * "Access denied" 403, same shape as any other unauthorized caller.
+ */
+export async function getTripWriteRole(tripId: string, userId: string): Promise<TripRole> {
+  if (!userId) return null;
+
+  const rows = await db
+    .select({ role: tripCollaborators.role })
+    .from(tripCollaborators)
+    .where(and(eq(tripCollaborators.tripId, tripId), eq(tripCollaborators.userId, userId)))
+    .limit(1);
+
+  if (rows.length > 0) {
+    return rows[0].role as TripRole;
+  }
+
+  if (await isTripAdvisorWithWriteAccess(tripId, userId)) {
     return "expert";
   }
 

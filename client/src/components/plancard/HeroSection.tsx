@@ -1,7 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { differenceInDays, format, isValid } from "date-fns";
-import { Users, Share2, Download, MapPin, Calendar, Zap } from "lucide-react";
+import { Users, Share2, Download, MapPin, Calendar, Zap, CheckCircle2 } from "lucide-react";
 // Badge is still used for the travelers pill below
 import { Link } from "wouter";
 import { getDestinationPhoto, computeDayCount, type PlanCardTrip, type PlanCardDay } from "./plancard-types";
@@ -21,6 +21,13 @@ interface HeroSectionProps {
   totalMinutes: number;
   /** template-aware labels (mirrors StatsRow) */
   statsLabels: string[];
+  /**
+   * QA_PUNCH_LIST item 13 — the polished-final dress flip (planApproval approved, or R-F
+   * finalized-primacy). Adds a quiet "Final" chip beside the existing status badge; never
+   * replaces the date-derived status label above, which stays honest about trip timing
+   * regardless of approval state. Defaults to false (unchanged "in planning" chrome).
+   */
+  finalDress?: boolean;
 }
 
 export function HeroSection({
@@ -35,6 +42,7 @@ export function HeroSection({
   totalLegs,
   totalMinutes,
   statsLabels,
+  finalDress = false,
 }: HeroSectionProps) {
   const { toast } = useToast();
   // Real photo when sourced; null today → the brand gradient below carries the hero.
@@ -107,6 +115,15 @@ export function HeroSection({
           <Zap className="w-3 h-3" />
           {statusLabel}
         </span>
+        {finalDress && (
+          <span
+            className="inline-flex items-center gap-1 rounded-md bg-white/15 text-white border border-white/30 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider"
+            data-testid={`badge-final-dress-${trip.id}`}
+          >
+            <CheckCircle2 className="w-3 h-3" style={{ color: "#5DCAA5" }} />
+            Final
+          </span>
+        )}
         {trip.numberOfTravelers && trip.numberOfTravelers > 1 && (
           <Badge className="bg-background/50 text-foreground border-0 text-[11px] backdrop-blur-sm gap-1 px-2.5 py-1" data-testid={`badge-travelers-${trip.id}`}>
             <Users className="w-3 h-3" />

@@ -52,6 +52,11 @@ export async function seedCategories(): Promise<{ created: number; existing: num
         requiredDocuments: cat.requiredDocuments,
         priceRange: cat.priceRange,
         sortOrder: cat.sortOrder,
+        // Fee-ledger NOT NULL (migration 179 lane): the band was added to the DATA rows above but
+        // this explicit projection dropped it, so boot inserts still sent `default` → NULL →
+        // not-null violation (seen live in the journey-suite PG logs at 7240a33a, "TaskRabbit
+        // Services"). Every new column added to coreCategories must also be named here.
+        commissionBandKey: cat.commissionBandKey,
       });
       created++;
       console.log(`Created category: ${cat.name}`);

@@ -29,6 +29,7 @@ import { storage } from "../storage";
 import { itineraryIntelligenceService } from "./itinerary-intelligence.service";
 import { getTripTransportLegs } from "./trip-transport-legs.service";
 import { envelopeFromItineraryItem, envelopeFromProviderService, type TransportProvided } from "@shared/content-logistics";
+import { parseActivityTimeToMinutes } from "../utils/itinerary-time";
 
 /** Fallback assumption ONLY for the "available gap" math when the departing item has no recorded
  *  duration — always surfaced back to the caller via `assumedPrevDuration` so a card can label it
@@ -86,15 +87,17 @@ function realCoord(lat: unknown, lng: unknown): { lat: number; lng: number } | n
   return { lat: la, lng: ln };
 }
 
-/** "HH:MM" → minutes since midnight, or null when unparseable/absent. */
+/** CC-13: minutes-since-midnight, or null when unparseable/absent — kept as the local contract
+ *  this file's call sites already depend on (sort-last / "insufficient data, skip the pair").
+ *  Delegates to the shared, tested parser (server/utils/itinerary-time.ts) instead of the old
+ *  bare "^(\d{1,2}):(\d{2})" regex, which ignored any AM/PM suffix and silently misread every
+ *  12-hour-format time (e.g. "05:30 PM" parsed as 05:30 — 5:30 AM instead of 17:30). The shared
+ *  parser returns +Infinity for unparseable/absent instead of null; adapt that back to null here
+ *  so the two call sites below (nullish-coalesce sort fallback, explicit null skip-check) are
+ *  unchanged. */
 function minutesFromTimeString(t: string | null | undefined): number | null {
-  if (!t) return null;
-  const m = t.match(/^(\d{1,2}):(\d{2})/);
-  if (!m) return null;
-  const h = parseInt(m[1], 10);
-  const min = parseInt(m[2], 10);
-  if (!Number.isFinite(h) || !Number.isFinite(min) || h > 23 || min > 59) return null;
-  return h * 60 + min;
+  const minutes = parseActivityTimeToMinutes(t);
+  return Number.isFinite(minutes) ? minutes : null;
 }
 
 /** Same pair identity as trip-transport-legs.service.ts's private `pairKey` — kept in sync

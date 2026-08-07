@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useDeleteTrip } from "@/hooks/use-trips";
 import { openInMaps } from "@/lib/navigate";
 import { openMapsDeepLink } from "@/lib/maps";
+import { tripCardIsPrimary } from "@shared/trip-primary-surface";
 import {
   getTemplateConfig, computeDayCount, type PlanCardProps, type PlanCardData, type PlanCardDay, type PlanCardChange, type PlanCardRole, type PlanCardLegData,
 } from "./plancard-types";
@@ -875,6 +876,34 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
   // with_expert → in_planning write; ActivitiesSection/RoutingActions enforce the rest.
   const isExpertViewer = effectiveRole === "expert";
 
+  // QA_PUNCH_LIST item 13 (ratified Aug 1 "ok sounds good") — the dress flip. The mode-flip
+  // (expert direct-edit → suggest-mode) is already enforced server-side
+  // (server/utils/plan-approval.ts::isPlanApprovedForExpert, migration 164); this is its visual
+  // counterpart: once the customer has approved the delivered plan, the card should read as the
+  // polished final Trip Card rather than the in-progress planning object. Also fires once R-F's
+  // finalized-primacy rule fires (shared/trip-primary-surface.ts — finalizedAt ∨ T-48h window ∨
+  // underway), the SAME rule SlipView's "Your Trip Card is ready" banner uses, so a trip that
+  // reaches primary-surface status without ever routing through an expert (no advisor, so no
+  // planApproval row) still gets the finished treatment once it's for-real live. `plancardData`
+  // is this component's own DTO fetch (not the page-supplied `trip` prop), so this degrades to
+  // false — the unchanged "in planning" look — whenever planApproval/finalizedAt are absent
+  // (loading, no advisor, still drafting). Gated on `!!plancardData` (not just on the two derived
+  // fields being falsy) so the shared/public itinerary-view.tsx render — which supplies its own
+  // static `days` prop and therefore, by this component's existing `enabled: !daysProp &&
+  // stage !== "proposal"` query guard, NEVER fetches this DTO — can never flip finalDress from
+  // trip.startDate/endDate alone (tripCardIsPrimary's T-48h/underway arms are otherwise date-only
+  // and would fire on a share link with no live approval data behind it at all). Suppressed in
+  // the Workstation embed — that's the expert's own working view of the build, not the
+  // customer's finished surface.
+  const planApproval = plancardData?.meta?.planApproval;
+  const planApproved = planApproval?.status === "approved";
+  const finalizedPrimary = tripCardIsPrimary({
+    finalizedAt: plancardData?.trip?.finalizedAt,
+    startDate: trip.startDate,
+    endDate: trip.endDate,
+  });
+  const finalDress = !embedded && !!plancardData && (planApproved || finalizedPrimary);
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -903,7 +932,14 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
           identically but does NOT establish a scroll container for sticky-positioning
           purposes, so the sticky day switcher below sticks relative to the page's real
           scrolling ancestor (DashboardLayout's <main>) instead of silently no-opping. */}
-      <Card className="overflow-clip border border-border hover:shadow-xl transition-all duration-300 group bg-card">
+      <Card
+        className={`overflow-clip transition-all duration-300 group bg-card ${
+          finalDress
+            ? "border-2 border-[#2C7A44]/30 shadow-sm"
+            : "border border-border hover:shadow-xl"
+        }`}
+        data-testid={finalDress ? "plancard-final-dress" : undefined}
+      >
         <HeroSection
           trip={trip}
           traveloureScore={traveloureScore}
@@ -916,6 +952,7 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
           totalLegs={totalLegs}
           totalMinutes={totalMinutes}
           statsLabels={templateConfig.statsLabels}
+          finalDress={finalDress}
         />
 
         {lastOptimizedAt && (

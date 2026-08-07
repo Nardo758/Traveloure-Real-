@@ -813,4 +813,12 @@ export const MIGRATION_FILES = [
   // rather than survivable. Categories R1 did not name take `moderate` under R1's own interim
   // principle, recorded as a delta in the migration body and in FOLLOWUPS.md.
   "180_category_band_backfill.sql",
+  // D2, ratified Aug 7 2026: itinerary-item provenance. Additive nullable
+  // `itinerary_items.origin` TEXT ('ai' | 'traveler' | 'expert', app-enforced, no CHECK —
+  // publish-trap avoidance, migration-159/173 posture). No DEFAULT, no backfill — every existing
+  // row stays NULL (legacy, ambiguous by construction). Closes the CC-1/T1-1 provenance gap: the
+  // generate-itinerary REGENERATE delete now spares `origin = 'traveler'` rows in addition to
+  // the pre-existing `suggestedBy = 'expert'` spare, falling back to the old heuristic only for
+  // legacy `origin IS NULL` rows. Declared in shared/schema.ts in the same commit.
+  "181_itinerary_items_origin.sql",
 ] as const;

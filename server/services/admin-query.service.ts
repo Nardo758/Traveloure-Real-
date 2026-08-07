@@ -508,7 +508,11 @@ export async function getTourismSummaryMetrics() {
       revenue: sql<number>`sum(COALESCE(total_amount::numeric, 0))::numeric`,
     }).from(serviceBookings).where(eq(serviceBookings.status, "completed")),
     db.select({
-      avgDays: sql<number>`avg(EXTRACT(DAY FROM (end_date - start_date)))::numeric`,
+      // T4-1: start_date/end_date are DB type `date`, so `date - date` is already an
+      // integer day count in Postgres — wrapping it in EXTRACT(DAY FROM ...) fails with
+      // "function pg_catalog.extract(unknown, integer) does not exist" (no such overload).
+      // avg(<integer>)::numeric is the corrected day-count expression.
+      avgDays: sql<number>`avg(end_date - start_date)::numeric`,
     }).from(trips).where(sql`start_date IS NOT NULL AND end_date IS NOT NULL`),
   ]);
   return { totalBookings: totalBookings[0]?.count ?? 0, completedBookings: completedBookings[0], avgTripDuration: avgTripDuration[0] };

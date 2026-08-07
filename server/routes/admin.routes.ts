@@ -4795,7 +4795,13 @@ router.get("/api/admin/analytics/tourism", isAuthenticated, async (req, res) => 
         }
       });
 
-      const { seasonality, eventTypes, totalBookings, completedBookings, avgTripDuration } = await getTourismSummaryMetrics();
+      // NEW-1 (V3): getTourismSummaryMetrics never returned seasonality/eventTypes — those
+      // come from their own (previously imported-but-uncalled) query helpers.
+      const [{ totalBookings, completedBookings, avgTripDuration }, seasonality, eventTypes] = await Promise.all([
+        getTourismSummaryMetrics(),
+        getTourismSeasonality(),
+        getTourismEventTypes(),
+      ]);
       const totalTrips = allTrips.length;
 
       const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];

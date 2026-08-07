@@ -267,3 +267,71 @@ export function canSeeFullUserData(role: string): boolean {
   const permissions = ROLE_PERMISSIONS[role as UserRole];
   return permissions?.canSeeFull || false;
 }
+
+/**
+ * Generic allowlist projector — returns a new object containing ONLY the
+ * listed keys that are present on the source object. An allowlist rather
+ * than a denylist so a NEW privileged column added to the source table
+ * later is excluded by default (the same pick-over-omit posture ruling 46
+ * / §19 requires for request-body schemas, applied here to a response
+ * body — CC-8).
+ */
+export function pickPublicFields<T extends Record<string, any>, K extends keyof T>(
+  source: T,
+  fields: readonly K[],
+): Pick<T, K> {
+  const result = {} as Pick<T, K>;
+  for (const field of fields) {
+    if (field in source) {
+      result[field] = source[field];
+    }
+  }
+  return result;
+}
+
+/**
+ * Denylist projector — returns a shallow copy of the source with the listed keys removed.
+ * Deliberately narrower than `pickPublicFields`: use this ONLY when a single, specifically-
+ * verified field is the leak (e.g. CC-8's `provider_services.revenueShareRate` on
+ * POST /api/provider/services) and the source table is large/actively read by many
+ * unaudited consumers, where reconstructing a full allowlist risks dropping a field some
+ * other caller depends on. Prefer `pickPublicFields` when the full consumer set is known.
+ */
+export function omitFields<T extends Record<string, any>, K extends keyof T>(
+  source: T,
+  fields: readonly K[],
+): Omit<T, K> {
+  const result = { ...source };
+  for (const field of fields) {
+    delete result[field];
+  }
+  return result;
+}
+
+/**
+ * CC-8: POST /api/expert-application (and its /api/expert-forms alias) echoed the
+ * full local_expert_forms row back — including admin/financial/verification
+ * internals (totalEarnings, pendingPayout, feeSettings, stripeAccountId,
+ * stripeAccountStatus, identityVerificationStatus, knowledgeScore, bookingFee*,
+ * payoutSchedule, canReceivePayments, stripeConnectStatus, identityVerification*,
+ * verifiedInfluencer/influencerTier/referralCode, handoff/PA-access internals...).
+ * Verified no client reads any of this: travel-experts.tsx's submitMutation.onSuccess
+ * takes no response argument at all (it only invalidates queries + navigates), and the
+ * expert console's status surfaces (expert-status.tsx, expert/settings.tsx) read the
+ * separate /api/expert/application-status endpoint, never this row. This allowlist
+ * keeps the fields an applicant plausibly wants echoed back — their own submitted
+ * profile plus the row's lifecycle state — and excludes every admin/payment/
+ * verification-internal field by construction.
+ */
+export const EXPERT_APPLICATION_PUBLIC_FIELDS = [
+  "id", "userId", "expertType",
+  "firstName", "lastName", "email", "phone", "country", "city",
+  "destinations", "specialties", "languages", "experienceTypes",
+  "specializations", "selectedServices",
+  "neighborhoods", "localityProof", "knowledgeProofAnswers", "localSpecialties",
+  "yearsOfExperience", "bio", "portfolio", "certifications",
+  "availability", "responseTime", "hourlyRate",
+  "offeringTypeKey",
+  "isInfluencer", "instagramLink", "tiktokLink", "youtubeLink", "socialFollowers",
+  "status", "rejectionMessage", "createdAt",
+] as const;
