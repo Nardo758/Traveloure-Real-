@@ -1578,6 +1578,17 @@ export const insertServiceSubcategorySchema = createInsertSchema(serviceSubcateg
 export const insertProviderServiceSchema = createInsertSchema(providerServices).omit({ id: true, userId: true, formStatus: true, bookingsCount: true, totalRevenue: true, averageRating: true, reviewCount: true, createdAt: true, updatedAt: true, revenueShareRate: true }).extend({
   // X1: app-enforced vocabulary (migration 144 has no DB CHECK) — reject anything outside the set here.
   cancellationPolicyType: z.enum(cancellationPolicyTypeEnum).nullable().optional(),
+  // EX-2 (expert walkthrough, docs/testing/EXPERT_UX_WALKTHROUGH.md): a NEGATIVE price is never
+  // valid on any path — POST and PATCH /api/provider/services both parse this schema, and both
+  // persisted price=-50 straight to a row (even at status=active/approval_status=submitted).
+  // Field-level so it survives `.partial()` on the PATCH path. ZERO is deliberately allowed here:
+  // a fresh ServiceForm draft legitimately sends "0" (price not set yet) — the "no zero-price
+  // listing goes LIVE" half is the publish gate in the route handlers, beside the meeting-point
+  // gate, where draft saves are exempt by the same rule.
+  price: z.string().nullish().refine(
+    (v) => v == null || (Number.isFinite(Number(v)) && Number(v) >= 0),
+    { message: "Price must be a non-negative number" },
+  ),
 });
 export const insertFaqSchema = createInsertSchema(faqs).omit({ id: true, createdAt: true });
 export const insertWalletSchema = createInsertSchema(wallets).omit({ id: true, userId: true, createdAt: true, updatedAt: true });

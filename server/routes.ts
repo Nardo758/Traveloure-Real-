@@ -2093,6 +2093,21 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
 
+      // EX-2 publish gate: a listing cannot go LIVE without a positive price. Runs AFTER the
+      // package_tiers recompute above (so a tiers listing is judged on its derived scalar) and
+      // only on status:"active" — a draft with price "0" (ServiceForm's price-not-set default)
+      // still saves. Negative prices never get this far (schema-level floor). Same
+      // draft-exempt shape as the meeting-point gate above.
+      if (input.status === "active") {
+        const effPrice = Number((input as any).price);
+        if (!Number.isFinite(effPrice) || effPrice <= 0) {
+          return res.status(400).json({
+            message: "Set a price greater than zero before publishing. Save as draft to finish later.",
+            code: "PRICE_REQUIRED",
+          });
+        }
+      }
+
       const service = await storage.createProviderService({ ...input, ...locationPatch, userId });
 
       // Write (or clear) neighborhood coverage rows whenever the neighborhoods
@@ -2206,6 +2221,21 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           return res.status(400).json({
             message: "In-person services need a meeting point before publishing. Save as draft to finish later.",
             code: "MEETING_POINT_REQUIRED",
+          });
+        }
+      }
+
+      // EX-2 publish gate (docs/testing/EXPERT_UX_WALKTHROUGH.md): activating a listing requires a
+      // positive price — resolved from the patch or the existing row, same shape as the
+      // meeting-point gate above. Negative prices never reach here (schema-level floor survives
+      // .partial()); this closes the remaining hole where a stored "0" (price-not-set draft) is
+      // flipped straight to active.
+      if (input.status === "active") {
+        const effPrice = Number((input as any).price ?? ownedService.price);
+        if (!Number.isFinite(effPrice) || effPrice <= 0) {
+          return res.status(400).json({
+            message: "Set a price greater than zero before publishing. Save as draft to finish later.",
+            code: "PRICE_REQUIRED",
           });
         }
       }
