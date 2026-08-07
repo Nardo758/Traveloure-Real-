@@ -9025,25 +9025,18 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     }
   });
 
-  app.patch("/api/itinerary-items/:id", isAuthenticated, async (req, res) => {
-    try {
-      const userId = getUserId(req)!;
-      const userName = (req.user as any).claims.name || "User";
-      const existing = await itineraryIntelligenceService.getItem(req.params.id);
-      if (!existing) {
-        return res.status(404).json({ message: "Itinerary item not found" });
-      }
-      if (!await verifyTripOwnership(existing.tripId, userId)) {
-        return res.status(403).json({ message: "Access denied" });
-      }
-      const item = await itineraryIntelligenceService.updateItem(req.params.id, req.body);
-      const changedFields = Object.keys(req.body).filter(k => k !== 'id').join(', ');
-      logItineraryChange(existing.tripId, userName, `Updated "${existing.title}" (${changedFields})`, "edit", "owner", req.params.id);
-      res.json(item);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to update itinerary item" });
-    }
-  });
+  // RETIRED (V4 rail-unification, Aug 7 2026): PATCH /api/itinerary-items/:id used to live here,
+  // gated ONLY by `verifyTripOwnership` — owner-only, no advisor branch, no plan-approval mode-flip.
+  // That diverged from the canonical trip-scoped rail (`PATCH /api/trips/:tripId/itinerary-items/:itemId`,
+  // server/routes/trips.routes.ts) which is advisor-aware (`getTripWriteRole`/`canMutateTrip`/
+  // `isTripAuthor`) and applies the `isPlanApprovedForExpert` mode-flip. Caller trace (client/src,
+  // server, playwright, scripts/journeys) found ZERO live callers of the bare path — every caller
+  // already uses the trip-scoped route (see client/src/pages/expert/workspace.tsx's own comment
+  // explaining why it deliberately avoids this bare path). Per CLAUDE.md §18c ("no consumer ⇒
+  // delete, don't gate"), the handler is retired rather than re-gated — a second, unaudited
+  // authorization implementation of the same operation is exactly the class this closes. Use
+  // PATCH /api/trips/:tripId/itinerary-items/:itemId instead. Proof:
+  // server/__tests__/itinerary-item-rail-unification.db.test.ts.
 
   app.post("/api/itinerary-items/:id/backup", isAuthenticated, async (req, res) => {
     try {
@@ -9252,24 +9245,12 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     }
   });
 
-  app.delete("/api/itinerary-items/:id", isAuthenticated, async (req, res) => {
-    try {
-      const userId = getUserId(req)!;
-      const userName = (req.user as any).claims.name || "User";
-      const existing = await itineraryIntelligenceService.getItem(req.params.id);
-      if (!existing) {
-        return res.status(404).json({ message: "Itinerary item not found" });
-      }
-      if (!await verifyTripOwnership(existing.tripId, userId)) {
-        return res.status(403).json({ message: "Access denied" });
-      }
-      await itineraryIntelligenceService.deleteItem(req.params.id);
-      logItineraryChange(existing.tripId, userName, `Removed "${existing.title}"`, "remove", "owner", req.params.id);
-      res.status(204).send();
-    } catch (error) {
-      res.status(500).json({ message: "Failed to delete itinerary item" });
-    }
-  });
+  // RETIRED (V4 rail-unification, Aug 7 2026): DELETE /api/itinerary-items/:id used to live here,
+  // same owner-only gate divergence as the PATCH handler above (see that comment for the full
+  // rationale + zero-caller trace). It also carried the L22 orphan-leg cascade gap (deleted via
+  // `itineraryIntelligenceService.deleteItem`, not the cascade-safe `storage.deleteItineraryItem`
+  // the canonical rail uses) — retiring this path closes that gap as a side effect, not a
+  // rewrite. Use DELETE /api/trips/:tripId/itinerary-items/:itemId instead.
 
   // --- Emergency Routes ---
   // L20 tier 3 — READS are owner ‖ assigned expert ‖ author ‖ admin (the local fixer needs to
