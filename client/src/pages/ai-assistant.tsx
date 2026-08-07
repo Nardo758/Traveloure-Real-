@@ -28,6 +28,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { motion, AnimatePresence } from "framer-motion";
 import { AiPlannerDraftPanel } from "@/components/ai-planner-draft-panel";
+import { useToast } from "@/hooks/use-toast";
 
 interface Message {
   id: number;
@@ -46,6 +47,7 @@ interface Conversation {
 
 export default function AIAssistant() {
   const [, setLocation] = useLocation();
+  const { toast } = useToast();
   const [selectedConversation, setSelectedConversation] = useState<number | null>(null);
   const [inputMessage, setInputMessage] = useState("");
   const [streamingMessage, setStreamingMessage] = useState("");
@@ -152,6 +154,7 @@ export default function AIAssistant() {
     }
 
     const userMessage = inputMessage;
+    const optimisticMessageId = Date.now();
     setInputMessage("");
     setIsStreaming(true);
     setStreamingMessage("");
@@ -165,7 +168,7 @@ export default function AIAssistant() {
           messages: [
             ...(base.messages || []),
             {
-              id: Date.now(),
+              id: optimisticMessageId,
               conversationId,
               role: "user" as const,
               content: userMessage,
@@ -220,6 +223,27 @@ export default function AIAssistant() {
       }
     } catch (error) {
       console.error("Error sending message:", error);
+      // T6-3: a server error (e.g. a 500 from POST /api/conversations/:id/messages)
+      // used to leave the user staring at an unanswered message with no feedback and
+      // no way to recover the text they typed. Roll back the optimistic bubble (it
+      // was never actually answered), restore the composed text to the input so
+      // nothing is lost, and surface an honest error toast.
+      queryClient.setQueryData<Conversation>(
+        ["/api/conversations", conversationId],
+        (old) =>
+          old
+            ? { ...old, messages: (old.messages || []).filter((m) => m.id !== optimisticMessageId) }
+            : old
+      );
+      setInputMessage(userMessage);
+      toast({
+        title: "Message failed to send",
+        description:
+          error instanceof Error && error.message
+            ? `${error.message}. Your message wasn't lost — try sending again.`
+            : "Something went wrong reaching the AI assistant. Your message wasn't lost — try sending again.",
+        variant: "destructive",
+      });
     } finally {
       setIsStreaming(false);
       setStreamingMessage("");
