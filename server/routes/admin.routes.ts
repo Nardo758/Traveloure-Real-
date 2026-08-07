@@ -5498,10 +5498,33 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
       }
       const before = current.rows[0] as any;
 
+      // Strict rate validation: omitted = unchanged; explicit null clears min/max.
+      // Any other present value must be a finite number, or a strict decimal string
+      // (UI number inputs may serialize as strings). Reject everything else with 400.
+      // NOTE: do NOT use bare Number() coercion here — Number("")===0, Number(true)===1,
+      // Number([])===0 would silently rewrite live money configuration.
+      const parseRate = (v: any): number | null => {
+        if (typeof v === "number") return Number.isFinite(v) ? v : null;
+        if (typeof v === "string" && /^-?\d+(\.\d+)?$/.test(v.trim()) && v.trim() !== "") return Number(v.trim());
+        return null; // booleans, arrays, objects, "", "abc", NaN, Infinity → invalid
+      };
+      const parsedDefault = defaultRate === undefined || defaultRate === null ? undefined : parseRate(defaultRate);
+      if (parsedDefault === null) {
+        return res.status(400).json({ error: "defaultRate must be a finite number", received: defaultRate });
+      }
+      const parsedMin = minRate === undefined || minRate === null ? undefined : parseRate(minRate);
+      if (parsedMin === null) {
+        return res.status(400).json({ error: "minRate must be a finite number", received: minRate });
+      }
+      const parsedMax = maxRate === undefined || maxRate === null ? undefined : parseRate(maxRate);
+      if (parsedMax === null) {
+        return res.status(400).json({ error: "maxRate must be a finite number", received: maxRate });
+      }
+
       // Apply min/max validation against the proposed (or unchanged) default_rate.
-      const nextDefault = typeof defaultRate === "number" ? defaultRate : Number(before.default_rate);
-      const nextMin = minRate === undefined ? (before.min_rate === null ? null : Number(before.min_rate)) : (minRate === null ? null : Number(minRate));
-      const nextMax = maxRate === undefined ? (before.max_rate === null ? null : Number(before.max_rate)) : (maxRate === null ? null : Number(maxRate));
+      const nextDefault = parsedDefault !== undefined ? parsedDefault : Number(before.default_rate);
+      const nextMin = minRate === undefined ? (before.min_rate === null ? null : Number(before.min_rate)) : (minRate === null ? null : parsedMin!);
+      const nextMax = maxRate === undefined ? (before.max_rate === null ? null : Number(before.max_rate)) : (maxRate === null ? null : parsedMax!);
       if (nextMin !== null && nextDefault < nextMin) {
         return res.status(400).json({ error: "default_rate below min_rate", nextDefault, nextMin });
       }
