@@ -57,7 +57,7 @@ import { db } from "./db";
 import { getPlatformFlag, FLAG_MAINTENANCE_MODE } from "./services/platform-flags";
 import { eq, and, or, ilike, sql, desc, count, ne, inArray, asc, isNull } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
-import { scoreKnowledgeProof, KNOWLEDGE_PROOF_QUESTIONS } from "./services/expertise-scoring.service";
+import { scoreKnowledgeProof, KNOWLEDGE_PROOF_QUESTIONS, type KnowledgeProofAnswerInput } from "./services/expertise-scoring.service";
 // W2 (Trip-Canon Lane 1 Phase 1b): `cart_items` has exactly ONE writer — the projection module.
 // Every cart write below goes through `cartProjection.*`; the functions are thin passthroughs to
 // the storage layer, so behavior is identical to the pre-funnel code. Do not call
@@ -1673,7 +1673,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             rejectionMessage: null,
           });
           void scoreKnowledgeProof(
-            (form!.knowledgeProofAnswers as string[]) ?? [],
+            (form!.knowledgeProofAnswers as KnowledgeProofAnswerInput[]) ?? [],
             KNOWLEDGE_PROOF_QUESTIONS,
             form!.localityProof ?? null,
             form!.city ?? "",
@@ -1690,7 +1690,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // Kyoto Knowledge-Bar (advisory): score the knowledge-proof answers in the background and store
       // the result for the admin queue. Fire-and-forget — best-effort, never blocks the submission.
       void scoreKnowledgeProof(
-        (form.knowledgeProofAnswers as string[]) ?? [],
+        (form.knowledgeProofAnswers as KnowledgeProofAnswerInput[]) ?? [],
         KNOWLEDGE_PROOF_QUESTIONS,
         form.localityProof ?? null,
         form.city ?? "",
@@ -1722,7 +1722,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             rejectionMessage: null,
           });
           void scoreKnowledgeProof(
-            (form!.knowledgeProofAnswers as string[]) ?? [],
+            (form!.knowledgeProofAnswers as KnowledgeProofAnswerInput[]) ?? [],
             KNOWLEDGE_PROOF_QUESTIONS,
             form!.localityProof ?? null,
             form!.city ?? "",
@@ -1738,7 +1738,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // Kyoto Knowledge-Bar (advisory): score the knowledge-proof answers in the background and store
       // the result for the admin queue. Fire-and-forget — best-effort, never blocks the submission.
       void scoreKnowledgeProof(
-        (form.knowledgeProofAnswers as string[]) ?? [],
+        (form.knowledgeProofAnswers as KnowledgeProofAnswerInput[]) ?? [],
         KNOWLEDGE_PROOF_QUESTIONS,
         form.localityProof ?? null,
         form.city ?? "",

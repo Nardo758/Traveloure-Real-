@@ -1299,8 +1299,12 @@ export async function sendProviderApplicationApprovalEmail(
 // four ratified events. Same transport/from-address/reply-to/honest-failure posture as every
 // function above: no RESEND_API_KEY -> silent skip (never a crash, never a fake "sent"); a send
 // failure is caught and logged, never thrown, so it can never fail the state transition it rides
-// beside. Deep links point at the exact same in-app surface the bell notification's
-// `data.workspacePath` already uses, so email and bell always agree on where "view" goes.
+// beside. Deep links do NOT literally match the bell: email links point at `/trip/:id` (the raw
+// `data.workspacePath`), while the bell's link goes through `resolveNotificationLink` (client/src/
+// lib/notification-icons.tsx, ruling R-E), which rewrites every `/trip/`-prefixed workspacePath to
+// `/plans/:tripId` (SlipView) — so email lands on the Trip Card and the bell lands on the Slip.
+// CC-11 fix: PlanApprovalBanner now renders on both surfaces (PlanCard.tsx and SlipView.tsx), so
+// the delivery handshake (Approve / Request changes) is reachable from either deep link.
 //
 // Subject/body/deep-link are computed BEFORE the RESEND_API_KEY check (unlike the earlier
 // functions in this file, which build content only once a client exists) so that the no-key skip

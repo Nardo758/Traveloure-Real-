@@ -1574,6 +1574,54 @@ export const insertLocalExpertFormSchema = createInsertSchema(localExpertForms).
   // approved as an expert, become an admin) and how stray "service_provider" values
   // polluted local_expert_forms. The varchar column has no DB CHECK — this is the gate.
   expertType: z.enum(expertTypeEnum).optional(),
+}).superRefine((data, ctx) => {
+  // CC-5 (minimum-content gate): every field on this schema is independently optional, so an
+  // empty `{}` body previously parsed clean and created a fully-valid PENDING application —
+  // flooding the admin review queue with contentless rows. This closes that without rejecting
+  // any real submission:
+  //   - expertType is always required. The client (client/src/pages/travel-experts.tsx)
+  //     always sends it — it defaults from the URL `type` param, itself defaulted to
+  //     "travel_expert" — so no legitimate submission omits it.
+  //   - Beyond that, SOME identifying content is required: either an expertise signal
+  //     (destinations/specialties/experienceTypes, guaranteed non-empty by the default
+  //     (travel_expert/event_planner/executive_assistant) flow's canProceed() step-2 gate;
+  //     or localSpecialties, guaranteed non-empty by the local_expert flow's step-4 gate —
+  //     the local_expert flow NEVER populates destinations/specialties/experienceTypes, so
+  //     those three alone would wrongly reject every real local_expert submission) OR a
+  //     filled-in city+country pair. city/country are intentionally NOT hard-required on
+  //     their own: travel-experts.tsx's canProceed() never gates on either field for the
+  //     default flow, and only gates on city (never country) for the local_expert flow, so
+  //     requiring them unconditionally would reject real in-flight submissions. Existing
+  //     regression fixtures (N11 in journey-suite-negatives.http.test.ts; K1 in
+  //     console-sigma-kyoto-bench.http.test.ts) submit city+country with no expertise arrays
+  //     and expect success — city+country-together is treated as an alternative satisfying
+  //     condition, not an extra unconditional requirement.
+  const isNonEmptyArr = (v: unknown) => Array.isArray(v) && v.length > 0;
+  const isNonEmptyStr = (v: unknown) => typeof v === "string" && v.trim().length > 0;
+
+  if (!isNonEmptyStr(data.expertType)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["expertType"],
+      message: "expertType is required",
+    });
+  }
+
+  const hasExpertiseContent =
+    isNonEmptyArr(data.destinations) ||
+    isNonEmptyArr(data.specialties) ||
+    isNonEmptyArr(data.experienceTypes) ||
+    isNonEmptyArr(data.localSpecialties);
+  const hasLocation = isNonEmptyStr(data.city) && isNonEmptyStr(data.country);
+
+  if (!hasExpertiseContent && !hasLocation) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["destinations"],
+      message:
+        "Application must include at least one destination, specialty, experience type, or local specialty, or both a city and country",
+    });
+  }
 });
 export const insertServiceProviderFormSchema = createInsertSchema(serviceProviderForms).omit({ id: true, userId: true, status: true, rejectionMessage: true, createdAt: true });
 export const insertServiceCategorySchema = createInsertSchema(serviceCategories).omit({ id: true, createdAt: true });

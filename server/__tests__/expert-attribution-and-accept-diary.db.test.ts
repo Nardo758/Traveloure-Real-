@@ -1,0 +1,219 @@
+/**
+ * CC-1 + EX-3 — expert provenance on itinerary-item CREATE, and the accept-transition diary row.
+ *
+ * CC-1: `POST /api/trips/:tripId/itinerary-items` (server/routes.ts, the mounted/authoritative
+ * handler — trips.routes.ts's duplicate copy is shadowed per the §9 mount-order-dead note and
+ * never serves traffic) now derives `itineraryItems.suggestedBy` server-side from the SESSION
+ * user's `trip_expert_advisors` standing (via `storage.isExpertAssignedToTrip`, the canonical
+ * `isTripAdvisor` allow-list predicate), never from `req.body` (§14 posture). The tests below
+ * reproduce the route's own derivation using the SAME exported building blocks the route calls
+ * (`insertItineraryItemSchema`, `storage.isExpertAssignedToTrip`, `storage.createItineraryItem`)
+ * — the same "reproduce the route, don't reimplement it" approach as
+ * booking-birth-provenance.db.test.ts's `postBooking` helper.
+ *
+ * EX-3: `storage.acceptTripAssignment` (the pending -> accepted atomic flip) now writes one
+ * append-only `item_transition_log` row in the SAME transaction as the flip, mirroring task
+ * #1028's `updateExpertAssignmentWorkspaceStatus` convention (trip-scoped, itemId NULL,
+ * actorType "expert", actorId = the accepting expert). The atomic conditional itself
+ * (WHERE status='pending') is untouched (§15/§18b) — proven by T3 (a second accept on an
+ * already-accepted row still writes zero additional rows and returns undefined).
+ *
+ * DISPOSABLE DB ONLY. Every row this file writes is created by this file and deleted in after().
+ *
+ * Run solo: DATABASE_URL=postgresql://postgres@127.0.0.1:5433/traveloure npx tsx --test server/__tests__/expert-attribution-and-accept-diary.db.test.ts
+ */
+import { test, before, after } from "node:test";
+import assert from "node:assert/strict";
+import crypto from "node:crypto";
+import { sql } from "drizzle-orm";
+import { db } from "../db";
+import { storage } from "../storage";
+import { insertItineraryItemSchema } from "@shared/schema";
+
+const RUN = crypto.randomUUID().slice(0, 8);
+const ids = {
+  owner: `eap-${RUN}-owner`,
+  expert: `eap-${RUN}-expert`,
+  trip: `eap-${RUN}-trip`,
+};
+const createdItemIds: string[] = [];
+let assignmentId = "";
+
+// ── Disposable-DB guard (mirrors booking-birth-provenance.db.test.ts; never defaults open) ──────
+const DISPOSABLE_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "0.0.0.0", ""]);
+async function assertDisposableDb(): Promise<void> {
+  if (process.env.JOURNEY_DB_WRITES_OK === "1") return;
+  let host: string | null = null;
+  try {
+    host = new URL(process.env.DATABASE_URL ?? "").hostname.toLowerCase();
+  } catch {
+    host = null;
+  }
+  let serverAddr: string | null = null;
+  try {
+    const r = await db.execute(sql`SELECT host(inet_server_addr()) AS addr`);
+    serverAddr = ((r.rows[0] as any)?.addr as string) ?? null;
+  } catch {
+    /* local socket ⇒ NULL ⇒ disposable signal */
+  }
+  const ok =
+    (host !== null && DISPOSABLE_HOSTS.has(host)) ||
+    (host === null && (serverAddr === null || DISPOSABLE_HOSTS.has(serverAddr)));
+  if (!ok) {
+    throw new Error(
+      `[expert-attribution-and-accept-diary] REFUSING to write fixtures: DATABASE_URL host '${host ?? "<none>"}' ` +
+        `is not a recognized disposable dev/CI database. Opt in DELIBERATELY with JOURNEY_DB_WRITES_OK=1.`,
+    );
+  }
+}
+
+/** Reproduces EXACTLY what the routes.ts CREATE handler does with a body, post-fix: parse via the
+ *  exported insert schema, strip whatever the client sent for suggestedBy, and re-derive it from
+ *  `isAdvisor` (computed the same way the route computes it — never from the body). */
+async function postItineraryItem(
+  actingUserId: string,
+  tripId: string,
+  body: Record<string, unknown>,
+): Promise<any> {
+  const owned = actingUserId === ids.owner;
+  const isAdvisor = owned ? false : await storage.isExpertAssignedToTrip(tripId, actingUserId);
+  const parsed = insertItineraryItemSchema.safeParse({ ...body, tripId });
+  assert.ok(parsed.success, `fixture body must parse: ${JSON.stringify((parsed as any).error?.errors)}`);
+  const itemData = parsed.data as any;
+  delete itemData.suggestedBy;
+  if (isAdvisor) {
+    itemData.suggestedBy = "expert";
+  }
+  const item = await storage.createItineraryItem(itemData);
+  createdItemIds.push(item.id);
+  return item;
+}
+
+before(async () => {
+  await assertDisposableDb();
+  await db.execute(sql`
+    INSERT INTO users (id, email, first_name, last_name, role)
+    VALUES (${ids.owner}, ${`eap-${RUN}-owner@t.test`}, 'EAP', 'Owner', 'traveler')
+  `);
+  await db.execute(sql`
+    INSERT INTO users (id, email, first_name, last_name, role)
+    VALUES (${ids.expert}, ${`eap-${RUN}-expert@t.test`}, 'EAP', 'Expert', 'local_expert')
+  `);
+  await db.execute(sql`
+    INSERT INTO trips (id, user_id, title, destination, start_date, end_date)
+    VALUES (${ids.trip}, ${ids.owner}, 'EAP fixture trip', 'Lisbon', CURRENT_DATE + 10, CURRENT_DATE + 15)
+  `);
+  const created = await storage.createTripExpertAdvisor({
+    tripId: ids.trip,
+    localExpertId: ids.expert,
+    message: "fixture assignment",
+  });
+  assignmentId = created.id;
+  assert.equal(created.status, "pending", "fixture assignment must start pending");
+});
+
+after(async () => {
+  await db.execute(sql`DELETE FROM item_transition_log WHERE trip_id = ${ids.trip}`).catch(() => {});
+  for (const id of createdItemIds) {
+    await db.execute(sql`DELETE FROM itinerary_items WHERE id = ${id}`).catch(() => {});
+  }
+  await db.execute(sql`DELETE FROM trip_expert_advisors WHERE trip_id = ${ids.trip}`).catch(() => {});
+  await db.execute(sql`DELETE FROM trips WHERE id = ${ids.trip}`).catch(() => {});
+  await db.execute(sql`DELETE FROM users WHERE id IN (${ids.owner}, ${ids.expert})`).catch(() => {});
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// EX-3 — the accept transition writes exactly one diary row, with the correct actor
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+
+test("T1: acceptTripAssignment flips pending -> accepted and writes exactly one item_transition_log row", async () => {
+  const before = await db.execute(sql`
+    SELECT count(*)::int AS n FROM item_transition_log WHERE trip_id = ${ids.trip}
+  `);
+  assert.equal((before.rows[0] as any).n, 0, "no diary rows before accept");
+
+  const updated = await storage.acceptTripAssignment(assignmentId, ids.expert);
+  assert.ok(updated, "accept must succeed on a pending row owned by the expert");
+  assert.equal(updated.status, "accepted");
+
+  const rows = await db.execute(sql`
+    SELECT trip_id, item_id, event_type, from_status, to_status, actor_type, actor_id
+    FROM item_transition_log WHERE trip_id = ${ids.trip}
+  `);
+  assert.equal(rows.rows.length, 1, "exactly one diary row for the accept");
+  const row = rows.rows[0] as any;
+  assert.equal(row.trip_id, ids.trip);
+  assert.equal(row.item_id, null, "trip-scoped event (ruling 16)");
+  assert.equal(row.event_type, "assignment_accepted");
+  assert.equal(row.from_status, "pending");
+  assert.equal(row.to_status, "accepted");
+  assert.equal(row.actor_type, "expert");
+  assert.equal(row.actor_id, ids.expert, "actor is the accepting expert, derived from the call's own expertId param");
+});
+
+test("T2: a second accept on the now-accepted row is a no-op — atomic conditional unweakened, no extra diary row", async () => {
+  const again = await storage.acceptTripAssignment(assignmentId, ids.expert);
+  assert.equal(again, undefined, "the WHERE status='pending' guard still rejects a non-pending row (§15/§18b)");
+
+  const rows = await db.execute(sql`
+    SELECT count(*)::int AS n FROM item_transition_log WHERE trip_id = ${ids.trip}
+  `);
+  assert.equal((rows.rows[0] as any).n, 1, "still exactly one diary row — the loser wrote nothing");
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// CC-1 — expert-authored items are stamped server-side; a client-forged value is ignored
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+
+test("T3: an accepted expert advisor's item is stamped suggestedBy='expert', overriding a client-forged 'user'", async () => {
+  // Sanity: the expert is now `accepted` on this trip (T1), so isExpertAssignedToTrip must be true.
+  const isAdvisor = await storage.isExpertAssignedToTrip(ids.trip, ids.expert);
+  assert.equal(isAdvisor, true);
+
+  const item = await postItineraryItem(ids.expert, ids.trip, {
+    title: "Fado night in Alfama",
+    dayNumber: 1,
+    // The forgery: a hostile/naive client claims this was traveler-authored.
+    suggestedBy: "user",
+  });
+
+  assert.equal(
+    item.suggestedBy,
+    "expert",
+    "server-derived from the session's trip_expert_advisors standing — the client's 'user' value is ignored",
+  );
+});
+
+test("T4: an unassigned caller cannot forge suggestedBy='expert' either — no advisor row, no stamp", async () => {
+  const strangerId = `eap-${RUN}-stranger`;
+  await db.execute(sql`
+    INSERT INTO users (id, email, first_name, last_name, role)
+    VALUES (${strangerId}, ${`eap-${RUN}-stranger@t.test`}, 'EAP', 'Stranger', 'traveler')
+  `);
+  try {
+    const isAdvisor = await storage.isExpertAssignedToTrip(ids.trip, strangerId);
+    assert.equal(isAdvisor, false, "a user with no trip_expert_advisors row is not an advisor");
+
+    const item = await postItineraryItem(strangerId, ids.trip, {
+      title: "Forged expert item",
+      dayNumber: 1,
+      suggestedBy: "expert", // the forgery
+    });
+    assert.notEqual(
+      item.suggestedBy,
+      "expert",
+      "a non-advisor's claimed suggestedBy='expert' must not survive — not an advisor, so it is stripped and never re-stamped",
+    );
+    assert.equal(item.suggestedBy, null);
+  } finally {
+    await db.execute(sql`DELETE FROM users WHERE id = ${strangerId}`).catch(() => {});
+  }
+});
+
+test("T5: owner-authored items are unaffected — no suggestedBy sent, none stamped", async () => {
+  const item = await postItineraryItem(ids.owner, ids.trip, {
+    title: "Owner-added museum visit",
+    dayNumber: 2,
+  });
+  assert.equal(item.suggestedBy, null, "owner path behavior unchanged: null when the client sends nothing");
+});
