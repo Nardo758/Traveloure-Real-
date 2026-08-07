@@ -8870,7 +8870,18 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       }
       const parsed = insertItineraryItemSchema.safeParse({ ...req.body, tripId });
       if (!parsed.success) return res.status(400).json({ message: "Invalid data", errors: parsed.error.errors });
-      const item = await storage.createItineraryItem(parsed.data as any);
+      const itemData = parsed.data as any;
+      // CC-1 / §14 server-derivation: expert-attribution provenance is never client-trusted.
+      // Strip whatever the client sent for suggestedBy and re-derive it from the SESSION user
+      // (via the isAdvisor check already computed above from trip_expert_advisors, not from
+      // req.body) so a traveler/template item can no longer be forged as "expert" and a real
+      // expert-authored item can no longer be forged as anonymous. Owner-authored items are
+      // untouched — isAdvisor is false for the owner by construction (see `owned ? false : …`).
+      delete itemData.suggestedBy;
+      if (isAdvisor) {
+        itemData.suggestedBy = "expert";
+      }
+      const item = await storage.createItineraryItem(itemData);
       logItineraryChange(tripId, userName, `Added "${item.title}"`, "add", owned ? "owner" : "expert", item.id);
 
       // If traveler added item and expert is assigned, notify the expert

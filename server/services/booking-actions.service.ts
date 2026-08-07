@@ -8,6 +8,7 @@ import { db } from "../db";
 import { sql } from "drizzle-orm";
 import crypto from "crypto";
 import { isTripAdvisor } from "../utils/trip-advisor";
+import { parseActivityTimeToMinutes } from "../utils/itinerary-time";
 
 // ─── Expert Requests ──────────────────────────────────────────────────────────
 
@@ -378,11 +379,15 @@ export async function getTripByShareToken(token: string): Promise<{ row: any; sh
   // Prefer live itinerary_items over the generated_itineraries snapshot so that any
   // manual edit (add/remove/reorder) is immediately visible on the share page without
   // requiring a regenerate.
+  // CC-3: start_time is a "h:mm AM/PM" string; a SQL text ORDER BY on it is a LEXICAL sort
+  // ("05:30 PM" sorts before "09:00 AM" because '0' < '9'), not a chronological one — so it is
+  // deliberately dropped from this ORDER BY. sort_order/created_at remain as the stable tiebreak
+  // for the JS-side chronological re-sort applied below (parseActivityTimeToMinutes).
   const itemsResult = await db.execute(sql`
-    SELECT title, description, item_type, day_number, start_time, location_name, estimated_cost
+    SELECT title, description, item_type, day_number, start_time, location_name, estimated_cost, routing_status
     FROM itinerary_items
     WHERE trip_id = ${String(row.id)}
-    ORDER BY day_number ASC, sort_order ASC, start_time ASC NULLS LAST, created_at ASC
+    ORDER BY day_number ASC, sort_order ASC, created_at ASC
   `);
   const items = (itemsResult.rows ?? []) as Array<{
     title: string;
@@ -392,6 +397,7 @@ export async function getTripByShareToken(token: string): Promise<{ row: any; sh
     start_time: string | null;
     location_name: string | null;
     estimated_cost: string | null;
+    routing_status: string | null;
   }>;
 
   if (items.length > 0) {
@@ -403,16 +409,31 @@ export async function getTripByShareToken(token: string): Promise<{ row: any; sh
       if (!dayMap.has(dayNum)) {
         dayMap.set(dayNum, { day: dayNum, title: `Day ${dayNum}`, activities: [] });
       }
+      // CC-2b: a public viewer must never see a price on an item that hasn't actually been
+      // purchased (e.g. a cart-pending `ready_for_checkout` item) — showing a price there implies
+      // a booking/commitment that never happened. Only `purchased` items carry a price publicly;
+      // the activity itself still renders either way.
+      const isPurchased = item.routing_status === "purchased";
       dayMap.get(dayNum)!.activities.push({
         time: item.start_time ?? undefined,
         title: item.title,
         description: item.description ?? undefined,
         type: item.item_type ?? "activity",
         locationName: item.location_name ?? undefined,
-        estimatedCost: item.estimated_cost != null ? Number(item.estimated_cost) : undefined,
+        estimatedCost: isPurchased && item.estimated_cost != null ? Number(item.estimated_cost) : undefined,
       });
     }
-    const days = Array.from(dayMap.values()).sort((a, b) => a.day - b.day);
+    const days = Array.from(dayMap.values())
+      .sort((a, b) => a.day - b.day)
+      .map((d) => ({
+        ...d,
+        // CC-3: chronological re-sort (see parseActivityTimeToMinutes) — Array#sort is stable in
+        // Node/V8, so equal-time (including absent-time) activities keep the SQL-supplied
+        // (sort_order, created_at) order rather than being shuffled.
+        activities: [...d.activities].sort(
+          (a, b) => parseActivityTimeToMinutes(a.time) - parseActivityTimeToMinutes(b.time),
+        ),
+      }));
     row.itinerary_data = { days };
   }
   // If no itinerary_items exist, row.itinerary_data already holds the

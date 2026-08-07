@@ -69,7 +69,12 @@ export type TransitionEventType =
   // The row is NEVER resurrected (void wins after TTL); the exception is recorded here and on
   // the booking row so it is ops-visible rather than silent. NOTE: kept ≤30 chars — event_type
   // is varchar(30) (migration 171), so `checkout_reconciliation_exception` would not fit.
-  | "checkout_reconcile_exception";
+  | "checkout_reconcile_exception"
+  // EX-3: the advisory-assignment pending → accepted flip (storage.acceptTripAssignment).
+  // Trip-scoped (itemId NULL, ruling 16), written in the SAME transaction as the atomic
+  // conditional flip (rulings 12/18) — mirrors task #1028's workspace_status_transition
+  // convention one level up the same row (trip_expert_advisors.status, not .workspaceStatus).
+  | "assignment_accepted";
 
 /** The executor shape both `db` and a drizzle `tx` satisfy — callers inside a transaction MUST
  *  pass their `tx` (ruling 18: same-transaction pair), everything else may pass `db`. */

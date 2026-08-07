@@ -5228,16 +5228,34 @@ export class DatabaseStorage implements IStorage {
 
   // Atomically accept a pending advisory assignment (owner + pending guard in one UPDATE — §15).
   // Returns undefined if the row isn't the expert's or isn't pending → caller 409s, no double-accept.
+  // EX-3: writes an append-only item_transition_log row in the SAME transaction as the flip
+  // (rulings 12/18), mirroring task #1028's updateExpertAssignmentWorkspaceStatus above —
+  // trip-scoped (itemId NULL, ruling 16), actorType "expert", actorId = the accepting expert
+  // (the same `expertId` the atomic conditional itself is keyed on, never req.body — §14). The
+  // atomic conditional (WHERE status='pending') is unchanged — the log write only follows a win.
   async acceptTripAssignment(assignmentId: string, expertId: string): Promise<any> {
-    const [updated] = await db.update(tripExpertAdvisors)
-      .set({ status: "accepted" })
-      .where(and(
-        eq(tripExpertAdvisors.id, assignmentId),
-        eq(tripExpertAdvisors.localExpertId, expertId),
-        eq(tripExpertAdvisors.status, "pending"),
-      ))
-      .returning();
-    return updated;
+    return db.transaction(async (tx) => {
+      const [updated] = await tx.update(tripExpertAdvisors)
+        .set({ status: "accepted" })
+        .where(and(
+          eq(tripExpertAdvisors.id, assignmentId),
+          eq(tripExpertAdvisors.localExpertId, expertId),
+          eq(tripExpertAdvisors.status, "pending"),
+        ))
+        .returning();
+      if (updated) {
+        await logItemTransition(tx, {
+          tripId: updated.tripId,
+          itemId: null, // trip-scoped event (ruling 16)
+          eventType: "assignment_accepted",
+          fromStatus: "pending",
+          toStatus: "accepted",
+          actorType: "expert",
+          actorId: expertId,
+        });
+      }
+      return updated;
+    });
   }
 
   // ─── Content Placement Rules ─────────────────────────────────────────────
