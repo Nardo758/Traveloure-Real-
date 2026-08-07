@@ -233,55 +233,154 @@ test("T2: a second accept on the now-accepted row is a no-op — atomic conditio
 // CC-1 — expert-authored items are stamped server-side; a client-forged value is ignored
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 
-test("T3: an accepted expert advisor's item is stamped suggestedBy='expert', overriding a client-forged 'user'", async () => {
-  // Sanity: the expert is now `accepted` on this trip (T1), so isExpertAssignedToTrip must be true.
-  const isAdvisor = await storage.isExpertAssignedToTrip(ids.trip, ids.expert);
+test("T3: an accepted expert advisor's item is stamped suggestedBy='expert' + origin='expert', overriding client forgeries", async () => {
+  // Sanity: the expert is now `accepted` on this trip (T1), so the WRITE-access predicate must be true.
+  const isAdvisor = await storage.isExpertAssignedToTripForWrite(ids.trip, ids.expert);
   assert.equal(isAdvisor, true);
 
-  const item = await postItineraryItem(ids.expert, ids.trip, {
+  const { status, item } = await postItineraryItem(ids.expert, ids.trip, {
     title: "Fado night in Alfama",
     dayNumber: 1,
     // The forgery: a hostile/naive client claims this was traveler-authored.
     suggestedBy: "user",
   });
 
+  assert.equal(status, 201);
   assert.equal(
     item.suggestedBy,
     "expert",
     "server-derived from the session's trip_expert_advisors standing — the client's 'user' value is ignored",
   );
+  assert.equal(item.origin, "expert", "D2: origin is server-derived from the same write-gated advisor flag");
 });
 
-test("T4: an unassigned caller cannot forge suggestedBy='expert' either — no advisor row, no stamp", async () => {
+test("T4: an unassigned caller is denied outright (403) — never reaches the stamping logic at all", async () => {
   const strangerId = `eap-${RUN}-stranger`;
   await db.execute(sql`
     INSERT INTO users (id, email, first_name, last_name, role)
     VALUES (${strangerId}, ${`eap-${RUN}-stranger@t.test`}, 'EAP', 'Stranger', 'traveler')
   `);
   try {
-    const isAdvisor = await storage.isExpertAssignedToTrip(ids.trip, strangerId);
-    assert.equal(isAdvisor, false, "a user with no trip_expert_advisors row is not an advisor");
+    const isAdvisor = await storage.isExpertAssignedToTripForWrite(ids.trip, strangerId);
+    assert.equal(isAdvisor, false, "a user with no trip_expert_advisors row is not a write-access advisor");
 
-    const item = await postItineraryItem(strangerId, ids.trip, {
+    // A stranger is neither the trip owner nor a write-access advisor, so the route's access gate
+    // (owned || assigned) denies them before the suggestedBy/origin derivation is even reached —
+    // a STRONGER property than "the forged value is stripped": there is no create at all.
+    const { status, item } = await postItineraryItem(strangerId, ids.trip, {
       title: "Forged expert item",
       dayNumber: 1,
       suggestedBy: "expert", // the forgery
+      origin: "expert", // the forgery
     });
-    assert.notEqual(
-      item.suggestedBy,
-      "expert",
-      "a non-advisor's claimed suggestedBy='expert' must not survive — not an advisor, so it is stripped and never re-stamped",
-    );
-    assert.equal(item.suggestedBy, null);
+    assert.equal(status, 403, "no trip_collaborators/trip_expert_advisors standing ⇒ access denied");
+    assert.equal(item, undefined, "nothing was created");
   } finally {
     await db.execute(sql`DELETE FROM users WHERE id = ${strangerId}`).catch(() => {});
   }
 });
 
-test("T5: owner-authored items are unaffected — no suggestedBy sent, none stamped", async () => {
-  const item = await postItineraryItem(ids.owner, ids.trip, {
+test("T5: owner-authored items are unaffected — no suggestedBy sent, none stamped; origin='traveler'", async () => {
+  const { status, item } = await postItineraryItem(ids.owner, ids.trip, {
     title: "Owner-added museum visit",
     dayNumber: 2,
   });
+  assert.equal(status, 201);
   assert.equal(item.suggestedBy, null, "owner path behavior unchanged: null when the client sends nothing");
+  assert.equal(item.origin, "traveler", "D2: the owner/traveler path is stamped origin='traveler'");
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// D1 — "a PENDING advisor may not write": denied while pending, allowed once accepted
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+
+test("T6a: a PENDING advisor's item-create is denied (403) — write access requires accepted/assigned", async () => {
+  const isReadAdvisor = await storage.isExpertAssignedToTrip(ids.trip2, ids.expert);
+  assert.equal(isReadAdvisor, true, "sanity: the pending row still grants READ access (assigned-trips/inbox)");
+  const isWriteAdvisor = await storage.isExpertAssignedToTripForWrite(ids.trip2, ids.expert);
+  assert.equal(isWriteAdvisor, false, "a PENDING row does not grant WRITE access");
+
+  const { status, item } = await postItineraryItem(ids.expert, ids.trip2, {
+    title: "Premature edit while still pending",
+    dayNumber: 1,
+  });
+  assert.equal(status, 403, "pending advisor cannot create an itinerary item");
+  assert.equal(item, undefined);
+});
+
+test("T6b: after accepting, the SAME advisor's item-create succeeds (201) with origin='expert'", async () => {
+  const before = await db.execute(sql`
+    SELECT count(*)::int AS n FROM item_transition_log WHERE trip_id = ${ids.trip2}
+  `);
+  assert.equal((before.rows[0] as any).n, 0);
+
+  const updated = await storage.acceptTripAssignment(assignment2Id, ids.expert);
+  assert.ok(updated, "accept must succeed on trip2's pending row");
+  assert.equal(updated.status, "accepted");
+
+  const isWriteAdvisor = await storage.isExpertAssignedToTripForWrite(ids.trip2, ids.expert);
+  assert.equal(isWriteAdvisor, true, "now accepted, write access is granted");
+
+  const { status, item } = await postItineraryItem(ids.expert, ids.trip2, {
+    title: "Post-accept edit",
+    dayNumber: 1,
+  });
+  assert.equal(status, 201, "the previously-denied advisor may now create an item");
+  assert.equal(item.suggestedBy, "expert");
+  assert.equal(item.origin, "expert");
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+// D2 — itinerary_items.origin: 'ai' from AI-generation code paths; server-derived, never
+// client-trusted; regenerate spares 'traveler'/'expert' rows and replaces 'ai' rows
+// ═══════════════════════════════════════════════════════════════════════════════════════════
+
+test("T7: an AI-generated item is stamped origin='ai' (the generate-itinerary insert path)", async () => {
+  // AI-generation inserts are literal server-constructed objects (server/routes.ts's
+  // generate-itinerary handler, db.insert(itineraryItems).values({..., origin: 'ai'})) — there is
+  // no client body to forge here by construction (unlike the POST route's schema-parsed path
+  // covered by T3/T4/T5), so this proves the value lands correctly rather than that a forgery is
+  // ignored.
+  const [created] = await db
+    .insert(itineraryItems)
+    .values({
+      tripId: ids.trip,
+      title: "AI-suggested walking tour",
+      dayNumber: 3,
+      origin: "ai",
+    } as any)
+    .returning();
+  createdItemIds.push(created.id);
+  assert.equal(created.origin, "ai");
+});
+
+test("T8: regenerate delete predicate spares origin='traveler' and origin='expert' rows, replaces origin='ai' rows, and legacy NULL rows keep the old suggestedBy heuristic", async () => {
+  const rows = await db
+    .insert(itineraryItems)
+    .values([
+      { tripId: ids.trip3, title: "AI row (replaced)", dayNumber: 1, origin: "ai" },
+      { tripId: ids.trip3, title: "Traveler row (spared)", dayNumber: 1, origin: "traveler" },
+      { tripId: ids.trip3, title: "Expert row (spared)", dayNumber: 1, origin: "expert" },
+      // Legacy rows born before this column existed: origin IS NULL, fall back to the
+      // pre-existing suggestedBy heuristic (T1-1's original fix).
+      { tripId: ids.trip3, title: "Legacy expert row (spared, suggestedBy)", dayNumber: 1, suggestedBy: "expert" },
+      { tripId: ids.trip3, title: "Legacy ambiguous row (replaced)", dayNumber: 1, suggestedBy: null },
+    ] as any)
+    .returning({ id: itineraryItems.id, title: itineraryItems.title });
+  for (const r of rows) createdItemIds.push(r.id);
+
+  await regenerateDeleteItineraryItems(ids.trip3);
+
+  const survivors = await db
+    .select({ title: itineraryItems.title })
+    .from(itineraryItems)
+    .where(eq(itineraryItems.tripId, ids.trip3));
+  const survivorTitles = survivors.map((s) => s.title).sort();
+
+  assert.deepEqual(
+    survivorTitles,
+    ["Expert row (spared)", "Legacy expert row (spared, suggestedBy)", "Traveler row (spared)"].sort(),
+    "only the AI row and the legacy ambiguous row were deleted; traveler/expert rows (by origin, " +
+      "old or new) survive",
+  );
 });
