@@ -2242,6 +2242,33 @@ router.post("/api/admin/categories", isAuthenticated, async (req, res) => {
         return res.status(403).json({ message: "Admin access required" });
       }
       const input = insertServiceCategorySchema.parse(req.body);
+
+      // ── R2 (fee-ledger lane): a category may NEVER be created without a commission band ──────
+      // Layer 1 of the two-layer guard (ruling 35); layer 2 is the NOT NULL added by migration 180.
+      // The resolver is fail-loud by design (no silent fallback rate, ever — D0/R2), so a bandless
+      // category is not a degraded state, it is a category whose bookings throw at checkout.
+      if (!input.commissionBandKey) {
+        return res.status(400).json({
+          error: "category_requires_commission_band",
+          message:
+            "commission_band_key is required: a category cannot exist without a commission band (R2). " +
+            "Pick one of the provider bands (limited | moderate | commercial | premium).",
+        });
+      }
+      const createBandRow = await validateCommissionBand(input.commissionBandKey);
+      if (!createBandRow) {
+        return res.status(400).json({
+          error: "commission_band_not_found",
+          message: `commission_band_key='${input.commissionBandKey}' does not match any fee_bands row.`,
+        });
+      }
+      if (!createBandRow.is_active) {
+        return res.status(400).json({
+          error: "commission_band_inactive",
+          message: `commission_band_key='${input.commissionBandKey}' is inactive in fee_bands.`,
+        });
+      }
+
       const category = await storage.createServiceCategory(input);
       res.status(201).json(category);
     } catch (err) {
@@ -2273,22 +2300,20 @@ router.patch("/api/admin/categories/:id", isAuthenticated, async (req, res) => {
       if ("commissionBandKey" in input) {
         const newBandKey = input.commissionBandKey;
         if (newBandKey === null || newBandKey === "" || newBandKey === undefined) {
-          // Explicit inheritance — only allowed if default_commission_band_key
-          // is set AND references an active fee_bands row.
-          const row = await validateDefaultCommissionBandInheritance();
-          if (!row || !row.setting_value) {
-            return res.status(400).json({
-              error: "category_unpriced_in_tiered_mode",
-              message:
-                "Cannot clear commission_band_key: platform_settings.default_commission_band_key is unset. Either set a default first, or explicitly pick a band for this category.",
-            });
-          }
-          if (!row.is_active) {
-            return res.status(400).json({
-              error: "category_inheritance_target_inactive",
-              message: `default_commission_band_key='${row.setting_value}' but that band is inactive in fee_bands. Activate it or set commission_band_key on this category.`,
-            });
-          }
+          // ── R2 (fee-ledger lane): clearing the band is no longer a legal operation ───────────
+          // This branch previously permitted "explicit inheritance" — clearing the column and
+          // letting platform_settings.default_commission_band_key stand in. R2 ends that: a
+          // category must never exist without a band, and migration 180 backs it with NOT NULL, so
+          // a clear would now fail at the DB anyway. Rejecting here turns a 500 into a typed 400
+          // and states the rule. (The inheritance HELPER stays for the settings surface that reads
+          // the default; it is only this write path that may no longer produce a bandless row.)
+          return res.status(400).json({
+            error: "category_requires_commission_band",
+            message:
+              "commission_band_key cannot be cleared: a category cannot exist without a commission " +
+              "band (R2). Pick an explicit band (limited | moderate | commercial | premium) instead " +
+              "of inheriting a platform default.",
+          });
         } else {
           // Explicit band — validate it exists, is active, rate_type='percent'.
           const bandRow = await validateCommissionBand(newBandKey);

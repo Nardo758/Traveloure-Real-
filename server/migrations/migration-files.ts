@@ -806,4 +806,11 @@ export const MIGRATION_FILES = [
   // path exists in code. New table, so no CHECK-over-legacy-rows publish trap; table + all five
   // indexes declared in shared/schema.ts in the same commit (deploy-push durability rule).
   "179_fee_ledger.sql",
+  // Fee-ledger lane, rulings R1 + R2. Every category gets a commission band (mapped BY NAME, since
+  // environments carry different category sets), then commission_band_key goes NOT NULL in the SAME
+  // migration — backfill first, constraint second, so the constraint cannot be violated by rows
+  // already on disk. The resolver stays fail-loud; R1+R2 make the missing-band state unreachable
+  // rather than survivable. Categories R1 did not name take `moderate` under R1's own interim
+  // principle, recorded as a delta in the migration body and in FOLLOWUPS.md.
+  "180_category_band_backfill.sql",
 ] as const;
