@@ -789,4 +789,21 @@ export const MIGRATION_FILES = [
   // that never ran. No CHECK (migration-159/171 posture); both tables + all four indexes declared
   // in shared/schema.ts in the same commit (deploy-push durability rule).
   "177_reconciliation_exceptions.sql",
+  // Fee-ledger lane Phase 1A (D0/D1/D2/D3, ruled 2026-08-06). Structure C: the four provider
+  // commission bands were VERIFIED already present at the ruled rates (limited .12 / moderate .08 /
+  // commercial .06 / premium .04) so none are seeded; this adds only what was absent —
+  // traveler_service_fee (0.07, capped $25 via the new fee_bands.max_amount column) and
+  // provider_rails (0.08, resolved as min(category band, rails), traveler fee waived) — deactivates
+  // beta_flat per D2, drops the "0.75" literal default off provider_services.revenue_share_rate and
+  // backfills existing rows to NULL so fee_bands regains rate authority (audit C2/Q9; ruling 32's
+  // defeated proof). No CHECK added; max_amount declared in shared/schema.ts in the same commit.
+  "178_fee_ledger_bands.sql",
+  // Fee-ledger lane Phase 1B: the append-only fee event log (audit C1 — the platform retained $40
+  // and recorded $20 on an $80 booking because a two-sided fee was captured in one scalar column).
+  // A fee EVENT log, not a general ledger. band_id is NULLABLE with a rate_source discriminator
+  // because three override layers sit above the band (Phase 0 §1a), so an entity-override row has
+  // no band that explains its rate. Reversals are new rows (reverses_ledger_id); no UPDATE/DELETE
+  // path exists in code. New table, so no CHECK-over-legacy-rows publish trap; table + all five
+  // indexes declared in shared/schema.ts in the same commit (deploy-push durability rule).
+  "179_fee_ledger.sql",
 ] as const;
