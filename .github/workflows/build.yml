@@ -153,6 +153,26 @@ jobs:
       - name: chain-integrity test
         run: npx tsx --test server/migrations/__tests__/chain-integrity.test.ts
 
+  walkthrough-pins:
+    name: walkthrough-pins (EX-1 logout endpoint + EX-2 price floor)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      # Pure-unit pins from docs/testing/EXPERT_UX_WALKTHROUGH.md — no DB, no browser.
+      # EX-1: no client file may navigate to the Replit-only GET /api/logout (session survived
+      # the click off-Replit); the shared logout must POST /api/auth/logout.
+      - name: EX-1 logout endpoint pin
+        run: npx tsx --test client/src/lib/__tests__/logout-endpoint-pin.test.ts
+      # EX-2: insertProviderServiceSchema rejects negative/non-numeric prices on the create AND
+      # .partial() (PATCH) shapes; zero stays parseable (draft state — publish gate is route-level).
+      - name: EX-2 service price-floor pin
+        run: npx tsx --test server/__tests__/service-price-floor.test.ts
+
   decision-guards-lint:
     name: decision-guards-lint (ledger lint — DECISIONS.md ruling 26)
     runs-on: ubuntu-latest
