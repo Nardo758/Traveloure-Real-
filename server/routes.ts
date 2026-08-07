@@ -968,41 +968,10 @@ export async function registerRoutes(
     res.json(trips);
   });
 
-  // GET /api/trips/:id — get trip (auth: owner/expert/EA, or guest via shareToken)
-  app.get(api.trips.get.path, requireAuthOrShareToken, async (req, res) => {
-    const trip = await storage.getTrip(req.params.id);
-    if (!trip) {
-      return res.status(404).json({ message: "Trip not found" });
-    }
-
-    // Check access: owner, assigned expert, managing EA, or guest with shareToken
-    const userId = getUserId(req)!;
-    const shareToken = req.query.token as string | undefined;
-    const isOwner = trip.userId && trip.userId === userId;
-    const isExpert = userId != null && (trip as any).expertId === userId;
-    const isManagingEa = userId != null && (trip as any).managedByEaId === userId;
-    const isGuestWithToken = shareToken && trip.shareToken === shareToken;
-
-    if (!isOwner && !isExpert && !isManagingEa && !isGuestWithToken) {
-      return res.status(401).json({ message: "Unauthorized" });
-    }
-
-    // GAP 5 fix (expert-loop object-flow audit, Jul 30 2026): "delivered" previously had no
-    // persistent signal on the trip itself — only a one-shot notification the traveler could
-    // dismiss/miss, with no fallback UI truth. Additive, server-only field (a sibling agent
-    // renders it): the most recent active (pending/accepted) assignment's workspaceStatus, or
-    // null when no expert is currently assigned. This is the canonical inline trips GET (§9).
-    const [advisorRow] = await db.select({ workspaceStatus: tripExpertAdvisors.workspaceStatus })
-      .from(tripExpertAdvisors)
-      .where(and(
-        eq(tripExpertAdvisors.tripId, trip.id),
-        inArray(tripExpertAdvisors.status, ["pending", "accepted"]),
-      ))
-      .orderBy(desc(tripExpertAdvisors.assignedAt))
-      .limit(1);
-
-    res.json({ ...trip, expertWorkspaceStatus: advisorRow?.workspaceStatus ?? null });
-  });
+  // GET /api/trips/:id — handled by tripsRoutes (trips.routes.ts), which owns the canonical
+  // handler with IDOR logging, 403 for non-owners, and expertWorkspaceStatus enrichment.
+  // The previous inline duplicate here shadowed that handler and suppressed security logging;
+  // it has been removed so the tripsRoutes registration (mounted above) wins. See task fix.
 
   // POST /api/trips — create a trip (guest or authenticated)
   // Guests get null userId; authenticated users get their userId.
@@ -9275,14 +9244,27 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // PATCH /api/admin/notifications/:id/read — mark a single lead alert as resolved
   app.patch("/api/admin/notifications/:id/read", requireAdmin, async (req, res) => {
     try {
-      const notifId = parseInt(req.params.id, 10);
-      if (isNaN(notifId)) {
-        return res.status(400).json({ message: "Invalid notification id" });
+      const rawId = String(req.params.id);
+      // Ids come in two flavors: "alert-<int>" rows from admin_notifications
+      // (platform alerts) and UUID rows from the user notifications table.
+      const alertMatch = rawId.match(/^alert-(\d+)$/) || (/^\d+$/.test(rawId) ? [rawId, rawId] : null);
+      if (alertMatch) {
+        const notifId = parseInt(alertMatch[1], 10);
+        const [updated] = await db
+          .update(adminNotifications)
+          .set({ isRead: true })
+          .where(eq(adminNotifications.id, notifId))
+          .returning();
+        if (!updated) {
+          return res.status(404).json({ message: "Notification not found" });
+        }
+        return res.json({ ok: true, id: `alert-${updated.id}` });
       }
+      const userId = getUserId(req)!;
       const [updated] = await db
-        .update(adminNotifications)
+        .update(notifications)
         .set({ isRead: true })
-        .where(eq(adminNotifications.id, notifId))
+        .where(and(eq(notifications.id, rawId), eq(notifications.userId, userId)))
         .returning();
       if (!updated) {
         return res.status(404).json({ message: "Notification not found" });
@@ -9293,15 +9275,47 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     }
   });
 
+  // DELETE /api/admin/notifications/:id — remove a notification (either table)
+  app.delete("/api/admin/notifications/:id", requireAdmin, async (req, res) => {
+    try {
+      const rawId = String(req.params.id);
+      const alertMatch = rawId.match(/^alert-(\d+)$/) || (/^\d+$/.test(rawId) ? [rawId, rawId] : null);
+      if (alertMatch) {
+        const notifId = parseInt(alertMatch[1], 10);
+        const [deleted] = await db
+          .delete(adminNotifications)
+          .where(eq(adminNotifications.id, notifId))
+          .returning();
+        if (!deleted) return res.status(404).json({ message: "Notification not found" });
+        return res.json({ ok: true });
+      }
+      const userId = getUserId(req)!;
+      const [deleted] = await db
+        .delete(notifications)
+        .where(and(eq(notifications.id, rawId), eq(notifications.userId, userId)))
+        .returning();
+      if (!deleted) return res.status(404).json({ message: "Notification not found" });
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to delete notification", error: err.message });
+    }
+  });
+
   // PATCH /api/admin/notifications/read-all — mark all unread lead alerts as resolved
   app.patch("/api/admin/notifications/read-all", requireAdmin, async (req, res) => {
     try {
-      const result = await db
-        .update(adminNotifications)
-        .set({ isRead: true })
-        .where(eq(adminNotifications.isRead, false))
-        .returning();
-      res.json({ success: true, updated: result.length });
+      const userId = getUserId(req)!;
+      const [alertRows, userRows] = await Promise.all([
+        db.update(adminNotifications)
+          .set({ isRead: true })
+          .where(eq(adminNotifications.isRead, false))
+          .returning(),
+        db.update(notifications)
+          .set({ isRead: true })
+          .where(and(eq(notifications.userId, userId), eq(notifications.isRead, false)))
+          .returning(),
+      ]);
+      res.json({ success: true, updated: alertRows.length + userRows.length });
     } catch (err: any) {
       res.status(500).json({ message: "Failed to mark all notifications as read", error: err.message });
     }

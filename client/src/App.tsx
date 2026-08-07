@@ -178,6 +178,7 @@ import { getRoleHomePath, userHasRequiredRole } from "@/lib/role-utils";
 import { useClaimGuestTrips } from "@/hooks/use-claim-guest-trips";
 import { useClaimGuestConcierge } from "@/hooks/use-claim-guest-concierge";
 import { captureAcquisitionRef } from "@/lib/acquisition";
+import { sanitizeReturnTo } from "@/lib/safe-return-to";
 
 // Fallback shown while a lazily-loaded route chunk is being fetched.
 // Routes are code-split (React.lazy) so the browser and the Vite dev server
@@ -240,6 +241,66 @@ function ProtectedRoute({ component: Component, skipTermsCheck = false, required
   return <Component {...rest} />;
 }
 
+/* Direct /login URL (bookmarks, emailed links, redirects): open the sign-in
+   modal over the landing page instead of falling through to the 404 route.
+   Honors ?returnTo=/path so the user lands where they were headed after auth. */
+function LoginRoute() {
+  const { user, isLoading } = useAuth();
+  const { openSignInModal } = useSignInModal();
+  const [, navigate] = useLocation();
+
+  useEffect(() => {
+    if (isLoading) return;
+    const params = new URLSearchParams(window.location.search);
+    // Only allow same-origin destinations (prevent open redirects); see
+    // sanitizeReturnTo for how "/\evil.com"-style tricks are caught.
+    const returnTo = sanitizeReturnTo(
+      params.get("returnTo") || params.get("redirect"),
+    );
+
+    if (user) {
+      navigate(returnTo ?? "/", { replace: true });
+      return;
+    }
+    if (returnTo) {
+      sessionStorage.setItem("traveloure_return_to", returnTo);
+    }
+    navigate("/", { replace: true });
+    openSignInModal({
+      title: "Sign in to your account",
+      description: "Welcome back! Sign in to continue planning your travels.",
+      returnTo,
+    });
+  }, [isLoading, user, openSignInModal, navigate]);
+
+  return <PageLoader />;
+}
+
+/* OAuth (Replit) sign-in is a server-side redirect: the callback lands on "/"
+   and never sees browser storage. Password sign-in consumes and removes
+   traveloure_return_to itself before redirecting, so any value still present
+   once a user is authenticated belongs to an OAuth round-trip — restore it
+   here on authenticated bootstrap so /login?returnTo=… works for both paths. */
+function AuthReturnToRestorer() {
+  const { user, isLoading } = useAuth();
+  const [, navigate] = useLocation();
+  const restoredRef = useRef(false);
+
+  useEffect(() => {
+    if (isLoading || !user || restoredRef.current) return;
+    restoredRef.current = true;
+    const stored = sessionStorage.getItem("traveloure_return_to");
+    if (!stored) return;
+    sessionStorage.removeItem("traveloure_return_to");
+    const dest = sanitizeReturnTo(stored);
+    if (dest && dest !== window.location.pathname + window.location.search) {
+      navigate(dest, { replace: true });
+    }
+  }, [isLoading, user, navigate]);
+
+  return null;
+}
+
 function ChatWithRoleLayout() {
   return (
     <ConsoleAwareLayout title="Messages">
@@ -283,6 +344,9 @@ function Router() {
       </Route>
       <Route path="/optimize">
         <Redirect to="/concierge?tier=ai" />
+      </Route>
+      <Route path="/login">
+        <LoginRoute />
       </Route>
       <Route path="/reset-password">
         <ResetPasswordPage />
@@ -1098,6 +1162,7 @@ function App() {
               <TooltipProvider>
                 <Toaster />
                 <GuestCartMigrator />
+                <AuthReturnToRestorer />
                 <MaintenanceGate>
                   <Router />
                 </MaintenanceGate>
