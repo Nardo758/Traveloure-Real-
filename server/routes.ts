@@ -82,6 +82,7 @@ import { complexityTier, buildAnchorPromptBlock, validateAnchorConflicts } from 
 import { getFee, resolveCoordinationFee, getAvailableCoordinationCreditCents, claimCoordinationCredit, releaseCoordinationCredit } from "./services/optimization-fee.service";
 import { buildEventTimeline, getEventVendorGaps } from "./services/event-coordination.service";
 import { trackAnthropicResponse } from "./services/ai-cost-tracker";
+import { sanitizeAiContentFailure } from "./utils/ai-error-sanitizer";
 import { revenueTrackingService } from "./services/revenue-tracking.service";
 import { experienceTypes as experienceTypesTable, coordinationStates, coordinationFeeCredits, platformRevenue } from "@shared/schema";
 import { isExpertRole, isProviderRole } from "@shared/roles";
@@ -8118,21 +8119,27 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
         res.json(updatedTask);
       } catch (aiError: any) {
-        // Update task with error
+        // T6-4: never persist the raw provider error (it can carry infra text
+        // like "403 Host not in allowlist: api.x.ai. Add this host to your
+        // network egress settings...") — it round-trips back to the expert's
+        // own dashboard on the next GET /api/expert/ai-tasks. Log the real
+        // cause server-side only; store/return the sanitized copy.
+        console.error("AI content generation failed (delegate):", aiError);
+        const sanitized = sanitizeAiContentFailure();
         await db.update(expertAiTasks)
           .set({
             status: "pending",
-            aiResult: { error: aiError.message, fallbackContent: "Unable to generate content. Please try again or write manually." },
+            aiResult: { error: sanitized.message, fallbackContent: "Unable to generate content. Please try again or write manually." },
             confidence: 0,
             updatedAt: new Date(),
           })
           .where(eq(expertAiTasks.id, task.id));
 
-        throw aiError;
+        return res.status(502).json(sanitized);
       }
     } catch (error: any) {
       console.error("Error delegating task:", error);
-      res.status(500).json({ message: error.message || "Failed to delegate task" });
+      res.status(500).json({ message: "Failed to delegate task. Please try again." });
     }
   });
 
@@ -8213,6 +8220,12 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         return res.status(404).json({ message: "Task not found" });
       }
 
+      // T6-4b: capture the pre-regenerate status so a failed regeneration can
+      // revert to it rather than leaving the row stuck at 'regenerating'
+      // forever (no sweep exists for this table). Falls back to 'failed' in
+      // the (unexpected) case the row was already 'regenerating'.
+      const priorStatus = task.status && task.status !== "regenerating" ? task.status : "failed";
+
       // Mark as regenerating
       await db.update(expertAiTasks)
         .set({ status: "regenerating", updatedAt: new Date() })
@@ -8220,23 +8233,36 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
       // Generate new content
       const startTime = Date.now();
-      const contentType = task.taskType === "client_message" ? "inquiry_response" 
+      const contentType = task.taskType === "client_message" ? "inquiry_response"
         : task.taskType === "vendor_research" ? "service_description"
         : task.taskType === "content_draft" ? "bio"
         : "welcome_message";
 
-      const { result, usage } = await grokService.generateContent({
-        type: contentType,
-        context: {
-          taskType: task.taskType,
-          clientName: task.clientName,
-          description: task.taskDescription,
-          previousAttempt: true,
-          ...(task.context as object || {}),
-        },
-        tone: "professional",
-        length: "medium",
-      });
+      let result: Awaited<ReturnType<typeof grokService.generateContent>>["result"];
+      let usage: Awaited<ReturnType<typeof grokService.generateContent>>["usage"];
+      try {
+        ({ result, usage } = await grokService.generateContent({
+          type: contentType,
+          context: {
+            taskType: task.taskType,
+            clientName: task.clientName,
+            description: task.taskDescription,
+            previousAttempt: true,
+            ...(task.context as object || {}),
+          },
+          tone: "professional",
+          length: "medium",
+        }));
+      } catch (aiError: any) {
+        // Real cause (e.g. "403 Host not in allowlist: api.x.ai...") logged
+        // server-side only; the row is reverted in the SAME handler (no sweep
+        // job) so it never sits at 'regenerating' forever.
+        console.error("AI content generation failed (regenerate):", aiError);
+        await db.update(expertAiTasks)
+          .set({ status: priorStatus, updatedAt: new Date() })
+          .where(eq(expertAiTasks.id, taskId));
+        return res.status(502).json(sanitizeAiContentFailure());
+      }
 
       const durationMs = Date.now() - startTime;
       const confidence = Math.floor(85 + Math.random() * 10);
@@ -8272,7 +8298,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       res.json(updatedTask);
     } catch (error: any) {
       console.error("Error regenerating task:", error);
-      res.status(500).json({ message: error.message || "Failed to regenerate task" });
+      res.status(500).json({ message: "Failed to regenerate task. Please try again." });
     }
   });
 

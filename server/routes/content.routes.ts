@@ -4473,20 +4473,35 @@ router.post("/api/ai/generate-optimized-itineraries", isAuthenticated, async (re
         : ["sightseeing", "local culture", "food"];
 
       const { tripOptimizationService } = await import("../services/trip-optimization.service");
-      
-      const result = await tripOptimizationService.generateOptimizedItineraries({
-        destination,
-        dates,
-        travelers,
-        budget: budget || undefined,
-        eventType: eventType || undefined,
-        interests: effectiveInterests2,
-        pacePreference: pacePreference || "moderate",
-        cartItems: cartItems || [],
-        mustSeeAttractions: mustSeeAttractions || [],
-        dietaryRestrictions: dietaryRestrictions || [],
-        mobilityConsiderations: mobilityConsiderations || []
-      });
+
+      // T6-1: this surface has no compatible fallback generator — the canned
+      // stub used by POST /api/trips/:id/generate-itinerary produces a single
+      // day-by-day itinerary shape, not the 3-variation
+      // {variationType, variationLabel, optimizationInsights, ...} shape this
+      // endpoint's callers expect — so on provider failure (Grok, then its
+      // internal Anthropic fallback inside grokService.generateAutonomousItinerary)
+      // return the sanitized 503 rather than fabricate a mismatched result.
+      // The real error (which used to reach the client verbatim, e.g. a raw
+      // Anthropic "invalid x-api-key" / request_id string) is logged server-side only.
+      let result: Awaited<ReturnType<typeof tripOptimizationService.generateOptimizedItineraries>>;
+      try {
+        result = await tripOptimizationService.generateOptimizedItineraries({
+          destination,
+          dates,
+          travelers,
+          budget: budget || undefined,
+          eventType: eventType || undefined,
+          interests: effectiveInterests2,
+          pacePreference: pacePreference || "moderate",
+          cartItems: cartItems || [],
+          mustSeeAttractions: mustSeeAttractions || [],
+          dietaryRestrictions: dietaryRestrictions || [],
+          mobilityConsiderations: mobilityConsiderations || []
+        });
+      } catch (aiError: any) {
+        console.error("AI optimized-itinerary generation failed:", aiError);
+        return res.status(503).json(sanitizeAiProviderFailure(retryAfterSecondsFromError(aiError)));
+      }
 
       for (const variation of result.variations) {
         await insertAiGeneratedItinerary({
