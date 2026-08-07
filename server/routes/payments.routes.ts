@@ -1060,8 +1060,27 @@ router.get("/api/cart/fee-preview", isAuthenticated, async (req, res) => {
         }
       }
 
+      // Parity with /api/checkout and GET /api/cart: the preview must include the
+      // booking_concierge facilitation fee, or a concierge cart previews LOWER than
+      // the eventual charge (hidden-fee gap). Mirror the checkout legs exactly.
+      const previewOfferingTypeIds = Array.from(new Set(
+        cartData.filter(i => i.service?.expertOfferingTypeId).map(i => i.service!.expertOfferingTypeId as string)
+      ));
+      const previewOfferingKeyMap = new Map<string, string>();
+      if (previewOfferingTypeIds.length > 0) {
+        const typeRows = await storage.getExpertOfferingTypeKeysByIds(previewOfferingTypeIds);
+        for (const row of typeRows) previewOfferingKeyMap.set(row.id, row.key);
+      }
+      const previewHasConcierge = cartData.some(i =>
+        i.service?.expertOfferingTypeId
+          ? previewOfferingKeyMap.get(i.service.expertOfferingTypeId) === "booking_concierge"
+          : false,
+      );
+      const previewConciergeRate = previewHasConcierge ? await getConciergeBookingRate() : 0;
+
       let previewSubtotal = 0;
       let previewPlatformFeeTotal = 0;
+      let previewConciergeFeeTotal = 0;
 
       for (const item of cartData) {
         if (!item.service) continue;
@@ -1091,12 +1110,17 @@ router.get("/api/cart/fee-preview", isAuthenticated, async (req, res) => {
         previewSubtotal += itemPrice;
         const itemInsuranceFee = calcInsuranceFee(itemPrice, itemRates, feeCategory);
         previewPlatformFeeTotal += itemPrice * (1 - itemExpertShare) + itemInsuranceFee;
+        const isConciergePreviewItem = item.service.expertOfferingTypeId
+          ? previewOfferingKeyMap.get(item.service.expertOfferingTypeId) === "booking_concierge"
+          : false;
+        if (isConciergePreviewItem) previewConciergeFeeTotal += itemPrice * previewConciergeRate;
       }
 
       res.json({
         subtotal: Math.round(previewSubtotal * 100) / 100,
         platformFeeTotal: Math.round(previewPlatformFeeTotal * 100) / 100,
-        total: Math.round((previewSubtotal + previewPlatformFeeTotal) * 100) / 100,
+        conciergeFee: Math.round(previewConciergeFeeTotal * 100) / 100,
+        total: Math.round((previewSubtotal + previewPlatformFeeTotal + previewConciergeFeeTotal) * 100) / 100,
         itemCount: cartData.filter(i => i.service).length,
       });
     } catch (err) {
