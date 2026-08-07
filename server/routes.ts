@@ -1275,8 +1275,22 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         funnelStage: "T3",
       }).catch(() => {});
 
-      // Rebuild itinerary_items — delete old, insert new
-      await db.delete(itineraryItems).where(eq(itineraryItems.tripId, trip.id));
+      // Rebuild itinerary_items — delete old, insert new.
+      // T1-1 (P1, data loss): this used to unconditionally wipe EVERY item for the trip,
+      // silently destroying expert-added items (stamped `suggestedBy = 'expert'` by CC-1)
+      // alongside the stale AI set. Now the delete PRESERVES expert-attributed rows — their
+      // dayNumber/sortOrder are untouched, so they simply keep occupying their existing day/slot
+      // while the freshly-generated set is inserted alongside them.
+      // PROVENANCE LIMITATION (documented, not fixed here): traveler-manually-added items are
+      // NOT distinguishable from AI-generated items — both carry `suggestedBy = null` — so a
+      // regenerate still wipes manual additions too. Closing that gap needs a new provenance
+      // value/column, which is a schema change requiring decision-maker sign-off (out of scope).
+      await db.delete(itineraryItems).where(
+        and(
+          eq(itineraryItems.tripId, trip.id),
+          or(isNull(itineraryItems.suggestedBy), ne(itineraryItems.suggestedBy, "expert")),
+        ),
+      );
 
       for (const day of itineraryData.days || []) {
         for (const activity of day.activities || []) {
@@ -2337,7 +2351,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
 
-      res.json(updated);
+      // CC-8/T3-4: same omission as POST /api/provider/services — revenueShareRate is a
+      // commission split (§18) and must never round-trip to the client, on create OR update.
+      res.json(updated ? omitFields(updated, ["revenueShareRate"] as const) : updated);
     } catch (err) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });
@@ -4292,6 +4308,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const duplicated = await storage.duplicateService(req.params.id, userId);
       res.status(201).json(duplicated);
     } catch (err) {
+      // T3-1: this catch previously swallowed the error with no log at all.
+      console.error("Error duplicating service (expert route):", err);
       res.status(500).json({ message: "Failed to duplicate service" });
     }
   });
@@ -4309,6 +4327,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const duplicated = await storage.duplicateService(req.params.id, userId);
       res.status(201).json(duplicated);
     } catch (err) {
+      // T3-1: this catch previously swallowed the error with no log at all — the always-500
+      // trackingNumber collision was invisible in server logs. Log it now.
+      console.error("Error duplicating service (provider route):", err);
       res.status(500).json({ message: "Failed to duplicate service" });
     }
   });
