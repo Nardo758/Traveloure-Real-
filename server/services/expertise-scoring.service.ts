@@ -113,6 +113,31 @@ const MODEL = process.env.EXPERTISE_SCORING_MODEL || "claude-sonnet-5";
 // coerce data) that happened to be harmless only because this function already normalizes
 // both shapes below — assert THIS type instead so the call site documents reality.
 export type KnowledgeProofAnswerInput = string | { question?: string; answer?: string };
+export interface NormalizedKnowledgeProofAnswer {
+  q: string;
+  a: string;
+}
+
+/**
+ * CC-6 normalizer, pulled out as a standalone pure function so it's directly unit-testable
+ * (server/services/__tests__/expertise-scoring.test.ts) rather than only reachable through
+ * the API-calling scoreKnowledgeProof. Accepts BOTH shapes answers appear in: plain strings,
+ * or the stored { question, answer } objects the onboarding form submits
+ * (travel-experts.tsx:446) — maps either to { q, a } pairs, preferring a stored question over
+ * the positional default, and drops any pair whose answer is blank/missing.
+ */
+export function normalizeKnowledgeProofAnswers(
+  answers: KnowledgeProofAnswerInput[],
+  questions: string[],
+): NormalizedKnowledgeProofAnswer[] {
+  return (answers || [])
+    .map((item, i) => {
+      const a = typeof item === "string" ? item : (item?.answer ?? "");
+      const q = (typeof item === "object" && item?.question) ? item.question : (questions[i] ?? "(question)");
+      return { q, a: typeof a === "string" ? a.trim() : "" };
+    })
+    .filter((p) => p.a.length > 0);
+}
 
 export async function scoreKnowledgeProof(
   // Accepts BOTH shapes the answers appear in: plain strings, or the stored
@@ -123,14 +148,8 @@ export async function scoreKnowledgeProof(
   market: string,
 ): Promise<KnowledgeScore> {
   const marketKey = (market || "").trim().toLowerCase();
-  // Normalize to { q, a } pairs — prefer a stored question over the positional default.
-  const pairs = (answers || [])
-    .map((item, i) => {
-      const a = typeof item === "string" ? item : (item?.answer ?? "");
-      const q = (typeof item === "object" && item?.question) ? item.question : (questions[i] ?? "(question)");
-      return { q, a: typeof a === "string" ? a.trim() : "" };
-    })
-    .filter((p) => p.a.length > 0);
+  // Normalize to { q, a } pairs — see normalizeKnowledgeProofAnswers for shape handling.
+  const pairs = normalizeKnowledgeProofAnswers(answers, questions);
   if (pairs.length === 0) return unscored(marketKey || "unknown", localityProof, "no answers to score");
   const cleaned = pairs.map((p) => p.a);
   if (!process.env.ANTHROPIC_API_KEY) {
