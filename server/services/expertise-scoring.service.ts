@@ -106,10 +106,18 @@ const MODEL = process.env.EXPERTISE_SCORING_MODEL || "claude-sonnet-5";
  * @param localityProof  tenure signal (e.g. "born_raised") — recorded, lightly informs the note
  * @param market         market key (e.g. "kyoto") selecting the scoring context
  */
+// CC-6: the stored shape (jsonb) is Array<{question, answer}> — the onboarding form
+// (travel-experts.tsx:446) submits `{question, answer}` objects, not plain strings.
+// Callers reading the column off the DB get `unknown` and must assert a shape at the call
+// site; asserting `string[]` there was a LIE about the runtime value (a TS cast does not
+// coerce data) that happened to be harmless only because this function already normalizes
+// both shapes below — assert THIS type instead so the call site documents reality.
+export type KnowledgeProofAnswerInput = string | { question?: string; answer?: string };
+
 export async function scoreKnowledgeProof(
   // Accepts BOTH shapes the answers appear in: plain strings, or the stored
   // { question, answer } objects the onboarding submits (travel-experts.tsx).
-  answers: Array<string | { question?: string; answer?: string }>,
+  answers: KnowledgeProofAnswerInput[],
   questions: string[],
   localityProof: string | null,
   market: string,
