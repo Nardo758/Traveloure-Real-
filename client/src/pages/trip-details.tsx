@@ -142,7 +142,10 @@ export default function TripDetails() {
   const { data: generatedItinerary, isLoading: itineraryLoading, isError: itineraryError, refetch: refetchItinerary } = useGeneratedItinerary(id || "");
   // T1-1: gates the regenerate confirmation dialog — true only once there's a plan with actual
   // activities to lose. First generation (no itinerary yet) skips the dialog entirely.
-  const hasExistingItineraryItems = !!generatedItinerary?.itineraryData?.days?.some(
+  // `as any`: itineraryData is a free-shape jsonb column typed `{}` at the ORM layer (see the
+  // pre-existing identical casts a few hundred lines below, e.g. `itinerary.days.map(...)`) —
+  // matching the file's existing convention rather than introducing a new typing approach.
+  const hasExistingItineraryItems = !!(generatedItinerary?.itineraryData as any)?.days?.some(
     (d: any) => (d.activities?.length ?? 0) > 0
   );
   const handleRegenerateClick = () => {
