@@ -221,6 +221,25 @@ jobs:
       - name: Env-allowlist guard
         run: node scripts/check-env-allowlist.cjs
 
+  omit-schema-ratchet:
+    name: omit-schema-ratchet (PS18 — §19 allowlist conversion)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # Ratchet guard (ruling 46 / CLAUDE.md §19): the number of .omit()-based (denylist)
+      # createInsertSchema(...) call sites across the two drizzle-kit schema entry points
+      # (shared/schema.ts, shared/guest-invites-schema.ts) only ever moves DOWN as the
+      # #PS18 omit→pick allowlist conversion proceeds. Mirrors the tsc-baseline ratchet
+      # above: over OR under the recorded OMIT_BASELINE both fail. Node built-ins only —
+      # no npm ci needed. Predicate fixtures FIRST (§18d).
+      - name: Omit-schema-ratchet predicate self-test
+        run: node scripts/check-omit-schema-ratchet.cjs --self-test
+      - name: Omit-schema-ratchet guard
+        run: node scripts/check-omit-schema-ratchet.cjs
+
   linkage-preservation-guard:
     name: linkage-preservation-guard (Trip-Canon Lane G / E2E_ITEM_LIFECYCLE.md §3)
     runs-on: ubuntu-latest
