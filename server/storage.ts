@@ -1601,10 +1601,17 @@ export class DatabaseStorage implements IStorage {
   async duplicateService(id: string, userId: string): Promise<ProviderService | undefined> {
     const original = await this.getProviderServiceById(id);
     if (!original) return undefined;
-    
-    const { id: _, createdAt, updatedAt, bookingsCount, totalRevenue, averageRating, reviewCount, ...serviceData } = original;
+
+    // T3-1: trackingNumber is UNIQUE — spreading the original row into the insert
+    // without stripping it collides on every call (the insert always 500'd). Strip it
+    // here and mint a fresh one below, same convention as every other create* path
+    // (createTrip/createServiceBooking/etc. all call generateTrackingNumber('TRV')
+    // rather than carry over an existing value).
+    const { id: _, createdAt, updatedAt, bookingsCount, totalRevenue, averageRating, reviewCount, trackingNumber: _trackingNumber, ...serviceData } = original;
+    const trackingNumber = await this.generateTrackingNumber('TRV');
     const [newService] = await db.insert(providerServices).values({
       ...serviceData,
+      trackingNumber,
       serviceName: `${original.serviceName} (Copy)`,
       status: "draft",
       // F2: a duplicate must NOT inherit the original's approval_status — a copy of an approved
