@@ -1217,6 +1217,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
               messages: [{ role: "user", content: prompt }],
             });
 
+            // T6-5: this is the one Anthropic call site outside claude.service.ts — without
+            // this the primary generate-itinerary surface never writes ai_cost_tracking.
+            trackAnthropicResponse(completion, { sourceType: "ai_itinerary" });
+
             const text = (completion.content[0] as any).text;
             const jsonMatch = text.match(/\{[\s\S]*\}/);
             return JSON.parse(jsonMatch ? jsonMatch[0] : text);
