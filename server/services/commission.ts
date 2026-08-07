@@ -263,8 +263,16 @@ export function decideBandKey(
     opts.source === "provider" || opts.category === "provider_commission_percent";
 
   if (isProviderLine) {
-    if (policy === "beta_flat") return "beta_flat";
-    // tiered: service_categories.commission_band_key → fee_bands
+    // RULING 49: the `beta_flat` band is DEACTIVATED, so the `beta_flat` POLICY may no longer
+    // select it — `getBand` returns null for an inactive row and the resolver then throws, which is
+    // exactly the break verify-fee-config-parity caught. The policy value is left alone (it is read
+    // elsewhere and is a settings concern); what changes is that it no longer names a dead band.
+    //
+    // Provider lines now always resolve the category band (ruling 48's model) with the configured
+    // default as the last stop. The authoritative implementation is the single resolver
+    // (`fee-resolution.service.ts` → `resolveProviderRate`), which reads
+    // service_categories.commission_band_key directly and is fail-loud; this legacy helper keeps
+    // its existing callers working until the charge paths are repointed onto it (lane item 1C).
     return opts.categoryCommissionBand ?? defaultBandKey;
   }
 
@@ -575,7 +583,14 @@ export async function resolveCommissionRates(
 
   // Tier 4 / 5 — fee_bands band lookup
   const policy = (await getSetting("active_provider_commission_policy")) ?? "beta_flat";
-  const defaultBandKey = (await getSetting("default_commission_band_key")) ?? "beta_flat";
+  // RULING 49: the hardcoded fallback was `beta_flat`, which is now DEACTIVATED — an inactive band
+  // makes `getBand` return null and the resolver throw, so this fallback had become a guaranteed
+  // failure for any provider line that reached it (caught by verify-fee-config-parity). The
+  // documented last-resort default is now `expert_standard`, which is the band the existing
+  // EXPERT_SHARE_RATE/PLATFORM_FEE_RATE code constants already mirror (:51-52) — i.e. this restores
+  // the behaviour those constants were written to describe, rather than inventing a new rate.
+  // The admin-set `default_commission_band_key` still wins when configured.
+  const defaultBandKey = (await getSetting("default_commission_band_key")) ?? "expert_standard";
 
   // Early-adopter gate for provider-source bookings.
   // When a providerId is supplied, compare their registration date to
@@ -586,8 +601,24 @@ export async function resolveCommissionRates(
   const isProviderLine = source === "provider" || category === "provider_commission_percent";
   let bandKey: string;
   if (isProviderLine && providerId) {
-    const earlyAdopter = await isEarlyAdopterProvider(providerId);
-    bandKey = earlyAdopter ? "beta_flat" : "expert_standard";
+    // RULING 49: `beta_flat` is DEACTIVATED — incoherent under structure C (a 10% take is worse for
+    // the provider than the commercial 0.06 and premium 0.04 bands), superseded by the four
+    // category-resolved provider bands (ruling 48). This branch previously selected it for
+    // early-adopter providers; with the band inactive that selection began THROWING at
+    // `getBand` — caught by verify-fee-config-parity, which is why this repoint ships with the
+    // deactivation rather than after it.
+    //
+    // Provider lines therefore fall through to `decideBandKey` like every other line. The
+    // authoritative category-band resolution for provider commission lives in the single resolver
+    // (`fee-resolution.service.ts` → `resolveProviderRate`, ruling 47); this legacy path keeps
+    // working for its existing callers until the charge paths are repointed onto that resolver
+    // (lane item 1C). The early-adopter cohort question is now a premium-band-for-life grant
+    // through the entity-override mechanism (ruling 49), not a band selection here.
+    bandKey = decideBandKey(
+      { source, category, categoryCommissionBand: null /* tiered lookup wires in 1C */ },
+      policy,
+      defaultBandKey,
+    );
   } else {
     bandKey = decideBandKey(
       { source, category, categoryCommissionBand: null /* tiered lookup wires in a later phase */ },

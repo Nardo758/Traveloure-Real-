@@ -2242,6 +2242,33 @@ router.post("/api/admin/categories", isAuthenticated, async (req, res) => {
         return res.status(403).json({ message: "Admin access required" });
       }
       const input = insertServiceCategorySchema.parse(req.body);
+
+      // ── R2 (fee-ledger lane): a category may NEVER be created without a commission band ──────
+      // Layer 1 of the two-layer guard (ruling 35); layer 2 is the NOT NULL added by migration 180.
+      // The resolver is fail-loud by design (no silent fallback rate, ever — D0/R2), so a bandless
+      // category is not a degraded state, it is a category whose bookings throw at checkout.
+      if (!input.commissionBandKey) {
+        return res.status(400).json({
+          error: "category_requires_commission_band",
+          message:
+            "commission_band_key is required: a category cannot exist without a commission band (R2). " +
+            "Pick one of the provider bands (limited | moderate | commercial | premium).",
+        });
+      }
+      const createBandRow = await validateCommissionBand(input.commissionBandKey);
+      if (!createBandRow) {
+        return res.status(400).json({
+          error: "commission_band_not_found",
+          message: `commission_band_key='${input.commissionBandKey}' does not match any fee_bands row.`,
+        });
+      }
+      if (!createBandRow.is_active) {
+        return res.status(400).json({
+          error: "commission_band_inactive",
+          message: `commission_band_key='${input.commissionBandKey}' is inactive in fee_bands.`,
+        });
+      }
+
       const category = await storage.createServiceCategory(input);
       res.status(201).json(category);
     } catch (err) {
@@ -2273,22 +2300,20 @@ router.patch("/api/admin/categories/:id", isAuthenticated, async (req, res) => {
       if ("commissionBandKey" in input) {
         const newBandKey = input.commissionBandKey;
         if (newBandKey === null || newBandKey === "" || newBandKey === undefined) {
-          // Explicit inheritance — only allowed if default_commission_band_key
-          // is set AND references an active fee_bands row.
-          const row = await validateDefaultCommissionBandInheritance();
-          if (!row || !row.setting_value) {
-            return res.status(400).json({
-              error: "category_unpriced_in_tiered_mode",
-              message:
-                "Cannot clear commission_band_key: platform_settings.default_commission_band_key is unset. Either set a default first, or explicitly pick a band for this category.",
-            });
-          }
-          if (!row.is_active) {
-            return res.status(400).json({
-              error: "category_inheritance_target_inactive",
-              message: `default_commission_band_key='${row.setting_value}' but that band is inactive in fee_bands. Activate it or set commission_band_key on this category.`,
-            });
-          }
+          // ── R2 (fee-ledger lane): clearing the band is no longer a legal operation ───────────
+          // This branch previously permitted "explicit inheritance" — clearing the column and
+          // letting platform_settings.default_commission_band_key stand in. R2 ends that: a
+          // category must never exist without a band, and migration 180 backs it with NOT NULL, so
+          // a clear would now fail at the DB anyway. Rejecting here turns a 500 into a typed 400
+          // and states the rule. (The inheritance HELPER stays for the settings surface that reads
+          // the default; it is only this write path that may no longer produce a bandless row.)
+          return res.status(400).json({
+            error: "category_requires_commission_band",
+            message:
+              "commission_band_key cannot be cleared: a category cannot exist without a commission " +
+              "band (R2). Pick an explicit band (limited | moderate | commercial | premium) instead " +
+              "of inheriting a platform default.",
+          });
         } else {
           // Explicit band — validate it exists, is active, rate_type='percent'.
           const bandRow = await validateCommissionBand(newBandKey);
@@ -2449,35 +2474,35 @@ router.post("/api/admin/seed-categories", isAuthenticated, async (req, res) => {
     }
     
     const coreCategories = [
-      { name: "Photography & Videography", slug: "photography-videography", description: "Portrait, event, engagement, family, architectural photography and travel videos, drone footage", categoryType: "service_provider", verificationRequired: true, requiredDocuments: ["portfolio", "insurance"], priceRange: { min: 150, max: 1000 }, sortOrder: 1 },
-      { name: "Transportation & Logistics", slug: "transportation-logistics", description: "Private drivers, airport transfers, day trips, specialty transport", categoryType: "service_provider", verificationRequired: true, requiredDocuments: ["license", "insurance", "vehicle_registration"], priceRange: { min: 50, max: 800 }, sortOrder: 2 },
-      { name: "Food & Culinary", slug: "food-culinary", description: "Private chefs, cooking lessons, meal prep, sommelier services, food tours", categoryType: "service_provider", verificationRequired: true, requiredDocuments: ["culinary_credentials", "food_handler_license"], priceRange: { min: 100, max: 600 }, sortOrder: 3 },
-      { name: "Childcare & Family", slug: "childcare-family", description: "Babysitters, nannies, kids activity coordinators, family assistants", categoryType: "service_provider", verificationRequired: true, requiredDocuments: ["background_check", "cpr_certification", "references"], priceRange: { min: 20, max: 150 }, sortOrder: 4 },
-      { name: "Tours & Experiences", slug: "tours-experiences", description: "Tour guides, walking tours, museum tours, adventure guides, cultural experiences", categoryType: "hybrid", verificationRequired: true, requiredDocuments: ["tour_guide_license", "insurance"], priceRange: { min: 100, max: 500 }, sortOrder: 5 },
-      { name: "Personal Assistance", slug: "personal-assistance", description: "Travel companions, personal concierge, executive assistants", categoryType: "service_provider", verificationRequired: true, requiredDocuments: ["background_check", "references", "first_aid"], priceRange: { min: 100, max: 300 }, sortOrder: 6 },
-      { name: "TaskRabbit Services", slug: "taskrabbit-services", description: "Handyman, delivery, cleaning, property management", categoryType: "service_provider", verificationRequired: false, requiredDocuments: [], priceRange: { min: 30, max: 200 }, sortOrder: 7 },
-      { name: "Health & Wellness", slug: "health-wellness", description: "Fitness instructors, massage therapists, yoga teachers, wellness coaches", categoryType: "service_provider", verificationRequired: true, requiredDocuments: ["certification", "insurance"], priceRange: { min: 50, max: 200 }, sortOrder: 8 },
-      { name: "Beauty & Styling", slug: "beauty-styling", description: "Hair stylists, makeup artists, personal stylists", categoryType: "service_provider", verificationRequired: false, requiredDocuments: ["portfolio"], priceRange: { min: 75, max: 300 }, sortOrder: 9 },
-      { name: "Pets & Animals", slug: "pets-animals", description: "Pet sitters, dog walkers, animal experience guides", categoryType: "service_provider", verificationRequired: false, requiredDocuments: ["references"], priceRange: { min: 25, max: 100 }, sortOrder: 10 },
-      { name: "Events & Celebrations", slug: "events-celebrations", description: "Event coordinators, florists, bakers, party planners", categoryType: "service_provider", verificationRequired: false, requiredDocuments: ["portfolio"], priceRange: { min: 100, max: 1500 }, sortOrder: 11 },
-      { name: "Technology & Connectivity", slug: "technology-connectivity", description: "Tech support, social media management, photography editing", categoryType: "service_provider", verificationRequired: false, requiredDocuments: [], priceRange: { min: 50, max: 150 }, sortOrder: 12 },
-      { name: "Language & Translation", slug: "language-translation", description: "Translators, interpreters, language tutors", categoryType: "hybrid", verificationRequired: true, requiredDocuments: ["certification", "references"], priceRange: { min: 50, max: 200 }, sortOrder: 13 },
-      { name: "Specialty Services", slug: "specialty-services", description: "Wedding coordinators, relocation specialists, legal/visa assistants", categoryType: "service_provider", verificationRequired: true, requiredDocuments: ["license", "insurance"], priceRange: { min: 200, max: 2000 }, sortOrder: 14 },
-      { name: "Custom / Other", slug: "custom-other", description: "Custom service requests, user-suggested categories", categoryType: "service_provider", verificationRequired: true, requiredDocuments: [], priceRange: { min: 0, max: 0 }, sortOrder: 15 },
+      { name: "Photography & Videography", slug: "photography-videography", description: "Portrait, event, engagement, family, architectural photography and travel videos, drone footage", categoryType: "service_provider", verificationRequired: true, requiredDocuments: ["portfolio", "insurance"], priceRange: { min: 150, max: 1000 }, sortOrder: 1 , commissionBandKey: "limited" },
+      { name: "Transportation & Logistics", slug: "transportation-logistics", description: "Private drivers, airport transfers, day trips, specialty transport", categoryType: "service_provider", verificationRequired: true, requiredDocuments: ["license", "insurance", "vehicle_registration"], priceRange: { min: 50, max: 800 }, sortOrder: 2 , commissionBandKey: "commercial" },
+      { name: "Food & Culinary", slug: "food-culinary", description: "Private chefs, cooking lessons, meal prep, sommelier services, food tours", categoryType: "service_provider", verificationRequired: true, requiredDocuments: ["culinary_credentials", "food_handler_license"], priceRange: { min: 100, max: 600 }, sortOrder: 3 , commissionBandKey: "moderate" },
+      { name: "Childcare & Family", slug: "childcare-family", description: "Babysitters, nannies, kids activity coordinators, family assistants", categoryType: "service_provider", verificationRequired: true, requiredDocuments: ["background_check", "cpr_certification", "references"], priceRange: { min: 20, max: 150 }, sortOrder: 4 , commissionBandKey: "moderate" },
+      { name: "Tours & Experiences", slug: "tours-experiences", description: "Tour guides, walking tours, museum tours, adventure guides, cultural experiences", categoryType: "hybrid", verificationRequired: true, requiredDocuments: ["tour_guide_license", "insurance"], priceRange: { min: 100, max: 500 }, sortOrder: 5 , commissionBandKey: "limited" },
+      { name: "Personal Assistance", slug: "personal-assistance", description: "Travel companions, personal concierge, executive assistants", categoryType: "service_provider", verificationRequired: true, requiredDocuments: ["background_check", "references", "first_aid"], priceRange: { min: 100, max: 300 }, sortOrder: 6 , commissionBandKey: "limited" },
+      { name: "TaskRabbit Services", slug: "taskrabbit-services", description: "Handyman, delivery, cleaning, property management", categoryType: "service_provider", verificationRequired: false, requiredDocuments: [], priceRange: { min: 30, max: 200 }, sortOrder: 7 , commissionBandKey: "moderate" },
+      { name: "Health & Wellness", slug: "health-wellness", description: "Fitness instructors, massage therapists, yoga teachers, wellness coaches", categoryType: "service_provider", verificationRequired: true, requiredDocuments: ["certification", "insurance"], priceRange: { min: 50, max: 200 }, sortOrder: 8 , commissionBandKey: "moderate" },
+      { name: "Beauty & Styling", slug: "beauty-styling", description: "Hair stylists, makeup artists, personal stylists", categoryType: "service_provider", verificationRequired: false, requiredDocuments: ["portfolio"], priceRange: { min: 75, max: 300 }, sortOrder: 9 , commissionBandKey: "limited" },
+      { name: "Pets & Animals", slug: "pets-animals", description: "Pet sitters, dog walkers, animal experience guides", categoryType: "service_provider", verificationRequired: false, requiredDocuments: ["references"], priceRange: { min: 25, max: 100 }, sortOrder: 10 , commissionBandKey: "moderate" },
+      { name: "Events & Celebrations", slug: "events-celebrations", description: "Event coordinators, florists, bakers, party planners", categoryType: "service_provider", verificationRequired: false, requiredDocuments: ["portfolio"], priceRange: { min: 100, max: 1500 }, sortOrder: 11 , commissionBandKey: "moderate" },
+      { name: "Technology & Connectivity", slug: "technology-connectivity", description: "Tech support, social media management, photography editing", categoryType: "service_provider", verificationRequired: false, requiredDocuments: [], priceRange: { min: 50, max: 150 }, sortOrder: 12 , commissionBandKey: "commercial" },
+      { name: "Language & Translation", slug: "language-translation", description: "Translators, interpreters, language tutors", categoryType: "hybrid", verificationRequired: true, requiredDocuments: ["certification", "references"], priceRange: { min: 50, max: 200 }, sortOrder: 13 , commissionBandKey: "commercial" },
+      { name: "Specialty Services", slug: "specialty-services", description: "Wedding coordinators, relocation specialists, legal/visa assistants", categoryType: "service_provider", verificationRequired: true, requiredDocuments: ["license", "insurance"], priceRange: { min: 200, max: 2000 }, sortOrder: 14 , commissionBandKey: "moderate" },
+      { name: "Custom / Other", slug: "custom-other", description: "Custom service requests, user-suggested categories", categoryType: "service_provider", verificationRequired: true, requiredDocuments: [], priceRange: { min: 0, max: 0 }, sortOrder: 15 , commissionBandKey: "moderate" },
       // New categories from comprehensive directory
-      { name: "Lodging & Accommodation", slug: "lodging-accommodation", description: "Vacation rentals, B&Bs, homestays, glamping, houseboat rentals, room hosts", categoryType: "service_provider", verificationRequired: true, requiredDocuments: ["property_license", "insurance"], priceRange: { min: 50, max: 1000 }, sortOrder: 16 },
-      { name: "Music & Performance", slug: "music-performance", description: "Live musicians, bands, DJs, string quartets, vocalists, ceremony musicians, music instructors", categoryType: "service_provider", verificationRequired: false, requiredDocuments: ["portfolio"], priceRange: { min: 100, max: 2000 }, sortOrder: 17 },
-      { name: "Entertainment", slug: "entertainment", description: "Comedians, magicians, acrobats, fire performers, caricature artists, game coordinators, kids entertainers", categoryType: "service_provider", verificationRequired: false, requiredDocuments: ["portfolio"], priceRange: { min: 100, max: 1500 }, sortOrder: 18 },
-      { name: "Floral & Decoration", slug: "floral-decoration", description: "Florists, floral designers, balloon artists, event stylists, backdrop designers, centerpiece designers", categoryType: "service_provider", verificationRequired: false, requiredDocuments: ["portfolio"], priceRange: { min: 100, max: 3000 }, sortOrder: 19 },
-      { name: "Arts & Crafts Instruction", slug: "arts-crafts-instruction", description: "Painting, pottery, jewelry making, dance, calligraphy, woodworking, drawing, photography instruction", categoryType: "service_provider", verificationRequired: false, requiredDocuments: ["portfolio", "certification"], priceRange: { min: 50, max: 300 }, sortOrder: 20 },
-      { name: "Companionship & Assistance", slug: "companionship-assistance", description: "Travel companions, local friends, shopping assistants, elderly and child travel companions, day-of coordinators", categoryType: "service_provider", verificationRequired: true, requiredDocuments: ["background_check", "references"], priceRange: { min: 50, max: 400 }, sortOrder: 21 },
-      { name: "Rental Services", slug: "rental-services", description: "Bicycle, car, scooter, boat, camping, beach equipment, sports equipment, costume and baby equipment rentals", categoryType: "service_provider", verificationRequired: true, requiredDocuments: ["insurance", "business_license"], priceRange: { min: 20, max: 500 }, sortOrder: 22 },
-      { name: "Cultural & Educational", slug: "cultural-educational", description: "Cultural ambassadors, history lecturers, etiquette consultants, wedding officiants, archaeologist guides", categoryType: "hybrid", verificationRequired: true, requiredDocuments: ["credentials", "references"], priceRange: { min: 50, max: 500 }, sortOrder: 23 },
-      { name: "Attire & Fashion", slug: "attire-fashion", description: "Wedding dress designers, tailors, tuxedo rental, wardrobe stylists, jewelry rental and accessories", categoryType: "service_provider", verificationRequired: false, requiredDocuments: ["portfolio"], priceRange: { min: 50, max: 2000 }, sortOrder: 24 },
-      { name: "Safety & Security", slug: "safety-security", description: "Personal security guards, safety consultants, first aid trainers, crowd control specialists", categoryType: "service_provider", verificationRequired: true, requiredDocuments: ["license", "certification", "insurance"], priceRange: { min: 100, max: 500 }, sortOrder: 25 },
-      { name: "Business & Professional", slug: "business-professional", description: "Notaries, legal consultants, real estate consultants, permit coordinators, immigration consultants", categoryType: "service_provider", verificationRequired: true, requiredDocuments: ["license", "credentials"], priceRange: { min: 100, max: 1000 }, sortOrder: 26 },
-      { name: "Technical Services", slug: "technical-services", description: "Audio engineers, lighting technicians, sound systems, LED screen operators, projection mapping, visual effects", categoryType: "service_provider", verificationRequired: false, requiredDocuments: ["portfolio"], priceRange: { min: 100, max: 2000 }, sortOrder: 27 },
-      { name: "Restaurants & Dining", slug: "restaurants-dining", description: "Restaurants, dining experiences, private dining, food and drink venues", categoryType: "service_provider", verificationRequired: true, requiredDocuments: ["business_license", "food_handler_license"], priceRange: { min: 20, max: 500 }, sortOrder: 28 },
+      { name: "Lodging & Accommodation", slug: "lodging-accommodation", description: "Vacation rentals, B&Bs, homestays, glamping, houseboat rentals, room hosts", categoryType: "service_provider", verificationRequired: true, requiredDocuments: ["property_license", "insurance"], priceRange: { min: 50, max: 1000 }, sortOrder: 16 , commissionBandKey: "commercial" },
+      { name: "Music & Performance", slug: "music-performance", description: "Live musicians, bands, DJs, string quartets, vocalists, ceremony musicians, music instructors", categoryType: "service_provider", verificationRequired: false, requiredDocuments: ["portfolio"], priceRange: { min: 100, max: 2000 }, sortOrder: 17 , commissionBandKey: "moderate" },
+      { name: "Entertainment", slug: "entertainment", description: "Comedians, magicians, acrobats, fire performers, caricature artists, game coordinators, kids entertainers", categoryType: "service_provider", verificationRequired: false, requiredDocuments: ["portfolio"], priceRange: { min: 100, max: 1500 }, sortOrder: 18 , commissionBandKey: "moderate" },
+      { name: "Floral & Decoration", slug: "floral-decoration", description: "Florists, floral designers, balloon artists, event stylists, backdrop designers, centerpiece designers", categoryType: "service_provider", verificationRequired: false, requiredDocuments: ["portfolio"], priceRange: { min: 100, max: 3000 }, sortOrder: 19 , commissionBandKey: "limited" },
+      { name: "Arts & Crafts Instruction", slug: "arts-crafts-instruction", description: "Painting, pottery, jewelry making, dance, calligraphy, woodworking, drawing, photography instruction", categoryType: "service_provider", verificationRequired: false, requiredDocuments: ["portfolio", "certification"], priceRange: { min: 50, max: 300 }, sortOrder: 20 , commissionBandKey: "moderate" },
+      { name: "Companionship & Assistance", slug: "companionship-assistance", description: "Travel companions, local friends, shopping assistants, elderly and child travel companions, day-of coordinators", categoryType: "service_provider", verificationRequired: true, requiredDocuments: ["background_check", "references"], priceRange: { min: 50, max: 400 }, sortOrder: 21 , commissionBandKey: "moderate" },
+      { name: "Rental Services", slug: "rental-services", description: "Bicycle, car, scooter, boat, camping, beach equipment, sports equipment, costume and baby equipment rentals", categoryType: "service_provider", verificationRequired: true, requiredDocuments: ["insurance", "business_license"], priceRange: { min: 20, max: 500 }, sortOrder: 22 , commissionBandKey: "moderate" },
+      { name: "Cultural & Educational", slug: "cultural-educational", description: "Cultural ambassadors, history lecturers, etiquette consultants, wedding officiants, archaeologist guides", categoryType: "hybrid", verificationRequired: true, requiredDocuments: ["credentials", "references"], priceRange: { min: 50, max: 500 }, sortOrder: 23 , commissionBandKey: "moderate" },
+      { name: "Attire & Fashion", slug: "attire-fashion", description: "Wedding dress designers, tailors, tuxedo rental, wardrobe stylists, jewelry rental and accessories", categoryType: "service_provider", verificationRequired: false, requiredDocuments: ["portfolio"], priceRange: { min: 50, max: 2000 }, sortOrder: 24 , commissionBandKey: "moderate" },
+      { name: "Safety & Security", slug: "safety-security", description: "Personal security guards, safety consultants, first aid trainers, crowd control specialists", categoryType: "service_provider", verificationRequired: true, requiredDocuments: ["license", "certification", "insurance"], priceRange: { min: 100, max: 500 }, sortOrder: 25 , commissionBandKey: "moderate" },
+      { name: "Business & Professional", slug: "business-professional", description: "Notaries, legal consultants, real estate consultants, permit coordinators, immigration consultants", categoryType: "service_provider", verificationRequired: true, requiredDocuments: ["license", "credentials"], priceRange: { min: 100, max: 1000 }, sortOrder: 26 , commissionBandKey: "moderate" },
+      { name: "Technical Services", slug: "technical-services", description: "Audio engineers, lighting technicians, sound systems, LED screen operators, projection mapping, visual effects", categoryType: "service_provider", verificationRequired: false, requiredDocuments: ["portfolio"], priceRange: { min: 100, max: 2000 }, sortOrder: 27 , commissionBandKey: "moderate" },
+      { name: "Restaurants & Dining", slug: "restaurants-dining", description: "Restaurants, dining experiences, private dining, food and drink venues", categoryType: "service_provider", verificationRequired: true, requiredDocuments: ["business_license", "food_handler_license"], priceRange: { min: 20, max: 500 }, sortOrder: 28 , commissionBandKey: "moderate" },
     ];
     
     const created = [];

@@ -1,0 +1,87 @@
+name: Fee Resolution Authority Gate
+
+# Guards rulings 47, 48 and 51 (fee-ledger lane).
+#
+# The load-bearing assertion is A1: **edit a band rate in fee_bands → the next resolution reflects
+# it, with no service row touched.** That is ruling 32's proof that an admin band edit changes the
+# resolved value — which audit C2/Q9 proved was DEFEATED: a per-service `revenue_share_rate`
+# snapshot was the FIRST operand at payments.routes.ts:826/877/1090, so band edits could not reach
+# the charge. This gate fails on the day anyone reintroduces a rate that outranks `fee_bands`.
+#
+# It also pins, against live `fee_bands` reads and never a literal (ruling 32):
+#   A3  rails = min(category band, provider_rails) — rails must never RAISE a premium rate
+#   A4  a rails booking waives the traveler service fee (ruling 48)
+#   A5  the traveler-fee cap comes from fee_bands.max_amount, not from a constant
+#   A6  C2 REGRESSION — a provider service resolves its CATEGORY band, not expert_standard
+#   A7  a per-entity override is stamped `entity_override` with a NULL band_id (ruling 47)
+#   A8  FAIL-LOUD — a bandless category throws; there is no silent fallback rate (ruling 51/R2)
+#
+# Registered in the DECISIONS.md Guard registry as `fee-resolution-authority`. Ruling 27: a
+# script-only guard is MISSING — it must run in CI to count as [guarded].
+#
+# Negative space (ruling 43 — what this gate does NOT cover): it proves RESOLUTION, not RECORDING.
+# It says nothing about whether a resolved rate is written to `fee_ledger`, whether the ledger
+# balances (that is the invariant gate), or about any money path outside provider commission and
+# the traveler service fee.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: fee-resolution-authority-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  fee-resolution-authority:
+    name: fee-resolution-authority (DECISIONS.md rulings 47, 48, 51)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: traveloure
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+
+      # Migrations are the fixture: 178 seeds the traveler-fee and rails bands, 180 backfills every
+      # category's band and applies the NOT NULL. The pins assert against whatever the bands hold,
+      # so a re-priced band is not a test edit.
+      #
+      # Uses the composite action, not an inline `migrate-entry.ts` step — ci-db-setup-lint forbids
+      # inline DB setup so every workflow gets the same migration + sessions-table sequence.
+      - name: Set up CI database (migrations + sessions table)
+        uses: ./.github/actions/ci-db-setup
+        with:
+          database-url: postgresql://postgres:postgres@localhost:5432/traveloure
+          # No authenticated routes here — the pins call the resolver directly.
+          seed-ci-users: 'false'
+
+      - name: Resolver authority pins
+        run: npx tsx --test server/__tests__/fee-resolution-authority.db.test.ts
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          SESSION_SECRET: ci-test-secret-not-for-production
+          STRIPE_SECRET_KEY: [REDACTED_STRIPE_TEST_KEY]_stub_no_real_calls
+          NODE_ENV: test
+          ALLOW_TEST_ACCOUNTS: '1'
