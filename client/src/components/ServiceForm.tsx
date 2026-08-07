@@ -101,7 +101,7 @@ interface ServiceFormData {
   guestMin: number;
   guestMax: number;
   duration: string;
-  deliveryMethod: "in-person" | "video-call" | "hybrid";
+  deliveryMethod: "in-person" | "video-call" | "hybrid" | "pdf" | "call" | "voice_notes" | "async_messaging";
   // Expert-specific: tier + approval workflow
   expertOfferingTypeId: string;
   approvalStatus: "draft" | "submitted" | "approved" | "rejected";
@@ -332,16 +332,24 @@ const templateArrayToStrings = (v: unknown): string[] =>
 // with those two values failed on insert. Map at the write boundary so all
 // ServiceForm writes are CHECK-valid, and on the way in so edits/templates
 // (which now carry canonical values post-109) display correctly in the picker.
-// Phase 3 exposes the other 4 canonical methods (call/voice_notes/async_messaging/pdf) in the UI.
+// T3-2: fromCanonicalDelivery used to collapse pdf/call/voice_notes/async_messaging
+// (and in_person) all onto "in-person" on read — a service actually stored as e.g.
+// 'pdf' would reopen showing "In-Person" selected (+ a spuriously-required Meeting
+// Point), and re-saving without touching the field would silently rewrite it to
+// in_person. Every one of the 7 canonical values now has its own faithful UI
+// value/option, so fromCanonicalDelivery ∘ toCanonicalDelivery is the identity on
+// all 7 and a no-change save always sends back exactly what was loaded.
 type UiDelivery = ServiceFormData["deliveryMethod"];
 const toCanonicalDelivery = (v: string): string =>
-  v === "in-person" ? "in_person" : v === "video-call" ? "video" : v; // hybrid + already-canonical pass through
+  v === "in-person" ? "in_person" : v === "video-call" ? "video" : v; // hybrid, pdf, call, voice_notes, async_messaging + already-canonical pass through
 const fromCanonicalDelivery = (v: string | null | undefined): UiDelivery =>
   v === "video" || v === "video-call"
     ? "video-call"
     : v === "hybrid"
     ? "hybrid"
-    : "in-person"; // in_person/in-person and the 4 not-yet-in-UI → in-person until Phase 3
+    : v === "pdf" || v === "call" || v === "voice_notes" || v === "async_messaging"
+    ? v
+    : "in-person"; // in_person/in-person (and any unrecognized value) → in-person
 
 // Map tier deliveryFormats to the form's deliveryMethod values
 function tierFormatsToAllowedMethods(formats: string[]): Set<string> {
@@ -1339,14 +1347,29 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             const allowed = selectedTier && selectedTier.deliveryFormats.length > 0
               ? tierFormatsToAllowedMethods(selectedTier.deliveryFormats)
               : null;
-            const allMethods = [
+            // T3-2: every canonical delivery value gets its own faithful UI option so
+            // editing an existing service always reopens showing the value actually
+            // stored (see fromCanonicalDelivery) instead of collapsing onto "In-Person".
+            const allMethods: { value: UiDelivery; label: string }[] = [
               { value: "in-person", label: "In-Person" },
               { value: "video-call", label: "Video Call" },
               { value: "hybrid", label: "Hybrid (In-Person + Video)" },
+              { value: "pdf", label: "PDF Guide" },
+              { value: "call", label: "Phone Call" },
+              { value: "voice_notes", label: "Voice Notes" },
+              { value: "async_messaging", label: "Async Messaging" },
             ];
-            const visibleMethods = allowed
+            let visibleMethods = allowed
               ? allMethods.filter((m) => allowed.has(m.value))
               : allMethods;
+            // A tier's deliveryFormats filter (above) is a NEW-selection guardrail, not an
+            // editor for an existing row — an already-stored value must always stay visible
+            // and selected, or the Select silently falls back off it and a no-change save
+            // would corrupt the stored delivery_method (the exact T3-2 bug, one layer up).
+            if (allowed && !visibleMethods.some((m) => m.value === formData.deliveryMethod)) {
+              const current = allMethods.find((m) => m.value === formData.deliveryMethod);
+              if (current) visibleMethods = [...visibleMethods, current];
+            }
             return (
               <div>
                 <Label htmlFor="deliveryMethod">Delivery Method *</Label>

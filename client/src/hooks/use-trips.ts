@@ -166,6 +166,12 @@ export function useGenerateItinerary() {
     onSuccess: (_, tripId) => {
       queryClient.invalidateQueries({ queryKey: [api.trips.get.path, tripId] });
       queryClient.invalidateQueries({ queryKey: ["/api/generated-itineraries", tripId] });
+      // T5-1: PlanCard (stage="full") now sources its `days` from the live plancard DTO
+      // (`GET /api/trips/:id/plancard`) instead of the static itinerary_data blob whenever
+      // trip-details.tsx doesn't hand it a `days` prop. Without this invalidation, a
+      // regenerate would rewrite the DB rows (server, T1-1) but PlanCard would keep
+      // rendering its cached pre-regenerate DTO.
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
       toast({
         title: "Itinerary Generated",
         description: "Your personalized day-by-day plan is ready.",
