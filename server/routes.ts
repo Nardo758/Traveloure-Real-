@@ -978,9 +978,20 @@ export async function registerRoutes(
   // Guests receive a shareToken to access the trip until sign-up.
   app.post(api.trips.create.path, async (req, res) => {
     try {
+      // Trip-defaults consistency fix: insertTripSchema defaults numberOfTravelers to 1 and
+      // adults to 2 independently, so an omitted numberOfTravelers produced an incoherent
+      // freshly-created trip (1 traveler, 2 adults). When the caller didn't explicitly send
+      // numberOfTravelers, derive it from adults+kids instead of taking the schema's static
+      // default, mirroring the numberOfTravelers===adults convention already used at the other
+      // trip-creation call sites (cart-to-itinerary conversion, quick-start itinerary).
+      const numberOfTravelersProvided =
+        req.body?.numberOfTravelers !== undefined && req.body?.numberOfTravelers !== null && req.body?.numberOfTravelers !== "";
       const input = api.trips.create.input.parse(req.body);
       // Sanitize string inputs to prevent XSS
       const sanitizedInput = sanitizeObject(input);
+      if (!numberOfTravelersProvided) {
+        sanitizedInput.numberOfTravelers = sanitizedInput.adults + (sanitizedInput.kids ?? 0);
+      }
 
       // Additional validations
       if (sanitizedInput.startDate && sanitizedInput.endDate) {
@@ -5967,7 +5978,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           userId,
           adults: 2,
           kids: 0,
-          numberOfTravelers: 1,
+          numberOfTravelers: 2, // consistent with adults (kids=0) — see trip-defaults fix
         } as any);
         targetTripId = newTrip.id;
       } else {
