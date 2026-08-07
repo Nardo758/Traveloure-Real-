@@ -415,7 +415,7 @@ export const localExpertForms = pgTable("local_expert_forms", {
   // Availability
   availability: varchar("availability", { length: 50 }),
   responseTime: varchar("response_time", { length: 50 }),
-  hourlyRate: varchar("hourly_rate", { length: 50 }),
+  hourlyRate: varchar("hourly_rate", { length: 50 }), // money-derive-ok: a free-text DISPLAY string the applicant writes about themselves (seeded values look like "$80-150/hour"), not a fraction and not a platform take. No server code reads it into any fee, amount or payout decision — verified repo-wide (ruling 42 class sweep). Name-matched by the rate-bearing guard; adjudicated not-a-rate.
   // Legacy fields (keeping for compatibility)
   yearsInCity: integer("years_in_city").default(0),
   offerService: boolean("offer_service").default(false),
@@ -555,7 +555,18 @@ export const serviceCategories = pgTable("service_categories", {
   categoryKey: varchar("category_key", { length: 100 }),                    // brief's join key; unique when non-null
   sourceType: varchar("source_type", { length: 30 }),                       // 'platform_provider' | 'affiliate'
   launchTier: varchar("launch_tier", { length: 20 }),                       // 'core' | 'secondary' | 'segment'
-  commissionBandKey: varchar("commission_band_key", { length: 100 }),       // → fee_bands.bandKey (tiered policy only)
+  // money-derive-ok: this SELECTS a fee_bands row rather than carrying a rate, and its setter is
+  // ADMIN by design — that is the fee-band admin surface, not a client path. All three parse sites
+  // of insertServiceCategorySchema are admin-gated (admin.routes.ts under the blanket requireAdmin;
+  // content.routes.ts:807 behind an explicit DB role check). Ruling 42's rule is that a rate-bearing
+  // field is never CLIENT-settable; an authenticated admin editing bands is the intended path.
+  // FILED (ruling-42 class sweep, #PS14 — NOT fixed here, it is fee taxonomy and owes a doc-first
+  // decision per Coordination Prevention): the two admin setters DIVERGE. admin.routes.ts:2218-2245
+  // rejects a commissionBandKey that matches no fee_bands row and refuses to clear it unless
+  // platform_settings.default_commission_band_key is set and active; content.routes.ts:807 parses
+  // the same schema on CREATE with no band validation at all, so a category can be born pointing at
+  // a band that does not exist.
+  commissionBandKey: varchar("commission_band_key", { length: 100 }),       // → fee_bands.bandKey (tiered policy only) — money-derive-ok: see the note above (admin-by-design setter)
   insuranceBand: integer("insurance_band"),                                 // 1 | 2 | 3 (platform_provider only)
   riskProfile: varchar("risk_profile", { length: 20 }),                     // 'low' | 'moderate' | 'high'
   requiresBackgroundCheck: boolean("requires_background_check").default(false),
@@ -1525,6 +1536,27 @@ export const insertLocalExpertFormSchema = createInsertSchema(localExpertForms).
   verifiedInfluencer: true,
   influencerTier: true,
   referralCode: true,
+  // MI-1 class sweep (provider money-hardening lane, ruling 42): the rate/fee-bearing and
+  // payment-identity families on this table were mass-assignable — `insertLocalExpertFormSchema
+  // .parse(req.body)` is spread verbatim into create/update at POST /api/expert-application and
+  // POST /api/expert-forms (server/routes.ts), so any authenticated applicant could set their own
+  // booking-fee rate, their Stripe Connect linkage, and their earnings/payout balances. No client
+  // sends any of them and no server code reads them today (dormant), which is exactly why it had
+  // not surfaced — the ruling is that a rate-bearing field is never client-settable on ANY schema,
+  // consumer or not. These are server/admin-managed, same posture as the influencer block above.
+  bookingFeeType: true,
+  bookingFeePercentage: true,
+  bookingFeeFixed: true,
+  bookingFeeHourly: true,
+  minBookingFee: true,
+  feeSettings: true,
+  stripeAccountId: true,
+  stripeAccountStatus: true,
+  stripeConnectStatus: true,
+  canReceivePayments: true,
+  totalEarnings: true,
+  pendingPayout: true,
+  payoutSchedule: true,
 }).extend({
   // Role-vocabulary audit (Jul 27, 2026): expertType MUST be validated against the enum.
   // The admin approval path copies expertType into users.role verbatim, so an unvalidated
@@ -1536,7 +1568,14 @@ export const insertLocalExpertFormSchema = createInsertSchema(localExpertForms).
 export const insertServiceProviderFormSchema = createInsertSchema(serviceProviderForms).omit({ id: true, userId: true, status: true, rejectionMessage: true, createdAt: true });
 export const insertServiceCategorySchema = createInsertSchema(serviceCategories).omit({ id: true, createdAt: true });
 export const insertServiceSubcategorySchema = createInsertSchema(serviceSubcategories).omit({ id: true, createdAt: true });
-export const insertProviderServiceSchema = createInsertSchema(providerServices).omit({ id: true, userId: true, formStatus: true, bookingsCount: true, totalRevenue: true, averageRating: true, reviewCount: true, createdAt: true, updatedAt: true }).extend({
+// MI-1 (provider money-hardening lane, ruling 42): `revenueShareRate` is a COMMISSION SPLIT and is
+// therefore NOT client-settable — this is layer 1 of the strip-and-clamp. It was previously exposed
+// here, parsed straight off `req.body` by POST/PATCH /api/provider/services, spread into the row, and
+// read at `payments.routes.ts` as "the final override (takes priority over config)" over the
+// fee_bands-resolved split at the real Stripe charge — a client-supplied rate reaching a payment
+// decision (§14 in substance, §8 in spirit). No UI ever sent it. Layer 2 is the storage-level
+// derivation in `createProviderService`/`updateProviderService`, so every caller is covered.
+export const insertProviderServiceSchema = createInsertSchema(providerServices).omit({ id: true, userId: true, formStatus: true, bookingsCount: true, totalRevenue: true, averageRating: true, reviewCount: true, createdAt: true, updatedAt: true, revenueShareRate: true }).extend({
   // X1: app-enforced vocabulary (migration 144 has no DB CHECK) — reject anything outside the set here.
   cancellationPolicyType: z.enum(cancellationPolicyTypeEnum).nullable().optional(),
 });
@@ -1546,17 +1585,72 @@ export const insertCreditTransactionSchema = createInsertSchema(creditTransactio
 
 // Service Templates, Bookings, Reviews schemas
 export const insertServiceTemplateSchema = createInsertSchema(serviceTemplates).omit({ id: true, usageCount: true, averageRating: true, createdAt: true });
-// travelerId and providerId are set server-side from auth context and service lookup
-export const insertServiceBookingSchema = createInsertSchema(serviceBookings).omit({ 
-  id: true, 
+// travelerId and providerId are set server-side from auth context and service lookup.
+//
+// ── PS15 (ruling 46) — `stripePaymentIntentId` is a SERVER_VERIFIED_ACTORS-only field ─────────
+// Ruling 41 states the invariant as PROVENANCE, not transport: a PaymentIntent id may resolve or
+// stamp a booking only when the platform itself obtained it from Stripe as a verified actor, and
+// "a CLIENT-supplied PaymentIntent id may never resolve or stamp anything." This schema was
+// `.parse`d straight off `req.body` at POST /api/bookings and the result SPREAD into
+// `createServiceBooking`, so a crafted request could BIRTH a booking already carrying its own PI —
+// which ruling 41's clause forbids on the promotion side but had no counterpart on the birth side.
+// A born-stamped row is not a promotion, so it never trips N17c; it is simply a row that looks
+// authorized to every consumer that keys on this column (the sweep skips it, `promotePaidCheckout`
+// matches it, the drift job trusts it as linkage).
+//
+// This is layer 1 of the strip. Safe to omit outright — verified at 281d355c that NO caller of
+// `createServiceBooking` passes it: `payments.routes.ts:926` (checkout) and `routes.ts:1430` both
+// omit it, and the column's SOLE production writer is `stampAuthorization`
+// (`checkout-claim.service.ts:177`), an atomic conditional UPDATE that runs after the Stripe call.
+// (The audit's PS15 note cautioned that this omit list is load-bearing for the `InsertServiceBooking`
+// TYPE that checkout writes — true of `platformFee`/`insuranceFee`/`providerEarnings`/`status`,
+// which checkout DOES pass, and NOT true of this field. Those are handled by the route-level
+// allowlist at POST /api/bookings instead.) Layer 2 is the storage-level strip in
+// `createServiceBooking`, so every caller is covered.
+export const insertServiceBookingSchema = createInsertSchema(serviceBookings).omit({
+  id: true,
   travelerId: true,  // Set server-side from authenticated user
   providerId: true,  // Set server-side from service lookup
-  confirmedAt: true, 
-  completedAt: true, 
-  cancelledAt: true, 
-  createdAt: true, 
-  updatedAt: true 
+  stripePaymentIntentId: true,  // PS15/ruling 46 — server-verified actors only, via stampAuthorization
+  confirmedAt: true,
+  completedAt: true,
+  cancelledAt: true,
+  createdAt: true,
+  updatedAt: true
 });
+// ── PS15 (ruling 46): POST /api/bookings admits an ALLOWLIST, not a denylist ────────────────────
+// `POST /api/bookings` (server/routes.ts) used to `insertServiceBookingSchema.parse(req.body)` and
+// SPREAD the result into `createServiceBooking`. That schema is `.omit()`-based — a DENYLIST — so
+// every column its omit list did not happen to name was client-settable BY CONSTRUCTION:
+// `stripePaymentIntentId` (ruling 41's immovable clause; now also stripped above and in storage),
+// `platformFee`, `insuranceFee`, `providerEarnings`, `totalAmount`, `status`, `idempotencyKey`,
+// `slotId`, `source`, `acquisitionRef`, `trackingNumber`, `crossSellSourceContentId`.
+//
+// A denylist schema fails OPEN: the day a privileged column is added to `service_bookings`, it is
+// reachable from that body until someone remembers to omit it — and nobody edits an omit list for a
+// column that did not exist when it was written. That is the standing class ruling 46 records, third
+// instance (`revenueShareRate`, the MI-1 sweep's dormant fee/payout family, this). A pick-based
+// schema fails CLOSED: a new column is unreachable until it is deliberately named here.
+//
+// NOT admitted, and why each one: `status` (this rail creates a booking REQUEST, born `pending` from
+// the column default — it must never birth a `payment_pending` claim, §15b, a state that belongs to
+// `checkout-claim.service.ts`); `idempotencyKey`/`slotId` (the checkout spine's own claim machinery,
+// §15/§18c); the amount family and `stripePaymentIntentId` (§14 and rulings 41+46 — server-derived
+// or server-written, never proposed by a caller).
+//
+// EXTEND DELIBERATELY. `booking-birth-provenance.db.test.ts` B6 asserts this exact key set, so
+// widening it is a decision someone makes on purpose rather than a column that leaks in from
+// elsewhere. (Note for the guard's negative space: `scripts/check-money-endpoints.cjs` detects
+// body-parsed schemas by the `insert*Schema` NAME, so a derived schema like this one is outside its
+// parse pass — B6 is what covers it.)
+export const createBookingRequestSchema = insertServiceBookingSchema.pick({
+  serviceId: true,
+  tripId: true,
+  contractId: true,
+  bookingDetails: true,
+  bookingMetadata: true,
+});
+
 export const insertServiceReviewSchema = createInsertSchema(serviceReviews).omit({ id: true, responseText: true, responseAt: true, createdAt: true, status: true, flagReason: true, moderatedBy: true, moderatedAt: true }).extend({
   rating: z.number().int().min(1, "Rating must be at least 1 star").max(5, "Rating cannot exceed 5 stars"),
 });
@@ -5782,6 +5876,128 @@ export const refunds = pgTable("refunds", {
   bookingIdx: index("idx_refunds_booking_id").on(table.bookingId),
   paymentIntentIdx: index("idx_refunds_payment_intent").on(table.stripePaymentIntentId),
 }));
+
+// ══ RECONCILIATION DETECTION (migration 177, reconciliation-detection lane) ═════════════════
+//
+// The daily Stripe-vs-DB drift job's ops-visible output. Recovery on the money path is
+// three-layered (ruling 38's TTL sweep, ruling 39's webhook + client-confirm promotion) but
+// DETECTION used to be one-eyed — `server/jobs/stripeReconciliation.ts` scanned only the legacy
+// `bookings` table, so cart checkout (the primary checkout) never appeared in a drift report.
+//
+// Declared HERE, not only in migration 177: the deploy push is authoritative over tables AND
+// indexes it does not find in this file and will drop them, after which the stamped migration
+// never recreates them (CLAUDE.md deploy-push rule, both variants).
+
+/** One row per reconciliation pass — written for EVERY pass, including a clean one. A zero-
+ *  exception run and a job that never ran must not look the same from the admin surface. */
+export const reconciliationRuns = pgTable(
+  "reconciliation_runs",
+  {
+    id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+    startedAt: timestamp("started_at").defaultNow().notNull(),
+    finishedAt: timestamp("finished_at"),
+    /** scheduled | manual | test — `trigger` is a reserved word, hence the column name. */
+    triggeredBy: varchar("triggered_by", { length: 20 }).notNull().default("scheduled"),
+    /** running | completed | skipped | failed */
+    status: varchar("status", { length: 20 }).notNull().default("running"),
+    windowStart: timestamp("window_start"),
+    scannedPaymentIntents: integer("scanned_payment_intents").notNull().default(0),
+    scannedCharges: integer("scanned_charges").notNull().default(0),
+    scannedRefunds: integer("scanned_refunds").notNull().default(0),
+    scannedCartBookings: integer("scanned_cart_bookings").notNull().default(0),
+    scannedLegacyBookings: integer("scanned_legacy_bookings").notNull().default(0),
+    /** Every drift found this pass, including ones already on record from an earlier pass. */
+    exceptionsDetected: integer("exceptions_detected").notNull().default(0),
+    /** Rows this pass actually inserted (detected minus already-recorded). */
+    exceptionsNew: integer("exceptions_new").notNull().default(0),
+    /** The ONE narrow repair this job may perform — PI-succeeded / row-still-provisional handed
+     *  to the EXISTING shared promotion (`promotePaidCheckout`, actor `reconciliation`). */
+    promoted: integer("promoted").notNull().default(0),
+    note: text("note"),
+  },
+  (table) => ({
+    startedIdx: index("recon_runs_started_idx").on(table.startedAt),
+  }),
+);
+
+/** The canonical drift vocabulary. No DB CHECK (migration-159/171 posture) — this is the source
+ *  of truth, and the admin surface renders from it. */
+export const RECONCILIATION_EXCEPTION_KINDS = [
+  // ── CART rail (service_bookings) ──────────────────────────────────────────────────────────
+  /** A PaymentIntent succeeded and NO service_bookings row can be resolved from it (neither by
+   *  stamped PI id nor by its own `bookingIds` metadata). Customer billed, no record. */
+  "pi_succeeded_no_booking",
+  /** A PaymentIntent succeeded but its booking is still an unpromoted claim. The ONE case the
+   *  job may hand to the shared promotion; recorded as an exception when that fails. */
+  "pi_succeeded_claim_provisional",
+  /** A PaymentIntent succeeded and its booking is VOIDED/terminal (ruling 39's late-signal
+   *  reconciliation-exception state). Never resurrected — a human decides refund vs. re-book. */
+  "pi_succeeded_booking_voided",
+  /** A booking is `confirmed` (or otherwise paid-equivalent) with NO PaymentIntent stamped. */
+  "booking_confirmed_no_pi",
+  /** A booking is `confirmed` but its PaymentIntent is not in a succeeded state at Stripe. */
+  "booking_confirmed_pi_not_succeeded",
+  /** Stripe's captured amount and the server-derived total of the PI's booking rows disagree. */
+  "amount_mismatch",
+  /** Stripe holds a refund whose reversal never landed in the DB (`refunds` row / status). */
+  "refund_not_reversed",
+  /** PS15 / ruling 46 — UNVERIFIABLE PAYMENT PROVENANCE. A booking carries a
+   *  `stripe_payment_intent_id` with NO `bookingDetails.stripeAttemptAt` marker behind it.
+   *
+   *  Every PI the checkout spine writes is preceded by that §15b pre-flight marker
+   *  (`markStripeAttempt` runs immediately before `paymentIntents.create`; `stampAuthorization`
+   *  and the ordering-1 `resolveAndStamp` only ever act on rows that already carry it). A stamped
+   *  row WITHOUT it was written by something that is not the spine — the PS15 mass-assignment on
+   *  `POST /api/bookings` (closed by ruling 46), a seed (`beta-reviews-bookings.ts` mints synthetic
+   *  `pi_…` values), or a row predating ruling 38.
+   *
+   *  Those are INDISTINGUISHABLE after the fact, and that is the whole point of the classification:
+   *  the platform cannot prove the id came from Stripe, so it neither trusts it nor repairs it
+   *  (§17 DETECT, DON'T REPAIR). It is a `warning`, not `critical` — the row may be perfectly fine;
+   *  what is not fine is that nothing can tell. */
+  "payment_provenance_unverified",
+  // ── LEGACY rail (`bookings` — still live via /booking-demo and process-cart) ───────────────
+  "stripe_charge_no_booking",
+  "booking_no_stripe_charge",
+] as const;
+export type ReconciliationExceptionKind = (typeof RECONCILIATION_EXCEPTION_KINDS)[number];
+
+/** One row per DISTINCT drift fact. APPEND-ONLY: no app code carries an UPDATE or DELETE path
+ *  (item_transition_log / ruling 11 posture). Re-detection on a later pass is absorbed by the
+ *  UNIQUE `dedupeKey` (`ON CONFLICT DO NOTHING`), so a month-long drift is ONE row, while the
+ *  run rows keep recording that it is still being seen. */
+export const reconciliationExceptions = pgTable(
+  "reconciliation_exceptions",
+  {
+    id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+    runId: varchar("run_id").notNull().references(() => reconciliationRuns.id, { onDelete: "cascade" }),
+    detectedAt: timestamp("detected_at").defaultNow().notNull(),
+    /** cart (service_bookings) | legacy (bookings) */
+    rail: varchar("rail", { length: 20 }).notNull(),
+    kind: varchar("kind", { length: 60 }).notNull(),
+    /** critical | warning */
+    severity: varchar("severity", { length: 20 }).notNull().default("critical"),
+    dedupeKey: text("dedupe_key").notNull(),
+    /** Soft reference, NO FK — the job must be able to name a booking id that does not exist
+     *  (that is one of the drift cases), and an audit row outlives the row it indicts. */
+    bookingId: varchar("booking_id"),
+    paymentIntentId: varchar("payment_intent_id", { length: 255 }),
+    chargeId: varchar("charge_id", { length: 255 }),
+    /** DOLLARS — same precision/scale as service_bookings.total_amount. */
+    expectedAmount: decimal("expected_amount", { precision: 10, scale: 2 }),
+    actualAmount: decimal("actual_amount", { precision: 10, scale: 2 }),
+    currency: varchar("currency", { length: 10 }),
+    details: jsonb("details").notNull().default({}),
+  },
+  (table) => ({
+    dedupeIdx: uniqueIndex("recon_exc_dedupe_idx").on(table.dedupeKey),
+    detectedIdx: index("recon_exc_detected_idx").on(table.detectedAt),
+    runIdx: index("recon_exc_run_idx").on(table.runId),
+  }),
+);
+
+export type ReconciliationRun = typeof reconciliationRuns.$inferSelect;
+export type ReconciliationException = typeof reconciliationExceptions.$inferSelect;
 
 // AI cost tracking (migration 025b). MUST stay byte-for-byte equivalent to
 // server/migrations/025b_ai_cost_tracking.sql — the deploy runs an automatic drizzle-kit push

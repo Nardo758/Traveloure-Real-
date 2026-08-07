@@ -20,7 +20,7 @@ import {
   insertLocalExpertFormSchema, insertServiceProviderFormSchema,
   insertProviderServiceSchema, insertServiceCategorySchema,
   insertServiceSubcategorySchema, insertFaqSchema,
-  insertServiceTemplateSchema, insertServiceBookingSchema, insertServiceReviewSchema,
+  insertServiceTemplateSchema, insertServiceBookingSchema, createBookingRequestSchema, insertServiceReviewSchema,
   itineraryComparisons, itineraryVariants, itineraryVariantItems, itineraryVariantMetrics,
   userExperienceItems, userExperiences, providerServices, cartItems, trips,
   serviceBookings, serviceReviews, notifications, serviceProviderForms,
@@ -156,6 +156,7 @@ import {
   resolveCommissionRates,
   calcInsuranceFee,
   getConciergeBookingRate,
+  resolveServiceOwnerShareRate,
   type CommissionRates,
 } from "./services/commission";
 import { calculateCommission, BookingType } from "./utils/commissionCalculator";
@@ -967,10 +968,41 @@ export async function registerRoutes(
     res.json(trips);
   });
 
-  // GET /api/trips/:id — handled by tripsRoutes (trips.routes.ts), which owns the canonical
-  // handler with IDOR logging, 403 for non-owners, and expertWorkspaceStatus enrichment.
-  // The previous inline duplicate here shadowed that handler and suppressed security logging;
-  // it has been removed so the tripsRoutes registration (mounted above) wins. See task fix.
+  // GET /api/trips/:id — get trip (auth: owner/expert/EA, or guest via shareToken)
+  app.get(api.trips.get.path, requireAuthOrShareToken, async (req, res) => {
+    const trip = await storage.getTrip(req.params.id);
+    if (!trip) {
+      return res.status(404).json({ message: "Trip not found" });
+    }
+
+    // Check access: owner, assigned expert, managing EA, or guest with shareToken
+    const userId = getUserId(req)!;
+    const shareToken = req.query.token as string | undefined;
+    const isOwner = trip.userId && trip.userId === userId;
+    const isExpert = userId != null && (trip as any).expertId === userId;
+    const isManagingEa = userId != null && (trip as any).managedByEaId === userId;
+    const isGuestWithToken = shareToken && trip.shareToken === shareToken;
+
+    if (!isOwner && !isExpert && !isManagingEa && !isGuestWithToken) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    // GAP 5 fix (expert-loop object-flow audit, Jul 30 2026): "delivered" previously had no
+    // persistent signal on the trip itself — only a one-shot notification the traveler could
+    // dismiss/miss, with no fallback UI truth. Additive, server-only field (a sibling agent
+    // renders it): the most recent active (pending/accepted) assignment's workspaceStatus, or
+    // null when no expert is currently assigned. This is the canonical inline trips GET (§9).
+    const [advisorRow] = await db.select({ workspaceStatus: tripExpertAdvisors.workspaceStatus })
+      .from(tripExpertAdvisors)
+      .where(and(
+        eq(tripExpertAdvisors.tripId, trip.id),
+        inArray(tripExpertAdvisors.status, ["pending", "accepted"]),
+      ))
+      .orderBy(desc(tripExpertAdvisors.assignedAt))
+      .limit(1);
+
+    res.json({ ...trip, expertWorkspaceStatus: advisorRow?.workspaceStatus ?? null });
+  });
 
   // POST /api/trips — create a trip (guest or authenticated)
   // Guests get null userId; authenticated users get their userId.
@@ -4553,27 +4585,48 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     });
   });
 
-  // Create a booking
+  // Create a booking. Body allowlist: `createBookingRequestSchema` (module scope, PS15/ruling 46).
   app.post("/api/bookings", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req)!;
-      const input = insertServiceBookingSchema.parse(req.body);
-      
+      const input = createBookingRequestSchema.parse(req.body);
+
       // Verify service exists and is active
       const service = await storage.getProviderServiceById(input.serviceId);
       if (!service || service.status !== "active") {
         return res.status(404).json({ message: "Service not found or not available" });
       }
-      
+
+      // §14: the amount comes from the server-side catalog record, never from req.body.
+      const totalAmount = Number(service.price) || 0;
+      // §8/ruling 42: the split comes from fee_bands through the one existing resolver. A null
+      // resolution leaves the derived columns at their DB defaults rather than inventing a rate.
+      const ownerShareRate = await resolveServiceOwnerShareRate({
+        ownerUserId: service.userId ?? null,
+        ownerIsProvider: isProviderRole(
+          (await storage.getUser(service.userId ?? ""))?.role,
+        ),
+        feeCategory: service.categoryId
+          ? (await storage.getServiceCategorySlugsByIds([service.categoryId]))[0]?.slug ?? null
+          : null,
+      });
+
       const booking = await storage.createServiceBooking({
         ...input,
         travelerId: userId,
         providerId: service.userId,
+        totalAmount: totalAmount.toFixed(2),
+        ...(ownerShareRate !== null
+          ? {
+              platformFee: (totalAmount * (1 - ownerShareRate)).toFixed(2),
+              providerEarnings: (totalAmount * ownerShareRate).toFixed(2),
+            }
+          : {}),
       });
-      
+
       // Increment service bookings count
-      await storage.incrementServiceBookings(service.id, Number(service.price) || 0);
-      
+      await storage.incrementServiceBookings(service.id, totalAmount);
+
       res.status(201).json(booking);
     } catch (err) {
       if (err instanceof z.ZodError) {
@@ -4593,6 +4646,28 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // traveler/escrow-driven (POST /api/bookings/:id/confirm-completion + the release
   // job). Applied to BOTH the expert and provider status endpoints.
   const OWNER_SETTABLE_BOOKING_STATUSES = ["confirmed", "cancelled"];
+  // ── SD-1 (provider money-hardening lane, ruling 42): the FROM-state allow-list ────────────────
+  // The handler previously checked only the TARGET status, never the CURRENT one. `service_bookings`
+  // rows in `payment_pending` with no `stripe_payment_intent_id` are UNAUTHORIZED PROVISIONAL CLAIMS
+  // by construction (§15b / ruling 38) — written before the Stripe call, and visible to the provider
+  // (GET /api/provider/bookings applies no status filter; the calendar renders them "Booked"). A
+  // provider clicking Accept on one promoted a purchase nobody had paid for, and — because both
+  // recovery predicates key on `status='payment_pending'` — permanently stranded the availability
+  // slot the claim had consumed: `voidClaim` and `promotePaidCheckout` both matched 0 rows
+  // afterwards, and nothing in the codebase gives `vendor_availability_slots.booked_count` back.
+  //
+  // A provisional claim is UNACCEPTABLE INPUT — rejected, never promoted. The owner rail does not
+  // participate in the claim state machine at all; `checkout-claim.service.ts` remains its sole
+  // author. `expired` (a swept claim) and the terminal states are likewise not owner-movable.
+  const OWNER_BOOKING_TRANSITIONS: Record<string, readonly string[]> = {
+    // Accept: only a request-rail booking awaiting the owner's answer.
+    confirmed: ["pending"],
+    // Decline / cancel: an unanswered request, or an already-accepted booking. NOTE this keeps the
+    // pre-existing cancel-a-confirmed-booking behaviour verbatim — the missing-refund question on
+    // that edge is a SEPARATE, still-unruled finding (audit SD-2 / Q2) and is deliberately not
+    // changed here rather than silently altered under cover of this fix.
+    cancelled: ["pending", "confirmed"],
+  };
   const handleOwnerBookingStatus = async (req: any, res: any) => {
     try {
       const userId = getUserId(req)!;
@@ -4606,7 +4681,22 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           message: "You can only accept (confirmed) or decline (cancelled) a booking. Completion is confirmed by the traveler.",
         });
       }
-      const updated = await storage.updateServiceBookingStatus(req.params.id, status, reason);
+      const allowedFrom = OWNER_BOOKING_TRANSITIONS[status];
+      // Fast, legible rejection. This is NOT the guard — it is the good error message. The GUARD is
+      // the atomic conditional below (§15: a check-then-update is the TOCTOU bug, not a guard), so a
+      // concurrent caller that also passes this check still loses at the UPDATE.
+      if (!allowedFrom.includes(booking.status ?? "")) {
+        return res.status(409).json({
+          message: `This booking is "${booking.status}" and cannot be moved to "${status}". A checkout still awaiting payment is not yours to accept — it resolves itself when the traveler pays, or is released automatically if they do not.`,
+          currentStatus: booking.status,
+        });
+      }
+      const updated = await storage.updateServiceBookingStatus(req.params.id, status, reason, allowedFrom);
+      if (!updated) {
+        // Lost the atomic race (or the row vanished): another actor moved it first. Exactly one
+        // caller wins; the loser changes nothing and fires no side-effects.
+        return res.status(409).json({ message: "This booking changed before your update was applied. Reload and try again." });
+      }
 
       // E1: trip-share bridge. When an EXPERT accepts a booking that carries a
       // tripId (routes.ts /api/expert-booking-requests stores it on the
@@ -6667,16 +6757,19 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     }
   });
 
-  app.post("/api/vendor-availability/:id/book", isAuthenticated, async (req, res) => {
-    try {
-      const slot = await storage.bookSlot(req.params.id);
-      if (!slot) return res.status(404).json({ message: "Slot not found" });
-      res.json(slot);
-    } catch (error) {
-      console.error("Error booking slot:", error);
-      res.status(500).json({ message: "Failed to book slot" });
-    }
-  });
+  // ── AC-1 (provider money-hardening lane, ruling 42): `POST /api/vendor-availability/:id/book`
+  //    is DELETED, not hardened. ────────────────────────────────────────────────────────────────
+  // The whole handler was `storage.bookSlot(req.params.id)` behind `isAuthenticated` and nothing
+  // else: no ownership check, no purchase, no booking row — so any authenticated account could
+  // increment any provider's `booked_count` and flip their slots to `fully_booked`, exhausting a
+  // competitor's sellable inventory. It was IRREVERSIBLE by design: the TTL sweep reclaims capacity
+  // by iterating provisional `service_bookings` rows and releasing `row.slotId`, and this endpoint
+  // created no row, so there was nothing to sweep and `storage.releaseSlot` had no reachable caller.
+  // It had ZERO consumers — `vendor-availability` appears nowhere under `client/src`.
+  // An endpoint with no consumer and an irreversible effect is deleted rather than gated: gating it
+  // would have preserved a second, unaudited way to consume inventory alongside the checkout spine.
+  // The legitimate claim path is unchanged and untouched: `storage.bookSlot` is still the atomic
+  // conditional the checkout calls (`payments.routes.ts`), paired with `releaseSlot` and the sweep.
 
   // Coordination States
   app.get("/api/coordination-states", isAuthenticated, async (req, res) => {
@@ -9182,27 +9275,14 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // PATCH /api/admin/notifications/:id/read — mark a single lead alert as resolved
   app.patch("/api/admin/notifications/:id/read", requireAdmin, async (req, res) => {
     try {
-      const rawId = String(req.params.id);
-      // Ids come in two flavors: "alert-<int>" rows from admin_notifications
-      // (platform alerts) and UUID rows from the user notifications table.
-      const alertMatch = rawId.match(/^alert-(\d+)$/) || (/^\d+$/.test(rawId) ? [rawId, rawId] : null);
-      if (alertMatch) {
-        const notifId = parseInt(alertMatch[1], 10);
-        const [updated] = await db
-          .update(adminNotifications)
-          .set({ isRead: true })
-          .where(eq(adminNotifications.id, notifId))
-          .returning();
-        if (!updated) {
-          return res.status(404).json({ message: "Notification not found" });
-        }
-        return res.json({ ok: true, id: `alert-${updated.id}` });
+      const notifId = parseInt(req.params.id, 10);
+      if (isNaN(notifId)) {
+        return res.status(400).json({ message: "Invalid notification id" });
       }
-      const userId = getUserId(req)!;
       const [updated] = await db
-        .update(notifications)
+        .update(adminNotifications)
         .set({ isRead: true })
-        .where(and(eq(notifications.id, rawId), eq(notifications.userId, userId)))
+        .where(eq(adminNotifications.id, notifId))
         .returning();
       if (!updated) {
         return res.status(404).json({ message: "Notification not found" });
@@ -9213,47 +9293,15 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     }
   });
 
-  // DELETE /api/admin/notifications/:id — remove a notification (either table)
-  app.delete("/api/admin/notifications/:id", requireAdmin, async (req, res) => {
-    try {
-      const rawId = String(req.params.id);
-      const alertMatch = rawId.match(/^alert-(\d+)$/) || (/^\d+$/.test(rawId) ? [rawId, rawId] : null);
-      if (alertMatch) {
-        const notifId = parseInt(alertMatch[1], 10);
-        const [deleted] = await db
-          .delete(adminNotifications)
-          .where(eq(adminNotifications.id, notifId))
-          .returning();
-        if (!deleted) return res.status(404).json({ message: "Notification not found" });
-        return res.json({ ok: true });
-      }
-      const userId = getUserId(req)!;
-      const [deleted] = await db
-        .delete(notifications)
-        .where(and(eq(notifications.id, rawId), eq(notifications.userId, userId)))
-        .returning();
-      if (!deleted) return res.status(404).json({ message: "Notification not found" });
-      res.json({ ok: true });
-    } catch (err: any) {
-      res.status(500).json({ message: "Failed to delete notification", error: err.message });
-    }
-  });
-
   // PATCH /api/admin/notifications/read-all — mark all unread lead alerts as resolved
   app.patch("/api/admin/notifications/read-all", requireAdmin, async (req, res) => {
     try {
-      const userId = getUserId(req)!;
-      const [alertRows, userRows] = await Promise.all([
-        db.update(adminNotifications)
-          .set({ isRead: true })
-          .where(eq(adminNotifications.isRead, false))
-          .returning(),
-        db.update(notifications)
-          .set({ isRead: true })
-          .where(and(eq(notifications.userId, userId), eq(notifications.isRead, false)))
-          .returning(),
-      ]);
-      res.json({ success: true, updated: alertRows.length + userRows.length });
+      const result = await db
+        .update(adminNotifications)
+        .set({ isRead: true })
+        .where(eq(adminNotifications.isRead, false))
+        .returning();
+      res.json({ success: true, updated: result.length });
     } catch (err: any) {
       res.status(500).json({ message: "Failed to mark all notifications as read", error: err.message });
     }

@@ -151,7 +151,7 @@ vs `ENVIRONMENT==="PROD"` (`:26-53`) — the other instantiations accept whateve
 | `server/services/stripe-connect.service.ts:26` | Connect (transfers/accounts) |
 | `server/routes/webhooks.routes.ts:22` | webhook processing |
 | `server/routes/identity.routes.ts:11` | Stripe Identity |
-| `server/jobs/stripeReconciliation.ts:27` | daily charge reconcile |
+| `server/jobs/stripeReconciliation.ts` | daily Stripe-vs-DB drift scan — **superseded@ba168d0c (ruling 40, reconciliation-detection lane):** no longer a charge-only, legacy-rail-only reconcile; the client is now built lazily inside `defaultStripeReader()` and lists PaymentIntents + charges + refunds across BOTH rails |
 | `server/routes/optimization.routes.ts:34` | |
 | `server/routes.ts:361` + per-request at `:3502`, `:3555`, `:6973`, `:7072`, `:7151`, `:7235` | monolith money endpoints |
 | ~~`server/routes/trips.routes.ts:72`~~ | **REMOVED (F-6 closed)** — was declared, zero call sites |
@@ -205,7 +205,7 @@ behind the §15 atomic `claim{Expert,Provider}PayoutForProcessing`.
 ### 1h. Non-charging SDK usage
 Customers/PMs: `stripe-payment.service.ts:139-322` (list/create customer, setupIntent, PM list/retrieve/detach,
 default-PM update). Disputes: `webhooks.routes.ts:426, 484` (`charges.retrieve`). Reconcile:
-`stripeReconciliation.ts:61` (`charges.list`). Digest: `admin-digest-scheduler.service.ts:84` (`events.list`).
+`stripeReconciliation.ts` `defaultStripeReader()` (`paymentIntents.list` + `charges.list` + `refunds.list`) — **superseded@ba168d0c (ruling 40)**, was `charges.list` only. Digest: `admin-digest-scheduler.service.ts:84` (`events.list`).
 Identity: `identity.routes.ts:27`.
 
 ---

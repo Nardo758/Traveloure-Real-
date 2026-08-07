@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import {
   Activity, CheckCircle, ExternalLink, RefreshCw,
   Globe, Brain, Map, Search, Ticket, Train, Hotel,
-  DollarSign, TrendingUp, XCircle, HelpCircle, Loader2, Mail, Archive,
+  DollarSign, TrendingUp, XCircle, HelpCircle, Loader2,
 } from "lucide-react";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -22,9 +22,7 @@ import { AdminErrorBanner } from "@/components/admin/AdminErrorBanner";
 interface ProviderMeta {
   id: string;
   name: string;
-  category: "AI" | "Booking" | "Maps" | "Search" | "Transport" | "Events" | "Email";
-  /** Integration was dropped — render a Decommissioned badge, never Connected. */
-  decommissioned?: boolean;
+  category: "AI" | "Booking" | "Maps" | "Search" | "Transport" | "Events";
   description: string;
   icon: string;
   type: "API" | "Affiliate";
@@ -77,11 +75,9 @@ const PROVIDER_META: ProviderMeta[] = [
     id: "amadeus",
     name: "Amadeus",
     category: "Booking",
-    description:
-      "Decommissioned Aug 2026 — integration dropped and service code removed. Shown for historical API-cost records only.",
+    description: "Flights, hotels, POI discovery, airport transfers, and safety ratings.",
     icon: "✈️",
     type: "API",
-    decommissioned: true,
     docsUrl: "https://developers.amadeus.com",
     source: "api-costs",
     apiCostsLabel: "Amadeus",
@@ -142,16 +138,6 @@ const PROVIDER_META: ProviderMeta[] = [
     source: "affiliate-commission",
     affiliateKey: "fever",
   },
-  {
-    id: "resend",
-    name: "Resend",
-    category: "Email",
-    description: "Transactional email — booking confirmations, password resets, admin digests.",
-    icon: "✉️",
-    type: "API",
-    docsUrl: "https://resend.com/docs",
-    source: "untracked",
-  },
 ];
 
 const CATEGORY_ICONS: Record<string, any> = {
@@ -161,7 +147,6 @@ const CATEGORY_ICONS: Record<string, any> = {
   Search: Search,
   Transport: Train,
   Events: Ticket,
-  Email: Mail,
 };
 
 interface AiUsageSummary {
@@ -187,32 +172,19 @@ interface UnifiedRevenue {
   apiCosts: ApiCostsSummary;
 }
 
-interface IntegrationStatus {
-  providers: Record<string, { configured: boolean }>;
-}
-
 function money(n: number): string {
   return `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-// Status badge driven by REAL configuration (secret presence, from /api/admin/integration-status) —
-// never inferred from usage/revenue data provenance.
-function ResolvedBadge({ configured, decommissioned }: { configured?: boolean; decommissioned?: boolean }) {
-  if (decommissioned) {
+function ResolvedBadge({ tracked, configured }: { tracked: boolean; configured?: boolean }) {
+  if (!tracked) {
     return (
-      <Badge className="bg-amber-100 text-amber-700 border-amber-200 gap-1" data-testid="badge-decommissioned">
-        <Archive className="w-3 h-3" /> Decommissioned
+      <Badge className="bg-gray-100 text-gray-500 border-gray-200 gap-1" data-testid="badge-not-tracked">
+        <HelpCircle className="w-3 h-3" /> Not tracked
       </Badge>
     );
   }
-  if (configured === undefined) {
-    return (
-      <Badge className="bg-gray-100 text-gray-500 border-gray-200 gap-1" data-testid="badge-status-unknown">
-        <HelpCircle className="w-3 h-3" /> Status unknown
-      </Badge>
-    );
-  }
-  if (!configured) {
+  if (configured === false) {
     return (
       <Badge className="bg-gray-100 text-gray-500 border-gray-200 gap-1" data-testid="badge-not-connected">
         <XCircle className="w-3 h-3" /> Not connected
@@ -250,37 +222,23 @@ export default function AdminPlatformProviders() {
       }),
   });
 
-  // Real configuration status (secret presence per provider) — the source of the Connected /
-  // Not connected badge. Usage/revenue provenance is no longer used to infer connection status.
-  const { data: integrationStatus, isLoading: statusLoading, isError: statusError } = useQuery<IntegrationStatus>({
-    queryKey: ["/api/admin/integration-status"],
-    queryFn: () =>
-      fetch(`/api/admin/integration-status`).then((r) => {
-        if (!r.ok) throw new Error("Failed to load integration status");
-        return r.json();
-      }),
-  });
-
-  const isLoading = aiLoading || unifiedLoading || statusLoading;
-  const isError = aiError || unifiedError || statusError;
+  const isLoading = aiLoading || unifiedLoading;
+  const isError = aiError || unifiedError;
 
   const handleRefresh = () => {
     queryClient.invalidateQueries({ queryKey: ["/api/admin/ai-usage/summary"] });
     queryClient.invalidateQueries({ queryKey: ["/api/admin/revenue/unified"] });
-    queryClient.invalidateQueries({ queryKey: ["/api/admin/integration-status"] });
   };
 
   // Resolve each provider's real numbers. tracked=false means "no logging pipeline exists
   // for this integration" — rendered as an honest "Not tracked" state, never a guess.
-  // `configured` comes exclusively from the integration-status endpoint (secret presence).
   const resolved = PROVIDER_META.map((p) => {
-    const configured = integrationStatus?.providers?.[p.id]?.configured;
     if (p.source === "ai-usage") {
       const row = aiSummary?.byProvider?.[p.aiProviderKey!];
       return {
         ...p,
         tracked: true,
-        configured,
+        configured: undefined as boolean | undefined,
         requests: row?.calls ?? 0,
         costDollars: row ? row.costCents / 100 : 0,
         revenueDollars: null as number | null,
@@ -291,7 +249,7 @@ export default function AdminPlatformProviders() {
       return {
         ...p,
         tracked: true,
-        configured,
+        configured: undefined as boolean | undefined,
         requests: row?.calls ?? 0,
         costDollars: row?.costDollars ?? 0,
         revenueDollars: null as number | null,
@@ -302,7 +260,7 @@ export default function AdminPlatformProviders() {
       return {
         ...p,
         tracked: true,
-        configured,
+        configured: stream?.configured,
         requests: null as number | null,
         costDollars: 0,
         revenueDollars: stream?.thisMonth ?? 0,
@@ -311,7 +269,7 @@ export default function AdminPlatformProviders() {
     return {
       ...p,
       tracked: false,
-      configured,
+      configured: undefined as boolean | undefined,
       requests: null as number | null,
       costDollars: 0,
       revenueDollars: null as number | null,
@@ -321,8 +279,8 @@ export default function AdminPlatformProviders() {
   const categories = ["all", ...Array.from(new Set(PROVIDER_META.map((p) => p.category)))] as const;
   const filtered = filter === "all" ? resolved : resolved.filter((p) => p.category === filter);
 
-  const connectedCount = resolved.filter((p) => !p.decommissioned && p.configured === true).length;
-  const notConnectedCount = resolved.filter((p) => !p.decommissioned && p.configured === false).length;
+  const trackedCount = resolved.filter((p) => p.tracked).length;
+  const untrackedCount = resolved.length - trackedCount;
   const totalCost = resolved.reduce((sum, p) => sum + p.costDollars, 0);
   const totalRevenue = resolved.reduce((sum, p) => sum + (p.revenueDollars ?? 0), 0);
 
@@ -354,8 +312,8 @@ export default function AdminPlatformProviders() {
         {/* Summary stats */}
         <div className="grid grid-cols-4 gap-4">
           {[
-            { label: "Connected", value: isLoading ? "…" : connectedCount, icon: CheckCircle, color: "text-green-600", bg: "bg-green-50" },
-            { label: "Not connected", value: isLoading ? "…" : notConnectedCount, icon: XCircle, color: "text-gray-500", bg: "bg-gray-50" },
+            { label: "Tracked integrations", value: isLoading ? "…" : trackedCount, icon: CheckCircle, color: "text-green-600", bg: "bg-green-50" },
+            { label: "Not tracked", value: untrackedCount, icon: HelpCircle, color: "text-gray-500", bg: "bg-gray-50" },
             { label: "API cost (MTD)", value: isLoading ? "…" : money(totalCost), icon: DollarSign, color: "text-blue-600", bg: "bg-blue-50" },
             { label: "Affiliate revenue (MTD)", value: isLoading ? "…" : money(totalRevenue), icon: TrendingUp, color: "text-violet-600", bg: "bg-violet-50" },
           ].map((s) => (
@@ -416,7 +374,7 @@ export default function AdminPlatformProviders() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1 flex-wrap">
                           <span className="text-base font-semibold text-gray-900">{p.name}</span>
-                          <ResolvedBadge configured={p.configured} decommissioned={p.decommissioned} />
+                          <ResolvedBadge tracked={p.tracked} configured={p.configured} />
                           <Badge className="bg-blue-100 text-blue-700 border-blue-200">{p.type}</Badge>
                           {p.commission && (
                             <Badge className="bg-green-100 text-green-700 border-green-200">

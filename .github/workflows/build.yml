@@ -73,7 +73,11 @@ jobs:
           node-version: '20'
       # Operation-scoped guard: fails if a money-operation handler (or a money-named file) sources
       # amount/price/userId from req.body. Node built-ins only — no npm ci needed. See §14.
-      - name: Client-trusted amount/identity guard
+      # Predicate fixtures FIRST (ruling 42/43): a guard with a wrong predicate passes truthfully,
+      # so the predicate itself is proven before its verdict is trusted.
+      - name: Money-guard predicate self-test
+        run: node scripts/check-money-endpoints.cjs --self-test
+      - name: Client-trusted amount/identity/rate guard
         run: node scripts/check-money-endpoints.cjs
 
   claims-only-lookup-guard:
@@ -128,6 +132,10 @@ jobs:
       - uses: actions/checkout@v4
       # Grep gate: no optimize/coordination fee literals in LOGIC code (fee_bands seed /
       # migrations / config rows excluded; `// fee-literal-ok: <reason>` exempts a line).
+      # Predicate fixtures FIRST (ruling 42/43) — this gate was blind to every SCREAMING_SNAKE fee
+      # constant for its whole life while reporting PASS.
+      - name: Fee-gate predicate self-test
+        run: bash scripts/phase2-fee-gate.sh --self-test
       - name: Fee-literal grep (scripts/phase2-fee-gate.sh)
         run: bash scripts/phase2-fee-gate.sh
 

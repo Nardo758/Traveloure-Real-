@@ -68,7 +68,8 @@ export interface UnifiedRevenueDashboard {
 class RevenueTrackingService {
   async recordRevenueEvent(event: RevenueEvent): Promise<void> {
     // Optimization AND coordination fees are 100% platform revenue — route through the 'ai' source
-    // tier (AI_PLATFORM_FEE = 1.0). Coordination fee has no expert/provider split (the coordinator is
+    // tier (AI_PLATFORM_FEE = 1.0). fee-literal-ok: prose naming the commission.ts constant, not an
+    // assignment. Coordination fee has no expert/provider split (the coordinator is
     // paid via the earnings ledger on the bookings they place, not from this fee).
     // expert_review_fee (F3): 100% platform at CAPTURE. R6 (ratified Jul 26, 2026): when the
     // assigned expert COMPLETES the request, completeExpertRequest atomically re-splits this

@@ -222,6 +222,51 @@ function getRoomStay(item: CartItem): { checkIn: string; checkOut: string; night
   return { checkIn, checkOut, nights };
 }
 
+/**
+ * THE CLIENT POLLING FALLBACK for a cart checkout (task #213, legacy-reconciliation lane).
+ *
+ * The Stripe webhook (`payment_intent.succeeded`) is the authoritative confirmation path, but it
+ * is asynchronous and is not delivered at all in local dev. This flow previously had NO client
+ * fallback whatsoever: `StripeCheckout` took `bookingIds` and never used them, so the traveler's
+ * browser observed a successful payment and told the server nothing. Both endpoints below now
+ * cover cart bookings (they used to query the legacy `bookings` table with `service_bookings`
+ * ids and match nothing) and BOTH are idempotent server-side — the atomic conditional in the
+ * shared promotion is the guard, so a webhook that lands mid-poll simply wins and every call
+ * here becomes a no-op. Never a double flip, and never a reason to block the traveler.
+ */
+async function confirmCheckoutPayment(
+  bookingIds: string[],
+  paymentIntentId: string,
+  attempts = 4,
+  delayMs = 1200,
+): Promise<void> {
+  if (bookingIds.length === 0) return;
+  for (let i = 0; i < attempts; i++) {
+    await new Promise((r) => setTimeout(r, delayMs));
+    try {
+      const res = await fetch("/api/bookings/bulk-status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ bookingIds }),
+      });
+      if (res.ok && (await res.json()).allConfirmed) return; // the webhook got there first
+    } catch {
+      /* transient — keep polling, then fall through to the explicit confirm */
+    }
+  }
+  await Promise.all(
+    bookingIds.map((bookingId) =>
+      fetch("/api/bookings/confirm-payment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ bookingId, paymentIntentId }),
+      }).catch(() => undefined),
+    ),
+  );
+}
+
 export default function CartPage() {
   const { user, isLoading: authLoading, updatePreferredCurrency } = useAuth();
   const { openSignInModal } = useSignInModal();
@@ -2458,7 +2503,16 @@ export default function CartPage() {
                         <StripeCheckout
                           paymentIntent={checkoutPaymentIntent}
                           bookingIds={checkoutBookingIds}
-                          onSuccess={(paymentIntentId) => {
+                          onSuccess={async (paymentIntentId) => {
+                            // #213 (legacy-reconciliation lane): the CLIENT POLLING FALLBACK, which
+                            // this flow never had. The webhook is the authoritative confirmation, but
+                            // it is asynchronous (and undelivered in local dev), so poll bulk-status
+                            // for it and, if it hasn't landed, drive the same shared promotion through
+                            // confirm-payment. Both are idempotent — the server's atomic conditional
+                            // is the guard, so a webhook arriving mid-poll simply wins and this
+                            // becomes a no-op. Best-effort: never block the traveler's confirmation
+                            // screen on it (the booking is already paid; the webhook will catch up).
+                            await confirmCheckoutPayment(checkoutBookingIds, paymentIntentId).catch(() => {});
                             queryClient.invalidateQueries({ queryKey: ["/api/my-bookings"] });
                             toast({ title: "Payment successful!", description: "Your booking has been confirmed." });
                             setLocation("/bookings");

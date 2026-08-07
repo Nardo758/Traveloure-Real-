@@ -486,12 +486,32 @@ interface MissedWebhook {
 }
 
 export interface ReconciliationMismatch {
-  type: "stripe_charge_no_booking" | "booking_no_stripe_charge";
+  /** One of shared/schema.ts `RECONCILIATION_EXCEPTION_KINDS` (ruling 40 widened this from the
+   *  two legacy-rail kinds to nine, seven of which are cart-rail classifications). Kept as a
+   *  plain string because this value is READ BACK OUT of an `admin_notifications.reason` JSON
+   *  blob — a union here would only pretend the parse was validated. */
+  type: string;
+  rail?: string;
   chargeId?: string;
   bookingId?: string;
   paymentIntentId?: string;
   amount?: number;
 }
+
+/** Plain-language digest labels for the drift vocabulary. Mirrors KIND_LABELS on the admin page.
+ *  An unknown kind falls back to the raw key rather than being mislabelled as a known one. */
+const RECONCILIATION_LABELS: Record<string, string> = {
+  pi_succeeded_no_booking: "Payment succeeded — NO booking exists",
+  pi_succeeded_claim_provisional: "Payment succeeded — booking still an unpromoted claim",
+  pi_succeeded_booking_voided: "Payment succeeded — booking is voided/terminal",
+  booking_confirmed_no_pi: "Booking says paid — no PaymentIntent at all",
+  booking_confirmed_pi_not_succeeded: "Booking says paid — PaymentIntent not succeeded",
+  amount_mismatch: "Charged amount ≠ server-derived total",
+  refund_not_reversed: "Stripe refund with no reversal in the database",
+  payment_provenance_unverified: "PaymentIntent id the checkout never wrote — provenance unverifiable",
+  stripe_charge_no_booking: "Stripe charge — no booking (legacy rail)",
+  booking_no_stripe_charge: "Booking confirmed — no charge (legacy rail)",
+};
 
 interface AdminDigestParams {
   toEmail: string;
@@ -548,14 +568,16 @@ export async function sendAdminDigestEmail(params: AdminDigestParams): Promise<v
 
   const reconRows = (params.reconciliationMismatches ?? [])
     .map((m) => {
-      const label =
-        m.type === "stripe_charge_no_booking"
-          ? "Stripe charge — no booking"
-          : "Booking confirmed — no charge";
+      // Ruling 40: the drift job now emits NINE classifications, not two. The old two-branch
+      // ternary labelled every unrecognised kind "Booking confirmed — no charge", which would
+      // have described an amount mismatch or an unreversed refund as something it is not — a
+      // detector whose ops surface mislabels the finding is worse than one that says nothing.
+      const label = RECONCILIATION_LABELS[m.type] ?? m.type;
       const ref =
-        m.type === "stripe_charge_no_booking"
-          ? `Charge: ${escHtml(m.chargeId) || "—"} · $${escHtml(String(m.amount ?? "?"))}`
-          : `Booking: ${escHtml(m.bookingId) || "—"} · PI: ${escHtml(m.paymentIntentId) || "—"}`;
+        m.chargeId && !m.bookingId
+          ? `Charge: ${escHtml(m.chargeId)} · $${escHtml(String(m.amount ?? "?"))}`
+          : `Booking: ${escHtml(m.bookingId) || "—"} · PI: ${escHtml(m.paymentIntentId) || "—"}` +
+            (m.amount != null ? ` · $${escHtml(String(m.amount))}` : "");
       return `<tr style="background:#FFF7ED">
         <td style="padding:8px 12px;color:#92400E;font-size:13px;font-weight:600">${label}</td>
         <td style="padding:8px 12px;color:#111827;font-size:13px;font-family:monospace">${ref}</td>

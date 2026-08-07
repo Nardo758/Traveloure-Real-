@@ -101,7 +101,6 @@ export async function fulfillReadyMadePurchase(purchaseId: string): Promise<Fulf
       sourceItems.map(({ id: _id, tripId: _tripId, createdAt: _c, updatedAt: _u, ...rest }: any) => ({
         ...rest,
         tripId: cloneTrip.id,
-        routing_status: "in_planning", // §3.1: explicit override — cloned items must never inherit author-side routing state
       })),
     );
   }

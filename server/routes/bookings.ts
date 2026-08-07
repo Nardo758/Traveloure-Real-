@@ -13,7 +13,7 @@ import { requireOwnership } from '../middleware/ownershipGuard';
 import { storage } from '../storage';
 import { db } from '../db';
 import { serviceBookings } from '@shared/schema';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { getUserId } from '../utils/auth';
 import { holdWindowDays } from '../config/earnings-hold.config';
 import { revertPurchasedItemsForBooking } from '../services/item-routing.service';
@@ -110,6 +110,35 @@ router.post('/process-cart', isAuthenticated, async (req, res) => {
 });
 
 /**
+ * Does `bookingId` name a CART-CHECKOUT booking (service_bookings) owned by `userId`?
+ *
+ * The two booking rails have disjoint id spaces, so this is also how confirm-payment and
+ * bulk-status decide which rail a client-supplied id belongs to. Returns null when the id is
+ * not a service_booking at all (⇒ the legacy `bookings` rail owns it) and `owned:false` when it
+ * is one but belongs to someone else (⇒ 403, never a cross-user confirmation).
+ */
+async function loadCartBooking(
+  bookingId: string,
+  userId: string,
+): Promise<{ owned: boolean; status: string | null; paymentIntentId: string | null } | null> {
+  const rows = await db
+    .select({
+      travelerId: serviceBookings.travelerId,
+      status: serviceBookings.status,
+      pi: serviceBookings.stripePaymentIntentId,
+    })
+    .from(serviceBookings)
+    .where(eq(serviceBookings.id, bookingId))
+    .limit(1);
+  if (rows.length === 0) return null;
+  return {
+    owned: rows[0].travelerId === userId,
+    status: rows[0].status ?? null,
+    paymentIntentId: rows[0].pi ?? null,
+  };
+}
+
+/**
  * POST /api/bookings/confirm-payment
  *
  * FALLBACK / POLLING ENDPOINT — the authoritative confirmation path is the
@@ -117,10 +146,19 @@ router.post('/process-cart', isAuthenticated, async (req, res) => {
  * This endpoint exists so the client can recover when the browser was closed before
  * the webhook fired, or in local dev where webhooks aren't delivered.
  *
+ * TWO RAILS (task #213, legacy-reconciliation lane)
+ * ─────────────────────────────────────────────────
+ * This endpoint used to read ONLY the legacy `bookings` table, so a CART-CHECKOUT booking id
+ * (`service_bookings`) 404'd here — the client's fallback could not confirm the very bookings
+ * `POST /api/checkout` creates (ruling 38 filed this as #213). It now detects which rail the id
+ * belongs to and, for the cart rail, drives the SAME shared promotion the webhook drives
+ * (`promotePaidCheckout`) — one promotion implementation, two callers, so the two signals can
+ * never diverge on what "confirmed" means and a double signal produces exactly one flip.
+ *
  * Behaviour:
  *   1. If the booking is already confirmed (webhook beat us here) → return 200 immediately.
- *   2. If the booking is still pending_payment → run the full server-side verification
- *      and confirm it (idempotent fallback).
+ *   2. If the booking is still pending → run the full server-side verification and confirm it
+ *      (idempotent — the atomic conditional in the shared promotion IS the guard).
  */
 router.post('/confirm-payment', isAuthenticated, async (req, res) => {
   try {
@@ -136,6 +174,73 @@ router.post('/confirm-payment', isAuthenticated, async (req, res) => {
       return res.status(401).json({ success: false, error: 'User identity could not be resolved' });
     }
 
+    // ── CART RAIL (service_bookings) ────────────────────────────────────────────────────
+    const cart = await loadCartBooking(String(bookingId), userId);
+    if (cart) {
+      if (!cart.owned) {
+        return res.status(403).json({ success: false, error: 'Forbidden' });
+      }
+      if (cart.status === 'confirmed') {
+        return res.json({ success: true, message: 'Booking confirmed', source: 'webhook' });
+      }
+      // §14/security: the client-supplied paymentIntentId is NEVER trusted on its own. It must
+      // (a) be the PI the SERVER stamped on this very row, and (b) actually have succeeded at
+      // Stripe. The shared promotion re-asserts (a) inside its atomic WHERE; this check makes
+      // the failure legible instead of a silent zero-row no-op. Unlike the webhook, the client
+      // path may NOT stamp a PaymentIntent onto an unstamped claim — only a signature-verified
+      // Stripe delivery may do that.
+      if (!cart.paymentIntentId || cart.paymentIntentId !== String(paymentIntentId)) {
+        return res.status(409).json({
+          success: false,
+          error: 'payment_intent_mismatch',
+          message: 'That payment does not belong to this booking.',
+        });
+      }
+      const stripeClient = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
+        apiVersion: '2024-12-18.acacia' as any,
+      });
+      let intent: Stripe.PaymentIntent;
+      try {
+        intent = await stripeClient.paymentIntents.retrieve(String(paymentIntentId));
+      } catch (stripeErr: any) {
+        return res.status(402).json({
+          success: false,
+          error: `Stripe lookup failed: ${stripeErr?.message ?? stripeErr}`,
+        });
+      }
+      if (intent.status !== 'succeeded') {
+        return res.status(402).json({
+          success: false,
+          error: `PaymentIntent ${paymentIntentId} has status "${intent.status}", not "succeeded"`,
+        });
+      }
+
+      const { promotePaidCheckout } = await import('../services/checkout-claim.service');
+      const promotion = await promotePaidCheckout({
+        paymentIntentId: String(paymentIntentId),
+        actor: 'client',
+        actorId: userId,
+        bookingIds: [String(bookingId)],
+      });
+      if (promotion.promoted.length > 0) {
+        return res.json({ success: true, message: 'Booking confirmed', source: 'fallback' });
+      }
+      if (promotion.alreadyConfirmed.length > 0) {
+        // The webhook won the race between our read above and the atomic flip. Same outcome.
+        return res.json({ success: true, message: 'Booking confirmed', source: 'webhook' });
+      }
+      const exception = promotion.exceptions[0];
+      return res.status(409).json({
+        success: false,
+        error: 'reconciliation_exception',
+        message:
+          'This checkout could not be confirmed (it expired or was cancelled before the payment landed). ' +
+          'Nothing was resurrected — our team has been alerted to reconcile the payment.',
+        detail: exception?.reason ?? 'not_promotable',
+      });
+    }
+
+    // ── LEGACY RAIL (`bookings`) — process-cart / booking-demo flow. Unchanged. ──────────
     // Fast-path: if the webhook already confirmed this booking, return success immediately
     const existing = await storage.getBookingStatusForUser(bookingId, userId);
     if (existing?.status === 'confirmed') {
@@ -172,6 +277,11 @@ router.post('/confirm-payment', isAuthenticated, async (req, res) => {
  * Return the current status for a list of booking IDs belonging to the authenticated user.
  * Used by the client to poll whether the Stripe webhook has already confirmed the bookings
  * before falling back to the confirm-payment endpoint.
+ *
+ * TWO RAILS (task #213): `storage.getBulkBookingStatuses` reads the legacy `bookings` table, so
+ * a cart-checkout id returned NOTHING and `allConfirmed` was permanently false — the client's
+ * poll could never observe the webhook's work. Both id spaces are now answered; they are
+ * disjoint, so an id is resolved by whichever rail owns it, always scoped to the session user.
  */
 router.post('/bulk-status', isAuthenticated, async (req, res) => {
   try {
@@ -186,6 +296,25 @@ router.post('/bulk-status', isAuthenticated, async (req, res) => {
     }
 
     const statuses = await storage.getBulkBookingStatuses(bookingIds, userId);
+    // Cart rail: fill in every id the legacy rail did not answer. Ownership is enforced by the
+    // traveler_id predicate, exactly as the legacy query enforces it with user_id.
+    const unresolved = (bookingIds as string[]).filter((id) => !statuses[id]);
+    if (unresolved.length > 0) {
+      const cartRows = await db
+        .select({
+          id: serviceBookings.id,
+          status: serviceBookings.status,
+          trackingNumber: serviceBookings.trackingNumber,
+        })
+        .from(serviceBookings)
+        .where(and(inArray(serviceBookings.id, unresolved), eq(serviceBookings.travelerId, userId)));
+      for (const row of cartRows) {
+        statuses[row.id] = {
+          status: row.status ?? 'unknown',
+          confirmationCode: row.trackingNumber ?? null,
+        };
+      }
+    }
     const allConfirmed = bookingIds.every((id: string) => statuses[id]?.status === 'confirmed');
     res.json({ statuses, allConfirmed });
   } catch (error: any) {

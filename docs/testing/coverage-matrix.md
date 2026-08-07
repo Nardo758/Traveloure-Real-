@@ -100,7 +100,8 @@ Wave key (brief §7): W1 = Journey Wave 1, build now · W2 = post SLIP phase 4 �
 |---|---|
 | Onboard → service draft→submitted→approved → bookable | J11 → deferred:provider-backoffice-p1 |
 | Back-office bookings view; provider CANNOT read routing_status (contract NEVER row) | J11 + N5 → deferred:provider-backoffice-p1 |
-| Short-link generation (my-offerings-table.tsx:342) → attributed booking → rails band; platform-sourced → full band; rates differ, both from fee_bands | J12 → deferred:provider-backoffice-p1 |
+| Short-link generation (my-offerings-table.tsx:342) → attributed booking → acquisitionRef→short_link chain + attribution REPORTING; attributed and platform-sourced resolve the SAME rate (single-band divergence pin, ruling 45) | J12.1 → deferred:provider-backoffice-p1 (the SPEC is now truthful and buildable — ruling 45 rewrote it from an unpassable dual-rate claim to a single-band divergence pin; the journey itself is still Journey Wave 4 work) |
+| Dual-rate: attributed → rails band vs platform-sourced → full band, rates differ, both from fee_bands — **the mechanism does not exist** (no rails band, no attribution input to decideBandKey, checkout excludes attribution from fee decisions by design). Ruling 45. | J12.2 → deferred:provider-backoffice-p1 |
 | Availability jsonb slot claim (claimed-at-pay) | F-prov-1 → deferred:provider-backoffice-p1 |
 | Confirm completion → review gate opens → booking-gated FK review | J11 → deferred:provider-backoffice-p1 |
 
@@ -141,6 +142,12 @@ Wave key (brief §7): W1 = Journey Wave 1, build now · W2 = post SLIP phase 4 �
 | item_transition_log UPDATE/DELETE via app — no route exists (inventory assertion) | N12 |
 | Mutation via getTripRole path — none remain (inventory assertion) | N15 |
 | Checkout commits NOTHING without a PaymentIntent (zero AUTHORIZED bookings, cart intact, no slot promoted, no item `purchased`, no `to_status='purchased'` row, no provider notification; a clean retry is never a false success) | N16 (ruling 38); EX: checkout-claim-sweep.db.test.ts proves the TTL reclaim is idempotent, race-safe and cannot void a paid booking |
+| Webhook-only recovery of a cart checkout: the client dies after authorization and the Stripe webhook alone promotes `payment_pending → confirmed` — booking purchasable, diary row `actor_type='webhook'`; incl. the mid-authorization window where the PaymentIntent was never stamped, and the wiring through `handlePaymentSucceeded` itself (task #212) | N17; EX: checkout-payment-promotion.db.test.ts |
+| Double signal (client confirm + webhook, either order and concurrently): EXACTLY ONE promotion and ONE diary set — the atomic conditional is the guard, never a double flip (tasks #212/#213) | N18; EX: checkout-payment-promotion.db.test.ts |
+| Late webhook vs a TTL-voided claim: the row is NEVER resurrected (void wins after TTL, ruling 38 §15b); the signal lands in a reconciliation-exception state that is a DB fact and ops-visible, never silent | N19; EX: checkout-payment-promotion.db.test.ts |
+| Stripe-vs-DB DRIFT is detectable on the CART rail, not only the legacy one (ruling 40): each drift case — payment with no booking, payment against a voided booking, booking with no PaymentIntent, booking whose PaymentIntent is not succeeded, amount mismatch, unreversed refund — lands as a PERSISTED, append-only exception row with the correct classification; a re-detected drift records no duplicate; the legacy rail's two original checks still fire and a legacy PaymentIntent is not indicted by the cart rail | N20; EX: reconciliation-detection.db.test.ts |
+| The scan's ONE permitted repair: a PI-succeeded / still-provisional claim is recovered through the EXISTING shared promotion (`promotePaidCheckout`), diary `actor_type='reconciliation'`, incl. the never-stamped mid-authorization window; when the shared promotion refuses, the drift is RECORDED and nothing is force-written | N21; EX: reconciliation-detection.db.test.ts |
+| A clean pass yields ZERO exceptions AND a RECORDED run — "no drift" is distinguishable from "the job has not run"; a pass that could not consult Stripe is recorded as `skipped` with a reason | N22; EX: reconciliation-detection.db.test.ts |
 
 ## Existing-coverage absorption (Phase 0 item 2 — nothing deleted)
 | Existing suite | Disposition |

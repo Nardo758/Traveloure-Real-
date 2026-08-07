@@ -27,6 +27,10 @@
  *                 compensating rollback (explicitly rejected by the decision-maker: rollback
  *                 code runs in exactly the conditions that broke the operation) — expiry is
  *                 durable against a process death, rollback is not.
+ *   5. CONFIRM    — the traveler actually PAYS. `promotePaidCheckout` below moves the authorized
+ *                 claim `payment_pending → confirmed`. Added by the legacy-reconciliation lane
+ *                 (tasks #212/#213); see its own docblock for why this step previously had a
+ *                 single un-redundant implementation.
  *
  * NO NEW STATE WAS NEEDED. `status='payment_pending' AND stripe_payment_intent_id IS NULL` is
  * already "claimed but not authorized" by construction, and every consumer already keys on that
@@ -37,11 +41,13 @@
  *
  * Stripe accepts `paymentIntents.create` and the server then dies before the PI id is stamped.
  * The row now LOOKS provisional while a real PaymentIntent exists and the traveler may be
- * charged. Nothing else in the codebase would catch it: BOTH reconciliation paths that appear
- * to cover it — `stripePaymentService.handlePaymentSucceeded` and
- * `POST /api/bookings/confirm-payment` — query the LEGACY `bookings` table and are inert for
- * cart checkout (filed as tasks #212 / #213; not fixed here, and this module is designed
- * assuming they stay broken).
+ * charged. When this module was written nothing else in the codebase would catch it: BOTH
+ * reconciliation paths that appear to cover it — `stripePaymentService.handlePaymentSucceeded`
+ * and `POST /api/bookings/confirm-payment` — queried the LEGACY `bookings` table and were inert
+ * for cart checkout (filed as tasks #212 / #213), so the sweep was designed assuming they stay
+ * broken. **#212/#213 have since LANDED** (legacy-reconciliation lane): both now drive
+ * `promotePaidCheckout` below, which covers cart checkout. The sweep's design is unchanged and
+ * deliberately still assumes nothing about them — redundancy means every layer stands alone.
  *
  * TWO LAYERS, because neither alone is sufficient:
  *
@@ -84,6 +90,7 @@ import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "../db";
 import { serviceBookings } from "@shared/schema";
 import { logItemTransition } from "./item-transition-log.service";
+import { markItemPurchased } from "./item-routing.service";
 import { logger } from "../infrastructure/logger";
 
 /** Ratified TTL (decision-maker, ruling 38): long enough for a traveler to finish the Stripe
@@ -462,6 +469,458 @@ async function voidClaim(
       "[checkout-sweep] void transaction failed — claim left provisional for the next pass (no partial effect)",
     );
     return { voided: false, slotsReleased: 0, diaryRows: 0 };
+  }
+}
+
+// ══ STEP 5 — THE PAYMENT PROMOTION (tasks #212 / #213, legacy-reconciliation lane) ═══════════
+//
+// WHY THIS EXISTS
+// ───────────────
+// `POST /api/checkout` ends with an AUTHORIZED claim: `service_bookings.status='payment_pending'`
+// with the PaymentIntent id stamped. The traveler then pays in the Stripe PaymentElement, and
+// something has to move that row to `confirmed`. Both documented reconciliation paths —
+// `stripePaymentService.handlePaymentSucceeded` and `POST /api/bookings/confirm-payment` — query
+// the LEGACY `bookings` table with `service_bookings` ids, so for a cart checkout they matched
+// ZERO rows and did nothing (ruling 38 filed them as #212/#213). The only thing that actually
+// moved a cart booking to `confirmed` was one raw inline UPDATE in the webhook route, keyed on
+// `stripe_payment_intent_id` — a single implementation, with no redundancy behind it and no
+// audit trail, that could not help at all when the PI id was never stamped.
+//
+// This function is the ONE promotion implementation, with TWO callers (webhook + client confirm).
+//
+// IT IS NOT `promoteAuthorizedCheckout`. That one (payments.routes.ts) is the AUTHORIZATION
+// promotion — the post-Stripe-call commitment of step 3 (item flips, counters, notifications,
+// cart clear). This is the PAYMENT promotion — step 5, the money leg. Deliberately disjoint:
+// the effects in step 3 are NOT idempotent (a counter increment, a provider EMAIL), so this
+// function must never re-run them. The one step-3 effect it DOES retry is `markItemPurchased`,
+// because that helper is an atomic conditional flip and is safely re-runnable — which makes this
+// path a genuine catch-up for a server that died between the authorization stamp and the promote.
+//
+// IDEMPOTENCY MECHANISM (§15, the same discipline as `stampAuthorization` / `voidClaim`)
+// ───────────────────────────────────────────────────────────────────────────────────────
+//     UPDATE service_bookings SET status='confirmed', confirmed_at=NOW()
+//      WHERE id = … AND status='payment_pending' AND stripe_payment_intent_id = <pi>
+//      RETURNING id
+//
+// The row transition IS the guard — never check-then-update. Whichever signal arrives first
+// matches the row and promotes it; every later signal matches 0 rows and is a NO-OP, not a second
+// flip and not a second diary row. That is exactly what makes "client confirm AND webhook" safe.
+//
+// The predicate also carries the §14/security property that a client cannot promote with a
+// PaymentIntent of its own choosing: the row's OWN server-stamped `stripe_payment_intent_id` has
+// to equal the one presented.
+//
+// ORDERING GUARANTEES (all five orderings, stated explicitly)
+// ───────────────────────────────────────────────────────────
+//  1. webhook BEFORE the authorization stamp (server died mid-authorization, Stripe has the PI,
+//     the row is provisional): resolvable ONLY from the PI's own `bookingIds` metadata. The
+//     webhook stamps the PI first via `stampAuthorization` — the SAME atomic conditional the
+//     TTL sweep's Layer-2 recovery uses — then promotes. Allowed for SERVER-VERIFIED actors
+//     only (`webhook`, `reconciliation` — see SERVER_VERIFIED_ACTORS): that PaymentIntent object
+//     came either from a signature-verified Stripe delivery or from the drift job's own
+//     authenticated read of the Stripe API, so its metadata is Stripe's word, not a client's.
+//     A CLIENT may never stamp a PI onto an unstamped row (ruling 40 amends 39's phrasing here;
+//     the client prohibition is unchanged and still proven by N17c).
+//  2. webhook AFTER the authorization stamp, before payment: normal path — one promotion.
+//  3. webhook AFTER the client confirm (or vice-versa): the loser matches 0 rows ⇒ no-op,
+//     reported as `alreadyConfirmed`. Exactly ONE promotion and ONE diary set.
+//  4. webhook AFTER the TTL void: `status='expired'` fails the predicate. The row is NEVER
+//     resurrected — void wins after TTL. But a PI that genuinely succeeded post-void is real
+//     money, so this lands in a RECONCILIATION-EXCEPTION state: a `reconciliationException`
+//     marker on the booking row, a `checkout_reconcile_exception` diary row, and a
+//     logger.error. Ops-visible, never silent. (In practice the sweep cannot void a row whose
+//     PI may exist — that is its Layer-1/Layer-2 contract — so this is the residual case where
+//     Stripe was unreachable at sweep time; it must still be caught, not assumed away.)
+//  5. TTL void racing the webhook on an UNSTAMPED row: `stampAuthorization` is the arbiter.
+//     Void first ⇒ the stamp matches 0 rows ⇒ no promotion, reconciliation exception. Stamp
+//     first ⇒ the row leaves the sweep's candidate set (`stripe_payment_intent_id IS NULL`)
+//     and the void matches 0 rows. A promote and a void can never both win.
+
+/**
+ * Which signal drove this promotion. Recorded on the diary row (rulings 12/16/18).
+ *
+ * `reconciliation` (reconciliation-detection lane) is the daily Stripe-vs-DB drift job. It is a
+ * SERVER-VERIFIED Stripe source exactly as `webhook` is — see `SERVER_VERIFIED_ACTORS` below for
+ * why that distinction, and not the transport, is what ordering 1 actually turns on.
+ */
+export type PromotionActor = "webhook" | "client" | "reconciliation";
+
+/**
+ * Ordering-1 capability (resolve bookings from `pi.metadata.bookingIds` and stamp a PI onto an
+ * unstamped claim) is gated on the PaymentIntent object being STRIPE'S OWN WORD, not a client's.
+ *
+ * Ruling 39 wrote that as "webhook only", because at the time the signature-verified webhook was
+ * the only server-verified source in the codebase. The reconciliation-detection lane adds a
+ * second one: the drift job reads the PaymentIntent from `stripe.paymentIntents.list` using the
+ * platform's OWN secret key. That is the same authority as a signed delivery — arguably stronger,
+ * since it is a pull rather than a push — so it carries the same capability. The rule that
+ * matters and does NOT move: a CLIENT-SUPPLIED PaymentIntent may never resolve or stamp anything
+ * (proven by N17c). See DECISIONS.md ruling 40, which amends 39 on exactly this clause.
+ */
+const SERVER_VERIFIED_ACTORS: ReadonlySet<PromotionActor> = new Set<PromotionActor>([
+  "webhook",
+  "reconciliation",
+]);
+
+/** The diary `actorType` for a promotion actor (item-transition-log vocabulary). A client-driven
+ *  promotion is the traveler's own confirm poll, hence `traveler`. */
+function diaryActorType(actor: PromotionActor): "webhook" | "reconciliation" | "traveler" {
+  if (actor === "webhook") return "webhook";
+  if (actor === "reconciliation") return "reconciliation";
+  return "traveler";
+}
+
+export interface PaymentPromotionResult {
+  /** Booking ids THIS call moved `payment_pending → confirmed`. */
+  promoted: string[];
+  /** Already `confirmed` (or confirmed by the other signal mid-flight) — idempotent no-op. */
+  alreadyConfirmed: string[];
+  /** Rows in a non-promotable terminal state (expired/failed/cancelled/refunded) — a payment
+   *  signal arrived for a booking that cannot be confirmed. Ops-visible; never resurrected. */
+  exceptions: Array<{ bookingId: string; status: string | null; reason: string }>;
+  /** Rows the webhook stamped a PaymentIntent onto first (ordering 1 above). */
+  lateAuthorized: string[];
+  /** Diary rows written (rulings 12/16/18). */
+  diaryRows: number;
+}
+
+const TERMINAL_UNPROMOTABLE = new Set([
+  CLAIM_EXPIRED_STATUS,
+  "failed",
+  "payment_failed",
+  "cancelled",
+  "canceled",
+  "refunded",
+]);
+
+interface CandidateRow {
+  id: string;
+  tripId: string | null;
+  status: string | null;
+  stripePaymentIntentId: string | null;
+  bookingDetails: Record<string, unknown> | null;
+  travelerId: string | null;
+  idempotencyKey: string | null;
+}
+
+function mapCandidate(r: any): CandidateRow {
+  return {
+    id: String(r.id),
+    tripId: r.trip_id ?? null,
+    status: r.status ?? null,
+    stripePaymentIntentId: r.stripe_payment_intent_id ?? null,
+    bookingDetails: (r.booking_details ?? null) as Record<string, unknown> | null,
+    travelerId: r.traveler_id ?? null,
+    idempotencyKey: r.idempotency_key ?? null,
+  };
+}
+
+const CANDIDATE_COLUMNS = sql`id, trip_id, status, stripe_payment_intent_id, booking_details, traveler_id, idempotency_key`;
+
+async function loadPromotionCandidates(
+  paymentIntentId: string,
+  metadataBookingIds: string[],
+  restrictToBookingIds: string[] | undefined,
+): Promise<CandidateRow[]> {
+  const byId = metadataBookingIds.filter(Boolean);
+  const rows = await db.execute(sql`
+    SELECT ${CANDIDATE_COLUMNS}
+    FROM service_bookings
+    WHERE stripe_payment_intent_id = ${paymentIntentId}
+       ${byId.length > 0 ? sql`OR id IN (${sql.join(byId.map((id) => sql`${id}`), sql`, `)})` : sql``}
+  `);
+  const found = new Map<string, CandidateRow>();
+  for (const r of rows.rows as any[]) {
+    const row = mapCandidate(r);
+    found.set(row.id, row);
+  }
+
+  // SIBLING EXPANSION — for the never-stamped window only.
+  //
+  // Stripe caps a metadata VALUE at 500 chars, and `createPaymentIntent` TRUNCATES `bookingIds`
+  // past 490 (`…` suffix). For a large enough cart the tail of the list is simply not in the
+  // metadata, so the metadata-resolved recovery above would rescue the first N rows of a
+  // multi-item checkout and silently leave the rest provisional — a partially-recovered
+  // checkout, which is worse than either outcome. The rows carry their own linkage: checkout
+  // stamps the bare idempotency key on the first row and `key#1`, `key#2`, … on the rest
+  // (payments.routes.ts), the same convention `findPriorClaim` reads. So one unstamped row
+  // identifies its whole checkout. Scoped to that row's OWN traveler, exactly as findPriorClaim
+  // is, so a `%`/`_` in a client-chosen key can never reach another user's rows.
+  const unstamped = Array.from(found.values()).filter((r) => r.stripePaymentIntentId === null && r.idempotencyKey && r.travelerId);
+  for (const row of unstamped) {
+    const base = row.idempotencyKey!.replace(/#\d+$/, "");
+    const siblings = await db.execute(sql`
+      SELECT ${CANDIDATE_COLUMNS}
+      FROM service_bookings
+      WHERE traveler_id = ${row.travelerId}
+        AND (idempotency_key = ${base} OR idempotency_key LIKE ${base + "#%"})
+    `);
+    for (const r of siblings.rows as any[]) {
+      const sibling = mapCandidate(r);
+      if (found.has(sibling.id)) continue;
+      // Only rows this PaymentIntent could legitimately own. A sibling already stamped with a
+      // DIFFERENT PI is not ours to touch — including it would manufacture a false
+      // `payment_intent_mismatch` exception out of an expansion the caller never asked for.
+      if (sibling.stripePaymentIntentId !== null && sibling.stripePaymentIntentId !== paymentIntentId) continue;
+      found.set(sibling.id, sibling);
+    }
+  }
+
+  const all = Array.from(found.values());
+  if (!restrictToBookingIds) return all;
+  const allow = new Set(restrictToBookingIds);
+  return all.filter((r) => allow.has(r.id));
+}
+
+/**
+ * THE SHARED PAYMENT PROMOTION. Never throws — a reconciliation path that can take the webhook
+ * (or the traveler's confirmation poll) down is worse than one that reports and logs.
+ *
+ * @param paymentIntentId   the PaymentIntent that succeeded (server-verified by BOTH callers:
+ *                          the webhook by Stripe signature, the client path by a
+ *                          `paymentIntents.retrieve` status check before it calls in).
+ * @param actor             which signal is promoting — recorded on the diary row.
+ * @param metadataBookingIds `pi.metadata.bookingIds`. Webhook only (see ordering 1).
+ * @param bookingIds        optional narrowing to the caller's own booking (the client confirm
+ *                          names exactly one). Never widens the set.
+ */
+export async function promotePaidCheckout(opts: {
+  paymentIntentId: string;
+  actor: PromotionActor;
+  actorId?: string | null;
+  metadataBookingIds?: string[];
+  bookingIds?: string[];
+}): Promise<PaymentPromotionResult> {
+  const { paymentIntentId, actor } = opts;
+  const result: PaymentPromotionResult = {
+    promoted: [],
+    alreadyConfirmed: [],
+    exceptions: [],
+    lateAuthorized: [],
+    diaryRows: 0,
+  };
+  if (!paymentIntentId) return result;
+
+  // Ordering 1 is a SERVER-VERIFIED-SOURCE capability: only a PaymentIntent that is Stripe's own
+  // word — a signature-verified webhook delivery, or the drift job's authenticated read of the PI
+  // from the Stripe API — may name bookings that do not yet carry this PI id. A CLIENT is confined
+  // to rows already stamped (N17c). Ruling 40, amending 39's "webhook only" phrasing.
+  const metadataIds = SERVER_VERIFIED_ACTORS.has(actor) ? (opts.metadataBookingIds ?? []) : [];
+
+  let candidates: CandidateRow[];
+  try {
+    candidates = await loadPromotionCandidates(paymentIntentId, metadataIds, opts.bookingIds);
+  } catch (err) {
+    logger.error(
+      { err, paymentIntentId, actor },
+      "[checkout-promote] candidate query failed — no rows touched",
+    );
+    return result;
+  }
+  if (candidates.length === 0) return result;
+
+  for (const row of candidates) {
+    // ── Ordering 1: the webhook is the FIRST signal of success and the PI was never stamped.
+    if (row.stripePaymentIntentId === null) {
+      if (row.status !== "payment_pending") {
+        result.exceptions.push({
+          bookingId: row.id,
+          status: row.status,
+          reason: "unauthorized_claim_not_pending",
+        });
+        await recordReconciliationException(row, paymentIntentId, actor, "unauthorized_claim_not_pending", result);
+        continue;
+      }
+      const stamped = await stampAuthorization([row.id], paymentIntentId);
+      if (!stamped) {
+        // Ordering 5: the TTL void won. The row is voided and stays voided.
+        result.exceptions.push({ bookingId: row.id, status: row.status, reason: "claim_voided_before_authorization" });
+        await recordReconciliationException(row, paymentIntentId, actor, "claim_voided_before_authorization", result);
+        continue;
+      }
+      result.lateAuthorized.push(row.id);
+      logger.error(
+        { bookingId: row.id, paymentIntentId, actor },
+        `[checkout-promote] the ${actor} was the FIRST signal of success — PaymentIntent existed but was ` +
+          "never stamped (server died mid-authorization). Stamped from a SERVER-VERIFIED Stripe source " +
+          "(a signed webhook delivery, or the drift job's own authenticated read), now promoting.",
+      );
+      row.stripePaymentIntentId = paymentIntentId;
+    }
+
+    if (row.stripePaymentIntentId !== paymentIntentId) {
+      // A different PaymentIntent is stamped on this row — never promote it from this signal.
+      result.exceptions.push({ bookingId: row.id, status: row.status, reason: "payment_intent_mismatch" });
+      await recordReconciliationException(row, paymentIntentId, actor, "payment_intent_mismatch", result);
+      continue;
+    }
+
+    const outcome = await promoteOneBooking(row, paymentIntentId, actor, opts.actorId ?? null);
+    if (outcome.promoted) {
+      result.promoted.push(row.id);
+      result.diaryRows += outcome.diaryRows;
+    } else if (outcome.terminalStatus && TERMINAL_UNPROMOTABLE.has(outcome.terminalStatus)) {
+      result.exceptions.push({ bookingId: row.id, status: outcome.terminalStatus, reason: "not_promotable" });
+      await recordReconciliationException(row, paymentIntentId, actor, "not_promotable", result);
+    } else {
+      // `confirmed` (or anything else already past payment_pending that is not terminal) —
+      // the OTHER signal won the race. Idempotent no-op: no second flip, no second diary row.
+      result.alreadyConfirmed.push(row.id);
+    }
+  }
+
+  // Plan-side catch-up, AFTER the money leg and outside its transaction. Only for rows this call
+  // promoted, and only through `markItemPurchased`, which is an atomic conditional flip paired
+  // with its own diary row (ruling 18) and therefore idempotent: an item already `purchased` (the
+  // normal case — the authorization promote flipped it) matches 0 rows and is left alone. This is
+  // what closes the "server died between the authorization stamp and promoteAuthorizedCheckout"
+  // hole, in which the booking is paid but the plan never learned about it.
+  for (const id of result.promoted) {
+    const row = candidates.find((c) => c.id === id);
+    const itemId = row?.bookingDetails?.itineraryItemId;
+    if (typeof itemId === "string" && itemId) {
+      await markItemPurchased(itemId, id).catch((err) =>
+        logger.error({ err, bookingId: id, itemId }, "[checkout-promote] plan catch-up flip failed (booking stands)"),
+      );
+    }
+  }
+
+  if (result.promoted.length + result.exceptions.length + result.lateAuthorized.length > 0) {
+    logger.info(
+      {
+        paymentIntentId,
+        actor,
+        promoted: result.promoted.length,
+        alreadyConfirmed: result.alreadyConfirmed.length,
+        exceptions: result.exceptions.length,
+        lateAuthorized: result.lateAuthorized.length,
+      },
+      "[checkout-promote] payment promotion complete",
+    );
+  }
+  return result;
+}
+
+/**
+ * ONE booking's money leg: the atomic conditional flip and its diary row, in ONE transaction
+ * (rulings 12/18 — the flip and its log entry are an all-or-nothing pair, exactly as
+ * `markItemPurchased` and `voidClaim` do it).
+ */
+async function promoteOneBooking(
+  row: CandidateRow,
+  paymentIntentId: string,
+  actor: PromotionActor,
+  actorId: string | null,
+): Promise<{ promoted: boolean; diaryRows: number; terminalStatus: string | null }> {
+  try {
+    return await db.transaction(async (tx) => {
+      const claimed = await tx.execute(sql`
+        UPDATE service_bookings
+        SET status = 'confirmed',
+            confirmed_at = NOW(),
+            updated_at = NOW()
+        WHERE id = ${row.id}
+          AND status = 'payment_pending'
+          AND stripe_payment_intent_id = ${paymentIntentId}
+        RETURNING id
+      `);
+      if (claimed.rows.length === 0) {
+        const cur = await tx.execute(sql`SELECT status FROM service_bookings WHERE id = ${row.id}`);
+        const status = ((cur.rows[0] as any)?.status ?? null) as string | null;
+        return { promoted: false, diaryRows: 0, terminalStatus: status };
+      }
+
+      // Rulings 12/16/18: the money-path flip and its diary row are one atomic pair. Item-grained
+      // when the claim carried a plan item, trip-grained (itemId NULL, ruling 16) otherwise; the
+      // whole event is skipped for a booking with no trip (the log is trip-scoped by FK).
+      let diaryRows = 0;
+      if (row.tripId) {
+        const itemId =
+          typeof row.bookingDetails?.itineraryItemId === "string"
+            ? (row.bookingDetails.itineraryItemId as string)
+            : null;
+        await logItemTransition(tx, {
+          tripId: row.tripId,
+          itemId,
+          eventType: "checkout_payment_confirmed",
+          fromStatus: "payment_pending",
+          toStatus: "confirmed",
+          actorType: diaryActorType(actor),
+          actorId,
+        });
+        diaryRows = 1;
+      }
+      return { promoted: true, diaryRows, terminalStatus: null };
+    });
+  } catch (err) {
+    logger.error(
+      { err, bookingId: row.id, paymentIntentId, actor },
+      "[checkout-promote] promotion transaction failed — booking left payment_pending for the next signal",
+    );
+    return { promoted: false, diaryRows: 0, terminalStatus: null };
+  }
+}
+
+/**
+ * RECONCILIATION EXCEPTION — a payment signal that could not be applied. Never a resurrection and
+ * never silent. Three surfaces so it cannot be missed:
+ *   • a `reconciliationException` object merged into `service_bookings.booking_details` (jsonb —
+ *     no migration, no publish-push trap), which is the DB FACT the assertions and the admin
+ *     endpoint read;
+ *   • a trip-grained `checkout_reconcile_exception` diary row when the booking has a trip;
+ *   • a logger.error carrying both ids.
+ * The booking's `status` is deliberately UNTOUCHED: void wins after TTL (ruling 38 §15b).
+ */
+async function recordReconciliationException(
+  row: CandidateRow,
+  paymentIntentId: string,
+  actor: PromotionActor,
+  reason: string,
+  result: PaymentPromotionResult,
+): Promise<void> {
+  logger.error(
+    { bookingId: row.id, paymentIntentId, actor, reason, status: row.status },
+    "[checkout-promote] RECONCILIATION EXCEPTION — a payment signal arrived for a booking that cannot be " +
+      "promoted. The row is NOT resurrected. If the PaymentIntent really succeeded this is money that " +
+      "needs a manual refund or a manual booking — see GET /api/admin/bookings/reconciliation-exceptions.",
+  );
+  try {
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`
+        UPDATE service_bookings
+        SET booking_details = COALESCE(booking_details, '{}'::jsonb) || jsonb_build_object(
+              'reconciliationException'::text, jsonb_build_object(
+                'paymentIntentId'::text, ${paymentIntentId}::text,
+                'actor'::text, ${actor}::text,
+                'reason'::text, ${reason}::text,
+                'status'::text, ${row.status ?? ""}::text,
+                'detectedAt'::text, to_char(NOW() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')
+              )
+            ),
+            updated_at = NOW()
+        WHERE id = ${row.id}
+      `);
+      if (row.tripId) {
+        await logItemTransition(tx, {
+          tripId: row.tripId,
+          itemId:
+            typeof row.bookingDetails?.itineraryItemId === "string"
+              ? (row.bookingDetails.itineraryItemId as string)
+              : null,
+          eventType: "checkout_reconcile_exception",
+          fromStatus: row.status ?? null,
+          toStatus: row.status ?? null,
+          actorType: diaryActorType(actor),
+          actorId: null,
+        });
+        result.diaryRows += 1;
+      }
+    });
+  } catch (err) {
+    logger.error(
+      { err, bookingId: row.id, paymentIntentId },
+      "[checkout-promote] failed to RECORD the reconciliation exception (the log line above is the surviving trace)",
+    );
   }
 }
 

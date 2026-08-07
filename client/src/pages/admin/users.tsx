@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { isExpertRole, isProviderRole } from "@shared/roles";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -46,11 +47,14 @@ interface AdminUserRow {
   spent: string;
 }
 
-// Per-row display covers every canonical stored role
-// (shared/roles.ts EXPERT_ROLES/PROVIDER_ROLES + user/executive_assistant/admin).
-// Role filtering happens SERVER-SIDE: the tab key is sent as the `role` query
-// param and the server expands group keys (expert/provider/ea) to the shared
-// role lists before filtering + paginating the whole table.
+// Audit A6: the previous maps/filter used client-only routing tokens ("provider", "ea") that
+// never match a real stored `users.role` value (shared/roles.ts documents this exact
+// always-false-comparison class) — badges rendered blank and the Provider/EA filter tabs
+// always matched 0 rows. Per-row display now covers every canonical stored role
+// (shared/roles.ts EXPERT_ROLES/PROVIDER_ROLES + user/executive_assistant/admin); the filter
+// tabs match by ROLE FAMILY (isExpertRole/isProviderRole) client-side, since a single-value
+// server `eq()` can't express "any of the 4 expert-family roles" — the same reason `role` is
+// no longer sent to the server as a query param (search still is).
 const ROLE_DISPLAY: Record<string, { label: string; className: string }> = {
   user: { label: "Traveler", className: "bg-blue-100 text-blue-700 border-blue-200" },
   expert: { label: "Expert", className: "bg-purple-100 text-purple-700 border-purple-200" },
@@ -66,14 +70,18 @@ function getRoleDisplay(role: string) {
   return ROLE_DISPLAY[role] ?? { label: role || "Unknown", className: "bg-gray-100 text-gray-700 border-gray-200" };
 }
 
-// Keys must stay in sync with the server's role-group vocabulary
-// (server/routes/admin.routes.ts GET /api/admin/users roleGroups).
-const ROLE_FILTER_OPTIONS: { key: string; label: string }[] = [
-  { key: "user", label: "Traveler" },
-  { key: "expert", label: "Expert" },
-  { key: "provider", label: "Provider" },
-  { key: "ea", label: "EA" },
-  { key: "admin", label: "Admin" },
+interface RoleFilterOption {
+  key: string;
+  label: string;
+  match: (role: string) => boolean;
+}
+
+const ROLE_FILTER_OPTIONS: RoleFilterOption[] = [
+  { key: "user", label: "Traveler", match: (r) => r === "user" },
+  { key: "expert", label: "Expert", match: (r) => isExpertRole(r) },
+  { key: "provider", label: "Provider", match: (r) => isProviderRole(r) },
+  { key: "ea", label: "EA", match: (r) => r === "executive_assistant" },
+  { key: "admin", label: "Admin", match: (r) => r === "admin" },
 ];
 
 export default function AdminUsers() {
@@ -142,11 +150,16 @@ export default function AdminUsers() {
     );
   }
 
-  // Trust the server-filtered page as-is. `search` and `role` are sent as query
-  // params and the server filters the WHOLE table before paginating (50/page);
-  // re-filtering the returned page here could hide matches that live on page 2+
-  // and make the visible count disagree with the server `total`.
-  const filteredUsers = usersData?.users ?? [];
+  const users = usersData?.users ?? [];
+
+  const activeRoleFilter = ROLE_FILTER_OPTIONS.find((o) => o.key === roleFilter) ?? null;
+
+  const filteredUsers = users.filter((user) => {
+    const matchesSearch = user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          user.email.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesRole = !activeRoleFilter || activeRoleFilter.match(user.role);
+    return matchesSearch && matchesRole;
+  });
 
   const pageLimit = usersData?.limit ?? 50;
   const totalPages = Math.max(1, Math.ceil((usersData?.total ?? 0) / pageLimit));
@@ -156,7 +169,7 @@ export default function AdminUsers() {
   // filtered set, so the numbers stay stable across pages (previously they were
   // computed from just the visible 50-row page).
   const stats = {
-    total: usersData?.total ?? filteredUsers.length,
+    total: usersData?.total ?? users.length,
     active: usersData?.stats?.active ?? 0,
     suspended: usersData?.stats?.suspended ?? 0,
     newToday: usersData?.stats?.newToday ?? 0,
@@ -201,7 +214,6 @@ export default function AdminUsers() {
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <Input
                   placeholder="Search users by name or email..."
-                  aria-label="Search users by name or email"
                   value={searchQuery}
                   onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
                   className="pl-10"
@@ -238,7 +250,7 @@ export default function AdminUsers() {
           <CardHeader className="flex flex-row items-center justify-between gap-2">
             <CardTitle className="flex items-center gap-2">
               <Users className="w-5 h-5 text-blue-600" />
-              All Users ({usersData?.total ?? filteredUsers.length})
+              All Users ({filteredUsers.length})
             </CardTitle>
             {/* "Add User" button removed (task #1004 audit): it had no functional
                 wire-up (no onClick / dialog / route) — a dead write-affordance an
@@ -250,13 +262,13 @@ export default function AdminUsers() {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-gray-200">
-                    <th scope="col" className="text-left py-3 px-2 text-sm font-medium text-gray-500">User</th>
-                    <th scope="col" className="text-left py-3 px-2 text-sm font-medium text-gray-500">Role</th>
-                    <th scope="col" className="text-left py-3 px-2 text-sm font-medium text-gray-500">Status</th>
-                    <th scope="col" className="text-left py-3 px-2 text-sm font-medium text-gray-500">Joined</th>
-                    <th scope="col" className="text-left py-3 px-2 text-sm font-medium text-gray-500">Trips</th>
-                    <th scope="col" className="text-left py-3 px-2 text-sm font-medium text-gray-500">Spent</th>
-                    <th scope="col" className="text-right py-3 px-2 text-sm font-medium text-gray-500">Actions</th>
+                    <th className="text-left py-3 px-2 text-sm font-medium text-gray-500">User</th>
+                    <th className="text-left py-3 px-2 text-sm font-medium text-gray-500">Role</th>
+                    <th className="text-left py-3 px-2 text-sm font-medium text-gray-500">Status</th>
+                    <th className="text-left py-3 px-2 text-sm font-medium text-gray-500">Joined</th>
+                    <th className="text-left py-3 px-2 text-sm font-medium text-gray-500">Trips</th>
+                    <th className="text-left py-3 px-2 text-sm font-medium text-gray-500">Spent</th>
+                    <th className="text-right py-3 px-2 text-sm font-medium text-gray-500">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -299,7 +311,6 @@ export default function AdminUsers() {
                             variant="ghost"
                             size="icon"
                             onClick={() => setViewUser(user)}
-                            aria-label={`View ${user.name}`}
                             data-testid={`button-view-${user.id}`}
                           >
                             <Eye className="w-4 h-4" />
@@ -316,7 +327,7 @@ export default function AdminUsers() {
                           </Button>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" aria-label={`More actions for ${user.name}`} data-testid={`button-more-${user.id}`}>
+                              <Button variant="ghost" size="icon" data-testid={`button-more-${user.id}`}>
                                 <MoreVertical className="w-4 h-4" />
                               </Button>
                             </DropdownMenuTrigger>

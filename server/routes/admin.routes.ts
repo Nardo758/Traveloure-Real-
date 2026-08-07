@@ -22,7 +22,7 @@ import {
   insertServiceTemplateSchema, insertServiceBookingSchema, insertServiceReviewSchema,
   itineraryComparisons, itineraryVariants, itineraryVariantItems, itineraryVariantMetrics,
   userExperienceItems, userExperiences, providerServices, cartItems, trips,
-  serviceBookings, serviceReviews, reviewModerationLogs, notifications, adminNotifications as adminNotificationsTable, wallets, creditTransactions, serviceProviderForms,
+  serviceBookings, serviceReviews, reviewModerationLogs, notifications, wallets, creditTransactions, serviceProviderForms,
   insertCustomVenueSchema, insertGeneratedItinerarySchema,
   insertTemporalAnchorSchema, insertDayBoundarySchema, insertEnergyTrackingSchema,
   temporalAnchors, itineraryItems, generatedItineraries,
@@ -228,20 +228,6 @@ const requireAdminLocal = async (req: any, res: any, next: any) => {
   next();
 };
 
-router.post("/api/admin/gems/backfill-photos", isAuthenticated, requireAdminLocal, async (req, res) => {
-  try {
-    const { grokDiscoveryService } = await import("../services/grok-discovery.service");
-    const result = await grokDiscoveryService.backfillGemPhotos();
-    res.json({
-      message: `Backfill complete: ${result.processed} gem(s) processed, ${result.updated} updated, ${result.failed} failed.`,
-      ...result,
-    });
-  } catch (err: any) {
-    console.error("Gem photo backfill failed:", err);
-    res.status(500).json({ message: err?.message ?? "Gem photo backfill failed" });
-  }
-});
-
 router.get("/api/admin/commission-test", isAuthenticated, async (req, res) => {
   const userId = getUserId(req)!;
   const user = await getFullAdminUser(userId);
@@ -432,6 +418,61 @@ router.get("/api/admin/bookings/stuck-pending", isAuthenticated, async (req, res
   } catch (err) {
     console.error("Stuck pending bookings error:", err);
     res.status(500).json({ message: "Failed to fetch stuck pending bookings" });
+  }
+});
+
+/**
+ * GET /api/admin/bookings/reconciliation-exceptions
+ *
+ * The OPS SURFACE for the reconciliation-exception state (legacy-reconciliation lane,
+ * tasks #212/#213). A payment signal — the Stripe webhook, or the client's confirm-payment
+ * fallback — arrived for a booking that could NOT be promoted, canonically a LATE webhook for a
+ * claim the TTL sweep already voided. Ruling 38 §15b: the void wins, the row is never
+ * resurrected. But if that PaymentIntent genuinely succeeded, real money moved with no booking
+ * behind it, so the exception is recorded on the row (`booking_details.reconciliationException`)
+ * and surfaced here — ops-visible, never silent.
+ *
+ * EVERY ROW HERE NEEDS A HUMAN: check the paymentIntentId in the Stripe dashboard. Succeeded ⇒
+ * refund it or re-create the booking manually. Not succeeded ⇒ nothing moved; the row can be
+ * dismissed.
+ */
+router.get("/api/admin/bookings/reconciliation-exceptions", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser(getUserId(req)!);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const result = await db.execute(sql`
+      SELECT
+        sb.id,
+        sb.traveler_id,
+        sb.status,
+        sb.total_amount,
+        sb.stripe_payment_intent_id,
+        sb.booking_details->'reconciliationException' AS exception,
+        sb.created_at,
+        sb.updated_at,
+        u.email      AS traveler_email,
+        u.first_name AS traveler_first_name,
+        u.last_name  AS traveler_last_name,
+        ps.service_name
+      FROM service_bookings sb
+      LEFT JOIN users u ON u.id = sb.traveler_id
+      LEFT JOIN provider_services ps ON ps.id = sb.service_id
+      WHERE sb.booking_details ? 'reconciliationException'
+      ORDER BY sb.updated_at DESC
+      LIMIT 200
+    `);
+    res.json({
+      bookings: result.rows,
+      count: result.rows.length,
+      note:
+        "A payment signal arrived for a booking that could not be promoted (the row was NOT resurrected). " +
+        "Check each paymentIntentId in Stripe: succeeded ⇒ refund or re-book manually; not succeeded ⇒ dismiss.",
+    });
+  } catch (err) {
+    console.error("Reconciliation exceptions error:", err);
+    res.status(500).json({ message: "Failed to fetch reconciliation exceptions" });
   }
 });
 
@@ -1013,16 +1054,118 @@ router.get("/api/admin/reconciliation/run-now", isAuthenticated, async (req, res
   }
   try {
     const { runStripeReconciliation } = await import("../jobs/stripeReconciliation");
-    const result = await runStripeReconciliation();
+    const result = await runStripeReconciliation({ triggeredBy: "manual" });
     res.json({
       ...result,
-      note: result.mismatches.length > 0
-        ? "Mismatches logged to admin_notifications. Cross-check each in the Stripe dashboard."
-        : "Clean — all charges and confirmed bookings align.",
+      note: result.status === "skipped"
+        ? "Skipped — STRIPE_SECRET_KEY is not set, so nothing was compared. The run is recorded as skipped."
+        : result.exceptions.length > 0
+          ? `${result.exceptions.length} drift exception(s) detected (${result.newExceptions} newly recorded). ` +
+            "They are persisted — see the Drift exceptions panel below. Cross-check each in the Stripe dashboard."
+          : "Clean — every Stripe charge, PaymentIntent and refund in the window aligns with the database.",
     });
   } catch (err: any) {
     console.error("Reconciliation run-now error:", err);
     res.status(500).json({ message: "Failed to run reconciliation", error: err.message });
+  }
+});
+
+/**
+ * GET /api/admin/reconciliation/exceptions
+ *
+ * THE PERSISTED DRIFT SURFACE (reconciliation-detection lane, ruling 40). The daily job scans
+ * BOTH rails — cart checkout (`service_bookings`) and the still-live legacy `bookings` — and
+ * writes one APPEND-ONLY row per distinct drift fact. Log lines are not a surface: a drift found
+ * at 03:00 has to still be readable at 09:00 without grepping a container.
+ *
+ * SIBLING, NOT REPLACEMENT, of GET /api/admin/bookings/reconciliation-exceptions (ruling 39):
+ * that one shows exceptions a PAYMENT SIGNAL recorded on a booking row it could not promote — it
+ * can only ever describe a row that exists. This one is the SCAN's output and can describe money
+ * with no row behind it at all. Both are listed on /admin/reconciliation.
+ *
+ * EVERY ROW HERE NEEDS A HUMAN. This job never repairs (its one narrow exception, a
+ * PI-succeeded/still-provisional claim, goes through the existing shared promotion and therefore
+ * does not appear here unless that promotion failed).
+ *
+ * Query: ?limit= (default 100, max 500) · ?kind= · ?rail=cart|legacy · ?since=<ISO>
+ */
+router.get("/api/admin/reconciliation/exceptions", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser(getUserId(req)!);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const limit = Math.min(Math.max(parseInt(String(req.query.limit ?? "100"), 10) || 100, 1), 500);
+    const kind = typeof req.query.kind === "string" && req.query.kind ? req.query.kind : null;
+    const rail = req.query.rail === "cart" || req.query.rail === "legacy" ? req.query.rail : null;
+    const since = typeof req.query.since === "string" && req.query.since ? new Date(req.query.since) : null;
+
+    const result = await db.execute(sql`
+      SELECT id, run_id, detected_at, rail, kind, severity, booking_id, payment_intent_id,
+             charge_id, expected_amount, actual_amount, currency, details
+      FROM reconciliation_exceptions
+      WHERE TRUE
+        ${kind ? sql`AND kind = ${kind}` : sql``}
+        ${rail ? sql`AND rail = ${rail}` : sql``}
+        ${since && !isNaN(since.getTime()) ? sql`AND detected_at >= ${since.toISOString()}` : sql``}
+      ORDER BY detected_at DESC
+      LIMIT ${limit}
+    `);
+
+    // The LAST RUN is part of the answer, not a separate question: an empty list means "clean"
+    // only if a run actually happened. Without this, a dead scheduler renders identically to a
+    // healthy platform — the exact failure this lane exists to close.
+    const lastRun = await db.execute(sql`
+      SELECT id, started_at, finished_at, triggered_by, status, window_start,
+             scanned_payment_intents, scanned_charges, scanned_refunds,
+             scanned_cart_bookings, scanned_legacy_bookings,
+             exceptions_detected, exceptions_new, promoted, note
+      FROM reconciliation_runs
+      ORDER BY started_at DESC
+      LIMIT 1
+    `);
+
+    res.json({
+      exceptions: result.rows,
+      count: result.rows.length,
+      lastRun: lastRun.rows[0] ?? null,
+      note:
+        "Drift between Stripe and the database, detected by the daily scan across BOTH booking rails. " +
+        "Append-only: a drift that persists is ONE row stamped with the run that first saw it. " +
+        "Nothing here has been auto-repaired — check each paymentIntentId in Stripe before acting.",
+    });
+  } catch (err: any) {
+    console.error("Reconciliation exceptions list error:", err);
+    res.status(500).json({ message: "Failed to fetch reconciliation exceptions", error: err.message });
+  }
+});
+
+/**
+ * GET /api/admin/reconciliation/runs
+ *
+ * The run log. A clean pass is RECORDED, so "no exceptions" and "the job has not run since the
+ * deploy three weeks ago" are distinguishable — which they were not before this lane.
+ */
+router.get("/api/admin/reconciliation/runs", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser(getUserId(req)!);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const limit = Math.min(Math.max(parseInt(String(req.query.limit ?? "30"), 10) || 30, 1), 200);
+    const result = await db.execute(sql`
+      SELECT id, started_at, finished_at, triggered_by, status, window_start,
+             scanned_payment_intents, scanned_charges, scanned_refunds,
+             scanned_cart_bookings, scanned_legacy_bookings,
+             exceptions_detected, exceptions_new, promoted, note
+      FROM reconciliation_runs
+      ORDER BY started_at DESC
+      LIMIT ${limit}
+    `);
+    res.json({ runs: result.rows, count: result.rows.length });
+  } catch (err: any) {
+    console.error("Reconciliation runs list error:", err);
+    res.status(500).json({ message: "Failed to fetch reconciliation runs", error: err.message });
   }
 });
 
@@ -1192,47 +1335,6 @@ router.get("/api/admin/provider-health", isAuthenticated, async (req, res) => {
   } catch (err: any) {
     console.error("Provider health error:", err);
     res.status(500).json({ message: "Failed to load provider health", error: err.message });
-  }
-});
-
-// ── Integration configuration status ─────────────────────────────────────────
-// Real "is this integration configured" checks for the Platform Providers admin page — secret
-// PRESENCE only (never values). Previously the page inferred "Connected" from usage/revenue data
-// provenance, which showed Fever as connected regardless of credentials and omitted Resend entirely.
-// Each check mirrors the exact env gate the corresponding service performs (cited inline).
-router.get("/api/admin/integration-status", isAuthenticated, async (req, res) => {
-  const user = await getFullAdminUser(getUserId(req)!);
-  if (!user || user.role !== "admin") {
-    return res.status(403).json({ message: "Admin access required" });
-  }
-  try {
-    const env = process.env;
-    const providers: Record<string, { configured: boolean }> = {
-      // server/services/ai/* — Anthropic client gate
-      anthropic: { configured: !!env.ANTHROPIC_API_KEY },
-      // Grok client gate
-      xai: { configured: !!env.XAI_API_KEY },
-      // server/services/viator.service.ts: `!!VIATOR_API_KEY`
-      viator: { configured: !!env.VIATOR_API_KEY },
-      // server/services/booking-com.service.ts: `!!AFFILIATE_ID`
-      booking: { configured: !!env.BOOKING_COM_AFFILIATE_ID },
-      // 12Go rides via the Travelpayouts network token
-      "12go": { configured: !!env.TRAVELPAYOUTS_TOKEN },
-      // server/services/google-places-photos.service.ts + client maps
-      googlemaps: { configured: !!env.GOOGLE_MAPS_API_KEY },
-      // server/services/serp.service.ts
-      serpapi: { configured: !!env.SERP_API_KEY },
-      // server/services/fever.service.ts: `!!(accountSid && authToken)`
-      fever: { configured: !!(env.IMPACT_ACCOUNT_SID && env.IMPACT_AUTH_TOKEN) },
-      // server/services/email.service.ts: requires the Resend key plus a from-address
-      resend: { configured: !!(env.RESEND_API_KEY && (env.EMAIL_FROM_NOREPLY || env.EMAIL_FROM)) },
-      // Decommissioned (DECISIONS.md ruling 34, 2026-08-05) — never configured regardless of env.
-      amadeus: { configured: false },
-    };
-    res.json({ providers });
-  } catch (err: any) {
-    console.error("Integration status error:", err);
-    res.status(500).json({ message: "Failed to load integration status", error: err.message });
   }
 });
 
@@ -2978,41 +3080,43 @@ router.delete("/api/admin/services/:id", isAuthenticated, async (req, res) => {
       const row = await getProviderServiceById(req.params.id);
       if (!row) return res.status(404).json({ message: "Service not found" });
 
-      // Financial-history guard: service_bookings.service_id is ON DELETE CASCADE, so a
-      // hard delete would silently destroy historical bookings (and the platform_fee
-      // snapshots the revenue dashboard sums). If any bookings reference this service,
-      // soft-delete instead — mark it suspended so it disappears from public surfaces
-      // while every historical record keeps its reference intact.
-      //
-      // Runs in a single transaction with the service row locked FOR UPDATE: a booking
-      // INSERT takes a FK KEY SHARE lock on this row, which conflicts with FOR UPDATE,
-      // so a concurrent checkout blocks until we commit — it can never slip a booking
-      // in between the count and the delete (post-delete it fails the FK honestly).
-      const outcome = await db.transaction(async (tx) => {
-        await tx.execute(sql`SELECT id FROM provider_services WHERE id = ${req.params.id} FOR UPDATE`);
-        const [{ bookingCount }] = await tx
-          .select({ bookingCount: sql<number>`count(*)::int` })
+      // service_bookings.service_id is ON DELETE CASCADE, so a hard delete of a
+      // service with historical bookings silently destroys those booking records.
+      // Guard it: if any bookings reference this service, soft-delete (suspend) it
+      // instead of hard-deleting. Only truly unused services are hard-deleted.
+      // Row-lock the service inside a transaction to close the delete/checkout race.
+      const result = await db.transaction(async (tx) => {
+        await tx
+          .select({ id: providerServices.id })
+          .from(providerServices)
+          .where(eq(providerServices.id, req.params.id))
+          .for("update");
+
+        const [{ value: bookingCount }] = await tx
+          .select({ value: count() })
           .from(serviceBookings)
           .where(eq(serviceBookings.serviceId, req.params.id));
+
         if (bookingCount > 0) {
           await tx
             .update(providerServices)
-            .set({ status: "suspended", updatedAt: new Date() })
+            .set({ status: "suspended" })
             .where(eq(providerServices.id, req.params.id));
-          return { softDeleted: true as const, bookingCount };
+          return { softDeleted: true, bookingCount } as const;
         }
+
         await tx.delete(providerServices).where(eq(providerServices.id, req.params.id));
-        return { softDeleted: false as const, bookingCount: 0 };
+        return { softDeleted: false, bookingCount: 0 } as const;
       });
 
-      if (outcome.softDeleted) {
+      if (result.softDeleted) {
         return res.json({
           ok: true,
           softDeleted: true,
-          message: `Service has ${outcome.bookingCount} booking(s) — it was archived (suspended) instead of deleted so booking history stays intact.`,
+          message: `Service has ${result.bookingCount} booking(s) and was suspended (hidden) rather than deleted, to preserve booking history.`,
         });
       }
-      res.json({ ok: true });
+      res.json({ ok: true, softDeleted: false });
     } catch (err: any) {
       // Migration 151 (§17): bundle_components.component_service_id is ON DELETE RESTRICT —
       // a service inside a bundle can't be deleted until removed from it. Surface the FK
@@ -4812,14 +4916,9 @@ router.get("/api/admin/notifications", isAuthenticated, async (req, res) => {
       if (!user || user.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
-      const [userNotifs, adminAlerts] = await Promise.all([
-        getAdminNotifications(userId),
-        db.select().from(adminNotificationsTable)
-          .orderBy(desc(adminNotificationsTable.createdAt))
-          .limit(50),
-      ]);
+      const adminNotifications = await getAdminNotifications(userId);
 
-      const enrichedUser = userNotifs.map(n => ({
+      const enriched = adminNotifications.map(n => ({
         id: n.id,
         type: n.type?.includes("warning") || n.type?.includes("dispute") ? "warning"
           : n.type?.includes("success") || n.type?.includes("payment") ? "success"
@@ -4829,35 +4928,10 @@ router.get("/api/admin/notifications", isAuthenticated, async (req, res) => {
         title: n.title || "Notification",
         message: n.message || "",
         time: n.createdAt ? getRelativeTime(n.createdAt) : "Unknown",
-        createdAt: n.createdAt,
         read: n.isRead || false,
       }));
 
-      // Platform-level alerts (reconciliation mismatches, unassigned leads,
-      // service requests, etc.) live in admin_notifications with numeric ids;
-      // prefix them so PATCH can route to the right table.
-      const alertCategory = (type: string) =>
-        type.includes("reconciliation") ? "Reconciliation"
-          : type.includes("lead") || type.includes("expert") ? "Lead Routing"
-          : type.includes("service") ? "Service Requests"
-          : "Platform Alert";
-      const enrichedAlerts = adminAlerts.map(n => ({
-        id: `alert-${n.id}`,
-        type: n.type?.includes("mismatch") || n.type?.includes("reconciliation") ? "warning"
-          : "alert",
-        category: alertCategory(n.type || ""),
-        title: n.destination ? `${alertCategory(n.type || "")}: ${n.destination}` : alertCategory(n.type || ""),
-        message: [n.message, n.reason].filter(Boolean).join(" — "),
-        time: n.createdAt ? getRelativeTime(n.createdAt) : "Unknown",
-        createdAt: n.createdAt,
-        read: n.isRead || false,
-      }));
-
-      const merged = [...enrichedUser, ...enrichedAlerts]
-        .sort((a, b) => new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime())
-        .map(({ createdAt, ...rest }) => rest);
-
-      res.json(merged);
+      res.json(enriched);
     } catch (err) {
       console.error("Admin notifications error:", err);
       res.status(500).json({ message: "Failed to fetch notifications" });
@@ -5424,24 +5498,10 @@ router.patch("/api/admin/reviews/:id/status", isAuthenticated, async (req, res) 
       }
       const before = current.rows[0] as any;
 
-      // Reject present-but-invalid rate fields outright. Previously a non-numeric
-      // defaultRate (e.g. "abc") silently fell back to the stored value and returned
-      // 200 ok — a false "saved" that dropped the admin's intended change. Omitting a
-      // field still means "leave unchanged"; only present values must be finite numbers.
-      if (defaultRate !== undefined && (typeof defaultRate !== "number" || !Number.isFinite(defaultRate))) {
-        return res.status(400).json({ error: "defaultRate must be a finite number", received: defaultRate });
-      }
-      if (minRate !== undefined && minRate !== null && (typeof minRate !== "number" || !Number.isFinite(minRate))) {
-        return res.status(400).json({ error: "minRate must be a finite number or null", received: minRate });
-      }
-      if (maxRate !== undefined && maxRate !== null && (typeof maxRate !== "number" || !Number.isFinite(maxRate))) {
-        return res.status(400).json({ error: "maxRate must be a finite number or null", received: maxRate });
-      }
-
       // Apply min/max validation against the proposed (or unchanged) default_rate.
-      const nextDefault = defaultRate !== undefined ? defaultRate : Number(before.default_rate);
-      const nextMin = minRate === undefined ? (before.min_rate === null ? null : Number(before.min_rate)) : (minRate === null ? null : minRate);
-      const nextMax = maxRate === undefined ? (before.max_rate === null ? null : Number(before.max_rate)) : (maxRate === null ? null : maxRate);
+      const nextDefault = typeof defaultRate === "number" ? defaultRate : Number(before.default_rate);
+      const nextMin = minRate === undefined ? (before.min_rate === null ? null : Number(before.min_rate)) : (minRate === null ? null : Number(minRate));
+      const nextMax = maxRate === undefined ? (before.max_rate === null ? null : Number(before.max_rate)) : (maxRate === null ? null : Number(maxRate));
       if (nextMin !== null && nextDefault < nextMin) {
         return res.status(400).json({ error: "default_rate below min_rate", nextDefault, nextMin });
       }

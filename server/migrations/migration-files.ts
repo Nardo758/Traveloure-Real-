@@ -782,4 +782,11 @@ export const MIGRATION_FILES = [
   // poi_cache are writerless too but have LIVE readers — kept and flagged, NOT dropped here.
   // See 176_retire_amadeus_flight_transfer_safety_cache.sql for the full per-table audit.
   "176_retire_amadeus_flight_transfer_safety_cache.sql",
+  // 177: reconciliation-detection lane — reconciliation_runs + reconciliation_exceptions, the
+  // ops-visible output of the daily Stripe-vs-DB drift job now that it scans the CART rail
+  // (service_bookings) as well as the legacy one. Append-only exceptions deduped by a UNIQUE
+  // dedupe_key; a run row is written for EVERY pass so a clean run is distinguishable from a job
+  // that never ran. No CHECK (migration-159/171 posture); both tables + all four indexes declared
+  // in shared/schema.ts in the same commit (deploy-push durability rule).
+  "177_reconciliation_exceptions.sql",
 ] as const;

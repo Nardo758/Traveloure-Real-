@@ -33,13 +33,28 @@ import { users } from "@shared/schema";
 // 3.0.1b: Structural invariant — AI fulfillment has no expert counterparty, so the
 // platform keeps the full per-task fee by definition. Not a safety-net fallback;
 // this is an architectural truth.
-export const AI_PLATFORM_FEE = 1.00;
+export const AI_PLATFORM_FEE = 1.00; // fee-literal-ok: structural invariant documented at :33-35 — AI fulfilment has no expert counterparty, so this is an architectural truth, not a rate a band could vary
 
-export const AFFILIATE_PLATFORM_FEE = 0.70;
-export const AFFILIATE_EXPERT_SHARE = 0.30;
+// fee-literal-ok (both): documented fallbacks used ONLY when the admin-editable `affiliate_standard`
+// band (migration 143) is absent/inactive/non-percent — resolveCommissionRates Tier 2 reads the band
+// FIRST and returns these only on that failure. Same §8 safe-failure posture as coordination_floor.
+export const AFFILIATE_PLATFORM_FEE = 0.70; // fee-literal-ok: see the three-line note above
+export const AFFILIATE_EXPERT_SHARE = 0.30; // fee-literal-ok: see the three-line note above
 
-/** Stripe processing / gateway fee deducted from every platform-fee receipt. */
-export const PROCESSING_FEE_RATE = 0.03;
+/**
+ * Stripe processing / gateway fee deducted from every platform-fee receipt.
+ *
+ * fee-literal-debt:#PS2 (provider money-hardening lane, ruling 42 — audit MI-2). Unlike every other
+ * constant in this block this one is NOT a fallback behind a band: there is no `fee_bands` row for
+ * it, so it is a margin rate on the platform-fee receipt that no admin can edit without a deploy.
+ * It is live on the provider completion money path — `storage.updateServiceBookingStatus` computes
+ * `netAmount`/`processingFees` on the `platform_revenue` row minted by the completion flip — plus
+ * revenue-tracking, ready-made-purchase and booking services. Moving it into `fee_bands` owes
+ * ruling 32's two proofs (an admin band edit changes the resolved value; a missing band fails
+ * loudly) and is therefore a change with its own migration, not an annotation. Surfaced (finally)
+ * by this lane's fee-gate predicate fix — the gate was blind to SCREAMING_SNAKE for its whole life.
+ */
+export const PROCESSING_FEE_RATE = 0.03; // fee-literal-debt:#PS2
 
 // 3.0.1b / ruling 25: Exported field defaults — NOT resolver safety-nets. Used in route
 // files when a provider service's revenueShareRate is unset. The resolver path never
@@ -105,6 +120,38 @@ export async function resolveExpertSharePct(
   if (Number.isFinite(parsed) && parsed > 0 && parsed <= 100) return parsed / 100;
   const { expertShareRate } = await getExpertSplitRates();
   return expertShareRate;
+}
+
+/**
+ * MI-1 (provider money-hardening lane, ruling 42) — server derivation of a provider service's
+ * `revenueShareRate`, so that column can never again carry a client-supplied number.
+ *
+ * This is deliberately ONE call into the existing `resolveCommissionRates` resolver with the SAME
+ * option shape the real charge uses (`payments.routes.ts` /api/checkout per-item block: provider-role
+ * owners route through `{source:"provider", providerId}`, everyone else through
+ * `{category, expertId}`) — NOT a second rate implementation. The single divergence risk this class
+ * has is two authors resolving rates two ways; there is one resolver and this defers to it.
+ *
+ * Returns the EXPERT/OWNER share as a fraction in [0,1]. Never throws — a resolution failure yields
+ * `null` and the caller leaves the column alone rather than guessing a rate (§8: a fee's safe
+ * failure mode is the documented fallback, never an invented number).
+ */
+export async function resolveServiceOwnerShareRate(opts: {
+  ownerUserId?: string | null;
+  ownerIsProvider: boolean;
+  feeCategory?: string | null;
+}): Promise<number | null> {
+  try {
+    const rates = await resolveCommissionRates(
+      opts.ownerIsProvider
+        ? { source: "provider", providerId: opts.ownerUserId ?? null }
+        : { category: opts.feeCategory ?? "default", expertId: opts.ownerUserId ?? null },
+    );
+    const n = rates.expertShareRate;
+    return Number.isFinite(n) && n >= 0 && n <= 1 ? n : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
