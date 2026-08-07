@@ -69,6 +69,31 @@ change (down-only rule).
 6. **T6-6:** one-off session-cookie collision seen once during T6 setup in the shared sandbox; not
    reproduced; recorded here so it isn't lost.
 
+## Rulings wave (same day — decision-maker answered items 1–3 above)
+
+Ruled: (1) **NO** — pending advisors may not write; (2) **YES** — provenance column; (3) **finish**
+the polished final Trip Card. Landed as one wave (V4-verified 11/11, journey suite green):
+
+- **Write gate:** `TRIP_ADVISOR_WRITE_ACCESS_STATUSES` (accepted/assigned) now gates item
+  create/edit/delete/reorder; pending advisors keep read surfaces (assigned-trips, plancard). All
+  ~50 advisor-access consumers classified read vs write in the D12 report; routing transitions,
+  suggestions and comments deliberately stay on their own documented contracts.
+- **Provenance:** migration 181 adds `itinerary_items.origin` (`'ai'|'traveler'|'expert'`, nullable,
+  app-enforced, no CHECK — publish-trap avoidance; declared in `shared/schema.ts` per deploy-push
+  authority). Server-stamped at 10 write sites, client value stripped both at the schema omit and
+  the route. Regenerate now spares `origin='traveler'` AND `suggestedBy='expert'`; legacy NULL rows
+  keep old replace semantics (ambiguous by construction, documented inline). CLAUDE.md Locked
+  Decisions item 12 records both rulings.
+- **Final dress:** PlanCard renders the polished-final treatment (`plancard-final-dress` testid,
+  existing tokens only) when approved or trip-card-primary; proven absent before approval, on the
+  public share page, and on proposal/embedded surfaces. SlipView's absence is structural (it never
+  mounts PlanCard's root) — noted, not a gate.
+
+**New decision item from V4 (info):** even an ACCEPTED expert cannot PATCH/DELETE existing itinerary
+items — those two handlers are `verifyTripOwnership`-only (owner-only edit/delete); experts can only
+create. Ruling 1 is not violated (pending is denied everywhere); the question is whether accepted
+experts *should* be able to edit/delete via those endpoints. Needs a ruling before anyone "fixes" it.
+
 ## Not covered (unchanged standing gaps)
 
 Payment-complete legs (needs staging `sk_test_`); EA console; message threads; multi-traveler
