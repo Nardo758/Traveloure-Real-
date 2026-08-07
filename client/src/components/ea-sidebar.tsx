@@ -68,11 +68,7 @@ const menuGroups = [
 
 export function EASidebar() {
   const [location] = useLocation();
-  const { user } = useAuth();
-
-  const handleLogout = () => {
-    window.location.href = "/api/logout";
-  };
+  const { user, logout } = useAuth();
 
   const initials = user
     ? `${user.firstName?.[0] ?? ""}${user.lastName?.[0] ?? ""}`.toUpperCase() || "E"
@@ -174,7 +170,7 @@ export function EASidebar() {
         <Button
           variant="ghost"
           className="w-full justify-start text-[#7A7A72] hover:text-[#E85D55] hover:bg-[rgba(232,85,85,0.08)] text-[13px] group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
-          onClick={handleLogout}
+          onClick={() => logout()}
           data-testid="button-ea-logout"
         >
           <LogOut className="w-4 h-4 mr-2 group-data-[collapsible=icon]:mr-0" />
