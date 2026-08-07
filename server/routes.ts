@@ -4311,7 +4311,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         return res.status(404).json({ message: "Service not found or not owned by you" });
       }
       const duplicated = await storage.duplicateService(req.params.id, userId);
-      res.status(201).json(duplicated);
+      // NEW-2 (V3): the raw .returning() row leaks revenueShareRate (§18 read-side) — same
+      // projection as the POST/PATCH create paths.
+      res.status(201).json(duplicated ? omitFields(duplicated, ["revenueShareRate"] as const) : duplicated);
     } catch (err) {
       // T3-1: this catch previously swallowed the error with no log at all.
       console.error("Error duplicating service (expert route):", err);
@@ -4330,7 +4332,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         return res.status(404).json({ message: "Service not found or not owned by you" });
       }
       const duplicated = await storage.duplicateService(req.params.id, userId);
-      res.status(201).json(duplicated);
+      // NEW-2 (V3): same §18 read-side projection as the expert duplicate above.
+      res.status(201).json(duplicated ? omitFields(duplicated, ["revenueShareRate"] as const) : duplicated);
     } catch (err) {
       // T3-1: this catch previously swallowed the error with no log at all — the always-500
       // trackingNumber collision was invisible in server logs. Log it now.
