@@ -573,7 +573,13 @@ export const serviceCategories = pgTable("service_categories", {
   affiliatePartnerKey: varchar("affiliate_partner_key", { length: 50 }),    // populated only when sourceType='affiliate'
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => ({
+  // Migration 032. Deploy-push rule (see `bookings`). Partial WHERE mirrored verbatim —
+  // category_key is nullable for categories that predate the Phase-1 key column.
+  categoryKeyIdx: uniqueIndex("idx_service_categories_category_key")
+    .on(table.categoryKey)
+    .where(sql`category_key IS NOT NULL`),
+}));
 
 export const serviceSubcategories = pgTable("service_subcategories", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -2914,6 +2920,13 @@ export const expertNeighborhoods = pgTable("expert_neighborhoods", {
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
   uniqExpertNeighborhood: unique("expert_neighborhoods_expert_neighborhood_uniq").on(table.expertId, table.neighborhoodId),
+  // Migration 041. Deploy-push rule (full rationale in the `bookings` block) — created only in
+  // migration SQL, so every publish dropped it. The partial WHERE is what makes this express
+  // "at most ONE lead expert per neighborhood" rather than "one row per neighborhood": without
+  // it the index would forbid a second non-lead expert, which is the opposite of the intent.
+  oneLeadPerNeighborhood: uniqueIndex("idx_expert_neighborhoods_one_lead_per")
+    .on(table.neighborhoodId)
+    .where(sql`is_lead = true`),
 }));
 export type ExpertNeighborhood = typeof expertNeighborhoods.$inferSelect;
 export const insertExpertNeighborhoodSchema = createInsertSchema(expertNeighborhoods).omit({ id: true, createdAt: true, updatedAt: true });
@@ -4094,7 +4107,7 @@ export const affiliatePartners = pgTable("affiliate_partners", {
   lastScrapedAt: timestamp("last_scraped_at"),
   // Source tracking: "manual" (admin-created / scraper) or "partnerize" (synced from Partnerize network).
   source: varchar("source", { length: 30 }).default("manual"),
-  externalCampaignId: varchar("external_campaign_id", { length: 100 }),
+  externalCampaignId: varchar("external_campaign_id", { length: 100 }), // uniquely indexed below
   lastSyncedAt: timestamp("last_synced_at"),
   // Partner-level admin approval (D1a): affiliate content is admin-gated ONCE at the partner level —
   // every product inherits its partner's approval. Born 'submitted' (never self-approved); an admin
@@ -4108,7 +4121,14 @@ export const affiliatePartners = pgTable("affiliate_partners", {
   rejectionReason: text("rejection_reason"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => ({
+  // Migration 103. Declared per the deploy-push rule (full rationale in the `bookings` block):
+  // created only in migration SQL, so every publish dropped it and the stamped migration never
+  // recreated it. Partial WHERE mirrored verbatim — nullable for manually-added partners.
+  externalCampaignIdIdx: uniqueIndex("affiliate_partners_external_campaign_id_idx")
+    .on(table.externalCampaignId)
+    .where(sql`external_campaign_id IS NOT NULL`),
+}));
 
 // Affiliate products table - stores scraped product data
 export const affiliateProducts = pgTable("affiliate_products", {
@@ -5896,6 +5916,38 @@ export const bookings = pgTable("bookings", {
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
   createdAtIdx: index("bookings_created_at_idx").on(table.createdAt),
+
+  // ── Declared here per the CLAUDE.md deploy-push rule ──────────────────────────────────
+  // The publish-time drizzle push is AUTHORITATIVE over objects absent from this file and
+  // will DROP an index that exists only in migration SQL — after which the stamped migration
+  // never recreates it. All three below were created by registered migrations and declared
+  // nowhere, so each publish silently removed them.
+  //
+  // This rail is NOT dead: §15c records the legacy `bookings` table as still live behind
+  // /booking-demo and POST /api/bookings/process-cart.
+  //
+  // Partial WHERE clauses are mirrored from the migrations verbatim. They are load-bearing:
+  // every one of these columns is nullable on legacy rows, and a FULL unique index would
+  // collapse all those NULLs into a single conflicting value set and fail the publish.
+
+  // Migration 096. The SAME guard it creates on `service_bookings` (declared at
+  // sb_idempotency_key_idx above) — only that half was ever declared, so the cart rail kept
+  // its protection across publishes and this rail lost it. Absence of this index was measured
+  // to turn 3 concurrent same-key checkouts into 3 REAL Stripe charges.
+  idempotencyKeyIdx: uniqueIndex("bookings_idempotency_key_idx")
+    .on(table.idempotencyKey)
+    .where(sql`idempotency_key IS NOT NULL`),
+
+  // Migration 053. One booking per PaymentIntent — the DB-level backstop behind §15's
+  // promotion conditionals.
+  stripePaymentIntentIdUnique: uniqueIndex("bookings_stripe_payment_intent_id_unique")
+    .on(table.stripePaymentIntentId)
+    .where(sql`stripe_payment_intent_id IS NOT NULL`),
+
+  // Migration 099. One expert cannot be double-booked into the same date+time slot.
+  expertSlotUnique: uniqueIndex("bookings_expert_slot_unique_idx")
+    .on(table.expertId, table.bookingDate, table.bookingTime)
+    .where(sql`expert_id IS NOT NULL AND booking_date IS NOT NULL AND booking_time IS NOT NULL`),
 }));
 
 export const platformFees = pgTable("platform_fees", {
@@ -7470,7 +7522,11 @@ export const readyMadeTrips = pgTable("ready_made_trips", {
   active: boolean("active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => ({
+  // Migration 133. Deploy-push rule (see `bookings`). No WHERE in the migration — one
+  // ready-made listing per source trip, unconditionally.
+  sourceTripIdx: uniqueIndex("idx_rmt_source_trip").on(table.sourceTripId),
+}));
 
 export const readyMadePurchases = pgTable("ready_made_purchases", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -7485,7 +7541,14 @@ export const readyMadePurchases = pgTable("ready_made_purchases", {
   // Row is inserted only AFTER capture, so born-'paid' is correct (unlike the template pre-payment row).
   status: varchar("status", { length: 20 }).notNull().default("paid"), // CHECK paid|cloned|refunded|revoked
   purchasedAt: timestamp("purchased_at").notNull().defaultNow(),
-});
+}, (table) => ({
+  // Migration 133. Deploy-push rule (see `bookings`). Partial WHERE mirrored verbatim: a buyer
+  // may hold only ONE live purchase of a listing, but refunded/revoked rows must be allowed to
+  // accumulate — a full unique index would block re-purchase after a refund.
+  buyerTripActiveIdx: uniqueIndex("idx_rmp_buyer_trip_active")
+    .on(table.buyerId, table.readyMadeTripId)
+    .where(sql`status IN ('paid','cloned')`),
+}));
 
 export const boards = pgTable("boards", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),

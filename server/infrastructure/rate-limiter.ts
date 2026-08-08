@@ -20,6 +20,11 @@ class InMemoryRateLimiter {
 
   constructor() {
     this.cleanupInterval = setInterval(() => this.cleanup(), 60000);
+    // .unref() so this housekeeping timer never by itself holds the event loop open.
+    // Without it the process cannot exit on its own — which surfaces as hanging test
+    // runs and a delayed graceful shutdown, not as a user-visible bug. The sweep is
+    // pure cache eviction; there is nothing to finish before exit.
+    this.cleanupInterval.unref?.();
   }
 
   private cleanup(): void {
