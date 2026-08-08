@@ -1,28 +1,27 @@
 ---
 name: Clerk auth migration
-description: Durable constraints and identity-mapping decisions from the Replit Auth → Clerk migration.
+description: Durable identity-mapping constraints and security rules from the Replit Auth → Clerk migration
 ---
 
-## Identity bridge
-- `sessionClaims.userId` = local DB lookup ID for all users (Replit Auth sub for migrated users, Clerk native ID for new users). Pre-configured by Replit-managed Clerk — no custom JWT template needed.
-- `auth.userId` = Clerk native ID. **Never** pass to local DB queries; only for Clerk API calls (`clerkClient.users.*`).
-- If `sessionClaims.userId` is absent (should not happen with Replit-managed Clerk), the code falls back to `auth.userId` which causes JIT creation — a sign something is wrong with the Clerk session config.
+## Identity bridge rule
+`sessionClaims.userId` = local `users.id` for ALL users (legacy Replit Auth sub preserved as Clerk `externalId` for migrated users; Clerk native ID for new users). Never use `auth.userId` (Clerk's own ID) for local DB lookups — it differs for migrated users.
 
-**Why:** Migrated users have old Replit Auth sub set as Clerk `externalId`; Replit-managed Clerk emits it as `sessionClaims.userId`. New users get `auth.userId` as their `sessionClaims.userId` and a JIT row.
+**Why:** Replit-managed Clerk preserves old Replit Auth sub IDs as `externalId`, then injects them into `sessionClaims.userId`. Using `auth.userId` directly would create duplicate or mismatched rows for pre-migration users.
 
-## Files excluded from tsconfig
-- `server/replit_integrations/auth/` is excluded from `tsconfig.json` because it imports packages removed during migration (openid-client, express-session, memoizee, connect-pg-simple). The directory is kept for reference only — none of its exports are used at runtime.
+**How to apply:** Any code that resolves a user from the session must read `(auth?.sessionClaims as any)?.userId || auth?.userId`. The shared `getUserId(req)` from `server/utils/auth.ts` does this correctly.
 
-**Why:** Removing the directory would break test files that still import from it at the path level. Excluding from tsconfig silences compile errors without deleting the historical source.
+## JIT provisioning must run at the bootstrap endpoint
+`jitProvisionUser()` (exported from `server/middlewares/requireAuth.ts`) must be called from both `requireAuth` AND the unauthenticated-safe `/api/auth/user` + `/api/auth/session` endpoints. New Clerk sign-ups have no local row until one of these paths runs — if only `requireAuth` does it, the first page load returns `null` and the user appears logged out.
 
-## WebSocket chat write path
-- The WS `chat` case uses `storage.createChat()` (same as `POST /api/chats` and `trips.routes.ts`). This fires the MT-2 recipient notification exactly once per message.
-- MT-1: sender identity always comes from the Clerk session (never from the client payload `senderId`).
+**Why:** `useAuth` calls `/api/auth/user` on page load before any protected endpoint fires. If that endpoint only does a DB lookup (no JIT), a brand-new Clerk user gets `null` and can't use the app until they hit a protected route by chance.
 
-## JIT provisioning
-- `requireAuth` creates the local user row on first authenticated request.
-- Populates `email`, `firstName`, `lastName` from `sessionClaims` at insert time (frozen copy; Clerk is source of truth for subsequent reads).
-- `req.user` is set to `{ id, claims: { sub, role }, role }` for backward compat.
+## Clerk publishable key must never be host-derived
+`clerkMiddleware` and WebSocket Clerk setup must use `process.env.CLERK_PUBLISHABLE_KEY` directly, never `publishableKeyFromHost(getClerkProxyHost(req), ...)`. Host-derived key selection allows a client to spoof `X-Forwarded-Host` to select an unrelated Clerk instance.
 
-## Dead import removed
-- `server/storage.ts` had a dead `import { authStorage } from "./replit_integrations/auth/storage"` — removed. The `authStorage.ts` module itself is safe (no Passport imports), but the import was unused.
+**Why:** `publishableKeyFromHost` manufactures a `pk_live_clerk.<host>` key for any host it receives in production — not just falling back to the configured key. A spoofed header would route authentication to an unrelated Clerk tenant.
+
+## isEA and similar role-check middlewares must use getUserId()
+Any middleware that runs before `requireAuth` (like `isEA` in `server/middleware/ea-rbac.ts`) must call `getUserId(req)` — not `getAuth(req)` directly. `getAuth()` throws on anonymous requests when `clerkMiddleware` has not set auth state; `getUserId()` wraps it in a try/catch and safely returns null.
+
+## req.user backward-compat shape
+`requireAuth` sets `(req as any).user = { id, claims: { sub, role }, role }` for all 34+ route files that read `req.user.claims.role` or `req.user.id`. Do not remove this shape — it is the backward-compat bridge for code that predates the Clerk migration.
