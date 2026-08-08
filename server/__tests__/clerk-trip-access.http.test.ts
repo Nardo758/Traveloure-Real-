@@ -1,8 +1,8 @@
 /**
  * clerk-trip-access.http.test.ts
  *
- * Regression suite for the Clerk auth session bridge and trip authorization
- * logic introduced by the Replit Auth → Clerk migration.  Proves:
+ * Regression suite for the Clerk auth session bridge, trip authorization, and
+ * isEA middleware safety introduced by the Replit Auth → Clerk migration.  Proves:
  *
  *   U1 — getUserId() resolves identity from (req as any).user (legacy fallback,
  *         used when Clerk's getAuth() has no token — e.g. in tests or during
@@ -158,4 +158,29 @@ test("A8 — Managing EA on the trip → 200", () => {
   const eaTrip: MockTrip = { ...FIXTURE_TRIP, managedByEaId: "ea-1" };
   const req = mkReq({ user: { id: "ea-1", claims: { sub: "ea-1" } } });
   assert.equal(tripAccessDecision(req, eaTrip), 200);
+});
+
+// ── isEA middleware: safe anonymous-request handling ─────────────────────────
+//
+// Pre-fix: isEA called getAuth(req) directly — getAuth throws on an anonymous
+// request when clerkMiddleware has not set auth state, so every unauthenticated
+// /api/ea/* hit could 500 instead of 401.
+//
+// Post-fix: isEA uses getUserId(req) which wraps getAuth in a try/catch.
+// We verify the fix by confirming getUserId(req) returns null for an anonymous
+// request (no Clerk token, no req.user) — the same guard isEA now evaluates.
+
+test("isEA guard: getUserId(req) returns null for anonymous request (prevents 500)", () => {
+  // Anonymous request — no Clerk token (getAuth would throw), no req.user.
+  const req = mkReq();
+  // getUserId must return null safely (try/catch inside handles the throw).
+  assert.equal(getUserId(req), null,
+    "getUserId must return null for anonymous requests so isEA can return 401");
+});
+
+test("isEA guard: getUserId(req) returns userId for authenticated request", () => {
+  // Simulate clerkMiddleware having set req.user (legacy bridge or direct set).
+  const req = mkReq({ user: { id: "ea-user-1", claims: { sub: "ea-user-1", role: "executive_assistant" } } });
+  assert.equal(getUserId(req), "ea-user-1",
+    "getUserId must return the userId for an authenticated EA request");
 });
