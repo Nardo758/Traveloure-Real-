@@ -37,6 +37,16 @@ import {
   DayBoundaryConstraint,
 } from "./services/smart-sequencing.service";
 import { calculateTransportLegs, type UserTransportPrefs } from "./services/transport-leg-calculator";
+import {
+  getTravelerProfile,
+  recordDislikeFeedback,
+  buildTravelerProfilePromptSection,
+  effectiveProfileToTransportPrefs,
+  matchesDietary,
+  type TravelerProfile,
+  type EffectiveTravelerProfile,
+} from "./services/traveler-profile.service";
+import { computeSegmentationProposal } from "./services/optimizer-segmentation-bridge.service";
 
 // grok-2-1212 was deprecated at x.ai (every call 404s → fallback → paid optimizes failed).
 // grok-3 is the model the other Grok services (grok.service.ts, grok-discovery.service.ts)
@@ -725,6 +735,71 @@ function weightTrendingServices(
   return [...prioritised, ...rest];
 }
 
+/**
+ * Platform-provider ranking by TRAVELER-PROFILE FIT (WP-A, docs/briefs/OPTIMIZER_SOURCING_BUILD_SPEC.md,
+ * sourcing rule step 1: "PLATFORM FIRST ... ranked by fit to the traveler profile"). Runs AFTER
+ * `weightTrendingServices` so trending stays the primary signal and profile fit refines within
+ * it — a STABLE sort (Node's Array#sort has been stable since V8 7.0) so services already tied
+ * on profile fit keep their trending-derived relative order.
+ *
+ * Read-side reordering ONLY: `availableServices` is already the caller's approved-services query
+ * (storage.getActiveProviderServices / equivalent) — this never changes which services are
+ * eligible, never touches `price`, and never affects approval gates. Two fit signals, both
+ * derived from REAL service text/price data, never fabricated:
+ *   - dietary: a real keyword match (`matchesDietary`) against the service's own name/type/
+ *     description — never a guess when the traveler has no dietary tags set.
+ *   - budgetBand: the service's OWN price ranked into a tercile of THIS candidate list's own
+ *     price distribution (never a hardcoded dollar threshold — CLAUDE.md §8 forbids fee/rate
+ *     literals; this is a relative-rank comparison, not a rate) and compared against the
+ *     traveler's stated/derived budget band.
+ */
+function weightServicesByProfileFit(
+  services: ProviderService[],
+  effective: EffectiveTravelerProfile | null,
+): ProviderService[] {
+  if (!effective) return services;
+  const hasDietary = effective.dietary.length > 0;
+  const hasBudgetBand = !!effective.budgetBand;
+  if (!hasDietary && !hasBudgetBand) return services;
+
+  // Tercile price bands over THIS candidate list only — relative rank, not a literal threshold.
+  let tierOf: (price: number) => BudgetBandTier | null = () => null;
+  if (hasBudgetBand) {
+    const prices = services
+      .map((s) => parseFloat(s.price || "0"))
+      .filter((p) => Number.isFinite(p) && p > 0)
+      .sort((a, b) => a - b);
+    if (prices.length >= 3) {
+      const lowCut = prices[Math.floor(prices.length / 3)];
+      const highCut = prices[Math.floor((2 * prices.length) / 3)];
+      tierOf = (price: number): BudgetBandTier | null => {
+        if (!Number.isFinite(price) || price <= 0) return null;
+        if (price <= lowCut) return "budget";
+        if (price <= highCut) return "moderate";
+        return "luxury";
+      };
+    }
+  }
+
+  const scored = services.map((svc, idx) => {
+    let score = 0;
+    if (hasDietary) {
+      const text = `${svc.serviceName || ""} ${svc.serviceType || ""} ${svc.shortDescription || ""}`;
+      if (matchesDietary(text, effective.dietary)) score += 2;
+    }
+    if (hasBudgetBand) {
+      const tier = tierOf(parseFloat(svc.price || "0"));
+      if (tier && tier === effective.budgetBand) score += 1;
+    }
+    return { svc, score, idx };
+  });
+
+  // Stable: ties keep their original (trending-weighted) relative order.
+  scored.sort((a, b) => (b.score - a.score) || (a.idx - b.idx));
+  return scored.map((s) => s.svc);
+}
+type BudgetBandTier = "budget" | "moderate" | "luxury";
+
 export async function generateOptimizedItineraries(
   comparisonId: string,
   userId: string,
@@ -795,6 +870,35 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
     // ── TravelPulse city intelligence (non-blocking fallback) ─────────────────
     const cityIntel = await fetchCityIntelligence(destination, startDate, endDate);
     const cityIntelligenceSection = buildCityIntelligenceSection(cityIntel);
+
+    // ── Traveler profile (WP-A, docs/briefs/OPTIMIZER_SOURCING_BUILD_SPEC.md) ─────────────────
+    // Profile-aware platform selection: (1) a prompt section like cityIntelligenceSection above,
+    // conditional on real signal existing (§13 — never a fabricated placeholder); (2) merged into
+    // the transport-leg scoring knobs below (mode/comfort choice only — never price, §8/§18);
+    // (3) used to re-rank the AVAILABLE SERVICES list the AI sees. Non-blocking: a lookup failure
+    // degrades to "no profile signal", never a failed optimization.
+    let travelerProfile: TravelerProfile | null = null;
+    try {
+      travelerProfile = await getTravelerProfile(userId);
+    } catch (err) {
+      console.warn("[Optimizer] Traveler profile fetch failed (non-critical):", (err as Error).message);
+    }
+    const travelerProfileSection = travelerProfile ? buildTravelerProfilePromptSection(travelerProfile) : "";
+    const profileTransportPrefs = travelerProfile ? effectiveProfileToTransportPrefs(travelerProfile.effective) : {};
+    // An explicit prefs object passed in by the caller (none does today — see the service
+    // header's note) still wins over the profile-derived defaults, same "explicit beats derived"
+    // posture the profile's own merge rule uses one layer up.
+    const effectiveTransportPrefs: Partial<UserTransportPrefs> = { ...profileTransportPrefs, ...(userTransportPrefs || {}) };
+
+    // Sprint-1 dislike loop, extended (WP-A): the chips a traveler just submitted on this
+    // regenerate are REAL feedback — record them into the durable profile so a repeated pattern
+    // (e.g. "too_packed" across multiple re-runs) becomes a derived pace signal for next time.
+    // Fire-and-forget; never blocks or fails the optimization itself.
+    if (tripPreferences?.feedback && tripPreferences.feedback.length > 0) {
+      recordDislikeFeedback(userId, tripPreferences.feedback).catch((err) => {
+        console.warn("[Optimizer] recordDislikeFeedback failed (non-critical):", (err as Error).message);
+      });
+    }
 
     // ── Adaptive variant strategy (style-matched) ─────────────────────────────
     const [variantA, variantB] = selectVariantStrategy(tripPreferences);
@@ -977,14 +1081,16 @@ ${boundaryConstraints.map(b => `- Day ${b.dayNumber}: ${b.earliestActivityStart 
         }));
 
       if (baselineActivitiesWithCoords.length > 0) {
-        await calculateTransportLegs(baselineVariant[0].id, baselineActivitiesWithCoords, destination, userTransportPrefs || {});
+        await calculateTransportLegs(baselineVariant[0].id, baselineActivitiesWithCoords, destination, effectiveTransportPrefs);
       }
     } catch (legErr) {
       console.error("Baseline transport leg calculation error (non-critical):", legErr);
     }
 
-    // Weight trending services to appear first in the top-20 the AI sees
-    const weightedServices = weightTrendingServices(availableServices, cityIntel.trending);
+    // Weight trending services to appear first in the top-20 the AI sees, then refine by
+    // traveler-profile fit (WP-A sourcing rule step 1: PLATFORM FIRST, ranked by profile fit).
+    const trendWeightedServices = weightTrendingServices(availableServices, cityIntel.trending);
+    const weightedServices = weightServicesByProfileFit(trendWeightedServices, travelerProfile?.effective ?? null);
 
     const servicesList = weightedServices.map((s) => ({
       id: s.id,
@@ -1084,7 +1190,7 @@ For each empty day, add activities that match the user's experience style (infer
 
     const prompt = `You are a travel optimization AI. Analyze the user's itinerary and generate 2 optimized alternatives.
 
-DESTINATION: ${destination} | DATES: ${startDate} to ${endDate} | TRAVELERS: ${travelers || 1} | BUDGET: ${budget ? `$${budget}` : "Open"}${logisticsContextSection}${cityIntelligenceSection}${anchorPromptSection}${fixedCommitmentSection}${marqueeSection}${emptyDaySection}
+DESTINATION: ${destination} | DATES: ${startDate} to ${endDate} | TRAVELERS: ${travelers || 1} | BUDGET: ${budget ? `$${budget}` : "Open"}${logisticsContextSection}${cityIntelligenceSection}${travelerProfileSection}${anchorPromptSection}${fixedCommitmentSection}${marqueeSection}${emptyDaySection}
 
 USER'S CURRENT ITINERARY:
 ${compactBaseline}
@@ -1532,16 +1638,28 @@ Respond with valid JSON in this exact format:
           }));
 
         if (activitiesWithCoords.length > 0) {
-          await calculateTransportLegs(newVariant.id, activitiesWithCoords, destination, userTransportPrefs || {});
+          await calculateTransportLegs(newVariant.id, activitiesWithCoords, destination, effectiveTransportPrefs);
         }
       } catch (legErr) {
         console.error("Transport leg calculation error (non-critical):", legErr);
       }
     }));
 
+    // ── Trip segmentation recommendation (WP-C follow-up, docs/briefs/TRIP_SEGMENTATION_DESIGN.md
+    // §5b Phase 1) — RECOMMENDATION-ONLY. Computed from this run's own server-resolved
+    // `baselineItems`/`startDate`/`endDate`/`travelers`, never from client input (§14 posture).
+    // `computeSegmentationProposal` never throws — a segmentation failure must never fail a paid
+    // optimize run (§15b posture); `null` just means no recommendation is persisted for this run.
+    const segmentationProposal = computeSegmentationProposal(baselineItems, startDate, endDate, travelers);
+
     await db
       .update(itineraryComparisons)
-      .set({ status: "generated", optimizedAt: new Date(), updatedAt: new Date() } as any)
+      .set({
+        status: "generated",
+        optimizedAt: new Date(),
+        updatedAt: new Date(),
+        segmentationProposal: segmentationProposal as any,
+      } as any)
       .where(eq(itineraryComparisons.id, comparisonId));
 
     return { success: true };

@@ -231,6 +231,27 @@ export default function AdminData() {
     low: "bg-green-100 text-green-700 border-green-200",
   };
 
+  // ── Optimizer gap-fill ledger (OPTIMIZER_SOURCING_BUILD_SPEC WP-B) ─────────
+  // Real-time, market-agnostic sibling of the Kyoto content-gap tracker above: what the
+  // optimizer/Apply flow needed but had no platform (provider_services) listing for.
+  interface OptimizerGapFillRow {
+    city: string;
+    category: string;
+    itemKind: string;
+    totalCount: number;
+    last7dCount: number;
+    prior7dCount: number;
+    unfilledCount: number;
+    bySource: Record<string, number>;
+    lastOccurredAt: string | null;
+  }
+  const { data: optimizerGapData, isLoading: loadingOptimizerGaps } = useQuery<{
+    rows: OptimizerGapFillRow[];
+    sourceTotals: Record<string, number>;
+  }>({
+    queryKey: ["/api/admin/optimizer/gap-fills"],
+  });
+
   // ── DMO intake approval queue ("B") ───────────────────────────────────────
   interface IntakeItem {
     id: string;
@@ -527,6 +548,90 @@ export default function AdminData() {
                 {fillGapsMutation.isPending ? "Filling…" : "Fill gaps (Tavily)"}
               </Button>
             </div>
+          </CardContent>
+        </Card>
+
+        <Card data-testid="card-optimizer-gap-fills">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <TrendingUp className="w-4 h-4 text-fuchsia-600" />
+              Optimizer gap fills
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm text-gray-600">
+              Every time the optimizer/Apply flow could not place a platform listing, it's ledgered
+              here by city × category — real supply-recruitment demand, not editorial guesswork.
+              <span className="font-medium"> unfilled</span> means no tracked pipeline (Tavily/Google/
+              Grok) produced the item — the clearest signal to go recruit that supply directly.
+            </p>
+
+            {loadingOptimizerGaps ? (
+              <p className="text-sm text-gray-500">Loading…</p>
+            ) : optimizerGapData?.rows?.length ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm" data-testid="table-optimizer-gap-fills">
+                  <thead>
+                    <tr className="text-left text-gray-500 border-b">
+                      <th className="py-2 pr-4 font-medium">City</th>
+                      <th className="py-2 pr-4 font-medium">Category</th>
+                      <th className="py-2 pr-4 font-medium">Kind</th>
+                      <th className="py-2 pr-4 font-medium">Total</th>
+                      <th className="py-2 pr-4 font-medium">Last 7d</th>
+                      <th className="py-2 pr-4 font-medium">Prior 7d</th>
+                      <th className="py-2 font-medium">Unfilled</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {optimizerGapData.rows.map((r) => (
+                      <tr
+                        key={`${r.city}-${r.category}-${r.itemKind}`}
+                        className="border-b last:border-0"
+                        data-testid={`optimizer-gap-row-${r.city}-${r.category}`}
+                      >
+                        <td className="py-2 pr-4">{r.city}</td>
+                        <td className="py-2 pr-4">{r.category}</td>
+                        <td className="py-2 pr-4">
+                          <Badge variant="outline">{r.itemKind}</Badge>
+                        </td>
+                        <td className="py-2 pr-4 tabular-nums">{r.totalCount}</td>
+                        <td className="py-2 pr-4 tabular-nums">
+                          {r.last7dCount}
+                          {r.last7dCount > r.prior7dCount && r.prior7dCount > 0 && (
+                            <span className="text-red-600 ml-1">↑</span>
+                          )}
+                        </td>
+                        <td className="py-2 pr-4 tabular-nums text-gray-500">{r.prior7dCount}</td>
+                        <td className="py-2 tabular-nums">
+                          {r.unfilledCount > 0 ? (
+                            <Badge variant="outline" className="bg-amber-100 text-amber-700 border-amber-200">
+                              {r.unfilledCount}
+                            </Badge>
+                          ) : (
+                            "—"
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500">
+                No optimizer gap fills recorded yet — this fills in as travelers apply plans with
+                items the platform catalog couldn't match.
+              </p>
+            )}
+
+            {optimizerGapData?.sourceTotals && Object.keys(optimizerGapData.sourceTotals).length > 0 && (
+              <div className="flex flex-wrap gap-2 pt-1">
+                {Object.entries(optimizerGapData.sourceTotals).map(([source, n]) => (
+                  <Badge key={source} variant="outline" data-testid={`gap-source-total-${source}`}>
+                    {source}: {n}
+                  </Badge>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
 

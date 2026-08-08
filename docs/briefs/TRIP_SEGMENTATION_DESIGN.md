@@ -302,9 +302,14 @@ unrelated.) Three options, decision required:
 | **B. `trip_segments` table** | one trip, ordered segment rows | new table + schema decl | the "right" model; largest change |
 | **C. Label + route blob** | keep `destination` as primary label, store the route in jsonb | smallest | re-creates the unstructured-jsonb problem the codebase has been retiring |
 
-Recommendation: **A** for phase 1 (it composes with everything that exists today), with B as the
-migration target once multi-city proves out. Either way the new object must be declared in
-`shared/schema.ts`, per the CLAUDE.md deploy-push trap.
+> **RULED (decision-maker, Aug 8 2026): OPTION B — "so it's done right."** One trip, ordered
+> `trip_segments` rows; `trips.destination` survives as the display label only. Standing
+> obligations that follow: the table and every index on it are declared in `shared/schema.ts`
+> (deploy-push trap); no DB CHECK (publish trap) — ordering and vocabulary enforced app-side;
+> its insert schema is born `.pick()`-based (§19); and every consumer that assumes ONE
+> destination per trip is enumerated BEFORE the migration is cut — the full consequence map,
+> expert-delivery through Trip-Card delivery, lives in
+> `docs/findings/TRIP_SEGMENTS_B_CONSEQUENCE_MAP.md`.
 
 ### 6b. Geographic precision does not support road-tripping yet
 

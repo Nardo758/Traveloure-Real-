@@ -821,4 +821,18 @@ export const MIGRATION_FILES = [
   // the pre-existing `suggestedBy = 'expert'` spare, falling back to the old heuristic only for
   // legacy `origin IS NULL` rows. Declared in shared/schema.ts in the same commit.
   "181_itinerary_items_origin.sql",
+  // 182: OPTIMIZER_SOURCING_BUILD_SPEC WP-B — optimizer_gap_fills, the append-only ledger of every
+  // external fill the optimizer used when no platform (provider_services) listing matched. New
+  // table, market-agnostic (distinct from the Kyoto-only content_gap_alerts editorial gauge, which
+  // is UPDATE-in-place); no CHECK → no publish-time push trap. Table + both indexes declared in
+  // shared/schema.ts in the same commit (deploy-push durability rule). See
+  // 182_optimizer_gap_fills.sql for the full rationale.
+  "182_optimizer_gap_fills.sql",
+  // 183: wires WP-C's dark segmentation engine (proposeSegmentation) into the paid optimize run,
+  // recommendation-only (docs/briefs/TRIP_SEGMENTATION_DESIGN.md §5b Phase 1 — no materialization,
+  // no trip_segments, no apply action). Additive nullable `itinerary_comparisons
+  // .segmentation_proposal` JSONB; no DEFAULT/backfill (existing rows stay NULL — no engine ran
+  // for them); no CHECK (recommendation-only payload, nothing money/ownership reads it). Declared
+  // in shared/schema.ts in the same commit. See 183_itinerary_comparisons_segmentation_proposal.sql.
+  "183_itinerary_comparisons_segmentation_proposal.sql",
 ] as const;

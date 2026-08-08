@@ -481,7 +481,16 @@ class StripePaymentService {
       const buildPaymentIntentParams = (customerId: string | null) => ({
         amount: stripeAmount,
         currency: effectiveCurrency,
-        ...(customerId ? { customer: customerId, setup_future_usage: 'off_session' as const } : {}),
+        // setup_future_usage (FP-1 vaulting) belongs to the INTERACTIVE branch only. Stripe
+        // rejects `off_session: true, confirm: true` combined with setup_future_usage — proven
+        // live by CI run #34's OC1/OC3 — and logically so: the one-click charge happens BECAUSE
+        // the card is already vaulted, so there is nothing to set up.
+        ...(customerId
+          ? {
+              customer: customerId,
+              ...(offSessionMethodId ? {} : { setup_future_usage: 'off_session' as const }),
+            }
+          : {}),
         metadata: {
           userId,
           bookingIds: truncatedBookingIds,

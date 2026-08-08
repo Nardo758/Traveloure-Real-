@@ -17,6 +17,15 @@ import { isTripAuthor } from "../utils/trip-authorship";
 import { authorizeTripLogistics } from "../utils/trip-logistics-auth";
 import { logItemTransition } from "../services/item-transition-log.service";
 import { assembleTripPlan, TripPlanNotFoundError } from "../services/trip-plan.service";
+import { recordGapFills, type GapFillInput } from "../services/optimizer-gap-ledger.service";
+
+// OPTIMIZER_SOURCING_BUILD_SPEC WP-B: an applied item with no providerServiceId matched no
+// platform (provider_services) listing — the optimizer's EXTERNAL FILL case. serviceType values
+// mirror the COMMODITY_TYPES transport vocabulary in itinerary-optimizer.ts.
+const GAP_TRANSPORT_TYPES = new Set(["flight", "flights", "transport", "transportation", "transfer"]);
+function gapItemKind(serviceType: string | undefined): "transport" | "service" {
+  return GAP_TRANSPORT_TYPES.has((serviceType || "").toLowerCase()) ? "transport" : "service";
+}
 
 const router = Router();
 
@@ -215,14 +224,36 @@ router.post("/api/itinerary-comparisons/:id/apply-to-trip", isAuthenticated, asy
         }
       }
 
-      return { preservedRoutedItems, dedupedAgainstRoutedItems, discardedVariants };
+      // WP-B: items actually inserted with no providerServiceId are the optimizer's EXTERNAL FILL
+      // case (no platform match) — captured here, ledgered after the transaction commits (§15b:
+      // a ledger write must never be able to roll back a real apply, nor fail one).
+      const unmatchedItems = applicableVariantItems.filter((item: any) => !item.providerServiceId);
+
+      return { preservedRoutedItems, dedupedAgainstRoutedItems, discardedVariants, unmatchedItems };
     });
 
     // ADDITIVE fields (§13 honest reporting): how many already-routed items the apply left in
     // place, how many proposed items were dropped because the plan already held them, and how
     // many losing variants were discarded. Existing consumers read `tripId`/`delta` and are
     // unaffected; no UI is built on these yet.
-    res.json({ tripId, delta, ...applied });
+    const { unmatchedItems, ...appliedSummary } = applied;
+
+    // ── WP-B gap-fill ledger hook (single try/catch'd call — §15b: best-effort, NEVER fails Apply) ──
+    try {
+      const gapFillInputs: GapFillInput[] = (unmatchedItems as any[]).map((item) => ({
+        city: comparison.destination || "Unknown",
+        category: item.serviceType || "activity",
+        itemKind: gapItemKind(item.serviceType),
+        source: "unfilled", // no tracked pipeline (Tavily/Google/Grok) attributable per-item at Apply time
+        tripId,
+        details: { name: item.name ?? null, dayNumber: item.dayNumber ?? null },
+      }));
+      await recordGapFills(gapFillInputs);
+    } catch (ledgerErr: any) {
+      console.warn("[plancard] gap-fill ledger hook failed (non-fatal):", ledgerErr?.message || ledgerErr);
+    }
+
+    res.json({ tripId, delta, ...appliedSummary });
   } catch (error) {
     console.error("Error applying variant to trip:", error);
     res.status(500).json({ error: "Failed to apply variant to trip" });
