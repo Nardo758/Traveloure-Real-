@@ -294,8 +294,14 @@ function buildTripPlanLegCore(leg: any, booking?: LegBookingInfo | null): TripPl
  *
  * Only runs for levels that actually emit coordinates (`full`); `teaser`/`preview` carry no pins,
  * so they must not trigger geocode spend or writes.
+ *
+ * Exported (WORKSTATION_LOCATION_MAP_SPEC Part A item 5 — "one resolver, not three"): the
+ * Workstation's own item list (`GET /api/trips/:tripId/itinerary-items`, server/routes.ts) reuses
+ * this SAME function rather than re-implementing a second backfill, so an item added without
+ * coordinates (e.g. a DMO pick whose source row carries none) gets pinned on the expert's own
+ * canvas map exactly as it already does on the traveler-facing PlanCard.
  */
-async function resolveMissingItemCoordinates(
+export async function resolveMissingItemCoordinates(
   items: Array<{ id: string; latitude: any; longitude: any; locationName: any; locationAddress: any }>,
   destination: string | null | undefined,
 ): Promise<void> {

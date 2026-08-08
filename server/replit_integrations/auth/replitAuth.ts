@@ -1,3 +1,8 @@
+// NOTE: `passport` is an intentional runtime dependency. It is the live auth
+// system for this app — Replit OIDC login (this file), email/password login
+// (emailAuth.ts uses req.login / passport.session), and Facebook/Instagram
+// influencer auth (facebookAuth.ts) all depend on it. Do not remove it from
+// package.json unless every one of those flows is migrated off Passport first.
 import * as client from "openid-client";
 import { Strategy, type VerifyFunction } from "openid-client/passport";
 
