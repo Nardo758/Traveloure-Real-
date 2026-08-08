@@ -1159,9 +1159,10 @@ function GuestCartMigrator() {
 // Clerk configuration pulled from Vite env (injected by the proxy provisioner).
 const clerkPublishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY || "";
 
-// FAPI proxy URL — routes all Clerk frontend requests through /clerk-api on our own domain
-// to avoid third-party cookie restrictions and ad-blockers that target clerk.*.accounts.dev.
-const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL || "/clerk-api";
+// FAPI proxy URL — must match CLERK_PROXY_PATH in server/middlewares/clerkProxyMiddleware.ts.
+// Only active in production; in development Clerk contacts FAPI directly.
+const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL
+  || (import.meta.env.PROD ? "/api/__clerk" : undefined);
 
 const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 
@@ -1206,7 +1207,7 @@ function App() {
   return (
     <ClerkProvider
       publishableKey={clerkPublishableKey}
-      proxyUrl={clerkProxyUrl}
+      {...(clerkProxyUrl ? { proxyUrl: clerkProxyUrl } : {})}
       signInUrl={`${basePath}/sign-in`}
       signUpUrl={`${basePath}/sign-up`}
       signInFallbackRedirectUrl="/dashboard"

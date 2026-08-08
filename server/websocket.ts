@@ -3,7 +3,9 @@ import type { Server, IncomingMessage } from "http";
 import { clerkMiddleware, getAuth } from "@clerk/express";
 import { publishableKeyFromHost } from "@clerk/shared/keys";
 import { getClerkProxyHost } from "./middlewares/clerkProxyMiddleware";
-import { storage } from "./storage";
+import { db } from "./db";
+import { userAndExpertChats } from "@shared/schema";
+import { eq, and, or } from "drizzle-orm";
 import { logger } from "./infrastructure/logger";
 import { getUserId } from "./utils/auth";
 
@@ -162,11 +164,15 @@ function handleAuthenticatedConnection(ws: WebSocket, userId: string) {
             break;
           }
 
-          const newMessage = await storage.createMessage({
-            chatId: message.chatId,
-            senderId: userId,
-            content: message.content,
-          });
+          // Persist the message directly to the userAndExpertChats table.
+          const [newMessage] = await db
+            .insert(userAndExpertChats)
+            .values({
+              senderId: userId,
+              receiverId: message.recipientId,
+              message: message.content,
+            })
+            .returning();
 
           const outbound = JSON.stringify({
             type: "chat",
@@ -216,34 +222,36 @@ function handleAuthenticatedConnection(ws: WebSocket, userId: string) {
             break;
           }
 
-          await storage.markMessagesAsRead(message.chatId, userId);
+          // chatId is formatted as "senderId_recipientId" (sorted lexicographically).
+          // Mark all unread messages from the other party as read.
+          const now = new Date();
+          await db
+            .update(userAndExpertChats)
+            .set({ readAt: now })
+            .where(
+              and(
+                eq(userAndExpertChats.receiverId, userId),
+                or(
+                  eq(userAndExpertChats.senderId, message.chatId.replace(`_${userId}`, "").replace(`${userId}_`, "")),
+                ),
+              ),
+            );
 
-          const client = clients.get(userId);
-          if (client) {
-            for (const activeChat of client.activeChats) {
-              if (activeChat === message.chatId) {
-                // Notify other participants that messages were read
-                const chat = await storage.getChat(message.chatId);
-                if (chat) {
-                  const participantId = chat.userId === userId ? chat.expertId : chat.userId;
-                  if (participantId) {
-                    const participantClient = clients.get(participantId);
-                    if (
-                      participantClient &&
-                      participantClient.ws.readyState === WebSocket.OPEN
-                    ) {
-                      participantClient.ws.send(
-                        JSON.stringify({
-                          type: "read",
-                          chatId: message.chatId,
-                          readBy: userId,
-                        })
-                      );
-                    }
-                  }
-                }
-                break;
-              }
+          // Notify the other participant (the sender of those messages) that we read them.
+          // Parse the other userId from the chatId string.
+          const otherUserId = message.chatId
+            .split("_")
+            .find((part: string) => part !== userId);
+          if (otherUserId) {
+            const participantClient = clients.get(otherUserId);
+            if (participantClient && participantClient.ws.readyState === WebSocket.OPEN) {
+              participantClient.ws.send(
+                JSON.stringify({
+                  type: "read",
+                  chatId: message.chatId,
+                  readBy: userId,
+                })
+              );
             }
           }
           break;

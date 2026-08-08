@@ -486,6 +486,7 @@ export async function registerRoutes(
   // per-endpoint checks are left in place as harmless belt-and-suspenders.
   const adminApiGuard = async (req: any, res: any, next: any) => {
     try {
+      const uid = getUserId(req);
       if (!uid) {
         return res.status(401).json({ message: "Authentication required" });
       }
