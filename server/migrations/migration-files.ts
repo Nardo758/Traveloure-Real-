@@ -821,4 +821,11 @@ export const MIGRATION_FILES = [
   // the pre-existing `suggestedBy = 'expert'` spare, falling back to the old heuristic only for
   // legacy `origin IS NULL` rows. Declared in shared/schema.ts in the same commit.
   "181_itinerary_items_origin.sql",
+  // 182: OPTIMIZER_SOURCING_BUILD_SPEC WP-B — optimizer_gap_fills, the append-only ledger of every
+  // external fill the optimizer used when no platform (provider_services) listing matched. New
+  // table, market-agnostic (distinct from the Kyoto-only content_gap_alerts editorial gauge, which
+  // is UPDATE-in-place); no CHECK → no publish-time push trap. Table + both indexes declared in
+  // shared/schema.ts in the same commit (deploy-push durability rule). See
+  // 182_optimizer_gap_fills.sql for the full rationale.
+  "182_optimizer_gap_fills.sql",
 ] as const;

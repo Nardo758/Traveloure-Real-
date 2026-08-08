@@ -7343,6 +7343,66 @@ export const dmoScrapeJobs = pgTable("dmo_scrape_jobs", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+/**
+ * Optimizer gap-fill ledger (migration 182, OPTIMIZER_SOURCING_BUILD_SPEC WP-B).
+ *
+ * `content_gap_alerts` above answers "how much DMO content do we hold per editorial type vs. a
+ * target" (an UPDATE-in-place gauge, Kyoto-only, reconciled by `analyzeKyotoContentGaps`). This
+ * table answers a different, narrower question the sourcing rule needs: "every time the OPTIMIZER
+ * could not place a platform (`provider_services`) match and fell back to external content, what
+ * city/category/kind did it need, and what filled it (or didn't)?" — real-time optimizer demand,
+ * not a periodic editorial sweep, and not scoped to one market. The existing shape cannot carry
+ * this: no tripId, no itemKind (service|transport|content), no source discriminator matching
+ * tavily/google/grok/unfilled, and its per-(market,city,contentType) row is reconciled/UPDATEd in
+ * place rather than appended.
+ *
+ * APPEND-ONLY (§17 posture): one row per external-fill event, no UPDATE/DELETE path in app code.
+ * "Dedupe by counts, not UPDATE-in-place of facts" is implemented at READ time — the admin summary
+ * GROUPs BY (city, category) and COUNTs rows in a window — rather than by mutating a bucket row, so
+ * a persistent gap reads as rising demand volume without any fact ever being rewritten.
+ *
+ * NO DB CHECK on item_kind/source (migration-159/171/177 posture): canonical vocabulary lives in
+ * TS (`OPTIMIZER_GAP_ITEM_KINDS` / `OPTIMIZER_GAP_SOURCES` below) — a brand-new all-default-free
+ * table has no legacy rows, so a CHECK here would buy nothing and only add a publish-push remap
+ * trap risk if the vocabulary ever grows. `tripId` is a SOFT reference, deliberately no FK: a
+ * demand-ledger row is a fact about what the optimizer needed, and must outlive the trip it was
+ * observed on (the `reconciliationExceptions.bookingId` precedent, one section up). Table + both
+ * indexes are declared here in shared/schema.ts in the same commit as the migration (CLAUDE.md
+ * deploy-push durability rule) and its insert schema is `.pick()`-based (§19) so a future column
+ * added to this table is unreachable from a client body until deliberately named.
+ */
+export const optimizerGapFills = pgTable(
+  "optimizer_gap_fills",
+  {
+    id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+    occurredAt: timestamp("occurred_at").defaultNow().notNull(),
+    city: varchar("city", { length: 100 }).notNull(),
+    /** dataType/category — e.g. "activity", "dining", "lodging", "transport", "photography". */
+    category: varchar("category", { length: 100 }).notNull(),
+    /** service | transport | content — app-enforced, see OPTIMIZER_GAP_ITEM_KINDS. */
+    itemKind: varchar("item_kind", { length: 20 }).notNull(),
+    /** tavily | google | grok | unfilled — app-enforced, see OPTIMIZER_GAP_SOURCES. */
+    source: varchar("source", { length: 20 }).notNull(),
+    /** Soft reference, NO FK (see rationale above). */
+    tripId: varchar("trip_id"),
+    details: jsonb("details").notNull().default({}),
+  },
+  (table) => ({
+    cityCategoryIdx: index("optimizer_gap_fills_city_category_idx").on(table.city, table.category),
+    occurredAtIdx: index("optimizer_gap_fills_occurred_at_idx").on(table.occurredAt),
+  }),
+);
+
+/** Canonical item-kind vocabulary — app-enforced, no DB CHECK (see table comment). */
+export const OPTIMIZER_GAP_ITEM_KINDS = ["service", "transport", "content"] as const;
+export type OptimizerGapItemKind = (typeof OPTIMIZER_GAP_ITEM_KINDS)[number];
+
+/** Canonical fill-source vocabulary — app-enforced, no DB CHECK (see table comment). 'unfilled'
+ *  is the honest default when no tracked pipeline (Tavily/Google/Grok) actually produced the item
+ *  — e.g. the optimizer's own LLM knowledge filled it, or nothing did. */
+export const OPTIMIZER_GAP_SOURCES = ["tavily", "google", "grok", "unfilled"] as const;
+export type OptimizerGapSource = (typeof OPTIMIZER_GAP_SOURCES)[number];
+
 // === Zod Schemas & Types for DMO Tables ===
 
 export const insertDmoSourceSchema = createInsertSchema(dmoSources).omit({ id: true, createdAt: true, updatedAt: true, lastIngestedAt: true, totalRecords: true });
@@ -7372,6 +7432,20 @@ export type InsertContentGapAlert = z.infer<typeof insertContentGapAlertSchema>;
 export const insertDmoScrapeJobSchema = createInsertSchema(dmoScrapeJobs).omit({ id: true, createdAt: true, updatedAt: true, startedAt: true, completedAt: true, scheduledAt: true });
 export type DmoScrapeJob = typeof dmoScrapeJobs.$inferSelect;
 export type InsertDmoScrapeJob = z.infer<typeof insertDmoScrapeJobSchema>;
+
+// ALLOWLIST (§19/#PS18 target shape, ratchet-exempt): the ledger writer only ever needs these six
+// fields — id/occurredAt are server-derived — so a future column added to optimizer_gap_fills is
+// unreachable until deliberately picked here.
+export const insertOptimizerGapFillSchema = createInsertSchema(optimizerGapFills).pick({
+  city: true,
+  category: true,
+  itemKind: true,
+  source: true,
+  tripId: true,
+  details: true,
+});
+export type OptimizerGapFill = typeof optimizerGapFills.$inferSelect;
+export type InsertOptimizerGapFill = z.infer<typeof insertOptimizerGapFillSchema>;
 
 // === DMO Relations ===
 
