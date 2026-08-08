@@ -1191,6 +1191,14 @@ export const itineraryComparisons = pgTable("itinerary_comparisons", {
   selectedVariantId: varchar("selected_variant_id"),
   optimizedAt: timestamp("optimized_at"),
   optimizationPaymentId: varchar("optimization_payment_id", { length: 255 }),
+  // WP-C follow-up (docs/briefs/TRIP_SEGMENTATION_DESIGN.md §5b Phase 1, migration 183):
+  // recommendation-only output of `proposeSegmentation` (server/services/trip-segmentation.service.ts)
+  // for this optimize run — strategy/rationale/segments/unplaced, shown to the traveler. NULL = no
+  // recommendation computed (predates the engine's wiring, or the computation failed and was
+  // logged-and-omitted per §15b — a segmentation failure must never fail the paid optimize). Never
+  // read for a money/ownership decision; no materialization in this wave (no trip_segments, no
+  // apply action). Sole writer: server/itinerary-optimizer.ts's generateOptimizedItineraries.
+  segmentationProposal: jsonb("segmentation_proposal"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
