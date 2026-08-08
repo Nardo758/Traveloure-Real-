@@ -133,12 +133,14 @@ async function makeUserWithCard(userId: string, pmToken: string | null): Promise
 async function makeClaim(userId: string, key: string): Promise<string> {
   const bookingId = crypto.randomUUID();
   createdBookingIds.push(bookingId);
+  // service_bookings has NO booking_date column (that's the legacy `bookings` table — CI run #33
+  // failed on exactly that mixup); trip dates live inside booking_details jsonb.
   await db.execute(sql`
     INSERT INTO service_bookings
-      (id, service_id, traveler_id, provider_id, booking_date, total_amount, platform_fee,
+      (id, service_id, traveler_id, provider_id, total_amount, platform_fee,
        status, idempotency_key, booking_details)
     VALUES
-      (${bookingId}, ${ids.service}, ${userId}, ${ids.userOk}, CURRENT_DATE + 30, '100.00',
+      (${bookingId}, ${ids.service}, ${userId}, ${ids.userOk}, '100.00',
        '15.00', 'payment_pending', ${key}, '{}'::jsonb)
   `);
   await markStripeAttempt([bookingId], `pi-${key}`);
