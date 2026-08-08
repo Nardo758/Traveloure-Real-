@@ -403,13 +403,29 @@ class StripePaymentService {
    * Create payment intent for bookings
    * @param currency - Three-letter ISO currency code (defaults to 'usd'). Supported: usd, eur, gbp, jpy, aud, sgd.
    */
+  /**
+   * B2 (one-click booking checkout): `options.offSession` asks for the PaymentIntent to be
+   * CONFIRMED here, server-side, against the user's saved card — instead of returning a
+   * clientSecret for the browser to confirm interactively.
+   *
+   * WHY THIS IS AN OPTION ON THIS METHOD, NOT A NEW METHOD. Two things other code depends on are
+   * written here and nowhere else: `metadata.bookingIds` (§15c ordering-1 lets ONLY a
+   * server-verified PaymentIntent resolve bookings from it, and §19b clears a row's payment
+   * provenance from it) and the `payment_intents` row. A parallel off-session helper would have
+   * to reproduce both, and the moment it drifted, the webhook and the drift job would stop being
+   * able to identify what a one-click checkout paid for. One writer, parameterised.
+   *
+   * Falls back to the interactive path whenever there is no usable saved method — never a hard
+   * failure, so a user without a vaulted card still checks out exactly as before.
+   */
   async createPaymentIntent(
     userId: string,
     bookings: any[],
     amount: number,
     isDeposit: boolean = false,
     currency: string = 'usd',
-    idempotencyKey?: string
+    idempotencyKey?: string,
+    options?: { offSession?: boolean }
   ) {
     try {
       // Get user details
@@ -449,6 +465,19 @@ class StripePaymentService {
       // recovers via retryOnMissingCustomer and rebuilds the SAME params with the fresh id.
       const fpCustomerId = await this.getOrCreateCustomer(userId).catch(() => null);
 
+      // B2: resolve a saved card ONLY when off-session confirmation was asked for. A customer with
+      // no vaulted method leaves `offSessionMethodId` null and the interactive path is used
+      // unchanged — the absence of a saved card must never fail a checkout.
+      let offSessionMethodId: string | null = null;
+      if (options?.offSession) {
+        try {
+          const { defaultPaymentMethodId, methods } = await this.listSavedPaymentMethods(userId);
+          offSessionMethodId = defaultPaymentMethodId ?? methods[0]?.id ?? null;
+        } catch {
+          offSessionMethodId = null; // treat a lookup failure as "no saved card", never as an error
+        }
+      }
+
       const buildPaymentIntentParams = (customerId: string | null) => ({
         amount: stripeAmount,
         currency: effectiveCurrency,
@@ -461,9 +490,13 @@ class StripePaymentService {
         },
         description: `Traveloure ${isDeposit ? 'Deposit' : 'Booking'} - ${bookings.length} item(s)`,
         receipt_email: userEmail,
-        automatic_payment_methods: {
-          enabled: true,
-        },
+        // One-click needs a NAMED payment method plus confirm+off_session. `automatic_payment_methods`
+        // is mutually exclusive with that here: it exists to let Stripe pick a method interactively,
+        // which is exactly what we are bypassing. Off-session confirmation also requires a customer,
+        // so this branch can only be taken when `customerId` resolved.
+        ...(offSessionMethodId && customerId
+          ? { payment_method: offSessionMethodId, off_session: true, confirm: true }
+          : { automatic_payment_methods: { enabled: true } }),
       });
 
       // Stripe rejects reusing an idempotencyKey with different params (`customer` differs on
@@ -492,8 +525,35 @@ class StripePaymentService {
         clientSecret: paymentIntent.client_secret,
         paymentIntentId: paymentIntent.id,
         amount: paymentIntent.amount,
+        // B2: 'succeeded' only ever comes back on the off-session branch. The interactive branch
+        // creates without confirming, so it reports 'requires_payment_method' as it always has.
+        // Callers that ignore this field behave exactly as before.
+        status: paymentIntent.status,
       };
     } catch (error: any) {
+      // B2 — a DECLINED or SCA-required off-session confirm. Stripe attaches the PaymentIntent to
+      // the error, and that PI is REAL: it exists, it is stamped-able, and the traveler can still
+      // complete it interactively. Returning it (rather than throwing) is what keeps a soft
+      // decline from being reported to the traveler as "we couldn't reach our payment provider",
+      // and keeps the authorized claim rather than sending it to the TTL sweep.
+      //
+      // Safe either way: markStripeAttempt already ran, so per §15b the sweep must reconcile such
+      // a row against Stripe instead of blind-voiding it. This branch just avoids needing that.
+      const errPi = error?.raw?.payment_intent ?? error?.payment_intent;
+      if (options?.offSession && errPi?.client_secret) {
+        console.warn(
+          `[checkout] off-session confirm failed (${error?.code ?? 'unknown'}) — falling back to ` +
+          `interactive confirmation for PaymentIntent ${errPi.id}`,
+        );
+        return {
+          clientSecret: errPi.client_secret,
+          paymentIntentId: errPi.id,
+          // Read off the PaymentIntent Stripe attached to the error — the only authoritative
+          // amount available here (the locally-computed one is scoped inside the try above).
+          amount: errPi.amount ?? 0,
+          status: errPi.status,
+        };
+      }
       console.error('Stripe payment intent error:', error);
       throw new Error(`Payment intent creation failed: ${error.message}`);
     }

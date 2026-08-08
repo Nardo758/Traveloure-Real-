@@ -218,6 +218,18 @@ jobs:
           # Declared Stripe availability decided above (1 = the app was booted with a stub key).
           JOURNEY_STRIPE_UNAVAILABLE: ${{ steps.stripe-gate.outputs.stripe_unavailable }}
 
+      - name: One-click checkout proof (B2 — live Stripe test mode, skips visibly without the secret)
+        # Runs the OC1–OC4 suite against the REAL Stripe test API. With only the stub key the
+        # suite SKIPS VISIBLY (asserted in-repo — the file's HAVE_REAL_KEY gate rejects
+        # stub/dummy patterns); it can never silently pass. Placed after the journeys so a
+        # journey failure is reported first, but not gated on them — the proof is independent.
+        if: always() && steps.run-journeys.outcome != 'skipped'
+        run: npx tsx --test server/__tests__/checkout-oneclick.stripe.db.test.ts
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY || 'sk_test_ci_stub_no_real_calls' }}
+          JOURNEY_DB_WRITES_OK: '1'
+
       - name: Upload report
         if: always()
         uses: actions/upload-artifact@v4
