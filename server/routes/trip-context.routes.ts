@@ -4,7 +4,7 @@ import { z } from "zod";
 import { sql } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
 import { db } from "../db";
-import { isAuthenticated } from "../replit_integrations/auth";
+import { requireAuth } from "../middlewares/requireAuth";
 import { verifyTripOwnership } from "../utils/trip-ownership";
 import { storage } from "../storage";
 import { chatStorage } from "../replit_integrations/chat/storage";
@@ -106,7 +106,7 @@ const tripContextSchema = z
   })
   .strip();
 
-router.get("/api/trip-context", isAuthenticated, async (req, res) => {
+router.get("/api/trip-context", requireAuth, async (req, res) => {
   try {
     const userId = sessionUserId(req);
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
@@ -128,7 +128,7 @@ router.get("/api/trip-context", isAuthenticated, async (req, res) => {
   }
 });
 
-router.put("/api/trip-context", isAuthenticated, async (req, res) => {
+router.put("/api/trip-context", requireAuth, async (req, res) => {
   try {
     const userId = sessionUserId(req);
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
@@ -243,7 +243,7 @@ function parseExtractionJson(raw: string): ExtractedTripFields | null {
   }
 }
 
-router.post("/api/trip-context/extract", aiRateLimit, isAuthenticated, async (req, res) => {
+router.post("/api/trip-context/extract", aiRateLimit, requireAuth, async (req, res) => {
   try {
     const userId = sessionUserId(req);
     if (!userId) return res.status(401).json({ message: "Unauthorized" });

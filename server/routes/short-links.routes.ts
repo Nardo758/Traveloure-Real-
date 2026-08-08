@@ -1,3 +1,5 @@
+import { requireAuth } from "../middlewares/requireAuth";
+import { getAuth } from "@clerk/express";
 /**
  * short-links.routes.ts — short-link + click store (backoffice S3).
  *
@@ -27,10 +29,6 @@ import { users, providerServices, expertTemplates, readyMadeTrips, shortLinks, s
 
 const router = Router();
 
-const isAuthenticated = (req: any, res: any, next: any) => {
-  if (req.isAuthenticated?.() && req.user) return next();
-  return res.status(401).json({ message: "Authentication required" });
-};
 
 const TARGET_TYPES = ["storefront", "service", "template", "ready_made"] as const;
 type TargetType = (typeof TARGET_TYPES)[number];
@@ -49,7 +47,7 @@ function generateCode(): string {
   return out;
 }
 
-router.post("/api/short-links", isAuthenticated, async (req: any, res) => {
+router.post("/api/short-links", requireAuth, async (req: any, res) => {
   try {
     const userId = getUserId(req)!;
     const parsed = createSchema.safeParse(req.body ?? {});
@@ -182,7 +180,7 @@ const RANGE_DAYS = [7, 30, 90, 365] as const;
  * lifetime, while `bookings`/`revenue` respect the `days` range. The payload says so
  * explicitly (`clicksAreLifetime: true`) so the client never mislabels it as range-scoped.
  */
-router.get("/api/me/link-analytics", isAuthenticated, async (req: any, res) => {
+router.get("/api/me/link-analytics", requireAuth, async (req: any, res) => {
   try {
     const userId = getUserId(req)!;
     const daysParsed = parseInt(String(req.query?.days ?? "30"), 10);
@@ -294,7 +292,7 @@ const SOURCE_LABEL: Record<SourceBucket, string> = {
  * predates S4 for all of them) so the client can render the disclaimer next to "Direct" rather
  * than presenting historical 'direct' as a measured fact.
  */
-router.get("/api/me/earnings-by-source", isAuthenticated, async (req: any, res) => {
+router.get("/api/me/earnings-by-source", requireAuth, async (req: any, res) => {
   try {
     const userId = getUserId(req)!;
 

@@ -15,12 +15,12 @@ import {
   calculateItineraryMetrics,
   mapServiceTypeToCategory
 } from "../services/smart-sequencing.service";
-import { isAuthenticated } from "../replit_integrations/auth";
+import { requireAuth } from "../middlewares/requireAuth";
 
 const router = Router();
 
 // Get full itinerary with smart sequencing notes and metrics
-router.get("/api/my-itinerary/:id", isAuthenticated, async (req, res) => {
+router.get("/api/my-itinerary/:id", requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const callerUserId = getUserId(req)!;
@@ -206,7 +206,7 @@ router.get("/api/my-itinerary/:id", isAuthenticated, async (req, res) => {
 });
 
 // Generate .ics calendar file
-router.get("/api/my-itinerary/:id/calendar", isAuthenticated, async (req, res) => {
+router.get("/api/my-itinerary/:id/calendar", requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const callerUserId = getUserId(req)!;
@@ -260,7 +260,7 @@ router.get("/api/my-itinerary/:id/calendar", isAuthenticated, async (req, res) =
 });
 
 // Generate PDF export of itinerary
-router.get("/api/my-itinerary/:id/pdf", isAuthenticated, async (req, res) => {
+router.get("/api/my-itinerary/:id/pdf", requireAuth, async (req, res) => {
   try {
     const { id } = req.params;
     const callerUserId = getUserId(req)!;

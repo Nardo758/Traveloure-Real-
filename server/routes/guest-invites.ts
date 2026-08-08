@@ -1,7 +1,7 @@
 import { Router, Request, Response } from "express";
 import { getUserId } from "../utils/auth";
 import { z } from "zod";
-import { isAuthenticated } from "../replit_integrations/auth";
+import { requireAuth } from "../middlewares/requireAuth";
 import { storage } from "../storage";
 import { createRateLimiter } from "../infrastructure/rate-limiter";
 import crypto from "crypto";
@@ -146,7 +146,7 @@ const router = Router();
  * POST /api/events/:experienceId/invites
  * Create invite links for guests. Body: { guests: [{ email, name, phone? }] }
  */
-router.post("/api/events/:experienceId/invites", isAuthenticated, async (req: Request, res: Response) => {
+router.post("/api/events/:experienceId/invites", requireAuth, async (req: Request, res: Response) => {
   try {
     const { experienceId } = req.params;
     const userId = sessionUserId(req);
@@ -199,7 +199,7 @@ router.post("/api/events/:experienceId/invites", isAuthenticated, async (req: Re
  * GET /api/events/:experienceId/invites
  * List all invites for an event (organizer only).
  */
-router.get("/api/events/:experienceId/invites", isAuthenticated, async (req: Request, res: Response) => {
+router.get("/api/events/:experienceId/invites", requireAuth, async (req: Request, res: Response) => {
   try {
     const { experienceId } = req.params;
     const userId = sessionUserId(req);
@@ -230,7 +230,7 @@ router.get("/api/events/:experienceId/invites", isAuthenticated, async (req: Req
  * GET /api/events/:experienceId/invites/stats
  * RSVP statistics for an event (organizer only).
  */
-router.get("/api/events/:experienceId/invites/stats", isAuthenticated, async (req: Request, res: Response) => {
+router.get("/api/events/:experienceId/invites/stats", requireAuth, async (req: Request, res: Response) => {
   try {
     const { experienceId } = req.params;
     const userId = sessionUserId(req);
@@ -269,7 +269,7 @@ router.get("/api/events/:experienceId/invites/stats", isAuthenticated, async (re
  * DELETE /api/invites/:inviteId
  * Delete/cancel an invite — gated on ownership of the invite's PARENT experience.
  */
-router.delete("/api/invites/:inviteId", isAuthenticated, async (req: Request, res: Response) => {
+router.delete("/api/invites/:inviteId", requireAuth, async (req: Request, res: Response) => {
   try {
     const { inviteId } = req.params;
     const userId = sessionUserId(req);
@@ -518,7 +518,7 @@ router.post("/api/invites/:token/travel-plans", guestTokenLimiter, async (req: R
  * POST /api/invite-templates
  * Create a custom invite template for the session user.
  */
-router.post("/api/invite-templates", isAuthenticated, async (req: Request, res: Response) => {
+router.post("/api/invite-templates", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = sessionUserId(req);
 
@@ -545,7 +545,7 @@ router.post("/api/invite-templates", isAuthenticated, async (req: Request, res: 
  * GET /api/invite-templates/user/:userId
  * List the session user's own invite templates (self-only).
  */
-router.get("/api/invite-templates/user/:userId", isAuthenticated, async (req: Request, res: Response) => {
+router.get("/api/invite-templates/user/:userId", requireAuth, async (req: Request, res: Response) => {
   try {
     const requestedUserId = req.params.userId;
     const authenticatedUserId = sessionUserId(req);
