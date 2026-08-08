@@ -301,6 +301,17 @@ async function authorizeAndPromote(
     platformFee: number;
     conciergeFee: number;
     redriven?: boolean;
+    /**
+     * B2 one-click: attempt an OFF-SESSION confirm against the traveler's saved card instead of
+     * handing back a clientSecret. An opt-in preference, not a money input — the amount is still
+     * derived entirely from the claimed rows (§14), and the server independently verifies a saved
+     * card actually exists. Absent or false ⇒ byte-identical to the previous behaviour.
+     *
+     * Named `useSavedCard` on the wire to match the vocabulary the optimize-fee one-click already
+     * established (`/api/optimization-payments`: `useSavedCard` in; `oneClick` / `status` /
+     * `requiresAction` out). Two one-click flows in one product should not speak two dialects.
+     */
+    useSavedCard?: boolean;
   },
 ) {
   const { userId, checkoutKey, bookings, subtotal, platformFee, conciergeFee } = args;
@@ -326,7 +337,8 @@ async function authorizeAndPromote(
       // key the DB claim used (`checkoutKey`, not the raw body value) so the two layers can
       // never disagree about what "this request" is — and so a re-drive of the same claim
       // returns Stripe's ORIGINAL PaymentIntent rather than creating a second one.
-      checkoutKey
+      checkoutKey,
+      { offSession: args.useSavedCard === true },
     );
   } catch (stripeErr: any) {
     // THE FAILURE THIS LANE EXISTS FOR. Nothing irreversible has happened: no cart clear, no
@@ -373,6 +385,40 @@ async function authorizeAndPromote(
 
   await promoteAuthorizedCheckout(userId, bookingIds);
 
+  // ── B2: the off-session confirm already SUCCEEDED, so payment is a fact, not a promise ──────
+  // Drive the SAME shared promotion the webhook and the client fallback drive (§15c: one
+  // promotion implementation, N callers — never a second implementation). Doing it inline is
+  // what makes one-click actually one click: without it the booking would sit `payment_pending`
+  // until the webhook arrived, and the traveler would be shown a pending purchase they have
+  // already paid for.
+  //
+  // Safe against a double signal BY CONSTRUCTION: promotePaidCheckout's flip is an atomic
+  // conditional on (status='payment_pending' AND stripe_payment_intent_id=<pi>), so the webhook
+  // arriving moments later matches zero rows and is a no-op — exactly one flip, one diary row.
+  // Actor "checkout" is deliberately NOT server-verified: this path passes bookingIds explicitly
+  // and has already stamped them, so it never needs the ordering-1 stamping capability.
+  //
+  // Best-effort by the same logic as promoteAuthorizedCheckout: Stripe has taken the money, so a
+  // failure here must not fail the response. The webhook and the drift job both still converge.
+  let paidPromotion = false;
+  if (paymentIntent?.status === "succeeded") {
+    try {
+      const { promotePaidCheckout } = await import("../services/checkout-claim.service");
+      const promo = await promotePaidCheckout({
+        paymentIntentId: paymentIntent.paymentIntentId,
+        actor: "checkout",
+        actorId: userId,
+        bookingIds,
+      });
+      paidPromotion = promo.promoted.length > 0 || promo.alreadyConfirmed.length > 0;
+    } catch (err: any) {
+      console.error(
+        `[checkout] one-click paid-promotion failed for ${paymentIntent.paymentIntentId} ` +
+        `(payment SUCCEEDED; webhook/reconciliation will converge):`, err?.message ?? err,
+      );
+    }
+  }
+
   // R3/F6: commissionRate is the REAL charged ratio (platformFee/subtotal), not the
   // calculateCommission display literal (0.30) that matched no actual rate. Display-only field.
   const effectiveCommissionRate = subtotal > 0 ? Number((platformFee / subtotal).toFixed(4)) : 0;
@@ -388,7 +434,24 @@ async function authorizeAndPromote(
     bookingType: BookingType.EXPERIENCE_CART,
     commissionRate: effectiveCommissionRate,
     ...(args.redriven ? { redriven: true } : {}),
-    message: "Booking created successfully. Complete payment.",
+    // B2 — same three fields the optimize-fee one-click already returns, so the client can reuse
+    // its existing branch shape. `oneClick && status === "succeeded"` ⇒ paid, nothing left to do,
+    // and the client must NOT call stripe.confirmPayment with the clientSecret. `requiresAction`
+    // ⇒ the saved card was declined or the bank demanded 3DS, so finish it interactively with the
+    // clientSecret already in `paymentIntent`. Neither field appears unless one-click was asked
+    // for, so existing callers see the response byte-identically.
+    ...(args.useSavedCard
+      ? {
+          oneClick: true,
+          status: paymentIntent?.status,
+          requiresAction: paymentIntent?.status !== "succeeded",
+          confirmed: paidPromotion,
+        }
+      : {}),
+    message:
+      paymentIntent?.status === "succeeded"
+        ? "Payment complete. Your booking is confirmed."
+        : "Booking created successfully. Complete payment.",
   });
 }
 
@@ -560,6 +623,7 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
             platformFee: provisional.reduce((s, r) => s + parseFloat(r.platformFee || "0"), 0),
             conciergeFee: 0, // already folded into each row's stored platformFee
             redriven: true,
+            useSavedCard: req.body?.useSavedCard === true,
           });
         }
         // Mixed or terminal — the key is spent. Never a false success.
@@ -1017,6 +1081,7 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         subtotal,
         platformFee,
         conciergeFee,
+        useSavedCard: req.body?.useSavedCard === true,
       });
     } catch (err: any) {
       console.error("Checkout error:", err);
