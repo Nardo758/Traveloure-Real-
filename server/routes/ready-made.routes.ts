@@ -986,7 +986,7 @@ router.get("/api/ready-made/:id", async (req, res) => {
     if (!row) return res.status(404).json({ message: "Trip not found" });
 
     const isPublic = row.status === "approved" && row.active;
-    const sessionUser = (req as any).isAuthenticated?.() ? sessionUserId(req) : null;
+    const sessionUser = sessionUserId(req) || null;
     const isAuthorPreview = !isPublic && sessionUser !== null && sessionUser === row.authorId;
     if (!isPublic && !isAuthorPreview) {
       return res.status(404).json({ message: "Trip not found" }); // no draft-listing oracle

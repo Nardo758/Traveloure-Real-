@@ -905,7 +905,7 @@ export default function ItineraryComparisonPage() {
   }
 
   if (!user) {
-    setLocation("/api/login");
+    setLocation("/sign-in");
     return null;
   }
 

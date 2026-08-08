@@ -284,7 +284,7 @@ export function sendWebSocketMessage(userId: string, message: object) {
 
 export function broadcastToChat(chatId: string, message: object, excludeUserId?: string) {
   const outbound = JSON.stringify(message);
-  for (const [userId, client] of clients) {
+  for (const [userId, client] of Array.from(clients)) {
     if (excludeUserId && userId === excludeUserId) continue;
     if (client.activeChats.has(chatId) && client.ws.readyState === WebSocket.OPEN) {
       client.ws.send(outbound);
