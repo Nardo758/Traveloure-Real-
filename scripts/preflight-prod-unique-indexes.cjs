@@ -63,27 +63,6 @@ const INDEX_MANIFEST = [
     cols: ["source_trip_id"], where: null, migration: "133" },
   { name: "idx_rmp_buyer_trip_active", table: "ready_made_purchases",
     cols: ["buyer_id", "ready_made_trip_id"], where: "status IN ('paid','cloned')", migration: "133" },
-
-  // ── S7 availability materializer (DECISIONS.md ledger 102, migration 210) ──
-  // The materializer's ON CONFLICT DO NOTHING upsert target
-  // (server/services/availability-materializer.service.ts). Migration 210 itself already runs
-  // this exact duplicate check and RAISEs (refuses to proceed) if it finds any — this manifest
-  // entry is the pre-publish check for an environment that has NOT yet run migration 210 (or is
-  // being newly pushed via drizzle-kit push rather than the migration runner).
-  //
-  // NOTE ON `where` HERE (an intentional, narrow exception to "must match the declaration
-  // verbatim" above): the DECLARED index (shared/schema.ts) is NOT partial — deliberately, so
-  // Drizzle's `onConflictDoNothing({ target: [...] })` (a bare, non-partial ON CONFLICT clause)
-  // can use it as its arbiter; see that declaration's own comment for the Postgres error a partial
-  // index produces there. But `where: "start_time IS NOT NULL"` below is still CORRECT for the
-  // duplicate check, not a mismatch: Postgres never treats two NULL start_times as a uniqueness
-  // collision in EITHER a partial or a non-partial unique index, while a naive GROUP BY with no
-  // WHERE clause would (SQL GROUP BY, unlike equality, treats all NULLs as one group) and would
-  // false-positive on legitimate NULL-start_time duplicates. Excluding NULLs here models the same
-  // real constraint the non-partial index actually enforces — it is a correctness fix for the
-  // CHECK QUERY, not a claim that the declared index itself is partial.
-  { name: "vendor_availability_slots_service_date_start_unique", table: "vendor_availability_slots",
-    cols: ["service_id", "date", "start_time"], where: "start_time IS NOT NULL", migration: "210" },
 ];
 
 /**
