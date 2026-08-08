@@ -8,11 +8,12 @@
  * App-specific data (role, preferences, termsAcceptedAt, etc.) lives in the local users table.
  */
 import { Router } from "express";
-import { requireAuth } from "../middlewares/requireAuth";
+import { requireAuth, jitProvisionUser } from "../middlewares/requireAuth";
 import { db } from "../db";
 import { users } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { getUserId } from "../utils/auth";
+import { getAuth } from "@clerk/express";
 import { z } from "zod";
 import type { Express } from "express";
 
@@ -41,32 +42,39 @@ const acceptTermsSchema = z.object({
 });
 
 export function registerClerkAuthRoutes(app: Express) {
-  // Session check — unauthenticated-safe endpoint
+  // Session check — unauthenticated-safe endpoint.
+  // When the caller has a valid Clerk session but no local row (new sign-up),
+  // jitProvisionUser creates the row so the first bootstrap call authenticates.
   app.get("/api/auth/session", async (req: any, res) => {
     const userId = getUserId(req);
     if (!userId) {
       return res.json({ authenticated: false, user: null });
     }
     try {
-      const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
-      return res.json({ authenticated: !!user, user: sanitizeUser(user) ?? null });
+      let auth: ReturnType<typeof getAuth> | null = null;
+      try { auth = getAuth(req); } catch { /* no Clerk token — fall through */ }
+      const claims = (auth?.sessionClaims as Record<string, unknown>) ?? undefined;
+      const { dbUser } = await jitProvisionUser(userId, claims);
+      return res.json({ authenticated: !!dbUser, user: sanitizeUser(dbUser) ?? null });
     } catch {
       return res.json({ authenticated: false, user: null });
     }
   });
 
   // Current user — unauthenticated-safe (returns null for logged-out users).
-  // The client's useAuth hook guards against firing this while Clerk is still
-  // loading, so authenticated requests always have a valid session cookie.
-  // All "me" aliases share this unauthenticated-safe handler; protected routes
-  // that absolutely require authentication use requireAuth before their own handler.
+  // For authenticated sessions with no local row (new Clerk sign-up), JIT
+  // provisioning runs here so the first GET /api/auth/user succeeds immediately
+  // rather than waiting for a protected endpoint to trigger requireAuth.
   const meHandler = async (req: any, res: any) => {
     try {
       const userId = getUserId(req);
       if (!userId) return res.json(null);
-      const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
-      if (!user) return res.json(null);
-      return res.json(sanitizeUser(user));
+      let auth: ReturnType<typeof getAuth> | null = null;
+      try { auth = getAuth(req); } catch { /* no Clerk token — legacy fallback */ }
+      const claims = (auth?.sessionClaims as Record<string, unknown>) ?? undefined;
+      const { dbUser } = await jitProvisionUser(userId, claims);
+      if (!dbUser) return res.json(null);
+      return res.json(sanitizeUser(dbUser));
     } catch (err) {
       console.error("[clerk-auth] /api/auth/user error:", err);
       return res.json(null); // safe fallback — never break the loading state

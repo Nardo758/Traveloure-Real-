@@ -2,7 +2,67 @@ import { getAuth } from "@clerk/express";
 import { db } from "../db";
 import { users } from "@shared/schema";
 import { eq } from "drizzle-orm";
-import type { RequestHandler } from "express";
+import type { RequestHandler, Request } from "express";
+
+/**
+ * Shared JIT-provisioning helper.
+ *
+ * Given an authenticated userId and their Clerk sessionClaims, ensures a local
+ * users row exists (creates one on first access) and returns it.  Returns null
+ * if provisioning fails unexpectedly.
+ *
+ * Called by:
+ *  - requireAuth middleware (for fully protected routes)
+ *  - /api/auth/user and /api/auth/session handlers (for the bootstrap endpoints
+ *    that must also be unauthenticated-safe but still provision on first sign-in)
+ *
+ * NEVER passes auth.userId (Clerk native ID) to DB lookups without checking
+ * sessionClaims.userId first (legacy Replit Auth sub preserved as externalId).
+ */
+export async function jitProvisionUser(
+  userId: string,
+  sessionClaims?: Record<string, unknown>
+): Promise<{
+  dbUser: (typeof users.$inferSelect) | null;
+  isDeleted?: boolean;
+  isSuspended?: boolean;
+  suspensionReason?: string | null;
+}> {
+  let [dbUser] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+
+  if (!dbUser) {
+    // JIT provision: first authenticated request creates the local row.
+    // Populate nullable identity columns from sessionClaims (frozen at insert —
+    // Clerk is the source of truth for subsequent reads; local copy satisfies
+    // any NOT NULL constraints and avoids null in FK-dependent display queries).
+    const [inserted] = await db
+      .insert(users)
+      .values({
+        id: userId,
+        role: "user",
+        email: (sessionClaims?.email as string) || undefined,
+        firstName: (sessionClaims?.firstName as string) || undefined,
+        lastName: (sessionClaims?.lastName as string) || undefined,
+      })
+      .onConflictDoNothing()
+      .returning();
+    if (inserted) {
+      dbUser = inserted;
+    } else {
+      // Race condition — another concurrent request already inserted; fetch it.
+      [dbUser] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+    }
+  }
+
+  if (!dbUser) return { dbUser: null };
+
+  return {
+    dbUser,
+    isDeleted: dbUser.isDeleted ?? false,
+    isSuspended: dbUser.isSuspended ?? false,
+    suspensionReason: dbUser.suspensionReason,
+  };
+}
 
 /**
  * Clerk-based authentication + JIT provisioning middleware.
@@ -25,45 +85,22 @@ export const requireAuth: RequestHandler = async (req, res, next) => {
   }
 
   try {
-    let [dbUser] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
-
-    if (!dbUser) {
-      // JIT provision: first authenticated request creates the local row.
-      // Populate nullable identity columns from sessionClaims (frozen at insert —
-      // Clerk is the source of truth for subsequent reads; local copy satisfies
-      // any NOT NULL constraints and avoids null in FK-dependent display queries).
-      const claims = auth?.sessionClaims as Record<string, unknown> | undefined;
-      const [inserted] = await db
-        .insert(users)
-        .values({
-          id: userId,
-          role: "user",
-          email: (claims?.email as string) || undefined,
-          firstName: (claims?.firstName as string) || undefined,
-          lastName: (claims?.lastName as string) || undefined,
-        })
-        .onConflictDoNothing()
-        .returning();
-      if (inserted) {
-        dbUser = inserted;
-      } else {
-        // Race condition — another concurrent request already inserted; fetch it.
-        [dbUser] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
-      }
-    }
+    const claims = auth?.sessionClaims as Record<string, unknown> | undefined;
+    const { dbUser, isDeleted, isSuspended, suspensionReason } =
+      await jitProvisionUser(userId, claims);
 
     if (!dbUser) {
       return res.status(401).json({ message: "User not found" });
     }
 
-    if (dbUser.isDeleted) {
+    if (isDeleted) {
       return res.status(403).json({ message: "This account has been deleted" });
     }
 
-    if (dbUser.isSuspended) {
+    if (isSuspended) {
       return res.status(403).json({
         message: "Your account has been suspended. Please contact support.",
-        reason: dbUser.suspensionReason ?? undefined,
+        reason: suspensionReason ?? undefined,
       });
     }
 

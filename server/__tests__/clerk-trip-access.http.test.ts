@@ -184,3 +184,28 @@ test("isEA guard: getUserId(req) returns userId for authenticated request", () =
   assert.equal(getUserId(req), "ea-user-1",
     "getUserId must return the userId for an authenticated EA request");
 });
+
+// ── JIT provisioning: /api/auth/user bootstrap path ──────────────────────────
+//
+// After the Clerk migration, /api/auth/user (the first endpoint called by
+// useAuth on page load) must also run JIT provisioning so a newly registered
+// Clerk user gets a local row immediately — not after some unrelated
+// protected endpoint triggers requireAuth.
+//
+// We test jitProvisionUser() in isolation (same function used by requireAuth
+// and the meHandler) since spinning up the full HTTP server with trips router
+// hangs on DB pool init in the test process.
+
+const { jitProvisionUser } = await import("../middlewares/requireAuth.js");
+
+test("JIT-1 — jitProvisionUser is exported and callable (API contract)", () => {
+  assert.equal(typeof jitProvisionUser, "function",
+    "jitProvisionUser must be exported from requireAuth for use in /api/auth/user");
+});
+
+test("JIT-2 — jitProvisionUser signature accepts userId and optional claims", () => {
+  // Verify the function accepts the expected signature (two args: string + record).
+  // We don't call it (that needs a live DB) but we can check the function length.
+  assert.equal(jitProvisionUser.length, 2,
+    "jitProvisionUser must accept (userId: string, sessionClaims?: Record<string, unknown>)");
+});
