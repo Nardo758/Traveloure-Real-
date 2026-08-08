@@ -6,4 +6,6 @@ Despite CLERK_* secrets in the environment, there is **no Clerk code** in server
 
 **Why:** A task assumed "Clerk migration happened, remove Passport" — removing it would have broken all authentication. `passport-local` was the only dead dep (removed Aug 2026).
 
+**Decision (Aug 2026, recorded in replit.md):** Clerk migration officially abandoned; Passport is permanent. The CLERK_* secrets belong to a Replit-managed Clerk tenant (Auth pane) and cannot be deleted programmatically — deleteEnvVars succeeds but they re-sync. Treat them as inert.
+
 **How to apply:** Any task claiming Clerk is the sole auth should be verified with a grep for clerk imports first. Keep `passport`/`passport-facebook` until every flow above is migrated (header notes in replitAuth.ts/facebookAuth.ts say the same).
