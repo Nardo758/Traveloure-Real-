@@ -54,14 +54,17 @@ is the explicit body end, else `start + 7d`.
 **Segmentation is therefore not a new pipeline. It is: stop calling `[0]`, cluster instead, and
 materialize N trips rather than 1.**
 
-## 3. Architecture — collect → segment → materialize
+## 3. Architecture — collect → **optimize (paid)** → materialize
+
+Per the §5b ruling, segmentation lives **inside** the optimization. The traveler pays once to ask
+*"how should this be executed?"*, and the number of trips is part of the answer.
 
 | Stage | What it is | Status |
 |---|---|---|
 | **Collect** | Items land in a user-scoped pool with no trip commitment. Today's `cart_items`. | **exists** |
 | **Date input** | A light, non-blocking date range on the *collection*, not on a trip. | partially exists (body dates / `TripContext`) |
-| **Segment** | Cluster the collection into 1..N proposed trips. Returns a **proposal**, never a commitment. | **new** |
-| **Materialize** | Create the accepted trips, assign items, hand off to the optimizer. | **exists** (steps 6-7, needs to loop) |
+| **Optimize** — *one fee* | The traveler pays once. The run returns the optimized plan **and** the execution recommendation (1..N trips). | fee + payment **exist**; the segmentation step is **new** |
+| **Materialize** | Apply the recommendation: create the trips, assign items. **Never re-charged** (§5b derived-trip rule). | **exists** (resolve-trip steps 6-7, needs to loop) |
 
 ### Why this resolves the audit's blocker
 
@@ -141,11 +144,100 @@ un-suppressing the mode that already exists.**
    collection. A client-supplied `strategy` or `segments` must never be trusted — same posture as
    CLAUDE.md §14, applied to planning rather than money.
 
-## 5b. Where the AI-optimization fee sits  (decision-maker question, Aug 8 2026)
+## 5b. Where the AI-optimization fee sits — ONE fee  (decision-maker, Aug 8 2026)
 
-*"If the user selection now sits in the Trip Slip, where does the AI optimization pay modal sit?"*
+> **RULING (supersedes the per-trip fee sketch previously in this section).** *"The user simply
+> selects the items and the AI optimization recommends the segmentation or the road trip — basically
+> how to execute the trip. So there should be **one** AI optimization fee charged."*
 
-**Answer: on the Slip. The server already works that way — no server change is needed.**
+**Segmentation is an OUTPUT of the optimization, not a step before it.** "How should this be
+executed — one trip, two trips, or a road trip?" is part of what the traveler is buying. This is the
+correct model and it simplifies the design in three ways:
+
+1. **One fee, charged once**, on the Slip the traveler optimizes.
+2. **The proposal screen is a POST-payment result surface**, not a free pre-step. The traveler has
+   already paid when they see it.
+3. **The multi-trip fee problem dissolves.** Trips born from a recommendation the traveler already
+   paid for are **never re-charged** (see the derived-trip rule below).
+
+### The flow
+
+```
+select items ──► they land in the working Slip ──► set travel dates
+      │
+      └──► "Optimize" on the Slip ──► ONE fee, paid ──► AI runs
+                                                          │
+                          ┌───────────────────────────────┘
+                          ▼
+            optimized plan  +  execution recommendation
+            (one trip · split into N · multi-city · road trip)
+                          │
+                          └──► traveler applies it ──► Slip splits into N Slips if recommended
+```
+
+**Pay-before-result is unchanged** — the fee is paid at the optimize click, before results are shown.
+
+### Why no server change is needed
+
+All three optimization endpoints are **already keyed to a trip**
+(`server/routes/optimization.routes.ts`):
+
+| endpoint | line | keyed on |
+|---|---|---|
+| `GET /api/optimization-fee` | :133-145 | `tripId` (or `userExperienceId`) |
+| `POST /api/optimization-payments` | :225-239 | `tripId` (or `userExperienceId`) |
+| `POST /api/optimization-payments/confirm` | :389 | the payment intent |
+
+The fee is resolved per trip by `resolveTargetFromDb(tripId, …)` (:176-183) from that trip's
+`eventType` and owner. Because the traveler optimizes **one** working Slip, that is **one** `tripId`
+and therefore **one** fee — the existing contract already produces the ruled behavior. The cart was
+never the unit of pricing; the trip always was. Today's pay panel on `/cart` is an artifact of where
+the optimize *button* lives, not of how the money is scoped.
+
+### The derived-trip rule (new, must not be weakened)
+
+**A trip created by applying an optimization recommendation must never trigger a second optimization
+fee for that same recommendation.** The split is the delivery of a paid result, not a new purchase.
+
+Concretely: when the recommendation materializes N trips, those trips are born already carrying the
+optimization they came from. A later, *fresh* optimization run on one of them is a new purchase and
+charges normally — but applying the original recommendation must not.
+
+This needs an explicit guard, because the fee endpoints key on `tripId` and a freshly-minted child
+trip is, to them, just another chargeable trip. Getting this wrong charges the traveler twice for one
+result, which is a §14/§15 class defect (a charge with no corresponding purchase decision). The
+proof obligation for C4: **materialize a `split` recommendation and assert exactly one
+`optimization_payment` exists across the parent and all children.**
+
+### Where the pay modal sits
+
+**On the Slip**, at the optimize CTA. `SlipView.tsx` is already half-wired for this: it renders the
+*result* of optimization — the `slip-optimized-badge` (gated on a real `variant_applied` diary row)
+and optimizer-attributed rows via `suggestedBy === "ai"` — but has **no trigger to run one**. It
+displays the outcome of an action it cannot invoke. Adding the CTA and its pay step closes the loop,
+and is a pure client change.
+
+With a saved card this is one click end to end: **Optimize → off-session charge → results**, no
+modal. `chargeSavedMethod` (`optimization.routes.ts:295`) already exists to serve it — this is the
+streamlined path originally asked for, preserved intact.
+
+Amounts stay server-derived (§14 — never `req.body`) and sourced from `fee_bands` (§8).
+
+### One honesty consequence for `road_trip`
+
+Because the traveler is now **paying** for the execution recommendation, the quality bar on that
+recommendation is higher, not lower. Per §6b the geo data cannot support real route ordering yet.
+**An optimization that has been paid for must not answer "road trip" on centroid-precision data** —
+recommending badly is worse than not recommending. Until geo coverage supports it, `road_trip` stays
+out of the engine's output vocabulary rather than shipping as a guess.
+
+---
+
+*Superseded detail, retained so the reasoning is auditable:* an earlier draft of this section
+proposed a fee per materialized trip, on the grounds that the endpoints are trip-keyed and each
+trip's `eventType` can price differently. The ruling above replaces it — the traveler buys one
+answer to one question, and the number of trips in that answer is the AI's finding, not a
+multiplier on the price.
 
 All three optimization endpoints are **already keyed to a trip, not to a cart**
 (`server/routes/optimization.routes.ts`):
@@ -236,9 +328,9 @@ phase 1 to make the feature sound complete.
 | Phase | Scope | Ships |
 |---|---|---|
 | **0** | Decisions in §8. No code. | — |
-| **1** | Segmentation engine (`single` / `multi_city` / `split`) behind resolve-trip; proposal DTO; `unplaced` surfaced. Existing single-trip behavior stays the default when the histogram has one dominant city. | reversible: strategy `single` = today's behavior byte-for-byte |
-| **2** | Proposal UI — accept / merge / split / move; override persistence. | |
-| **3** | Multi-city materialization per §6a option A. | |
+| **1** | Segmentation engine (`single` / `multi_city` / `split`) as part of the **optimization run**, not a pre-step; proposal DTO; `unplaced` surfaced. The city histogram it consumes is the one resolve-trip already computes (§2). | reversible: strategy `single` = today's behavior byte-for-byte |
+| **2** | Optimize CTA + pay step on the Slip (§5b); recommendation shown as a **post-payment result**; accept / merge / split / move; override persistence. | |
+| **3** | Multi-city + `split` materialization per §6a option A, **with the derived-trip no-recharge rule and its one-payment proof** (§5b). | |
 | **4** | Targeted-add mode un-suppressed in the UI (ownership-checked path). | |
 | **5** | Vocabulary rename (`docs/findings/CART_VOCABULARY_INVENTORY.md`) — deliberately last, so naming follows settled behavior. | |
 | **6** | `road_trip`, gated on a geo-coverage assessment. | |
@@ -254,8 +346,8 @@ today's trip, which makes it verifiable against the existing journey suite befor
 3. **Default when confidence is low** — propose the split and let the traveler collapse it, or
    propose one trip and offer the split? (Affects whether the feature feels helpful or bossy.)
 4. **Does `unplaced` block materialization**, or can a traveler proceed and resolve later?
-5. **Multi-trip optimization fees** — per-Slip on demand (recommended, §5b), or one action paying
-   for all segments? The latter needs a defined partial-failure behavior (§15).
+~~5. Multi-trip optimization fees~~ — **RULED, no longer open.** One fee, charged once at the
+   optimize click; trips derived from the recommendation are never re-charged (§5b).
 
 ## 9. Non-goals
 
