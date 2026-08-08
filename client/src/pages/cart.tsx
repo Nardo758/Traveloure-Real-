@@ -547,6 +547,24 @@ export default function CartPage() {
     staleTime: 60 * 60 * 1000,
   });
 
+  // B2 one-click: does this traveler have a vaulted card? Drives (a) `useSavedCard` on the
+  // checkout POST and (b) honest button copy — the button that CHARGES must say so. The endpoint
+  // degrades to { available:false, methods:[] } on any failure, so absence of data simply means
+  // the normal two-step flow; one-click is only ever an upgrade, never a gate.
+  const { data: savedMethodsData } = useQuery<{
+    available: boolean;
+    defaultPaymentMethodId: string | null;
+    methods: Array<{ id: string; brand: string; last4: string }>;
+  }>({
+    queryKey: ["/api/me/payment-methods"],
+    enabled: !!user,
+    staleTime: 5 * 60 * 1000,
+  });
+  const defaultSavedCard = savedMethodsData?.available
+    ? (savedMethodsData.methods.find((m) => m.id === savedMethodsData.defaultPaymentMethodId) ??
+       savedMethodsData.methods[0] ?? null)
+    : null;
+
   const convertToItineraryMutation = useMutation({
     mutationFn: async (payload: {
       tripId?: string;
@@ -642,6 +660,10 @@ export default function CartPage() {
       const res = await apiRequest("POST", "/api/checkout", {
         currency: displayCurrency,
         idempotencyKey: checkoutIdempotencyKey,
+        // B2: ask for the off-session confirm only when a vaulted card is known to exist. The
+        // server re-verifies independently (a stale/false claim here degrades to the interactive
+        // sheet, never an error) and derives every amount from the claimed rows (§14).
+        useSavedCard: !!defaultSavedCard,
         // S4: raw captured short-link code; the SERVER derives the attribution source
         // (direct | link | cross_sell) — the client never asserts it.
         ...(getAcquisitionRef() ? { ref: getAcquisitionRef() } : {}),
@@ -672,6 +694,27 @@ export default function CartPage() {
         queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
         return;
       }
+      // B2 one-click: the off-session confirm already SUCCEEDED server-side — there is no
+      // payment step left, and the clientSecret must NOT be confirmed again. Same polling
+      // fallback as the interactive path (idempotent; the server promoted inline as actor
+      // "checkout", so this converges instantly), then straight to the traveler's bookings.
+      // ONE click total: the button below was the entire checkout.
+      if (data.oneClick && data.status === "succeeded") {
+        confirmCheckoutPayment(
+          data.bookings?.map((b: any) => b.booking?.id || b.id).filter(Boolean) || [],
+          data.paymentIntent?.paymentIntentId,
+        ).catch(() => {});
+        toast({
+          title: "Booked & paid",
+          description: `Charged to your saved ${defaultSavedCard?.brand ?? "card"} •••• ${defaultSavedCard?.last4 ?? ""}.`,
+        });
+        queryClient.invalidateQueries({ queryKey: ["/api/cart"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/my-bookings"] });
+        setLocation("/bookings");
+        return;
+      }
+      // B2: `oneClick && requiresAction` (declined / bank demands 3DS) deliberately falls
+      // through to the branch below — the returned clientSecret opens the normal payment sheet.
       if (data.paymentIntent) {
         // FP-4: snapshot the real, server-derived breakdown (incl. conciergeFee, which
         // the live GET /api/cart never computes) BEFORE invalidating — the cart is about
@@ -2659,6 +2702,7 @@ export default function CartPage() {
                         </div>
                       )}
                       {!checkoutPaymentIntent && (cart?.items?.length || 0) > 0 ? (
+                        <>
                         <Button
                           className="w-full bg-primary hover:bg-primary/90"
                           size="lg"
@@ -2671,6 +2715,11 @@ export default function CartPage() {
                               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                               Processing...
                             </>
+                          ) : defaultSavedCard ? (
+                            <>
+                              <CheckCircle className="w-4 h-4 mr-2" />
+                              {`Book & Pay — ${defaultSavedCard.brand} •••• ${defaultSavedCard.last4}`}
+                            </>
                           ) : (
                             <>
                               <CheckCircle className="w-4 h-4 mr-2" />
@@ -2678,6 +2727,12 @@ export default function CartPage() {
                             </>
                           )}
                         </Button>
+                        {defaultSavedCard && (
+                          <p className="text-xs text-muted-foreground text-center w-full">
+                            One click — your saved card is charged immediately. No further steps.
+                          </p>
+                        )}
+                        </>
                       ) : !checkoutPaymentIntent ? (
                         <div className="w-full text-center text-muted-foreground text-sm">
                           External bookings must be completed on provider websites
