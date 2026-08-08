@@ -46,6 +46,7 @@ import {
   type TravelerProfile,
   type EffectiveTravelerProfile,
 } from "./services/traveler-profile.service";
+import { computeSegmentationProposal } from "./services/optimizer-segmentation-bridge.service";
 
 // grok-2-1212 was deprecated at x.ai (every call 404s → fallback → paid optimizes failed).
 // grok-3 is the model the other Grok services (grok.service.ts, grok-discovery.service.ts)
@@ -1644,9 +1645,21 @@ Respond with valid JSON in this exact format:
       }
     }));
 
+    // ── Trip segmentation recommendation (WP-C follow-up, docs/briefs/TRIP_SEGMENTATION_DESIGN.md
+    // §5b Phase 1) — RECOMMENDATION-ONLY. Computed from this run's own server-resolved
+    // `baselineItems`/`startDate`/`endDate`/`travelers`, never from client input (§14 posture).
+    // `computeSegmentationProposal` never throws — a segmentation failure must never fail a paid
+    // optimize run (§15b posture); `null` just means no recommendation is persisted for this run.
+    const segmentationProposal = computeSegmentationProposal(baselineItems, startDate, endDate, travelers);
+
     await db
       .update(itineraryComparisons)
-      .set({ status: "generated", optimizedAt: new Date(), updatedAt: new Date() } as any)
+      .set({
+        status: "generated",
+        optimizedAt: new Date(),
+        updatedAt: new Date(),
+        segmentationProposal: segmentationProposal as any,
+      } as any)
       .where(eq(itineraryComparisons.id, comparisonId));
 
     return { success: true };
