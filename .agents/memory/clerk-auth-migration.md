@@ -1,28 +1,28 @@
 ---
-name: Clerk Auth Migration
-description: What changed when we migrated from Replit Auth / Passport.js to Clerk (August 2026).
+name: Clerk auth migration
+description: Durable constraints and identity-mapping decisions from the Replit Auth → Clerk migration.
 ---
 
-## The rule
-Auth is now Clerk. Never re-add Passport.js, express-session, openid-client, or any Replit Auth primitives.
+## Identity bridge
+- `sessionClaims.userId` = local DB lookup ID for all users (Replit Auth sub for migrated users, Clerk native ID for new users). Pre-configured by Replit-managed Clerk — no custom JWT template needed.
+- `auth.userId` = Clerk native ID. **Never** pass to local DB queries; only for Clerk API calls (`clerkClient.users.*`).
+- If `sessionClaims.userId` is absent (should not happen with Replit-managed Clerk), the code falls back to `auth.userId` which causes JIT creation — a sign something is wrong with the Clerk session config.
 
-## What's active at runtime
-- `server/middlewares/clerkProxyMiddleware.ts` — FAPI proxy (mounts at `/clerk-api`)
-- `server/middlewares/requireAuth.ts` — drops in place of `isAuthenticated`; JIT-provisions a `users` row on first sign-in; sets `req.user = { id, claims: { sub, role }, role }` and `req.dbUser` for backward compat
-- `server/utils/auth.ts` → `getUserId(req)` reads Clerk `getAuth` first, legacy fields second
-- `server/middleware/role-rbac.ts`, `ea-rbac.ts` — updated to use `getAuth` not `req.isAuthenticated()`
-- `server/routes/clerk-auth.routes.ts` — `/api/auth/user`, `/api/auth/session`, `/api/profile`, `/api/auth/accept-terms`, legacy stubs
-- `client/src/hooks/use-auth.ts` — Clerk-backed; keeps old return shape (`user`, `isLoading`, `isAuthenticated`, `logout`)
-- `client/src/App.tsx` — `ClerkProvider` wraps the entire tree; `/sign-in/*?` and `/sign-up/*?` routes added
-- `client/src/pages/sign-in.tsx` / `sign-up.tsx` — thin wrappers over `<SignIn>` / `<SignUp>` Clerk components
+**Why:** Migrated users have old Replit Auth sub set as Clerk `externalId`; Replit-managed Clerk emits it as `sessionClaims.userId`. New users get `auth.userId` as their `sessionClaims.userId` and a JIT row.
 
-## What's still on disk but NOT wired at runtime
-- `server/replit_integrations/auth/` — kept for test compatibility only (`__tests__` import `setupEmailAuth`, `upsertUser`, etc.); `registerAuthRoutes` / `setupAuth` are NO LONGER called from routes.ts
+## Files excluded from tsconfig
+- `server/replit_integrations/auth/` is excluded from `tsconfig.json` because it imports packages removed during migration (openid-client, express-session, memoizee, connect-pg-simple). The directory is kept for reference only — none of its exports are used at runtime.
 
-## Key gotchas
-- `req.user.role` and `req.user.claims?.role` are populated by `requireAuth` (copied from dbUser) so admin route handlers that read `(req.user as any).role` continue to work
-- Local `isAuthenticated` helpers in several route files (payment-methods, promo-text, ready-made, short-links, storefront) were replaced with `getAuth`-based checks rather than importing `requireAuth` (they were inline guard fns, not middleware)
-- `adminApiGuard` in routes.ts now calls `getUserId(req)` (Clerk-aware) directly instead of `req.isAuthenticated()`
-- The proxy URL in the client is `/clerk-api`; the FAPI proxy middleware must remain mounted before body parsers in server/index.ts
+**Why:** Removing the directory would break test files that still import from it at the path level. Excluding from tsconfig silences compile errors without deleting the historical source.
 
-**Why:** Replit Auth was OIDC-based and tied to Replit accounts; migration to Clerk gives standard email/password + social login while keeping the existing `users` table schema intact.
+## WebSocket chat write path
+- The WS `chat` case uses `storage.createChat()` (same as `POST /api/chats` and `trips.routes.ts`). This fires the MT-2 recipient notification exactly once per message.
+- MT-1: sender identity always comes from the Clerk session (never from the client payload `senderId`).
+
+## JIT provisioning
+- `requireAuth` creates the local user row on first authenticated request.
+- Populates `email`, `firstName`, `lastName` from `sessionClaims` at insert time (frozen copy; Clerk is source of truth for subsequent reads).
+- `req.user` is set to `{ id, claims: { sub, role }, role }` for backward compat.
+
+## Dead import removed
+- `server/storage.ts` had a dead `import { authStorage } from "./replit_integrations/auth/storage"` — removed. The `authStorage.ts` module itself is safe (no Passport imports), but the import was unused.
