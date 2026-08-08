@@ -39,6 +39,10 @@ import { parseApiErrorMessage } from "@/lib/api-error";
 // Add-panel source drawer publishes its own current results here; CanvasMapSection reads the
 // single active publisher. See client/src/lib/map-candidates.ts for the full contract.
 import { usePublishMapCandidates, useMapCandidates, type MapCandidate } from "@/lib/map-candidates";
+// WORKSTATION_LOCATION_MAP_SPEC Part B — keyless OSM fallback for CanvasMapSection's plan map,
+// rendered instead of the Google block when VITE_GOOGLE_MAPS_API_KEY is unset (see that file's
+// doc comment for the "Google swap point" contract).
+import { LeafletPlanMap } from "@/components/expert/leaflet-plan-map";
 
 const MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
 
@@ -711,7 +715,7 @@ class MapSectionErrorBoundary extends Component<{ children: ReactNode }, { hasEr
  *  DOM-addressable list the canvas renders (the day list itself is the shared PlanCard, a
  *  read-mostly component this lane deliberately does not modify). */
 function ItemsEditorPanel({
-  tripId, days, maxDay, onDayMoved, onOpenBookingBrief, focusItemId, onFocusHandled,
+  tripId, days, maxDay, onDayMoved, onOpenBookingBrief, focusItemId, onFocusHandled, onSelectItem,
 }: {
   tripId: string;
   days: { dayNumber: number; items: ItineraryItem[] }[];
@@ -728,6 +732,10 @@ function ItemsEditorPanel({
   // request (a one-shot signal, not a controlled/sticky prop).
   focusItemId?: string | null;
   onFocusHandled?: () => void;
+  // WORKSTATION_LOCATION_MAP_SPEC Part B — "vice versa": a located row's pin-icon button reports
+  // itself here so the plan map can pan to and select the matching pin. Undefined for a row with
+  // no coordinates (nothing to show — never a guessed pin, §13).
+  onSelectItem?: (itemId: string) => void;
 }) {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
@@ -934,6 +942,19 @@ function ItemsEditorPanel({
                         </div>
                         {partnerSource && <StateChip tone="brand">{partnerSource.network}</StateChip>}
                         <span style={{ fontSize: 12.5, fontWeight: 600, color: INK, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</span>
+                        {/* WORKSTATION_LOCATION_MAP_SPEC Part B "vice versa": only rendered for a
+                            row that actually has real coordinates — an unlocated item has no pin
+                            to show, and this button never pretends otherwise (§13). */}
+                        {onSelectItem && isLocatedItem(item) && (
+                          <button
+                            onClick={() => onSelectItem(item.id)}
+                            data-testid={`button-show-on-map-${item.id}`}
+                            title="Show on map"
+                            style={{ background: "none", border: "none", cursor: "pointer", padding: 2, color: MID, display: "flex" }}
+                          >
+                            <MapPin style={{ width: 13, height: 13 }} />
+                          </button>
+                        )}
                         <button
                           onClick={() => setExpandedId(isExpanded ? null : item.id)}
                           data-testid={`button-expand-item-${item.id}`}
@@ -1071,6 +1092,33 @@ function PlanMapFitBounds({ items }: { items: ItineraryItem[] }) {
   return null;
 }
 
+/** WORKSTATION_LOCATION_MAP_SPEC Part B — "vice versa" of PlanMapFitBounds above: a list-row
+ *  selection (the row's "Show on map" pin button) pans the plan map to that one pin and reports
+ *  the match back so the caller can select it (opens the InfoWindow). Looks up against the FULL
+ *  located set, not the day-filtered `visibleItems` — CanvasMapSection widens the day filter in
+ *  its own effect when needed, so this never silently misses an item sitting outside today's
+ *  filter. Needs a `<Map>` ancestor for `useMap()`, so it renders nothing and lives INSIDE the
+ *  `<Map>` below, beside PlanMapFitBounds. */
+function PlanMapFocusFromList({
+  focusId, items, onFocus,
+}: {
+  focusId: string | null;
+  items: ItineraryItem[];
+  onFocus: (item: ItineraryItem) => void;
+}) {
+  const map = useMap();
+  useEffect(() => {
+    if (!focusId || !map) return;
+    const item = items.find(i => i.id === focusId);
+    if (!item) return;
+    map.setCenter({ lat: parseFloat(String(item.latitude)), lng: parseFloat(String(item.longitude)) });
+    map.setZoom(15);
+    onFocus(item);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, focusId]);
+  return null;
+}
+
 /** W5-A (QA_PUNCH_LIST item 19) — thin mount/unmount publisher for the Platform-services drawer,
  *  which (unlike the other five Add-panel sources) is inline JSX in this file rather than its own
  *  component. Rendered ONLY inside the `addSource === "platform"` block, so its mount lifetime is
@@ -1109,7 +1157,7 @@ function MapCandidatesPublisher({
  *  pattern verbatim (a Maps billing/key failure collapses to a one-line notice, never blanks the
  *  canvas — see that class's doc comment above). */
 function CanvasMapSection({
-  tripId, days, destination, onGoToItem, discoveryDayNumber,
+  tripId, days, destination, onGoToItem, discoveryDayNumber, focusFromListId, onListFocusHandled,
 }: {
   tripId: string;
   days: { dayNumber: number; items: ItineraryItem[] }[];
@@ -1118,6 +1166,12 @@ function CanvasMapSection({
   /** The Add panel's current day-focus (item 19) — labels/targets the discovery layer's
    *  "Add to Day N" action. Purely a label/target for candidates; never affects plan pins. */
   discoveryDayNumber: number;
+  /** WORKSTATION_LOCATION_MAP_SPEC Part B "vice versa": a one-shot signal from a list row's
+   *  "Show on map" button. Handled below by opening the map (if closed), widening the day filter
+   *  so the target pin is guaranteed to be in `visibleItems`, then reported back via
+   *  onListFocusHandled once consumed. */
+  focusFromListId?: string | null;
+  onListFocusHandled?: () => void;
 }) {
   const storageKey = `workstation-map-open-${tripId}`;
   const [open, setOpen] = useState<boolean>(() => {
@@ -1144,9 +1198,37 @@ function CanvasMapSection({
 
   const allItems = days.flatMap(d => d.items);
   const locatedItems = allItems.filter(isLocatedItem);
-  const unlocatedCount = allItems.length - locatedItems.length;
+  // §13: the honest "not on map" tray (Part B) — the actual rows, not just a count, so an expert
+  // can see WHICH items still need a location rather than guessing from a number.
+  const unlocatedItems = allItems.filter(i => !isLocatedItem(i));
   const visibleItems = mapDayFilter === "all" ? locatedItems : locatedItems.filter(i => i.dayNumber === mapDayFilter);
   const dayNumbersWithItems = Array.from(new Set(days.filter(d => d.items.length > 0).map(d => d.dayNumber))).sort((a, b) => a - b);
+  // Resolved once against the FULL located set (never the day-filtered `visibleItems`) so a
+  // cross-day focus request is never missed by a stale filter — see LeafletPlanMap's FocusFromList
+  // doc comment for why this matters there specifically.
+  const focusFromListItem = focusFromListId ? (locatedItems.find(i => i.id === focusFromListId) ?? null) : null;
+
+  // WORKSTATION_LOCATION_MAP_SPEC Part B "vice versa": open the map and widen the day filter (if
+  // narrower than the target's own day) so the requested pin is guaranteed to render — the actual
+  // pan happens in PlanMapFocusFromList/LeafletPlanMap below, which need a map instance.
+  useEffect(() => {
+    if (!focusFromListId) return;
+    if (!focusFromListItem) { onListFocusHandled?.(); return; }
+    setOpen(true);
+    setMapDayFilter(f => (f === "all" || f === focusFromListItem.dayNumber ? f : "all"));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusFromListId]);
+
+  // The Leaflet branch has no `<Map>`-descendant to report the InfoWindow-equivalent selection
+  // back up (its FocusFromList only pans — it has no reason to also own selection state), so that
+  // half of "vice versa" is handled here instead, gated to when Leaflet is actually the active
+  // renderer. The Google branch's own PlanMapFocusFromList/onFocus callback covers that branch.
+  useEffect(() => {
+    if (MAPS_KEY || !focusFromListItem) return;
+    setSelectedPinItem(focusFromListItem);
+    onListFocusHandled?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusFromListItem?.id]);
 
   // Center fallback ONLY needed when the plan has zero located items anywhere (not just the
   // current filter) — same destination-geocode rail the Add panel's Platform-services browse
@@ -1226,6 +1308,11 @@ function CanvasMapSection({
                     onClick={() => { setSelectedPinItem(null); setSelectedCandidate(null); }}
                   >
                     <PlanMapFitBounds items={visibleItems} />
+                    <PlanMapFocusFromList
+                      focusId={focusFromListId ?? null}
+                      items={locatedItems}
+                      onFocus={(item) => { setSelectedPinItem(item); onListFocusHandled?.(); }}
+                    />
                     {visibleItems.map(item => (
                       <MapMarker
                         key={item.id}
@@ -1315,25 +1402,60 @@ function CanvasMapSection({
                     )}
                   </Map>
                 </APIProvider>
+              ) : canShowMap ? (
+                // WORKSTATION_LOCATION_MAP_SPEC Part B — the "Google swap point": no client Maps
+                // key ⇒ Leaflet + OSM tiles (keyless) instead of an unavailable notice. The moment
+                // MAPS_KEY is set, the branch above takes over on its own; nothing here changes.
+                <LeafletPlanMap
+                  items={visibleItems.map(item => ({
+                    id: item.id,
+                    title: item.title,
+                    dayNumber: item.dayNumber,
+                    lat: parseFloat(String(item.latitude)),
+                    lng: parseFloat(String(item.longitude)),
+                  }))}
+                  center={initialCenter}
+                  selectedId={selectedPinItem?.id ?? null}
+                  onSelect={(id) => setSelectedPinItem(id ? (visibleItems.find(i => i.id === id) ?? null) : null)}
+                  onGoToItem={(id) => { setSelectedPinItem(null); onGoToItem(id); }}
+                  focusTarget={focusFromListItem ? {
+                    id: focusFromListItem.id,
+                    title: focusFromListItem.title,
+                    dayNumber: focusFromListItem.dayNumber,
+                    lat: parseFloat(String(focusFromListItem.latitude)),
+                    lng: parseFloat(String(focusFromListItem.longitude)),
+                  } : null}
+                />
               ) : (
                 <div data-testid="text-plan-map-unavailable" style={{ height: "100%", background: GROUND, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 6 }}>
                   <MapPin style={{ width: 24, height: 24, color: FAINT }} />
-                  <span style={{ fontSize: 12, color: MID }}>
-                    {!MAPS_KEY ? "Map unavailable" : "No located items to show yet"}
-                  </span>
+                  <span style={{ fontSize: 12, color: MID }}>No located items to show yet</span>
                 </div>
               )}
             </MapSectionErrorBoundary>
           </div>
 
-          {/* §13: honest, never fabricated — a real count of items with no lat/lng, never a
-              city-center guess standing in for a real pin. */}
-          {unlocatedCount > 0 && (
-            // Wording matches the punch-list spec's literal template verbatim ("N items have no
-            // location yet") — not a grammar bug, a deliberate choice not to over-engineer
-            // pluralization the spec didn't ask for.
-            <div data-testid="text-unlocated-count" style={{ fontSize: 11.5, color: MID, marginTop: 8 }}>
-              {unlocatedCount} item{unlocatedCount === 1 ? "" : "s"} have no location yet
+          {/* §13: honest, never fabricated — the "not on map" tray lists the actual unlocated
+              rows (Part B), not just a count, so an expert can see and jump to WHICH items still
+              need a location rather than guessing from a number. */}
+          {unlocatedItems.length > 0 && (
+            <div data-testid="tray-unlocated-items" style={{ marginTop: 8, borderRadius: 8, border: `1px solid ${LINE}`, background: GROUND, padding: "6px 8px" }}>
+              <div style={{ fontSize: 10.5, fontWeight: 700, color: MID, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>
+                Not on map — {unlocatedItems.length} item{unlocatedItems.length === 1 ? "" : "s"} have no location yet
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 2, maxHeight: 120, overflowY: "auto" }}>
+                {unlocatedItems.map(item => (
+                  <button
+                    key={item.id}
+                    onClick={() => onGoToItem(item.id)}
+                    data-testid={`button-unlocated-item-${item.id}`}
+                    style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", padding: "3px 2px", textAlign: "left", color: MID, fontSize: 11.5 }}
+                  >
+                    <span style={{ fontWeight: 700, color: FAINT, flexShrink: 0 }}>D{item.dayNumber}</span>
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</span>
+                  </button>
+                ))}
+              </div>
             </div>
           )}
         </div>
@@ -2185,6 +2307,10 @@ export default function ExpertWorkspace() {
   // ItemsEditorPanel (the canvas's only per-item, DOM-addressable list) which opens/expands/
   // scrolls to the row, then clears this back to null.
   const [focusItemId, setFocusItemId] = useState<string | null>(null);
+  // WORKSTATION_LOCATION_MAP_SPEC Part B — "vice versa" of the above: a one-shot signal in the
+  // OPPOSITE direction, from a list row's "Show on map" button to CanvasMapSection, which pans to
+  // and selects the matching pin, then clears this back to null.
+  const [mapFocusItemId, setMapFocusItemId] = useState<string | null>(null);
 
   useEffect(() => {
     if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
@@ -3210,6 +3336,8 @@ export default function ExpertWorkspace() {
                   destination={destination}
                   onGoToItem={(itemId) => setFocusItemId(itemId)}
                   discoveryDayNumber={focusDay}
+                  focusFromListId={mapFocusItemId}
+                  onListFocusHandled={() => setMapFocusItemId(null)}
                 />
               )}
 
@@ -3291,6 +3419,7 @@ export default function ExpertWorkspace() {
                   onOpenBookingBrief={(network) => setBookingBrief({ provider: network, bookingUrl: resolvePartnerBookingUrl(network) })}
                   focusItemId={focusItemId}
                   onFocusHandled={() => setFocusItemId(null)}
+                  onSelectItem={(itemId) => setMapFocusItemId(itemId)}
                 />
               )}
 
