@@ -1,3 +1,4 @@
+import { getAuth } from "@clerk/express";
 /**
  * short-links.routes.ts — short-link + click store (backoffice S3).
  *
@@ -28,8 +29,10 @@ import { users, providerServices, expertTemplates, readyMadeTrips, shortLinks, s
 const router = Router();
 
 const isAuthenticated = (req: any, res: any, next: any) => {
-  if (req.isAuthenticated?.() && req.user) return next();
-  return res.status(401).json({ message: "Authentication required" });
+  const auth = getAuth(req);
+  const userId = (auth?.sessionClaims as any)?.userId || auth?.userId;
+  if (!userId) return res.status(401).json({ message: "Authentication required" });
+  next();
 };
 
 const TARGET_TYPES = ["storefront", "service", "template", "ready_made"] as const;

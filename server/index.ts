@@ -24,7 +24,13 @@ import { seedLocationCache } from "./seeds/location-cache.seed";
 import { storage } from "./storage";
 import { grokDiscoveryService } from "./services/grok-discovery.service";
 import { setupWebSocket } from "./websocket";
-import { getSession } from "./replit_integrations/auth";
+import { clerkMiddleware } from "@clerk/express";
+import { publishableKeyFromHost } from "@clerk/shared/keys";
+import {
+  CLERK_PROXY_PATH,
+  clerkProxyMiddleware,
+  getClerkProxyHost,
+} from "./middlewares/clerkProxyMiddleware";
 import { cacheSchedulerService } from "./services/cache-scheduler.service";
 import { bookingExpiryScheduler } from "./services/booking-expiry-scheduler.service";
 import { checkoutClaimSweepScheduler } from "./services/checkout-claim.service";
@@ -56,11 +62,8 @@ import { queryCounterMiddleware } from "./utils/queryCounter";
 const app = express();
 const httpServer = createServer(app);
 
-// MT-1: pass the session middleware in at call time (registerRoutes hasn't run yet, but
-// the `connection` handler only fires at runtime, well after setupAuth has applied it to
-// the app — no ordering issue). getSession() builds its own connect-pg-simple middleware
-// instance against the same `sessions` table/secret, so it verifies the same cookies.
-setupWebSocket(httpServer, getSession());
+// WebSocket uses Clerk for authentication (see websocket.ts).
+setupWebSocket(httpServer);
 
 declare module "http" {
   interface IncomingMessage {
@@ -84,6 +87,9 @@ app.use(httpLogger as unknown as RequestHandler);
 app.use(createHealthRouter());
 app.use(createMetricsRouter());
 
+// ── Clerk proxy: must be BEFORE body parsers (streams raw bytes) ─────────────
+app.use(CLERK_PROXY_PATH, clerkProxyMiddleware());
+
 app.use(
   express.json({
     limit: "10mb",
@@ -106,6 +112,18 @@ app.use("/api/hotels", searchRateLimiter as RequestHandler);
 app.use("/api/flights", searchRateLimiter as RequestHandler);
 app.use("/api/activities", searchRateLimiter as RequestHandler);
 app.use("/api/auth", authRateLimiter as RequestHandler);
+
+// ── Clerk session middleware ───────────────────────────────────────────────
+// Resolves the publishable key from the incoming host so the same server
+// can serve multiple Clerk custom domains. Falls back to CLERK_PUBLISHABLE_KEY.
+app.use(
+  clerkMiddleware((req) => ({
+    publishableKey: publishableKeyFromHost(
+      getClerkProxyHost(req) ?? "",
+      process.env.CLERK_PUBLISHABLE_KEY,
+    ),
+  })),
+);
 
 // CORS — explicit header control for all API routes.
 // Allowed origins are the Replit-hosted domains for this repl; fall back to the

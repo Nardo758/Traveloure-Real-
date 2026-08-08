@@ -17,7 +17,7 @@ import { db } from "../db";
 import * as cartProjection from "../services/cart-projection.service";
 import { api } from "@shared/routes";
 import { z } from "zod";
-import { isAuthenticated } from "../replit_integrations/auth";
+import { requireAuth } from "../middlewares/requireAuth";
 import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, asc } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
 import { 
@@ -139,7 +139,7 @@ function getReqUserId(req: any): string | undefined {
 // abuse (a legitimate owner can still be used to blast their own vendor list), so the
 // endpoint is throttled per acting user, mirroring the service-requests limiter pattern
 // (server/routes/service-requests.routes.ts) rather than inventing a new mechanism.
-// Keyed by the session user (isAuthenticated runs first), IP as fallback. Deliberately NO
+// Keyed by the session user (requireAuth runs first), IP as fallback. Deliberately NO
 // loopback skip: the throttle is part of the endpoint's contract and must be provable.
 const vendorBulkEmailLimiter = createRateLimiter({
   windowMs: 10 * 60 * 1000, // 10 minutes
@@ -204,7 +204,7 @@ function serviceCategorySlugToFeeCategory(slug: string | null | undefined): stri
 }
 
 
-router.get(api.trips.list.path, isAuthenticated, async (req, res) => {
+router.get(api.trips.list.path, requireAuth, async (req, res) => {
     const userId = getUserId(req)!;
     const status = req.query.status as string | undefined;
     const trips = await withQueryTimer(
@@ -228,7 +228,7 @@ router.get(api.trips.get.path, async (req, res) => {
     const shareToken = req.query.token as string | undefined;
 
     // Block fully-anonymous requests with neither a session nor a share token.
-    const hasSession = typeof (req as any).isAuthenticated === "function" && (req as any).isAuthenticated();
+    const hasSession = typeof (req as any).requireAuth === "function" && (req as any).requireAuth();
     const hasToken = typeof shareToken === "string" && shareToken.length > 0;
     if (!hasSession && !hasToken) {
       return res.status(401).json({ message: "Unauthorized" });
@@ -336,7 +336,7 @@ router.patch(api.trips.update.path, async (req, res) => {
 
 // POST /api/trips/:id/claim — link a guest trip to an authenticated user
 // Called after a guest signs up, to claim their draft trips.
-router.post("/api/trips/:id/claim", isAuthenticated, async (req, res) => {
+router.post("/api/trips/:id/claim", requireAuth, async (req, res) => {
     try {
       const trip = await storage.getTrip(req.params.id);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
@@ -361,7 +361,7 @@ router.post("/api/trips/:id/claim", isAuthenticated, async (req, res) => {
   });
 
 
-router.delete(api.trips.delete.path, isAuthenticated, async (req, res) => {
+router.delete(api.trips.delete.path, requireAuth, async (req, res) => {
     const trip = await storage.getTrip(req.params.id);
     if (!trip) return res.status(404).json({ message: "Trip not found" });
     
@@ -393,7 +393,7 @@ router.delete(api.trips.delete.path, isAuthenticated, async (req, res) => {
 // §13 "Trip-access model divergence + owner under-grant (L10)"), and the reconciliation
 // sweep (§9) must resolve this pair's auth model deliberately, not have it inherited
 // silently from a dead-twin sync pass.
-router.post(api.trips.generateItinerary.path, isAuthenticated, async (req, res) => {
+router.post(api.trips.generateItinerary.path, requireAuth, async (req, res) => {
     try {
       const trip = await storage.getTrip(req.params.id);
       if (!trip) return res.status(404).json({ message: "Trip not found" });
@@ -521,7 +521,7 @@ router.get(api.touristPlaces.search.path, async (req, res) => {
   // Chats Routes
   // SECURITY: User data is sanitized and contact info in messages is redacted
 
-router.get(api.chats.list.path, isAuthenticated, async (req, res) => {
+router.get(api.chats.list.path, requireAuth, async (req, res) => {
     const userId = getUserId(req)!;
     const userRole = (req.user as any).claims.role || 'user';
     const chats = await storage.getChats(userId);
@@ -567,7 +567,7 @@ router.get(api.chats.list.path, isAuthenticated, async (req, res) => {
   });
 
 
-router.post(api.chats.create.path, isAuthenticated, async (req, res) => {
+router.post(api.chats.create.path, requireAuth, async (req, res) => {
      try {
       const input = api.chats.create.input.parse(req.body);
       // For MVP, just create it directly
@@ -604,7 +604,7 @@ router.get(api.helpGuideTrips.get.path, async (req, res) => {
 // is "harvest the superior delta into the live copy, leave no stale twin behind".
 
 
-router.get("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
+router.get("/api/itinerary-comparisons", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       const comparisons = await withQueryTimer(
@@ -620,7 +620,7 @@ router.get("/api/itinerary-comparisons", isAuthenticated, async (req, res) => {
   });
 
 
-router.get("/api/itinerary-comparisons/:id", isAuthenticated, async (req, res) => {
+router.get("/api/itinerary-comparisons/:id", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       const result = await getComparisonWithVariants(req.params.id);
@@ -641,7 +641,7 @@ router.get("/api/itinerary-comparisons/:id", isAuthenticated, async (req, res) =
   });
 
 
-router.post("/api/itinerary-comparisons/:id/generate", isAuthenticated, async (req, res) => {
+router.post("/api/itinerary-comparisons/:id/generate", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       const comparisonId = req.params.id;
@@ -764,7 +764,7 @@ router.post("/api/itinerary-comparisons/:id/generate", isAuthenticated, async (r
   });
 
 
-router.post("/api/itinerary-comparisons/:id/select", isAuthenticated, async (req, res) => {
+router.post("/api/itinerary-comparisons/:id/select", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       const { variantId } = req.body;
@@ -793,7 +793,7 @@ router.post("/api/itinerary-comparisons/:id/select", isAuthenticated, async (req
   });
 
 
-router.post("/api/itinerary-comparisons/:id/apply-to-cart", isAuthenticated, async (req, res) => {
+router.post("/api/itinerary-comparisons/:id/apply-to-cart", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       const comparisonId = req.params.id;
@@ -833,7 +833,7 @@ router.post("/api/itinerary-comparisons/:id/apply-to-cart", isAuthenticated, asy
     pacePreference: z.enum(["relaxed", "moderate", "packed"]).default("moderate"),
   });
 
-router.post("/api/quick-start-itinerary", isAuthenticated, async (req, res) => {
+router.post("/api/quick-start-itinerary", requireAuth, async (req, res) => {
     try {
       const parsed = quickStartItinerarySchema.safeParse(req.body);
       if (!parsed.success) {
@@ -936,7 +936,7 @@ router.post("/api/quick-start-itinerary", isAuthenticated, async (req, res) => {
   });
 
 
-router.get("/api/trips/:tripId/participants", isAuthenticated, asyncHandler(async (req, res) => {
+router.get("/api/trips/:tripId/participants", requireAuth, asyncHandler(async (req, res) => {
     const userId = getUserId(req)!;
     if (!await verifyTripOwnership(req.params.tripId, userId)) {
       throw new ForbiddenError("Access denied to this trip");
@@ -946,7 +946,7 @@ router.get("/api/trips/:tripId/participants", isAuthenticated, asyncHandler(asyn
   }));
 
 
-router.get("/api/trips/:tripId/participants/stats", isAuthenticated, asyncHandler(async (req, res) => {
+router.get("/api/trips/:tripId/participants/stats", requireAuth, asyncHandler(async (req, res) => {
     const userId = getUserId(req)!;
     if (!await verifyTripOwnership(req.params.tripId, userId)) {
       throw new ForbiddenError("Access denied to this trip");
@@ -956,7 +956,7 @@ router.get("/api/trips/:tripId/participants/stats", isAuthenticated, asyncHandle
   }));
 
 
-router.get("/api/trips/:tripId/participants/payment-stats", isAuthenticated, asyncHandler(async (req, res) => {
+router.get("/api/trips/:tripId/participants/payment-stats", requireAuth, asyncHandler(async (req, res) => {
     const userId = getUserId(req)!;
     if (!await verifyTripOwnership(req.params.tripId, userId)) {
       throw new ForbiddenError("Access denied to this trip");
@@ -966,7 +966,7 @@ router.get("/api/trips/:tripId/participants/payment-stats", isAuthenticated, asy
   }));
 
 
-router.get("/api/trips/:tripId/participants/dietary", isAuthenticated, asyncHandler(async (req, res) => {
+router.get("/api/trips/:tripId/participants/dietary", requireAuth, asyncHandler(async (req, res) => {
     const userId = getUserId(req)!;
     if (!await verifyTripOwnership(req.params.tripId, userId)) {
       throw new ForbiddenError("Access denied to this trip");
@@ -976,7 +976,7 @@ router.get("/api/trips/:tripId/participants/dietary", isAuthenticated, asyncHand
   }));
 
 
-router.post("/api/trips/:tripId/participants", isAuthenticated, async (req, res) => {
+router.post("/api/trips/:tripId/participants", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       if (!await verifyTripOwnership(req.params.tripId, userId)) {
@@ -1009,7 +1009,7 @@ router.post("/api/trips/:tripId/participants", isAuthenticated, async (req, res)
 // to whoever owns routes.ts / the reconciliation sweep — either export/hoist
 // `authorizeTripOwnerTier` into the shared trip-logistics-auth module, or apply it here
 // once it is reachable.
-router.post("/api/trips/:tripId/participants/bulk-invite", isAuthenticated, async (req, res) => {
+router.post("/api/trips/:tripId/participants/bulk-invite", requireAuth, async (req, res) => {
     try {
       const { emails } = req.body;
       const participants = await coordinationService.bulkInvite(req.params.tripId, emails);
@@ -1021,7 +1021,7 @@ router.post("/api/trips/:tripId/participants/bulk-invite", isAuthenticated, asyn
 
   // --- Vendor Contracts Routes ---
 
-router.get("/api/trips/:tripId/contracts", isAuthenticated, async (req, res) => {
+router.get("/api/trips/:tripId/contracts", requireAuth, async (req, res) => {
     try {
       const contracts = await vendorManagementService.getContracts(req.params.tripId);
       res.json(contracts);
@@ -1031,7 +1031,7 @@ router.get("/api/trips/:tripId/contracts", isAuthenticated, async (req, res) => 
   });
 
 
-router.get("/api/trips/:tripId/contracts/stats", isAuthenticated, async (req, res) => {
+router.get("/api/trips/:tripId/contracts/stats", requireAuth, async (req, res) => {
     try {
       const stats = await vendorManagementService.getContractStats(req.params.tripId);
       res.json(stats);
@@ -1041,7 +1041,7 @@ router.get("/api/trips/:tripId/contracts/stats", isAuthenticated, async (req, re
   });
 
 
-router.get("/api/trips/:tripId/contracts/upcoming-payments", isAuthenticated, async (req, res) => {
+router.get("/api/trips/:tripId/contracts/upcoming-payments", requireAuth, async (req, res) => {
     try {
       const days = parseInt(req.query.days as string) || 30;
       const payments = await vendorManagementService.getUpcomingPayments(req.params.tripId, days);
@@ -1052,7 +1052,7 @@ router.get("/api/trips/:tripId/contracts/upcoming-payments", isAuthenticated, as
   });
 
 
-router.get("/api/trips/:tripId/contracts/overdue", isAuthenticated, async (req, res) => {
+router.get("/api/trips/:tripId/contracts/overdue", requireAuth, async (req, res) => {
     try {
       const overdue = await vendorManagementService.getOverduePayments(req.params.tripId);
       res.json(overdue);
@@ -1073,7 +1073,7 @@ router.get("/api/trips/:tripId/contracts/overdue", isAuthenticated, async (req, 
 // expert into creating financial/legal artifacts, which the live gate exists to prevent.
 // Left unauthorized rather than mis-gated — see the participants/bulk-invite twin above
 // for the same reasoning; fix belongs to routes.ts's owner / the reconciliation sweep.
-router.post("/api/trips/:tripId/contracts", isAuthenticated, async (req, res) => {
+router.post("/api/trips/:tripId/contracts", requireAuth, async (req, res) => {
     try {
       const contract = await vendorManagementService.createContract({
         ...req.body,
@@ -1088,7 +1088,7 @@ router.post("/api/trips/:tripId/contracts", isAuthenticated, async (req, res) =>
 // Document upload for vendor contracts.
 //
 // SECURITY (§13 P0 trip-data IDOR cluster, "class E" — the path only LOOKED trip-scoped):
-// this handler previously ran on `isAuthenticated` alone and used ONLY
+// this handler previously ran on `requireAuth` alone and used ONLY
 // `req.params.contractId`; `:tripId` was never validated and never even read, so any
 // authenticated user could attach an arbitrary base64 file to ANY vendor contract on ANY
 // trip by naming their own tripId (or a garbage one) in the path. Two independent checks
@@ -1104,7 +1104,7 @@ router.post("/api/trips/:tripId/contracts", isAuthenticated, async (req, res) =>
 // Order matters: the trip gate runs BEFORE the contract is resolved, so an unauthorized
 // caller learns nothing about which contract ids exist (no existence oracle), and a
 // foreign contract is reported with the same 404 as a non-existent one.
-router.post("/api/trips/:tripId/contracts/:contractId/documents", isAuthenticated, async (req, res) => {
+router.post("/api/trips/:tripId/contracts/:contractId/documents", requireAuth, async (req, res) => {
     try {
       const userId = getReqUserId(req);
       const { tripId, contractId } = req.params;
@@ -1146,7 +1146,7 @@ router.post("/api/trips/:tripId/contracts/:contractId/documents", isAuthenticate
 // Bulk email to vendors.
 //
 // SECURITY (§13 P0 trip-data IDOR cluster, "class E" + outbound mail): this handler
-// previously ran on `isAuthenticated` alone, so any authenticated user could aim
+// previously ran on `requireAuth` alone, so any authenticated user could aim
 // attacker-authored `subject`/`body` at another traveler's vendor list, sent under the
 // platform's own sending identity ("Traveloure Coordination"). Three controls:
 //   1. TRIP AUTHORIZATION — L20 tier: vendor COORDINATION is the assigned expert's job, so
@@ -1162,7 +1162,7 @@ router.post("/api/trips/:tripId/contracts/:contractId/documents", isAuthenticate
 //      accident of a downstream filter.
 //   3. RATE LIMIT — `vendorBulkEmailLimiter` (5 / 10 min per acting user), because
 //      authorization alone does not bound an outbound-mail primitive.
-router.post("/api/trips/:tripId/vendors/bulk-email", isAuthenticated, vendorBulkEmailLimiter, async (req, res) => {
+router.post("/api/trips/:tripId/vendors/bulk-email", requireAuth, vendorBulkEmailLimiter, async (req, res) => {
     try {
       const userId = getReqUserId(req);
       const denied = await authorizeTripLogistics(
@@ -1222,12 +1222,12 @@ router.post("/api/trips/:tripId/vendors/bulk-email", isAuthenticated, vendorBulk
 // Generate vendor contact sheet.
 //
 // SECURITY (§13 P0 trip-data IDOR cluster): this handler previously ran on
-// `isAuthenticated` alone and returned every vendor's name, email, phone, postal address,
+// `requireAuth` alone and returned every vendor's name, email, phone, postal address,
 // contact person and private notes for ANY trip id — bulk third-party PII egress in JSON,
 // CSV or PDF to any logged-in account. L20 tier: vendor coordination is the assigned
 // expert's job, so reads are owner ‖ assigned expert (‖ author ‖ audit-logged admin) =
 // `authorizeTripLogistics`; a *rejected* advisor is denied by the canonical predicate.
-router.get("/api/trips/:tripId/vendors/contact-sheet", isAuthenticated, async (req, res) => {
+router.get("/api/trips/:tripId/vendors/contact-sheet", requireAuth, async (req, res) => {
     try {
       const userId = getReqUserId(req);
       const denied = await authorizeTripLogistics(
@@ -1259,7 +1259,7 @@ router.get("/api/trips/:tripId/vendors/contact-sheet", isAuthenticated, async (r
     }
   });
 
-router.get("/api/trips/:tripId/transactions", isAuthenticated, async (req, res) => {
+router.get("/api/trips/:tripId/transactions", requireAuth, async (req, res) => {
     try {
       const transactions = await budgetService.getTransactions(req.params.tripId);
       res.json(transactions);
@@ -1269,7 +1269,7 @@ router.get("/api/trips/:tripId/transactions", isAuthenticated, async (req, res) 
   });
 
 
-router.get("/api/trips/:tripId/budget/summary", isAuthenticated, async (req, res) => {
+router.get("/api/trips/:tripId/budget/summary", requireAuth, async (req, res) => {
     try {
       const budget = parseFloat(req.query.budget as string) || 0;
       const summary = await budgetService.getBudgetSummary(req.params.tripId, budget);
@@ -1280,7 +1280,7 @@ router.get("/api/trips/:tripId/budget/summary", isAuthenticated, async (req, res
   });
 
 
-router.get("/api/trips/:tripId/budget/categories", isAuthenticated, async (req, res) => {
+router.get("/api/trips/:tripId/budget/categories", requireAuth, async (req, res) => {
     try {
       const breakdown = await budgetService.getCategoryBreakdown(req.params.tripId);
       res.json(breakdown);
@@ -1290,7 +1290,7 @@ router.get("/api/trips/:tripId/budget/categories", isAuthenticated, async (req, 
   });
 
 
-router.get("/api/trips/:tripId/budget/settle-up", isAuthenticated, async (req, res) => {
+router.get("/api/trips/:tripId/budget/settle-up", requireAuth, async (req, res) => {
     try {
       const settleUp = await budgetService.getSettleUpSummary(req.params.tripId);
       res.json(settleUp);
@@ -1312,7 +1312,7 @@ router.get("/api/trips/:tripId/budget/settle-up", isAuthenticated, async (req, r
 // party's money-between-people ledger. Left unauthorized rather than mis-gated — same
 // reasoning as the participants/bulk-invite and contracts twins above; fix belongs to
 // routes.ts's owner / the reconciliation sweep.
-router.post("/api/trips/:tripId/transactions", isAuthenticated, async (req, res) => {
+router.post("/api/trips/:tripId/transactions", requireAuth, async (req, res) => {
     try {
       const transaction = await budgetService.createTransaction({
         ...req.body,
@@ -1325,7 +1325,7 @@ router.post("/api/trips/:tripId/transactions", isAuthenticated, async (req, res)
   });
 
 
-router.post("/api/trips/:tripId/transactions/split", isAuthenticated, async (req, res) => {
+router.post("/api/trips/:tripId/transactions/split", requireAuth, async (req, res) => {
     try {
       const { totalAmount, category, description, paidByParticipantId, splits } = req.body;
       const transactions = await budgetService.createSplitTransaction(
@@ -1343,7 +1343,7 @@ router.post("/api/trips/:tripId/transactions/split", isAuthenticated, async (req
   });
 
 
-router.post("/api/trips/:tripId/budget/calculate-split", isAuthenticated, async (req, res) => {
+router.post("/api/trips/:tripId/budget/calculate-split", requireAuth, async (req, res) => {
     try {
       const { totalAmount, method, customSplits } = req.body;
       const splits = await budgetService.calculateSplit(req.params.tripId, totalAmount, method, customSplits);
@@ -1354,7 +1354,7 @@ router.post("/api/trips/:tripId/budget/calculate-split", isAuthenticated, async 
   });
 
 
-router.get("/api/trips/:tripId/itinerary-items", isAuthenticated, async (req, res) => {
+router.get("/api/trips/:tripId/itinerary-items", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       const { tripId } = req.params;
@@ -1379,7 +1379,7 @@ router.get("/api/trips/:tripId/itinerary-items", isAuthenticated, async (req, re
   });
 
 
-router.get("/api/trips/:tripId/itinerary/schedules", isAuthenticated, async (req, res) => {
+router.get("/api/trips/:tripId/itinerary/schedules", requireAuth, async (req, res) => {
     try {
       const schedules = await itineraryIntelligenceService.getDaySchedules(req.params.tripId);
       res.json(schedules);
@@ -1389,7 +1389,7 @@ router.get("/api/trips/:tripId/itinerary/schedules", isAuthenticated, async (req
   });
 
 
-router.get("/api/trips/:tripId/itinerary/analyze", isAuthenticated, async (req, res) => {
+router.get("/api/trips/:tripId/itinerary/analyze", requireAuth, async (req, res) => {
     try {
       const analysis = await itineraryIntelligenceService.analyzeItinerary(req.params.tripId);
       res.json(analysis);
@@ -1399,7 +1399,7 @@ router.get("/api/trips/:tripId/itinerary/analyze", isAuthenticated, async (req, 
   });
 
 
-router.get("/api/trips/:tripId/itinerary/recommendations", isAuthenticated, async (req, res) => {
+router.get("/api/trips/:tripId/itinerary/recommendations", requireAuth, async (req, res) => {
     try {
       const destination = req.query.destination as string || "destination";
       const recommendations = await itineraryIntelligenceService.getAIRecommendations(req.params.tripId, destination);
@@ -1411,7 +1411,7 @@ router.get("/api/trips/:tripId/itinerary/recommendations", isAuthenticated, asyn
 
   // Authoritative POST: requires trip ownership or expert assignment; validates via Zod schema
 
-router.post("/api/trips/:tripId/itinerary-items", isAuthenticated, async (req, res) => {
+router.post("/api/trips/:tripId/itinerary-items", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       const userName = (req.user as any).claims.name || "User";
@@ -1439,7 +1439,7 @@ router.post("/api/trips/:tripId/itinerary-items", isAuthenticated, async (req, r
 // dead duplicate of retired code.
 
 
-router.post("/api/itinerary-items/:id/backup", isAuthenticated, async (req, res) => {
+router.post("/api/itinerary-items/:id/backup", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       const existing = await itineraryIntelligenceService.getItem(req.params.id);
@@ -1459,7 +1459,7 @@ router.post("/api/itinerary-items/:id/backup", isAuthenticated, async (req, res)
   });
 
 
-router.post("/api/trips/:tripId/itinerary/reorder", isAuthenticated, async (req, res) => {
+router.post("/api/trips/:tripId/itinerary/reorder", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       const userName = (req.user as any).claims.name || "User";
@@ -1482,11 +1482,11 @@ router.post("/api/trips/:tripId/itinerary/reorder", isAuthenticated, async (req,
 // POST /api/trips/:tripId/itinerary/optimize-order in routes.ts — see registerRoutes'
 // tripsRoutes mount comment). Kept in sync for safety only.
 // SECURITY (P0-b IDOR, kept safe for the reconciliation sweep): this endpoint carried
-// `isAuthenticated` ONLY — no trip authorization at all — despite reordering the trip's own
+// `requireAuth` ONLY — no trip authorization at all — despite reordering the trip's own
 // itinerary. Its sibling `reorder` handler above uses `getTripRole`/`canMutateTrip`; that
 // model is left untouched here (not this lane's call to unify) and `authorizeTripLogistics`
 // is used instead, matching the fix the live copy already carries.
-router.post("/api/trips/:tripId/itinerary/optimize-order", isAuthenticated, async (req, res) => {
+router.post("/api/trips/:tripId/itinerary/optimize-order", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       const denied = await authorizeTripLogistics(
@@ -1505,7 +1505,7 @@ router.post("/api/trips/:tripId/itinerary/optimize-order", isAuthenticated, asyn
   });
 
 
-router.post("/api/itinerary/estimate-travel", isAuthenticated, async (req, res) => {
+router.post("/api/itinerary/estimate-travel", requireAuth, async (req, res) => {
     try {
       const { fromLat, fromLng, toLat, toLng, mode } = req.body;
       const estimate = itineraryIntelligenceService.estimateTravelTime(fromLat, fromLng, toLat, toLng, mode);
@@ -1519,7 +1519,7 @@ router.post("/api/itinerary/estimate-travel", isAuthenticated, async (req, res) 
   // Creates or reuses an itinerary comparison+variant for the trip's AI-generated itinerary,
   // then calculates and persists real transport legs so users can select modes.
 
-router.post("/api/trips/:tripId/activate-transport", isAuthenticated, async (req, res) => {
+router.post("/api/trips/:tripId/activate-transport", requireAuth, async (req, res) => {
     try {
       const { tripId } = req.params;
       const userId = getReqUserId(req);
@@ -1616,7 +1616,7 @@ router.post("/api/trips/:tripId/activate-transport", isAuthenticated, async (req
 
   // --- Emergency Routes ---
 
-router.get("/api/trips/:tripId/emergency-contacts", isAuthenticated, async (req, res) => {
+router.get("/api/trips/:tripId/emergency-contacts", requireAuth, async (req, res) => {
     try {
       const contacts = await emergencyService.getContacts(req.params.tripId);
       res.json(contacts);
@@ -1626,7 +1626,7 @@ router.get("/api/trips/:tripId/emergency-contacts", isAuthenticated, async (req,
   });
 
 
-router.get("/api/trips/:tripId/emergency-contacts/by-type", isAuthenticated, async (req, res) => {
+router.get("/api/trips/:tripId/emergency-contacts/by-type", requireAuth, async (req, res) => {
     try {
       const contacts = await emergencyService.getContactsByType(req.params.tripId);
       res.json(contacts);
@@ -1646,7 +1646,7 @@ router.get("/api/trips/:tripId/emergency-contacts/by-type", isAuthenticated, asy
 // the assigned expert into owner-only writes. Left unauthorized rather than mis-gated —
 // same reasoning as the other owner-tier twins above; fix belongs to routes.ts's owner /
 // the reconciliation sweep.
-router.post("/api/trips/:tripId/emergency-contacts", isAuthenticated, async (req, res) => {
+router.post("/api/trips/:tripId/emergency-contacts", requireAuth, async (req, res) => {
     try {
       const contact = await emergencyService.createContact({
         ...req.body,
@@ -1659,7 +1659,7 @@ router.post("/api/trips/:tripId/emergency-contacts", isAuthenticated, async (req
   });
 
 
-router.post("/api/trips/:tripId/emergency/initialize", isAuthenticated, async (req, res) => {
+router.post("/api/trips/:tripId/emergency/initialize", requireAuth, async (req, res) => {
     try {
       const { countryCode } = req.body;
       const result = await emergencyService.initializeTripEmergencyInfo(req.params.tripId, countryCode);
@@ -1670,7 +1670,7 @@ router.post("/api/trips/:tripId/emergency/initialize", isAuthenticated, async (r
   });
 
 
-router.get("/api/trips/:tripId/alerts", isAuthenticated, async (req, res) => {
+router.get("/api/trips/:tripId/alerts", requireAuth, async (req, res) => {
     try {
       const alerts = await emergencyService.getActiveAlerts(req.params.tripId);
       res.json(alerts);
@@ -1680,7 +1680,7 @@ router.get("/api/trips/:tripId/alerts", isAuthenticated, async (req, res) => {
   });
 
 
-router.get("/api/trips/:tripId/alerts/summary", isAuthenticated, async (req, res) => {
+router.get("/api/trips/:tripId/alerts/summary", requireAuth, async (req, res) => {
     try {
       const summary = await emergencyService.getAlertSummary(req.params.tripId);
       res.json(summary);
@@ -1694,11 +1694,11 @@ router.get("/api/trips/:tripId/alerts/summary", isAuthenticated, async (req, res
 // POST /api/trips/:tripId/alerts in routes.ts — see registerRoutes' tripsRoutes mount
 // comment). Kept in sync for safety only.
 // SECURITY (found during the L21 sweep, kept safe for the reconciliation sweep): this
-// endpoint carried `isAuthenticated` ONLY — no trip authorization — despite writing a
+// endpoint carried `requireAuth` ONLY — no trip authorization — despite writing a
 // safety alert onto the trip. The live copy gates on `authorizeTripLogistics` (owner ‖
 // assigned expert ‖ author ‖ audit-logged admin — the ONE tier-3 write an assigned expert
 // may perform, per the live copy's comment), so that is mirrored here.
-router.post("/api/trips/:tripId/alerts", isAuthenticated, async (req, res) => {
+router.post("/api/trips/:tripId/alerts", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       const denied = await authorizeTripLogistics(
@@ -1719,7 +1719,7 @@ router.post("/api/trips/:tripId/alerts", isAuthenticated, async (req, res) => {
   });
 
 
-router.get("/api/trips/:tripId/anchors", isAuthenticated, async (req, res) => {
+router.get("/api/trips/:tripId/anchors", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
@@ -1751,7 +1751,7 @@ const anchorUpdateInput = insertTemporalAnchorSchema
   .partial()
   .extend({ anchorDatetime: z.coerce.date().optional() });
 
-router.post("/api/trips/:tripId/anchors", isAuthenticated, async (req, res) => {
+router.post("/api/trips/:tripId/anchors", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
@@ -1786,7 +1786,7 @@ router.post("/api/trips/:tripId/anchors", isAuthenticated, async (req, res) => {
   });
 
 
-router.put("/api/anchors/:id", isAuthenticated, async (req, res) => {
+router.put("/api/anchors/:id", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
@@ -1813,7 +1813,7 @@ router.put("/api/anchors/:id", isAuthenticated, async (req, res) => {
   });
 
 
-router.delete("/api/anchors/:id", isAuthenticated, async (req, res) => {
+router.delete("/api/anchors/:id", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
@@ -1835,7 +1835,7 @@ router.delete("/api/anchors/:id", isAuthenticated, async (req, res) => {
   // === Logistics: Day Boundaries ===
 
 
-router.get("/api/trips/:tripId/day-boundaries", isAuthenticated, async (req, res) => {
+router.get("/api/trips/:tripId/day-boundaries", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
@@ -1852,7 +1852,7 @@ router.get("/api/trips/:tripId/day-boundaries", isAuthenticated, async (req, res
   });
 
 
-router.post("/api/trips/:tripId/day-boundaries", isAuthenticated, async (req, res) => {
+router.post("/api/trips/:tripId/day-boundaries", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
@@ -1875,7 +1875,7 @@ router.post("/api/trips/:tripId/day-boundaries", isAuthenticated, async (req, re
   // === Logistics: Schedule Validation ===
 
 
-router.post("/api/trips/:tripId/validate-schedule", isAuthenticated, async (req, res) => {
+router.post("/api/trips/:tripId/validate-schedule", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
@@ -1948,7 +1948,7 @@ router.get("/api/logistics/presets/:templateSlug", async (req, res) => {
 
 
 
-router.post("/api/trips/:tripId/anchors/:anchorId/impacts", isAuthenticated, async (req, res) => {
+router.post("/api/trips/:tripId/anchors/:anchorId/impacts", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
@@ -1968,7 +1968,7 @@ router.post("/api/trips/:tripId/anchors/:anchorId/impacts", isAuthenticated, asy
   // === Logistics: AI Anchor Suggestions ===
 
 
-router.post("/api/trips/:tripId/anchor-suggestions", isAuthenticated, async (req, res) => {
+router.post("/api/trips/:tripId/anchor-suggestions", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
@@ -2000,7 +2000,7 @@ router.post("/api/trips/:tripId/anchor-suggestions", isAuthenticated, async (req
   });
 
 
-router.get("/api/trips/:tripId/anchor-optimization", isAuthenticated, async (req, res) => {
+router.get("/api/trips/:tripId/anchor-optimization", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
@@ -2024,7 +2024,7 @@ router.get("/api/trips/:tripId/anchor-optimization", isAuthenticated, async (req
   // === Expert: Client Constraint Visibility ===
 
 
-router.post("/api/itinerary-variants/:variantId/share", isAuthenticated, async (req, res) => {
+router.post("/api/itinerary-variants/:variantId/share", requireAuth, async (req, res) => {
     try {
       const { variantId } = req.params;
       const userId = getReqUserId(req);
@@ -2078,7 +2078,7 @@ router.post("/api/itinerary-variants/:variantId/share", isAuthenticated, async (
 
   // GET /api/trips/:id/share-info — Returns share token + expert review status for a trip (owner only)
 
-router.get("/api/trips/:id/share-info", isAuthenticated, async (req, res) => {
+router.get("/api/trips/:id/share-info", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       const tripId = req.params.id;
@@ -2272,7 +2272,7 @@ router.get("/api/itinerary-share/:token", async (req, res) => {
   // leg is never returned without the explicit editor flag). `?includeProposed=1` adds proposals
   // for the Workstation editor, whose caller is authorized identically.
 
-router.get("/api/trips/:tripId/transport-legs", isAuthenticated, async (req, res) => {
+router.get("/api/trips/:tripId/transport-legs", requireAuth, async (req, res) => {
     try {
       const { tripId } = req.params;
       const userId = getUserId(req)!;
@@ -2626,7 +2626,7 @@ router.get("/api/itinerary-share/:token/navigate/:dayNumber/:legOrder", async (r
 
   // GET /api/transport-legs/user — returns all transport legs for the current user across all shared itineraries
 
-router.get("/api/transport-legs/user", isAuthenticated, async (req, res) => {
+router.get("/api/transport-legs/user", requireAuth, async (req, res) => {
     try {
       const userId = getReqUserId(req);
       if (!userId) return res.status(401).json({ error: "Unauthorized" });
@@ -2641,7 +2641,7 @@ router.get("/api/transport-legs/user", isAuthenticated, async (req, res) => {
 
   // GET /api/itinerary-variants/:variantId/transport-legs
 
-router.get("/api/itinerary-variants/:variantId/transport-legs", isAuthenticated, async (req, res) => {
+router.get("/api/itinerary-variants/:variantId/transport-legs", requireAuth, async (req, res) => {
     try {
       const { variantId } = req.params;
       const userId = getReqUserId(req);
@@ -2661,7 +2661,7 @@ router.get("/api/itinerary-variants/:variantId/transport-legs", isAuthenticated,
 
   // POST /api/itinerary-variants/:variantId/calculate-transport
 
-router.post("/api/itinerary-variants/:variantId/calculate-transport", isAuthenticated, async (req, res) => {
+router.post("/api/itinerary-variants/:variantId/calculate-transport", requireAuth, async (req, res) => {
     try {
       const { variantId } = req.params;
       const userId = getReqUserId(req);
@@ -3112,7 +3112,7 @@ router.get("/itinerary-view/:token", async (req, res, next) => {
 
   // Track search events (called from frontend)
 
-router.post("/api/trips/:tripId/analytics/infer", isAuthenticated, async (req, res) => {
+router.post("/api/trips/:tripId/analytics/infer", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       const tripId = req.params.tripId;
@@ -3133,7 +3133,7 @@ router.post("/api/trips/:tripId/analytics/infer", isAuthenticated, async (req, r
 
   // Track searches automatically (what destinations were considered)
 
-router.patch("/api/trips/:tripId/itinerary-items/:itemId", isAuthenticated, async (req, res) => {
+router.patch("/api/trips/:tripId/itinerary-items/:itemId", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       const { tripId, itemId } = req.params;
@@ -3169,7 +3169,7 @@ router.patch("/api/trips/:tripId/itinerary-items/:itemId", isAuthenticated, asyn
   });
 
 
-router.delete("/api/trips/:tripId/itinerary-items/:itemId", isAuthenticated, async (req, res) => {
+router.delete("/api/trips/:tripId/itinerary-items/:itemId", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       const { tripId, itemId } = req.params;

@@ -15,7 +15,7 @@ import {
 } from "../services/checkout-claim.service";
 import { api } from "@shared/routes";
 import { z } from "zod";
-import { isAuthenticated } from "../replit_integrations/auth";
+import { requireAuth } from "../middlewares/requireAuth";
 import { isExpertRole, isProviderRole, isEarnerRole } from "@shared/roles";
 import { MIN_PAYOUT_CENTS } from "../config/payout.config";
 import { eq, and, or, like, ilike, sql, desc, count, ne, isNotNull, asc, inArray } from "drizzle-orm";
@@ -177,21 +177,21 @@ function serviceCategorySlugToFeeCategory(slug: string | null | undefined): stri
 // addCredits, deductCredits, getCreditTransactions) stay DORMANT per the roadmap — no drops,
 // no migration. Do not resurrect these routes without a real payment/fulfillment path.
 
-router.get("/api/wallet", isAuthenticated, (req, res) => {
+router.get("/api/wallet", requireAuth, (req, res) => {
     res.status(410).json({ message: "Credits have been retired — AI features are billed per use." });
   });
 
-router.get("/api/wallet/transactions", isAuthenticated, (req, res) => {
+router.get("/api/wallet/transactions", requireAuth, (req, res) => {
     res.status(410).json({ message: "Credits have been retired — AI features are billed per use." });
   });
 
-router.post("/api/wallet/add-credits", isAuthenticated, (req, res) => {
+router.post("/api/wallet/add-credits", requireAuth, (req, res) => {
     // Closes the free-credits hole: this endpoint used to grant balance from a client-sent
     // amount with no payment behind it (admin-gated, but still a hole — see FP-3).
     res.status(410).json({ message: "Credits have been retired — AI features are billed per use." });
   });
 
-router.post("/api/credits/purchase", isAuthenticated, (req, res) => {
+router.post("/api/credits/purchase", requireAuth, (req, res) => {
     res.status(410).json({ message: "Credits have been retired — AI features are billed per use." });
   });
 
@@ -488,7 +488,7 @@ async function promoteAuthorizedCheckout(userId: string, bookingIds: string[]): 
   await cartProjection.clearCart(userId);
 }
 
-router.post("/api/checkout", isAuthenticated, async (req, res) => {
+router.post("/api/checkout", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       const { tripId, notes, idempotencyKey } = req.body;
@@ -1032,7 +1032,7 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
   // Read-only fee preview: mirrors checkout per-item resolution without creating bookings.
   // Returns { subtotal, platformFeeTotal, total, itemCount } for the current user's cart.
 
-router.get("/api/cart/fee-preview", isAuthenticated, async (req, res) => {
+router.get("/api/cart/fee-preview", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
@@ -1107,7 +1107,7 @@ router.get("/api/cart/fee-preview", isAuthenticated, async (req, res) => {
 
   // Get contract details
 
-router.get("/api/invoices/my", isAuthenticated, async (req, res) => {
+router.get("/api/invoices/my", requireAuth, async (req, res) => {
     try {
       const user = req.user as any;
       const invoices = await storage.getInvoicesByCustomer(getUserId(req)!);
@@ -1123,7 +1123,7 @@ router.get("/api/invoices/my", isAuthenticated, async (req, res) => {
 
   // Get AI usage summary with cost breakdown
 
-router.post("/api/stripe/connect/onboard", isAuthenticated, async (req, res) => {
+router.post("/api/stripe/connect/onboard", requireAuth, async (req, res) => {
     try {
       // Honest degrade (§13): without a live Stripe key every call below throws a raw
       // Stripe SDK auth error, which the catch below would otherwise surface as a
@@ -1172,7 +1172,7 @@ router.post("/api/stripe/connect/onboard", isAuthenticated, async (req, res) => 
   });
 
 
-router.get("/api/stripe/connect/status", isAuthenticated, async (req, res) => {
+router.get("/api/stripe/connect/status", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
@@ -1207,7 +1207,7 @@ router.get("/api/stripe/connect/status", isAuthenticated, async (req, res) => {
   });
 
 
-router.get("/api/stripe/connect/dashboard", isAuthenticated, async (req, res) => {
+router.get("/api/stripe/connect/dashboard", requireAuth, async (req, res) => {
     try {
       // Honest degrade (§13): same reasoning as onboard/status above.
       if (!process.env.STRIPE_SECRET_KEY) {
@@ -1297,7 +1297,7 @@ router.get("/api/fee-bands/:bandKey", async (req, res) => {
   // (releasable earnings) — the reason self-service was deferred is resolved.
   // Minimum floor mirrors the admin path threshold — single-sourced (MONEY_MAP F-7).
 
-  router.post("/api/payouts/request", isAuthenticated, async (req, res) => {
+  router.post("/api/payouts/request", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ error: "Not authenticated" });
@@ -1370,7 +1370,7 @@ router.get("/api/fee-bands/:bandKey", async (req, res) => {
   // §14: earner + role are derived from the session, never from a query/body param — this returns
   // ONLY the caller's own payouts (role-aware provider/expert), reusing the existing storage reads
   // that already back the admin queue. No admin data leakage — there is no id/userId input at all.
-  router.get("/api/payouts", isAuthenticated, async (req, res) => {
+  router.get("/api/payouts", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ error: "Not authenticated" });

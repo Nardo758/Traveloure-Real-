@@ -9,7 +9,7 @@ import { db } from "../db";
 import { storage } from "../storage";
 import { api } from "@shared/routes";
 import { z } from "zod";
-import { isAuthenticated } from "../replit_integrations/auth";
+import { requireAuth } from "../middlewares/requireAuth";
 import { geocodeAddress } from "../utils/geocode";
 import { applyAttributionSubId } from "../services/travelpayouts/travelpayouts-client";
 // §16: live-feed DTOs never ship partner URLs to the client — they are vaulted server-side and
@@ -390,7 +390,7 @@ router.post("/api/contact", async (req, res) => {
   
   // Start a chat with an expert
 
-router.post("/api/chat/start", isAuthenticated, async (req, res) => {
+router.post("/api/chat/start", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       const { expertId, message, tripId } = req.body;
@@ -452,7 +452,7 @@ router.use("/api/webhooks", webhooksRoutes);
 
   // Trips Routes
 
-router.post("/api/generated-itineraries", isAuthenticated, async (req, res) => {
+router.post("/api/generated-itineraries", requireAuth, async (req, res) => {
     try {
       const parseResult = insertGeneratedItinerarySchema.safeParse(req.body);
       if (!parseResult.success) {
@@ -496,7 +496,7 @@ router.post("/api/generated-itineraries", isAuthenticated, async (req, res) => {
   });
 
 
-router.get("/api/generated-itineraries/:tripId", isAuthenticated, async (req, res) => {
+router.get("/api/generated-itineraries/:tripId", requireAuth, async (req, res) => {
     try {
       const trip = await storage.getTrip(req.params.tripId);
       if (!trip) {
@@ -521,7 +521,7 @@ router.get("/api/generated-itineraries/:tripId", isAuthenticated, async (req, re
 
   // Tourist Places Routes
 
-router.post("/api/ai/generate-blueprint", isAuthenticated, async (req, res) => {
+router.post("/api/ai/generate-blueprint", requireAuth, async (req, res) => {
     try {
       const { eventType, destination, travelers, startDate, endDate, budget, preferences } = req.body;
       const userId = getUserId(req)!;
@@ -585,7 +585,7 @@ Please provide a comprehensive travel blueprint in JSON format with this structu
 
   // AI Chat Endpoint for Trip Planning
 
-router.post("/api/ai/chat", isAuthenticated, async (req, res) => {
+router.post("/api/ai/chat", requireAuth, async (req, res) => {
     try {
       const { messages, tripContext } = req.body;
 
@@ -632,7 +632,7 @@ Be friendly, helpful, and provide specific actionable advice. If recommending sp
   // Restricted to admin/expert only (CON-A.P1): full LLM optimization is delivered to
   // travelers via the gated paid path (/api/optimization-payments → /confirm), not here.
 
-router.post("/api/ai/optimize-experience", isAuthenticated, async (req, res) => {
+router.post("/api/ai/optimize-experience", requireAuth, async (req, res) => {
     try {
       const user = await storage.getUser(getUserId(req)!);
       // Full expert family (shared/roles.ts): bare `role !== "expert"` locked out
@@ -799,7 +799,7 @@ router.get("/api/service-categories/provider-counts", async (_req, res) => {
 
   // Create category (admin)
 
-router.post("/api/service-categories", isAuthenticated, async (req, res) => {
+router.post("/api/service-categories", requireAuth, async (req, res) => {
     try {
       const user = await storage.getUser(getUserId(req)!);
       if (!user || user.role !== "admin") {
@@ -825,7 +825,7 @@ router.get("/api/service-categories/:categoryId/subcategories", async (req, res)
 
   // Create subcategory (admin)
 
-router.post("/api/service-subcategories", isAuthenticated, async (req, res) => {
+router.post("/api/service-subcategories", requireAuth, async (req, res) => {
     try {
       const user = await storage.getUser(getUserId(req)!);
       if (!user || user.role !== "admin") {
@@ -868,7 +868,7 @@ router.get("/api/custom-venues/:id", async (req, res) => {
 
   // Create custom venue
 
-router.post("/api/custom-venues", isAuthenticated, async (req, res) => {
+router.post("/api/custom-venues", requireAuth, async (req, res) => {
     try {
       const input = insertCustomVenueSchema.parse(req.body);
       const venue = await storage.createCustomVenue(input);
@@ -884,7 +884,7 @@ router.post("/api/custom-venues", isAuthenticated, async (req, res) => {
 
   // Update custom venue
 
-router.patch("/api/custom-venues/:id", isAuthenticated, async (req, res) => {
+router.patch("/api/custom-venues/:id", requireAuth, async (req, res) => {
     try {
       // Ownership check (IDOR) — harvested from the routes.ts shadow copy (571b593f
       // applied this fix to the dead duplicate; see docs/audits/shadow-route-sweep.md).
@@ -912,7 +912,7 @@ router.patch("/api/custom-venues/:id", isAuthenticated, async (req, res) => {
 
   // Delete custom venue
 
-router.delete("/api/custom-venues/:id", isAuthenticated, async (req, res) => {
+router.delete("/api/custom-venues/:id", requireAuth, async (req, res) => {
     try {
       // Ownership check (IDOR) — harvested from the routes.ts shadow copy (571b593f).
       const userId = getUserId(req)!;
@@ -1119,7 +1119,7 @@ router.get("/api/catalog/destinations", async (req, res) => {
   // evidence (401 against TRAVELPAYOUTS_TOKEN; Tequila closed to new partners in 2023). Aviasales is now
   // the sole source; a `provider=kiwi` request still resolves cleanly to zero items, never an error.
 
-router.get("/api/catalog/flights", isAuthenticated, async (req, res) => {
+router.get("/api/catalog/flights", requireAuth, async (req, res) => {
     try {
       const { searchAviasalesFlights } = await import("../services/travelpayouts/aviasales.service");
       const { origin, destination, departDate, returnDate, currency, limit, provider } = req.query;
@@ -1145,7 +1145,7 @@ router.get("/api/catalog/flights", isAuthenticated, async (req, res) => {
   // presently equivalent to the honest static retired shape, but a future partner key just works
   // without a route change. `retired` reflects whether the seam is currently ACTIVE, not a hardcoded flag.
 
-router.get("/api/catalog/nomad", isAuthenticated, async (req, res) => {
+router.get("/api/catalog/nomad", requireAuth, async (req, res) => {
     try {
       const { searchKiwiNomad } = await import("../services/travelpayouts/kiwi.service");
       const { cities, nights_from, nights_to, currency } = req.query;
@@ -1169,7 +1169,7 @@ router.get("/api/catalog/nomad", isAuthenticated, async (req, res) => {
 
   // Transfers: GetTransfer
 
-router.get("/api/catalog/transfers", isAuthenticated, async (req, res) => {
+router.get("/api/catalog/transfers", requireAuth, async (req, res) => {
     try {
       const { searchGetTransferOptions } = await import("../services/travelpayouts/gettransfer.service");
       const { from, to, date, passengers, currency } = req.query;
@@ -1193,7 +1193,7 @@ router.get("/api/catalog/transfers", isAuthenticated, async (req, res) => {
 
   // Car Rentals: DiscoverCars
 
-router.get("/api/catalog/cars", isAuthenticated, async (req, res) => {
+router.get("/api/catalog/cars", requireAuth, async (req, res) => {
     try {
       const { searchDiscoverCars } = await import("../services/travelpayouts/discovercars.service");
       const { location, pickup, dropoff, dropoffLocation, currency, limit } = req.query;
@@ -1220,7 +1220,7 @@ router.get("/api/catalog/cars", isAuthenticated, async (req, res) => {
 
   // eSIM: Airalo
 
-router.get("/api/catalog/esim", isAuthenticated, async (req, res) => {
+router.get("/api/catalog/esim", requireAuth, async (req, res) => {
     try {
       const { searchAiraloEsim } = await import("../services/travelpayouts/airalo.service");
       const { country, countryCode, limit } = req.query;
@@ -1240,7 +1240,7 @@ router.get("/api/catalog/esim", isAuthenticated, async (req, res) => {
 
   // Activities: Tiqets
 
-router.get("/api/catalog/tiqets", isAuthenticated, async (req, res) => {
+router.get("/api/catalog/tiqets", requireAuth, async (req, res) => {
     try {
       const { searchTiqetsProducts } = await import("../services/travelpayouts/tiqets.service");
       const { destination, city, currency, limit } = req.query;
@@ -1260,7 +1260,7 @@ router.get("/api/catalog/tiqets", isAuthenticated, async (req, res) => {
 
   // Activities: WeGoTrip
 
-router.get("/api/catalog/wegotrip", isAuthenticated, async (req, res) => {
+router.get("/api/catalog/wegotrip", requireAuth, async (req, res) => {
     try {
       const { searchWeGoTripProducts } = await import("../services/travelpayouts/wegotrip.service");
       const { destination, city, limit } = req.query;
@@ -1279,7 +1279,7 @@ router.get("/api/catalog/wegotrip", isAuthenticated, async (req, res) => {
 
   // Activities: Viator discounted feed
 
-router.get("/api/catalog/viator-feed", isAuthenticated, async (req, res) => {
+router.get("/api/catalog/viator-feed", requireAuth, async (req, res) => {
     try {
       const { searchViatorFeedProducts } = await import("../services/travelpayouts/viator-feed.service");
       const { destination, currency, limit } = req.query;
@@ -1299,7 +1299,7 @@ router.get("/api/catalog/viator-feed", isAuthenticated, async (req, res) => {
 
   // Ground transport: Omio
 
-router.get("/api/catalog/ground-transport", isAuthenticated, async (req, res) => {
+router.get("/api/catalog/ground-transport", requireAuth, async (req, res) => {
     try {
       const { searchOmioRoutes } = await import("../services/travelpayouts/omio.service");
       const { origin, destination, limit } = req.query;
@@ -1321,13 +1321,13 @@ router.get("/api/catalog/ground-transport", isAuthenticated, async (req, res) =>
   // (engine.hotellook.com/api/v2/* return 404; see hotellook.service.ts). The endpoint
   // stays as an explicit empty response so any stale clients don't see a broken 404/500.
 
-router.get("/api/catalog/hotels-look", isAuthenticated, async (_req, res) => {
+router.get("/api/catalog/hotels-look", requireAuth, async (_req, res) => {
     res.json({ items: [], total: 0, retired: true });
   });
 
   // Agoda hotels (instant-connect ⚡)
 
-router.get("/api/catalog/agoda", isAuthenticated, async (req, res) => {
+router.get("/api/catalog/agoda", requireAuth, async (req, res) => {
     try {
       const { searchAgoda } = await import("../services/travelpayouts/agoda.service");
       const { destination, checkIn, checkOut, guests, limit } = req.query;
@@ -1348,7 +1348,7 @@ router.get("/api/catalog/agoda", isAuthenticated, async (req, res) => {
 
   // Booking.com hotels via Travelpayouts affiliate (instant-connect ⚡)
 
-router.get("/api/catalog/booking", isAuthenticated, async (req, res) => {
+router.get("/api/catalog/booking", requireAuth, async (req, res) => {
     try {
       const { searchBooking } = await import("../services/travelpayouts/booking.service");
       const { destination, checkIn, checkOut, guests, limit, currency } = req.query;
@@ -1370,7 +1370,7 @@ router.get("/api/catalog/booking", isAuthenticated, async (req, res) => {
 
   // GetYourGuide activities (instant-connect ⚡)
 
-router.get("/api/catalog/activities-gyg", isAuthenticated, async (req, res) => {
+router.get("/api/catalog/activities-gyg", requireAuth, async (req, res) => {
     try {
       const { searchGetYourGuide } = await import("../services/travelpayouts/getyourguide.service");
       const { destination, currency, limit } = req.query;
@@ -1389,7 +1389,7 @@ router.get("/api/catalog/activities-gyg", isAuthenticated, async (req, res) => {
 
   // Klook Asia activities (instant-connect ⚡)
 
-router.get("/api/catalog/klook", isAuthenticated, async (req, res) => {
+router.get("/api/catalog/klook", requireAuth, async (req, res) => {
     try {
       const { searchKlook } = await import("../services/travelpayouts/klook.service");
       const { destination, currency, limit } = req.query;
@@ -1408,7 +1408,7 @@ router.get("/api/catalog/klook", isAuthenticated, async (req, res) => {
 
   // Travel insurance — SafetyWing (instant-connect ⚡)
 
-router.get("/api/catalog/insurance", isAuthenticated, async (req, res) => {
+router.get("/api/catalog/insurance", requireAuth, async (req, res) => {
     try {
       const { searchSafetyWingPlans } = await import("../services/travelpayouts/safetywing.service");
       const { destination, travelers, limit } = req.query;
@@ -1426,7 +1426,7 @@ router.get("/api/catalog/insurance", isAuthenticated, async (req, res) => {
 
   // Busbud bus routes (instant-connect ⚡)
 
-router.get("/api/catalog/bus", isAuthenticated, async (req, res) => {
+router.get("/api/catalog/bus", requireAuth, async (req, res) => {
     try {
       const { searchBusbud } = await import("../services/travelpayouts/busbud.service");
       const { origin, destination, date, passengers, limit, currency } = req.query;
@@ -1447,7 +1447,7 @@ router.get("/api/catalog/bus", isAuthenticated, async (req, res) => {
 
   // Airport transfers — Kiwi Taxi + Welcome Pickups (instant-connect ⚡)
 
-router.get("/api/catalog/airport-transfers", isAuthenticated, async (req, res) => {
+router.get("/api/catalog/airport-transfers", requireAuth, async (req, res) => {
     try {
       const { searchKiwiTaxi } = await import("../services/travelpayouts/kiwitaxi.service");
       const { searchWelcomePickups } = await import("../services/travelpayouts/welcomepickups.service");
@@ -1471,7 +1471,7 @@ router.get("/api/catalog/airport-transfers", isAuthenticated, async (req, res) =
 
   // Stasher luggage storage (instant-connect ⚡)
 
-router.get("/api/catalog/luggage-storage", isAuthenticated, async (req, res) => {
+router.get("/api/catalog/luggage-storage", requireAuth, async (req, res) => {
     try {
       const { searchStasher } = await import("../services/travelpayouts/stasher.service");
       const { destination, date, days, bags, limit } = req.query;
@@ -1492,7 +1492,7 @@ router.get("/api/catalog/luggage-storage", isAuthenticated, async (req, res) => 
 
   // Rentalcars.com car hire (instant-connect ⚡)
 
-router.get("/api/catalog/rentalcars", isAuthenticated, async (req, res) => {
+router.get("/api/catalog/rentalcars", requireAuth, async (req, res) => {
     try {
       const { searchRentalcars } = await import("../services/travelpayouts/rentalcars.service");
       const { pickupLocation, pickupDate, dropoffDate, driverAge, limit, currency } = req.query;
@@ -1528,7 +1528,7 @@ router.get("/api/destinations", async (req, res) => {
 
   // Get user's experiences
 
-router.get("/api/user-experiences", isAuthenticated, async (req, res) => {
+router.get("/api/user-experiences", requireAuth, async (req, res) => {
     const userId = getUserId(req)!;
     const experiences = await storage.getUserExperiences(userId);
     res.json(experiences);
@@ -1536,7 +1536,7 @@ router.get("/api/user-experiences", isAuthenticated, async (req, res) => {
 
   // Get single experience with items
 
-router.get("/api/user-experiences/:id", isAuthenticated, async (req, res) => {
+router.get("/api/user-experiences/:id", requireAuth, async (req, res) => {
     const experience = await storage.getUserExperience(req.params.id);
     if (!experience) {
       return res.status(404).json({ message: "Experience not found" });
@@ -1547,7 +1547,7 @@ router.get("/api/user-experiences/:id", isAuthenticated, async (req, res) => {
 
   // Create new experience
 
-router.post("/api/user-experiences", isAuthenticated, async (req, res) => {
+router.post("/api/user-experiences", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       const experience = await storage.createUserExperience({ ...req.body, userId });
@@ -1582,7 +1582,7 @@ router.post("/api/user-experiences", isAuthenticated, async (req, res) => {
 
   // Update experience
 
-router.patch("/api/user-experiences/:id", isAuthenticated, async (req, res) => {
+router.patch("/api/user-experiences/:id", requireAuth, async (req, res) => {
     const userId = getUserId(req)!;
     const experience = await storage.getUserExperience(req.params.id);
     if (!experience || experience.userId !== userId) {
@@ -1622,7 +1622,7 @@ router.patch("/api/user-experiences/:id", isAuthenticated, async (req, res) => {
 
   // Delete experience
 
-router.delete("/api/user-experiences/:id", isAuthenticated, async (req, res) => {
+router.delete("/api/user-experiences/:id", requireAuth, async (req, res) => {
     const userId = getUserId(req)!;
     const experience = await storage.getUserExperience(req.params.id);
     if (!experience || experience.userId !== userId) {
@@ -1634,7 +1634,7 @@ router.delete("/api/user-experiences/:id", isAuthenticated, async (req, res) => 
 
   // Add item to experience
 
-router.post("/api/user-experiences/:id/items", isAuthenticated, async (req, res) => {
+router.post("/api/user-experiences/:id/items", requireAuth, async (req, res) => {
     const userId = getUserId(req)!;
     const experience = await storage.getUserExperience(req.params.id);
     if (!experience || experience.userId !== userId) {
@@ -1646,7 +1646,7 @@ router.post("/api/user-experiences/:id/items", isAuthenticated, async (req, res)
 
   // Update experience item
 
-router.patch("/api/user-experience-items/:id", isAuthenticated, async (req, res) => {
+router.patch("/api/user-experience-items/:id", requireAuth, async (req, res) => {
     const updated = await storage.updateUserExperienceItem(req.params.id, req.body);
     if (!updated) {
       return res.status(404).json({ message: "Item not found" });
@@ -1656,7 +1656,7 @@ router.patch("/api/user-experience-items/:id", isAuthenticated, async (req, res)
 
   // Remove experience item
 
-router.delete("/api/user-experience-items/:id", isAuthenticated, async (req, res) => {
+router.delete("/api/user-experience-items/:id", requireAuth, async (req, res) => {
     await storage.removeUserExperienceItem(req.params.id);
     res.status(204).send();
   });
@@ -1673,7 +1673,7 @@ router.get("/api/faqs", async (req, res) => {
 
   // Create FAQ (admin)
 
-router.post("/api/faqs", isAuthenticated, async (req, res) => {
+router.post("/api/faqs", requireAuth, async (req, res) => {
     try {
       const user = await storage.getUser(getUserId(req)!);
       if (!user || user.role !== "admin") {
@@ -1692,7 +1692,7 @@ router.post("/api/faqs", isAuthenticated, async (req, res) => {
 
   // Update FAQ (admin)
 
-router.patch("/api/faqs/:id", isAuthenticated, async (req, res) => {
+router.patch("/api/faqs/:id", requireAuth, async (req, res) => {
     try {
       const user = await storage.getUser(getUserId(req)!);
       if (!user || user.role !== "admin") {
@@ -1714,7 +1714,7 @@ router.patch("/api/faqs/:id", isAuthenticated, async (req, res) => {
 
   // Delete FAQ (admin)
 
-router.delete("/api/faqs/:id", isAuthenticated, async (req, res) => {
+router.delete("/api/faqs/:id", requireAuth, async (req, res) => {
     const user = await storage.getUser(getUserId(req)!);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
@@ -1828,7 +1828,7 @@ router.get("/api/destination-calendar/seasons", async (req, res) => {
 
   // Get contributor's own destination events (authenticated)
 
-router.get("/api/destination-calendar/my-events", isAuthenticated, async (req, res) => {
+router.get("/api/destination-calendar/my-events", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       const events = await storage.getContributorDestinationEvents(userId);
@@ -1841,7 +1841,7 @@ router.get("/api/destination-calendar/my-events", isAuthenticated, async (req, r
 
   // Create a new destination event (authenticated - contributor)
 
-router.post("/api/destination-calendar/events", isAuthenticated, async (req, res) => {
+router.post("/api/destination-calendar/events", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       const event = await storage.createDestinationEvent({
@@ -1859,7 +1859,7 @@ router.post("/api/destination-calendar/events", isAuthenticated, async (req, res
 
   // Update destination event (authenticated - contributor only)
 
-router.put("/api/destination-calendar/events/:id", isAuthenticated, async (req, res) => {
+router.put("/api/destination-calendar/events/:id", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       const event = await storage.getDestinationEventById(req.params.id);
@@ -1884,7 +1884,7 @@ router.put("/api/destination-calendar/events/:id", isAuthenticated, async (req, 
 
   // Submit destination event for approval (authenticated - contributor only)
 
-router.post("/api/destination-calendar/events/:id/submit", isAuthenticated, async (req, res) => {
+router.post("/api/destination-calendar/events/:id/submit", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       const event = await storage.getDestinationEventById(req.params.id);
@@ -1909,7 +1909,7 @@ router.post("/api/destination-calendar/events/:id/submit", isAuthenticated, asyn
 
   // Delete destination event (authenticated - contributor only)
 
-router.delete("/api/destination-calendar/events/:id", isAuthenticated, async (req, res) => {
+router.delete("/api/destination-calendar/events/:id", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       const event = await storage.getDestinationEventById(req.params.id);
@@ -2124,7 +2124,7 @@ router.get("/api/discover", async (req, res) => {
 
   // Analytics: Get destination search trends
 
-router.get("/api/analytics/search-trends", isAuthenticated, async (req, res) => {
+router.get("/api/analytics/search-trends", requireAuth, async (req, res) => {
     try {
       const days = req.query.days ? parseInt(req.query.days as string) : 7;
       const trends = await storage.getDestinationSearchTrends(days);
@@ -2137,7 +2137,7 @@ router.get("/api/analytics/search-trends", isAuthenticated, async (req, res) => 
 
   // Analytics: Get expert match trends
 
-router.get("/api/analytics/expert-match-trends/:expertId", isAuthenticated, async (req, res) => {
+router.get("/api/analytics/expert-match-trends/:expertId", requireAuth, async (req, res) => {
     try {
       const days = req.query.days ? parseInt(req.query.days as string) : 30;
       const trends = await storage.getExpertMatchTrends(req.params.expertId, days);
@@ -2150,7 +2150,7 @@ router.get("/api/analytics/expert-match-trends/:expertId", isAuthenticated, asyn
 
   // Analytics: Get destination metrics history (time-series)
 
-router.get("/api/analytics/destination-metrics/:destination", isAuthenticated, async (req, res) => {
+router.get("/api/analytics/destination-metrics/:destination", requireAuth, async (req, res) => {
     try {
       const metricType = (req.query.metricType as string) || "trend_score";
       const days = req.query.days ? parseInt(req.query.days as string) : 30;
@@ -2342,7 +2342,7 @@ router.post("/api/analytics/booking", async (req, res) => {
 
   // Get expert's services by status
 
-router.get("/api/notifications", isAuthenticated, async (req, res) => {
+router.get("/api/notifications", requireAuth, async (req, res) => {
     const userId = getUserId(req)!;
     const unreadOnly = req.query.unread === "true";
     const notifications = await storage.getNotifications(userId, unreadOnly);
@@ -2351,7 +2351,7 @@ router.get("/api/notifications", isAuthenticated, async (req, res) => {
 
   // Get unread count
 
-router.get("/api/notifications/unread-count", isAuthenticated, async (req, res) => {
+router.get("/api/notifications/unread-count", requireAuth, async (req, res) => {
     const userId = getUserId(req)!;
     const count = await storage.getUnreadCount(userId);
     res.json({ count });
@@ -2359,7 +2359,7 @@ router.get("/api/notifications/unread-count", isAuthenticated, async (req, res) 
 
   // Mark notification as read
 
-router.patch("/api/notifications/:id/read", isAuthenticated, async (req, res) => {
+router.patch("/api/notifications/:id/read", requireAuth, async (req, res) => {
     const userId = getUserId(req)!;
     // Ownership enforced IN the update's WHERE (id + userId) — the old shape mutated first and
     // checked after, so a cross-user write landed before the 403. 404 for missing-or-not-yours
@@ -2373,7 +2373,7 @@ router.patch("/api/notifications/:id/read", isAuthenticated, async (req, res) =>
 
   // Mark all as read
 
-router.post("/api/notifications/mark-all-read", isAuthenticated, async (req, res) => {
+router.post("/api/notifications/mark-all-read", requireAuth, async (req, res) => {
     const userId = getUserId(req)!;
     await storage.markAllAsRead(userId);
     res.json({ success: true });
@@ -2381,7 +2381,7 @@ router.post("/api/notifications/mark-all-read", isAuthenticated, async (req, res
 
   // Delete notification
 
-router.delete("/api/notifications/:id", isAuthenticated, async (req, res) => {
+router.delete("/api/notifications/:id", requireAuth, async (req, res) => {
     const userId = getUserId(req)!;
     // Ownership enforced IN the delete's WHERE — audit A1 proved any authenticated user could
     // delete any other user's notification (IDOR). 404 for missing-or-not-yours alike.
@@ -2410,7 +2410,7 @@ router.get("/api/services/:serviceId/reviews", async (req, res) => {
   });
 
   // Flag a review (any authenticated user)
-router.post("/api/reviews/:id/flag", isAuthenticated, async (req, res) => {
+router.post("/api/reviews/:id/flag", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       const { reason } = req.body;
@@ -2427,7 +2427,7 @@ router.post("/api/reviews/:id/flag", isAuthenticated, async (req, res) => {
 
   // Create a review (only after completed booking)
 
-router.post("/api/services/:serviceId/reviews", isAuthenticated, async (req, res) => {
+router.post("/api/services/:serviceId/reviews", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       
@@ -2575,7 +2575,7 @@ router.get("/api/amadeus/locations", async (req, res) => {
 
   // Search hotels by city
 
-router.get("/api/amadeus/hotels", isAuthenticated, async (req, res) => {
+router.get("/api/amadeus/hotels", requireAuth, async (req, res) => {
     try {
       const { cityCode, checkInDate, checkOutDate, adults, rooms, currency } = req.query;
       
@@ -2595,7 +2595,7 @@ router.get("/api/amadeus/hotels", isAuthenticated, async (req, res) => {
 
   // Search Points of Interest by location
 
-router.get("/api/amadeus/pois", isAuthenticated, async (req, res) => {
+router.get("/api/amadeus/pois", requireAuth, async (req, res) => {
     try {
       const { latitude, longitude, radius, categories } = req.query;
       
@@ -2613,7 +2613,7 @@ router.get("/api/amadeus/pois", isAuthenticated, async (req, res) => {
 
   // Get POI by ID
 
-router.get("/api/amadeus/pois/:id", isAuthenticated, async (req, res) => {
+router.get("/api/amadeus/pois/:id", requireAuth, async (req, res) => {
     try {
       // Amadeus dropped (DECISIONS.md ruling 34) — no live POI lookup.
       return res.status(404).json({ message: "POI not found" });
@@ -2625,7 +2625,7 @@ router.get("/api/amadeus/pois/:id", isAuthenticated, async (req, res) => {
 
   // Search Amadeus Tours & Activities by location
 
-router.get("/api/amadeus/activities", isAuthenticated, async (req, res) => {
+router.get("/api/amadeus/activities", requireAuth, async (req, res) => {
     try {
       const { latitude, longitude, radius } = req.query;
       
@@ -2643,7 +2643,7 @@ router.get("/api/amadeus/activities", isAuthenticated, async (req, res) => {
 
   // Get Amadeus activity by ID
 
-router.get("/api/amadeus/activities/:id", isAuthenticated, async (req, res) => {
+router.get("/api/amadeus/activities/:id", requireAuth, async (req, res) => {
     try {
       // Amadeus dropped (DECISIONS.md ruling 34) — no live activity lookup.
       return res.status(404).json({ message: "Activity not found" });
@@ -2670,7 +2670,7 @@ router.get("/api/amadeus/activities/:id", isAuthenticated, async (req, res) => {
   });
 
 
-router.post("/api/amadeus/transfers", isAuthenticated, async (req, res) => {
+router.post("/api/amadeus/transfers", requireAuth, async (req, res) => {
     try {
       const parseResult = transferSearchSchema.safeParse(req.body);
       
@@ -2692,7 +2692,7 @@ router.post("/api/amadeus/transfers", isAuthenticated, async (req, res) => {
 
   // Get safety ratings for a location
 
-router.get("/api/amadeus/safety", isAuthenticated, async (req, res) => {
+router.get("/api/amadeus/safety", requireAuth, async (req, res) => {
     try {
       const { latitude, longitude, radius } = req.query;
       
@@ -2710,7 +2710,7 @@ router.get("/api/amadeus/safety", isAuthenticated, async (req, res) => {
 
   // Get safety rating by ID
 
-router.get("/api/amadeus/safety/:id", isAuthenticated, async (req, res) => {
+router.get("/api/amadeus/safety/:id", requireAuth, async (req, res) => {
     try {
       // Amadeus dropped (DECISIONS.md ruling 34) — no live safety-rating lookup.
       return res.status(404).json({ message: "Safety rating not found" });
@@ -2724,7 +2724,7 @@ router.get("/api/amadeus/safety/:id", isAuthenticated, async (req, res) => {
 
   // Search activities by destination (freetext search)
 
-router.get("/api/viator/activities", isAuthenticated, async (req, res) => {
+router.get("/api/viator/activities", requireAuth, async (req, res) => {
     try {
       const { destination, currency, count } = req.query;
       
@@ -2762,7 +2762,7 @@ router.get("/api/viator/activities", isAuthenticated, async (req, res) => {
 
   // Get activity details by product code
 
-router.get("/api/viator/activities/:productCode", isAuthenticated, async (req, res) => {
+router.get("/api/viator/activities/:productCode", requireAuth, async (req, res) => {
     try {
       const { productCode } = req.params;
       
@@ -2781,7 +2781,7 @@ router.get("/api/viator/activities/:productCode", isAuthenticated, async (req, r
 
   // Check availability for an activity
 
-router.post("/api/viator/availability", isAuthenticated, async (req, res) => {
+router.post("/api/viator/availability", requireAuth, async (req, res) => {
     try {
       const { productCode, travelDate, travelers } = req.body;
       
@@ -2801,7 +2801,7 @@ router.post("/api/viator/availability", isAuthenticated, async (req, res) => {
 
   // Get Viator destinations
 
-router.get("/api/viator/destinations", isAuthenticated, async (req, res) => {
+router.get("/api/viator/destinations", requireAuth, async (req, res) => {
     try {
       const destinations = await viatorService.getDestinations();
       res.json(destinations);
@@ -2815,7 +2815,7 @@ router.get("/api/viator/destinations", isAuthenticated, async (req, res) => {
 
   // Get cached hotels with location data for mapping
 
-router.get("/api/cache/hotels", isAuthenticated, async (req, res) => {
+router.get("/api/cache/hotels", requireAuth, async (req, res) => {
     try {
       const { cityCode, checkInDate, checkOutDate, adults, rooms, currency } = req.query;
       
@@ -2881,7 +2881,7 @@ router.get("/api/cache/activities", async (req, res) => {
 
   // Get map markers for hotels in a destination
 
-router.get("/api/cache/map/hotels", isAuthenticated, async (req, res) => {
+router.get("/api/cache/map/hotels", requireAuth, async (req, res) => {
     try {
       const { cityCode } = req.query;
       const markers = await cacheService.getCachedHotelsWithLocations(cityCode as string);
@@ -2894,7 +2894,7 @@ router.get("/api/cache/map/hotels", isAuthenticated, async (req, res) => {
 
   // Get map markers for activities in a destination
 
-router.get("/api/cache/map/activities", isAuthenticated, async (req, res) => {
+router.get("/api/cache/map/activities", requireAuth, async (req, res) => {
     try {
       const { destination } = req.query;
       const markers = await cacheService.getCachedActivitiesWithLocations(destination as string);
@@ -2922,7 +2922,7 @@ router.get("/api/cache/map/activities", isAuthenticated, async (req, res) => {
   });
 
 
-router.post("/api/cache/verify-availability", isAuthenticated, async (req, res) => {
+router.post("/api/cache/verify-availability", requireAuth, async (req, res) => {
     try {
       const parseResult = verifyAvailabilitySchema.safeParse(req.body);
       if (!parseResult.success) {
@@ -2972,7 +2972,7 @@ router.post("/api/cache/verify-availability", isAuthenticated, async (req, res) 
 
   // Clean up expired cache entries
 
-router.post("/api/cache/cleanup", isAuthenticated, async (req, res) => {
+router.post("/api/cache/cleanup", requireAuth, async (req, res) => {
     try {
       const result = await cacheService.cleanupExpiredCache();
       res.json({ 
@@ -3021,7 +3021,7 @@ router.post("/api/cache/cleanup", isAuthenticated, async (req, res) => {
 
   // Get filtered hotels with pagination
 
-router.get("/api/cache/filter/hotels", isAuthenticated, async (req, res) => {
+router.get("/api/cache/filter/hotels", requireAuth, async (req, res) => {
     try {
       const parsed = hotelFilterSchema.safeParse(req.query);
       if (!parsed.success) {
@@ -3053,7 +3053,7 @@ router.get("/api/cache/filter/hotels", isAuthenticated, async (req, res) => {
 
   // Get filtered activities with pagination
 
-router.get("/api/cache/filter/activities", isAuthenticated, async (req, res) => {
+router.get("/api/cache/filter/activities", requireAuth, async (req, res) => {
     try {
       const parsed = activityFilterSchema.safeParse(req.query);
       if (!parsed.success) {
@@ -3086,7 +3086,7 @@ router.get("/api/cache/filter/activities", isAuthenticated, async (req, res) => 
 
   // Get available preference tags with counts
 
-router.get("/api/cache/preference-tags/:itemType", isAuthenticated, async (req, res) => {
+router.get("/api/cache/preference-tags/:itemType", requireAuth, async (req, res) => {
     try {
       const { itemType } = req.params;
       if (itemType !== 'hotel' && itemType !== 'activity') {
@@ -3102,7 +3102,7 @@ router.get("/api/cache/preference-tags/:itemType", isAuthenticated, async (req, 
 
   // Get available categories with counts (for activities)
 
-router.get("/api/cache/categories", isAuthenticated, async (req, res) => {
+router.get("/api/cache/categories", requireAuth, async (req, res) => {
     try {
       const categories = await cacheService.getAvailableCategories();
       res.json(categories);
@@ -3116,7 +3116,7 @@ router.get("/api/cache/categories", isAuthenticated, async (req, res) => {
 
   // Get cache freshness status
 
-router.get("/api/cache/status", isAuthenticated, async (req, res) => {
+router.get("/api/cache/status", requireAuth, async (req, res) => {
     try {
       const status = await cacheSchedulerService.getCacheFreshnessStatus();
       res.json(status);
@@ -3128,7 +3128,7 @@ router.get("/api/cache/status", isAuthenticated, async (req, res) => {
 
   // Trigger manual cache refresh (admin only)
 
-router.post("/api/cache/refresh", isAuthenticated, async (req, res) => {
+router.post("/api/cache/refresh", requireAuth, async (req, res) => {
     try {
       // Check if user is admin (optional - can be enforced later)
       if (cacheSchedulerService.isCurrentlyRefreshing()) {
@@ -3163,7 +3163,7 @@ router.post("/api/cache/refresh", isAuthenticated, async (req, res) => {
   });
 
 
-router.post("/api/cache/checkout-verify", isAuthenticated, async (req, res) => {
+router.post("/api/cache/checkout-verify", requireAuth, async (req, res) => {
     try {
       const parsed = checkoutVerifySchema.safeParse(req.body);
       if (!parsed.success) {
@@ -3261,7 +3261,7 @@ router.post("/api/cache/checkout-verify", isAuthenticated, async (req, res) => {
 
   // Optimize itinerary using Claude
 
-router.post("/api/claude/optimize-itinerary", isAuthenticated, async (req, res) => {
+router.post("/api/claude/optimize-itinerary", requireAuth, async (req, res) => {
     try {
       const parsed = claudeOptimizeSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -3295,7 +3295,7 @@ router.post("/api/claude/optimize-itinerary", isAuthenticated, async (req, res) 
 
   // Analyze transportation needs
 
-router.post("/api/claude/transportation-analysis", isAuthenticated, async (req, res) => {
+router.post("/api/claude/transportation-analysis", requireAuth, async (req, res) => {
     try {
       const parsed = claudeTransportSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -3329,7 +3329,7 @@ router.post("/api/claude/transportation-analysis", isAuthenticated, async (req, 
   });
 
 
-router.post("/api/transport-packages/generate", isAuthenticated, async (req, res) => {
+router.post("/api/transport-packages/generate", requireAuth, async (req, res) => {
     try {
       const parsed = transportPackageRequestSchema.parse(req.body);
       const { segments, destination, travelers, tripDays } = parsed;
@@ -3448,7 +3448,7 @@ Respond with this exact JSON structure:
 
   // Full itinerary graph analysis (Airport → Hotel → Activities → Hotel → Airport)
 
-router.post("/api/claude/full-itinerary-graph", isAuthenticated, async (req, res) => {
+router.post("/api/claude/full-itinerary-graph", requireAuth, async (req, res) => {
     try {
       const schema = z.object({
         flightInfo: z.object({
@@ -3496,7 +3496,7 @@ router.post("/api/claude/full-itinerary-graph", isAuthenticated, async (req, res
 
   // Get travel recommendations
 
-router.post("/api/claude/recommendations", isAuthenticated, async (req, res) => {
+router.post("/api/claude/recommendations", requireAuth, async (req, res) => {
     try {
       const parsed = claudeRecommendationsSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -3515,7 +3515,7 @@ router.post("/api/claude/recommendations", isAuthenticated, async (req, res) => 
 
   // Google Routes API - Single transit route
 
-router.post("/api/routes/transit", isAuthenticated, async (req, res) => {
+router.post("/api/routes/transit", requireAuth, async (req, res) => {
     try {
       const parsed = TransitRequestSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -3551,7 +3551,7 @@ router.post("/api/routes/transit", isAuthenticated, async (req, res) => {
   });
 
 
-router.post("/api/routes/transit-multi", isAuthenticated, async (req, res) => {
+router.post("/api/routes/transit-multi", requireAuth, async (req, res) => {
     try {
       const parsed = multiTransitSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -3678,7 +3678,7 @@ router.post("/api/geocode", async (req, res) => {
   });
 
 
-router.post("/api/grok/match-experts", isAuthenticated, async (req, res) => {
+router.post("/api/grok/match-experts", requireAuth, async (req, res) => {
     try {
       const parsed = expertMatchSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -3852,7 +3852,7 @@ router.post("/api/grok/match-experts", isAuthenticated, async (req, res) => {
   });
 
 
-router.post("/api/grok/content/generate", isAuthenticated, async (req, res) => {
+router.post("/api/grok/content/generate", requireAuth, async (req, res) => {
     try {
       const parsed = contentGenerationSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -3879,7 +3879,7 @@ router.post("/api/grok/content/generate", isAuthenticated, async (req, res) => {
   });
 
 
-router.post("/api/grok/intelligence", isAuthenticated, async (req, res) => {
+router.post("/api/grok/intelligence", requireAuth, async (req, res) => {
     try {
       const parsed = intelligenceSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -3939,7 +3939,7 @@ router.post("/api/grok/intelligence", isAuthenticated, async (req, res) => {
   });
 
 
-router.post("/api/grok/itinerary/generate", isAuthenticated, async (req, res) => {
+router.post("/api/grok/itinerary/generate", requireAuth, async (req, res) => {
     try {
       const parsed = autonomousItinerarySchema.safeParse(req.body);
       if (!parsed.success) {
@@ -4001,7 +4001,7 @@ router.post("/api/grok/itinerary/generate", isAuthenticated, async (req, res) =>
     preferProvider: z.enum(["grok", "claude", "auto"]).optional(),
   });
 
-router.post("/api/grok/chat", isAuthenticated, async (req, res) => {
+router.post("/api/grok/chat", requireAuth, async (req, res) => {
     try {
       const parsed = chatSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -4039,7 +4039,7 @@ router.get("/api/grok/health", async (req, res) => {
   
   // Get expert's AI tasks
 
-router.get("/api/destination-intelligence", isAuthenticated, async (req, res) => {
+router.get("/api/destination-intelligence", requireAuth, async (req, res) => {
     try {
       const { destination, startDate, endDate } = req.query;
       const userId = getUserId(req)!;
@@ -4108,7 +4108,7 @@ router.get("/api/destination-intelligence", isAuthenticated, async (req, res) =>
 
   // Phase 5: Autonomous AI Itinerary Generation
 
-router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
+router.post("/api/ai/generate-itinerary", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       const { 
@@ -4442,7 +4442,7 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
 
   // Trip Optimization Framework: Generate 3 itinerary variations with real-time intelligence
 
-router.post("/api/ai/generate-optimized-itineraries", isAuthenticated, async (req, res) => {
+router.post("/api/ai/generate-optimized-itineraries", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       const { 
@@ -4547,7 +4547,7 @@ router.post("/api/ai/generate-optimized-itineraries", isAuthenticated, async (re
 
   // Get user's AI-generated itineraries
 
-router.get("/api/ai/itineraries", isAuthenticated, async (req, res) => {
+router.get("/api/ai/itineraries", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       
@@ -4561,7 +4561,7 @@ router.get("/api/ai/itineraries", isAuthenticated, async (req, res) => {
 
   // Get single AI-generated itinerary
 
-router.get("/api/ai/itineraries/:id", isAuthenticated, async (req, res) => {
+router.get("/api/ai/itineraries/:id", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       const { id } = req.params;
@@ -4783,7 +4783,7 @@ router.get("/api/travelpulse/activity/global", async (req, res) => {
 
   // Seed cities data (for initial setup)
 
-router.post("/api/travelpulse/seed", isAuthenticated, async (req, res) => {
+router.post("/api/travelpulse/seed", requireAuth, async (req, res) => {
     try {
       await travelPulseService.seedTrendingCities();
       res.json({ message: "Cities seeded successfully" });
@@ -4799,10 +4799,9 @@ router.post("/api/travelpulse/seed", isAuthenticated, async (req, res) => {
 
   // Middleware to check admin role for AI endpoints
   const requireAdmin = async (req: any, res: any, next: any) => {
-    if (!req.isAuthenticated()) {
-      return res.status(401).json({ message: "Authentication required" });
-    }
-    const user = await storage.getUser(getUserId(req)!);
+    const uid = getUserId(req);
+    if (!uid) return res.status(401).json({ message: "Authentication required" });
+    const user = await storage.getUser(uid);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -5573,7 +5572,7 @@ router.post("/api/serp/track-click", async (req, res) => {
 
   // Create inquiry to SERP provider
 
-router.post("/api/serp/inquiry", isAuthenticated, async (req, res) => {
+router.post("/api/serp/inquiry", requireAuth, async (req, res) => {
     try {
       const { serpInquiryBodySchema } = await import("@shared/schema");
       const parseResult = serpInquiryBodySchema.safeParse(req.body);
@@ -5625,7 +5624,7 @@ router.post("/api/serp/inquiry", isAuthenticated, async (req, res) => {
 
   // Get partnership opportunities (admin)
 
-router.get("/api/serp/partnerships", isAuthenticated, async (req, res) => {
+router.get("/api/serp/partnerships", requireAuth, async (req, res) => {
     try {
       const { limit = "20", byMarket } = req.query;
       
@@ -6188,7 +6187,7 @@ router.get("/api/fever/cache/events/:cityCode", async (req, res) => {
 
   // Manually refresh cache for a city (admin only)
 
-router.post("/api/fever/cache/refresh/:cityCode", isAuthenticated, async (req, res) => {
+router.post("/api/fever/cache/refresh/:cityCode", requireAuth, async (req, res) => {
     try {
       const user = req.user as any;
       if (user?.role !== 'admin') {
@@ -6210,7 +6209,7 @@ router.post("/api/fever/cache/refresh/:cityCode", isAuthenticated, async (req, r
 
   // Get comprehensive location summary for admin panel
 
-router.post("/api/fever/cache/refresh-all", isAuthenticated, async (req, res) => {
+router.post("/api/fever/cache/refresh-all", requireAuth, async (req, res) => {
     try {
       const user = req.user as any;
       if (user?.role !== 'admin') {
@@ -6236,7 +6235,7 @@ router.post("/api/fever/cache/refresh-all", isAuthenticated, async (req, res) =>
 
   // --- Coordination / Participants Routes (using asyncHandler for consistent error handling) ---
 
-router.patch("/api/participants/:id", isAuthenticated, async (req, res) => {
+router.patch("/api/participants/:id", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       const existing = await coordinationService.getParticipant(req.params.id);
@@ -6254,7 +6253,7 @@ router.patch("/api/participants/:id", isAuthenticated, async (req, res) => {
   });
 
 
-router.patch("/api/participants/:id/rsvp", isAuthenticated, async (req, res) => {
+router.patch("/api/participants/:id/rsvp", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       const existing = await coordinationService.getParticipant(req.params.id);
@@ -6273,7 +6272,7 @@ router.patch("/api/participants/:id/rsvp", isAuthenticated, async (req, res) => 
   });
 
 
-router.post("/api/participants/:id/payment", isAuthenticated, async (req, res) => {
+router.post("/api/participants/:id/payment", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       const existing = await coordinationService.getParticipant(req.params.id);
@@ -6292,7 +6291,7 @@ router.post("/api/participants/:id/payment", isAuthenticated, async (req, res) =
   });
 
 
-router.delete("/api/participants/:id", isAuthenticated, async (req, res) => {
+router.delete("/api/participants/:id", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       const existing = await coordinationService.getParticipant(req.params.id);
@@ -6310,7 +6309,7 @@ router.delete("/api/participants/:id", isAuthenticated, async (req, res) => {
   });
 
 
-router.post("/api/budget/convert-currency", isAuthenticated, async (req, res) => {
+router.post("/api/budget/convert-currency", requireAuth, async (req, res) => {
     try {
       const { amount, fromCurrency, toCurrency } = req.body;
       const conversion = await budgetService.convertCurrency(amount, fromCurrency, toCurrency);
@@ -6321,7 +6320,7 @@ router.post("/api/budget/convert-currency", isAuthenticated, async (req, res) =>
   });
 
 
-router.post("/api/budget/calculate-tip", isAuthenticated, async (req, res) => {
+router.post("/api/budget/calculate-tip", requireAuth, async (req, res) => {
     try {
       const { amount, countryCode, serviceType } = req.body;
       const tip = budgetService.calculateTip(amount, countryCode, serviceType);
@@ -6332,7 +6331,7 @@ router.post("/api/budget/calculate-tip", isAuthenticated, async (req, res) => {
   });
 
 
-router.patch("/api/transactions/:id", isAuthenticated, async (req, res) => {
+router.patch("/api/transactions/:id", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       const existing = await budgetService.getTransaction(req.params.id);
@@ -6350,7 +6349,7 @@ router.patch("/api/transactions/:id", isAuthenticated, async (req, res) => {
   });
 
 
-router.delete("/api/transactions/:id", isAuthenticated, async (req, res) => {
+router.delete("/api/transactions/:id", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       const existing = await budgetService.getTransaction(req.params.id);
@@ -6370,7 +6369,7 @@ router.delete("/api/transactions/:id", isAuthenticated, async (req, res) => {
   // --- Itinerary Intelligence Routes ---
   // Authoritative GET: requires trip ownership or expert assignment; returns items grouped by day
 
-router.patch("/api/emergency-contacts/:id", isAuthenticated, async (req, res) => {
+router.patch("/api/emergency-contacts/:id", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       const existing = await emergencyService.getContact(req.params.id);
@@ -6388,7 +6387,7 @@ router.patch("/api/emergency-contacts/:id", isAuthenticated, async (req, res) =>
   });
 
 
-router.delete("/api/emergency-contacts/:id", isAuthenticated, async (req, res) => {
+router.delete("/api/emergency-contacts/:id", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       const existing = await emergencyService.getContact(req.params.id);
@@ -6406,7 +6405,7 @@ router.delete("/api/emergency-contacts/:id", isAuthenticated, async (req, res) =
   });
 
 
-router.post("/api/alerts/:id/acknowledge", isAuthenticated, async (req, res) => {
+router.post("/api/alerts/:id/acknowledge", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       const existing = await emergencyService.getAlert(req.params.id);
@@ -6424,7 +6423,7 @@ router.post("/api/alerts/:id/acknowledge", isAuthenticated, async (req, res) => 
   });
 
 
-router.post("/api/alerts/:id/dismiss", isAuthenticated, async (req, res) => {
+router.post("/api/alerts/:id/dismiss", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       const existing = await emergencyService.getAlert(req.params.id);
@@ -6462,7 +6461,7 @@ router.get("/api/emergency/embassy/:countryCode", async (req, res) => {
   });
 
 
-router.get("/api/emergency/rebooking-options/:itemType", isAuthenticated, async (req, res) => {
+router.get("/api/emergency/rebooking-options/:itemType", requireAuth, async (req, res) => {
     try {
       const tripId = req.query.tripId as string;
       const options = await emergencyService.getRebookingOptions(tripId, req.params.itemType);
@@ -6518,7 +6517,7 @@ router.get("/api/spontaneous/opportunities", async (req, res) => {
 
   // GET /api/spontaneous/preferences - Get user spontaneity preferences
 
-router.get("/api/spontaneous/preferences", isAuthenticated, async (req, res) => {
+router.get("/api/spontaneous/preferences", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       const preferences = await opportunityEngineService.getUserPreferences(userId);
@@ -6530,7 +6529,7 @@ router.get("/api/spontaneous/preferences", isAuthenticated, async (req, res) => 
 
   // POST /api/spontaneous/preferences - Save user spontaneity preferences
 
-router.post("/api/spontaneous/preferences", isAuthenticated, async (req, res) => {
+router.post("/api/spontaneous/preferences", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       
@@ -6564,7 +6563,7 @@ router.post("/api/spontaneous/preferences", isAuthenticated, async (req, res) =>
 
   // POST /api/spontaneous/:id/book - Book a spontaneous opportunity
 
-router.post("/api/spontaneous/:id/book", isAuthenticated, async (req, res) => {
+router.post("/api/spontaneous/:id/book", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       const opportunityId = req.params.id;
@@ -6630,7 +6629,7 @@ router.get("/api/spontaneous/quick-search/:window", async (req, res) => {
 //                          the partner deep link itself, so the affiliate/campaign id lives
 //                          server-side only.
 // itemName/partnerName prefer the server-resolved values; body values are display-only fallbacks.
-router.post("/api/affiliate-booking-requests", isAuthenticated, async (req, res) => {
+router.post("/api/affiliate-booking-requests", requireAuth, async (req, res) => {
     try {
       // Session shape is {claims:{sub,...}} for BOTH email and OIDC auth — a bare `.id` read
       // is undefined and violated the users FK (audit P0). Same pattern as every live handler.
@@ -6729,7 +6728,7 @@ router.post("/api/affiliate-booking-requests", isAuthenticated, async (req, res)
 // URL never exists client-side while the booking agent still gets a real link to book through.
 // affiliate_url stays NOT NULL; item name/description/price come from the server-resolved
 // catalog row, never from the body.
-router.post("/api/affiliate-booking-requests/from-catalog", isAuthenticated, async (req, res) => {
+router.post("/api/affiliate-booking-requests/from-catalog", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Unauthorized" });
@@ -6802,7 +6801,7 @@ router.post("/api/affiliate-booking-requests/from-catalog", isAuthenticated, asy
   });
 
 
-router.get("/api/affiliate-booking-requests/user", isAuthenticated, async (req, res) => {
+router.get("/api/affiliate-booking-requests/user", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Unauthorized" });
@@ -6815,7 +6814,7 @@ router.get("/api/affiliate-booking-requests/user", isAuthenticated, async (req, 
   });
 
 
-router.get("/api/affiliate-booking-requests/expert", isAuthenticated, async (req, res) => {
+router.get("/api/affiliate-booking-requests/expert", requireAuth, async (req, res) => {
     try {
       // Audit P0: session objects carry {claims:{sub}} — top-level .id/.role are undefined on
       // every auth shape, so this handler 403'd all real experts. Id from the session pattern,
@@ -6859,7 +6858,7 @@ function deriveItineraryDayNumber(
   return day;
 }
 
-router.patch("/api/affiliate-booking-requests/:id", isAuthenticated, async (req, res) => {
+router.patch("/api/affiliate-booking-requests/:id", requireAuth, async (req, res) => {
     try {
       // Audit P0: same session-shape fix as the expert list above — id from claims, role from DB.
       const sessionUserId = getUserId(req)!;
@@ -7028,7 +7027,7 @@ router.patch("/api/affiliate-booking-requests/:id", isAuthenticated, async (req,
 // This lane never books anything itself — see server/services/booking-verification.service.ts.
 // Authorization mirrors the PATCH handler above EXACTLY (role-based: expert or admin — the same
 // pooled-expert-queue model the rest of this rail uses; no per-row expertId ownership check).
-router.post("/api/affiliate-booking-requests/:id/verify", isAuthenticated, async (req, res) => {
+router.post("/api/affiliate-booking-requests/:id/verify", requireAuth, async (req, res) => {
     try {
       const sessionUserId = getUserId(req)!;
       if (!sessionUserId) return res.status(401).json({ message: "Unauthorized" });
@@ -7149,10 +7148,9 @@ export async function registerDiscoveryRoutes() {
 
   // Local admin guard (mirrors the one in registerRoutes)
   const requireAdmin = async (req: any, res: any, next: any) => {
-    if (!req.isAuthenticated()) {
-      return res.status(401).json({ message: "Authentication required" });
-    }
-    const user = await storage.getUser(getUserId(req)!);
+    const uid = getUserId(req);
+    if (!uid) return res.status(401).json({ message: "Authentication required" });
+    const user = await storage.getUser(uid);
     if (!user || user.role !== "admin") {
       return res.status(403).json({ message: "Admin access required" });
     }
@@ -7161,7 +7159,7 @@ export async function registerDiscoveryRoutes() {
 
   // Trigger discovery for a destination
 
-router.post("/api/discovery/scan", isAuthenticated, async (req, res) => {
+router.post("/api/discovery/scan", requireAuth, async (req, res) => {
     try {
       const { destination, categories } = req.body;
 
@@ -7279,7 +7277,7 @@ router.get("/api/discovery/destinations", async (_req, res) => {
 
   // Get discovery job history
 
-router.get("/api/discovery/jobs", isAuthenticated, async (req, res) => {
+router.get("/api/discovery/jobs", requireAuth, async (req, res) => {
     try {
       const { limit } = req.query;
       const jobs = await grokDiscoveryService.getDiscoveryJobs(
@@ -7302,7 +7300,7 @@ router.get("/api/discovery/jobs", isAuthenticated, async (req, res) => {
   // while travellers/experts see only approved-partner content.
   const isRequestAdmin = async (req: any): Promise<boolean> => {
     try {
-      if (!req.isAuthenticated?.() && !req.user) return false;
+      if (!req.user) return false;
       const uid = getUserId(req)!;
       if (!uid) return false;
       const user = await storage.getUser(uid);
@@ -7331,7 +7329,7 @@ router.get("/api/affiliate/categories", async (_req, res) => {
 
   // Create affiliate partner
 
-router.post("/api/affiliate/partners", isAuthenticated, async (req, res) => {
+router.post("/api/affiliate/partners", requireAuth, async (req, res) => {
     try {
       const { name, websiteUrl, category, affiliateTrackingId, affiliateLinkTemplate, description, logoUrl, commissionRate, scrapeConfig } = req.body;
 
@@ -7394,7 +7392,7 @@ router.get("/api/affiliate/partners/:id", async (req, res) => {
 
   // Update affiliate partner
 
-router.patch("/api/affiliate/partners/:id", isAuthenticated, async (req, res) => {
+router.patch("/api/affiliate/partners/:id", requireAuth, async (req, res) => {
     try {
       // Phase 4: approval is set ONLY via the admin approve/reject endpoints — strip any
       // approval fields a client tries to mass-assign through this general update path (D1a).
@@ -7411,7 +7409,7 @@ router.patch("/api/affiliate/partners/:id", isAuthenticated, async (req, res) =>
 
   // Delete affiliate partner
 
-router.delete("/api/affiliate/partners/:id", isAuthenticated, async (req, res) => {
+router.delete("/api/affiliate/partners/:id", requireAuth, async (req, res) => {
     try {
       const deleted = await affiliateScraperService.deletePartner(req.params.id);
       if (!deleted) {
@@ -7425,7 +7423,7 @@ router.delete("/api/affiliate/partners/:id", isAuthenticated, async (req, res) =
 
   // Trigger partner website scrape
 
-router.post("/api/affiliate/partners/:id/scrape", isAuthenticated, async (req, res) => {
+router.post("/api/affiliate/partners/:id/scrape", requireAuth, async (req, res) => {
     try {
       const result = await affiliateScraperService.scrapePartnerWebsite(req.params.id);
       res.json(result);
@@ -7437,7 +7435,7 @@ router.post("/api/affiliate/partners/:id/scrape", isAuthenticated, async (req, r
 
   // Get scrape jobs for a partner
 
-router.get("/api/affiliate/partners/:id/jobs", isAuthenticated, async (req, res) => {
+router.get("/api/affiliate/partners/:id/jobs", requireAuth, async (req, res) => {
     try {
       const { limit } = req.query;
       const jobs = await affiliateScraperService.getScrapeJobs({
@@ -7717,7 +7715,7 @@ router.get("/api/content/discover", async (req, res) => {
   // refuses honestly instead of collecting money it can't fulfill. The Stripe-session code is
   // removed (not commented out — git history has it) pending a decision-maker call on whether to
   // build the fulfillment leg or retire this surface. See docs/MONEY_MAP.md F-1.
-  router.post("/api/content/checkout", isAuthenticated, async (_req, res) => {
+  router.post("/api/content/checkout", requireAuth, async (_req, res) => {
     res.status(501).json({
       message: "Checkout for curated content isn't available yet.",
       code: "content_checkout_unavailable",
@@ -7895,7 +7893,7 @@ router.get("/api/affiliate/products/by-location", async (req, res) => {
 
   // Get content tracking summary (admin only)
 
-router.post("/api/content/:trackingNumber/flag", isAuthenticated, async (req, res) => {
+router.post("/api/content/:trackingNumber/flag", requireAuth, async (req, res) => {
     try {
       const user = req.user as any;
       const { trackingNumber } = req.params;

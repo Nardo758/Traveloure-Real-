@@ -1,3 +1,4 @@
+import { getAuth } from "@clerk/express";
 /**
  * payment-methods.routes.ts — FP-1 frictionless payments: saved-card management.
  *
@@ -21,8 +22,10 @@ import { stripePaymentService } from "../services/stripe-payment.service";
 const router = Router();
 
 const isAuthenticated = (req: any, res: any, next: any) => {
-  if (req.isAuthenticated?.() && req.user) return next();
-  return res.status(401).json({ message: "Authentication required" });
+  const auth = getAuth(req);
+  const userId = (auth?.sessionClaims as any)?.userId || auth?.userId;
+  if (!userId) return res.status(401).json({ message: "Authentication required" });
+  next();
 };
 
 const sessionUserId = (req: any) => getUserId(req)!;

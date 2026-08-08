@@ -1,6 +1,7 @@
 import { db } from "../db";
 import { users } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import { getAuth } from "@clerk/express";
 
 /**
  * isEA — middleware that allows only executive_assistant and admin users.
@@ -13,11 +14,9 @@ import { eq } from "drizzle-orm";
  * Permission matrix: docs/planning/ea-rbac-matrix.md
  */
 export const isEA = async (req: any, res: any, next: any) => {
-  if (!req.isAuthenticated()) {
-    return res.status(401).json({ message: "Authentication required" });
-  }
-  const userId =
-    (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+  const auth = getAuth(req);
+  const userId = (auth?.sessionClaims as any)?.userId || auth?.userId
+    || (req.user as any)?.claims?.sub || (req.user as any)?.id;
 
   if (!userId) {
     return res.status(401).json({ message: "Authentication required" });

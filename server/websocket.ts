@@ -1,6 +1,8 @@
 import { WebSocketServer, WebSocket } from "ws";
 import type { Server, IncomingMessage } from "http";
-import type { RequestHandler } from "express";
+import { clerkMiddleware, getAuth } from "@clerk/express";
+import { publishableKeyFromHost } from "@clerk/shared/keys";
+import { getClerkProxyHost } from "./middlewares/clerkProxyMiddleware";
 import { storage } from "./storage";
 import { logger } from "./infrastructure/logger";
 import { getUserId } from "./utils/auth";
@@ -45,17 +47,25 @@ const clients = new Map<string, ConnectedClient>();
  * MT-1 fix: the socket used to trust a client-supplied `senderId` on `join` with no
  * session check — letting an unauthenticated raw WebSocket client impersonate any user
  * (write chats as them, and receive messages addressed to them). Identity is now
- * resolved exactly once, server-side, from the session cookie on the upgrade request —
- * the same session middleware `setupAuth` applies to HTTP routes — via `sessionMiddleware`,
- * passed in by the caller (`server/index.ts`) so this file has no auth-setup ordering
- * dependency. A connection that doesn't resolve a session user is sent an error and
+ * resolved exactly once, server-side, from the Clerk session cookie on the upgrade
+ * request. A connection that doesn't resolve a session user is sent an error and
  * closed (1008 "policy violation") BEFORE ever being added to `clients`.
  */
-export function setupWebSocket(server: Server, sessionMiddleware: RequestHandler) {
+export function setupWebSocket(server: Server) {
   const wss = new WebSocketServer({ server, path: "/ws" });
 
+  // Build a Clerk middleware instance once, shared across all WS upgrade requests.
+  // Mirrors the configuration in server/index.ts so both halves agree on which
+  // hostname is canonical for custom-domain / multi-domain setups.
+  const clerkMw = clerkMiddleware((req: any) => ({
+    publishableKey: publishableKeyFromHost(
+      getClerkProxyHost(req) ?? "",
+      process.env.CLERK_PUBLISHABLE_KEY,
+    ),
+  }));
+
   wss.on("connection", (ws, req: IncomingMessage) => {
-    // The session lookup below is async (a real DB round-trip via connect-pg-simple),
+    // The session lookup below is async (a real JWT verify via Clerk),
     // but the WebSocket handshake itself already completed by the time "connection"
     // fires — a legitimate client (see client/src/hooks/use-websocket.ts) sends its
     // first message immediately on its own "open" event, which can land before this
@@ -71,19 +81,27 @@ export function setupWebSocket(server: Server, sessionMiddleware: RequestHandler
     };
     ws.on("message", bufferWhileAuthing);
 
-    // Run the app's real session middleware over the upgrade request with a stub
-    // response — express-session reads/verifies the session cookie against the
-    // `sessions` table and populates req.session; no HTTP response is ever sent
-    // on this stub, so a no-op res is sufficient.
-    sessionMiddleware(req as any, {} as any, () => {
+    // A minimal fake response object — Clerk middleware needs an express-like res to
+    // set cookies/headers; WS upgrade has no HTTP response to send, so a no-op stub
+    // is sufficient (Clerk only reads the request cookies in this path).
+    const fakeRes: any = {
+      setHeader: () => fakeRes,
+      getHeader: () => undefined,
+      removeHeader: () => fakeRes,
+      on: () => fakeRes,
+      once: () => fakeRes,
+      emit: () => false,
+      end: () => fakeRes,
+      headersSent: false,
+      writableEnded: false,
+    };
+
+    clerkMw(req as any, fakeRes, () => {
       authPending = false;
       ws.off("message", bufferWhileAuthing);
 
-      const sessionUser = (req as any).session?.passport?.user;
-      // Replicate getUserId's exact precedence (claims?.sub ?? id) against the
-      // session-stored passport user — serialize/deserialize are identity functions,
-      // so req.session.passport.user IS the full user object getUserId expects.
-      const userId = getUserId({ user: sessionUser } as any);
+      const auth = getAuth(req as any);
+      const userId = (auth?.sessionClaims as any)?.userId || auth?.userId || null;
 
       if (!userId) {
         try {
@@ -119,83 +137,120 @@ function handleAuthenticatedConnection(ws: WebSocket, userId: string) {
       const message = JSON.parse(data.toString()) as ChatMessage;
 
       switch (message.type) {
-        case "join":
-          // Identity is already resolved from the session at connection time — this is
-          // now just a client-ready ack. message.senderId is never read for identity.
-          ws.send(JSON.stringify({
-            type: "connected",
-            userId,
-            timestamp: new Date().toISOString(),
-          }));
+        case "join": {
+          if (message.chatId) {
+            const client = clients.get(userId);
+            if (client) {
+              client.activeChats.add(message.chatId);
+            }
+          }
           break;
+        }
+
+        case "leave": {
+          if (message.chatId) {
+            const client = clients.get(userId);
+            if (client) {
+              client.activeChats.delete(message.chatId);
+            }
+          }
+          break;
+        }
 
         case "chat": {
-          if (!message.recipientId || !message.content) {
-            ws.send(JSON.stringify({
-              type: "error",
-              error: "Missing required fields for chat message",
-            }));
+          if (!message.chatId || !message.content || !message.recipientId) {
             break;
           }
 
-          try {
-            // senderId is the session-resolved userId — a forged message.senderId in the
-            // payload is never read (MT-1). storage.createChat is the shared write path
-            // with POST /api/chats and also fires the MT-2 recipient notification.
-            const savedMessage = await storage.createChat({
-              message: message.content,
-              senderId: userId,
-              receiverId: message.recipientId,
-            });
+          const newMessage = await storage.createMessage({
+            chatId: message.chatId,
+            senderId: userId,
+            content: message.content,
+          });
 
-            const response = {
-              type: "chat",
-              id: savedMessage.id,
-              senderId: userId,
-              recipientId: message.recipientId,
-              content: message.content,
-              timestamp: savedMessage.createdAt?.toISOString() || new Date().toISOString(),
-            };
+          const outbound = JSON.stringify({
+            type: "chat",
+            chatId: message.chatId,
+            message: newMessage,
+          });
 
-            ws.send(JSON.stringify(response));
+          // Send to recipient if online
+          const recipientClient = clients.get(message.recipientId);
+          if (
+            recipientClient &&
+            recipientClient.ws.readyState === WebSocket.OPEN
+          ) {
+            recipientClient.ws.send(outbound);
+          }
 
-            const recipientClient = clients.get(message.recipientId);
-            if (recipientClient && recipientClient.ws.readyState === WebSocket.OPEN) {
-              recipientClient.ws.send(JSON.stringify(response));
-            }
-          } catch (err) {
-            console.error("Failed to save chat message:", err);
-            ws.send(JSON.stringify({
-              type: "error",
-              error: "Failed to send message",
-            }));
+          // Send confirmation back to sender
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.send(outbound);
           }
           break;
         }
 
         case "typing": {
-          if (!message.recipientId) break;
+          if (!message.chatId || !message.recipientId) {
+            break;
+          }
 
-          const typingRecipient = clients.get(message.recipientId);
-          if (typingRecipient && typingRecipient.ws.readyState === WebSocket.OPEN) {
-            typingRecipient.ws.send(JSON.stringify({
-              type: "typing",
-              senderId: userId,
-              timestamp: new Date().toISOString(),
-            }));
+          const recipientClient = clients.get(message.recipientId);
+          if (
+            recipientClient &&
+            recipientClient.ws.readyState === WebSocket.OPEN
+          ) {
+            recipientClient.ws.send(
+              JSON.stringify({
+                type: "typing",
+                chatId: message.chatId,
+                senderId: userId,
+              })
+            );
           }
           break;
         }
 
-        case "read":
-          if (!message.chatId) break;
-          break;
+        case "read": {
+          if (!message.chatId) {
+            break;
+          }
 
-        default:
+          await storage.markMessagesAsRead(message.chatId, userId);
+
+          const client = clients.get(userId);
+          if (client) {
+            for (const activeChat of client.activeChats) {
+              if (activeChat === message.chatId) {
+                // Notify other participants that messages were read
+                const chat = await storage.getChat(message.chatId);
+                if (chat) {
+                  const participantId = chat.userId === userId ? chat.expertId : chat.userId;
+                  if (participantId) {
+                    const participantClient = clients.get(participantId);
+                    if (
+                      participantClient &&
+                      participantClient.ws.readyState === WebSocket.OPEN
+                    ) {
+                      participantClient.ws.send(
+                        JSON.stringify({
+                          type: "read",
+                          chatId: message.chatId,
+                          readBy: userId,
+                        })
+                      );
+                    }
+                  }
+                }
+                break;
+              }
+            }
+          }
           break;
+        }
       }
-    } catch (err) {
-      console.error("WebSocket message error:", err);
+    } catch (error) {
+      log(`Error processing message from ${userId}: ${error}`);
     }
   });
 
@@ -204,19 +259,27 @@ function handleAuthenticatedConnection(ws: WebSocket, userId: string) {
     log(`User ${userId} disconnected from WebSocket`);
   });
 
-  ws.on("error", (err) => {
-    console.error("WebSocket error:", err);
+  ws.on("error", (error) => {
+    log(`WebSocket error for user ${userId}: ${error}`);
     clients.delete(userId);
   });
 }
 
-export function broadcastToUser(userId: string, message: object) {
+export function sendWebSocketMessage(userId: string, message: object) {
   const client = clients.get(userId);
   if (client && client.ws.readyState === WebSocket.OPEN) {
     client.ws.send(JSON.stringify(message));
+    return true;
   }
+  return false;
 }
 
-export function getConnectedUsers(): string[] {
-  return Array.from(clients.keys());
+export function broadcastToChat(chatId: string, message: object, excludeUserId?: string) {
+  const outbound = JSON.stringify(message);
+  for (const [userId, client] of clients) {
+    if (excludeUserId && userId === excludeUserId) continue;
+    if (client.activeChats.has(chatId) && client.ws.readyState === WebSocket.OPEN) {
+      client.ws.send(outbound);
+    }
+  }
 }

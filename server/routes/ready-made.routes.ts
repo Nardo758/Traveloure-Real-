@@ -1,3 +1,4 @@
+import { getAuth } from "@clerk/express";
 /**
  * ready-made.routes.ts — Ready-Made Trips authoring, Phase 1 (brief v1.1 §1–2, spec v3).
  *
@@ -38,9 +39,9 @@ function sessionUserId(req: any): string | null {
 }
 
 function isAuthenticated(req: any, res: any, next: any) {
-  if (!req.isAuthenticated || !req.isAuthenticated()) {
-    return res.status(401).json({ message: "Unauthorized" });
-  }
+  const auth = getAuth(req);
+  const userId = (auth?.sessionClaims as any)?.userId || auth?.userId;
+  if (!userId) return res.status(401).json({ message: "Unauthorized" });
   next();
 }
 

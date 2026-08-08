@@ -11,7 +11,7 @@ import {
 import { db } from "../db";
 import { and, count, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
-import { isAuthenticated } from "../replit_integrations/auth";
+import { requireAuth } from "../middlewares/requireAuth";
 import { getTripRole, canMutateTrip } from "../utils/trip-role";
 import { isTripAuthor } from "../utils/trip-authorship";
 import { authorizeTripLogistics } from "../utils/trip-logistics-auth";
@@ -33,7 +33,7 @@ function logChange(tripId: string, who: string, action: string, changeType: stri
 }
 
 // ── G7: Apply top AI variant to the trip's itinerary items ──────────────────
-router.post("/api/itinerary-comparisons/:id/apply-to-trip", isAuthenticated, async (req, res) => {
+router.post("/api/itinerary-comparisons/:id/apply-to-trip", requireAuth, async (req, res) => {
   try {
     const { id: comparisonId } = req.params;
     const userId = getUserId(req)!;
@@ -229,7 +229,7 @@ router.post("/api/itinerary-comparisons/:id/apply-to-trip", isAuthenticated, asy
   }
 });
 
-router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
+router.get("/api/trips/:tripId/plancard", requireAuth, async (req, res) => {
   try {
     const { tripId } = req.params;
     const userId = getUserId(req)!;
@@ -301,7 +301,7 @@ router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
 // per-item comment system is GET/POST /api/trips/:tripId/items/:itemId/comments
 // (server/routes/booking-actions.ts, backed by `trip_item_comments`, migration 165).
 
-router.get("/api/trips/:tripId/changes", isAuthenticated, async (req, res) => {
+router.get("/api/trips/:tripId/changes", requireAuth, async (req, res) => {
   try {
     const userId = getUserId(req)!;
     const trip = await storage.getTrip(req.params.tripId);
@@ -316,7 +316,7 @@ router.get("/api/trips/:tripId/changes", isAuthenticated, async (req, res) => {
   }
 });
 
-router.post("/api/trips/:tripId/changes", isAuthenticated, async (req, res) => {
+router.post("/api/trips/:tripId/changes", requireAuth, async (req, res) => {
   try {
     const { tripId } = req.params;
     const userId = getUserId(req)!;
@@ -352,7 +352,7 @@ router.post("/api/trips/:tripId/changes", isAuthenticated, async (req, res) => {
   }
 });
 
-router.patch("/api/transport-legs/:legId/status", isAuthenticated, async (req, res) => {
+router.patch("/api/transport-legs/:legId/status", requireAuth, async (req, res) => {
   try {
     const { legId } = req.params;
     const userId = getUserId(req)!;
@@ -418,7 +418,7 @@ router.patch("/api/transport-legs/:legId/status", isAuthenticated, async (req, r
   }
 });
 
-router.delete("/api/trips/:tripId/changes/:changeId", isAuthenticated, async (req, res) => {
+router.delete("/api/trips/:tripId/changes/:changeId", requireAuth, async (req, res) => {
   try {
     const userId = getUserId(req)!;
     const trip = await storage.getTrip(req.params.tripId);

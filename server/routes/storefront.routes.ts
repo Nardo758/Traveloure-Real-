@@ -1,3 +1,4 @@
+import { getAuth } from "@clerk/express";
 /**
  * storefront.routes.ts — public earner storefront (backoffice Phase 1a/1b).
  *
@@ -33,8 +34,10 @@ import { transformDevHtml } from "../vite-dev-html";
 const router = Router();
 
 const isAuthenticated = (req: any, res: any, next: any) => {
-  if (req.isAuthenticated?.() && req.user) return next();
-  return res.status(401).json({ message: "Authentication required" });
+  const auth = getAuth(req);
+  const userId = (auth?.sessionClaims as any)?.userId || auth?.userId;
+  if (!userId) return res.status(401).json({ message: "Authentication required" });
+  next();
 };
 
 // Roles allowed to claim a storefront handle — the canonical earner set (shared/roles.ts)
