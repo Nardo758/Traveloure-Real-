@@ -3,8 +3,7 @@ import type { Server, IncomingMessage } from "http";
 import { clerkMiddleware, getAuth } from "@clerk/express";
 import { publishableKeyFromHost } from "@clerk/shared/keys";
 import { getClerkProxyHost } from "./middlewares/clerkProxyMiddleware";
-import { db } from "./db";
-import { userAndExpertChats } from "@shared/schema";
+import { storage } from "./storage";
 import { logger } from "./infrastructure/logger";
 import { getUserId } from "./utils/auth";
 
@@ -166,16 +165,14 @@ function handleAuthenticatedConnection(ws: WebSocket, userId: string) {
           }
 
           try {
-            // Persist the message. senderId is always the session-resolved userId
-            // (MT-1: the client-supplied senderId is never trusted).
-            const [saved] = await db
-              .insert(userAndExpertChats)
-              .values({
-                senderId: userId,
-                receiverId: message.recipientId,
-                message: message.content,
-              })
-              .returning();
+            // Use the shared storage.createChat write path (same as POST /api/chats and
+            // trips.routes.ts) so recipient notifications fire exactly once per message.
+            // senderId is always the session-resolved userId (MT-1: never trusts client payload).
+            const saved = await storage.createChat({
+              message: message.content,
+              senderId: userId,
+              receiverId: message.recipientId,
+            });
 
             const response = JSON.stringify({
               type: "chat",
