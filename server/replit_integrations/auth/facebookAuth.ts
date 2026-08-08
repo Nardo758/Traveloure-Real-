@@ -1,3 +1,7 @@
+// NOTE: `passport` and `passport-facebook` are intentional runtime deps —
+// Facebook/Instagram influencer login is served here (routes registered in
+// registerRoutes via setupFacebookAuth). See replitAuth.ts header note before
+// removing Passport from package.json.
 import passport from "passport";
 import FacebookStrategy from "passport-facebook";
 import type { Express } from "express";

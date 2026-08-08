@@ -55,6 +55,7 @@ import {
 } from "@shared/content-surface-map";
 import { db } from "./db";
 import { getPlatformFlag, FLAG_MAINTENANCE_MODE } from "./services/platform-flags";
+import { resolveMissingItemCoordinates } from "./services/trip-plan.service";
 import { eq, and, or, ilike, sql, desc, count, ne, inArray, asc, isNull } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
 import { scoreKnowledgeProof, KNOWLEDGE_PROOF_QUESTIONS, type KnowledgeProofAnswerInput } from "./services/expertise-scoring.service";
@@ -8877,6 +8878,13 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const authored = (owned || assigned) ? false : await isTripAuthor(tripId, userId);
       if (!owned && !assigned && !authored) return res.status(403).json({ message: "Access denied" });
       const items = await storage.getItineraryItems(tripId);
+      // WORKSTATION_LOCATION_MAP_SPEC Part A item 2/5: the SAME resolve-on-write backfill the
+      // traveler-facing PlanCard already runs (trip-plan.service.ts) — reused here, not
+      // reimplemented, so an item added without coordinates (e.g. a DMO pick whose source row
+      // carries none) gets pinned on the expert's own Workstation canvas map too, not only once
+      // the traveler opens the PlanCard. Bounded + best-effort; never fabricates a pin (§13).
+      const trip = await storage.getTrip(tripId);
+      await resolveMissingItemCoordinates(items as any, trip?.destination);
       const grouped: Record<number, typeof items> = {};
       for (const item of items) {
         const day = item.dayNumber;
