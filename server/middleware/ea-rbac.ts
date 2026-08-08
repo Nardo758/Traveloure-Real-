@@ -1,6 +1,7 @@
 import { db } from "../db";
 import { users } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import { getUserId } from "../utils/auth";
 
 /**
  * isEA — middleware that allows only executive_assistant and admin users.
@@ -10,14 +11,16 @@ import { eq } from "drizzle-orm";
  *
  * Admins are allowed through so platform staff can debug EA data.
  *
+ * Uses getUserId() (not getAuth directly) so anonymous requests — where
+ * Clerk's getAuth() throws because clerkMiddleware hasn't set auth state —
+ * are safely caught and returned as 401 rather than an unhandled 500.
+ *
  * Permission matrix: docs/planning/ea-rbac-matrix.md
  */
 export const isEA = async (req: any, res: any, next: any) => {
-  if (!req.isAuthenticated()) {
-    return res.status(401).json({ message: "Authentication required" });
-  }
-  const userId =
-    (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
+  // getUserId wraps getAuth in a try/catch so it never throws on anonymous
+  // requests; it falls back to the legacy req.user shape for backward compat.
+  const userId = getUserId(req);
 
   if (!userId) {
     return res.status(401).json({ message: "Authentication required" });

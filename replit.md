@@ -36,7 +36,7 @@ The application uses a modern, responsive design built with React, Tailwind CSS,
 ### Technical Implementations
 - **Frontend**: React 18, TypeScript, Wouter for routing, TanStack Query for server state management, and Vite.
 - **Backend**: Node.js and Express with TypeScript, implementing RESTful APIs with Zod for validation and type safety.
-- **Authentication**: Three methods — Email/password (scrypt hashing in `emailAuth.ts`), Replit Auth with OIDC (`replitAuth.ts`), and Facebook/Instagram OAuth (`facebookAuth.ts`). All use Passport.js with PostgreSQL session store. DB columns: `password` (varchar 255), `auth_provider` (varchar 20, default 'email'), `email_verified` (timestamp).
+- **Authentication**: Clerk (migrated from Replit Auth in August 2026). All auth UI is handled by Clerk's hosted components at `/sign-in` and `/sign-up`. The server uses `@clerk/express` (`clerkMiddleware`, `getAuth`) on every request. Identity is Clerk-owned; app-specific data (role, preferences, termsAcceptedAt) lives in the local `users` table. The `requireAuth` middleware in `server/middlewares/requireAuth.ts` does JIT provisioning — creating a `users` row on first sign-in. Old Replit Auth files are kept under `server/replit_integrations/auth/` for test compatibility only and are no longer invoked at runtime.
 - **Data Storage**: PostgreSQL with Drizzle ORM for schema management.
 - **API Structure**: Declarative API definitions using HTTP methods, paths, and Zod schemas.
 - **Storage Abstraction**: A server-side abstraction layer provides flexible database operations.

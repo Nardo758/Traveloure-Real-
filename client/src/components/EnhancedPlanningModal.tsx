@@ -329,7 +329,7 @@ export default function EnhancedPlanningModal({
               Cancel
             </button>
             <button
-              onClick={() => { onClose(); window.location.href = "/api/login"; }}
+              onClick={() => { onClose(); window.location.href = "/sign-in"; }}
               className="px-5 py-2.5 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition font-semibold flex items-center gap-2"
               data-testid="button-signin-from-modal"
             >

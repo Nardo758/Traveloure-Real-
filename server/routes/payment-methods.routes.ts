@@ -1,3 +1,5 @@
+import { requireAuth } from "../middlewares/requireAuth";
+import { getAuth } from "@clerk/express";
 /**
  * payment-methods.routes.ts — FP-1 frictionless payments: saved-card management.
  *
@@ -20,14 +22,10 @@ import { stripePaymentService } from "../services/stripe-payment.service";
 
 const router = Router();
 
-const isAuthenticated = (req: any, res: any, next: any) => {
-  if (req.isAuthenticated?.() && req.user) return next();
-  return res.status(401).json({ message: "Authentication required" });
-};
 
 const sessionUserId = (req: any) => getUserId(req)!;
 
-router.get("/api/me/payment-methods", isAuthenticated, async (req: any, res) => {
+router.get("/api/me/payment-methods", requireAuth, async (req: any, res) => {
   try {
     if (!stripePaymentService.isReady()) {
       // Read path: an empty, explicitly-degraded list is honest (the UI shows "unavailable").
@@ -47,7 +45,7 @@ router.get("/api/me/payment-methods", isAuthenticated, async (req: any, res) => 
   }
 });
 
-router.post("/api/me/payment-methods/setup-intent", isAuthenticated, async (req: any, res) => {
+router.post("/api/me/payment-methods/setup-intent", requireAuth, async (req: any, res) => {
   try {
     if (!stripePaymentService.isReady()) {
       return res.status(503).json({ error: "stripe_unavailable", message: "Payments are not yet configured." });
@@ -63,7 +61,7 @@ router.post("/api/me/payment-methods/setup-intent", isAuthenticated, async (req:
   }
 });
 
-router.post("/api/me/payment-methods/default", isAuthenticated, async (req: any, res) => {
+router.post("/api/me/payment-methods/default", requireAuth, async (req: any, res) => {
   try {
     if (!stripePaymentService.isReady()) {
       return res.status(503).json({ error: "stripe_unavailable", message: "Payments are not yet configured." });
@@ -82,7 +80,7 @@ router.post("/api/me/payment-methods/default", isAuthenticated, async (req: any,
   }
 });
 
-router.delete("/api/me/payment-methods/:id", isAuthenticated, async (req: any, res) => {
+router.delete("/api/me/payment-methods/:id", requireAuth, async (req: any, res) => {
   try {
     if (!stripePaymentService.isReady()) {
       return res.status(503).json({ error: "stripe_unavailable", message: "Payments are not yet configured." });

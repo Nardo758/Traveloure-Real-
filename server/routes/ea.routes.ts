@@ -3,7 +3,7 @@ import { getUserId } from "../utils/auth";
 import { z } from "zod";
 import { eq, desc } from "drizzle-orm";
 import { db } from "../db";
-import { isAuthenticated } from "../replit_integrations/auth";
+import { requireAuth } from "../middlewares/requireAuth";
 import { isEA } from "../middleware/ea-rbac";
 import {
   getUserByEmail,
@@ -42,7 +42,7 @@ function getEaUserId(req: any): string {
   return getUserId(req)!;
 }
 
-router.get("/api/ea/clients", isAuthenticated, async (req, res) => {
+router.get("/api/ea/clients", requireAuth, async (req, res) => {
     try {
       const eaUserId = getEaUserId(req);
       const rows = await db
@@ -76,7 +76,7 @@ router.get("/api/ea/clients", isAuthenticated, async (req, res) => {
 
   // POST /api/ea/clients — add a client (by email lookup)
 
-router.post("/api/ea/clients", isAuthenticated, async (req, res) => {
+router.post("/api/ea/clients", requireAuth, async (req, res) => {
     try {
       const eaUserId = getEaUserId(req);
       const { email, displayName, notes } = z.object({
@@ -111,7 +111,7 @@ router.post("/api/ea/clients", isAuthenticated, async (req, res) => {
 
   // PATCH /api/ea/clients/:id — update payment info / notes
 
-router.patch("/api/ea/clients/:id", isAuthenticated, async (req, res) => {
+router.patch("/api/ea/clients/:id", requireAuth, async (req, res) => {
     try {
       const eaUserId = getEaUserId(req);
       const { id } = req.params;
@@ -138,7 +138,7 @@ router.patch("/api/ea/clients/:id", isAuthenticated, async (req, res) => {
 
   // DELETE /api/ea/clients/:id — remove client relationship
 
-router.delete("/api/ea/clients/:id", isAuthenticated, async (req, res) => {
+router.delete("/api/ea/clients/:id", requireAuth, async (req, res) => {
     try {
       const eaUserId = getEaUserId(req);
       const { id } = req.params;
@@ -154,7 +154,7 @@ router.delete("/api/ea/clients/:id", isAuthenticated, async (req, res) => {
 
   // POST /api/ea/clients/:id/push — send a notification to the client
 
-router.post("/api/ea/clients/:id/push", isAuthenticated, async (req, res) => {
+router.post("/api/ea/clients/:id/push", requireAuth, async (req, res) => {
     try {
       const eaUserId = getEaUserId(req);
       const { id } = req.params;
@@ -189,7 +189,7 @@ router.post("/api/ea/clients/:id/push", isAuthenticated, async (req, res) => {
   // ============================================================
 
 
-router.get("/api/ea/executives", isAuthenticated, async (req, res) => {
+router.get("/api/ea/executives", requireAuth, async (req, res) => {
     try {
       const eaUserId = getEaUserId(req);
       res.json(await getEaExecutives(eaUserId));
@@ -200,7 +200,7 @@ router.get("/api/ea/executives", isAuthenticated, async (req, res) => {
   });
 
 
-router.post("/api/ea/executives", isAuthenticated, async (req, res) => {
+router.post("/api/ea/executives", requireAuth, async (req, res) => {
     try {
       const eaUserId = getEaUserId(req);
       const body = insertEaExecutiveSchema.parse({ ...req.body, eaUserId });
@@ -212,7 +212,7 @@ router.post("/api/ea/executives", isAuthenticated, async (req, res) => {
   });
 
 
-router.patch("/api/ea/executives/:id", isAuthenticated, async (req, res) => {
+router.patch("/api/ea/executives/:id", requireAuth, async (req, res) => {
     try {
       const eaUserId = getEaUserId(req);
       const row = await getEaExecutiveById(req.params.id, eaUserId);
@@ -225,7 +225,7 @@ router.patch("/api/ea/executives/:id", isAuthenticated, async (req, res) => {
   });
 
 
-router.delete("/api/ea/executives/:id", isAuthenticated, async (req, res) => {
+router.delete("/api/ea/executives/:id", requireAuth, async (req, res) => {
     try {
       const eaUserId = getEaUserId(req);
       const row = await getEaExecutiveById(req.params.id, eaUserId);
@@ -243,7 +243,7 @@ router.delete("/api/ea/executives/:id", isAuthenticated, async (req, res) => {
   // ============================================================
 
 
-router.get("/api/ea/events", isAuthenticated, async (req, res) => {
+router.get("/api/ea/events", requireAuth, async (req, res) => {
     try {
       const eaUserId = getEaUserId(req);
       res.json(await getEaEvents(eaUserId));
@@ -254,7 +254,7 @@ router.get("/api/ea/events", isAuthenticated, async (req, res) => {
   });
 
 
-router.post("/api/ea/events", isAuthenticated, async (req, res) => {
+router.post("/api/ea/events", requireAuth, async (req, res) => {
     try {
       const eaUserId = getEaUserId(req);
       // `date` is a real `timestamp` column (dataType "date"): drizzle-zod's
@@ -275,7 +275,7 @@ router.post("/api/ea/events", isAuthenticated, async (req, res) => {
   });
 
 
-router.patch("/api/ea/events/:id", isAuthenticated, async (req, res) => {
+router.patch("/api/ea/events/:id", requireAuth, async (req, res) => {
     try {
       const eaUserId = getEaUserId(req);
       const row = await getEaEventById(req.params.id, eaUserId);
@@ -288,7 +288,7 @@ router.patch("/api/ea/events/:id", isAuthenticated, async (req, res) => {
   });
 
 
-router.delete("/api/ea/events/:id", isAuthenticated, async (req, res) => {
+router.delete("/api/ea/events/:id", requireAuth, async (req, res) => {
     try {
       const eaUserId = getEaUserId(req);
       await deleteEaEvent(req.params.id, eaUserId);
@@ -304,7 +304,7 @@ router.delete("/api/ea/events/:id", isAuthenticated, async (req, res) => {
   // ============================================================
 
 
-router.get("/api/ea/travel", isAuthenticated, async (req, res) => {
+router.get("/api/ea/travel", requireAuth, async (req, res) => {
     try {
       const eaUserId = getEaUserId(req);
       res.json(await getEaTravelArrangements(eaUserId));
@@ -315,7 +315,7 @@ router.get("/api/ea/travel", isAuthenticated, async (req, res) => {
   });
 
 
-router.post("/api/ea/travel", isAuthenticated, async (req, res) => {
+router.post("/api/ea/travel", requireAuth, async (req, res) => {
     try {
       const eaUserId = getEaUserId(req);
       const body = insertEaTravelArrangementSchema.parse({ ...req.body, eaUserId });
@@ -327,7 +327,7 @@ router.post("/api/ea/travel", isAuthenticated, async (req, res) => {
   });
 
 
-router.patch("/api/ea/travel/:id", isAuthenticated, async (req, res) => {
+router.patch("/api/ea/travel/:id", requireAuth, async (req, res) => {
     try {
       const eaUserId = getEaUserId(req);
       const row = await getEaTravelArrangementById(req.params.id, eaUserId);
@@ -340,7 +340,7 @@ router.patch("/api/ea/travel/:id", isAuthenticated, async (req, res) => {
   });
 
 
-router.delete("/api/ea/travel/:id", isAuthenticated, async (req, res) => {
+router.delete("/api/ea/travel/:id", requireAuth, async (req, res) => {
     try {
       const eaUserId = getEaUserId(req);
       await deleteEaTravelArrangement(req.params.id, eaUserId);
@@ -356,7 +356,7 @@ router.delete("/api/ea/travel/:id", isAuthenticated, async (req, res) => {
   // ============================================================
 
 
-router.get("/api/ea/gifts", isAuthenticated, async (req, res) => {
+router.get("/api/ea/gifts", requireAuth, async (req, res) => {
     try {
       const eaUserId = getEaUserId(req);
       res.json(await getEaGifts(eaUserId));
@@ -367,7 +367,7 @@ router.get("/api/ea/gifts", isAuthenticated, async (req, res) => {
   });
 
 
-router.post("/api/ea/gifts", isAuthenticated, async (req, res) => {
+router.post("/api/ea/gifts", requireAuth, async (req, res) => {
     try {
       const eaUserId = getEaUserId(req);
       const body = insertEaGiftSchema.parse({ ...req.body, eaUserId });
@@ -379,7 +379,7 @@ router.post("/api/ea/gifts", isAuthenticated, async (req, res) => {
   });
 
 
-router.patch("/api/ea/gifts/:id", isAuthenticated, async (req, res) => {
+router.patch("/api/ea/gifts/:id", requireAuth, async (req, res) => {
     try {
       const eaUserId = getEaUserId(req);
       const row = await getEaGiftById(req.params.id, eaUserId);
@@ -392,7 +392,7 @@ router.patch("/api/ea/gifts/:id", isAuthenticated, async (req, res) => {
   });
 
 
-router.delete("/api/ea/gifts/:id", isAuthenticated, async (req, res) => {
+router.delete("/api/ea/gifts/:id", requireAuth, async (req, res) => {
     try {
       const eaUserId = getEaUserId(req);
       await deleteEaGift(req.params.id, eaUserId);
@@ -408,7 +408,7 @@ router.delete("/api/ea/gifts/:id", isAuthenticated, async (req, res) => {
   // ============================================================
 
 
-router.get("/api/ea/venues", isAuthenticated, async (req, res) => {
+router.get("/api/ea/venues", requireAuth, async (req, res) => {
     try {
       const eaUserId = getEaUserId(req);
       res.json(await getEaSavedVenues(eaUserId));
@@ -419,7 +419,7 @@ router.get("/api/ea/venues", isAuthenticated, async (req, res) => {
   });
 
 
-router.post("/api/ea/venues", isAuthenticated, async (req, res) => {
+router.post("/api/ea/venues", requireAuth, async (req, res) => {
     try {
       const eaUserId = getEaUserId(req);
       const body = insertEaSavedVenueSchema.parse({ ...req.body, eaUserId });
@@ -431,7 +431,7 @@ router.post("/api/ea/venues", isAuthenticated, async (req, res) => {
   });
 
 
-router.patch("/api/ea/venues/:id", isAuthenticated, async (req, res) => {
+router.patch("/api/ea/venues/:id", requireAuth, async (req, res) => {
     try {
       const eaUserId = getEaUserId(req);
       const row = await getEaSavedVenueById(req.params.id, eaUserId);
@@ -444,7 +444,7 @@ router.patch("/api/ea/venues/:id", isAuthenticated, async (req, res) => {
   });
 
 
-router.delete("/api/ea/venues/:id", isAuthenticated, async (req, res) => {
+router.delete("/api/ea/venues/:id", requireAuth, async (req, res) => {
     try {
       const eaUserId = getEaUserId(req);
       await deleteEaSavedVenue(req.params.id, eaUserId);
@@ -460,7 +460,7 @@ router.delete("/api/ea/venues/:id", isAuthenticated, async (req, res) => {
   // ============================================================
 
 
-router.get("/api/ea/communications", isAuthenticated, async (req, res) => {
+router.get("/api/ea/communications", requireAuth, async (req, res) => {
     try {
       const eaUserId = getEaUserId(req);
       res.json(await getEaCommunications(eaUserId));
@@ -471,7 +471,7 @@ router.get("/api/ea/communications", isAuthenticated, async (req, res) => {
   });
 
 
-router.post("/api/ea/communications", isAuthenticated, async (req, res) => {
+router.post("/api/ea/communications", requireAuth, async (req, res) => {
     try {
       const eaUserId = getEaUserId(req);
       const body = insertEaCommunicationSchema.parse({ ...req.body, eaUserId });
@@ -483,7 +483,7 @@ router.post("/api/ea/communications", isAuthenticated, async (req, res) => {
   });
 
 
-router.delete("/api/ea/communications/:id", isAuthenticated, async (req, res) => {
+router.delete("/api/ea/communications/:id", requireAuth, async (req, res) => {
     try {
       const eaUserId = getEaUserId(req);
       await deleteEaCommunication(req.params.id, eaUserId);
@@ -499,7 +499,7 @@ router.delete("/api/ea/communications/:id", isAuthenticated, async (req, res) =>
   // ============================================================
 
 
-router.get("/api/ea/ai-tasks", isAuthenticated, async (req, res) => {
+router.get("/api/ea/ai-tasks", requireAuth, async (req, res) => {
     try {
       const eaUserId = getEaUserId(req);
       const { status } = req.query;
@@ -511,7 +511,7 @@ router.get("/api/ea/ai-tasks", isAuthenticated, async (req, res) => {
   });
 
 
-router.post("/api/ea/ai-tasks", isAuthenticated, async (req, res) => {
+router.post("/api/ea/ai-tasks", requireAuth, async (req, res) => {
     try {
       const eaUserId = getEaUserId(req);
       const body = insertEaAiTaskSchema.parse({ ...req.body, eaUserId });
@@ -523,7 +523,7 @@ router.post("/api/ea/ai-tasks", isAuthenticated, async (req, res) => {
   });
 
 
-router.patch("/api/ea/ai-tasks/:id", isAuthenticated, async (req, res) => {
+router.patch("/api/ea/ai-tasks/:id", requireAuth, async (req, res) => {
     try {
       const eaUserId = getEaUserId(req);
       const row = await getEaAiTaskById(req.params.id, eaUserId);
@@ -539,7 +539,7 @@ router.patch("/api/ea/ai-tasks/:id", isAuthenticated, async (req, res) => {
   });
 
 
-router.delete("/api/ea/ai-tasks/:id", isAuthenticated, async (req, res) => {
+router.delete("/api/ea/ai-tasks/:id", requireAuth, async (req, res) => {
     try {
       const eaUserId = getEaUserId(req);
       await deleteEaAiTask(req.params.id, eaUserId);
@@ -594,7 +594,7 @@ const eaPreferencesPatchSchema = z.object({
   }).strict().optional(),
 }).strict();
 
-router.get("/api/ea/preferences", isAuthenticated, async (req, res) => {
+router.get("/api/ea/preferences", requireAuth, async (req, res) => {
     try {
       const eaUserId = getEaUserId(req);
       const [row] = await db
@@ -611,7 +611,7 @@ router.get("/api/ea/preferences", isAuthenticated, async (req, res) => {
   });
 
 
-router.patch("/api/ea/preferences", isAuthenticated, async (req, res) => {
+router.patch("/api/ea/preferences", requireAuth, async (req, res) => {
     try {
       const eaUserId = getEaUserId(req);
       const parsed = eaPreferencesPatchSchema.safeParse(req.body ?? {});

@@ -39,7 +39,7 @@ import { Router } from "express";
 import { getUserId } from "../utils/auth";
 import { db } from "../db";
 import { storage } from "../storage";
-import { isAuthenticated } from "../replit_integrations/auth";
+import { requireAuth } from "../middlewares/requireAuth";
 import { and, eq, gte, lte, or, isNull, sql } from "drizzle-orm";
 import {
   vendorAvailabilitySlots,
@@ -76,7 +76,7 @@ function sessionUserId(req: any): string | undefined {
 }
 
 // GET /api/me/calendar?from=YYYY-MM-DD&to=YYYY-MM-DD — read-only, session-scoped aggregate.
-router.get("/api/me/calendar", isAuthenticated, async (req, res) => {
+router.get("/api/me/calendar", requireAuth, async (req, res) => {
   try {
     const userId = sessionUserId(req);
     if (!userId) return res.status(401).json({ message: "Unauthorized" });

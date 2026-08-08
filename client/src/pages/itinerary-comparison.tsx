@@ -58,7 +58,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useContentAgentBooking } from "@/hooks/use-content-agent-booking";
-import { TransportLeg, type TransportLegData, type TransportAlternative } from "@/components/itinerary/TransportLeg";
+import { TransportLeg } from "@/components/itinerary/TransportLeg";
 import { Anchor } from "lucide-react";
 // Spec C (SLIP_EXPERIENCE_DISPATCH §4): variant columns render through the CANONICAL
 // PlanCard family's proposal stage — never a parallel renderer.
@@ -350,7 +350,7 @@ function ShareVariantButton({ variantId }: { variantId: string }) {
   const shareMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", `/api/itinerary-variants/${variantId}/share`, { permissions: "view" });
-      return res as { shareToken: string; shareUrl: string; expiresAt: string };
+      return (await res.json()) as { shareToken: string; shareUrl: string; expiresAt: string };
     },
     onSuccess: (data) => {
       setShareUrl(data.shareUrl);
@@ -905,7 +905,7 @@ export default function ItineraryComparisonPage() {
   }
 
   if (!user) {
-    setLocation("/api/login");
+    setLocation("/sign-in");
     return null;
   }
 
