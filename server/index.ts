@@ -24,6 +24,7 @@ import { seedLocationCache } from "./seeds/location-cache.seed";
 import { storage } from "./storage";
 import { grokDiscoveryService } from "./services/grok-discovery.service";
 import { setupWebSocket } from "./websocket";
+import { getSession } from "./replit_integrations/auth";
 import { cacheSchedulerService } from "./services/cache-scheduler.service";
 import { bookingExpiryScheduler } from "./services/booking-expiry-scheduler.service";
 import { checkoutClaimSweepScheduler } from "./services/checkout-claim.service";
@@ -55,7 +56,11 @@ import { queryCounterMiddleware } from "./utils/queryCounter";
 const app = express();
 const httpServer = createServer(app);
 
-setupWebSocket(httpServer);
+// MT-1: pass the session middleware in at call time (registerRoutes hasn't run yet, but
+// the `connection` handler only fires at runtime, well after setupAuth has applied it to
+// the app — no ordering issue). getSession() builds its own connect-pg-simple middleware
+// instance against the same `sessions` table/secret, so it verifies the same cookies.
+setupWebSocket(httpServer, getSession());
 
 declare module "http" {
   interface IncomingMessage {
