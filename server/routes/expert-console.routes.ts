@@ -18,7 +18,7 @@ import { getUserId } from "../utils/auth";
 import { z } from "zod";
 import { db } from "../db";
 import { storage } from "../storage";
-import { isAuthenticated } from "../replit_integrations/auth";
+import { requireAuth } from "../middlewares/requireAuth";
 import { desc, asc, eq, or, isNull, sql, and, gte, ne, inArray } from "drizzle-orm";
 import { localExpertForms, expertServiceOfferings, coordinationStates, insertLocalKnowledgeNuggetSchema, users, vendorAvailabilitySlots, providerServices, serviceReviews, expertTypeEnum } from "@shared/schema";
 import {
@@ -45,7 +45,7 @@ function sessionUserId(req: any): string {
 // ─── Expert role ─────────────────────────────────────────────────────────────
 
 // GET /api/expert/role — the expert's role type + label + application status.
-router.get("/api/expert/role", isAuthenticated, async (req, res) => {
+router.get("/api/expert/role", requireAuth, async (req, res) => {
   try {
     const userId = sessionUserId(req);
     const formRow = await db
@@ -67,7 +67,7 @@ router.get("/api/expert/role", isAuthenticated, async (req, res) => {
 });
 
 // PATCH /api/expert/role — approved experts may switch role; Local Expert requires admin review.
-router.patch("/api/expert/role", isAuthenticated, async (req, res) => {
+router.patch("/api/expert/role", requireAuth, async (req, res) => {
   try {
     const userId = sessionUserId(req);
 
@@ -107,7 +107,7 @@ router.patch("/api/expert/role", isAuthenticated, async (req, res) => {
 
 // ─── ESO service-template catalog (read-only onboarding catalog, §"Service Model") ──────────
 
-router.get("/api/expert/service-templates", isAuthenticated, async (req, res) => {
+router.get("/api/expert/service-templates", requireAuth, async (req, res) => {
   try {
     const userId = sessionUserId(req);
 
@@ -204,7 +204,7 @@ async function requireOwnedService(userId: string, serviceId: string) {
 }
 
 // GET /api/me/services/:serviceId/slots — list upcoming slots for one of MY services.
-router.get("/api/me/services/:serviceId/slots", isAuthenticated, async (req, res) => {
+router.get("/api/me/services/:serviceId/slots", requireAuth, async (req, res) => {
   try {
     const userId = sessionUserId(req);
     const service = await requireOwnedService(userId, req.params.serviceId);
@@ -224,7 +224,7 @@ router.get("/api/me/services/:serviceId/slots", isAuthenticated, async (req, res
 });
 
 // POST /api/me/services/:serviceId/slots — create a slot on one of MY services.
-router.post("/api/me/services/:serviceId/slots", isAuthenticated, async (req, res) => {
+router.post("/api/me/services/:serviceId/slots", requireAuth, async (req, res) => {
   try {
     const userId = sessionUserId(req);
     const service = await requireOwnedService(userId, req.params.serviceId);
@@ -256,7 +256,7 @@ router.post("/api/me/services/:serviceId/slots", isAuthenticated, async (req, re
 });
 
 // DELETE /api/me/slots/:slotId — remove a slot of mine, unless it already has real bookings.
-router.delete("/api/me/slots/:slotId", isAuthenticated, async (req, res) => {
+router.delete("/api/me/slots/:slotId", requireAuth, async (req, res) => {
   try {
     const userId = sessionUserId(req);
 
@@ -313,7 +313,7 @@ const slotRangeSchema = z.object({
   capacity: z.number().int().min(1).max(100).optional(),
 });
 
-router.post("/api/me/services/:serviceId/slots/range", isAuthenticated, async (req, res) => {
+router.post("/api/me/services/:serviceId/slots/range", requireAuth, async (req, res) => {
   try {
     const userId = sessionUserId(req);
     const service = await requireOwnedService(userId, req.params.serviceId);
@@ -377,7 +377,7 @@ router.post("/api/me/services/:serviceId/slots/range", isAuthenticated, async (r
 // scoped to the caller's OWN provider_services ids (never trusts ids from the client), so
 // this never N+1s regardless of how many offerings the My Offerings table renders.
 
-router.get("/api/me/next-availability", isAuthenticated, async (req, res) => {
+router.get("/api/me/next-availability", requireAuth, async (req, res) => {
   try {
     const userId = sessionUserId(req);
     const ownServices = await storage.getProviderServicesByStatus(userId);
@@ -431,7 +431,7 @@ router.get("/api/me/next-availability", isAuthenticated, async (req, res) => {
 //     dev DB — there is no real data to back a seasonal card. Deliberately OMITTED rather than
 //     fabricated; the `kind` union below only carries 'new_review' | 'open_slots' until a real
 //     seasonal writer exists.
-router.get("/api/me/posting-opportunities", isAuthenticated, async (req, res) => {
+router.get("/api/me/posting-opportunities", requireAuth, async (req, res) => {
   try {
     const userId = sessionUserId(req);
     const ownServices = await storage.getProviderServicesByStatus(userId);
@@ -529,7 +529,7 @@ router.get("/api/me/posting-opportunities", isAuthenticated, async (req, res) =>
 // never an id from the query string), newest first. Trip-linked engagements carry the tripId
 // the client needs to open the workspace's Event Coord tab.
 
-router.get("/api/expert/coordination-engagements", isAuthenticated, async (req, res) => {
+router.get("/api/expert/coordination-engagements", requireAuth, async (req, res) => {
   try {
     const expertId = sessionUserId(req);
     const rows = await db
@@ -573,7 +573,7 @@ async function requireLocalExpertOrAdmin(req: any, res: any, next: any) {
   }
 }
 
-router.get("/api/expert/knowledge-nuggets", isAuthenticated, async (req, res) => {
+router.get("/api/expert/knowledge-nuggets", requireAuth, async (req, res) => {
   try {
     const expertId = sessionUserId(req);
     res.json(await getLocalKnowledgeNuggets(expertId));
@@ -583,7 +583,7 @@ router.get("/api/expert/knowledge-nuggets", isAuthenticated, async (req, res) =>
   }
 });
 
-router.post("/api/expert/knowledge-nuggets", isAuthenticated, requireLocalExpertOrAdmin, async (req, res) => {
+router.post("/api/expert/knowledge-nuggets", requireAuth, requireLocalExpertOrAdmin, async (req, res) => {
   try {
     const expertId = sessionUserId(req);
     const parsed = insertLocalKnowledgeNuggetSchema.safeParse({ ...req.body, expertUserId: expertId });
@@ -597,7 +597,7 @@ router.post("/api/expert/knowledge-nuggets", isAuthenticated, requireLocalExpert
   }
 });
 
-router.patch("/api/expert/knowledge-nuggets/:id", isAuthenticated, requireLocalExpertOrAdmin, async (req, res) => {
+router.patch("/api/expert/knowledge-nuggets/:id", requireAuth, requireLocalExpertOrAdmin, async (req, res) => {
   try {
     const expertId = sessionUserId(req);
     const { id } = req.params;
@@ -616,7 +616,7 @@ router.patch("/api/expert/knowledge-nuggets/:id", isAuthenticated, requireLocalE
   }
 });
 
-router.delete("/api/expert/knowledge-nuggets/:id", isAuthenticated, requireLocalExpertOrAdmin, async (req, res) => {
+router.delete("/api/expert/knowledge-nuggets/:id", requireAuth, requireLocalExpertOrAdmin, async (req, res) => {
   try {
     const expertId = sessionUserId(req);
     const { id } = req.params;

@@ -33,7 +33,7 @@
 import { Router } from "express";
 import { getUserId } from "../utils/auth";
 import { z } from "zod";
-import { isAuthenticated } from "../replit_integrations/auth";
+import { requireAuth } from "../middlewares/requireAuth";
 import { authorizeTripLogistics } from "../utils/trip-logistics-auth";
 import { storage } from "../storage";
 import {
@@ -96,7 +96,7 @@ function logLegChange(
  * Runs the existing leg engine over the trip's itinerary items and writes trip-scoped legs born
  * `'proposed'`. Idempotent: replaces the trip's `proposed` rows, never touches `confirmed` ones.
  */
-router.post("/api/trips/:tripId/transport-legs/generate", isAuthenticated, async (req, res) => {
+router.post("/api/trips/:tripId/transport-legs/generate", requireAuth, async (req, res) => {
   try {
     const { tripId } = req.params;
     const denied = await authorizeTripLogistics(
@@ -158,7 +158,7 @@ const patchLegSchema = z
   })
   .strict();
 
-router.patch("/api/trips/:tripId/transport-legs/:legId", isAuthenticated, async (req, res) => {
+router.patch("/api/trips/:tripId/transport-legs/:legId", requireAuth, async (req, res) => {
   try {
     const { tripId, legId } = req.params;
     const denied = await authorizeTripLogistics(
@@ -215,7 +215,7 @@ router.patch("/api/trips/:tripId/transport-legs/:legId", isAuthenticated, async 
 });
 
 /** DELETE /api/trips/:tripId/transport-legs/:legId — the expert rejecting a leg. */
-router.delete("/api/trips/:tripId/transport-legs/:legId", isAuthenticated, async (req, res) => {
+router.delete("/api/trips/:tripId/transport-legs/:legId", requireAuth, async (req, res) => {
   try {
     const { tripId, legId } = req.params;
     const denied = await authorizeTripLogistics(

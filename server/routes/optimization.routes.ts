@@ -19,7 +19,7 @@ import { getUserId } from "../utils/auth";
 import { db } from "../db";
 import { itineraryComparisons, users, trips, userExperiences, experienceTypes, platformRevenue, coordinationFeeCredits, cartItems } from "@shared/schema";
 import { eq, and, gte } from "drizzle-orm";
-import { isAuthenticated } from "../replit_integrations/auth";
+import { requireAuth } from "../middlewares/requireAuth";
 import {
   calculateItineraryMetrics,
   complexityTier,
@@ -130,7 +130,7 @@ router.post("/api/optimization-preview", async (req, res) => {
  * Auth required (to verify ownership and resolve the correct fee).
  * Returns the same fee shape as the preview endpoint.
  */
-router.get("/api/optimization-fee", isAuthenticated, async (req, res) => {
+router.get("/api/optimization-fee", requireAuth, async (req, res) => {
   try {
     const { tripId, userExperienceId } = req.query as { tripId?: string; userExperienceId?: string };
 
@@ -222,7 +222,7 @@ async function respondIfCartAwaitsConversion(userId: string, res: any): Promise<
   return true;
 }
 
-router.post("/api/optimization-payments", isAuthenticated, async (req, res) => {
+router.post("/api/optimization-payments", requireAuth, async (req, res) => {
   try {
     const userId = getUserId(req)!;
     const { tripId, userExperienceId, comparisonContext } = req.body;
@@ -386,7 +386,7 @@ router.post("/api/optimization-payments", isAuthenticated, async (req, res) => {
  * POST /api/optimization-payments/confirm
  * Called after Stripe payment succeeds on the client. Records revenue.
  */
-router.post("/api/optimization-payments/confirm", isAuthenticated, async (req, res) => {
+router.post("/api/optimization-payments/confirm", requireAuth, async (req, res) => {
   try {
     const userId = getUserId(req)!;
     const { paymentIntentId, comparisonId, feeCents, currency = "USD" } = req.body;

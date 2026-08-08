@@ -4,7 +4,7 @@ import Stripe from "stripe";
 import { db } from "../db";
 import { localExpertForms, serviceProviderForms } from "@shared/schema";
 import { eq } from "drizzle-orm";
-import { isAuthenticated } from "../replit_integrations/auth";
+import { requireAuth } from "../middlewares/requireAuth";
 import { getBaseUrl } from "../services/stripe.service";
 
 const router = Router();
@@ -14,7 +14,7 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
 });
 
 // POST /api/identity/create-session — Stripe Identity individual verification
-router.post("/create-session", isAuthenticated, async (req, res) => {
+router.post("/create-session", requireAuth, async (req, res) => {
   try {
     const userId = getUserId(req)!;
     const { formType } = req.body as { formType: "expert" | "provider" };
@@ -57,7 +57,7 @@ router.post("/create-session", isAuthenticated, async (req, res) => {
 });
 
 // POST /api/identity/business/create-inquiry — Persona KYB for providers
-router.post("/business/create-inquiry", isAuthenticated, async (req, res) => {
+router.post("/business/create-inquiry", requireAuth, async (req, res) => {
   try {
     const userId = getUserId(req)!;
     const { country, registrationNumber, additionalDocUrl } = req.body as { country: string; registrationNumber: string; additionalDocUrl?: string };

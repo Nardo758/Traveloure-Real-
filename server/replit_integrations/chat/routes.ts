@@ -1,7 +1,7 @@
 import type { Express, Request, Response } from "express";
 import Anthropic from "@anthropic-ai/sdk";
 import { chatStorage } from "./storage";
-import { isAuthenticated } from "../auth";
+import { requireAuth } from "../../middlewares/requireAuth";
 import { trackAICost, calculateAnthropicCost } from "../../services/ai-cost-tracker";
 
 const anthropic = new Anthropic({
@@ -20,7 +20,7 @@ function parseId(raw: string): number | null {
 }
 
 export function registerChatRoutes(app: Express): void {
-  app.get("/api/conversations", isAuthenticated, async (req: Request, res: Response) => {
+  app.get("/api/conversations", requireAuth, async (req: Request, res: Response) => {
     try {
       const userId = getUserId(req);
       const conversations = await chatStorage.getAllConversations(userId);
@@ -31,7 +31,7 @@ export function registerChatRoutes(app: Express): void {
     }
   });
 
-  app.get("/api/conversations/:id", isAuthenticated, async (req: Request, res: Response) => {
+  app.get("/api/conversations/:id", requireAuth, async (req: Request, res: Response) => {
     try {
       const id = parseId(req.params.id);
       if (!id) return res.status(400).json({ error: "Invalid conversation ID" });
@@ -48,7 +48,7 @@ export function registerChatRoutes(app: Express): void {
     }
   });
 
-  app.post("/api/conversations", isAuthenticated, async (req: Request, res: Response) => {
+  app.post("/api/conversations", requireAuth, async (req: Request, res: Response) => {
     try {
       const { title } = req.body;
       const userId = getUserId(req);
@@ -60,7 +60,7 @@ export function registerChatRoutes(app: Express): void {
     }
   });
 
-  app.patch("/api/conversations/:id", isAuthenticated, async (req: Request, res: Response) => {
+  app.patch("/api/conversations/:id", requireAuth, async (req: Request, res: Response) => {
     try {
       const id = parseId(req.params.id);
       if (!id) return res.status(400).json({ error: "Invalid conversation ID" });
@@ -78,7 +78,7 @@ export function registerChatRoutes(app: Express): void {
     }
   });
 
-  app.delete("/api/conversations/:id", isAuthenticated, async (req: Request, res: Response) => {
+  app.delete("/api/conversations/:id", requireAuth, async (req: Request, res: Response) => {
     try {
       const id = parseId(req.params.id);
       if (!id) return res.status(400).json({ error: "Invalid conversation ID" });
@@ -91,7 +91,7 @@ export function registerChatRoutes(app: Express): void {
     }
   });
 
-  app.post("/api/conversations/:id/messages", isAuthenticated, async (req: Request, res: Response) => {
+  app.post("/api/conversations/:id/messages", requireAuth, async (req: Request, res: Response) => {
     try {
       const conversationId = parseId(req.params.id);
       if (!conversationId) return res.status(400).json({ error: "Invalid conversation ID" });

@@ -1,6 +1,7 @@
 import { Switch, Route, Redirect, useLocation } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
+import { ClerkProvider } from "@clerk/react";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Layout } from "@/components/layout";
@@ -14,10 +15,13 @@ import { SignInModalProvider, useSignInModal } from "@/contexts/SignInModalConte
 import { GuestTripProvider } from "@/contexts/GuestTripContext";
 import { ActiveConsoleProvider } from "@/contexts/ActiveConsoleContext";
 import { ConsoleAwareLayout } from "@/components/console-aware-layout";
-import { useEffect, useRef, lazy, Suspense } from "react";
+import { useEffect, useRef, lazy, Suspense, useCallback } from "react";
+import { useClerk, useUser } from "@clerk/react";
 import { PageErrorBoundary } from "@/components/page-error-boundary";
 import { MaintenanceGate } from "@/components/maintenance-screen";
 
+const SignInPage = lazy(() => import("@/pages/sign-in"));
+const SignUpPage = lazy(() => import("@/pages/sign-up"));
 const LandingPage = lazy(() => import("@/pages/landing"));
 const LandingMockups = lazy(() => import("@/pages/landing-mockups"));
 const Dashboard = lazy(() => import("@/pages/dashboard"));
@@ -317,6 +321,12 @@ function Router() {
   return (
     <Suspense fallback={<PageLoader />}>
     <Switch>
+      {/* Clerk sign-in and sign-up routes — REQUIRED for OAuth sub-paths.
+          The /*? optional wildcard matches both bare URL and OAuth sub-paths
+          like /sign-in/sso-callback, /sign-in/factor-one. */}
+      <Route path="/sign-in/*?" component={SignInPage} />
+      <Route path="/sign-up/*?" component={SignUpPage} />
+
       {/* Public Routes with Layout */}
       <Route path="/">
         <Layout><LandingPage /></Layout>
@@ -1146,6 +1156,29 @@ function GuestCartMigrator() {
   return null;
 }
 
+// Clerk configuration pulled from Vite env (injected by the proxy provisioner).
+const clerkPublishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY || "";
+
+// FAPI proxy URL — must match CLERK_PROXY_PATH in server/middlewares/clerkProxyMiddleware.ts.
+// Only active in production; in development Clerk contacts FAPI directly.
+const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL
+  || (import.meta.env.PROD ? "/api/__clerk" : undefined);
+
+const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+function ClerkQuerySyncer() {
+  // Invalidate the /api/auth/user query whenever the Clerk session changes so that
+  // the app-specific DB user data is refreshed after sign-in, sign-out, or user switch.
+  const { isSignedIn } = useUser();
+  const qc = useQueryClient();
+
+  useEffect(() => {
+    qc.invalidateQueries({ queryKey: ["/api/auth/user"] });
+  }, [isSignedIn, qc]);
+
+  return null;
+}
+
 function App() {
   // S4: capture a short-link ?ref= (set by GET /r/:code) once per session; checkout relays it
   // and the server derives the attribution source.
@@ -1153,25 +1186,55 @@ function App() {
     captureAcquisitionRef();
   }, []);
 
+  const [, setLocation] = useLocation();
+
+  const routerPush = useCallback(
+    (to: string) => {
+      const path = basePath && to.startsWith(basePath) ? to.slice(basePath.length) || "/" : to;
+      setLocation(path);
+    },
+    [setLocation],
+  );
+
+  const routerReplace = useCallback(
+    (to: string) => {
+      const path = basePath && to.startsWith(basePath) ? to.slice(basePath.length) || "/" : to;
+      setLocation(path, { replace: true } as any);
+    },
+    [setLocation],
+  );
+
   return (
-    <QueryClientProvider client={queryClient}>
-      <GuestTripProvider>
-        <TripQueueProvider>
-          <SignInModalProvider>
-            <ActiveConsoleProvider>
-              <TooltipProvider>
-                <Toaster />
-                <GuestCartMigrator />
-                <AuthReturnToRestorer />
-                <MaintenanceGate>
-                  <Router />
-                </MaintenanceGate>
-              </TooltipProvider>
-            </ActiveConsoleProvider>
-          </SignInModalProvider>
-        </TripQueueProvider>
-      </GuestTripProvider>
-    </QueryClientProvider>
+    <ClerkProvider
+      publishableKey={clerkPublishableKey}
+      {...(clerkProxyUrl ? { proxyUrl: clerkProxyUrl } : {})}
+      signInUrl={`${basePath}/sign-in`}
+      signUpUrl={`${basePath}/sign-up`}
+      signInFallbackRedirectUrl="/dashboard"
+      signUpFallbackRedirectUrl="/dashboard"
+      routerPush={routerPush}
+      routerReplace={routerReplace}
+    >
+      <QueryClientProvider client={queryClient}>
+        <ClerkQuerySyncer />
+        <GuestTripProvider>
+          <TripQueueProvider>
+            <SignInModalProvider>
+              <ActiveConsoleProvider>
+                <TooltipProvider>
+                  <Toaster />
+                  <GuestCartMigrator />
+                  <AuthReturnToRestorer />
+                  <MaintenanceGate>
+                    <Router />
+                  </MaintenanceGate>
+                </TooltipProvider>
+              </ActiveConsoleProvider>
+            </SignInModalProvider>
+          </TripQueueProvider>
+        </GuestTripProvider>
+      </QueryClientProvider>
+    </ClerkProvider>
   );
 }
 

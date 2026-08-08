@@ -1,27 +1,36 @@
 import type { Request } from "express";
+import { getAuth } from "@clerk/express";
 
 /**
- * Normalizes user ID extraction across all three auth methods:
+ * Returns the authenticated user's local DB ID from Clerk session claims.
  *
- *   Email auth    → req.user = { claims: { sub: uuid, ... }, expires_at: ... }
- *   Replit OAuth  → req.user = { id: uuid, claims: { sub: uuid, ... }, ... }
- *   Facebook OAuth→ req.user = { id: uuid, ... }
+ * Uses sessionClaims.userId (the legacy Replit Auth sub for migrated users,
+ * or Clerk native ID for new users) — the same value stored in users.id.
  *
- * Always use this helper instead of accessing req.user directly in routes.
- * Accessing (req.user as any).claims.sub directly crashes for Replit/Facebook
- * users whose session shape has `id` instead of (or in addition to) `claims.sub`.
+ * Falls back to the legacy passport session shape (req.user.claims?.sub ?? req.user.id)
+ * for any code path where Clerk middleware has set req.user directly.
  *
- * @returns The user's UUID string, or null if not authenticated.
+ * @returns The user's ID string, or null if not authenticated.
  */
 export function getUserId(req: Request): string | null {
-  const user = req.user as any;
+  // Clerk-primary: read from the verified session token.
+  try {
+    const auth = getAuth(req);
+    const clerkId = (auth?.sessionClaims as any)?.userId || auth?.userId;
+    if (clerkId) return clerkId;
+  } catch {
+    // getAuth throws if clerkMiddleware hasn't run — fall through to legacy.
+  }
+
+  // Legacy fallback: passport session shape set by requireAuth for backward compat.
+  const user = (req as any).user;
   if (!user) return null;
   return user.claims?.sub ?? user.id ?? null;
 }
 
 /**
  * Same as getUserId but throws a typed error when the user is not authenticated.
- * Use in routes that have already passed through isAuthenticated middleware.
+ * Use in routes that have already passed through requireAuth middleware.
  */
 export function requireUserId(req: Request): string {
   const id = getUserId(req);
@@ -33,7 +42,7 @@ export function requireUserId(req: Request): string {
  * Returns the user's role from the session. Falls back to 'user'.
  */
 export function getSessionRole(req: Request): string {
-  const user = req.user as any;
-  if (!user) return 'user';
-  return user.claims?.role ?? user.role ?? 'user';
+  const user = (req as any).user;
+  if (!user) return "user";
+  return user.claims?.role ?? user.role ?? "user";
 }

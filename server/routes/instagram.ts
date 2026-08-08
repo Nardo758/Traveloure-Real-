@@ -3,7 +3,7 @@ import { getUserId } from "../utils/auth";
 import { db } from "../db";
 import { users } from "@shared/schema";
 import { eq } from "drizzle-orm";
-import { isAuthenticated } from "../replit_integrations/auth";
+import { requireAuth } from "../middlewares/requireAuth";
 
 const router = Router();
 
@@ -11,7 +11,7 @@ const META_APP_ID = process.env.META_APP_ID;
 const META_APP_SECRET = process.env.META_APP_SECRET;
 const GRAPH_API_VERSION = "v21.0";
 
-router.get("/callback", isAuthenticated, async (req: Request, res: Response) => {
+router.get("/callback", requireAuth, async (req: Request, res: Response) => {
   try {
     const { code, error, error_description } = req.query;
 
@@ -88,7 +88,7 @@ router.get("/callback", isAuthenticated, async (req: Request, res: Response) => 
   }
 });
 
-router.get("/status", isAuthenticated, async (req: Request, res: Response) => {
+router.get("/status", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = getUserId(req)!;
     if (!userId) {
@@ -107,7 +107,7 @@ router.get("/status", isAuthenticated, async (req: Request, res: Response) => {
   }
 });
 
-router.post("/publish", isAuthenticated, async (req: Request, res: Response) => {
+router.post("/publish", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = getUserId(req)!;
     if (!userId) {
@@ -207,7 +207,7 @@ router.post("/publish", isAuthenticated, async (req: Request, res: Response) => 
   }
 });
 
-router.post("/publish-carousel", isAuthenticated, async (req: Request, res: Response) => {
+router.post("/publish-carousel", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = getUserId(req)!;
     if (!userId) {
@@ -309,7 +309,7 @@ router.post("/publish-carousel", isAuthenticated, async (req: Request, res: Resp
   }
 });
 
-router.get("/publishing-limit", isAuthenticated, async (req: Request, res: Response) => {
+router.get("/publishing-limit", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = getUserId(req)!;
     if (!userId) {
@@ -344,7 +344,7 @@ router.get("/publishing-limit", isAuthenticated, async (req: Request, res: Respo
   }
 });
 
-router.post("/disconnect", isAuthenticated, async (req: Request, res: Response) => {
+router.post("/disconnect", requireAuth, async (req: Request, res: Response) => {
   try {
     const userId = getUserId(req)!;
     if (!userId) {
