@@ -141,6 +141,61 @@ un-suppressing the mode that already exists.**
    collection. A client-supplied `strategy` or `segments` must never be trusted — same posture as
    CLAUDE.md §14, applied to planning rather than money.
 
+## 5b. Where the AI-optimization fee sits  (decision-maker question, Aug 8 2026)
+
+*"If the user selection now sits in the Trip Slip, where does the AI optimization pay modal sit?"*
+
+**Answer: on the Slip. The server already works that way — no server change is needed.**
+
+All three optimization endpoints are **already keyed to a trip, not to a cart**
+(`server/routes/optimization.routes.ts`):
+
+| endpoint | line | keyed on |
+|---|---|---|
+| `GET /api/optimization-fee` | :133-145 | `tripId` (or `userExperienceId`) |
+| `POST /api/optimization-payments` | :225-239 | `tripId` (or `userExperienceId`) |
+| `POST /api/optimization-payments/confirm` | :389 | the payment intent |
+
+The fee itself is resolved per trip — `resolveTargetFromDb(tripId, …)` (:176-183) reads the trip's
+`eventType` and owner, and the fee follows from that. **The cart was never the unit of pricing; the
+trip always was.** Today's placement of the pay panel on `/cart` is an artifact of the cart being
+where the optimize button happens to live, not of how the money is scoped.
+
+**The Slip is already half-wired for this.** `SlipView.tsx` renders the *result* of optimization —
+the `slip-optimized-badge` (Spec B, gated on a real `variant_applied` diary row) and
+optimizer-attributed rows (`suggestedBy === "ai"`). What it has **no** trigger for is *running* one.
+The Slip displays the outcome of an action it cannot invoke. Moving the optimize CTA and its pay
+step onto the Slip closes that loop, and is a pure client change.
+
+### The consequence that needs a ruling: one fee per trip
+
+If segmentation produces **two** trips, it produces **two** optimization fees — and, because the fee
+is derived from each trip's own `eventType`, they may legitimately be **different amounts**.
+
+**This makes the mockup's single "Accept & optimize" button wrong under multi-trip**, and that button
+should be corrected before C3 is built. Accepting a *structure* and paying for *optimization* are two
+decisions; fusing them works only in the single-trip case.
+
+**Proposed shape:**
+
+| case | flow |
+|---|---|
+| 1 trip, saved card | **one click.** Accept → off-session charge → results. No modal. This is the streamlined path already asked for, and `chargeSavedMethod` (`optimization.routes.ts:295`) already exists to serve it. |
+| 1 trip, no saved card | Accept → land on the Slip → pay panel on the Slip → results. |
+| N trips | Accept creates N trips. **No charge at accept.** Each Slip carries its own optimize CTA, its own server-derived fee, and its own pay step. |
+
+Rules this must not break: **pay-before-result stands** (decision-maker ruling, unchanged — the fee
+is paid before AI results are shown). The amount is **server-derived** from the trip (§14 — never
+`req.body`), and the fee comes from `fee_bands`, never a literal (§8). Charging once and optimizing
+two trips, or charging per trip without showing each amount before the click, both violate the first
+of those.
+
+**Open question for C1 (add as decision 5):** on a multi-trip acceptance, is optimization offered
+per-Slip on demand (proposed above), or should the traveler be able to pay for all segments in one
+action? The latter is friendlier but needs a defined behavior when one segment's charge succeeds and
+another's fails — which is a §15 partial-commit problem, and the reason the per-Slip default is
+recommended.
+
 ## 6. The two real gaps
 
 ### 6a. Multi-city has no home in the schema
@@ -199,6 +254,8 @@ today's trip, which makes it verifiable against the existing journey suite befor
 3. **Default when confidence is low** — propose the split and let the traveler collapse it, or
    propose one trip and offer the split? (Affects whether the feature feels helpful or bossy.)
 4. **Does `unplaced` block materialization**, or can a traveler proceed and resolve later?
+5. **Multi-trip optimization fees** — per-Slip on demand (recommended, §5b), or one action paying
+   for all segments? The latter needs a defined partial-failure behavior (§15).
 
 ## 9. Non-goals
 

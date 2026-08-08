@@ -19,7 +19,9 @@ PARALLEL C1 segmentation decisions ──► C2 engine (dark) ──► C3 propo
                                                                                     │
                                                               C5 vocabulary rename ◄┘  (last)
 
-BACKLOG  D1 PS18 allowlist (ride C2)   D2 MT-3   D3 MT-4   E1 guest-invite   E2 expert write scope
+BACKLOG  D1 PS18 allowlist (ride C2)   D2 MT-3   D3 MT-4
+
+CLOSED   Lane E — all three items resolved (see below)
 ```
 
 ---
@@ -227,23 +229,16 @@ moves it.
 
 ---
 
-## Lane E — Housekeeping and open questions.
+## ~~Lane E — Housekeeping~~ · CLOSED (decision-maker, Aug 8 2026)
 
-### E1 · Guest-invite A2/A3 (task #154)
-Long-pending. **Recommend re-scoping against C1's decisions before executing** — it rides
-`TripContext`, which decision C1.2 may change. Executing it first risks building against a context
-shape that's about to move.
+Lane E is resolved and carries no remaining work. Retained here only so the lane letters in the
+sequencing diagram above still resolve.
 
-### E2 · Expert write scope — needs a ruling
-Open since the fix-loop: **should an accepted expert PATCH/DELETE trip items, or stay owner-only?**
-Current behavior is owner-only. §12 settled that a *pending* advisor may not write; it did not settle
-what an *accepted* one may do. This is a product call, not a code question.
-
-### E3 · Replit backup branch — blocked, needs you
-`replit-local-backup-20260808` (4 Replit-Agent commits) exists only on your Replit workspace; it was
-never pushed, so it isn't in this sandbox. Either run
-`git diff origin/main...replit-local-backup-20260808 --stat` there, or push the branch and I'll
-review it. Until then it can't be assessed or deleted safely.
+- **E1 · Guest-invite A2/A3** — was **task #154, a stale duplicate of task #208**, which is already
+  completed. Closed, no work. (This is why the item looked long-pending: it was finished under a
+  different task id.)
+- **E2 · Expert write scope** — settled by the decision-maker; no ruling outstanding.
+- **E3 · Replit backup branch** — handled on the Replit workspace; nothing to review here.
 
 ---
 
@@ -254,4 +249,4 @@ review it. Until then it can't be assessed or deleted safely.
 3. **C1** — your four decisions; unblocks the whole product lane.
 4. **B2** and **C2** in parallel — different subsystems, no overlap.
 5. **C3 → C4**, then **D1** riding along.
-6. **C5** last. **D2/D3/E1/E2** as capacity allows.
+6. **C5** last. **D2/D3** as capacity allows. (Lane E is closed.)
