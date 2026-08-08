@@ -122,7 +122,6 @@ function CheckoutForm({ clientSecret, amount, bookingIds, onSuccess, onError }: 
       {/* Submit Button */}
       <button
         type="submit"
-        data-testid="button-submit-payment"
         disabled={!stripe || !isReady || isProcessing}
         className={`
           w-full py-4 rounded-lg font-semibold text-lg transition flex items-center justify-center gap-2
@@ -229,7 +228,6 @@ export default function StripeCheckout({
       {/* Cancel Button */}
       <button
         onClick={onCancel}
-        data-testid="button-cancel-checkout"
         className="w-full mt-4 py-3 text-gray-600 hover:text-gray-800 transition font-medium"
       >
         Cancel

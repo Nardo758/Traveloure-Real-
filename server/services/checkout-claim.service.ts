@@ -785,42 +785,6 @@ export async function promotePaidCheckout(opts: {
     }
   }
 
-  // #1053: traveler confirmation email for the CART rail (the legacy rail already sends one from
-  // the webhook handler; this rail never did — the confirmation page even claimed it had). Sent
-  // only for rows THIS call promoted, and the promotion flip is atomic with exactly one winner
-  // across webhook/fallback/drift, so a double signal cannot double-send. Fire-and-forget:
-  // delivery failure must never fail (or slow) the money leg that already completed above.
-  if (result.promoted.length > 0) {
-    void (async () => {
-      try {
-        const { sendBookingConfirmationEmail } = await import("./email.service");
-        const detail = await db.execute(sql`
-          SELECT sb.id, sb.tracking_number, sb.booking_details, u.email, u.first_name, u.last_name,
-                 ps.service_name
-          FROM service_bookings sb
-          JOIN users u ON u.id = sb.traveler_id
-          LEFT JOIN provider_services ps ON ps.id = sb.service_id
-          WHERE sb.id IN (${sql.join(result.promoted.map((id) => sql`${id}`), sql`, `)})
-        `);
-        for (const r of (detail.rows ?? []) as any[]) {
-          if (!r.email) continue;
-          await sendBookingConfirmationEmail({
-            toEmail: r.email,
-            userName: [r.first_name, r.last_name].filter(Boolean).join(" ") || "",
-            bookingId: String(r.id),
-            bookingTitle: r.service_name || "Your booking",
-            bookingDate: (r.booking_details as any)?.scheduledDate ?? null,
-            confirmationCode: r.tracking_number || String(r.id),
-          }).catch((err) =>
-            logger.error({ err, bookingId: r.id }, "[checkout-promote] traveler confirmation email failed (booking stands)"),
-          );
-        }
-      } catch (err) {
-        logger.error({ err, paymentIntentId }, "[checkout-promote] traveler confirmation email batch failed (bookings stand)");
-      }
-    })();
-  }
-
   if (result.promoted.length + result.exceptions.length + result.lateAuthorized.length > 0) {
     logger.info(
       {

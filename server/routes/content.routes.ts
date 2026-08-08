@@ -3,6 +3,7 @@ import { getUserId } from "../utils/auth";
 import { redactTemplateContent } from '../utils/template-content-gate';
 import { withQueryTimer } from '../utils/queryTimer';
 import { dedupedRequest, callWithCircuitBreaker } from '../utils/requestDeduplication';
+import { sanitizeAiProviderFailure, retryAfterSecondsFromError } from '../utils/ai-error-sanitizer';
 import { Router } from "express";
 import { db } from "../db";
 import { storage } from "../storage";
@@ -4197,23 +4198,39 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
       ].join(":");
 
       const { grokService } = await import("../services/grok.service");
-      const { result, usage } = await dedupedRequest(dedupKey, () =>
-        callWithCircuitBreaker(() =>
-          grokService.generateAutonomousItinerary({
-            destination,
-            dates,
-            travelers,
-            budget: budget || undefined,
-            eventType: eventType || undefined,
-            interests: effectiveInterests,
-            pacePreference: pacePreference || "moderate",
-            mustSeeAttractions: mustSeeAttractions || [],
-            dietaryRestrictions: dietaryRestrictions || [],
-            mobilityConsiderations: mobilityConsiderations || [],
-            immovableConstraints: anchorBlock,
-          })
-        )
-      );
+      // T6-2: EVERY provider failure returns the sanitized 503 shape, not just
+      // the ones that happen after the circuit breaker has tripped. The breaker
+      // still decides retryAfterSeconds (via retryAfterSecondsFromError, which
+      // reads the breaker's real "seconds remaining" when it supplied one) — it
+      // no longer decides WHETHER the response is sanitized. This makes the
+      // first failure after a breaker reset indistinguishable from a post-trip
+      // failure apart from that number, closing the leak window the breaker's
+      // FAILURE_THRESHOLD used to leave open.
+      let result: Awaited<ReturnType<typeof grokService.generateAutonomousItinerary>>["result"];
+      let usage: Awaited<ReturnType<typeof grokService.generateAutonomousItinerary>>["usage"];
+      try {
+        ({ result, usage } = await dedupedRequest(dedupKey, () =>
+          callWithCircuitBreaker(() =>
+            grokService.generateAutonomousItinerary({
+              destination,
+              dates,
+              travelers,
+              budget: budget || undefined,
+              eventType: eventType || undefined,
+              interests: effectiveInterests,
+              pacePreference: pacePreference || "moderate",
+              mustSeeAttractions: mustSeeAttractions || [],
+              dietaryRestrictions: dietaryRestrictions || [],
+              mobilityConsiderations: mobilityConsiderations || [],
+              immovableConstraints: anchorBlock,
+            })
+          )
+        ));
+      } catch (aiError: any) {
+        // Real cause (provider name, request id, key text) stays server-side only.
+        console.error("AI itinerary generation failed:", aiError);
+        return res.status(503).json(sanitizeAiProviderFailure(retryAfterSecondsFromError(aiError)));
+      }
 
       // Save generated itinerary to database
       const savedItinerary = await insertAiGeneratedItinerary({
@@ -4293,6 +4310,7 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
               estimatedCost: activity.estimatedCost != null ? String(activity.estimatedCost) : null,
               currency: "USD",
               suggestedBy: "ai",
+              origin: "ai",
             }).returning();
             insertedItems.push({ ...activity, id: inserted.id });
           }
@@ -4409,14 +4427,14 @@ router.post("/api/ai/generate-itinerary", isAuthenticated, async (req, res) => {
         status: savedItinerary.status
       });
     } catch (error: any) {
+      // Defense in depth: the primary AI call above is already caught and
+      // sanitized inline, but keep this branch as a safety net in case a
+      // breaker-open error surfaces from elsewhere in the handler.
       if (error?.code === "AI_SERVICE_TEMPORARILY_UNAVAILABLE") {
-        return res.status(503).json({
-          message: "Our AI is experiencing high demand. Please try again in a moment.",
-          retryAfterSeconds: error.retryAfterSeconds,
-        });
+        return res.status(503).json(sanitizeAiProviderFailure(retryAfterSecondsFromError(error)));
       }
       console.error("Error generating AI itinerary:", error);
-      res.status(500).json({ 
+      res.status(500).json({
         message: error.message || "Failed to generate itinerary. Please try again."
       });
     }
@@ -4456,20 +4474,35 @@ router.post("/api/ai/generate-optimized-itineraries", isAuthenticated, async (re
         : ["sightseeing", "local culture", "food"];
 
       const { tripOptimizationService } = await import("../services/trip-optimization.service");
-      
-      const result = await tripOptimizationService.generateOptimizedItineraries({
-        destination,
-        dates,
-        travelers,
-        budget: budget || undefined,
-        eventType: eventType || undefined,
-        interests: effectiveInterests2,
-        pacePreference: pacePreference || "moderate",
-        cartItems: cartItems || [],
-        mustSeeAttractions: mustSeeAttractions || [],
-        dietaryRestrictions: dietaryRestrictions || [],
-        mobilityConsiderations: mobilityConsiderations || []
-      });
+
+      // T6-1: this surface has no compatible fallback generator — the canned
+      // stub used by POST /api/trips/:id/generate-itinerary produces a single
+      // day-by-day itinerary shape, not the 3-variation
+      // {variationType, variationLabel, optimizationInsights, ...} shape this
+      // endpoint's callers expect — so on provider failure (Grok, then its
+      // internal Anthropic fallback inside grokService.generateAutonomousItinerary)
+      // return the sanitized 503 rather than fabricate a mismatched result.
+      // The real error (which used to reach the client verbatim, e.g. a raw
+      // Anthropic "invalid x-api-key" / request_id string) is logged server-side only.
+      let result: Awaited<ReturnType<typeof tripOptimizationService.generateOptimizedItineraries>>;
+      try {
+        result = await tripOptimizationService.generateOptimizedItineraries({
+          destination,
+          dates,
+          travelers,
+          budget: budget || undefined,
+          eventType: eventType || undefined,
+          interests: effectiveInterests2,
+          pacePreference: pacePreference || "moderate",
+          cartItems: cartItems || [],
+          mustSeeAttractions: mustSeeAttractions || [],
+          dietaryRestrictions: dietaryRestrictions || [],
+          mobilityConsiderations: mobilityConsiderations || []
+        });
+      } catch (aiError: any) {
+        console.error("AI optimized-itinerary generation failed:", aiError);
+        return res.status(503).json(sanitizeAiProviderFailure(retryAfterSecondsFromError(aiError)));
+      }
 
       for (const variation of result.variations) {
         await insertAiGeneratedItinerary({
@@ -6916,6 +6949,9 @@ router.patch("/api/affiliate-booking-requests/:id", isAuthenticated, async (req,
           estimatedCost: updated.price ?? null,
           actualCost: updated.price ?? null,
           suggestedBy: "expert",
+          // D2: confirmed by the assigned booking agent/expert (isExpertAssignedToTrip-gated
+          // above) on the traveler's behalf — provenance is the expert.
+          origin: "expert",
         } as any);
       }
 

@@ -53,6 +53,10 @@ interface AffiliateEarningRow {
   createdAt: string;
 }
 
+interface ConnectStatus {
+  connected: boolean;
+}
+
 interface EarningsDetails {
   summary: {
     totalEarnings: number;
@@ -73,6 +77,10 @@ export default function ExpertEarnings() {
   const [requested, setRequested] = useState(false);
   const { data, isLoading } = useQuery<EarningsDetails>({
     queryKey: ["/api/expert/earnings/details"],
+  });
+  // Same queryKey/cache as StripeConnectCard below — shares the fetch, no duplicate request.
+  const { data: connectStatus } = useQuery<ConnectStatus>({
+    queryKey: ["/api/stripe/connect/status"],
   });
 
   // Self-service payout REQUEST. The amount is server-derived from the cleared
@@ -106,6 +114,17 @@ export default function ExpertEarnings() {
   const recentTips = data?.recentTips ?? [];
   const recentAffiliateEarnings = data?.recentAffiliateEarnings ?? [];
 
+  // EX-4: the button must never be reachable when it can only fail server-side —
+  // no cleared balance to withdraw, or no payout destination to send it to.
+  const availableBalance = summary?.availableEarnings ?? 0;
+  const stripeNotConnected = !connectStatus?.connected;
+  const payoutBlocked = availableBalance <= 0 || stripeNotConnected;
+  const payoutBlockedReason = stripeNotConnected
+    ? "Connect your Stripe account in Settings before requesting a payout."
+    : availableBalance <= 0
+    ? "You have no cleared balance available to pay out yet."
+    : undefined;
+
   if (isLoading) {
     return (
       <ExpertLayout title="Money">
@@ -124,8 +143,9 @@ export default function ExpertEarnings() {
           subtitle="Your ledger: held, cleared, and paid — plus payout requests"
           actions={
             <Button
-              disabled={payoutMutation.isPending || requested}
+              disabled={payoutMutation.isPending || requested || payoutBlocked}
               onClick={() => payoutMutation.mutate()}
+              title={!requested && !payoutMutation.isPending ? payoutBlockedReason : undefined}
               data-testid="button-request-payout"
             >
               {payoutMutation.isPending ? (

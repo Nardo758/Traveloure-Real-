@@ -42,13 +42,13 @@ jobs:
       # the next lane. Coming in UNDER the ceiling therefore fails too — with the
       # instruction to lower it here.
       #
-      # 197 measured on 2026-08-05 @ ea0bbc05 (was 199 before PR #430 removed two
-      # errors with a dead code branch). Before this step existed the discipline
+      # 194 measured on 2026-08-07 (fix waves 1-2 removed three errors; was 197
+      # @ ea0bbc05, 199 before PR #430). Before this step existed the discipline
       # had no machine enforcement at all — every "baseline" in the repo was a
       # stale prose number (191/209/254/~137, none of them current).
       - name: tsc baseline ratchet (down-only)
         env:
-          TSC_BASELINE: '197'
+          TSC_BASELINE: '190'
         run: |
           count=$(npx tsc --noEmit 2>&1 | grep -c "error TS" || true)
           echo "tsc --noEmit: $count error(s); baseline ceiling: $TSC_BASELINE"
@@ -153,6 +153,26 @@ jobs:
       - name: chain-integrity test
         run: npx tsx --test server/migrations/__tests__/chain-integrity.test.ts
 
+  walkthrough-pins:
+    name: walkthrough-pins (EX-1 logout endpoint + EX-2 price floor)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      # Pure-unit pins from docs/testing/EXPERT_UX_WALKTHROUGH.md — no DB, no browser.
+      # EX-1: no client file may navigate to the Replit-only GET /api/logout (session survived
+      # the click off-Replit); the shared logout must POST /api/auth/logout.
+      - name: EX-1 logout endpoint pin
+        run: npx tsx --test client/src/lib/__tests__/logout-endpoint-pin.test.ts
+      # EX-2: insertProviderServiceSchema rejects negative/non-numeric prices on the create AND
+      # .partial() (PATCH) shapes; zero stays parseable (draft state — publish gate is route-level).
+      - name: EX-2 service price-floor pin
+        run: npx tsx --test server/__tests__/service-price-floor.test.ts
+
   decision-guards-lint:
     name: decision-guards-lint (ledger lint — DECISIONS.md ruling 26)
     runs-on: ubuntu-latest
@@ -200,6 +220,25 @@ jobs:
         run: node scripts/check-env-allowlist.cjs --self-test
       - name: Env-allowlist guard
         run: node scripts/check-env-allowlist.cjs
+
+  omit-schema-ratchet:
+    name: omit-schema-ratchet (PS18 — §19 allowlist conversion)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      # Ratchet guard (ruling 46 / CLAUDE.md §19): the number of .omit()-based (denylist)
+      # createInsertSchema(...) call sites across the two drizzle-kit schema entry points
+      # (shared/schema.ts, shared/guest-invites-schema.ts) only ever moves DOWN as the
+      # #PS18 omit→pick allowlist conversion proceeds. Mirrors the tsc-baseline ratchet
+      # above: over OR under the recorded OMIT_BASELINE both fail. Node built-ins only —
+      # no npm ci needed. Predicate fixtures FIRST (§18d).
+      - name: Omit-schema-ratchet predicate self-test
+        run: node scripts/check-omit-schema-ratchet.cjs --self-test
+      - name: Omit-schema-ratchet guard
+        run: node scripts/check-omit-schema-ratchet.cjs
 
   linkage-preservation-guard:
     name: linkage-preservation-guard (Trip-Canon Lane G / E2E_ITEM_LIFECYCLE.md §3)

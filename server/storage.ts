@@ -1,7 +1,7 @@
 import { db } from "./db";
 import { sql } from "drizzle-orm";
 import { availableAtFor } from "./config/earnings-hold.config";
-import { isTripAdvisor } from "./utils/trip-advisor";
+import { isTripAdvisor, isTripAdvisorWithWriteAccess } from "./utils/trip-advisor";
 import { PROCESSING_FEE_RATE, resolveCommissionRates, resolveServiceOwnerShareRate } from "./services/commission";
 import { isProviderRole } from "@shared/roles";
 import { 
@@ -393,6 +393,10 @@ export interface IStorage {
 
   // Expert Workspace
   isExpertAssignedToTrip(tripId: string, expertId: string): Promise<boolean>;
+  // WRITE-access variant (ruling, Aug 7 2026 — "a PENDING advisor may not write"): excludes
+  // 'pending' from the allow-list. Use this to gate trip-item mutation paths that grant access
+  // via the advisor role; use `isExpertAssignedToTrip` above for read surfaces.
+  isExpertAssignedToTripForWrite(tripId: string, expertId: string): Promise<boolean>;
 
   // Destination Calendar Events
   getDestinationEvents(country: string, city?: string, status?: string): Promise<DestinationEvent[]>;
@@ -879,7 +883,7 @@ export class DatabaseStorage implements IStorage {
   async createChat(chat: any): Promise<UserAndExpertChat> {
     const trackingNumber = await this.generateTrackingNumber('TRV');
     const [newChat] = await db.insert(userAndExpertChats).values({ ...chat, trackingNumber }).returning();
-    
+
     // Auto-register chat in content tracking system
     await this.registerContent({
       trackingNumber,
@@ -890,7 +894,30 @@ export class DatabaseStorage implements IStorage {
       status: 'published',
       metadata: { senderId: chat.senderId, receiverId: chat.receiverId },
     });
-    
+
+    // MT-2: notify the recipient of a new direct message. This is the single shared
+    // write path for both the /ws socket "chat" handler and POST /api/chats, so firing
+    // the notification here (rather than duplicating it in each caller) guarantees it
+    // fires exactly once per message. Mirrors the per-item-comment notification shape
+    // (booking-actions.ts) and messages.service.ts's "message_received" type/data
+    // convention. Best-effort: a notification failure must never fail the message
+    // create, which has already committed above.
+    if (newChat.receiverId) {
+      try {
+        await this.createNotification({
+          userId: newChat.receiverId,
+          type: 'message_received',
+          title: 'New message',
+          message: 'You have a new message',
+          relatedId: newChat.id,
+          relatedType: 'message',
+          data: { clientId: newChat.senderId },
+        } as any);
+      } catch (err) {
+        console.error('Failed to create message notification:', err);
+      }
+    }
+
     return newChat;
   }
 
@@ -1177,6 +1204,14 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createProviderService(service: InsertProviderService & { userId: string }): Promise<ProviderService> {
+    // EX-2 layer 2 (docs/testing/EXPERT_UX_WALKTHROUGH.md): a NEGATIVE price never reaches a row —
+    // the schema floor is layer 1, but this backstop lives here so every caller is covered (the
+    // same placement rationale as the approval-lifecycle clamp below). Zero stays legal at the
+    // storage layer: it is the price-not-set draft state; "no zero-price listing goes LIVE" is the
+    // route-level publish gate.
+    if (service.price != null && !(Number.isFinite(Number(service.price)) && Number(service.price) >= 0)) {
+      throw new Error(`createProviderService: price must be a non-negative number, got "${service.price}"`);
+    }
     const trackingNumber = await this.generateTrackingNumber('TRV');
     // F2 born-state clamp (approval lifecycle D1a): a create can NEVER produce an approved listing.
     // The client-supplied approvalStatus (insertProviderServiceSchema still exposes it — the mass-assign
@@ -1272,6 +1307,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateProviderService(id: string, updates: Partial<InsertProviderService>): Promise<ProviderService | undefined> {
+    // EX-2 layer 2, UPDATE half — same backstop as createProviderService: negative price never
+    // reaches a row from any caller. Zero allowed (draft state); publish gating is the route's job.
+    if (updates.price != null && !(Number.isFinite(Number(updates.price)) && Number(updates.price) >= 0)) {
+      throw new Error(`updateProviderService: price must be a non-negative number, got "${updates.price}"`);
+    }
     // ── D1a/F2: the approval lifecycle is NOT self-settable on the update path ──────────────
     // Found by the adversarial suite (scripts/journeys/adversarial-money-access.mjs, case C16b):
     // `PATCH /api/provider/services/:id` parses the body with `insertProviderServiceSchema
@@ -1588,10 +1628,17 @@ export class DatabaseStorage implements IStorage {
   async duplicateService(id: string, userId: string): Promise<ProviderService | undefined> {
     const original = await this.getProviderServiceById(id);
     if (!original) return undefined;
-    
-    const { id: _, createdAt, updatedAt, bookingsCount, totalRevenue, averageRating, reviewCount, ...serviceData } = original;
+
+    // T3-1: trackingNumber is UNIQUE — spreading the original row into the insert
+    // without stripping it collides on every call (the insert always 500'd). Strip it
+    // here and mint a fresh one below, same convention as every other create* path
+    // (createTrip/createServiceBooking/etc. all call generateTrackingNumber('TRV')
+    // rather than carry over an existing value).
+    const { id: _, createdAt, updatedAt, bookingsCount, totalRevenue, averageRating, reviewCount, trackingNumber: _trackingNumber, ...serviceData } = original;
+    const trackingNumber = await this.generateTrackingNumber('TRV');
     const [newService] = await db.insert(providerServices).values({
       ...serviceData,
+      trackingNumber,
       serviceName: `${original.serviceName} (Copy)`,
       status: "draft",
       // F2: a duplicate must NOT inherit the original's approval_status — a copy of an approved
@@ -4940,6 +4987,12 @@ export class DatabaseStorage implements IStorage {
     return isTripAdvisor(tripId, expertId);
   }
 
+  // WRITE-access variant — delegates to the CANONICAL write-access advisor predicate
+  // (server/utils/trip-advisor.ts). 'pending' does NOT pass here (ruling, Aug 7 2026).
+  async isExpertAssignedToTripForWrite(tripId: string, expertId: string): Promise<boolean> {
+    return isTripAdvisorWithWriteAccess(tripId, expertId);
+  }
+
   async createTripExpertAdvisor(data: { tripId: string; localExpertId: string; message?: string; status?: string }): Promise<any> {
     const [created] = await db.insert(tripExpertAdvisors).values({
       tripId: data.tripId,
@@ -5215,16 +5268,34 @@ export class DatabaseStorage implements IStorage {
 
   // Atomically accept a pending advisory assignment (owner + pending guard in one UPDATE — §15).
   // Returns undefined if the row isn't the expert's or isn't pending → caller 409s, no double-accept.
+  // EX-3: writes an append-only item_transition_log row in the SAME transaction as the flip
+  // (rulings 12/18), mirroring task #1028's updateExpertAssignmentWorkspaceStatus above —
+  // trip-scoped (itemId NULL, ruling 16), actorType "expert", actorId = the accepting expert
+  // (the same `expertId` the atomic conditional itself is keyed on, never req.body — §14). The
+  // atomic conditional (WHERE status='pending') is unchanged — the log write only follows a win.
   async acceptTripAssignment(assignmentId: string, expertId: string): Promise<any> {
-    const [updated] = await db.update(tripExpertAdvisors)
-      .set({ status: "accepted" })
-      .where(and(
-        eq(tripExpertAdvisors.id, assignmentId),
-        eq(tripExpertAdvisors.localExpertId, expertId),
-        eq(tripExpertAdvisors.status, "pending"),
-      ))
-      .returning();
-    return updated;
+    return db.transaction(async (tx) => {
+      const [updated] = await tx.update(tripExpertAdvisors)
+        .set({ status: "accepted" })
+        .where(and(
+          eq(tripExpertAdvisors.id, assignmentId),
+          eq(tripExpertAdvisors.localExpertId, expertId),
+          eq(tripExpertAdvisors.status, "pending"),
+        ))
+        .returning();
+      if (updated) {
+        await logItemTransition(tx, {
+          tripId: updated.tripId,
+          itemId: null, // trip-scoped event (ruling 16)
+          eventType: "assignment_accepted",
+          fromStatus: "pending",
+          toStatus: "accepted",
+          actorType: "expert",
+          actorId: expertId,
+        });
+      }
+      return updated;
+    });
   }
 
   // ─── Content Placement Rules ─────────────────────────────────────────────

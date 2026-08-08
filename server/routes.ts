@@ -57,7 +57,7 @@ import { db } from "./db";
 import { getPlatformFlag, FLAG_MAINTENANCE_MODE } from "./services/platform-flags";
 import { eq, and, or, ilike, sql, desc, count, ne, inArray, asc, isNull } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
-import { scoreKnowledgeProof, KNOWLEDGE_PROOF_QUESTIONS } from "./services/expertise-scoring.service";
+import { scoreKnowledgeProof, KNOWLEDGE_PROOF_QUESTIONS, type KnowledgeProofAnswerInput } from "./services/expertise-scoring.service";
 // W2 (Trip-Canon Lane 1 Phase 1b): `cart_items` has exactly ONE writer — the projection module.
 // Every cart write below goes through `cartProjection.*`; the functions are thin passthroughs to
 // the storage layer, so behavior is identical to the pre-funnel code. Do not call
@@ -82,13 +82,14 @@ import { complexityTier, buildAnchorPromptBlock, validateAnchorConflicts } from 
 import { getFee, resolveCoordinationFee, getAvailableCoordinationCreditCents, claimCoordinationCredit, releaseCoordinationCredit } from "./services/optimization-fee.service";
 import { buildEventTimeline, getEventVendorGaps } from "./services/event-coordination.service";
 import { trackAnthropicResponse } from "./services/ai-cost-tracker";
+import { sanitizeAiContentFailure } from "./utils/ai-error-sanitizer";
 import { revenueTrackingService } from "./services/revenue-tracking.service";
 import { experienceTypes as experienceTypesTable, coordinationStates, coordinationFeeCredits, platformRevenue } from "@shared/schema";
 import { isExpertRole, isProviderRole } from "@shared/roles";
 import Stripe from "stripe";
 import { sharedCache } from "./services/shared-cache.service";
 import { vaultAndStripItems } from "./services/affiliate-url-vault.service";
-import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, createPublicProfile, getDisplayName, redactContactInfo } from "./utils/data-sanitizer";
+import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, createPublicProfile, getDisplayName, redactContactInfo, pickPublicFields, EXPERT_APPLICATION_PUBLIC_FIELDS, omitFields } from "./utils/data-sanitizer";
 import { transportLegs, sharedItineraries, mapsExportCache, expertUpdatedItineraries, affiliateProducts, contentRegistry } from "@shared/schema";
 import { calculateTransportLegs, regenerateMapsUrlsFromLegs } from "./services/transport-leg-calculator";
 import { buildGoogleNavUrl, buildAppleNavUrl } from "./services/maps-url-builder";
@@ -968,50 +969,30 @@ export async function registerRoutes(
     res.json(trips);
   });
 
-  // GET /api/trips/:id — get trip (auth: owner/expert/EA, or guest via shareToken)
-  app.get(api.trips.get.path, requireAuthOrShareToken, async (req, res) => {
-    const trip = await storage.getTrip(req.params.id);
-    if (!trip) {
-      return res.status(404).json({ message: "Trip not found" });
-    }
-
-    // Check access: owner, assigned expert, managing EA, or guest with shareToken
-    const userId = getUserId(req)!;
-    const shareToken = req.query.token as string | undefined;
-    const isOwner = trip.userId && trip.userId === userId;
-    const isExpert = userId != null && (trip as any).expertId === userId;
-    const isManagingEa = userId != null && (trip as any).managedByEaId === userId;
-    const isGuestWithToken = shareToken && trip.shareToken === shareToken;
-
-    if (!isOwner && !isExpert && !isManagingEa && !isGuestWithToken) {
-      return res.status(401).json({ message: "Unauthorized" });
-    }
-
-    // GAP 5 fix (expert-loop object-flow audit, Jul 30 2026): "delivered" previously had no
-    // persistent signal on the trip itself — only a one-shot notification the traveler could
-    // dismiss/miss, with no fallback UI truth. Additive, server-only field (a sibling agent
-    // renders it): the most recent active (pending/accepted) assignment's workspaceStatus, or
-    // null when no expert is currently assigned. This is the canonical inline trips GET (§9).
-    const [advisorRow] = await db.select({ workspaceStatus: tripExpertAdvisors.workspaceStatus })
-      .from(tripExpertAdvisors)
-      .where(and(
-        eq(tripExpertAdvisors.tripId, trip.id),
-        inArray(tripExpertAdvisors.status, ["pending", "accepted"]),
-      ))
-      .orderBy(desc(tripExpertAdvisors.assignedAt))
-      .limit(1);
-
-    res.json({ ...trip, expertWorkspaceStatus: advisorRow?.workspaceStatus ?? null });
-  });
+  // GET /api/trips/:id — handled by tripsRoutes (trips.routes.ts), which owns the canonical
+  // handler with IDOR logging, 403 for non-owners, and expertWorkspaceStatus enrichment.
+  // The previous inline duplicate here shadowed that handler and suppressed security logging;
+  // it has been removed so the tripsRoutes registration (mounted above) wins. See task fix.
 
   // POST /api/trips — create a trip (guest or authenticated)
   // Guests get null userId; authenticated users get their userId.
   // Guests receive a shareToken to access the trip until sign-up.
   app.post(api.trips.create.path, async (req, res) => {
     try {
+      // Trip-defaults consistency fix: insertTripSchema defaults numberOfTravelers to 1 and
+      // adults to 2 independently, so an omitted numberOfTravelers produced an incoherent
+      // freshly-created trip (1 traveler, 2 adults). When the caller didn't explicitly send
+      // numberOfTravelers, derive it from adults+kids instead of taking the schema's static
+      // default, mirroring the numberOfTravelers===adults convention already used at the other
+      // trip-creation call sites (cart-to-itinerary conversion, quick-start itinerary).
+      const numberOfTravelersProvided =
+        req.body?.numberOfTravelers !== undefined && req.body?.numberOfTravelers !== null && req.body?.numberOfTravelers !== "";
       const input = api.trips.create.input.parse(req.body);
       // Sanitize string inputs to prevent XSS
       const sanitizedInput = sanitizeObject(input);
+      if (!numberOfTravelersProvided) {
+        sanitizedInput.numberOfTravelers = sanitizedInput.adults + (sanitizedInput.kids ?? 0);
+      }
 
       // Additional validations
       if (sanitizedInput.startDate && sanitizedInput.endDate) {
@@ -1236,6 +1217,10 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
               messages: [{ role: "user", content: prompt }],
             });
 
+            // T6-5: this is the one Anthropic call site outside claude.service.ts — without
+            // this the primary generate-itinerary surface never writes ai_cost_tracking.
+            trackAnthropicResponse(completion, { sourceType: "ai_itinerary" });
+
             const text = (completion.content[0] as any).text;
             const jsonMatch = text.match(/\{[\s\S]*\}/);
             return JSON.parse(jsonMatch ? jsonMatch[0] : text);
@@ -1295,8 +1280,33 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         funnelStage: "T3",
       }).catch(() => {});
 
-      // Rebuild itinerary_items — delete old, insert new
-      await db.delete(itineraryItems).where(eq(itineraryItems.tripId, trip.id));
+      // Rebuild itinerary_items — delete old, insert new.
+      // T1-1 (P1, data loss): this used to unconditionally wipe EVERY item for the trip,
+      // silently destroying expert-added items (stamped `suggestedBy = 'expert'` by CC-1)
+      // alongside the stale AI set. Now the delete PRESERVES expert-attributed rows — their
+      // dayNumber/sortOrder are untouched, so they simply keep occupying their existing day/slot
+      // while the freshly-generated set is inserted alongside them.
+      // D2 (origin provenance, ratified Aug 7 2026): the PROVENANCE LIMITATION noted here
+      // previously — traveler-manually-added items were NOT distinguishable from AI-generated
+      // ones, both carrying `suggestedBy = null` — is now closed by `itinerary_items.origin`.
+      // New rows are stamped 'ai' (this insert loop) or 'traveler' (every user-facing create
+      // site) going forward, so the delete now ALSO spares `origin = 'traveler'` rows. Legacy
+      // rows with `origin IS NULL` are ambiguous by construction (born before this column
+      // existed) and keep the pre-existing replaced behavior — the same
+      // `suggestedBy <> 'expert'` fallback as before, now reached only when `origin` itself
+      // gives no answer.
+      await db.delete(itineraryItems).where(
+        and(
+          eq(itineraryItems.tripId, trip.id),
+          or(
+            eq(itineraryItems.origin, "ai"),
+            and(
+              isNull(itineraryItems.origin),
+              or(isNull(itineraryItems.suggestedBy), ne(itineraryItems.suggestedBy, "expert")),
+            ),
+          ),
+        ),
+      );
 
       for (const day of itineraryData.days || []) {
         for (const activity of day.activities || []) {
@@ -1312,6 +1322,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             locationName: activity.locationName || destination,
             estimatedCost: activity.estimatedCost != null ? String(activity.estimatedCost) : null,
             currency: "USD",
+            origin: "ai",
           });
         }
       }
@@ -1682,10 +1693,13 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // === Expert Application Routes ===
   
   // Get current user's expert application
+  // CC-8: verified no client surface calls this route at all (the expert console's status
+  // pages read /api/expert/application-status instead — see EXPERT_APPLICATION_PUBLIC_FIELDS'
+  // comment); projected anyway rather than left as a directly-reachable full-row internals leak.
   app.get("/api/expert-application", isAuthenticated, async (req, res) => {
     const userId = getUserId(req)!;
     const form = await storage.getLocalExpertForm(userId);
-    res.json(form || null);
+    res.json(form ? pickPublicFields(form, EXPERT_APPLICATION_PUBLIC_FIELDS) : null);
   });
 
   // Submit expert application
@@ -1704,14 +1718,15 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             rejectionMessage: null,
           });
           void scoreKnowledgeProof(
-            (form!.knowledgeProofAnswers as string[]) ?? [],
+            (form!.knowledgeProofAnswers as KnowledgeProofAnswerInput[]) ?? [],
             KNOWLEDGE_PROOF_QUESTIONS,
             form!.localityProof ?? null,
             form!.city ?? "",
           )
             .then((s) => storage.updateLocalExpertFormKnowledgeScore(form!.id, s))
             .catch((e: any) => console.error("[expertise-scoring] persist failed:", e?.message));
-          return res.status(200).json(form);
+          // CC-8: project the response — see EXPERT_APPLICATION_PUBLIC_FIELDS for why.
+          return res.status(200).json(pickPublicFields(form!, EXPERT_APPLICATION_PUBLIC_FIELDS));
         }
         return res.status(400).json({ message: "You already have an application submitted" });
       }
@@ -1721,14 +1736,15 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // Kyoto Knowledge-Bar (advisory): score the knowledge-proof answers in the background and store
       // the result for the admin queue. Fire-and-forget — best-effort, never blocks the submission.
       void scoreKnowledgeProof(
-        (form.knowledgeProofAnswers as string[]) ?? [],
+        (form.knowledgeProofAnswers as KnowledgeProofAnswerInput[]) ?? [],
         KNOWLEDGE_PROOF_QUESTIONS,
         form.localityProof ?? null,
         form.city ?? "",
       )
         .then((s) => storage.updateLocalExpertFormKnowledgeScore(form.id, s))
         .catch((e: any) => console.error("[expertise-scoring] persist failed:", e?.message));
-      res.status(201).json(form);
+      // CC-8: project the response — see EXPERT_APPLICATION_PUBLIC_FIELDS for why.
+      res.status(201).json(pickPublicFields(form, EXPERT_APPLICATION_PUBLIC_FIELDS));
     } catch (err) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });
@@ -1753,14 +1769,15 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             rejectionMessage: null,
           });
           void scoreKnowledgeProof(
-            (form!.knowledgeProofAnswers as string[]) ?? [],
+            (form!.knowledgeProofAnswers as KnowledgeProofAnswerInput[]) ?? [],
             KNOWLEDGE_PROOF_QUESTIONS,
             form!.localityProof ?? null,
             form!.city ?? "",
           )
             .then((s) => storage.updateLocalExpertFormKnowledgeScore(form!.id, s))
             .catch((e: any) => console.error("[expertise-scoring] persist failed:", e?.message));
-          return res.status(200).json(form);
+          // CC-8: project the response — see EXPERT_APPLICATION_PUBLIC_FIELDS for why.
+          return res.status(200).json(pickPublicFields(form!, EXPERT_APPLICATION_PUBLIC_FIELDS));
         }
         return res.status(400).json({ message: "You already have an application submitted" });
       }
@@ -1769,14 +1786,15 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // Kyoto Knowledge-Bar (advisory): score the knowledge-proof answers in the background and store
       // the result for the admin queue. Fire-and-forget — best-effort, never blocks the submission.
       void scoreKnowledgeProof(
-        (form.knowledgeProofAnswers as string[]) ?? [],
+        (form.knowledgeProofAnswers as KnowledgeProofAnswerInput[]) ?? [],
         KNOWLEDGE_PROOF_QUESTIONS,
         form.localityProof ?? null,
         form.city ?? "",
       )
         .then((s) => storage.updateLocalExpertFormKnowledgeScore(form.id, s))
         .catch((e: any) => console.error("[expertise-scoring] persist failed:", e?.message));
-      res.status(201).json(form);
+      // CC-8: project the response — see EXPERT_APPLICATION_PUBLIC_FIELDS for why.
+      res.status(201).json(pickPublicFields(form, EXPERT_APPLICATION_PUBLIC_FIELDS));
     } catch (err) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });
@@ -2124,6 +2142,21 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
 
+      // EX-2 publish gate: a listing cannot go LIVE without a positive price. Runs AFTER the
+      // package_tiers recompute above (so a tiers listing is judged on its derived scalar) and
+      // only on status:"active" — a draft with price "0" (ServiceForm's price-not-set default)
+      // still saves. Negative prices never get this far (schema-level floor). Same
+      // draft-exempt shape as the meeting-point gate above.
+      if (input.status === "active") {
+        const effPrice = Number((input as any).price);
+        if (!Number.isFinite(effPrice) || effPrice <= 0) {
+          return res.status(400).json({
+            message: "Set a price greater than zero before publishing. Save as draft to finish later.",
+            code: "PRICE_REQUIRED",
+          });
+        }
+      }
+
       const service = await storage.createProviderService({ ...input, ...locationPatch, userId });
 
       // Write (or clear) neighborhood coverage rows whenever the neighborhoods
@@ -2137,7 +2170,12 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
 
-      res.status(201).json(service);
+      // CC-8: revenueShareRate is a commission split (§18) — never client-settable AND never
+      // client-visible. ServiceForm.tsx's create mutation only reads service.id/status/
+      // approvalStatus from this response (verified); omit just this one verified field
+      // rather than a full allowlist — provider_services is large and read by several
+      // other unaudited surfaces this endpoint's response itself does not feed.
+      res.status(201).json(omitFields(service, ["revenueShareRate"] as const));
     } catch (err) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });
@@ -2241,6 +2279,21 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
 
+      // EX-2 publish gate (docs/testing/EXPERT_UX_WALKTHROUGH.md): activating a listing requires a
+      // positive price — resolved from the patch or the existing row, same shape as the
+      // meeting-point gate above. Negative prices never reach here (schema-level floor survives
+      // .partial()); this closes the remaining hole where a stored "0" (price-not-set draft) is
+      // flipped straight to active.
+      if (input.status === "active") {
+        const effPrice = Number((input as any).price ?? ownedService.price);
+        if (!Number.isFinite(effPrice) || effPrice <= 0) {
+          return res.status(400).json({
+            message: "Set a price greater than zero before publishing. Save as draft to finish later.",
+            code: "PRICE_REQUIRED",
+          });
+        }
+      }
+
       // Verification publish-gate: block activating on gated categories
       if (input.status === "active") {
         const categoryId = ((input as any).categoryId ?? ownedService.categoryId) as string | undefined;
@@ -2315,7 +2368,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
 
-      res.json(updated);
+      // CC-8/T3-4: same omission as POST /api/provider/services — revenueShareRate is a
+      // commission split (§18) and must never round-trip to the client, on create OR update.
+      res.json(updated ? omitFields(updated, ["revenueShareRate"] as const) : updated);
     } catch (err) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });
@@ -4268,8 +4323,12 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         return res.status(404).json({ message: "Service not found or not owned by you" });
       }
       const duplicated = await storage.duplicateService(req.params.id, userId);
-      res.status(201).json(duplicated);
+      // NEW-2 (V3): the raw .returning() row leaks revenueShareRate (§18 read-side) — same
+      // projection as the POST/PATCH create paths.
+      res.status(201).json(duplicated ? omitFields(duplicated, ["revenueShareRate"] as const) : duplicated);
     } catch (err) {
+      // T3-1: this catch previously swallowed the error with no log at all.
+      console.error("Error duplicating service (expert route):", err);
       res.status(500).json({ message: "Failed to duplicate service" });
     }
   });
@@ -4285,8 +4344,12 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         return res.status(404).json({ message: "Service not found or not owned by you" });
       }
       const duplicated = await storage.duplicateService(req.params.id, userId);
-      res.status(201).json(duplicated);
+      // NEW-2 (V3): same §18 read-side projection as the expert duplicate above.
+      res.status(201).json(duplicated ? omitFields(duplicated, ["revenueShareRate"] as const) : duplicated);
     } catch (err) {
+      // T3-1: this catch previously swallowed the error with no log at all — the always-500
+      // trackingNumber collision was invisible in server logs. Log it now.
+      console.error("Error duplicating service (provider route):", err);
       res.status(500).json({ message: "Failed to duplicate service" });
     }
   });
@@ -5956,7 +6019,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           userId,
           adults: 2,
           kids: 0,
-          numberOfTravelers: 1,
+          numberOfTravelers: 2, // consistent with adults (kids=0) — see trip-defaults fix
         } as any);
         targetTripId = newTrip.id;
       } else {
@@ -6012,6 +6075,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           locationName: meta.city || meta.location || serviceLocation,
           notes: cartItem.notes || null,
           suggestedBy: "user",
+          origin: "traveler",
           status: "planned",
           isFlexible: true,
           estimatedCost,
@@ -7935,6 +7999,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             estimatedCost: activity.estimatedCost != null ? String(activity.estimatedCost) : null,
             currency: "USD",
             suggestedBy: "ai",
+            origin: "ai",
           }).returning();
           qsInsertedItems.push({ ...activity, id: inserted.id });
         }
@@ -8075,21 +8140,27 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
         res.json(updatedTask);
       } catch (aiError: any) {
-        // Update task with error
+        // T6-4: never persist the raw provider error (it can carry infra text
+        // like "403 Host not in allowlist: api.x.ai. Add this host to your
+        // network egress settings...") — it round-trips back to the expert's
+        // own dashboard on the next GET /api/expert/ai-tasks. Log the real
+        // cause server-side only; store/return the sanitized copy.
+        console.error("AI content generation failed (delegate):", aiError);
+        const sanitized = sanitizeAiContentFailure();
         await db.update(expertAiTasks)
           .set({
             status: "pending",
-            aiResult: { error: aiError.message, fallbackContent: "Unable to generate content. Please try again or write manually." },
+            aiResult: { error: sanitized.message, fallbackContent: "Unable to generate content. Please try again or write manually." },
             confidence: 0,
             updatedAt: new Date(),
           })
           .where(eq(expertAiTasks.id, task.id));
 
-        throw aiError;
+        return res.status(502).json(sanitized);
       }
     } catch (error: any) {
       console.error("Error delegating task:", error);
-      res.status(500).json({ message: error.message || "Failed to delegate task" });
+      res.status(500).json({ message: "Failed to delegate task. Please try again." });
     }
   });
 
@@ -8170,6 +8241,12 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         return res.status(404).json({ message: "Task not found" });
       }
 
+      // T6-4b: capture the pre-regenerate status so a failed regeneration can
+      // revert to it rather than leaving the row stuck at 'regenerating'
+      // forever (no sweep exists for this table). Falls back to 'failed' in
+      // the (unexpected) case the row was already 'regenerating'.
+      const priorStatus = task.status && task.status !== "regenerating" ? task.status : "failed";
+
       // Mark as regenerating
       await db.update(expertAiTasks)
         .set({ status: "regenerating", updatedAt: new Date() })
@@ -8177,23 +8254,36 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
       // Generate new content
       const startTime = Date.now();
-      const contentType = task.taskType === "client_message" ? "inquiry_response" 
+      const contentType = task.taskType === "client_message" ? "inquiry_response"
         : task.taskType === "vendor_research" ? "service_description"
         : task.taskType === "content_draft" ? "bio"
         : "welcome_message";
 
-      const { result, usage } = await grokService.generateContent({
-        type: contentType,
-        context: {
-          taskType: task.taskType,
-          clientName: task.clientName,
-          description: task.taskDescription,
-          previousAttempt: true,
-          ...(task.context as object || {}),
-        },
-        tone: "professional",
-        length: "medium",
-      });
+      let result: Awaited<ReturnType<typeof grokService.generateContent>>["result"];
+      let usage: Awaited<ReturnType<typeof grokService.generateContent>>["usage"];
+      try {
+        ({ result, usage } = await grokService.generateContent({
+          type: contentType,
+          context: {
+            taskType: task.taskType,
+            clientName: task.clientName,
+            description: task.taskDescription,
+            previousAttempt: true,
+            ...(task.context as object || {}),
+          },
+          tone: "professional",
+          length: "medium",
+        }));
+      } catch (aiError: any) {
+        // Real cause (e.g. "403 Host not in allowlist: api.x.ai...") logged
+        // server-side only; the row is reverted in the SAME handler (no sweep
+        // job) so it never sits at 'regenerating' forever.
+        console.error("AI content generation failed (regenerate):", aiError);
+        await db.update(expertAiTasks)
+          .set({ status: priorStatus, updatedAt: new Date() })
+          .where(eq(expertAiTasks.id, taskId));
+        return res.status(502).json(sanitizeAiContentFailure());
+      }
 
       const durationMs = Date.now() - startTime;
       const confidence = Math.floor(85 + Math.random() * 10);
@@ -8229,7 +8319,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       res.json(updatedTask);
     } catch (error: any) {
       console.error("Error regenerating task:", error);
-      res.status(500).json({ message: error.message || "Failed to regenerate task" });
+      res.status(500).json({ message: "Failed to regenerate task. Please try again." });
     }
   });
 
@@ -8858,7 +8948,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // Split out from the OR'd `assigned` boolean below so the mode-flip gate can target the
       // advisor-only path — never the owner (owned ? true : ...) short-circuits, so `isAdvisor`
       // is deliberately NOT that combined flag.
-      const isAdvisor = owned ? false : await storage.isExpertAssignedToTrip(tripId, userId);
+      // D1 (ruling, Aug 7 2026 — "a PENDING advisor may not write"): this is a trip-item
+      // MUTATION path, so it is gated on WRITE access (accepted/assigned) — NOT
+      // `storage.isExpertAssignedToTrip` (read access, includes pending). A pending advisor no
+      // longer reaches `assigned` here and falls through to the 403 below (or the author branch).
+      const isAdvisor = owned ? false : await storage.isExpertAssignedToTripForWrite(tripId, userId);
       const assigned = owned || isAdvisor;
       // Authoring mode (ready-made brief §2): the trip's author may build it.
       const authored = (owned || assigned) ? false : await isTripAuthor(tripId, userId);
@@ -8871,7 +8965,24 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       }
       const parsed = insertItineraryItemSchema.safeParse({ ...req.body, tripId });
       if (!parsed.success) return res.status(400).json({ message: "Invalid data", errors: parsed.error.errors });
-      const item = await storage.createItineraryItem(parsed.data as any);
+      const itemData = parsed.data as any;
+      // CC-1 / §14 server-derivation: expert-attribution provenance is never client-trusted.
+      // Strip whatever the client sent for suggestedBy and re-derive it from the SESSION user
+      // (via the isAdvisor check already computed above from trip_expert_advisors, not from
+      // req.body) so a traveler/template item can no longer be forged as "expert" and a real
+      // expert-authored item can no longer be forged as anonymous. Owner-authored items are
+      // untouched — isAdvisor is false for the owner by construction (see `owned ? false : …`).
+      delete itemData.suggestedBy;
+      if (isAdvisor) {
+        itemData.suggestedBy = "expert";
+      }
+      // D2 (origin provenance, ratified Aug 7 2026): server-derived, never client-trusted — the
+      // schema already omits `origin` (shared/schema.ts), this is the explicit re-derivation
+      // mirroring `suggestedBy` immediately above. `isAdvisor` here is the WRITE-gated flag, so
+      // an item can only be stamped 'expert' by a caller who actually has write access.
+      delete itemData.origin;
+      itemData.origin = isAdvisor ? "expert" : "traveler";
+      const item = await storage.createItineraryItem(itemData);
       logItineraryChange(tripId, userName, `Added "${item.title}"`, "add", owned ? "owner" : "expert", item.id);
 
       // If traveler added item and expert is assigned, notify the expert
@@ -8914,25 +9025,18 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     }
   });
 
-  app.patch("/api/itinerary-items/:id", isAuthenticated, async (req, res) => {
-    try {
-      const userId = getUserId(req)!;
-      const userName = (req.user as any).claims.name || "User";
-      const existing = await itineraryIntelligenceService.getItem(req.params.id);
-      if (!existing) {
-        return res.status(404).json({ message: "Itinerary item not found" });
-      }
-      if (!await verifyTripOwnership(existing.tripId, userId)) {
-        return res.status(403).json({ message: "Access denied" });
-      }
-      const item = await itineraryIntelligenceService.updateItem(req.params.id, req.body);
-      const changedFields = Object.keys(req.body).filter(k => k !== 'id').join(', ');
-      logItineraryChange(existing.tripId, userName, `Updated "${existing.title}" (${changedFields})`, "edit", "owner", req.params.id);
-      res.json(item);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to update itinerary item" });
-    }
-  });
+  // RETIRED (V4 rail-unification, Aug 7 2026): PATCH /api/itinerary-items/:id used to live here,
+  // gated ONLY by `verifyTripOwnership` — owner-only, no advisor branch, no plan-approval mode-flip.
+  // That diverged from the canonical trip-scoped rail (`PATCH /api/trips/:tripId/itinerary-items/:itemId`,
+  // server/routes/trips.routes.ts) which is advisor-aware (`getTripWriteRole`/`canMutateTrip`/
+  // `isTripAuthor`) and applies the `isPlanApprovedForExpert` mode-flip. Caller trace (client/src,
+  // server, playwright, scripts/journeys) found ZERO live callers of the bare path — every caller
+  // already uses the trip-scoped route (see client/src/pages/expert/workspace.tsx's own comment
+  // explaining why it deliberately avoids this bare path). Per CLAUDE.md §18c ("no consumer ⇒
+  // delete, don't gate"), the handler is retired rather than re-gated — a second, unaudited
+  // authorization implementation of the same operation is exactly the class this closes. Use
+  // PATCH /api/trips/:tripId/itinerary-items/:itemId instead. Proof:
+  // server/__tests__/itinerary-item-rail-unification.db.test.ts.
 
   app.post("/api/itinerary-items/:id/backup", isAuthenticated, async (req, res) => {
     try {
@@ -8958,14 +9062,16 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const userName = (req.user as any).claims.name || "User";
       // SECURITY: this mutates another user's itinerary ordering; `isAuthenticated` alone was the
       // only gate. Canonical authorization, matching the sibling itinerary-item handlers above.
-      const denied = await authorizeTripLogistics(req.params.tripId, userId, "POST /api/trips/:tripId/itinerary/reorder");
+      // D1 (ruling, Aug 7 2026): a trip-item MUTATION path — `requireWriteAccess: true` narrows
+      // the advisor branch to accepted/assigned (no pending).
+      const denied = await authorizeTripLogistics(req.params.tripId, userId, "POST /api/trips/:tripId/itinerary/reorder", { requireWriteAccess: true });
       if (denied) return res.status(denied.status).json({ message: denied.message });
       // FABLE-REVIEW: the mode-flip gate (QA_PUNCH_LIST item 18), same derivation as the
       // item-create handler's `isAdvisor` above — never the owner, never the author. Computed
       // AFTER authorizeTripLogistics has already passed, so it narrows nothing that handler
       // grants; it only refuses the advisor branch once the assignment's plan is approved.
       const owned = await verifyTripOwnership(req.params.tripId, userId);
-      const isAdvisor = owned ? false : await storage.isExpertAssignedToTrip(req.params.tripId, userId);
+      const isAdvisor = owned ? false : await storage.isExpertAssignedToTripForWrite(req.params.tripId, userId);
       if (isAdvisor && await isPlanApprovedForExpert(req.params.tripId, userId)) {
         return res.status(409).json(PLAN_APPROVED_SUGGEST_INSTEAD_ERROR);
       }
@@ -8990,7 +9096,9 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const userId = getUserId(req)!;
       // SECURITY: same omission as the reorder handler above — `isAuthenticated` only, no trip
       // authorization, so any authenticated user could compute an optimized order for any trip.
-      const denied = await authorizeTripLogistics(req.params.tripId, userId, "POST /api/trips/:tripId/itinerary/optimize-order");
+      // D1 (ruling, Aug 7 2026): treated as a trip-item MUTATION path (see comment below) —
+      // `requireWriteAccess: true` narrows the advisor branch to accepted/assigned.
+      const denied = await authorizeTripLogistics(req.params.tripId, userId, "POST /api/trips/:tripId/itinerary/optimize-order", { requireWriteAccess: true });
       if (denied) return res.status(denied.status).json({ message: denied.message });
       // FABLE-REVIEW: the mode-flip gate (QA_PUNCH_LIST item 18) — same derivation as the
       // reorder handler above (itself mirroring the item-create handler's `isAdvisor`). This
@@ -8998,7 +9106,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // advisor on an approved plan can't even fish for a machine order to hand-apply via
       // the reorder endpoint under a different guise.
       const owned = await verifyTripOwnership(req.params.tripId, userId);
-      const isAdvisor = owned ? false : await storage.isExpertAssignedToTrip(req.params.tripId, userId);
+      const isAdvisor = owned ? false : await storage.isExpertAssignedToTripForWrite(req.params.tripId, userId);
       if (isAdvisor && await isPlanApprovedForExpert(req.params.tripId, userId)) {
         return res.status(409).json(PLAN_APPROVED_SUGGEST_INSTEAD_ERROR);
       }
@@ -9137,24 +9245,12 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     }
   });
 
-  app.delete("/api/itinerary-items/:id", isAuthenticated, async (req, res) => {
-    try {
-      const userId = getUserId(req)!;
-      const userName = (req.user as any).claims.name || "User";
-      const existing = await itineraryIntelligenceService.getItem(req.params.id);
-      if (!existing) {
-        return res.status(404).json({ message: "Itinerary item not found" });
-      }
-      if (!await verifyTripOwnership(existing.tripId, userId)) {
-        return res.status(403).json({ message: "Access denied" });
-      }
-      await itineraryIntelligenceService.deleteItem(req.params.id);
-      logItineraryChange(existing.tripId, userName, `Removed "${existing.title}"`, "remove", "owner", req.params.id);
-      res.status(204).send();
-    } catch (error) {
-      res.status(500).json({ message: "Failed to delete itinerary item" });
-    }
-  });
+  // RETIRED (V4 rail-unification, Aug 7 2026): DELETE /api/itinerary-items/:id used to live here,
+  // same owner-only gate divergence as the PATCH handler above (see that comment for the full
+  // rationale + zero-caller trace). It also carried the L22 orphan-leg cascade gap (deleted via
+  // `itineraryIntelligenceService.deleteItem`, not the cascade-safe `storage.deleteItineraryItem`
+  // the canonical rail uses) — retiring this path closes that gap as a side effect, not a
+  // rewrite. Use DELETE /api/trips/:tripId/itinerary-items/:itemId instead.
 
   // --- Emergency Routes ---
   // L20 tier 3 — READS are owner ‖ assigned expert ‖ author ‖ admin (the local fixer needs to
@@ -9275,14 +9371,27 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // PATCH /api/admin/notifications/:id/read — mark a single lead alert as resolved
   app.patch("/api/admin/notifications/:id/read", requireAdmin, async (req, res) => {
     try {
-      const notifId = parseInt(req.params.id, 10);
-      if (isNaN(notifId)) {
-        return res.status(400).json({ message: "Invalid notification id" });
+      const rawId = String(req.params.id);
+      // Ids come in two flavors: "alert-<int>" rows from admin_notifications
+      // (platform alerts) and UUID rows from the user notifications table.
+      const alertMatch = rawId.match(/^alert-(\d+)$/) || (/^\d+$/.test(rawId) ? [rawId, rawId] : null);
+      if (alertMatch) {
+        const notifId = parseInt(alertMatch[1], 10);
+        const [updated] = await db
+          .update(adminNotifications)
+          .set({ isRead: true })
+          .where(eq(adminNotifications.id, notifId))
+          .returning();
+        if (!updated) {
+          return res.status(404).json({ message: "Notification not found" });
+        }
+        return res.json({ ok: true, id: `alert-${updated.id}` });
       }
+      const userId = getUserId(req)!;
       const [updated] = await db
-        .update(adminNotifications)
+        .update(notifications)
         .set({ isRead: true })
-        .where(eq(adminNotifications.id, notifId))
+        .where(and(eq(notifications.id, rawId), eq(notifications.userId, userId)))
         .returning();
       if (!updated) {
         return res.status(404).json({ message: "Notification not found" });
@@ -9293,15 +9402,47 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     }
   });
 
+  // DELETE /api/admin/notifications/:id — remove a notification (either table)
+  app.delete("/api/admin/notifications/:id", requireAdmin, async (req, res) => {
+    try {
+      const rawId = String(req.params.id);
+      const alertMatch = rawId.match(/^alert-(\d+)$/) || (/^\d+$/.test(rawId) ? [rawId, rawId] : null);
+      if (alertMatch) {
+        const notifId = parseInt(alertMatch[1], 10);
+        const [deleted] = await db
+          .delete(adminNotifications)
+          .where(eq(adminNotifications.id, notifId))
+          .returning();
+        if (!deleted) return res.status(404).json({ message: "Notification not found" });
+        return res.json({ ok: true });
+      }
+      const userId = getUserId(req)!;
+      const [deleted] = await db
+        .delete(notifications)
+        .where(and(eq(notifications.id, rawId), eq(notifications.userId, userId)))
+        .returning();
+      if (!deleted) return res.status(404).json({ message: "Notification not found" });
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to delete notification", error: err.message });
+    }
+  });
+
   // PATCH /api/admin/notifications/read-all — mark all unread lead alerts as resolved
   app.patch("/api/admin/notifications/read-all", requireAdmin, async (req, res) => {
     try {
-      const result = await db
-        .update(adminNotifications)
-        .set({ isRead: true })
-        .where(eq(adminNotifications.isRead, false))
-        .returning();
-      res.json({ success: true, updated: result.length });
+      const userId = getUserId(req)!;
+      const [alertRows, userRows] = await Promise.all([
+        db.update(adminNotifications)
+          .set({ isRead: true })
+          .where(eq(adminNotifications.isRead, false))
+          .returning(),
+        db.update(notifications)
+          .set({ isRead: true })
+          .where(and(eq(notifications.userId, userId), eq(notifications.isRead, false)))
+          .returning(),
+      ]);
+      res.json({ success: true, updated: alertRows.length + userRows.length });
     } catch (err: any) {
       res.status(500).json({ message: "Failed to mark all notifications as read", error: err.message });
     }

@@ -710,9 +710,19 @@ export const providerServices = pgTable("provider_services", {
   totalRevenue: decimal("total_revenue", { precision: 10, scale: 2 }).default("0"),
   averageRating: decimal("average_rating", { precision: 3, scale: 2 }),
   reviewCount: integer("review_count").default(0),
-  // Expert-favorable split: floor 0.75, ceiling 0.85. Stored as decimal string in DB.
-  // Any non-numeric or out-of-range value is treated as 0.75 by safeParseRate() at read time.
-  revenueShareRate: decimal("revenue_share_rate", { precision: 4, scale: 2 }).default("0.75"),
+  // D0 (fee-ledger lane, ruled 2026-08-06 — migration 178): `fee_bands` is authoritative, reached
+  // through ONE resolver. This column stops being "the final override" it was at
+  // payments.routes.ts:826/877/1090 — the mechanism behind audit C2/Q9, where a stale per-service
+  // snapshot outranked band resolution so an admin band edit could not change what a service
+  // charged (ruling 32's defeated proof).
+  //
+  // The hardcoded "0.75" DEFAULT is DELETED: it was a fee literal (ruling 32) that silently became
+  // the charged rate whenever derivation was unavailable. NULL now means "no override — ask the
+  // resolver", and migration 178 backfills every pre-existing row to NULL rather than freezing a
+  // computed rate into it (a fresh snapshot would go stale on the next band edit, re-creating the
+  // defect). Whether the column is retired outright or kept as a derived cache is Phase 1A's
+  // remaining call; either way it is never the first operand again.
+  revenueShareRate: decimal("revenue_share_rate", { precision: 4, scale: 2 }),
 
   // Content-affinity tags — canonical slugs indicating which traveller contexts
   // surface this service. e.g. ['hotel_arrival','photo_shoot'].
@@ -1564,6 +1574,54 @@ export const insertLocalExpertFormSchema = createInsertSchema(localExpertForms).
   // approved as an expert, become an admin) and how stray "service_provider" values
   // polluted local_expert_forms. The varchar column has no DB CHECK — this is the gate.
   expertType: z.enum(expertTypeEnum).optional(),
+}).superRefine((data, ctx) => {
+  // CC-5 (minimum-content gate): every field on this schema is independently optional, so an
+  // empty `{}` body previously parsed clean and created a fully-valid PENDING application —
+  // flooding the admin review queue with contentless rows. This closes that without rejecting
+  // any real submission:
+  //   - expertType is always required. The client (client/src/pages/travel-experts.tsx)
+  //     always sends it — it defaults from the URL `type` param, itself defaulted to
+  //     "travel_expert" — so no legitimate submission omits it.
+  //   - Beyond that, SOME identifying content is required: either an expertise signal
+  //     (destinations/specialties/experienceTypes, guaranteed non-empty by the default
+  //     (travel_expert/event_planner/executive_assistant) flow's canProceed() step-2 gate;
+  //     or localSpecialties, guaranteed non-empty by the local_expert flow's step-4 gate —
+  //     the local_expert flow NEVER populates destinations/specialties/experienceTypes, so
+  //     those three alone would wrongly reject every real local_expert submission) OR a
+  //     filled-in city+country pair. city/country are intentionally NOT hard-required on
+  //     their own: travel-experts.tsx's canProceed() never gates on either field for the
+  //     default flow, and only gates on city (never country) for the local_expert flow, so
+  //     requiring them unconditionally would reject real in-flight submissions. Existing
+  //     regression fixtures (N11 in journey-suite-negatives.http.test.ts; K1 in
+  //     console-sigma-kyoto-bench.http.test.ts) submit city+country with no expertise arrays
+  //     and expect success — city+country-together is treated as an alternative satisfying
+  //     condition, not an extra unconditional requirement.
+  const isNonEmptyArr = (v: unknown) => Array.isArray(v) && v.length > 0;
+  const isNonEmptyStr = (v: unknown) => typeof v === "string" && v.trim().length > 0;
+
+  if (!isNonEmptyStr(data.expertType)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["expertType"],
+      message: "expertType is required",
+    });
+  }
+
+  const hasExpertiseContent =
+    isNonEmptyArr(data.destinations) ||
+    isNonEmptyArr(data.specialties) ||
+    isNonEmptyArr(data.experienceTypes) ||
+    isNonEmptyArr(data.localSpecialties);
+  const hasLocation = isNonEmptyStr(data.city) && isNonEmptyStr(data.country);
+
+  if (!hasExpertiseContent && !hasLocation) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["destinations"],
+      message:
+        "Application must include at least one destination, specialty, experience type, or local specialty, or both a city and country",
+    });
+  }
 });
 export const insertServiceProviderFormSchema = createInsertSchema(serviceProviderForms).omit({ id: true, userId: true, status: true, rejectionMessage: true, createdAt: true });
 export const insertServiceCategorySchema = createInsertSchema(serviceCategories).omit({ id: true, createdAt: true });
@@ -1578,6 +1636,17 @@ export const insertServiceSubcategorySchema = createInsertSchema(serviceSubcateg
 export const insertProviderServiceSchema = createInsertSchema(providerServices).omit({ id: true, userId: true, formStatus: true, bookingsCount: true, totalRevenue: true, averageRating: true, reviewCount: true, createdAt: true, updatedAt: true, revenueShareRate: true }).extend({
   // X1: app-enforced vocabulary (migration 144 has no DB CHECK) — reject anything outside the set here.
   cancellationPolicyType: z.enum(cancellationPolicyTypeEnum).nullable().optional(),
+  // EX-2 (expert walkthrough, docs/testing/EXPERT_UX_WALKTHROUGH.md): a NEGATIVE price is never
+  // valid on any path — POST and PATCH /api/provider/services both parse this schema, and both
+  // persisted price=-50 straight to a row (even at status=active/approval_status=submitted).
+  // Field-level so it survives `.partial()` on the PATCH path. ZERO is deliberately allowed here:
+  // a fresh ServiceForm draft legitimately sends "0" (price not set yet) — the "no zero-price
+  // listing goes LIVE" half is the publish gate in the route handlers, beside the meeting-point
+  // gate, where draft saves are exempt by the same rule.
+  price: z.string().nullish().refine(
+    (v) => v == null || (Number.isFinite(Number(v)) && Number(v) >= 0),
+    { message: "Price must be a non-negative number" },
+  ),
 });
 export const insertFaqSchema = createInsertSchema(faqs).omit({ id: true, createdAt: true });
 export const insertWalletSchema = createInsertSchema(wallets).omit({ id: true, userId: true, createdAt: true, updatedAt: true });
@@ -3404,6 +3473,16 @@ export const itineraryItems = pgTable("itinerary_items", {
   // Suggestion tracking
   suggestedBy: varchar("suggested_by", { length: 20 }), // 'ai', 'expert', 'user'
 
+  // Provenance (migration 181, D2 ratified Aug 7 2026). App-enforced value set = 'ai' | 'traveler'
+  // | 'expert' — deliberately NO DB CHECK (publish-time push trap, same posture as
+  // `routingStatus`/`transportProvided` above). Nullable: NULL means either (a) a legacy row
+  // born before this column existed, or (b) a truly-internal/dead write path this lane
+  // deliberately left unstamped — both are ambiguous by construction and are treated as such
+  // (see the regenerate-delete predicate below, which only trusts a NON-NULL origin). Server-
+  // derived only (§14 posture) — every user-facing create route strips a client-supplied value
+  // and re-stamps it from session/assignment state, never from `req.body`.
+  origin: varchar("origin", { length: 20 }),
+
   // Gem link (migration 133, authoring brief §3a — design room only). Soft reference (no FK: two gem
   // tables exist — ai_discovered_gems + travel_pulse_hidden_gems; source disambiguation is future work).
   gemId: varchar("gem_id"),
@@ -3708,7 +3787,10 @@ export const userSpontaneityPreferences = pgTable("user_spontaneity_preferences"
 export const insertTripParticipantSchema = createInsertSchema(tripParticipants).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertVendorContractSchema = createInsertSchema(vendorContracts).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertTripTransactionSchema = createInsertSchema(tripTransactions).omit({ id: true, createdAt: true, updatedAt: true });
-export const insertItineraryItemSchema = createInsertSchema(itineraryItems).omit({ id: true, createdAt: true, updatedAt: true });
+// `origin` is OMITTED (D2/§14/§19 posture): it is a provenance column stamped server-side only —
+// never client-settable via this schema. Every create route strips whatever the client sent and
+// re-derives it explicitly (mirroring the pre-existing `suggestedBy` derivation).
+export const insertItineraryItemSchema = createInsertSchema(itineraryItems).omit({ id: true, createdAt: true, updatedAt: true, origin: true });
 export const insertTripEmergencyContactSchema = createInsertSchema(tripEmergencyContacts).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertTripAlertSchema = createInsertSchema(tripAlerts).omit({ id: true, createdAt: true, updatedAt: true });
 
@@ -5999,6 +6081,83 @@ export const reconciliationExceptions = pgTable(
 export type ReconciliationRun = typeof reconciliationRuns.$inferSelect;
 export type ReconciliationException = typeof reconciliationExceptions.$inferSelect;
 
+/**
+ * FEE LEDGER (migration 179, fee-ledger lane) — the append-only fee EVENT log.
+ *
+ * Audit C1: fee capture was a scalar column in a two-sided fee model. `payments.routes.ts:307` adds
+ * a computed fee to the traveler total and `:878-879` deducts the same rate from the provider base,
+ * while `:961-964` records ONE side in `service_bookings.platform_fee` — so on an $80 booking the
+ * platform retained $40 and recorded $20, and ~15 independent aggregations all under-reported by
+ * half. This table records each side as its own event.
+ *
+ * A fee EVENT log, NOT a general ledger — no double-entry, no chart of accounts. The per-booking
+ * invariant (`traveler_paid - provider_credited = SUM(amount)`) supplies the integrity.
+ *
+ * APPEND-ONLY: application code carries no UPDATE and no DELETE against this table, including to
+ * correct a bad row — a correction is a `reversal` row linked by `reversesLedgerId` plus a new row.
+ *
+ * MUST stay equivalent to server/migrations/179_fee_ledger.sql: the deploy runs an automatic
+ * drizzle-kit push from this file and is authoritative over tables AND indexes it does not find
+ * declared here; 179 is stamped after its first run, so a dropped object would never be recreated.
+ */
+export const FEE_LEDGER_TYPES = [
+  "traveler_service_fee",
+  "provider_commission_full",
+  "provider_commission_rails",
+  "expert_commission",
+  "ai_concierge_fee",
+  "affiliate_margin",
+  "credit_applied",
+  "reversal",
+] as const;
+export type FeeLedgerType = (typeof FEE_LEDGER_TYPES)[number];
+
+/** Which layer decided the rate. `band_id` is null for every value except "band" (Phase 0 §1a). */
+export const FEE_RATE_SOURCES = ["band", "entity_override", "rails", "code_fallback", "flat"] as const;
+export type FeeRateSource = (typeof FEE_RATE_SOURCES)[number];
+
+export const feeLedger = pgTable(
+  "fee_ledger",
+  {
+    id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    /** service_booking | booking (legacy rail) | ready_made_purchase | template_purchase | coordination | tip | affiliate */
+    sourceType: varchar("source_type", { length: 40 }).notNull(),
+    sourceId: varchar("source_id").notNull(),
+    /** Denormalized for the per-booking invariant; NULL for non-booking events. */
+    bookingId: varchar("booking_id"),
+    feeType: varchar("fee_type", { length: 40 }).notNull().$type<FeeLedgerType>(),
+    amount: decimal("amount", { precision: 12, scale: 2 }).notNull(),
+    currency: varchar("currency", { length: 3 }).notNull().default("usd"),
+    borneBy: varchar("borne_by", { length: 12 }).notNull(),
+    /** NULLABLE BY DESIGN — an entity-override or fallback rate has no band that explains it. */
+    bandId: uuid("band_id").references(() => feeBands.id),
+    rateAsResolved: decimal("rate_as_resolved", { precision: 10, scale: 4 }),
+    rateSource: varchar("rate_source", { length: 20 }).notNull().$type<FeeRateSource>(),
+    /** True when fee_bands.max_amount clamped the amount (D1's $25 traveler-fee cap). */
+    capApplied: boolean("cap_applied").notNull().default(false),
+    /** platform | rails — on this table attribution is a FEE INPUT, not an analytics dimension. */
+    sourceAttribution: varchar("source_attribution", { length: 12 }).notNull().default("platform"),
+    acquisitionRef: varchar("acquisition_ref", { length: 32 }),
+    stripePaymentRef: varchar("stripe_payment_ref", { length: 255 }),
+    stripeTransferRef: varchar("stripe_transfer_ref", { length: 255 }),
+    stripeRefundRef: varchar("stripe_refund_ref", { length: 255 }),
+    reversesLedgerId: varchar("reverses_ledger_id"),
+    idempotencyKey: varchar("idempotency_key", { length: 255 }).notNull(),
+    description: text("description"),
+    metadata: jsonb("metadata").notNull().default(sql`'{}'::jsonb`),
+  },
+  (table) => ({
+    idempotencyKeyIdx: uniqueIndex("fee_ledger_idempotency_key_idx").on(table.idempotencyKey),
+    bookingIdx: index("fee_ledger_booking_idx").on(table.bookingId),
+    sourceIdx: index("fee_ledger_source_idx").on(table.sourceType, table.sourceId),
+    paymentRefIdx: index("fee_ledger_payment_ref_idx").on(table.stripePaymentRef),
+    reversesIdx: index("fee_ledger_reverses_idx").on(table.reversesLedgerId),
+  }),
+);
+export type FeeLedgerRow = typeof feeLedger.$inferSelect;
+export type InsertFeeLedgerRow = typeof feeLedger.$inferInsert;
+
 // AI cost tracking (migration 025b). MUST stay byte-for-byte equivalent to
 // server/migrations/025b_ai_cost_tracking.sql — the deploy runs an automatic drizzle-kit push
 // from this file, and the push is authoritative over BOTH tables and indexes it does not find
@@ -6372,6 +6531,12 @@ export const feeBands = pgTable("fee_bands", {
   defaultRate: decimal("default_rate", { precision: 10, scale: 4 }).notNull(),
   minRate: decimal("min_rate", { precision: 10, scale: 4 }),
   maxRate: decimal("max_rate", { precision: 10, scale: 4 }),
+  // Per-booking DOLLAR ceiling on the resolved amount (NULL = uncapped). Distinct from maxRate,
+  // which bounds the RATE. D1 (fee-ledger lane, migration 178): the traveler service fee is
+  // "0.07, capped at $25.00 per booking (cap enforced at resolution ... not in code)", so the cap
+  // is band data, not a constant. Declared here because migration 178 creates it and the resolver
+  // depends on it — an undeclared column is dropped by the Autoscale deploy-push (CLAUDE.md).
+  maxAmount: decimal("max_amount", { precision: 10, scale: 2 }),
   displayName: text("display_name"),
   description: text("description"),
   isActive: boolean("is_active").notNull().default(true),

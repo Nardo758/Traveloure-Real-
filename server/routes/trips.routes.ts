@@ -9,6 +9,7 @@ import { transformDevHtml } from "../vite-dev-html";
 import crypto from "crypto";
 import { Router } from "express";
 import { storage } from "../storage";
+import { db } from "../db";
 // W2 (Trip-Canon Lane 1 Phase 1b): `cart_items` has exactly ONE writer — the projection module.
 // NOTE: the apply-to-cart handler below is a §9 SHADOWED copy (this router mounts LAST, so the
 // inline routes.ts copy wins the path). It is re-pointed anyway so no live-or-dead file retains a
@@ -109,7 +110,7 @@ import {
   resolveCommissionRates,
   type CommissionRates,
 } from "../services/commission";
-import { getTripRole, canMutateTrip } from "../utils/trip-role";
+import { getTripRole, getTripWriteRole, canMutateTrip } from "../utils/trip-role";
 import { isTripAuthor } from "../utils/trip-authorship";
 // Plan-approval mode-flip (migration 164, QA_PUNCH_LIST W2-A item 13): see routes.ts's import of
 // the same module for the full rationale. Advisor-only gate — never owner, never author.
@@ -225,9 +226,17 @@ router.get(api.trips.get.path, async (req, res) => {
     // may access via shareToken — so ownership is enforced inline with IDOR logging.
     const userId = getUserId(req)!;
     const shareToken = req.query.token as string | undefined;
+
+    // Block fully-anonymous requests with neither a session nor a share token.
+    const hasSession = typeof (req as any).isAuthenticated === "function" && (req as any).isAuthenticated();
+    const hasToken = typeof shareToken === "string" && shareToken.length > 0;
+    if (!hasSession && !hasToken) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
     const isOwner = trip.userId && trip.userId === userId;
-    const isExpert = (trip as any).expertId === userId;
-    const isManagingEa = (trip as any).managedByEaId === userId;
+    const isExpert = userId != null && (trip as any).expertId === userId;
+    const isManagingEa = userId != null && (trip as any).managedByEaId === userId;
     const isGuestWithToken = shareToken && trip.shareToken === shareToken;
     if (!isOwner && !isExpert && !isManagingEa && !isGuestWithToken) {
       if (userId) {
@@ -238,7 +247,22 @@ router.get(api.trips.get.path, async (req, res) => {
       }
       return res.status(403).json({ message: "Access denied" });
     }
-    res.json(trip);
+
+    // GAP 5 fix (expert-loop object-flow audit, Jul 30 2026): "delivered" previously had no
+    // persistent signal on the trip itself — only a one-shot notification the traveler could
+    // dismiss/miss, with no fallback UI truth. Additive, server-only field (a sibling agent
+    // renders it): the most recent active (pending/accepted) assignment's workspaceStatus, or
+    // null when no expert is currently assigned.
+    const [advisorRow] = await db.select({ workspaceStatus: tripExpertAdvisors.workspaceStatus })
+      .from(tripExpertAdvisors)
+      .where(and(
+        eq(tripExpertAdvisors.tripId, trip.id),
+        inArray(tripExpertAdvisors.status, ["pending", "accepted"]),
+      ))
+      .orderBy(desc(tripExpertAdvisors.assignedAt))
+      .limit(1);
+
+    res.json({ ...trip, expertWorkspaceStatus: advisorRow?.workspaceStatus ?? null });
   });
 
 
@@ -1407,26 +1431,12 @@ router.post("/api/trips/:tripId/itinerary-items", isAuthenticated, async (req, r
   });
 
 
-router.patch("/api/itinerary-items/:id", isAuthenticated, async (req, res) => {
-    try {
-      const userId = getUserId(req)!;
-      const userName = (req.user as any).claims.name || "User";
-      const existing = await itineraryIntelligenceService.getItem(req.params.id);
-      if (!existing) {
-        return res.status(404).json({ message: "Itinerary item not found" });
-      }
-      const tripRole = await getTripRole(existing.tripId, userId);
-      if (!canMutateTrip(tripRole)) {
-        return res.status(403).json({ message: tripRole === "friend" ? "Friends can only suggest changes, not edit activities directly" : "Access denied" });
-      }
-      const item = await itineraryIntelligenceService.updateItem(req.params.id, req.body);
-      const changedFields = Object.keys(req.body).filter(k => k !== 'id').join(', ');
-      logItineraryChange(existing.tripId, userName, `Updated "${existing.title}" (${changedFields})`, "edit", tripRole!, req.params.id);
-      res.json(item);
-    } catch (error) {
-      res.status(500).json({ message: "Failed to update itinerary item" });
-    }
-  });
+// RETIRED (V4 rail-unification, Aug 7 2026): this was already a §9 mount-order-dead twin of
+// `PATCH /api/itinerary-items/:id` in routes.ts (routes.ts registers first and always won —
+// this copy never served traffic). The LIVE copy in routes.ts is now retired too (zero live
+// callers; see its comment there for the full rationale) in favor of the canonical
+// `PATCH /api/trips/:tripId/itinerary-items/:itemId` below. Removed here rather than left as a
+// dead duplicate of retired code.
 
 
 router.post("/api/itinerary-items/:id/backup", isAuthenticated, async (req, res) => {
@@ -1600,25 +1610,9 @@ router.post("/api/trips/:tripId/activate-transport", isAuthenticated, async (req
   });
 
 
-router.delete("/api/itinerary-items/:id", isAuthenticated, async (req, res) => {
-    try {
-      const userId = getUserId(req)!;
-      const userName = (req.user as any).claims.name || "User";
-      const existing = await itineraryIntelligenceService.getItem(req.params.id);
-      if (!existing) {
-        return res.status(404).json({ message: "Itinerary item not found" });
-      }
-      const tripRole = await getTripRole(existing.tripId, userId);
-      if (!canMutateTrip(tripRole)) {
-        return res.status(403).json({ message: tripRole === "friend" ? "Friends cannot remove activities" : "Access denied" });
-      }
-      await itineraryIntelligenceService.deleteItem(req.params.id);
-      logItineraryChange(existing.tripId, userName, `Removed "${existing.title}"`, "remove", tripRole!, req.params.id);
-      res.status(204).send();
-    } catch (error) {
-      res.status(500).json({ message: "Failed to delete itinerary item" });
-    }
-  });
+// RETIRED (V4 rail-unification, Aug 7 2026): §9 mount-order-dead twin of
+// `DELETE /api/itinerary-items/:id` in routes.ts, which is itself now retired — see the PATCH
+// removal note above and routes.ts's comment for the full rationale.
 
   // --- Emergency Routes ---
 
@@ -3143,7 +3137,10 @@ router.patch("/api/trips/:tripId/itinerary-items/:itemId", isAuthenticated, asyn
     try {
       const userId = getUserId(req)!;
       const { tripId, itemId } = req.params;
-      const tripRole = await getTripRole(tripId, userId);
+      // D1 (ruling, Aug 7 2026 — "a PENDING advisor may not write"): this is a trip-item
+      // MUTATION path, so it resolves the advisor branch through the WRITE allow-list
+      // (`getTripWriteRole` — accepted/assigned, NOT pending) instead of `getTripRole`.
+      const tripRole = await getTripWriteRole(tripId, userId);
       // Authoring mode (ready-made brief §2/§4): PARALLEL named author branch beside getTripRole —
       // the helper is deliberately untouched (known pre-launch bypass, separate fix).
       const authorMayMutate = canMutateTrip(tripRole) ? false : await isTripAuthor(tripId, userId);
@@ -3158,8 +3155,10 @@ router.patch("/api/trips/:tripId/itinerary-items/:itemId", isAuthenticated, asyn
       }
       const existing = await storage.getItineraryItemByIdAndTrip(itemId, tripId);
       if (!existing) return res.status(404).json({ message: "Item not found in this trip" });
-      // Strip immutable/ownership fields to prevent mass-assignment
-      const { id: _id, tripId: _tripId, createdAt: _createdAt, updatedAt: _updatedAt, suggestedBy: _sb, ...safeBody } = req.body as any;
+      // Strip immutable/ownership fields to prevent mass-assignment. `origin` (D2, ratified Aug 7
+      // 2026) is provenance stamped only at CREATE time — a PATCH must never let a client
+      // retroactively rewrite it.
+      const { id: _id, tripId: _tripId, createdAt: _createdAt, updatedAt: _updatedAt, suggestedBy: _sb, origin: _origin, ...safeBody } = req.body as any;
       const updated = await storage.updateItineraryItem(itemId, safeBody);
       if (!updated) return res.status(404).json({ message: "Item not found" });
       res.json(updated);
@@ -3174,7 +3173,8 @@ router.delete("/api/trips/:tripId/itinerary-items/:itemId", isAuthenticated, asy
     try {
       const userId = getUserId(req)!;
       const { tripId, itemId } = req.params;
-      const tripRole = await getTripRole(tripId, userId);
+      // D1 (ruling, Aug 7 2026): trip-item MUTATION path — WRITE-gated role (see PATCH above).
+      const tripRole = await getTripWriteRole(tripId, userId);
       // Authoring mode (ready-made brief §2/§4): parallel named author branch (see PATCH above).
       const authorMayMutate = canMutateTrip(tripRole) ? false : await isTripAuthor(tripId, userId);
       if (!canMutateTrip(tripRole) && !authorMayMutate) {

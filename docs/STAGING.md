@@ -106,6 +106,23 @@ The five accounts (`server/seeds/e2e-test-accounts.seed.ts:31-37`), plus one upc
 | `test-ea@traveloure.test` | `executive_assistant` |
 | `test-admin@traveloure.test` | `admin` |
 
+### 2b. Separate, smaller owner action — CI journey-suite Stripe keys (positive checkout contract)
+
+Independent of the staging deployment above: the **CI journey suite** (`journey-suite.yml`)
+boots its own local server inside GitHub Actions and currently runs the ruling-38
+**negative** checkout contract (declared 503, zero committed state) because its Stripe key
+is a non-functional stub. Two **GitHub Actions repository secrets** flip it to the strict
+**positive** contract (real PaymentIntent, PaymentElement confirm leg, earnings legs):
+
+| Repo secret (Settings → Secrets and variables → Actions) | Value | What it does |
+|---|---|---|
+| `STRIPE_SECRET_KEY` | **`sk_test_…`** (never `sk_live_`) | Server boot env falls back to the stub only when this is absent; presence flips the workflow's Stripe gate to the positive contract. |
+| `VITE_STRIPE_PUBLISHABLE_KEY` | **`pk_test_…`** (never `pk_live_`) | Baked into the client bundle at build so the J1 PaymentElement confirm leg can mount. |
+
+Both from the SAME Stripe **test-mode** account. Nothing else changes — absent secrets,
+the suite keeps the hard-asserted negative contract exactly as before. The boot-time
+`sk_test_` prefix check (§2 table above) applies here too: a live key throws at boot.
+
 ---
 
 ## 3. Confirming it works

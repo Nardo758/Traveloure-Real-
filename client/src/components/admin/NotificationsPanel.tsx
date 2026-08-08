@@ -15,7 +15,7 @@ export function NotificationsPanel() {
   });
 
   const markOne = useMutation({
-    mutationFn: async (id: number) => {
+    mutationFn: async (id: string) => {
       await fetch(`/api/admin/notifications/${id}/read`, {
         method: "PATCH",
         credentials: "include",
@@ -36,7 +36,7 @@ export function NotificationsPanel() {
       queryClient.invalidateQueries({ queryKey: ["admin-notifications"] }),
   });
 
-  const unread = notifications.filter((n: any) => !n.isRead);
+  const unread = notifications.filter((n: any) => !n.read);
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-4 mb-4">
@@ -73,21 +73,19 @@ export function NotificationsPanel() {
           <div
             key={n.id}
             className={`flex items-start justify-between p-3 rounded-lg ${
-              n.isRead ? "bg-gray-50 opacity-60" : "bg-red-50"
+              n.read ? "bg-gray-50 opacity-60" : "bg-red-50"
             }`}
           >
             <div>
               <p className="text-xs font-medium text-gray-800">
-                {n.destination} — {n.reason}
+                {n.title}
               </p>
-              <p className="text-xs text-gray-400 mt-0.5">
-                {new Date(n.createdAt).toLocaleString()}
-              </p>
+              <p className="text-xs text-gray-400 mt-0.5">{n.time}</p>
               {n.message && (
                 <p className="text-xs text-gray-500 mt-1">{n.message}</p>
               )}
             </div>
-            {!n.isRead && (
+            {!n.read && (
               <button
                 onClick={() => markOne.mutate(n.id)}
                 disabled={markOne.isPending}

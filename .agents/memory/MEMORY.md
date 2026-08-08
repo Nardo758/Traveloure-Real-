@@ -7,7 +7,6 @@
 - [serviceBookings transport inserts](service-bookings-transport.md) — transport bookings insert into service_bookings; serviceId/travelerId/providerId are nullable (schema + DB altered); use correct Drizzle column names (not userId/serviceProviderId).
 - [Route module mount gap](route-mount-gap.md) — paymentsRoutes (and possibly others) imported in routes.ts but never app.use()'d; always verify mounts when a route returns HTML 404
 - [3DS payment flow](3ds-payment-flow.md) — requires_action must be handled in 3 places: client status branch, /booking/confirmation redirect-back page, webhook handler stamping DB
-- [Booking confirmation surfacing](booking-confirmation-surfacing.md) — cart rail's traveler-facing confirmation legs (page + email) live on /booking/confirmation + promotePaidCheckout; never trust redirect_status for success
 - [Lead routing silent SQL failure](lead-routing-silent-sql-failure.md) — scoreExperts() swallows SQL errors and returns [], which looks identical to "no eligible experts"; verify column names against schema before trusting a no-match result
 - [Affiliate integration checklist](affiliate-integration-checklist.md) — new affiliate networks need a recurring commission-poll timer (not just catalog sync), admin UI partner-filter parity, and client-side gating for context-dependent CTA fields
 - [Stripe key misconfiguration](stripe-key-misconfiguration.md) — wrong key type (pk_ vs sk_) pasted into STRIPE_SECRET_KEY looks exactly like a platform secrets-sync bug across restarts; verify value/account first, add sk_ startup guard
@@ -21,4 +20,3 @@
 - [Fee-band scope split](fee-band-scope-split.md) — EXPERIENCE_CART 0.30 was display-only; real charges resolve per-item via resolveCommissionRates; new bands must state which surface they control or review rejects.
 - [Journey suite conventions](journey-suite-wave1.md) — --workers=1 + JOURNEY_DB_WRITES_OK=1 locally; fee gates payable in Stripe test mode via connector key; OPEN: optimizer AI generation broken (J1 gate path).
 - [Kyoto bench fixture](kyoto-bench-fixture.md) — durable dev-DB expert kyoto-temples@traveloure.test with lifecycle provenance; never seed Kyoto experts by bare role flip; no DB CHECK on application status.
-- [Fixes vs running-code divergence](fix-vs-running-code-divergence.md) — "verified" in-session admin fixes can be absent from running main after Nardo758 merges; always re-verify critical guards live before sign-off.
