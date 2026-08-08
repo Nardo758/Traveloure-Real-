@@ -228,7 +228,9 @@ router.get(api.trips.get.path, async (req, res) => {
     const shareToken = req.query.token as string | undefined;
 
     // Block fully-anonymous requests with neither a session nor a share token.
-    const hasSession = typeof (req as any).requireAuth === "function" && (req as any).requireAuth();
+    // getUserId resolves the Clerk session claim (userId) so this works for both
+    // authenticated and unauthenticated callers without requiring the requireAuth middleware.
+    const hasSession = !!getUserId(req);
     const hasToken = typeof shareToken === "string" && shareToken.length > 0;
     if (!hasSession && !hasToken) {
       return res.status(401).json({ message: "Unauthorized" });
