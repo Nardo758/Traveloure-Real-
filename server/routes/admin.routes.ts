@@ -69,6 +69,7 @@ import { feverService } from "../services/fever.service";
 import { partnerEventsCacheService } from "../services/partner-events-cache.service";
 import { ingestKyotoHeritage, ingestKyotoContentGaps, isDmoIngestReady } from "../services/dmo-ingestion.service";
 import { analyzeKyotoContentGaps, listOpenKyotoGaps } from "../services/content-gap.service";
+import { getGapFillSummary, getGapFillSourceTotals } from "../services/optimizer-gap-ledger.service";
 import { getProviderHealth } from "../services/provider-health.service";
 import { cityNeighborhoods, expertNeighborhoods, dmoRawContent } from "@shared/schema";
 import { isExpertRole, isProviderRole, EXPERT_ROLES, PROVIDER_ROLES } from "@shared/roles";
@@ -1330,6 +1331,29 @@ router.post("/api/admin/dmo/ingest-gaps", isAuthenticated, async (req, res) => {
   } catch (err: any) {
     console.error("DMO gap-fill error:", err);
     res.status(500).json({ message: "Gap-fill ingestion failed", error: err.message });
+  }
+});
+
+// ── Optimizer gap-fill ledger (OPTIMIZER_SOURCING_BUILD_SPEC WP-B) ──────────────
+// Real-time, market-agnostic sibling of the Kyoto-only content-gap tracker above: every time the
+// optimizer/Apply flow could not place a platform (provider_services) match, one row lands in
+// `optimizer_gap_fills` (append-only). This is a read-only summary so the decision-maker sees
+// exactly what supply to recruit (city × category, counts + a 7-day trend). Admin-gated.
+
+router.get("/api/admin/optimizer/gap-fills", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser(getUserId(req)!);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const [rows, sourceTotals] = await Promise.all([
+      getGapFillSummary(),
+      getGapFillSourceTotals(),
+    ]);
+    res.json({ rows, sourceTotals });
+  } catch (err: any) {
+    console.error("Optimizer gap-fill summary error:", err);
+    res.status(500).json({ message: "Failed to load optimizer gap fills", error: err.message });
   }
 });
 
