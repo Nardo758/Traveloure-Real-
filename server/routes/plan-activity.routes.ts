@@ -22,7 +22,7 @@ import { Router } from "express";
 import { getUserId } from "../utils/auth";
 import { and, desc, eq, gt, inArray } from "drizzle-orm";
 import { db } from "../db";
-import { requireAuth } from "../middlewares/requireAuth";
+import { isAuthenticated } from "../replit_integrations/auth";
 import { itemTransitionLog, trips } from "@shared/schema";
 
 const router = Router();
@@ -36,7 +36,7 @@ function sessionUserId(req: any): string | undefined {
   return getUserId(req)!;
 }
 
-router.get("/api/me/plan-activity", requireAuth, async (req, res) => {
+router.get("/api/me/plan-activity", isAuthenticated, async (req, res) => {
   try {
     const userId = sessionUserId(req);
     if (!userId) return res.status(401).json({ message: "Unauthorized" });

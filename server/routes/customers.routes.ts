@@ -37,7 +37,7 @@
 import { Router } from "express";
 import { getUserId } from "../utils/auth";
 import { db } from "../db";
-import { requireAuth } from "../middlewares/requireAuth";
+import { isAuthenticated } from "../replit_integrations/auth";
 import { and, eq, ne } from "drizzle-orm";
 import {
   serviceBookings,
@@ -136,7 +136,7 @@ function isTripStillLive(endDate: unknown, now: Date): boolean {
 }
 
 // GET /api/me/customers — read-only, session-scoped, zero writes.
-router.get("/api/me/customers", requireAuth, async (req, res) => {
+router.get("/api/me/customers", isAuthenticated, async (req, res) => {
   try {
     const userId = sessionUserId(req);
     if (!userId) return res.status(401).json({ message: "Unauthorized" });

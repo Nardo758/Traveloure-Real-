@@ -41,7 +41,6 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format, addDays, differenceInDays } from "date-fns";
 import type { ActivityDiff, TransportDiff } from "@/components/itinerary/ItineraryCard";
 import type { InlineTransportLegData } from "@/components/itinerary/InlineTransportSelector";
-import type { TransportAlternative } from "@/components/itinerary/TransportLeg";
 import { cn } from "@/lib/utils";
 import { getTemplateConfig, type PlanCardDay, type PlanCardActivity, type PlanCardTransport, type PlanCardTrip } from "@/components/plancard/plancard-types";
 import { PlanCard } from "@/components/plancard/PlanCard";

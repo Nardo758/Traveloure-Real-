@@ -8,7 +8,7 @@ import { storage } from "../storage";
 import { db } from "../db";
 import { api } from "@shared/routes";
 import { z } from "zod";
-import { requireAuth } from "../middlewares/requireAuth";
+import { isAuthenticated } from "../replit_integrations/auth";
 import { createRateLimiter } from "../infrastructure/rate-limiter";
 import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, isNull, asc } from "drizzle-orm";
 import {
@@ -192,7 +192,7 @@ async function getVendorCoordinationTripId(vendorId: string): Promise<string | n
 
 
 
-router.get("/api/provider/earnings", requireAuth, async (req, res) => {
+router.get("/api/provider/earnings", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       const earnings = await storage.getProviderEarnings(userId);
@@ -204,7 +204,7 @@ router.get("/api/provider/earnings", requireAuth, async (req, res) => {
   });
 
 
-router.get("/api/provider/earnings/summary", requireAuth, async (req, res) => {
+router.get("/api/provider/earnings/summary", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       const summary = await storage.getProviderEarningsSummary(userId);
@@ -223,7 +223,7 @@ router.get("/api/provider/earnings/summary", requireAuth, async (req, res) => {
   });
 
 
-router.get("/api/provider/earnings/details", requireAuth, async (req, res) => {
+router.get("/api/provider/earnings/details", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       const { revenueTrackingService } = await import('../services/revenue-tracking.service');
@@ -238,7 +238,7 @@ router.get("/api/provider/earnings/details", requireAuth, async (req, res) => {
   // Expert earnings details endpoint
   // Uses same auth pattern as /api/provider/services, /api/provider/bookings
 
-router.get("/api/expert/earnings/details", requireAuth, async (req, res) => {
+router.get("/api/expert/earnings/details", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       const { revenueTrackingService } = await import('../services/revenue-tracking.service');
@@ -253,7 +253,7 @@ router.get("/api/expert/earnings/details", requireAuth, async (req, res) => {
   // === Stripe Connect Onboarding ===
 
 
-router.get("/api/expert/trips/:tripId/constraints", requireAuth, async (req, res) => {
+router.get("/api/expert/trips/:tripId/constraints", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
@@ -309,7 +309,7 @@ router.get("/api/expert/trips/:tripId/constraints", requireAuth, async (req, res
   });
 
 
-router.get("/api/expert/trips/:tripId/vendors", requireAuth, async (req, res) => {
+router.get("/api/expert/trips/:tripId/vendors", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
@@ -332,7 +332,7 @@ router.get("/api/expert/trips/:tripId/vendors", requireAuth, async (req, res) =>
   });
 
 
-router.post("/api/expert/trips/:tripId/vendors", requireAuth, async (req, res) => {
+router.post("/api/expert/trips/:tripId/vendors", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
@@ -371,7 +371,7 @@ router.post("/api/expert/trips/:tripId/vendors", requireAuth, async (req, res) =
   });
 
 
-router.put("/api/expert/vendors/:vendorId", requireAuth, async (req, res) => {
+router.put("/api/expert/vendors/:vendorId", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
@@ -409,7 +409,7 @@ router.put("/api/expert/vendors/:vendorId", requireAuth, async (req, res) => {
   });
 
 
-router.delete("/api/expert/vendors/:vendorId", requireAuth, async (req, res) => {
+router.delete("/api/expert/vendors/:vendorId", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
@@ -445,7 +445,7 @@ router.delete("/api/expert/vendors/:vendorId", requireAuth, async (req, res) => 
 // (weekly-schedule+blackout vs vendor-slots) — the live one does NOT read blackout dates; the
 // blackout write endpoints below are consequently orphaned pending the availability-model decision.
 
-router.post("/api/provider/blackout-dates", requireAuth, async (req, res) => {
+router.post("/api/provider/blackout-dates", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
@@ -472,7 +472,7 @@ router.post("/api/provider/blackout-dates", requireAuth, async (req, res) => {
   });
 
 
-router.delete("/api/provider/blackout-dates/:id", requireAuth, async (req, res) => {
+router.delete("/api/provider/blackout-dates/:id", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
@@ -511,7 +511,7 @@ router.delete("/api/provider/blackout-dates/:id", requireAuth, async (req, res) 
   // === Provider: Booking Requests ===
 
 
-router.get("/api/provider/booking-requests", requireAuth, async (req, res) => {
+router.get("/api/provider/booking-requests", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
@@ -527,7 +527,7 @@ router.get("/api/provider/booking-requests", requireAuth, async (req, res) => {
   });
 
 
-router.put("/api/provider/booking-requests/:requestId/respond", requireAuth, async (req, res) => {
+router.put("/api/provider/booking-requests/:requestId/respond", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
@@ -600,7 +600,7 @@ router.put("/api/provider/booking-requests/:requestId/respond", requireAuth, asy
 
   // === Expert Assigned Trips list (powers Dashboard + Assigned Trips page) ===
 
-router.get("/api/expert/assigned-trips", requireAuth, async (req, res) => {
+router.get("/api/expert/assigned-trips", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req)!;
       const rows = await db
@@ -792,7 +792,7 @@ router.get("/api/visa/experts", async (req, res) => {
   });
 
 
-router.get("/api/expert/contracts/recent", requireAuth, async (req, res) => {
+router.get("/api/expert/contracts/recent", isAuthenticated, async (req, res) => {
     try {
       // SECURITY (migration 157): `expertId` was computed here and then never passed, so this
       // returned the 20 most recent contracts PLATFORM-WIDE — other earners' service names,
@@ -812,9 +812,8 @@ router.get("/api/expert/contracts/recent", requireAuth, async (req, res) => {
 
   // Local admin guard for this scope (requireAdmin is defined in the outer registerRoutes scope)
   const requireAdminLocal = async (req: any, res: any, next: any) => {
-    const uid = getUserId(req);
-    if (!uid) return res.status(401).json({ message: "Authentication required" });
-    const role = await getUserRole(uid);
+    if (!req.isAuthenticated()) return res.status(401).json({ message: "Authentication required" });
+    const role = await getUserRole(getUserId(req)!);
     if (role !== "admin") return res.status(403).json({ message: "Admin access required" });
     next();
   };

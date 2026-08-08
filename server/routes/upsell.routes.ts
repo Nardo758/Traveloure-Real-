@@ -24,7 +24,7 @@
 
 import { Router } from "express";
 import { z } from "zod";
-import { requireAuth } from "../middlewares/requireAuth";
+import { isAuthenticated } from "../replit_integrations/auth";
 import {
   rankCandidates,
   getSlotConfig,
@@ -158,7 +158,7 @@ function decorate(
 /** POST /api/upsell/cart — highest-intent surface; revenueCap stays at default.
  *  Phase 5.4: merges persisted expert endorsements with any caller-provided keys.
  */
-router.post("/api/upsell/cart", requireAuth, async (req, res) => {
+router.post("/api/upsell/cart", isAuthenticated, async (req, res) => {
   try {
     const body = cartBodySchema.parse(req.body);
     const fetched = await loadEndorsementsForContext(body.tripId, body.neighborhoodIds);
@@ -376,7 +376,7 @@ const plancardOntripBodySchema = z.object({
  * Impressions are still logged (the engine ran; that's tracking-side data,
  * not user-facing).
  */
-router.post("/api/upsell/optimize-gate", requireAuth, async (req, res) => {
+router.post("/api/upsell/optimize-gate", isAuthenticated, async (req, res) => {
   try {
     const body = optimizeGateBodySchema.parse(req.body);
     const ctx: UpsellContext = {
@@ -438,7 +438,7 @@ router.post("/api/upsell/optimize-gate", requireAuth, async (req, res) => {
  * ADVISORY ONLY — the server ignores it and reports back what it actually used.
  * Transport remains suppressed (this is pre-trip).
  */
-router.post("/api/upsell/plancard-pretrip", requireAuth, async (req, res) => {
+router.post("/api/upsell/plancard-pretrip", isAuthenticated, async (req, res) => {
   try {
     const body = plancardBodySchema.parse(req.body);
     const fetched = await loadEndorsementsForContext(body.tripId, body.neighborhoodIds);
@@ -504,7 +504,7 @@ router.post("/api/upsell/plancard-pretrip", requireAuth, async (req, res) => {
  * layer — wiring it requires the trip's impression history fetch which
  * is fine to lean on here.
  */
-router.post("/api/upsell/plancard-ontrip", requireAuth, async (req, res) => {
+router.post("/api/upsell/plancard-ontrip", isAuthenticated, async (req, res) => {
   try {
     const body = plancardOntripBodySchema.parse(req.body);
     const ctx: UpsellContext = {
@@ -638,7 +638,7 @@ const expertReviewBodySchema = z.object({
  * can highlight already-curated items. Auto-loads persisted endorsements via
  * loadEndorsementsForContext so scores reflect the lead's prior calls.
  */
-router.post("/api/upsell/expert-review", requireAuth, async (req, res) => {
+router.post("/api/upsell/expert-review", isAuthenticated, async (req, res) => {
   try {
     const auth = await requireExpertRole(req, res);
     if (!auth) return;
@@ -696,7 +696,7 @@ const endorseBodySchema = z.object({
  * POST /api/upsell/expert-review/endorse
  * Upsert via partial-unique-index match. Re-endorsing only updates notes.
  */
-router.post("/api/upsell/expert-review/endorse", requireAuth, async (req, res) => {
+router.post("/api/upsell/expert-review/endorse", isAuthenticated, async (req, res) => {
   try {
     const auth = await requireExpertRole(req, res);
     if (!auth) return;
@@ -732,7 +732,7 @@ const unendorseBodySchema = z.object({
   offeringId: z.string(),
 });
 
-router.delete("/api/upsell/expert-review/endorse", requireAuth, async (req, res) => {
+router.delete("/api/upsell/expert-review/endorse", isAuthenticated, async (req, res) => {
   try {
     const auth = await requireExpertRole(req, res);
     if (!auth) return;
@@ -778,7 +778,7 @@ const checkoutBodySchema = z.object({
  *   - Transfer offerings (private_transportation, aff_ground_transport)
  *     surface ONLY when tripIsPostOptimize = true.
  */
-router.post("/api/upsell/checkout", requireAuth, async (req, res) => {
+router.post("/api/upsell/checkout", isAuthenticated, async (req, res) => {
   try {
     const body = checkoutBodySchema.parse(req.body);
     const fetched = await loadEndorsementsForContext(body.tripId, body.neighborhoodIds);
@@ -830,7 +830,7 @@ const postBookingBodySchema = z.object({
  * Surface config (slot_config row, seeded in 049) sets frequencyCapHours = 48.
  * This endpoint applies that cap via filterByFrequencyCap before scoring.
  */
-router.post("/api/upsell/post-booking", requireAuth, async (req, res) => {
+router.post("/api/upsell/post-booking", isAuthenticated, async (req, res) => {
   try {
     const body = postBookingBodySchema.parse(req.body);
     const fetched = await loadEndorsementsForContext(body.tripId, body.neighborhoodIds);
@@ -884,7 +884,7 @@ const aiConciergeBodySchema = z.object({
  * gatherOfferingCandidates' revenue input. The same candidate ranks the
  * same way on ai_concierge as it does on cart.
  */
-router.post("/api/upsell/ai-concierge", requireAuth, async (req, res) => {
+router.post("/api/upsell/ai-concierge", isAuthenticated, async (req, res) => {
   try {
     const body = aiConciergeBodySchema.parse(req.body);
     const fetched = await loadEndorsementsForContext(body.tripId, body.neighborhoodIds);
@@ -962,7 +962,7 @@ const clickBodySchema = z.object({
   offeringId: z.string(),
 });
 
-router.post("/api/upsell/click", requireAuth, async (req, res) => {
+router.post("/api/upsell/click", isAuthenticated, async (req, res) => {
   try {
     const { tripId, surface, offeringId } = clickBodySchema.parse(req.body);
     await markImpressionClicked(tripId, surface, offeringId);

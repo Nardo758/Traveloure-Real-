@@ -55,10 +55,11 @@ import {
   Gift,
   ChefHat,
   Waves,
+  Route,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useContentAgentBooking } from "@/hooks/use-content-agent-booking";
-import { TransportLeg } from "@/components/itinerary/TransportLeg";
+import { TransportLeg, type TransportLegData, type TransportAlternative } from "@/components/itinerary/TransportLeg";
 import { Anchor } from "lucide-react";
 // Spec C (SLIP_EXPERIENCE_DISPATCH §4): variant columns render through the CANONICAL
 // PlanCard family's proposal stage — never a parallel renderer.
@@ -148,6 +149,25 @@ interface Variant {
   days?: VariantDay[];
 }
 
+// Mirrors server/services/trip-segmentation.service.ts's SegmentationProposal DTO — display-only
+// on this page (docs/briefs/TRIP_SEGMENTATION_DESIGN.md §5b Phase 1, recommendation-only wave).
+interface SegmentProposalDTO {
+  destination: string;
+  startDate: string;
+  endDate: string;
+  itemIds: string[];
+  externalIndexes: number[];
+  unplaced: string[];
+}
+
+interface SegmentationProposalDTO {
+  strategy: "single" | "multi_city" | "split";
+  rationale: string;
+  confidence: "high" | "low";
+  segments: SegmentProposalDTO[];
+  alternatives: SegmentationProposalDTO[];
+}
+
 interface Comparison {
   id: string;
   userId: string;
@@ -160,6 +180,7 @@ interface Comparison {
   travelers: number;
   status: string;
   selectedVariantId: string | null;
+  segmentationProposal?: SegmentationProposalDTO | null;
 }
 
 interface UpsellSuggestion {
@@ -350,7 +371,7 @@ function ShareVariantButton({ variantId }: { variantId: string }) {
   const shareMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", `/api/itinerary-variants/${variantId}/share`, { permissions: "view" });
-      return (await res.json()) as { shareToken: string; shareUrl: string; expiresAt: string };
+      return res as { shareToken: string; shareUrl: string; expiresAt: string };
     },
     onSuccess: (data) => {
       setShareUrl(data.shareUrl);
@@ -514,6 +535,76 @@ function ProposalColumnContainer({
         applying,
       }}
     />
+  );
+}
+
+const SEGMENTATION_STRATEGY_LABEL: Record<SegmentationProposalDTO["strategy"], string> = {
+  single: "One trip",
+  multi_city: "One multi-city trip",
+  split: "Split into separate trips",
+};
+
+/**
+ * Read-only recommendation banner (docs/briefs/TRIP_SEGMENTATION_DESIGN.md §5b Phase 1 —
+ * RECOMMENDATION-ONLY: display + persist + return, no accept/apply action exists yet). Copy is
+ * the proposal's own `rationale` (shown verbatim, per the engine's contract) plus a strategy
+ * label and a per-segment city/count summary built from the segments the server already computed
+ * — nothing here re-derives or second-guesses the recommendation client-side.
+ */
+function SegmentationRecommendationBanner({ proposal }: { proposal: SegmentationProposalDTO }) {
+  // `unplaced` is duplicated onto every segment by design (module doc, trip-segmentation.service.ts)
+  // — it's the same global list everywhere, so segment 0 alone is the whole thing.
+  const unplacedCount = proposal.segments[0]?.unplaced.length ?? 0;
+
+  return (
+    <Card
+      className="mb-4 border-blue-200/50 bg-gradient-to-r from-blue-50/80 to-cyan-50/80 dark:from-blue-950/10 dark:to-cyan-950/10 dark:border-blue-800/50"
+      data-testid="banner-segmentation-recommendation"
+    >
+      <CardContent className="py-3 px-4">
+        <div className="flex items-start gap-2">
+          <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center shrink-0 mt-0.5">
+            <Route className="h-3 w-3 text-blue-600 dark:text-blue-400" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-sm font-medium text-blue-800 dark:text-blue-200">
+                Trip execution recommendation
+              </span>
+              <Badge variant="outline" className="text-[10px] h-4 border-blue-200 text-blue-700 dark:border-blue-700 dark:text-blue-300">
+                {SEGMENTATION_STRATEGY_LABEL[proposal.strategy]}
+              </Badge>
+              {proposal.confidence === "low" && (
+                <Badge variant="outline" className="text-[10px] h-4 border-amber-200 text-amber-700 dark:border-amber-700 dark:text-amber-300">
+                  Worth a second look
+                </Badge>
+              )}
+            </div>
+            <p className="text-sm text-muted-foreground mt-1" data-testid="text-segmentation-rationale">
+              {proposal.rationale}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1.5" data-testid="text-segmentation-summary">
+              {proposal.segments
+                .map((seg) => {
+                  const count = seg.itemIds.length + seg.externalIndexes.length;
+                  return `${seg.destination || "Unspecified"} (${count} item${count === 1 ? "" : "s"})`;
+                })
+                .join("  ·  ")}
+              {unplacedCount > 0 && (
+                <span className="text-amber-700 dark:text-amber-400">
+                  {"  ·  "}
+                  {unplacedCount} item{unplacedCount === 1 ? "" : "s"} need{unplacedCount === 1 ? "s" : ""} a home
+                </span>
+              )}
+            </p>
+            <p className="text-xs text-muted-foreground/70 italic mt-1.5" data-testid="text-segmentation-apply-note">
+              Coming soon: apply this recommendation to your trip. For now this is informational only —
+              nothing here changes your plan.
+            </p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -905,7 +996,7 @@ export default function ItineraryComparisonPage() {
   }
 
   if (!user) {
-    setLocation("/sign-in");
+    setLocation("/api/login");
     return null;
   }
 
@@ -1244,6 +1335,10 @@ export default function ItineraryComparisonPage() {
                   )}
                 </CardContent>
               </Card>
+            )}
+
+            {data?.comparison?.segmentationProposal && (
+              <SegmentationRecommendationBanner proposal={data.comparison.segmentationProposal} />
             )}
 
             {/* ── Spec C (SLIP_EXPERIENCE_DISPATCH §4): a slip-backed comparison renders through

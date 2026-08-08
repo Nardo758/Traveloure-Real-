@@ -5,7 +5,7 @@ import { eq, and, inArray, asc, desc } from "drizzle-orm";
 import { db } from "../db";
 import { storage } from "../storage";
 import { users, providerServices, bundleComponents } from "@shared/schema";
-import { requireAuth } from "../middlewares/requireAuth";
+import { isAuthenticated } from "../replit_integrations/auth";
 import { LOCATION_PRECISION_EXACT } from "../utils/service-location";
 
 /**
@@ -69,7 +69,7 @@ const settingsPatchSchema = z
   })
   .partial();
 
-router.get("/api/provider/settings", requireAuth, async (req, res) => {
+router.get("/api/provider/settings", isAuthenticated, async (req, res) => {
   try {
     const userId = await requireProviderRole(req, res);
     if (!userId) return;
@@ -100,7 +100,7 @@ router.get("/api/provider/settings", requireAuth, async (req, res) => {
   }
 });
 
-router.patch("/api/provider/settings", requireAuth, async (req, res) => {
+router.patch("/api/provider/settings", isAuthenticated, async (req, res) => {
   try {
     const userId = await requireProviderRole(req, res);
     if (!userId) return;
@@ -200,7 +200,7 @@ async function validateBundleComponents(
   return ids.map((id) => byId.get(id)!);
 }
 
-router.post("/api/provider/bundles", requireAuth, async (req, res) => {
+router.post("/api/provider/bundles", isAuthenticated, async (req, res) => {
   try {
     // §14: acting user from the session only — never from the body.
     const userId = await requireProviderRole(req, res);
@@ -245,7 +245,7 @@ router.post("/api/provider/bundles", requireAuth, async (req, res) => {
   }
 });
 
-router.get("/api/provider/bundles", requireAuth, async (req, res) => {
+router.get("/api/provider/bundles", isAuthenticated, async (req, res) => {
   try {
     const userId = await requireProviderRole(req, res);
     if (!userId) return;
@@ -289,7 +289,7 @@ router.get("/api/provider/bundles", requireAuth, async (req, res) => {
   }
 });
 
-router.patch("/api/provider/bundles/:id", requireAuth, async (req, res) => {
+router.patch("/api/provider/bundles/:id", isAuthenticated, async (req, res) => {
   try {
     const userId = await requireProviderRole(req, res);
     if (!userId) return;
@@ -381,7 +381,7 @@ router.patch("/api/provider/bundles/:id", requireAuth, async (req, res) => {
   }
 });
 
-router.delete("/api/provider/bundles/:id", requireAuth, async (req, res) => {
+router.delete("/api/provider/bundles/:id", isAuthenticated, async (req, res) => {
   try {
     const userId = await requireProviderRole(req, res);
     if (!userId) return;
@@ -497,7 +497,7 @@ async function respondIfPropertyHasRooms(err: any, propertyId: string, res: any)
   return true;
 }
 
-router.post("/api/provider/properties", requireAuth, async (req, res) => {
+router.post("/api/provider/properties", isAuthenticated, async (req, res) => {
   try {
     const userId = await requireProviderRole(req, res);
     if (!userId) return;
@@ -573,7 +573,7 @@ router.post("/api/provider/properties", requireAuth, async (req, res) => {
   }
 });
 
-router.get("/api/provider/properties", requireAuth, async (req, res) => {
+router.get("/api/provider/properties", isAuthenticated, async (req, res) => {
   try {
     const userId = await requireProviderRole(req, res);
     if (!userId) return;
@@ -605,7 +605,7 @@ router.get("/api/provider/properties", requireAuth, async (req, res) => {
   }
 });
 
-router.patch("/api/provider/properties/:id", requireAuth, async (req, res) => {
+router.patch("/api/provider/properties/:id", isAuthenticated, async (req, res) => {
   try {
     const userId = await requireProviderRole(req, res);
     if (!userId) return;
@@ -643,7 +643,7 @@ router.patch("/api/provider/properties/:id", requireAuth, async (req, res) => {
   }
 });
 
-router.delete("/api/provider/properties/:id", requireAuth, async (req, res) => {
+router.delete("/api/provider/properties/:id", isAuthenticated, async (req, res) => {
   try {
     const userId = await requireProviderRole(req, res);
     if (!userId) return;
@@ -665,7 +665,7 @@ router.delete("/api/provider/properties/:id", requireAuth, async (req, res) => {
 
 // ── Rooms (children of a property) ─────────────────────────────────────────────────────────
 
-router.post("/api/provider/properties/:id/rooms", requireAuth, async (req, res) => {
+router.post("/api/provider/properties/:id/rooms", isAuthenticated, async (req, res) => {
   try {
     const userId = await requireProviderRole(req, res);
     if (!userId) return;
@@ -726,7 +726,7 @@ router.post("/api/provider/properties/:id/rooms", requireAuth, async (req, res) 
   }
 });
 
-router.patch("/api/provider/rooms/:id", requireAuth, async (req, res) => {
+router.patch("/api/provider/rooms/:id", isAuthenticated, async (req, res) => {
   try {
     const userId = await requireProviderRole(req, res);
     if (!userId) return;
@@ -773,7 +773,7 @@ router.patch("/api/provider/rooms/:id", requireAuth, async (req, res) => {
   }
 });
 
-router.delete("/api/provider/rooms/:id", requireAuth, async (req, res) => {
+router.delete("/api/provider/rooms/:id", isAuthenticated, async (req, res) => {
   try {
     const userId = await requireProviderRole(req, res);
     if (!userId) return;

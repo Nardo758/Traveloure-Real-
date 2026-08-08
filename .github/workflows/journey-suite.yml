@@ -42,7 +42,11 @@ name: Journey Suite (Journey Wave 1 · Tier-1)
 
 on:
   push:
-    branches: [main]
+    # claude/sync-local-repo-2j7ghv added TEMPORARILY: workflow_dispatch is denied to the
+    # integration token (403, standing BRANCH_PROTECTION_PAT gap), and the OC1-OC4 one-click
+    # Stripe proof on this branch needs a run before merge. Push-triggering on the feature
+    # branch is the only self-serve path. REMOVE this entry when the branch merges to main.
+    branches: [main, claude/sync-local-repo-2j7ghv]
   schedule:
     # Nightly at 07:00 UTC.
     - cron: '0 7 * * *'
@@ -217,6 +221,18 @@ jobs:
           JOURNEY_DB_WRITES_OK: '1'
           # Declared Stripe availability decided above (1 = the app was booted with a stub key).
           JOURNEY_STRIPE_UNAVAILABLE: ${{ steps.stripe-gate.outputs.stripe_unavailable }}
+
+      - name: One-click checkout proof (B2 — live Stripe test mode, skips visibly without the secret)
+        # Runs the OC1–OC4 suite against the REAL Stripe test API. With only the stub key the
+        # suite SKIPS VISIBLY (asserted in-repo — the file's HAVE_REAL_KEY gate rejects
+        # stub/dummy patterns); it can never silently pass. Placed after the journeys so a
+        # journey failure is reported first, but not gated on them — the proof is independent.
+        if: always() && steps.run-journeys.outcome != 'skipped'
+        run: npx tsx --test server/__tests__/checkout-oneclick.stripe.db.test.ts
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY || '[REDACTED_STRIPE_TEST_KEY]_stub_no_real_calls' }}
+          JOURNEY_DB_WRITES_OK: '1'
 
       - name: Upload report
         if: always()

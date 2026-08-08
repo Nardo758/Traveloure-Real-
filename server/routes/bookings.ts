@@ -8,7 +8,7 @@ import { bookingService } from '../services/booking.service';
 import { stripePaymentService } from '../services/stripe-payment.service';
 import { availabilityService } from '../services/availability.service';
 import { pricingService } from '../services/pricing.service';
-import { requireAuth } from '../middlewares/requireAuth';
+import { isAuthenticated } from '../replit_integrations/auth';
 import { requireOwnership } from '../middleware/ownershipGuard';
 import { storage } from '../storage';
 import { db } from '../db';
@@ -41,7 +41,7 @@ async function getServiceBookingOwnerId(bookingId: string): Promise<string | nul
  */
 router.get(
   '/:id',
-  requireAuth,
+  isAuthenticated,
   requireOwnership(async (req) => {
     const rows = await db
       .select({ travelerId: serviceBookings.travelerId })
@@ -69,7 +69,7 @@ router.get(
  * POST /api/bookings/process-cart
  * Process cart and create bookings
  */
-router.post('/process-cart', requireAuth, async (req, res) => {
+router.post('/process-cart', isAuthenticated, async (req, res) => {
   try {
     // Acting user = session, NEVER the body. (Was: `userId` from req.body — an IDOR letting an
     // authenticated user create trips/bookings under another user's id.)
@@ -160,7 +160,7 @@ async function loadCartBooking(
  *   2. If the booking is still pending → run the full server-side verification and confirm it
  *      (idempotent — the atomic conditional in the shared promotion IS the guard).
  */
-router.post('/confirm-payment', requireAuth, async (req, res) => {
+router.post('/confirm-payment', isAuthenticated, async (req, res) => {
   try {
     const { bookingId, paymentIntentId } = req.body;
 
@@ -283,7 +283,7 @@ router.post('/confirm-payment', requireAuth, async (req, res) => {
  * poll could never observe the webhook's work. Both id spaces are now answered; they are
  * disjoint, so an id is resolved by whichever rail owns it, always scoped to the session user.
  */
-router.post('/bulk-status', requireAuth, async (req, res) => {
+router.post('/bulk-status', isAuthenticated, async (req, res) => {
   try {
     const { bookingIds } = req.body;
     if (!Array.isArray(bookingIds) || bookingIds.length === 0) {
@@ -394,7 +394,7 @@ router.get('/availability-calendar/:providerId', async (req, res) => {
  * POST /api/bookings/estimate-cost
  * Get price estimate for trip items
  */
-router.post('/estimate-cost', requireAuth, async (req, res) => {
+router.post('/estimate-cost', isAuthenticated, async (req, res) => {
   try {
     const { tripItems } = req.body;
 
@@ -421,7 +421,7 @@ router.post('/estimate-cost', requireAuth, async (req, res) => {
  * POST /api/bookings/apply-promo
  * Apply promo code to booking
  */
-router.post('/apply-promo', requireAuth, async (req, res) => {
+router.post('/apply-promo', isAuthenticated, async (req, res) => {
   try {
     // userId from the session, never the body (was the same client-trusted-identity class as
     // process-cart: a client could pass another user's id to probe/bypass the per-user promo
@@ -529,7 +529,7 @@ router.post('/webhooks/stripe', async (req: any, res) => {
  * POST /api/bookings/refund
  * Create refund for a booking
  */
-router.post('/refund', requireAuth, async (req, res) => {
+router.post('/refund', isAuthenticated, async (req, res) => {
   try {
     // Was WORLD-WRITABLE: auth-only, any user could refund any bookingId for an arbitrary amount.
     // Now: owner-or-admin gate, and the refund amount is server-derived from the booking record
@@ -612,7 +612,7 @@ router.post('/refund', requireAuth, async (req, res) => {
 // either confirms — releasing the held earning early — or disputes, which blocks release until an
 // admin resolves it. Acting user is the session; only the booking's traveler may act.
 
-router.post('/:id/confirm-completion', requireAuth, async (req, res) => {
+router.post('/:id/confirm-completion', isAuthenticated, async (req, res) => {
   try {
     const sessionUserId = getUserId(req)!;
     if (!sessionUserId) return res.status(401).json({ error: 'Not authenticated' });
@@ -637,7 +637,7 @@ router.post('/:id/confirm-completion', requireAuth, async (req, res) => {
   }
 });
 
-router.post('/:id/dispute', requireAuth, async (req, res) => {
+router.post('/:id/dispute', isAuthenticated, async (req, res) => {
   try {
     const sessionUserId = getUserId(req)!;
     if (!sessionUserId) return res.status(401).json({ error: 'Not authenticated' });

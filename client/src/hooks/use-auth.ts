@@ -1,23 +1,7 @@
-/**
- * useAuth — Clerk-backed auth hook.
- *
- * Maintains the same interface as the old Replit Auth hook so no existing
- * component needs to change its imports or destructuring:
- *   { user, isLoading, isAuthenticated, logout, isLoggingOut, updatePreferredCurrency }
- *
- * Identity (sign-in state, session loading) comes from Clerk's hooks directly
- * (no server round-trip, no race with Clerk's session loading).
- *
- * App-specific DB data (role, preferences, termsAcceptedAt, etc.) is fetched
- * from GET /api/auth/user, gated on Clerk being loaded + signed in. This
- * prevents the transient-401 loop that would occur if the request fired before
- * Clerk has validated its session cookie.
- */
-import { useUser, useAuth as useClerkAuth, useClerk } from "@clerk/react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import type { User } from "@shared/models/auth";
 
-async function fetchDbUser(): Promise<User | null> {
+async function fetchUser(): Promise<User | null> {
   const response = await fetch("/api/auth/user", {
     credentials: "include",
   });
@@ -31,6 +15,24 @@ async function fetchDbUser(): Promise<User | null> {
   }
 
   return response.json();
+}
+
+async function logout(): Promise<void> {
+  // EX-1 (expert walkthrough, docs/testing/EXPERT_UX_WALKTHROUGH.md): the old
+  // implementation navigated to GET /api/logout, a route that only exists when
+  // REPL_ID is set — setupAuth early-returns (replitAuth.ts:130) before
+  // registering it off-Replit, so logout 404'd and the session SURVIVED.
+  // POST /api/auth/logout (emailAuth.ts) is registered in EVERY environment and
+  // destroys any passport session (email or OIDC). Redirect only on success —
+  // redirecting on failure would show a logged-out UI over a live session.
+  const response = await fetch("/api/auth/logout", {
+    method: "POST",
+    credentials: "include",
+  });
+  if (!response.ok) {
+    throw new Error(`Logout failed: ${response.status}`);
+  }
+  window.location.href = "/";
 }
 
 async function updateUserCurrency(currency: string): Promise<User> {
@@ -47,19 +49,19 @@ async function updateUserCurrency(currency: string): Promise<User> {
 }
 
 export function useAuth() {
-  const { isLoaded, isSignedIn } = useClerkAuth();
-  const { signOut } = useClerk();
   const queryClient = useQueryClient();
-
-  const { data: user, isLoading: isDbLoading } = useQuery<User | null>({
+  const { data: user, isLoading } = useQuery<User | null>({
     queryKey: ["/api/auth/user"],
-    queryFn: fetchDbUser,
-    // Only fire the server request once Clerk has validated its session cookie.
-    // Without this gate, a request fires immediately on mount before Clerk is
-    // ready and gets a 401, causing a redirect-to-sign-in loop (transient-401).
-    enabled: isLoaded && !!isSignedIn,
+    queryFn: fetchUser,
     retry: false,
     staleTime: 1000 * 60 * 5, // 5 minutes
+  });
+
+  const logoutMutation = useMutation({
+    mutationFn: logout,
+    onSuccess: () => {
+      queryClient.setQueryData(["/api/auth/user"], null);
+    },
   });
 
   const updateCurrencyMutation = useMutation({
@@ -69,21 +71,12 @@ export function useAuth() {
     },
   });
 
-  const logout = () => {
-    signOut({ redirectUrl: "/" });
-  };
-
-  // isLoading is true while:
-  // - Clerk is still validating the session (isLoaded === false), OR
-  // - Clerk says signed-in but the DB fetch hasn't completed yet
-  const isLoading = !isLoaded || (isLoaded && !!isSignedIn && isDbLoading);
-
   return {
-    user: isSignedIn ? (user ?? null) : null,
+    user,
     isLoading,
-    isAuthenticated: !!isSignedIn && !!user,
-    logout,
-    isLoggingOut: false,
+    isAuthenticated: !!user,
+    logout: logoutMutation.mutate,
+    isLoggingOut: logoutMutation.isPending,
     updatePreferredCurrency: updateCurrencyMutation.mutate,
   };
 }

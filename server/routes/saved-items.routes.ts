@@ -1,13 +1,13 @@
 import { Router } from "express";
 import { getUserId } from "../utils/auth";
-import { requireAuth } from "../middlewares/requireAuth";
+import { isAuthenticated } from "../replit_integrations/auth";
 import { db } from "../db";
 import { savedItems } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 
 const router = Router();
 
-router.get("/api/saved-items", requireAuth, async (req, res) => {
+router.get("/api/saved-items", isAuthenticated, async (req, res) => {
   try {
     const userId = getUserId(req)!;
     const city = req.query.city as string | undefined;
@@ -28,7 +28,7 @@ router.get("/api/saved-items", requireAuth, async (req, res) => {
   }
 });
 
-router.post("/api/saved-items", requireAuth, async (req, res) => {
+router.post("/api/saved-items", isAuthenticated, async (req, res) => {
   try {
     const userId = getUserId(req)!;
     const { contentType, contentId, contentName, contentImage, city } = req.body;
@@ -65,7 +65,7 @@ router.post("/api/saved-items", requireAuth, async (req, res) => {
   }
 });
 
-router.delete("/api/saved-items/:id", requireAuth, async (req, res) => {
+router.delete("/api/saved-items/:id", isAuthenticated, async (req, res) => {
   try {
     const userId = getUserId(req)!;
     const { id } = req.params;

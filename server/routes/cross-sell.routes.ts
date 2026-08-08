@@ -5,7 +5,7 @@ import { z } from "zod";
 import { crossSellEvents, serviceBookings, providerServices } from "@shared/schema";
 import { db } from "../db";
 import { eq, and, inArray, sql, desc, count } from "drizzle-orm";
-import { requireAuth } from "../middlewares/requireAuth";
+import { isAuthenticated } from "../replit_integrations/auth";
 
 const router = Router();
 
@@ -69,7 +69,7 @@ router.post("/api/cross-sell-events", async (req, res) => {
 
 // ── GET /api/cross-sell-events/provider-stats ─────────────────────────────────
 // Auth required. Returns cross-sell performance for the authenticated provider's services.
-router.get("/api/cross-sell-events/provider-stats", requireAuth, async (req, res) => {
+router.get("/api/cross-sell-events/provider-stats", isAuthenticated, async (req, res) => {
   try {
     const userId = getUserId(req)!;
 
@@ -148,7 +148,7 @@ router.get("/api/cross-sell-events/provider-stats", requireAuth, async (req, res
 // Admin only. Platform-wide cross-sell funnel with optional ?city= filter.
 // When a city filter is supplied, bookings are also filtered to services seen
 // in that city's cross-sell events to keep the funnel metrics consistent.
-router.get("/api/admin/cross-sell/funnel", requireAuth, async (req, res) => {
+router.get("/api/admin/cross-sell/funnel", isAuthenticated, async (req, res) => {
   const isAdmin = await requireAdmin(req, res);
   if (!isAdmin) return;
 

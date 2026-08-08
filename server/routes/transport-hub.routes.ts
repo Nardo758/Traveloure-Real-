@@ -15,7 +15,7 @@ import { db } from "../db";
 import { transportBookingOptions } from "@shared/schema";
 import { createTransportBookingCheckout } from "../services/stripe.service";
 import { populateBookingOptionsForVariant, populateBookingOptionsForLeg } from "../services/transport-booking-options.service";
-import { requireAuth } from "../middlewares/requireAuth";
+import { isAuthenticated } from "../replit_integrations/auth";
 import { authorizeTripLogistics } from "../utils/trip-logistics-auth";
 
 const router = Router();
@@ -23,7 +23,7 @@ const router = Router();
 /**
  * Authorization for the transport surfaces below (P0 fix, Jul 30 2026).
  *
- * These routes were `requireAuth`-only — any signed-in user could read (or,
+ * These routes were `isAuthenticated`-only — any signed-in user could read (or,
  * for `seed`, WRITE) another traveller's transport plan. The `:tripId` param is
  * overloaded: it is EITHER an `itinerary_comparisons.id` OR a `trips.id` (the
  * handler falls back from one to the other), so both id paths have to resolve to
@@ -62,7 +62,7 @@ async function authorizeTransportScope(
  * - Days with legs and booking options
  * - Multi-day pass recommendations
  */
-router.get("/api/itinerary/:tripId/transport-hub", requireAuth, async (req, res) => {
+router.get("/api/itinerary/:tripId/transport-hub", isAuthenticated, async (req, res) => {
   try {
     const { tripId } = req.params;
 
@@ -251,7 +251,7 @@ router.get("/api/itinerary/:tripId/transport-hub", requireAuth, async (req, res)
  */
 router.get(
   "/api/transport-legs/:legId/options",
-  requireAuth,
+  isAuthenticated,
   async (req, res) => {
     try {
       const { legId } = req.params;
@@ -292,7 +292,7 @@ router.get(
  */
 router.post(
   "/api/transport-booking-options/:optionId/book",
-  requireAuth,
+  isAuthenticated,
   async (req, res) => {
     try {
       const { optionId } = req.params;
@@ -374,7 +374,7 @@ router.post(
  */
 router.post(
   "/api/transport-booking-options/:optionId/click",
-  requireAuth,
+  isAuthenticated,
   async (req, res) => {
     try {
       const { optionId } = req.params;
@@ -438,7 +438,7 @@ router.post(
  */
 router.patch(
   "/api/transport-booking-options/:optionId/status",
-  requireAuth,
+  isAuthenticated,
   async (req, res) => {
     try {
       const { optionId } = req.params;
@@ -473,7 +473,7 @@ router.patch(
  * itinerary in the database. Static segment must come BEFORE the dynamic
  * /seed/:variantId route so Express matches it first.
  */
-router.post("/api/transport-booking-options/seed/test-variant", requireAuth, async (req, res) => {
+router.post("/api/transport-booking-options/seed/test-variant", isAuthenticated, async (req, res) => {
   try {
     const [row] = await db
       .insert(transportBookingOptions)
@@ -507,7 +507,7 @@ router.post("/api/transport-booking-options/seed/test-variant", requireAuth, asy
  * leaving the real defect (no authorization) unaddressed. Environment is not an
  * authorization boundary; the variant's owning trip is.
  */
-router.post("/api/transport-booking-options/seed/:variantId", requireAuth, async (req, res) => {
+router.post("/api/transport-booking-options/seed/:variantId", isAuthenticated, async (req, res) => {
   try {
     const { variantId } = req.params;
     const variant = await storage.getItineraryVariantById(variantId);
@@ -539,7 +539,7 @@ router.post("/api/transport-booking-options/seed/:variantId", requireAuth, async
  *
  * Fetch details for a specific booking option
  */
-router.get("/api/transport-booking-options/:optionId", requireAuth, async (req, res) => {
+router.get("/api/transport-booking-options/:optionId", isAuthenticated, async (req, res) => {
   try {
     const { optionId } = req.params;
 

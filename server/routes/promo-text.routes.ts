@@ -1,5 +1,3 @@
-import { requireAuth } from "../middlewares/requireAuth";
-import { getAuth } from "@clerk/express";
 /**
  * promo-text.routes.ts — GET /api/promo-text (Phase A3, mockup v9).
  *
@@ -21,7 +19,14 @@ function sessionUserId(req: any): string | null {
   return getUserId(req)!;
 }
 
-router.get("/api/promo-text", requireAuth, async (req, res) => {
+function isAuthenticated(req: any, res: any, next: any) {
+  if (!req.isAuthenticated || !req.isAuthenticated()) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+  next();
+}
+
+router.get("/api/promo-text", isAuthenticated, async (req, res) => {
   try {
     const userId = sessionUserId(req);
     if (!userId) return res.status(401).json({ message: "Unauthorized" });

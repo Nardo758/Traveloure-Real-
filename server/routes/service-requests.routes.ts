@@ -4,7 +4,7 @@ import { z } from "zod";
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "../db";
 import { serviceRequests, adminNotifications, insertServiceRequestSchema } from "@shared/schema";
-import { requireAuth } from "../middlewares/requireAuth";
+import { isAuthenticated } from "../replit_integrations/auth";
 import { createRateLimiter } from "../infrastructure/rate-limiter";
 
 /**
@@ -26,7 +26,7 @@ function sessionUserId(req: any): string | undefined {
 
 // Per-user throttle: each POST also inserts an admin_notifications row, so cap how
 // fast an authenticated user can enqueue requests (prevents flooding the admin queue).
-// Keyed by the session user (set by requireAuth, which runs first), IP as fallback.
+// Keyed by the session user (set by isAuthenticated, which runs first), IP as fallback.
 const serviceRequestLimiter = createRateLimiter({
   windowMs: 10 * 60 * 1000, // 10 minutes
   maxRequests: 5,
@@ -34,7 +34,7 @@ const serviceRequestLimiter = createRateLimiter({
 });
 
 // POST /api/service-requests — traveler submits a request.
-router.post("/api/service-requests", requireAuth, serviceRequestLimiter, async (req, res) => {
+router.post("/api/service-requests", isAuthenticated, serviceRequestLimiter, async (req, res) => {
   try {
     const userId = sessionUserId(req);
     if (!userId) return res.status(401).json({ message: "Authentication required" });
@@ -77,7 +77,7 @@ router.post("/api/service-requests", requireAuth, serviceRequestLimiter, async (
 });
 
 // GET /api/service-requests/mine — the traveler's own requests.
-router.get("/api/service-requests/mine", requireAuth, async (req, res) => {
+router.get("/api/service-requests/mine", isAuthenticated, async (req, res) => {
   try {
     const userId = sessionUserId(req);
     if (!userId) return res.status(401).json({ message: "Authentication required" });

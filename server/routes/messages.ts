@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { getUserId } from "../utils/auth";
 import { z } from "zod";
-import { requireAuth } from "../middlewares/requireAuth";
+import { isAuthenticated } from "../replit_integrations/auth";
 import {
   buildConversationId,
   parseConversationId,
@@ -25,7 +25,7 @@ const sendMessageSchema = z.object({
   attachment: z.string().url().optional(),
 });
 
-router.get("/", requireAuth, async (req, res) => {
+router.get("/", isAuthenticated, async (req, res) => {
   try {
     const userId = getUserId(req)!;
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
@@ -41,7 +41,7 @@ router.get("/", requireAuth, async (req, res) => {
   }
 });
 
-router.get("/conversation/:conversationId", requireAuth, async (req, res) => {
+router.get("/conversation/:conversationId", isAuthenticated, async (req, res) => {
   try {
     const userId = getUserId(req)!;
     const { conversationId } = req.params;
@@ -59,7 +59,7 @@ router.get("/conversation/:conversationId", requireAuth, async (req, res) => {
   }
 });
 
-router.get("/unread/count", requireAuth, async (req, res) => {
+router.get("/unread/count", isAuthenticated, async (req, res) => {
   try {
     const userId = getUserId(req)!;
     const count = await getUnreadMessageCount(userId);
@@ -69,7 +69,7 @@ router.get("/unread/count", requireAuth, async (req, res) => {
   }
 });
 
-router.get("/search/query", requireAuth, async (req, res) => {
+router.get("/search/query", isAuthenticated, async (req, res) => {
   try {
     const userId = getUserId(req)!;
     const query = (req.query.q as string)?.trim();
@@ -86,7 +86,7 @@ router.get("/search/query", requireAuth, async (req, res) => {
   }
 });
 
-router.get("/:id", requireAuth, async (req, res) => {
+router.get("/:id", isAuthenticated, async (req, res) => {
   try {
     const userId = getUserId(req)!;
     const message = await getMessageById(req.params.id);
@@ -109,7 +109,7 @@ router.get("/:id", requireAuth, async (req, res) => {
   }
 });
 
-router.post("/", requireAuth, async (req, res) => {
+router.post("/", isAuthenticated, async (req, res) => {
   try {
     const userId = getUserId(req)!;
     const validation = sendMessageSchema.safeParse(req.body);
@@ -146,7 +146,7 @@ router.post("/", requireAuth, async (req, res) => {
   }
 });
 
-router.patch("/:messageId/read", requireAuth, async (req, res) => {
+router.patch("/:messageId/read", isAuthenticated, async (req, res) => {
   try {
     const userId = getUserId(req)!;
     const message = await getMessageById(req.params.messageId);
@@ -162,7 +162,7 @@ router.patch("/:messageId/read", requireAuth, async (req, res) => {
   }
 });
 
-router.patch("/conversation/:conversationId/read-all", requireAuth, async (req, res) => {
+router.patch("/conversation/:conversationId/read-all", isAuthenticated, async (req, res) => {
   try {
     const userId = getUserId(req)!;
     const { conversationId } = req.params;
@@ -179,7 +179,7 @@ router.patch("/conversation/:conversationId/read-all", requireAuth, async (req, 
   }
 });
 
-router.get("/typing/:conversationId", requireAuth, async (req, res) => {
+router.get("/typing/:conversationId", isAuthenticated, async (req, res) => {
   try {
     const userId = getUserId(req)!;
     const { conversationId } = req.params;
@@ -193,7 +193,7 @@ router.get("/typing/:conversationId", requireAuth, async (req, res) => {
   }
 });
 
-router.post("/typing/:conversationId", requireAuth, async (req, res) => {
+router.post("/typing/:conversationId", isAuthenticated, async (req, res) => {
   try {
     const userId = getUserId(req)!;
     const { conversationId } = req.params;

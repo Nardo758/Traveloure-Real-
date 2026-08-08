@@ -71,7 +71,7 @@ import { z } from "zod";
 import { and, count, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { db } from "../db";
 import { itineraryItems, notifications, tripCollaborators, trips, ROUTING_STATUSES, type RoutingStatus } from "@shared/schema";
-import { requireAuth } from "../middlewares/requireAuth";
+import { isAuthenticated } from "../replit_integrations/auth";
 import { storage } from "../storage";
 import { verifyTripOwnership } from "../utils/trip-ownership";
 import { isTripAdvisor } from "../utils/trip-advisor";
@@ -122,7 +122,7 @@ async function isTripOwner(tripId: string, userId: string): Promise<boolean> {
   return !!row;
 }
 
-router.post("/api/trips/:tripId/items/:itemId/route", requireAuth, async (req, res) => {
+router.post("/api/trips/:tripId/items/:itemId/route", isAuthenticated, async (req, res) => {
   try {
     const userId = sessionUserId(req);
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
@@ -293,7 +293,7 @@ async function safeSync(itemId: string) {
  * log), but neither touches `itinerary_items.routing_status` — this is trip-level state only.
  */
 
-router.post("/api/trips/:tripId/finalize", requireAuth, async (req, res) => {
+router.post("/api/trips/:tripId/finalize", isAuthenticated, async (req, res) => {
   try {
     const userId = sessionUserId(req);
     if (!userId) return res.status(401).json({ message: "Not authenticated" });
@@ -392,7 +392,7 @@ router.post("/api/trips/:tripId/finalize", requireAuth, async (req, res) => {
   }
 });
 
-router.post("/api/trips/:tripId/reopen", requireAuth, async (req, res) => {
+router.post("/api/trips/:tripId/reopen", isAuthenticated, async (req, res) => {
   try {
     const userId = sessionUserId(req);
     if (!userId) return res.status(401).json({ message: "Not authenticated" });

@@ -11,12 +11,21 @@ import {
 import { db } from "../db";
 import { and, count, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
-import { requireAuth } from "../middlewares/requireAuth";
+import { isAuthenticated } from "../replit_integrations/auth";
 import { getTripRole, canMutateTrip } from "../utils/trip-role";
 import { isTripAuthor } from "../utils/trip-authorship";
 import { authorizeTripLogistics } from "../utils/trip-logistics-auth";
 import { logItemTransition } from "../services/item-transition-log.service";
 import { assembleTripPlan, TripPlanNotFoundError } from "../services/trip-plan.service";
+import { recordGapFills, type GapFillInput } from "../services/optimizer-gap-ledger.service";
+
+// OPTIMIZER_SOURCING_BUILD_SPEC WP-B: an applied item with no providerServiceId matched no
+// platform (provider_services) listing — the optimizer's EXTERNAL FILL case. serviceType values
+// mirror the COMMODITY_TYPES transport vocabulary in itinerary-optimizer.ts.
+const GAP_TRANSPORT_TYPES = new Set(["flight", "flights", "transport", "transportation", "transfer"]);
+function gapItemKind(serviceType: string | undefined): "transport" | "service" {
+  return GAP_TRANSPORT_TYPES.has((serviceType || "").toLowerCase()) ? "transport" : "service";
+}
 
 const router = Router();
 
@@ -33,7 +42,7 @@ function logChange(tripId: string, who: string, action: string, changeType: stri
 }
 
 // ── G7: Apply top AI variant to the trip's itinerary items ──────────────────
-router.post("/api/itinerary-comparisons/:id/apply-to-trip", requireAuth, async (req, res) => {
+router.post("/api/itinerary-comparisons/:id/apply-to-trip", isAuthenticated, async (req, res) => {
   try {
     const { id: comparisonId } = req.params;
     const userId = getUserId(req)!;
@@ -215,21 +224,43 @@ router.post("/api/itinerary-comparisons/:id/apply-to-trip", requireAuth, async (
         }
       }
 
-      return { preservedRoutedItems, dedupedAgainstRoutedItems, discardedVariants };
+      // WP-B: items actually inserted with no providerServiceId are the optimizer's EXTERNAL FILL
+      // case (no platform match) — captured here, ledgered after the transaction commits (§15b:
+      // a ledger write must never be able to roll back a real apply, nor fail one).
+      const unmatchedItems = applicableVariantItems.filter((item: any) => !item.providerServiceId);
+
+      return { preservedRoutedItems, dedupedAgainstRoutedItems, discardedVariants, unmatchedItems };
     });
 
     // ADDITIVE fields (§13 honest reporting): how many already-routed items the apply left in
     // place, how many proposed items were dropped because the plan already held them, and how
     // many losing variants were discarded. Existing consumers read `tripId`/`delta` and are
     // unaffected; no UI is built on these yet.
-    res.json({ tripId, delta, ...applied });
+    const { unmatchedItems, ...appliedSummary } = applied;
+
+    // ── WP-B gap-fill ledger hook (single try/catch'd call — §15b: best-effort, NEVER fails Apply) ──
+    try {
+      const gapFillInputs: GapFillInput[] = (unmatchedItems as any[]).map((item) => ({
+        city: comparison.destination || "Unknown",
+        category: item.serviceType || "activity",
+        itemKind: gapItemKind(item.serviceType),
+        source: "unfilled", // no tracked pipeline (Tavily/Google/Grok) attributable per-item at Apply time
+        tripId,
+        details: { name: item.name ?? null, dayNumber: item.dayNumber ?? null },
+      }));
+      await recordGapFills(gapFillInputs);
+    } catch (ledgerErr: any) {
+      console.warn("[plancard] gap-fill ledger hook failed (non-fatal):", ledgerErr?.message || ledgerErr);
+    }
+
+    res.json({ tripId, delta, ...appliedSummary });
   } catch (error) {
     console.error("Error applying variant to trip:", error);
     res.status(500).json({ error: "Failed to apply variant to trip" });
   }
 });
 
-router.get("/api/trips/:tripId/plancard", requireAuth, async (req, res) => {
+router.get("/api/trips/:tripId/plancard", isAuthenticated, async (req, res) => {
   try {
     const { tripId } = req.params;
     const userId = getUserId(req)!;
@@ -301,7 +332,7 @@ router.get("/api/trips/:tripId/plancard", requireAuth, async (req, res) => {
 // per-item comment system is GET/POST /api/trips/:tripId/items/:itemId/comments
 // (server/routes/booking-actions.ts, backed by `trip_item_comments`, migration 165).
 
-router.get("/api/trips/:tripId/changes", requireAuth, async (req, res) => {
+router.get("/api/trips/:tripId/changes", isAuthenticated, async (req, res) => {
   try {
     const userId = getUserId(req)!;
     const trip = await storage.getTrip(req.params.tripId);
@@ -316,11 +347,11 @@ router.get("/api/trips/:tripId/changes", requireAuth, async (req, res) => {
   }
 });
 
-router.post("/api/trips/:tripId/changes", requireAuth, async (req, res) => {
+router.post("/api/trips/:tripId/changes", isAuthenticated, async (req, res) => {
   try {
     const { tripId } = req.params;
     const userId = getUserId(req)!;
-    const userName = ((req as any).user)?.claims?.name || "User";
+    const userName = (req.user as any)?.claims?.name || "User";
 
     const trip = await storage.getTrip(tripId);
     if (!trip || trip.userId !== userId) {
@@ -352,11 +383,11 @@ router.post("/api/trips/:tripId/changes", requireAuth, async (req, res) => {
   }
 });
 
-router.patch("/api/transport-legs/:legId/status", requireAuth, async (req, res) => {
+router.patch("/api/transport-legs/:legId/status", isAuthenticated, async (req, res) => {
   try {
     const { legId } = req.params;
     const userId = getUserId(req)!;
-    const userName = ((req as any).user)?.claims?.name || "User";
+    const userName = (req.user as any)?.claims?.name || "User";
     const { status, tripId } = req.body;
 
     if (!status || !tripId) {
@@ -418,7 +449,7 @@ router.patch("/api/transport-legs/:legId/status", requireAuth, async (req, res) 
   }
 });
 
-router.delete("/api/trips/:tripId/changes/:changeId", requireAuth, async (req, res) => {
+router.delete("/api/trips/:tripId/changes/:changeId", isAuthenticated, async (req, res) => {
   try {
     const userId = getUserId(req)!;
     const trip = await storage.getTrip(req.params.tripId);

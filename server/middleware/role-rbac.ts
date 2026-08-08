@@ -1,25 +1,12 @@
 import { db } from "../db";
 import { users } from "@shared/schema";
 import { eq } from "drizzle-orm";
-import { getAuth } from "@clerk/express";
 // Canonical role families (role-vocabulary audit, Jul 27 2026). This file previously carried
 // its own EXPERT_ROLES list that INCLUDED executive_assistant — diverging from the client
 // (role-utils.ts) and the ratified EA-console model (§9: EA is its own /ea namespace, gated
 // by isEA, not an expert-family member). EA pages consume /api/ea/* only, so dropping EA
 // from the expert family removes unused server surface, not a working path.
 import { isExpertRole, isProviderRole, isEarnerRole } from "@shared/roles";
-
-function getClerkUserId(req: any): string | null {
-  try {
-    const auth = getAuth(req);
-    return (auth?.sessionClaims as any)?.userId || auth?.userId || null;
-  } catch {
-    // Fall back to legacy shape set by requireAuth
-    const user = req.user;
-    if (!user) return null;
-    return user.claims?.sub ?? user.id ?? null;
-  }
-}
 
 /**
  * isExpert — middleware that allows only expert-role users and admins.
@@ -28,7 +15,10 @@ function getClerkUserId(req: any): string | null {
  * Returns 401 if unauthenticated, 403 if wrong role.
  */
 export const isExpert = async (req: any, res: any, next: any) => {
-  const userId = getClerkUserId(req);
+  if (typeof req.isAuthenticated !== "function" || !req.isAuthenticated()) {
+    return res.status(401).json({ message: "Authentication required" });
+  }
+  const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
   if (!userId) {
     return res.status(401).json({ message: "Authentication required" });
   }
@@ -61,7 +51,10 @@ export const isExpert = async (req: any, res: any, next: any) => {
  * Returns 401 if unauthenticated, 403 if wrong role.
  */
 export const isEarner = async (req: any, res: any, next: any) => {
-  const userId = getClerkUserId(req);
+  if (typeof req.isAuthenticated !== "function" || !req.isAuthenticated()) {
+    return res.status(401).json({ message: "Authentication required" });
+  }
+  const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
   if (!userId) {
     return res.status(401).json({ message: "Authentication required" });
   }
@@ -84,7 +77,10 @@ export const isEarner = async (req: any, res: any, next: any) => {
  * Returns 401 if unauthenticated, 403 if wrong role.
  */
 export const isProvider = async (req: any, res: any, next: any) => {
-  const userId = getClerkUserId(req);
+  if (typeof req.isAuthenticated !== "function" || !req.isAuthenticated()) {
+    return res.status(401).json({ message: "Authentication required" });
+  }
+  const userId = (req.user as any)?.claims?.sub ?? (req.user as any)?.id;
   if (!userId) {
     return res.status(401).json({ message: "Authentication required" });
   }

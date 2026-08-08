@@ -33,10 +33,10 @@ const router = Router();
 // ============================================================
 
 function requireExpert(req: any, res: any, next: any) {
-  const user = req.user;
-  if (!user) {
+  if (!req.isAuthenticated || !req.isAuthenticated()) {
     return res.status(401).json({ message: "Unauthorized" });
   }
+  const user = req.user;
   const role = user?.role || user?.claims?.role;
   // Canonical expert family (shared/roles.ts, role-vocabulary audit): the previous local
   // list omitted bare "expert" (locking those users out of the DMO workspace) and included

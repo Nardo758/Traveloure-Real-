@@ -543,7 +543,7 @@ async function voidClaim(
  * SERVER-VERIFIED Stripe source exactly as `webhook` is — see `SERVER_VERIFIED_ACTORS` below for
  * why that distinction, and not the transport, is what ordering 1 actually turns on.
  */
-export type PromotionActor = "webhook" | "client" | "reconciliation";
+export type PromotionActor = "webhook" | "client" | "reconciliation" | "checkout";
 
 /**
  * Ordering-1 capability (resolve bookings from `pi.metadata.bookingIds` and stamp a PI onto an
@@ -561,6 +561,12 @@ const SERVER_VERIFIED_ACTORS: ReadonlySet<PromotionActor> = new Set<PromotionAct
   "webhook",
   "reconciliation",
 ]);
+// NOTE ON "checkout" (B2, one-click): deliberately NOT server-verified, even though it IS a
+// server-side confirm with the platform's own key. Ordering-1 is the capability to resolve
+// bookings from `pi.metadata.bookingIds` and stamp a PI onto an UNSTAMPED claim — and the
+// checkout spine never needs it: it holds the booking ids in hand and has already run
+// stampAuthorization before promoting. Granting a capability that is not needed would widen
+// the set of callers that can stamp arbitrary rows for no gain. Least privilege.
 
 /** The diary `actorType` for a promotion actor (item-transition-log vocabulary). A client-driven
  *  promotion is the traveler's own confirm poll, hence `traveler`. */

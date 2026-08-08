@@ -1,5 +1,3 @@
-import { requireAuth } from "../middlewares/requireAuth";
-import { getAuth } from "@clerk/express";
 /**
  * ready-made.routes.ts — Ready-Made Trips authoring, Phase 1 (brief v1.1 §1–2, spec v3).
  *
@@ -39,6 +37,13 @@ function sessionUserId(req: any): string | null {
   return getUserId(req)!;
 }
 
+function isAuthenticated(req: any, res: any, next: any) {
+  if (!req.isAuthenticated || !req.isAuthenticated()) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
+  next();
+}
+
 const createReadyMadeSchema = z.object({
   title: z.string().trim().min(1).max(200).default("Untitled build"),
   // Location-aware builds (W-4): a BUILD can be for any destination — the location the expert
@@ -51,7 +56,7 @@ const createReadyMadeSchema = z.object({
 });
 
 // ─── Create a build (trip only — the listing comes later via ship-to-store) ──
-router.post("/api/expert/ready-made", requireAuth, async (req, res) => {
+router.post("/api/expert/ready-made", isAuthenticated, async (req, res) => {
   try {
     const userId = sessionUserId(req);
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
@@ -119,7 +124,7 @@ const shipToStoreSchema = z.object({
   market: z.string().trim().min(1).max(100).optional(),
 });
 
-router.post("/api/expert/ready-made/from-trip/:tripId", requireAuth, async (req, res) => {
+router.post("/api/expert/ready-made/from-trip/:tripId", isAuthenticated, async (req, res) => {
   try {
     const userId = sessionUserId(req);
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
@@ -183,7 +188,7 @@ router.post("/api/expert/ready-made/from-trip/:tripId", requireAuth, async (req,
 // unique per the ship-to-store idempotency, so the join can never fan out). ROUTE ORDER:
 // registered BEFORE any GET /api/expert/ready-made/:id-style route so the literal "builds"
 // segment can never be captured by an :id param (Express matches in registration order).
-router.get("/api/expert/ready-made/builds", requireAuth, async (req, res) => {
+router.get("/api/expert/ready-made/builds", isAuthenticated, async (req, res) => {
   try {
     const userId = sessionUserId(req);
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
@@ -234,7 +239,7 @@ const editBuildSchema = z.object({
   message: "Provide title and/or destination",
 });
 
-router.patch("/api/expert/ready-made/build/:tripId", requireAuth, async (req, res) => {
+router.patch("/api/expert/ready-made/build/:tripId", isAuthenticated, async (req, res) => {
   try {
     const userId = sessionUserId(req);
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
@@ -270,7 +275,7 @@ router.patch("/api/expert/ready-made/build/:tripId", requireAuth, async (req, re
 // endpoint either way). ROUTE ORDER: registered after PATCH .../build/:tripId, both under the
 // literal "build" segment, so :id here can't be shadowed by (nor shadow) any :id-style route
 // above it.
-router.delete("/api/expert/ready-made/build/:id", requireAuth, async (req, res) => {
+router.delete("/api/expert/ready-made/build/:id", isAuthenticated, async (req, res) => {
   try {
     const userId = sessionUserId(req);
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
@@ -365,7 +370,7 @@ router.delete("/api/expert/ready-made/build/:id", requireAuth, async (req, res) 
 });
 
 // ─── Workspace mode resolution (dual-mode bootstrap) ─────────────────────────
-router.get("/api/expert/workspace-context/:tripId", requireAuth, async (req, res) => {
+router.get("/api/expert/workspace-context/:tripId", isAuthenticated, async (req, res) => {
   try {
     const userId = sessionUserId(req);
     const tripId = req.params.tripId;
@@ -470,7 +475,7 @@ const patchListingSchema = z
  */
 const MATERIAL_FIELDS = ["title", "durationDays", "planType", "pricingMode", "priceCents", "heroImageUrl"] as const;
 
-router.patch("/api/expert/ready-made/:id", requireAuth, async (req, res) => {
+router.patch("/api/expert/ready-made/:id", isAuthenticated, async (req, res) => {
   try {
     const userId = sessionUserId(req);
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
@@ -564,7 +569,7 @@ router.patch("/api/expert/ready-made/:id", requireAuth, async (req, res) => {
  * withdrawn-then-resubmitted listing re-enters the admin queue exactly like a rejected one
  * (D1a: never straight back to 'approved').
  */
-router.post("/api/expert/ready-made/:id/submit", requireAuth, async (req, res) => {
+router.post("/api/expert/ready-made/:id/submit", isAuthenticated, async (req, res) => {
   try {
     const userId = sessionUserId(req);
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
@@ -654,7 +659,7 @@ router.post("/api/expert/ready-made/:id/submit", requireAuth, async (req, res) =
  * §15: the transition is an atomic conditional UPDATE (status <> 'withdrawn' -> 'withdrawn'); a
  * double-click/retry matches 0 rows and returns 409 alreadyWithdrawn instead of a silent no-op.
  */
-router.post("/api/expert/ready-made/:id/withdraw", requireAuth, async (req, res) => {
+router.post("/api/expert/ready-made/:id/withdraw", isAuthenticated, async (req, res) => {
   try {
     const userId = sessionUserId(req);
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
@@ -688,7 +693,7 @@ router.post("/api/expert/ready-made/:id/withdraw", requireAuth, async (req, res)
  * author saw. This path is the engine's heuristic core, so it runs keyless — nothing fabricated,
  * nothing blocked (§13).
  */
-router.post("/api/expert/ready-made/:id/build-review", requireAuth, async (req, res) => {
+router.post("/api/expert/ready-made/:id/build-review", isAuthenticated, async (req, res) => {
   try {
     const userId = sessionUserId(req);
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
@@ -718,7 +723,7 @@ router.post("/api/expert/ready-made/:id/build-review", requireAuth, async (req, 
 });
 
 /** The buyer's ready-made purchases (my-bookings surface) — session-scoped, with listing teaser. */
-router.get("/api/ready-made/purchases/mine", requireAuth, async (req, res) => {
+router.get("/api/ready-made/purchases/mine", isAuthenticated, async (req, res) => {
   try {
     const userId = sessionUserId(req);
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
@@ -759,7 +764,7 @@ router.get("/api/ready-made/purchases/mine", requireAuth, async (req, res) => {
 });
 
 /** The author's own listings (console list — ungated on approval, like every owner console). */
-router.get("/api/expert/ready-made/mine", requireAuth, async (req, res) => {
+router.get("/api/expert/ready-made/mine", isAuthenticated, async (req, res) => {
   try {
     const userId = sessionUserId(req);
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
@@ -781,7 +786,7 @@ router.get("/api/expert/ready-made/mine", requireAuth, async (req, res) => {
  * `available:false` rather than falling back to a made-up split — a preview that invents
  * the number the author will be paid is worse than no preview (§13).
  */
-router.get("/api/expert/ready-made/:id/earnings-preview", requireAuth, async (req, res) => {
+router.get("/api/expert/ready-made/:id/earnings-preview", isAuthenticated, async (req, res) => {
   try {
     const userId = sessionUserId(req);
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
@@ -823,7 +828,7 @@ router.get("/api/expert/ready-made/:id/earnings-preview", requireAuth, async (re
  * as an open image proxy. `ready:false` is the HONEST unconfigured answer — an empty
  * results array would read as "no photos match", which is a different claim (§13).
  */
-router.get("/api/expert/ready-made/hero-search", requireAuth, async (req, res) => {
+router.get("/api/expert/ready-made/hero-search", isAuthenticated, async (req, res) => {
   try {
     const userId = sessionUserId(req);
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
@@ -980,7 +985,7 @@ router.get("/api/ready-made/:id", async (req, res) => {
     if (!row) return res.status(404).json({ message: "Trip not found" });
 
     const isPublic = row.status === "approved" && row.active;
-    const sessionUser = sessionUserId(req) || null;
+    const sessionUser = (req as any).isAuthenticated?.() ? sessionUserId(req) : null;
     const isAuthorPreview = !isPublic && sessionUser !== null && sessionUser === row.authorId;
     if (!isPublic && !isAuthorPreview) {
       return res.status(404).json({ message: "Trip not found" }); // no draft-listing oracle
@@ -1021,7 +1026,7 @@ router.get("/api/ready-made/:id", async (req, res) => {
 // state by design (migration 133): the row is created only AFTER Stripe verifies `succeeded`,
 // so an abandoned checkout leaves nothing behind.
 
-router.post("/api/ready-made/:id/purchase", requireAuth, async (req, res) => {
+router.post("/api/ready-made/:id/purchase", isAuthenticated, async (req, res) => {
   try {
     const userId = sessionUserId(req);
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
@@ -1098,7 +1103,7 @@ router.post("/api/ready-made/:id/purchase", requireAuth, async (req, res) => {
   }
 });
 
-router.post("/api/ready-made/:id/purchase/confirm", requireAuth, async (req, res) => {
+router.post("/api/ready-made/:id/purchase/confirm", isAuthenticated, async (req, res) => {
   try {
     const userId = sessionUserId(req);
     if (!userId) return res.status(401).json({ message: "Unauthorized" });
@@ -1171,7 +1176,7 @@ router.post("/api/ready-made/:id/purchase/confirm", requireAuth, async (req, res
 // (`rm-refund-<purchaseId>`), so if Stripe fails the buyer can retry — the ledger half returns
 // alreadyRefunded and the Stripe leg re-runs idempotently until it succeeds. §14: the refund
 // amount is the full PaymentIntent (Stripe derives it from the PI — no client amount).
-router.post("/api/ready-made/purchases/:id/refund", requireAuth, async (req, res) => {
+router.post("/api/ready-made/purchases/:id/refund", isAuthenticated, async (req, res) => {
   try {
     const userId = sessionUserId(req);
     if (!userId) return res.status(401).json({ message: "Unauthorized" });

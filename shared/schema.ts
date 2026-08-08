@@ -573,7 +573,13 @@ export const serviceCategories = pgTable("service_categories", {
   affiliatePartnerKey: varchar("affiliate_partner_key", { length: 50 }),    // populated only when sourceType='affiliate'
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => ({
+  // Migration 032. Deploy-push rule (see `bookings`). Partial WHERE mirrored verbatim —
+  // category_key is nullable for categories that predate the Phase-1 key column.
+  categoryKeyIdx: uniqueIndex("idx_service_categories_category_key")
+    .on(table.categoryKey)
+    .where(sql`category_key IS NOT NULL`),
+}));
 
 export const serviceSubcategories = pgTable("service_subcategories", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -1185,6 +1191,14 @@ export const itineraryComparisons = pgTable("itinerary_comparisons", {
   selectedVariantId: varchar("selected_variant_id"),
   optimizedAt: timestamp("optimized_at"),
   optimizationPaymentId: varchar("optimization_payment_id", { length: 255 }),
+  // WP-C follow-up (docs/briefs/TRIP_SEGMENTATION_DESIGN.md §5b Phase 1, migration 183):
+  // recommendation-only output of `proposeSegmentation` (server/services/trip-segmentation.service.ts)
+  // for this optimize run — strategy/rationale/segments/unplaced, shown to the traveler. NULL = no
+  // recommendation computed (predates the engine's wiring, or the computation failed and was
+  // logged-and-omitted per §15b — a segmentation failure must never fail the paid optimize). Never
+  // read for a money/ownership decision; no materialization in this wave (no trip_segments, no
+  // apply action). Sole writer: server/itinerary-optimizer.ts's generateOptimizedItineraries.
+  segmentationProposal: jsonb("segmentation_proposal"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -2914,6 +2928,13 @@ export const expertNeighborhoods = pgTable("expert_neighborhoods", {
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
   uniqExpertNeighborhood: unique("expert_neighborhoods_expert_neighborhood_uniq").on(table.expertId, table.neighborhoodId),
+  // Migration 041. Deploy-push rule (full rationale in the `bookings` block) — created only in
+  // migration SQL, so every publish dropped it. The partial WHERE is what makes this express
+  // "at most ONE lead expert per neighborhood" rather than "one row per neighborhood": without
+  // it the index would forbid a second non-lead expert, which is the opposite of the intent.
+  oneLeadPerNeighborhood: uniqueIndex("idx_expert_neighborhoods_one_lead_per")
+    .on(table.neighborhoodId)
+    .where(sql`is_lead = true`),
 }));
 export type ExpertNeighborhood = typeof expertNeighborhoods.$inferSelect;
 export const insertExpertNeighborhoodSchema = createInsertSchema(expertNeighborhoods).omit({ id: true, createdAt: true, updatedAt: true });
@@ -4094,7 +4115,7 @@ export const affiliatePartners = pgTable("affiliate_partners", {
   lastScrapedAt: timestamp("last_scraped_at"),
   // Source tracking: "manual" (admin-created / scraper) or "partnerize" (synced from Partnerize network).
   source: varchar("source", { length: 30 }).default("manual"),
-  externalCampaignId: varchar("external_campaign_id", { length: 100 }),
+  externalCampaignId: varchar("external_campaign_id", { length: 100 }), // uniquely indexed below
   lastSyncedAt: timestamp("last_synced_at"),
   // Partner-level admin approval (D1a): affiliate content is admin-gated ONCE at the partner level —
   // every product inherits its partner's approval. Born 'submitted' (never self-approved); an admin
@@ -4108,7 +4129,14 @@ export const affiliatePartners = pgTable("affiliate_partners", {
   rejectionReason: text("rejection_reason"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => ({
+  // Migration 103. Declared per the deploy-push rule (full rationale in the `bookings` block):
+  // created only in migration SQL, so every publish dropped it and the stamped migration never
+  // recreated it. Partial WHERE mirrored verbatim — nullable for manually-added partners.
+  externalCampaignIdIdx: uniqueIndex("affiliate_partners_external_campaign_id_idx")
+    .on(table.externalCampaignId)
+    .where(sql`external_campaign_id IS NOT NULL`),
+}));
 
 // Affiliate products table - stores scraped product data
 export const affiliateProducts = pgTable("affiliate_products", {
@@ -5896,6 +5924,38 @@ export const bookings = pgTable("bookings", {
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
   createdAtIdx: index("bookings_created_at_idx").on(table.createdAt),
+
+  // ── Declared here per the CLAUDE.md deploy-push rule ──────────────────────────────────
+  // The publish-time drizzle push is AUTHORITATIVE over objects absent from this file and
+  // will DROP an index that exists only in migration SQL — after which the stamped migration
+  // never recreates it. All three below were created by registered migrations and declared
+  // nowhere, so each publish silently removed them.
+  //
+  // This rail is NOT dead: §15c records the legacy `bookings` table as still live behind
+  // /booking-demo and POST /api/bookings/process-cart.
+  //
+  // Partial WHERE clauses are mirrored from the migrations verbatim. They are load-bearing:
+  // every one of these columns is nullable on legacy rows, and a FULL unique index would
+  // collapse all those NULLs into a single conflicting value set and fail the publish.
+
+  // Migration 096. The SAME guard it creates on `service_bookings` (declared at
+  // sb_idempotency_key_idx above) — only that half was ever declared, so the cart rail kept
+  // its protection across publishes and this rail lost it. Absence of this index was measured
+  // to turn 3 concurrent same-key checkouts into 3 REAL Stripe charges.
+  idempotencyKeyIdx: uniqueIndex("bookings_idempotency_key_idx")
+    .on(table.idempotencyKey)
+    .where(sql`idempotency_key IS NOT NULL`),
+
+  // Migration 053. One booking per PaymentIntent — the DB-level backstop behind §15's
+  // promotion conditionals.
+  stripePaymentIntentIdUnique: uniqueIndex("bookings_stripe_payment_intent_id_unique")
+    .on(table.stripePaymentIntentId)
+    .where(sql`stripe_payment_intent_id IS NOT NULL`),
+
+  // Migration 099. One expert cannot be double-booked into the same date+time slot.
+  expertSlotUnique: uniqueIndex("bookings_expert_slot_unique_idx")
+    .on(table.expertId, table.bookingDate, table.bookingTime)
+    .where(sql`expert_id IS NOT NULL AND booking_date IS NOT NULL AND booking_time IS NOT NULL`),
 }));
 
 export const platformFees = pgTable("platform_fees", {
@@ -7291,6 +7351,66 @@ export const dmoScrapeJobs = pgTable("dmo_scrape_jobs", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+/**
+ * Optimizer gap-fill ledger (migration 182, OPTIMIZER_SOURCING_BUILD_SPEC WP-B).
+ *
+ * `content_gap_alerts` above answers "how much DMO content do we hold per editorial type vs. a
+ * target" (an UPDATE-in-place gauge, Kyoto-only, reconciled by `analyzeKyotoContentGaps`). This
+ * table answers a different, narrower question the sourcing rule needs: "every time the OPTIMIZER
+ * could not place a platform (`provider_services`) match and fell back to external content, what
+ * city/category/kind did it need, and what filled it (or didn't)?" — real-time optimizer demand,
+ * not a periodic editorial sweep, and not scoped to one market. The existing shape cannot carry
+ * this: no tripId, no itemKind (service|transport|content), no source discriminator matching
+ * tavily/google/grok/unfilled, and its per-(market,city,contentType) row is reconciled/UPDATEd in
+ * place rather than appended.
+ *
+ * APPEND-ONLY (§17 posture): one row per external-fill event, no UPDATE/DELETE path in app code.
+ * "Dedupe by counts, not UPDATE-in-place of facts" is implemented at READ time — the admin summary
+ * GROUPs BY (city, category) and COUNTs rows in a window — rather than by mutating a bucket row, so
+ * a persistent gap reads as rising demand volume without any fact ever being rewritten.
+ *
+ * NO DB CHECK on item_kind/source (migration-159/171/177 posture): canonical vocabulary lives in
+ * TS (`OPTIMIZER_GAP_ITEM_KINDS` / `OPTIMIZER_GAP_SOURCES` below) — a brand-new all-default-free
+ * table has no legacy rows, so a CHECK here would buy nothing and only add a publish-push remap
+ * trap risk if the vocabulary ever grows. `tripId` is a SOFT reference, deliberately no FK: a
+ * demand-ledger row is a fact about what the optimizer needed, and must outlive the trip it was
+ * observed on (the `reconciliationExceptions.bookingId` precedent, one section up). Table + both
+ * indexes are declared here in shared/schema.ts in the same commit as the migration (CLAUDE.md
+ * deploy-push durability rule) and its insert schema is `.pick()`-based (§19) so a future column
+ * added to this table is unreachable from a client body until deliberately named.
+ */
+export const optimizerGapFills = pgTable(
+  "optimizer_gap_fills",
+  {
+    id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+    occurredAt: timestamp("occurred_at").defaultNow().notNull(),
+    city: varchar("city", { length: 100 }).notNull(),
+    /** dataType/category — e.g. "activity", "dining", "lodging", "transport", "photography". */
+    category: varchar("category", { length: 100 }).notNull(),
+    /** service | transport | content — app-enforced, see OPTIMIZER_GAP_ITEM_KINDS. */
+    itemKind: varchar("item_kind", { length: 20 }).notNull(),
+    /** tavily | google | grok | unfilled — app-enforced, see OPTIMIZER_GAP_SOURCES. */
+    source: varchar("source", { length: 20 }).notNull(),
+    /** Soft reference, NO FK (see rationale above). */
+    tripId: varchar("trip_id"),
+    details: jsonb("details").notNull().default({}),
+  },
+  (table) => ({
+    cityCategoryIdx: index("optimizer_gap_fills_city_category_idx").on(table.city, table.category),
+    occurredAtIdx: index("optimizer_gap_fills_occurred_at_idx").on(table.occurredAt),
+  }),
+);
+
+/** Canonical item-kind vocabulary — app-enforced, no DB CHECK (see table comment). */
+export const OPTIMIZER_GAP_ITEM_KINDS = ["service", "transport", "content"] as const;
+export type OptimizerGapItemKind = (typeof OPTIMIZER_GAP_ITEM_KINDS)[number];
+
+/** Canonical fill-source vocabulary — app-enforced, no DB CHECK (see table comment). 'unfilled'
+ *  is the honest default when no tracked pipeline (Tavily/Google/Grok) actually produced the item
+ *  — e.g. the optimizer's own LLM knowledge filled it, or nothing did. */
+export const OPTIMIZER_GAP_SOURCES = ["tavily", "google", "grok", "unfilled"] as const;
+export type OptimizerGapSource = (typeof OPTIMIZER_GAP_SOURCES)[number];
+
 // === Zod Schemas & Types for DMO Tables ===
 
 export const insertDmoSourceSchema = createInsertSchema(dmoSources).omit({ id: true, createdAt: true, updatedAt: true, lastIngestedAt: true, totalRecords: true });
@@ -7320,6 +7440,20 @@ export type InsertContentGapAlert = z.infer<typeof insertContentGapAlertSchema>;
 export const insertDmoScrapeJobSchema = createInsertSchema(dmoScrapeJobs).omit({ id: true, createdAt: true, updatedAt: true, startedAt: true, completedAt: true, scheduledAt: true });
 export type DmoScrapeJob = typeof dmoScrapeJobs.$inferSelect;
 export type InsertDmoScrapeJob = z.infer<typeof insertDmoScrapeJobSchema>;
+
+// ALLOWLIST (§19/#PS18 target shape, ratchet-exempt): the ledger writer only ever needs these six
+// fields — id/occurredAt are server-derived — so a future column added to optimizer_gap_fills is
+// unreachable until deliberately picked here.
+export const insertOptimizerGapFillSchema = createInsertSchema(optimizerGapFills).pick({
+  city: true,
+  category: true,
+  itemKind: true,
+  source: true,
+  tripId: true,
+  details: true,
+});
+export type OptimizerGapFill = typeof optimizerGapFills.$inferSelect;
+export type InsertOptimizerGapFill = z.infer<typeof insertOptimizerGapFillSchema>;
 
 // === DMO Relations ===
 
@@ -7470,7 +7604,11 @@ export const readyMadeTrips = pgTable("ready_made_trips", {
   active: boolean("active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => ({
+  // Migration 133. Deploy-push rule (see `bookings`). No WHERE in the migration — one
+  // ready-made listing per source trip, unconditionally.
+  sourceTripIdx: uniqueIndex("idx_rmt_source_trip").on(table.sourceTripId),
+}));
 
 export const readyMadePurchases = pgTable("ready_made_purchases", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
@@ -7485,7 +7623,14 @@ export const readyMadePurchases = pgTable("ready_made_purchases", {
   // Row is inserted only AFTER capture, so born-'paid' is correct (unlike the template pre-payment row).
   status: varchar("status", { length: 20 }).notNull().default("paid"), // CHECK paid|cloned|refunded|revoked
   purchasedAt: timestamp("purchased_at").notNull().defaultNow(),
-});
+}, (table) => ({
+  // Migration 133. Deploy-push rule (see `bookings`). Partial WHERE mirrored verbatim: a buyer
+  // may hold only ONE live purchase of a listing, but refunded/revoked rows must be allowed to
+  // accumulate — a full unique index would block re-purchase after a refund.
+  buyerTripActiveIdx: uniqueIndex("idx_rmp_buyer_trip_active")
+    .on(table.buyerId, table.readyMadeTripId)
+    .where(sql`status IN ('paid','cloned')`),
+}));
 
 export const boards = pgTable("boards", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),

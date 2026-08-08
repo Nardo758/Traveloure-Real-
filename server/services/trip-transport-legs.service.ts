@@ -34,7 +34,9 @@ import { TRANSPORT_PROFILES } from "../data/transport-profiles";
 import {
   computeTransportLeg,
   type ActivityLocation,
+  type UserTransportPrefs,
 } from "./transport-leg-calculator";
+import { getTravelerProfile, effectiveProfileToTransportPrefs } from "./traveler-profile.service";
 
 /** The `proposal_status` vocabulary (mirrors the migration-154 DB CHECK). */
 export const LEG_PROPOSAL_STATUSES = ["proposed", "confirmed"] as const;
@@ -103,6 +105,20 @@ export async function generateTripTransportLegs(tripId: string): Promise<TripLeg
   const trip = await storage.getTrip(tripId);
   if (!trip) throw new Error(`Trip ${tripId} not found`);
   const destination = trip.destination || "";
+
+  // WP-A (docs/briefs/OPTIMIZER_SOURCING_BUILD_SPEC.md): the trip owner's traveler profile
+  // modulates MODE CHOICE only (prioritize/accessibility/budgetTier — the existing
+  // UserTransportPrefs scoring knobs), never price. Best-effort: a lookup failure degrades to
+  // the engine's own DEFAULT_PREFS, exactly today's behavior, never a thrown error.
+  let transportPrefs: Partial<UserTransportPrefs> = {};
+  if (trip.userId) {
+    try {
+      const profile = await getTravelerProfile(trip.userId);
+      transportPrefs = effectiveProfileToTransportPrefs(profile.effective);
+    } catch (err) {
+      console.warn("[TripTransportLegs] traveler profile fetch failed (non-critical):", (err as Error).message);
+    }
+  }
 
   const items = await storage.getItineraryItems(tripId);
 
@@ -182,7 +198,7 @@ export async function generateTripTransportLegs(tripId: string): Promise<TripLeg
         order: i + 1,
       };
 
-      const leg = computeTransportLeg(fromPoint, toPoint, dayNumber, i + 1, destination);
+      const leg = computeTransportLeg(fromPoint, toPoint, dayNumber, i + 1, destination, transportPrefs);
 
       rows.push({
         // Trip scope: variantId stays NULL (the app-level exactly-one-of rule).
