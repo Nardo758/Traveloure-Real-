@@ -25,7 +25,6 @@ import { storage } from "./storage";
 import { grokDiscoveryService } from "./services/grok-discovery.service";
 import { setupWebSocket } from "./websocket";
 import { clerkMiddleware } from "@clerk/express";
-import { publishableKeyFromHost } from "@clerk/shared/keys";
 import {
   CLERK_PROXY_PATH,
   clerkProxyMiddleware,
@@ -114,15 +113,13 @@ app.use("/api/activities", searchRateLimiter as RequestHandler);
 app.use("/api/auth", authRateLimiter as RequestHandler);
 
 // ── Clerk session middleware ───────────────────────────────────────────────
-// Resolves the publishable key from the incoming host so the same server
-// can serve multiple Clerk custom domains. Falls back to CLERK_PUBLISHABLE_KEY.
+// Uses the configured CLERK_PUBLISHABLE_KEY directly — single-tenant app.
+// Deriving the key from the request Host header would allow a client to select
+// an unrelated Clerk instance by spoofing X-Forwarded-Host.
 app.use(
-  clerkMiddleware((req) => ({
-    publishableKey: publishableKeyFromHost(
-      getClerkProxyHost(req) ?? "",
-      process.env.CLERK_PUBLISHABLE_KEY,
-    ),
-  })),
+  clerkMiddleware({
+    publishableKey: process.env.CLERK_PUBLISHABLE_KEY,
+  }),
 );
 
 // CORS — explicit header control for all API routes.

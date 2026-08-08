@@ -1,7 +1,6 @@
 import { WebSocketServer, WebSocket } from "ws";
 import type { Server, IncomingMessage } from "http";
 import { clerkMiddleware, getAuth } from "@clerk/express";
-import { publishableKeyFromHost } from "@clerk/shared/keys";
 import { getClerkProxyHost } from "./middlewares/clerkProxyMiddleware";
 import { storage } from "./storage";
 import { logger } from "./infrastructure/logger";
@@ -55,14 +54,12 @@ export function setupWebSocket(server: Server) {
   const wss = new WebSocketServer({ server, path: "/ws" });
 
   // Build a Clerk middleware instance once, shared across all WS upgrade requests.
-  // Mirrors the configuration in server/index.ts so both halves agree on which
-  // hostname is canonical for custom-domain / multi-domain setups.
-  const clerkMw = clerkMiddleware((req: any) => ({
-    publishableKey: publishableKeyFromHost(
-      getClerkProxyHost(req) ?? "",
-      process.env.CLERK_PUBLISHABLE_KEY,
-    ),
-  }));
+  // Uses the configured CLERK_PUBLISHABLE_KEY directly — single-tenant app.
+  // Deriving the key from X-Forwarded-Host (as publishableKeyFromHost does) would
+  // allow a WebSocket client to influence auth configuration via a spoofed header.
+  const clerkMw = clerkMiddleware({
+    publishableKey: process.env.CLERK_PUBLISHABLE_KEY,
+  });
 
   wss.on("connection", (ws, req: IncomingMessage) => {
     // The session lookup below is async (a real JWT verify via Clerk),

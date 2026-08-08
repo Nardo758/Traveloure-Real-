@@ -209,3 +209,59 @@ test("JIT-2 — jitProvisionUser signature accepts userId and optional claims", 
   assert.equal(jitProvisionUser.length, 2,
     "jitProvisionUser must accept (userId: string, sessionClaims?: Record<string, unknown>)");
 });
+
+// ── Host-header key selection security test ───────────────────────────────────
+//
+// Pre-fix: clerkMiddleware was configured with publishableKeyFromHost(
+//   getClerkProxyHost(req), process.env.CLERK_PUBLISHABLE_KEY
+// ) — publishableKeyFromHost derives a key for the supplied hostname, not just
+// using the configured fallback.  A client spoofing X-Forwarded-Host could
+// select an unrelated Clerk instance, bypassing authentication entirely.
+//
+// Post-fix: clerkMiddleware receives publishableKey: process.env.CLERK_PUBLISHABLE_KEY
+// directly — the request Host/X-Forwarded-Host header has no influence.
+//
+// These tests verify the fix by checking the import graph and the absence of
+// publishableKeyFromHost usage in both HTTP and WebSocket setup files.
+
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
+const ROOT = resolve(import.meta.dirname, "../..");
+
+test("SEC-1 — server/index.ts does not import publishableKeyFromHost (host-derived key removed)", () => {
+  const src = readFileSync(resolve(ROOT, "server/index.ts"), "utf-8");
+  assert.ok(
+    !src.includes("publishableKeyFromHost"),
+    "server/index.ts must not import or use publishableKeyFromHost — " +
+    "use process.env.CLERK_PUBLISHABLE_KEY directly to prevent host-header spoofing"
+  );
+});
+
+test("SEC-2 — server/websocket.ts does not import publishableKeyFromHost (host-derived key removed)", () => {
+  const src = readFileSync(resolve(ROOT, "server/websocket.ts"), "utf-8");
+  // Check for import or call — ignore comment lines (lines starting with whitespace + //)
+  const nonCommentLines = src
+    .split("\n")
+    .filter(l => !l.trim().startsWith("//"))
+    .join("\n");
+  assert.ok(
+    !nonCommentLines.includes("publishableKeyFromHost"),
+    "server/websocket.ts must not import or call publishableKeyFromHost — " +
+    "WebSocket Clerk middleware must also use the configured key, not a host-derived one"
+  );
+});
+
+test("SEC-3 — server/index.ts clerkMiddleware uses CLERK_PUBLISHABLE_KEY env var directly", () => {
+  const src = readFileSync(resolve(ROOT, "server/index.ts"), "utf-8");
+  assert.ok(
+    src.includes("CLERK_PUBLISHABLE_KEY"),
+    "server/index.ts must reference CLERK_PUBLISHABLE_KEY in the clerkMiddleware config"
+  );
+  // Verify it is not inside a publishableKeyFromHost() call
+  const keyFromHostInClerkSection = src.match(/clerkMiddleware\([^)]*publishableKeyFromHost/s);
+  assert.ok(
+    !keyFromHostInClerkSection,
+    "clerkMiddleware must not derive its publishable key from the request host"
+  );
+});
