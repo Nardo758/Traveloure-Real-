@@ -116,6 +116,7 @@ import expertsRoutes from "./routes/experts.routes";
 import eaRoutes from "./routes/ea.routes";
 import providerRoutes from "./routes/provider.routes";
 import storefrontRoutes from "./routes/storefront.routes";
+import travelerProfileRoutes from "./routes/traveler-profile.routes";
 import shortLinksRoutes from "./routes/short-links.routes";
 import readyMadeRoutes from "./routes/ready-made.routes";
 import expertConsoleRoutes from "./routes/expert-console.routes";
@@ -868,6 +869,11 @@ export async function registerRoutes(
   // Public earner storefront (backoffice Phase 1a/1b) — /p/:handle OG shell + /api/storefront/:handle
   // + PATCH /api/me/handle. Mounted per §9; /p/:handle must register before the Vite catch-all.
   app.use(storefrontRoutes);
+
+  // Traveler profile (WP-A, docs/briefs/OPTIMIZER_SOURCING_BUILD_SPEC.md) — GET/PATCH
+  // /api/me/traveler-profile, the `travelerProfile` namespace on the same users.preferences
+  // jsonb column /api/me/preferences already uses. Mounted per §9 (unmounted-router guard).
+  app.use(travelerProfileRoutes);
 
   // Short-link + click store (backoffice S3) — POST /api/short-links + GET /r/:code. Mounted per §9.
   app.use(shortLinksRoutes);
