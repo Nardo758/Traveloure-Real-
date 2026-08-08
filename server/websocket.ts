@@ -165,6 +165,17 @@ function handleAuthenticatedConnection(ws: WebSocket, userId: string) {
           }
 
           try {
+            // Authorization: verify the recipient exists in the local users table.
+            // This mirrors the REST POST /api/chats authorization path and prevents
+            // an authenticated socket from sending messages to arbitrary/nonexistent IDs.
+            const recipient = await storage.getUser(message.recipientId);
+            if (!recipient) {
+              if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: "error", error: "Recipient not found" }));
+              }
+              break;
+            }
+
             // Use the shared storage.createChat write path (same as POST /api/chats and
             // trips.routes.ts) so recipient notifications fire exactly once per message.
             // senderId is always the session-resolved userId (MT-1: never trusts client payload).

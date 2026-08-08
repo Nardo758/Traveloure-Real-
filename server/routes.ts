@@ -1588,7 +1588,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // SECURITY: User data is sanitized and contact info in messages is redacted
   app.get(api.chats.list.path, requireAuth, async (req, res) => {
     const userId = getUserId(req)!;
-    const userRole = (req.user as any).claims.role || 'user';
+    const userRole = (req as any).user?.claims?.role || 'user';
     const chats = await storage.getChats(userId);
     
     // Log access for audit trail
@@ -4415,19 +4415,19 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // NOTE: User data is sanitized - experts cannot see full traveler info (email, phone, etc.)
   app.get("/api/expert/bookings", requireAuth, async (req, res) => {
     const userId = getUserId(req)!;
-    const userRole = (req.user as any).claims.role || 'expert';
+    const userRole = (req as any).user?.claims?.role || 'expert';
     const status = req.query.status as string | undefined;
     const bookings = await storage.getServiceBookings({ providerId: userId, status });
     
     // Enrich with traveler info (sanitized for privacy)
     const enrichedBookings = await Promise.all(bookings.map(async (booking) => {
-      const traveler = await storage.getUser(booking.travelerId);
+      const traveler = booking.travelerId ? await storage.getUser(booking.travelerId) : undefined;
       const sanitizedTraveler = traveler ? sanitizeUserForRole(traveler, userRole, false) : null;
       return {
         ...sanitizeBookingForExpert(booking, userRole, userId),
         traveler: sanitizedTraveler ? {
           ...sanitizedTraveler,
-          displayName: getDisplayName(traveler.firstName, traveler.lastName)
+          displayName: getDisplayName(traveler!.firstName, traveler!.lastName)
         } : null
       };
     }));
@@ -4440,21 +4440,21 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // NOTE: User data is sanitized - providers cannot see full traveler info
   app.get("/api/provider/bookings", requireAuth, async (req, res) => {
     const userId = getUserId(req)!;
-    const userRole = (req.user as any).claims.role || 'provider';
+    const userRole = (req as any).user?.claims?.role || 'provider';
     const status = req.query.status as string | undefined;
     const bookings = await storage.getServiceBookings({ providerId: userId, status });
     
     // Enrich with service details and sanitized traveler info
     const enrichedBookings = await Promise.all(bookings.map(async (booking) => {
-      const service = await storage.getProviderServiceById(booking.serviceId);
-      const traveler = await storage.getUser(booking.travelerId);
+      const service = booking.serviceId ? await storage.getProviderServiceById(booking.serviceId) : undefined;
+      const traveler = booking.travelerId ? await storage.getUser(booking.travelerId) : undefined;
       const sanitizedTraveler = traveler ? sanitizeUserForRole(traveler, userRole, false) : null;
       return {
         ...sanitizeBookingForExpert(booking, userRole, userId),
         service,
         traveler: sanitizedTraveler ? {
           ...sanitizedTraveler,
-          displayName: getDisplayName(traveler.firstName, traveler.lastName)
+          displayName: getDisplayName(traveler!.firstName, traveler!.lastName)
         } : null
       };
     }));
@@ -4556,7 +4556,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // NOTE: If requester is provider, traveler info is sanitized
   app.get("/api/bookings/:id", requireAuth, async (req, res) => {
     const userId = getUserId(req)!;
-    const userRole = (req.user as any).claims.role || 'user';
+    const userRole = (req as any).user?.claims?.role || 'user';
     const booking = await storage.getServiceBooking(req.params.id);
     if (!booking) {
       return res.status(404).json({ message: "Booking not found" });
@@ -4588,7 +4588,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // SECURITY: Experts can only see limited client information for their bookings
   app.get("/api/client/:clientId", requireAuth, async (req, res) => {
     const userId = getUserId(req)!;
-    const userRole = (req.user as any).claims.role || 'user';
+    const userRole = (req as any).user?.claims?.role || 'user';
     const { clientId } = req.params;
     
     // Check if requester has a legitimate relationship with this client
@@ -8937,7 +8937,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   app.post("/api/trips/:tripId/itinerary-items", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
-      const userName = (req.user as any).claims.name || "User";
+      const userName = (req as any).user?.claims?.name || "User";
       const { tripId } = req.params;
       const owned = await verifyTripOwnership(tripId, userId);
       // Split out from the OR'd `assigned` boolean below so the mode-flip gate can target the
@@ -9054,7 +9054,7 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   app.post("/api/trips/:tripId/itinerary/reorder", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
-      const userName = (req.user as any).claims.name || "User";
+      const userName = (req as any).user?.claims?.name || "User";
       // SECURITY: this mutates another user's itinerary ordering; `requireAuth` alone was the
       // only gate. Canonical authorization, matching the sibling itinerary-item handlers above.
       // D1 (ruling, Aug 7 2026): a trip-item MUTATION path — `requireWriteAccess: true` narrows

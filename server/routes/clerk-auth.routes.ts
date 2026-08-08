@@ -55,20 +55,25 @@ export function registerClerkAuthRoutes(app: Express) {
     }
   });
 
-  // Current user (all aliases) — protected
+  // Current user — unauthenticated-safe (returns null for logged-out users).
+  // The client's useAuth hook guards against firing this while Clerk is still
+  // loading, so authenticated requests always have a valid session cookie.
+  // All "me" aliases share this unauthenticated-safe handler; protected routes
+  // that absolutely require authentication use requireAuth before their own handler.
   const meHandler = async (req: any, res: any) => {
     try {
-      const userId = getUserId(req)!;
+      const userId = getUserId(req);
+      if (!userId) return res.json(null);
       const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
-      if (!user) return res.status(404).json({ message: "User not found" });
+      if (!user) return res.json(null);
       return res.json(sanitizeUser(user));
     } catch (err) {
       console.error("[clerk-auth] /api/auth/user error:", err);
-      return res.status(500).json({ message: "Internal server error" });
+      return res.json(null); // safe fallback — never break the loading state
     }
   };
 
-  app.get("/api/auth/user", requireAuth, meHandler);
+  app.get("/api/auth/user", meHandler);
   app.get("/api/users/me", requireAuth, meHandler);
   app.get("/api/auth/me", requireAuth, meHandler);
   app.get("/api/user/profile", requireAuth, meHandler);

@@ -3523,7 +3523,7 @@ router.get("/api/admin/revenue/dashboard", requireAuth, async (req, res) => {
       const dashboard = await withQueryTimer(
         "admin-revenue-dashboard",
         () => revenueTrackingService.getUnifiedDashboard(),
-        (req.user as any)?.role
+        (req as any)?.user?.role
       );
       res.json(dashboard);
     } catch (error: any) {
@@ -4282,7 +4282,7 @@ router.patch("/api/admin/payouts/:id", requireAuth, async (req, res) => {
 
 router.get("/api/admin/users", requireAuth, async (req, res) => {
     try {
-      const user = req.user as any;
+      const user = (req as any).user;
       if (user?.claims?.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -4326,7 +4326,7 @@ router.get("/api/admin/users", requireAuth, async (req, res) => {
       const { allUsers, totalResult, stats } = await withQueryTimer(
         "admin-users-paginated",
         () => getAdminUsersPage(whereClause, limit, offset, timezone),
-        (req.user as any)?.claims?.role
+        (req as any)?.user?.claims?.role
       );
 
       const enrichedUsers = await Promise.all(allUsers.map(async (u: any) => {
@@ -4366,7 +4366,7 @@ router.get("/api/admin/users", requireAuth, async (req, res) => {
 
 router.get("/api/admin/users/deleted", requireAuth, async (req, res) => {
     try {
-      const user = req.user as any;
+      const user = (req as any).user;
       if (user?.claims?.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -4398,7 +4398,7 @@ router.get("/api/admin/users/deleted", requireAuth, async (req, res) => {
 
 router.delete("/api/admin/users/:id", requireAuth, async (req, res) => {
     try {
-      const adminUser = req.user as any;
+      const adminUser = (req as any).user;
       if (adminUser?.claims?.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -4487,7 +4487,7 @@ function deriveTripPhase(startDate: unknown, endDate: unknown, now: Date): "upco
 
 router.get("/api/admin/trips", requireAuth, async (req, res) => {
     try {
-      const user = req.user as any;
+      const user = (req as any).user;
       if (user?.claims?.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -4556,7 +4556,7 @@ router.get("/api/admin/trips", requireAuth, async (req, res) => {
 
 router.get("/api/admin/analytics/overview", requireAuth, async (req, res) => {
     try {
-      const user = req.user as any;
+      const user = (req as any).user;
       if (user?.claims?.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -4632,7 +4632,7 @@ router.get("/api/admin/analytics/overview", requireAuth, async (req, res) => {
 
 router.get("/api/admin/analytics/by-country", requireAuth, async (req, res) => {
     try {
-      const user = req.user as any;
+      const user = (req as any).user;
       if (user?.claims?.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -4678,7 +4678,7 @@ router.get("/api/admin/analytics/by-country", requireAuth, async (req, res) => {
 
 router.get("/api/admin/analytics/experts", requireAuth, async (req, res) => {
     try {
-      const user = req.user as any;
+      const user = (req as any).user;
       if (user?.claims?.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -4718,7 +4718,7 @@ router.get("/api/admin/analytics/experts", requireAuth, async (req, res) => {
 
 router.get("/api/admin/analytics/providers", requireAuth, async (req, res) => {
     try {
-      const user = req.user as any;
+      const user = (req as any).user;
       if (user?.claims?.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -4761,7 +4761,7 @@ router.get("/api/admin/analytics/providers", requireAuth, async (req, res) => {
 
 router.get("/api/admin/analytics/tourism", requireAuth, async (req, res) => {
     try {
-      const user = req.user as any;
+      const user = (req as any).user;
       if (user?.claims?.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -4875,7 +4875,7 @@ router.get("/api/admin/analytics/tourism", requireAuth, async (req, res) => {
 
 router.get("/api/admin/system/health", requireAuth, async (req, res) => {
     try {
-      const user = req.user as any;
+      const user = (req as any).user;
       if (user?.claims?.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -4931,7 +4931,7 @@ router.get("/api/admin/system/health", requireAuth, async (req, res) => {
 
 router.get("/api/admin/search", requireAuth, async (req, res) => {
     try {
-      const user = req.user as any;
+      const user = (req as any).user;
       if (user?.claims?.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -5075,7 +5075,7 @@ router.get("/api/admin/notifications", requireAuth, async (req, res) => {
 
 router.get("/api/admin/reports/destination-demand", requireAuth, async (req, res) => {
     try {
-      const user = req.user as any;
+      const user = (req as any).user;
       if (user?.claims?.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -5101,7 +5101,7 @@ router.get("/api/admin/reports/destination-demand", requireAuth, async (req, res
 
 router.get("/api/admin/reports/provider-market", requireAuth, async (req, res) => {
     try {
-      const user = req.user as any;
+      const user = (req as any).user;
       if (user?.claims?.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -5124,7 +5124,7 @@ router.get("/api/admin/reports/provider-market", requireAuth, async (req, res) =
 
 router.get("/api/admin/reports/geographic-insights", requireAuth, async (req, res) => {
     try {
-      const user = req.user as any;
+      const user = (req as any).user;
       if (user?.claims?.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -5151,7 +5151,7 @@ router.get("/api/admin/reports/geographic-insights", requireAuth, async (req, re
 
 router.get("/api/admin/reports/conversion-funnel", requireAuth, async (req, res) => {
     try {
-      const user = req.user as any;
+      const user = (req as any).user;
       if (user?.claims?.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -5190,7 +5190,7 @@ router.get("/api/admin/reports/conversion-funnel", requireAuth, async (req, res)
 
 router.get("/api/admin/reports/activity-demand", requireAuth, async (req, res) => {
     try {
-      const user = req.user as any;
+      const user = (req as any).user;
       if (user?.claims?.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -5234,7 +5234,7 @@ router.get("/api/admin/reports/activity-demand", requireAuth, async (req, res) =
 
 router.get("/api/admin/reports/activity-trends/:activityType", requireAuth, async (req, res) => {
     try {
-      const user = req.user as any;
+      const user = (req as any).user;
       if (user?.claims?.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -5265,7 +5265,7 @@ router.get("/api/admin/reports/activity-trends/:activityType", requireAuth, asyn
 
 router.get("/api/admin/reports/destination-benchmark/:destination", requireAuth, async (req, res) => {
     try {
-      const user = req.user as any;
+      const user = (req as any).user;
       if (user?.claims?.role !== "admin") {
         return res.status(403).json({ message: "Admin access required" });
       }
@@ -5925,7 +5925,7 @@ router.get("/api/admin/lead-routing-logs", requireAuth, async (req, res) => {
           ORDER BY lrl.created_at DESC
           LIMIT ${limit}
         `),
-        (req.user as any)?.role
+        (req as any)?.user?.role
       );
       res.json(result.rows);
     } catch (error: any) {
