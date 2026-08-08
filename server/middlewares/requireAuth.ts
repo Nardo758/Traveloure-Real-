@@ -29,9 +29,19 @@ export const requireAuth: RequestHandler = async (req, res, next) => {
 
     if (!dbUser) {
       // JIT provision: first authenticated request creates the local row.
+      // Populate nullable identity columns from sessionClaims (frozen at insert —
+      // Clerk is the source of truth for subsequent reads; local copy satisfies
+      // any NOT NULL constraints and avoids null in FK-dependent display queries).
+      const claims = auth?.sessionClaims as Record<string, unknown> | undefined;
       const [inserted] = await db
         .insert(users)
-        .values({ id: userId, role: "user" })
+        .values({
+          id: userId,
+          role: "user",
+          email: (claims?.email as string) || undefined,
+          firstName: (claims?.firstName as string) || undefined,
+          lastName: (claims?.lastName as string) || undefined,
+        })
         .onConflictDoNothing()
         .returning();
       if (inserted) {
