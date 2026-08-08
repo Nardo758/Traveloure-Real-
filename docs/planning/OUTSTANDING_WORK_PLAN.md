@@ -12,8 +12,8 @@ old and two had already changed.
 NOW      A1 indexes ──────────────────────────────► independent, production risk
          A2 rate-limiter unref ──────────────────► trivial, unblocks clean shutdown
 
-NEXT     B1 Stripe factory ──┬──► B2 booking one-click   (B2 needs B1's retries to be safe)
-                             └──► reduces checkout 503s
+NEXT     B1 WITHDRAWN (premise false — retries already default to 2)
+         B2 booking one-click ────────────────────► now UNBLOCKED, B1 was its only prereq
 
 PARALLEL C1 segmentation decisions ──► C2 engine (dark) ──► C3 proposal UI ──► C4 multi-city
                                                                                     │
@@ -86,29 +86,34 @@ which shows up as hanging test runs and delayed graceful shutdown, not as a user
 
 ## Lane B — Money-path resilience.
 
-### B1 · Shared Stripe client factory  (task #230)
+### ~~B1 · Shared Stripe client factory~~ · **WITHDRAWN — premise was false** (task #230)
 
-**Rule:** §15 idempotency — retries are only safe where an idempotency key already exists.
+**Verified against the installed library and the CI contract on Aug 8 2026; three of my own claims
+were wrong. No code needed.**
 
-**What's wrong.** **23** non-test `new Stripe()` constructions across `server/`, and **zero** set
-`maxNetworkRetries` or a timeout. A single transient network blip fails the call outright. This is
-the root cause of the flaky checkout 503 diagnosed earlier — a real product characteristic, not a
-test artifact.
+1. **`maxNetworkRetries` is ALREADY 2 — by default.** stripe-node 18.5.0 defaults it
+   (`stripe.core.js:72`, `validateInteger('maxNetworkRetries', props.maxNetworkRetries, 2)`),
+   confirmed empirically: `new Stripe(key).getMaxNetworkRetries()` returns `2` with no option
+   passed. All 23 clients already retry twice. Setting it explicitly is a literal no-op.
+2. **Retries were never unsafe.** stripe-node auto-generates an idempotency key for any POST
+   whenever `maxNetworkRetries > 0` (`RequestSender.js:199-215`, `_defaultIdempotencyKey`). The
+   "confirm every mutating site passes a key before giving it retries" step I called *"the actual
+   work"* was unnecessary — the library guarantees it.
+3. **The checkout 503 is not a defect at all.** It is the deliberate §15b response at
+   `payments.routes.ts:338`, whose own comment reads *"THE FAILURE THIS LANE EXISTS FOR. Nothing
+   irreversible has happened."* In CI it fires because there is no real Stripe key, and
+   `journey-suite.yml:197` asserts it as a **hard negative contract** — *"the specs assert the
+   declared 503 payment_unavailable AND the absence of every money-path fact … not a silent pass."*
+   The flakiness I attributed to missing retries was the suite correctly proving that a failed
+   authorization commits nothing.
 
-**Plan.**
-1. `server/lib/stripe-client.ts` — one factory: `maxNetworkRetries: 2`, an explicit timeout, pinned
-   `apiVersion: "2024-12-18.acacia"`.
-2. Convert the 23 sites.
-3. **Before converting any mutating call site, confirm it passes an idempotency key.** A retry
-   without one is a double-charge, so this step is the actual work — the factory is trivial.
-   Read-only calls (`retrieve`, `list`) need no key and convert freely.
-4. Guard: fail CI on a `new Stripe(` outside the factory, with `--self-test` fixtures per §18d.
+**Residual, and deliberately not done now:** the 23 sites duplicate the `apiVersion` string, and
+the default timeout is 80 s (`getApiField('timeout')`), which is long for a checkout request. Both
+are hygiene, not bugs. Shortening a money-path timeout is a behavior change with its own risk
+(a timed-out POST is ambiguous about whether it landed) and should be its own decision, not a
+side effect of a refactor. **Do not spend 23 money-path call-site edits on a no-op.**
 
-**Sequencing note:** B1 is a prerequisite for B2. Adding retries *first* is what makes one-click
-booking safe to build.
-
-**Proof:** extend the existing refund-retry convergence test pattern — force a transient network
-failure, assert one charge, not two.
+**Consequence for sequencing: B2 is no longer blocked.** B1 was its only stated prerequisite.
 
 ### B2 · One-click for booking checkout  (closes task #228)
 
@@ -244,9 +249,10 @@ sequencing diagram above still resolve.
 
 ## Recommended order
 
-1. **A1 + A2** — production risk, independent, small.
-2. **B1** — unblocks B2 and reduces real checkout failures.
+1. ~~**A1 + A2**~~ — **LANDED** (`26c5939d`). A1 carries a publish gate: run
+   `node scripts/preflight-prod-unique-indexes.cjs "<PROD_DATABASE_URL>"` before deploying.
+2. ~~**B1**~~ — **WITHDRAWN**, premise false (see above). No work.
 3. **C1** — your four decisions; unblocks the whole product lane.
-4. **B2** and **C2** in parallel — different subsystems, no overlap.
+4. **B2** and **C2** in parallel — different subsystems, no overlap. B2 is now unblocked.
 5. **C3 → C4**, then **D1** riding along.
 6. **C5** last. **D2/D3** as capacity allows. (Lane E is closed.)
