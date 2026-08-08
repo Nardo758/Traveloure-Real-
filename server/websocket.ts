@@ -5,7 +5,6 @@ import { publishableKeyFromHost } from "@clerk/shared/keys";
 import { getClerkProxyHost } from "./middlewares/clerkProxyMiddleware";
 import { db } from "./db";
 import { userAndExpertChats } from "@shared/schema";
-import { eq, and, or } from "drizzle-orm";
 import { logger } from "./infrastructure/logger";
 import { getUserId } from "./utils/auth";
 
@@ -160,57 +159,64 @@ function handleAuthenticatedConnection(ws: WebSocket, userId: string) {
         }
 
         case "chat": {
-          if (!message.chatId || !message.content || !message.recipientId) {
+          // Client sends: { type: "chat", senderId, recipientId, content }
+          // Server response: { type: "chat", id, senderId, recipientId, content, timestamp }
+          if (!message.recipientId || !message.content) {
             break;
           }
 
-          // Persist the message directly to the userAndExpertChats table.
-          const [newMessage] = await db
-            .insert(userAndExpertChats)
-            .values({
+          try {
+            // Persist the message. senderId is always the session-resolved userId
+            // (MT-1: the client-supplied senderId is never trusted).
+            const [saved] = await db
+              .insert(userAndExpertChats)
+              .values({
+                senderId: userId,
+                receiverId: message.recipientId,
+                message: message.content,
+              })
+              .returning();
+
+            const response = JSON.stringify({
+              type: "chat",
+              id: saved.id,
               senderId: userId,
-              receiverId: message.recipientId,
-              message: message.content,
-            })
-            .returning();
+              recipientId: message.recipientId,
+              content: message.content,
+              timestamp: saved.createdAt?.toISOString() || new Date().toISOString(),
+            });
 
-          const outbound = JSON.stringify({
-            type: "chat",
-            chatId: message.chatId,
-            message: newMessage,
-          });
+            // Confirm to sender
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(response);
+            }
 
-          // Send to recipient if online
-          const recipientClient = clients.get(message.recipientId);
-          if (
-            recipientClient &&
-            recipientClient.ws.readyState === WebSocket.OPEN
-          ) {
-            recipientClient.ws.send(outbound);
-          }
-
-          // Send confirmation back to sender
-          if (ws.readyState === WebSocket.OPEN) {
-            ws.send(outbound);
+            // Deliver to recipient if online
+            const recipientClient = clients.get(message.recipientId);
+            if (recipientClient && recipientClient.ws.readyState === WebSocket.OPEN) {
+              recipientClient.ws.send(response);
+            }
+          } catch (err) {
+            log(`Error persisting chat message from ${userId}: ${err}`);
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ type: "error", error: "Failed to send message" }));
+            }
           }
           break;
         }
 
         case "typing": {
-          if (!message.chatId || !message.recipientId) {
+          if (!message.recipientId) {
             break;
           }
 
           const recipientClient = clients.get(message.recipientId);
-          if (
-            recipientClient &&
-            recipientClient.ws.readyState === WebSocket.OPEN
-          ) {
+          if (recipientClient && recipientClient.ws.readyState === WebSocket.OPEN) {
             recipientClient.ws.send(
               JSON.stringify({
                 type: "typing",
-                chatId: message.chatId,
                 senderId: userId,
+                timestamp: new Date().toISOString(),
               })
             );
           }
@@ -218,42 +224,8 @@ function handleAuthenticatedConnection(ws: WebSocket, userId: string) {
         }
 
         case "read": {
-          if (!message.chatId) {
-            break;
-          }
-
-          // chatId is formatted as "senderId_recipientId" (sorted lexicographically).
-          // Mark all unread messages from the other party as read.
-          const now = new Date();
-          await db
-            .update(userAndExpertChats)
-            .set({ readAt: now })
-            .where(
-              and(
-                eq(userAndExpertChats.receiverId, userId),
-                or(
-                  eq(userAndExpertChats.senderId, message.chatId.replace(`_${userId}`, "").replace(`${userId}_`, "")),
-                ),
-              ),
-            );
-
-          // Notify the other participant (the sender of those messages) that we read them.
-          // Parse the other userId from the chatId string.
-          const otherUserId = message.chatId
-            .split("_")
-            .find((part: string) => part !== userId);
-          if (otherUserId) {
-            const participantClient = clients.get(otherUserId);
-            if (participantClient && participantClient.ws.readyState === WebSocket.OPEN) {
-              participantClient.ws.send(
-                JSON.stringify({
-                  type: "read",
-                  chatId: message.chatId,
-                  readBy: userId,
-                })
-              );
-            }
-          }
+          // No-op: read receipts are tracked via the REST API (/api/messages/read-all).
+          // The WS "read" event is sent by clients for typing-style UX only; no DB write needed here.
           break;
         }
       }
