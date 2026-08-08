@@ -2207,15 +2207,9 @@ export default function ExpertWorkspace() {
   const isAuthoring = workspaceCtx?.mode === "authoring";
   const listing = (workspaceCtx?.listing ?? null) as ReadyMadeListing | null;
 
-  // Authoring opens on Distribute (the ship-it surface); guarded by a ref so it lands once
-  // and never yanks the panel back while the author is working elsewhere.
-  const authoringTabDefaulted = useRef(false);
-  useEffect(() => {
-    if (isAuthoring && !authoringTabDefaulted.current) {
-      authoringTabDefaulted.current = true;
-      setRightTab("distribute");
-    }
-  }, [isAuthoring]);
+  // Decision-maker ruling (Aug 8 2026): the workspace ALWAYS lands on Add — building comes
+  // before distributing. The former authoring-opens-on-Distribute effect is deliberately gone;
+  // "add" is the useState default above, so no effect is needed at all.
 
   const { data: assignedTrips, isLoading: tripsLoading } = useQuery<AssignedTrip[]>({
     queryKey: ["/api/expert/assigned-trips"],
@@ -3077,7 +3071,7 @@ export default function ExpertWorkspace() {
   };
 
   const sectionLabelStyle: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: FAINT, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 7 };
-  const chanCardStyle: React.CSSProperties = { border: `1px solid ${LINE}`, borderRadius: 10, overflow: "hidden" };
+  const chanCardStyle: React.CSSProperties = { border: `1px solid ${LINE}`, borderRadius: 10, overflow: "hidden", flexShrink: 0 };
   const chanHeadStyle: React.CSSProperties = { padding: "8px 12px", borderBottom: `1px solid ${LINE}`, display: "flex", alignItems: "center", gap: 6, background: GROUND };
 
   return (
