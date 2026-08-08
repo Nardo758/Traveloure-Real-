@@ -1109,7 +1109,7 @@ router.get("/api/cart/fee-preview", requireAuth, async (req, res) => {
 
 router.get("/api/invoices/my", requireAuth, async (req, res) => {
     try {
-      const user = req.user as any;
+      const user = (req as any).user;
       const invoices = await storage.getInvoicesByCustomer(getUserId(req)!);
       res.json(invoices);
     } catch (error: any) {

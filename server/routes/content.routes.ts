@@ -5559,7 +5559,7 @@ router.post("/api/serp/track-click", async (req, res) => {
       const { providerId, metadata } = parseResult.data;
 
       const { serpService } = await import("../services/serp.service");
-      const userId = (req.user as any)?.id || null;
+      const userId = ((req as any).user)?.id || null;
       
       await serpService.trackClick(providerId, userId, metadata);
 
@@ -5599,7 +5599,7 @@ router.post("/api/serp/inquiry", requireAuth, async (req, res) => {
       const { serpService } = await import("../services/serp.service");
       
       const inquiry = await serpService.createInquiry({
-        userId: (req.user as any).id,
+        userId: (req as any)?.user?.id,
         serpProviderId,
         providerName,
         providerEmail,
@@ -6189,7 +6189,7 @@ router.get("/api/fever/cache/events/:cityCode", async (req, res) => {
 
 router.post("/api/fever/cache/refresh/:cityCode", requireAuth, async (req, res) => {
     try {
-      const user = req.user as any;
+      const user = (req as any).user;
       if (user?.role !== 'admin') {
         return res.status(403).json({ error: "Admin access required" });
       }
@@ -6211,7 +6211,7 @@ router.post("/api/fever/cache/refresh/:cityCode", requireAuth, async (req, res) 
 
 router.post("/api/fever/cache/refresh-all", requireAuth, async (req, res) => {
     try {
-      const user = req.user as any;
+      const user = (req as any).user;
       if (user?.role !== 'admin') {
         return res.status(403).json({ error: "Admin access required" });
       }
@@ -7219,7 +7219,7 @@ router.get("/api/discovery/gems", async (req, res) => {
               offset: offset ? parseInt(offset as string) : undefined
             }
           ),
-          (req.user as any)?.claims?.role
+          ((req as any).user)?.claims?.role
         );
         return res.json(result);
       }
@@ -7231,7 +7231,7 @@ router.get("/api/discovery/gems", async (req, res) => {
           limit: limit ? parseInt(limit as string) : undefined,
           offset: offset ? parseInt(offset as string) : undefined
         }),
-        (req.user as any)?.claims?.role
+        ((req as any).user)?.claims?.role
       );
       res.json(result);
     } catch (error: any) {
@@ -7300,7 +7300,7 @@ router.get("/api/discovery/jobs", requireAuth, async (req, res) => {
   // while travellers/experts see only approved-partner content.
   const isRequestAdmin = async (req: any): Promise<boolean> => {
     try {
-      if (!req.user) return false;
+      if (!(req as any).user) return false;
       const uid = getUserId(req)!;
       if (!uid) return false;
       const user = await storage.getUser(uid);
@@ -7895,7 +7895,7 @@ router.get("/api/affiliate/products/by-location", async (req, res) => {
 
 router.post("/api/content/:trackingNumber/flag", requireAuth, async (req, res) => {
     try {
-      const user = req.user as any;
+      const user = (req as any).user;
       const { trackingNumber } = req.params;
       const { flagType, severity, description, evidence } = req.body;
 

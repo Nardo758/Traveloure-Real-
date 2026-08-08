@@ -1,3 +1,4 @@
+import { requireAuth } from "../middlewares/requireAuth";
 import { getAuth } from "@clerk/express";
 /**
  * storefront.routes.ts — public earner storefront (backoffice Phase 1a/1b).
@@ -33,12 +34,6 @@ import { transformDevHtml } from "../vite-dev-html";
 
 const router = Router();
 
-const isAuthenticated = (req: any, res: any, next: any) => {
-  const auth = getAuth(req);
-  const userId = (auth?.sessionClaims as any)?.userId || auth?.userId;
-  if (!userId) return res.status(401).json({ message: "Authentication required" });
-  next();
-};
 
 // Roles allowed to claim a storefront handle — the canonical earner set (shared/roles.ts)
 // plus legacy bare "provider" tolerated as a permissive allow (V.4 both-spellings posture;
@@ -68,7 +63,7 @@ const claimSchema = z.object({
     .max(30, "Handle must be at most 30 characters"),
 });
 
-router.patch("/api/me/handle", isAuthenticated, async (req: any, res) => {
+router.patch("/api/me/handle", requireAuth, async (req: any, res) => {
   try {
     const userId = getUserId(req)!;
     const parsed = claimSchema.safeParse(req.body ?? {});
@@ -202,7 +197,7 @@ const settingsPatchSchema = z.object({
   showOnLeaderboard: z.boolean().optional(),
 }).strict();
 
-router.get("/api/me/preferences", isAuthenticated, async (req: any, res) => {
+router.get("/api/me/preferences", requireAuth, async (req: any, res) => {
   try {
     const userId = getUserId(req)!;
     if (!userId) return res.status(401).json({ message: "Authentication required" });
@@ -220,7 +215,7 @@ router.get("/api/me/preferences", isAuthenticated, async (req: any, res) => {
   }
 });
 
-router.patch("/api/me/preferences", isAuthenticated, async (req: any, res) => {
+router.patch("/api/me/preferences", requireAuth, async (req: any, res) => {
   try {
     const userId = getUserId(req)!;
     if (!userId) return res.status(401).json({ message: "Authentication required" });
@@ -286,7 +281,7 @@ const storefrontPrefsPatchSchema = z.object({
   coverImageUrl: httpsUrlSchema.nullable().optional(),
 }).strict();
 
-router.patch("/api/me/storefront", isAuthenticated, async (req: any, res) => {
+router.patch("/api/me/storefront", requireAuth, async (req: any, res) => {
   try {
     const userId = getUserId(req)!;
     if (!userId) return res.status(401).json({ message: "Authentication required" });
@@ -341,7 +336,7 @@ const travelPreferencesPatchSchema = z.object({
   budgetPreference: z.enum(BUDGET_PREFERENCES).nullable().optional(),
 }).strict();
 
-router.get("/api/me/travel-preferences", isAuthenticated, async (req: any, res) => {
+router.get("/api/me/travel-preferences", requireAuth, async (req: any, res) => {
   try {
     const userId = getUserId(req)!;
     if (!userId) return res.status(401).json({ message: "Authentication required" });
@@ -362,7 +357,7 @@ router.get("/api/me/travel-preferences", isAuthenticated, async (req: any, res) 
   }
 });
 
-router.patch("/api/me/travel-preferences", isAuthenticated, async (req: any, res) => {
+router.patch("/api/me/travel-preferences", requireAuth, async (req: any, res) => {
   try {
     const userId = getUserId(req)!;
     if (!userId) return res.status(401).json({ message: "Authentication required" });
@@ -410,7 +405,7 @@ router.patch("/api/me/travel-preferences", isAuthenticated, async (req: any, res
 // real rows (handle column, Stripe account status, own offerings across the three lanes,
 // future availability slots, identity-verification status) — nothing is self-reported and
 // nothing is stored; there is no migration and no state to drift.
-router.get("/api/me/business-setup", isAuthenticated, async (req: any, res) => {
+router.get("/api/me/business-setup", requireAuth, async (req: any, res) => {
   try {
     const userId = getUserId(req)!;
     if (!userId) return res.status(401).json({ message: "Authentication required" });

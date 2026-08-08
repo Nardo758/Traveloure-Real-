@@ -320,7 +320,7 @@ router.post("/api/trips/:tripId/changes", requireAuth, async (req, res) => {
   try {
     const { tripId } = req.params;
     const userId = getUserId(req)!;
-    const userName = (req.user as any)?.claims?.name || "User";
+    const userName = ((req as any).user)?.claims?.name || "User";
 
     const trip = await storage.getTrip(tripId);
     if (!trip || trip.userId !== userId) {
@@ -356,7 +356,7 @@ router.patch("/api/transport-legs/:legId/status", requireAuth, async (req, res) 
   try {
     const { legId } = req.params;
     const userId = getUserId(req)!;
-    const userName = (req.user as any)?.claims?.name || "User";
+    const userName = ((req as any).user)?.claims?.name || "User";
     const { status, tripId } = req.body;
 
     if (!status || !tripId) {

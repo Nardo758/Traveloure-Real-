@@ -210,7 +210,7 @@ router.get(api.trips.list.path, requireAuth, async (req, res) => {
     const trips = await withQueryTimer(
       "trips-dashboard-list",
       () => storage.getTrips(userId, status),
-      (req.user as any)?.claims?.role
+      ((req as any).user)?.claims?.role
     );
     res.json(trips);
   });
@@ -402,7 +402,7 @@ router.post(api.trips.generateItinerary.path, requireAuth, async (req, res) => {
       // Without this, any authenticated user could burn AI credits and overwrite
       // another user's itinerary_items by guessing a trip UUID.
       const callerUserId = getUserId(req)!;
-      const callerRole = (req.user as any)?.claims?.role ?? (req.user as any)?.role;
+      const callerRole = ((req as any).user)?.claims?.role ?? ((req as any).user)?.role;
       if (trip.userId && String(trip.userId) !== String(callerUserId) && callerRole !== "admin") {
         console.warn(
           `[IDOR ATTEMPT] User ${callerUserId} tried to generate itinerary for trip ` +
@@ -523,7 +523,7 @@ router.get(api.touristPlaces.search.path, async (req, res) => {
 
 router.get(api.chats.list.path, requireAuth, async (req, res) => {
     const userId = getUserId(req)!;
-    const userRole = (req.user as any).claims.role || 'user';
+    const userRole = (req as any)?.user?.claims?.role || 'user';
     const chats = await storage.getChats(userId);
     
     // Log access for audit trail
@@ -610,7 +610,7 @@ router.get("/api/itinerary-comparisons", requireAuth, async (req, res) => {
       const comparisons = await withQueryTimer(
         "itinerary-comparisons-fetch",
         () => storage.getComparisonsByUserId(userId),
-        (req.user as any)?.role
+        ((req as any).user)?.role
       );
       res.json(comparisons);
     } catch (error) {
@@ -1414,7 +1414,7 @@ router.get("/api/trips/:tripId/itinerary/recommendations", requireAuth, async (r
 router.post("/api/trips/:tripId/itinerary-items", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
-      const userName = (req.user as any).claims.name || "User";
+      const userName = (req as any)?.user?.claims?.name || "User";
       const { tripId } = req.params;
       const tripRole = await getTripRole(tripId, userId);
       if (!canMutateTrip(tripRole)) {
@@ -1462,7 +1462,7 @@ router.post("/api/itinerary-items/:id/backup", requireAuth, async (req, res) => 
 router.post("/api/trips/:tripId/itinerary/reorder", requireAuth, async (req, res) => {
     try {
       const userId = getUserId(req)!;
-      const userName = (req.user as any).claims.name || "User";
+      const userName = (req as any)?.user?.claims?.name || "User";
       const { tripId } = req.params;
       const tripRole = await getTripRole(tripId, userId);
       if (!canMutateTrip(tripRole)) {
@@ -2413,7 +2413,7 @@ router.patch("/api/transport-legs/:legId/mode", async (req, res) => {
       if (variantOwner) {
         const compTripId = await storage.getComparisonTripId(variantOwner.comparisonId);
         if (compTripId) {
-          const who = userId ? ((req.user as any)?.claims?.name || "User") : "Guest";
+          const who = userId ? (((req as any).user)?.claims?.name || "User") : "Guest";
           logItineraryChange(compTripId, who, `Changed transport mode to ${selectedMode} (${leg.fromName} → ${leg.toName})`, "transport", shareToken ? "friend" : "owner", undefined, { legId, selectedMode, previousMode: leg.userSelectedMode || leg.recommendedMode });
         }
       }
