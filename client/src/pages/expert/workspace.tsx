@@ -3669,7 +3669,7 @@ export default function ExpertWorkspace() {
           {/* Add · DMO Library — the picker's core, embedded (same fetch + same write). */}
           {rightTab === "add" && addSource === "dmo" && (
             <div style={{ flex: 1, overflowY: "auto", padding: "12px 12px" }}>
-              <DmoPickerCore tripId={tripId!} dayNumber={focusDay} onAdded={triggerEnergyRecalc} />
+              <DmoPickerCore tripId={tripId!} dayNumber={focusDay} maxDay={maxDay} onAdded={triggerEnergyRecalc} />
             </div>
           )}
 
