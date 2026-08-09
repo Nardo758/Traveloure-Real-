@@ -104,17 +104,39 @@ out geom;
 `.trim();
 }
 
+// Overpass's public gateways 406 requests without a descriptive User-Agent (their usage
+// policy asks tools to identify themselves) — first observed on the Replit verification
+// run. Identify ourselves, ask for JSON explicitly, and fall back through public mirrors.
+const OVERPASS_MIRRORS = [
+  OVERPASS_ENDPOINT,
+  "https://overpass.kumi.systems/api/interpreter",
+  "https://overpass.osm.jp/api/interpreter",
+];
+
 async function fetchOverpass(query: string): Promise<OverpassResponse> {
-  const resp = await fetch(OVERPASS_ENDPOINT, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: `data=${encodeURIComponent(query)}`,
-  });
-  if (!resp.ok) {
-    const body = await resp.text().catch(() => "");
-    throw new Error(`Overpass API returned ${resp.status} ${resp.statusText}: ${body.slice(0, 500)}`);
+  let lastErr: Error | null = null;
+  for (const endpoint of OVERPASS_MIRRORS) {
+    try {
+      const resp = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "Accept": "application/json",
+          "User-Agent": "Traveloure-market-geography/1.0 (+https://traveloure.com; one-off market extract)",
+        },
+        body: `data=${encodeURIComponent(query)}`,
+      });
+      if (!resp.ok) {
+        const body = await resp.text().catch(() => "");
+        throw new Error(`${endpoint} returned ${resp.status} ${resp.statusText}: ${body.slice(0, 300)}`);
+      }
+      return (await resp.json()) as OverpassResponse;
+    } catch (err) {
+      lastErr = err instanceof Error ? err : new Error(String(err));
+      console.warn(`[generate-market-geography] ${lastErr.message} — trying next mirror`);
+    }
   }
-  return (await resp.json()) as OverpassResponse;
+  throw new Error(`All Overpass mirrors failed. Last: ${lastErr?.message}`);
 }
 
 /** Rounds to COORD_DECIMALS, then thins to at most maxPoints while ALWAYS keeping the first and
