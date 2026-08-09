@@ -852,4 +852,8 @@ export const MIGRATION_FILES = [
   // itinerary_items.expert_note + trips.expert_traveler_note (additive nullable). DISTINCT from
   // trips.expert_notes (the PRIVATE build notes). Declared in shared/schema.ts (publish-trap).
   "187_expert_notes_two_level.sql",
+  // 188: source-map execution (decision-maker directed Aug 9 2026; extends §20a). Additive
+  // nullable dmo_extracted_places.enrichment jsonb — open-data facts (Wikidata/OSM), never
+  // prose, never overwrites expert ticketing_url. Declared in shared/schema.ts (publish-trap).
+  "188_extracted_place_enrichment.sql",
 ] as const;
