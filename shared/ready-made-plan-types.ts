@@ -21,7 +21,28 @@ export const READY_MADE_PLAN_TYPES = [
   { key: "wedding_plan", label: "Wedding Plan" },
   { key: "proposal_plan", label: "Proposal Plan" },
   { key: "corporate_retreat_plan", label: "Corporate Retreat Plan" },
+  // Expansion (decision-maker directive, Aug 9 2026): align the vocabulary with the
+  // platform's experience-side categories so a listing's theme can match how travelers
+  // browse. Still a CLOSED list — the one exception is `custom`, which requires a
+  // separate free-text theme label (`plan_type_custom` column) so free text never
+  // enters this validated column and the taxonomy cannot sprawl.
+  { key: "adventure_outdoors", label: "Adventure & Outdoors" },
+  { key: "romance_honeymoon", label: "Romance & Honeymoon" },
+  { key: "family_trip", label: "Family Trip" },
+  { key: "wellness_retreat", label: "Wellness Retreat" },
+  { key: "photography_tour", label: "Photography Tour" },
+  { key: "nightlife_entertainment", label: "Nightlife & Entertainment" },
+  { key: "cultural_heritage", label: "Cultural Heritage" },
+  { key: "beach_island", label: "Beach & Island" },
+  { key: "festival_seasonal", label: "Festival & Seasonal" },
+  { key: "shopping_style", label: "Shopping & Style" },
+  { key: "custom", label: "Custom…" },
 ] as const;
+
+/** True when this key requires the separate free-text theme label. */
+export function isCustomPlanType(key: string | null | undefined): boolean {
+  return key === "custom";
+}
 
 export type ReadyMadePlanTypeKey = (typeof READY_MADE_PLAN_TYPES)[number]["key"];
 
