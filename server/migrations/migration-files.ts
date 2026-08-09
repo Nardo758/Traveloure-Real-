@@ -867,4 +867,10 @@ export const MIGRATION_FILES = [
   // service_offering_types row ('custom_other_offering') so the provider picker has a landing
   // option. All declared in shared/schema.ts in the same commit (publish-trap rule).
   "189_provider_backoffice_foundations.sql",
+  // 190: CLAUDE.md §06d (decision-maker ratified Aug 9 2026). Reviews — provider public replies:
+  // service_reviews.provider_reply/provider_replied_at (additive nullable). ONE public reply by
+  // the service owner, write-gated to the listing's owner, rendered traveler-side beside the
+  // review, visible to admin review-moderation. Distinct from the pre-existing legacy
+  // responseText/responseAt pair, left untouched. Declared in shared/schema.ts (publish-trap).
+  "190_service_reviews_provider_reply.sql",
 ] as const;
