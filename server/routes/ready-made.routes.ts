@@ -20,9 +20,10 @@ import { getUserId } from "../utils/auth";
 import { z } from "zod";
 import { db } from "../db";
 import { storage } from "../storage";
-import { trips, readyMadeTrips, readyMadePurchases, tripExpertAdvisors, itineraryItems, users } from "@shared/schema";
-import { and, desc, eq, inArray, ne, sql } from "drizzle-orm";
-import { READY_MADE_PLAN_TYPE_KEYS, type ReadyMadePlanTypeKey } from "@shared/ready-made-plan-types";
+import { trips, readyMadeTrips, readyMadePurchases, tripExpertAdvisors, itineraryItems, transportLegs, users } from "@shared/schema";
+import { and, asc, desc, eq, inArray, isNull, ne, sql } from "drizzle-orm";
+import { renderReadyMadeTeaserMapSvg } from "../services/ready-made-teaser-map.service";
+import { READY_MADE_PLAN_TYPE_KEYS, isCustomPlanType, type ReadyMadePlanTypeKey } from "@shared/ready-made-plan-types";
 import { LAUNCH_MARKETS, isLaunchMarket, STORE_GATE_MESSAGE } from "@shared/launch-markets";
 import { getAuthoredTrip } from "../utils/trip-authorship";
 import { holdWindowDays } from "../config/earnings-hold.config";
@@ -458,6 +459,11 @@ const patchListingSchema = z
     durationDays: z.number().int().min(1).max(30),
     // Closed vocabulary — the "Type of Plan" line of the store's quality structure.
     planType: z.enum(READY_MADE_PLAN_TYPE_KEYS as [ReadyMadePlanTypeKey, ...ReadyMadePlanTypeKey[]]).nullable(),
+    // Free-text theme label, ONLY meaningful when planType === "custom" (migration 184). Length
+    // (3..80 trimmed) and the "accompanies custom" rule are enforced below, after safeParse —
+    // never at the zod layer alone, since validity here depends on the (possibly-unpatched)
+    // planType value.
+    planTypeCustom: z.string().trim().max(80).nullable(),
     bestSeason: z.string().trim().max(60).nullable(),
     pricingMode: z.enum(["fixed", "per_traveler"]), // mirrors the migration-133 CHECK
     priceCents: z.number().int().min(500).max(500_000).nullable(), // $5–$5,000, USD-only v1
@@ -507,6 +513,24 @@ router.patch("/api/expert/ready-made/:id", isAuthenticated, async (req, res) => 
       }
     }
     if (patch.heroImageUrl === null) patch.heroImageMeta = null; // clearing the hero clears its credit
+
+    // "custom" plan type (migration 184): valid ONLY with an accompanying 3..80 trimmed
+    // planTypeCustom; any non-custom key clears/nulls the custom text on save. Effective planType
+    // = the patched value if present, else the listing's current stored value — so a save that
+    // only touches planTypeCustom is validated against the listing's existing plan type.
+    const effectivePlanType = patch.planType !== undefined ? patch.planType : (existing.planType as string | null);
+    if (isCustomPlanType(effectivePlanType)) {
+      const rawCustom = patch.planTypeCustom !== undefined ? patch.planTypeCustom : (existing.planTypeCustom as string | null);
+      const trimmedCustom = typeof rawCustom === "string" ? rawCustom.trim() : "";
+      if (trimmedCustom.length < 3 || trimmedCustom.length > 80) {
+        return res.status(400).json({
+          message: "Custom plan type requires a 3–80 character theme label",
+        });
+      }
+      patch.planTypeCustom = trimmedCustom;
+    } else {
+      patch.planTypeCustom = null;
+    }
 
     // A3 re-review: an approved listing whose headline claims change re-enters the queue.
     const materialChange =
@@ -889,6 +913,7 @@ router.get("/api/ready-made", async (_req, res) => {
         id: readyMadeTrips.id,
         title: readyMadeTrips.title,
         planType: readyMadeTrips.planType,
+        planTypeCustom: readyMadeTrips.planTypeCustom,
         market: readyMadeTrips.market,
         durationDays: readyMadeTrips.durationDays,
         bestSeason: readyMadeTrips.bestSeason,
@@ -927,6 +952,7 @@ router.get("/api/ready-made", async (_req, res) => {
         id: r.id,
         title: r.title,
         planType: r.planType,
+        planTypeCustom: r.planTypeCustom,
         market: r.market,
         durationDays: r.durationDays,
         bestSeason: r.bestSeason,
@@ -961,6 +987,7 @@ router.get("/api/ready-made/:id", async (req, res) => {
         id: readyMadeTrips.id,
         title: readyMadeTrips.title,
         planType: readyMadeTrips.planType,
+        planTypeCustom: readyMadeTrips.planTypeCustom,
         market: readyMadeTrips.market,
         durationDays: readyMadeTrips.durationDays,
         bestSeason: readyMadeTrips.bestSeason,
@@ -996,6 +1023,7 @@ router.get("/api/ready-made/:id", async (req, res) => {
         id: row.id,
         title: row.title,
         planType: row.planType,
+        planTypeCustom: row.planTypeCustom,
         market: row.market,
         durationDays: row.durationDays,
         bestSeason: row.bestSeason,
@@ -1014,6 +1042,82 @@ router.get("/api/ready-made/:id", async (req, res) => {
   } catch (err: any) {
     console.error("[ready-made] detail error:", err);
     res.status(500).json({ message: "Failed to load trip" });
+  }
+});
+
+// ─── Public teaser map (pre-purchase store page) ──────────────────────────────
+//
+// Public, NO auth — serves the store detail page's map preview. Gate mirrors the public detail
+// endpoint above (approved + active only; a non-public listing gets the same 404 as "doesn't
+// exist" — no draft-listing oracle). CRITICAL REDACTION RULE: raw item coordinates never reach
+// an unpurchased client — every stop is rendered server-side with its position jittered by
+// ready-made-teaser-map.service.ts before it ever becomes a pixel. See that module's header for
+// the full doctrine.
+router.get("/api/ready-made/:id/teaser-map.svg", async (req, res) => {
+  try {
+    const [listing] = await db
+      .select({
+        id: readyMadeTrips.id,
+        status: readyMadeTrips.status,
+        active: readyMadeTrips.active,
+        sourceTripId: readyMadeTrips.sourceTripId,
+      })
+      .from(readyMadeTrips)
+      .where(eq(readyMadeTrips.id, req.params.id))
+      .limit(1);
+    // Same public-visibility predicate as GET /api/ready-made/:id — no draft-listing oracle.
+    if (!listing || listing.status !== "approved" || !listing.active) {
+      return res.status(404).json({ message: "Trip not found" });
+    }
+
+    const [trip] = await db
+      .select({ destination: trips.destination })
+      .from(trips)
+      .where(eq(trips.id, listing.sourceTripId))
+      .limit(1);
+
+    // Itinerary order = dayNumber, then sortOrder (the same ordering the workspace itinerary
+    // itself renders in) — the teaser service groups by day and connects each day's located
+    // stops in this order.
+    const items = await db
+      .select({
+        id: itineraryItems.id,
+        dayNumber: itineraryItems.dayNumber,
+        latitude: itineraryItems.latitude,
+        longitude: itineraryItems.longitude,
+      })
+      .from(itineraryItems)
+      .where(eq(itineraryItems.tripId, listing.sourceTripId))
+      .orderBy(asc(itineraryItems.dayNumber), asc(itineraryItems.sortOrder));
+
+    // Per-day distance legend — ONLY real transport_legs rows, trip-scoped (variantId IS NULL
+    // per the migration-154 scope rule). No legs → the service omits the legend entirely; never
+    // estimated here (§13).
+    const legRows = await db
+      .select({
+        dayNumber: transportLegs.dayNumber,
+        totalMeters: sql<number>`sum(${transportLegs.distanceMeters})::int`,
+      })
+      .from(transportLegs)
+      .where(and(eq(transportLegs.tripId, listing.sourceTripId), isNull(transportLegs.variantId)))
+      .groupBy(transportLegs.dayNumber)
+      .orderBy(asc(transportLegs.dayNumber));
+
+    const svg = renderReadyMadeTeaserMapSvg({
+      listingId: listing.id,
+      destination: trip?.destination ?? null,
+      items,
+      dayDistances: legRows.map((r) => ({ dayNumber: r.dayNumber, totalMeters: Number(r.totalMeters) })),
+    });
+
+    res.set({
+      "Content-Type": "image/svg+xml",
+      "Cache-Control": "public, max-age=3600",
+    });
+    return res.status(200).send(svg);
+  } catch (err: any) {
+    console.error("[ready-made] teaser-map error:", err);
+    res.status(500).json({ message: "Failed to render teaser map" });
   }
 });
 
