@@ -54,6 +54,37 @@ This document captures architectural decisions to maintain consistency across co
     (`'ai'|'traveler'|'expert'`, app-enforced, no CHECK — publish-trap avoidance, migration 181) is stamped
     server-side at create; both ratified Aug 7 2026. Regenerate preserves `origin='traveler'` and `suggestedBy='expert'`.
 
+20. **Market-launch assets are DB-backed; extracted places are child rows (decision-maker ratified Aug 9, 2026).**
+    Two additive tables (migrations 185/186, both declared in `shared/schema.ts` — publish-trap rule):
+    **(a) `dmo_extracted_places`** — places extracted from a DMO guide are first-class child rows of
+    `dmo_raw_content` (ON DELETE CASCADE; UNIQUE (dmo_content_id, "position")), replacing the
+    `extracted_data.places` JSON blob as the source of truth (blob backfilled by 185, thereafter historical —
+    written never read). Re-extract is replace-by-position but **must preserve expert-added `ticketing_url`**
+    by `normalized_name` match — an expert's curation is never clobbered by a refresh. API response shapes are
+    unchanged (server maps rows → the same `places` array), so clients are untouched.
+    **(b) `market_geography`** — a market's water/parks/roads layer lives in the DB, written by the admin
+    "Add market" flow (`/api/admin/markets`, under the §2 blanket guard), which runs the Overpass extract
+    **server-side** (same UA/mirror/length-cap rules as `scripts/generate-market-geography.ts`) and can also
+    seed `city_neighborhoods` from OSM `place=suburb|neighbourhood|quarter` nodes. Lookup is **DB-first with
+    the committed `KYOTO_GEOGRAPHY` literal as server-side fallback** (absent row ≠ error; no-layer markets
+    render honestly without geography, never another city's shapes — §13 posture). The client no longer
+    bundles geometry — it fetches the public read endpoint. ODbL attribution ("© OpenStreetMap contributors")
+    remains REQUIRED wherever any of this renders. The **vector-tile interactive map is PARKED** by the same
+    ruling — do not start it as a side effect of geography work.
+
+21. **Expert Notes are two-level and traveler-facing; `trips.expert_notes` stays PRIVATE (decision-maker
+    ratified Aug 9, 2026).** UI label for both new fields is **"Expert Notes"**: per-item
+    `itinerary_items.expert_note` and trip-level `trips.expert_traveler_note` (migration 187, additive
+    nullable, declared in `shared/schema.ts`) are **delivered to the traveler** (PlanCard + delivered-plan
+    surfaces, "from your expert" treatment). **`trips.expert_notes` is a DIFFERENT field** — the Workstation's
+    private "Build notes" (`PATCH /api/trips/:id/expert-notes`) — and must never leak to traveler surfaces;
+    do not rename or merge the three. Writes to the new fields gate on the same §12 advisor WRITE statuses as
+    other item/trip mutations. Same ruling: **traveler-facing distance on map surfaces is ALLOWED** (store
+    teaser day-km legend ratified — "users should be able to see the difference"); the Delta-framework
+    brief's L3 ("distance never traveler-facing") is amended to headline *delta claims* only, not map
+    annotation. The Advisor **fundamentals** checklist (ratified list in `server/routes/advisor.routes.ts`)
+    is deterministic, §13-honest (a check with insufficient data is omitted with a reason, never guessed).
+
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 
 Defect state is VOLATILE and no longer lives in this file (ruling 26 §5): open defects live in findings/audit docs

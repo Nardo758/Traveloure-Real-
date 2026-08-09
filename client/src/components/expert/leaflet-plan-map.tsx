@@ -8,12 +8,14 @@
  * provisioned, `CanvasMapSection`'s existing `MAPS_KEY ? <GoogleBlock/> : <LeafletPlanMap/>` branch
  * switches over on its own — nothing here needs to change.
  *
- * Deliberately PLAN-pins only (no item-19 discovery/candidate-pin layer) — that layer is a Google
- * enhancement beyond this spec's literal scope (colored/grouped-by-day pins, pin↔list focus,
- * fit-bounds, honest un-located handling), not a parity gap.
+ * Discovery layer (added Aug 9 2026 — WAS scoped out as a Google enhancement, but the runtime
+ * billing fallback means Leaflet can be the ACTIVE map on a fully-keyed deploy, so the item-19
+ * candidate-pin layer is a parity requirement, not an extra): hollow "+" markers for the open
+ * Add-drawer's published candidates, popup carries the same "Add to Day N" action routed back
+ * through the drawer's own add handler.
  */
 import { useEffect } from "react";
-import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Popup, useMap, Polyline } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
@@ -32,6 +34,34 @@ export interface LeafletPlanMapItem {
   dayNumber: number;
   lat: number;
   lng: number;
+}
+
+/** Discovery-layer candidate (mirrors map-candidates.ts's MapCandidate — coords already
+ *  §13-checked by the publisher; this component never fabricates a pin). */
+export interface LeafletCandidate {
+  id: string;
+  title: string;
+  lat: number;
+  lng: number;
+  price?: string | null;
+}
+
+/** Advisor Phase 1 route layer (workspace.tsx's CanvasMapSection): one day's polyline, points
+ *  already resolved to that day's LOCATED items in their current order — this component never
+ *  computes or fabricates a point, it only draws what the caller already validated (§13). */
+export interface LeafletRoute {
+  day: number;
+  color: string;
+  points: [number, number][];
+}
+
+function candidateDivIcon(id: string): L.DivIcon {
+  return L.divIcon({
+    className: "",
+    html: `<div data-testid="map-candidate-pin-${id}" style="width:20px;height:20px;border-radius:50%;background:${CARD};border:2.5px solid ${BRAND};box-shadow:0 2px 6px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;color:${BRAND};font-size:13px;font-weight:800;line-height:1;font-family:'Inter',-apple-system,sans-serif;">+</div>`,
+    iconSize: [20, 20],
+    iconAnchor: [10, 10],
+  });
 }
 
 function dayDivIcon(dayNumber: number, selected: boolean): L.DivIcon {
@@ -77,6 +107,8 @@ function FocusFromList({ target }: { target: LeafletPlanMapItem | null }) {
 
 export function LeafletPlanMap({
   items, center, selectedId, onSelect, onGoToItem, focusTarget,
+  candidates = [], candidateSourceLabel, onAddCandidate, addCandidateLabel,
+  routes = [],
 }: {
   items: LeafletPlanMapItem[];
   center: { lat: number; lng: number };
@@ -86,6 +118,15 @@ export function LeafletPlanMap({
   /** WORKSTATION_LOCATION_MAP_SPEC Part B "vice versa" — the list-selected item, already resolved
    *  by the caller against its full located set (see FocusFromList's doc comment above). */
   focusTarget?: LeafletPlanMapItem | null;
+  /** Item-19 discovery layer: the open Add-drawer's published candidates (hollow "+" pins). */
+  candidates?: LeafletCandidate[];
+  candidateSourceLabel?: string | null;
+  onAddCandidate?: (id: string) => void;
+  /** Button text for the candidate popup's add action, e.g. "Add to Day 2". */
+  addCandidateLabel?: string;
+  /** Advisor Phase 1 route layer: per-day polylines (empty when the "Routes" toggle is off, or
+   *  when a visible day has fewer than 2 located items — the caller already filtered those out). */
+  routes?: LeafletRoute[];
 }) {
   return (
     <MapContainer
@@ -100,6 +141,13 @@ export function LeafletPlanMap({
       />
       <FitBounds items={items} />
       <FocusFromList target={focusTarget ?? null} />
+      {routes.map(r => (
+        <Polyline
+          key={`route-${r.day}`}
+          positions={r.points}
+          pathOptions={{ color: r.color, weight: 3, opacity: 0.9 }}
+        />
+      ))}
       {items.map(item => (
         <Marker
           key={item.id}
@@ -126,6 +174,33 @@ export function LeafletPlanMap({
               >
                 Go to item
               </button>
+            </div>
+          </Popup>
+        </Marker>
+      ))}
+      {candidates.map(cand => (
+        <Marker
+          key={`candidate-${cand.id}`}
+          position={[cand.lat, cand.lng]}
+          icon={candidateDivIcon(cand.id)}
+        >
+          <Popup>
+            <div style={{ fontFamily: "'Inter',-apple-system,sans-serif", minWidth: 140 }} data-testid={`leaflet-candidate-${cand.id}`}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: INK, marginBottom: 2 }}>{cand.title}</div>
+              {candidateSourceLabel && <div style={{ fontSize: 11.5, color: MID, marginBottom: cand.price ? 2 : 8 }}>{candidateSourceLabel}</div>}
+              {cand.price && <div style={{ fontSize: 11.5, color: MID, marginBottom: 8 }}>{cand.price}</div>}
+              {onAddCandidate && (
+                <button
+                  onClick={() => onAddCandidate(cand.id)}
+                  data-testid={`button-add-candidate-leaflet-${cand.id}`}
+                  style={{
+                    width: "100%", padding: "5px 8px", borderRadius: 7, fontSize: 12, fontWeight: 700,
+                    cursor: "pointer", border: `1px solid ${BRAND}`, background: BRAND_SOFT, color: INK,
+                  }}
+                >
+                  {addCandidateLabel ?? "Add"}
+                </button>
+              )}
             </div>
           </Popup>
         </Marker>

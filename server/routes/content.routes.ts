@@ -5670,17 +5670,24 @@ router.get("/api/geocode", async (req, res) => {
 
 router.get("/api/search/experiences", async (req, res) => {
     try {
-      const { q, destination, category } = req.query as Record<string, string>;
+      const { q, destination, category, sources } = req.query as Record<string, string>;
       if (!q && !destination) {
         return res.status(400).json({ message: "q or destination is required" });
       }
+
+      // Sources filter (default "all" — today's exact behavior, every existing caller untouched).
+      // "platform" skips the Google Places arm entirely (no API spend); "google" skips the
+      // platform arm. Response shape is unchanged in every case.
+      const sourcesFilter = sources === "platform" || sources === "google" ? sources : "all";
+      const includePlatform = sourcesFilter !== "google";
+      const includeGoogle = sourcesFilter !== "platform";
 
       const apiKey = process.env.GOOGLE_MAPS_API_KEY;
       const results: any[] = [];
 
       // ── Platform provider services FIRST (W-3 task 2: "one registry-backed search" —
       //    platform inventory is the primary catalog; external places supplement it) ──
-      try {
+      if (includePlatform) try {
         // F2 public read-gate: approved+active listings only. (W-3 repair: this block used to call
         // getProviderServices with a filter object in the USERID position, so it matched no rows and
         // the platform arm of this search had always been empty — now reads the full catalog and
@@ -5742,7 +5749,7 @@ router.get("/api/search/experiences", async (req, res) => {
       } catch (_) {}
 
       // ── Google Places Text Search (secondary — supplements the platform catalog) ──
-      if (apiKey) {
+      if (includeGoogle && apiKey) {
         const catToType: Record<string, string> = {
           dining: "restaurant",
           hotels: "lodging",

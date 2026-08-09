@@ -1525,18 +1525,20 @@ router.get("/trips/:tripId/my-assignment", isAuthenticated, async (req, res) => 
   }
 });
 
-// GET /api/trips/:tripId/expert-notes — readable by trip owner OR assigned expert.
+// GET /api/trips/:tripId/expert-notes — BUILDER-SIDE ONLY (§21, hardened Aug 9 2026): assigned
+// expert or ready-made author. trips.expert_notes is the Workstation's PRIVATE build notes
+// ("Notes to yourself…") — the trip OWNER (the traveler) must never read it. Owner readability
+// here was a live §21 leak: PlanCard components fetched this endpoint and rendered the private
+// note as "Note from your expert". The traveler-facing note is trips.expert_traveler_note,
+// delivered via the plancard payload — not this endpoint.
 router.get("/trips/:tripId/expert-notes", isAuthenticated, async (req, res) => {
   try {
     const userId = getUserId(req)!;
     const { tripId } = req.params;
-    const owned = await verifyTripOwnership(tripId, userId);
-    if (!owned) {
-      const assignment = await storage.getTripExpertAdvisoryAssignment(tripId, userId);
-      // Authoring mode (ready-made brief §2): the author reads their own build's notes.
-      if (!assignment && !(await isTripAuthor(tripId, userId))) {
-        return res.status(403).json({ message: "Not authorized to view notes for this trip" });
-      }
+    const assignment = await storage.getTripExpertAdvisoryAssignment(tripId, userId);
+    // Authoring mode (ready-made brief §2): the author reads their own build's notes.
+    if (!assignment && !(await isTripAuthor(tripId, userId))) {
+      return res.status(403).json({ message: "Not authorized to view notes for this trip" });
     }
     const expertNotes = await storage.getTripExpertNotes(tripId);
     res.json({ expertNotes });

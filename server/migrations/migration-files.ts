@@ -835,4 +835,25 @@ export const MIGRATION_FILES = [
   // for them); no CHECK (recommendation-only payload, nothing money/ownership reads it). Declared
   // in shared/schema.ts in the same commit. See 183_itinerary_comparisons_segmentation_proposal.sql.
   "183_itinerary_comparisons_segmentation_proposal.sql",
+  // 184: "Custom…" plan type theme label (decision-maker approved Aug 9 2026). Additive nullable
+  // `ready_made_trips.plan_type_custom` VARCHAR(80) — carries free text ONLY when
+  // `plan_type = 'custom'` (shared/ready-made-plan-types.ts); the closed `plan_type` column itself
+  // never receives free text. No CHECK (migration-159/173/181 posture). Declared in
+  // shared/schema.ts in the same commit. See 184_ready_made_plan_type_custom.sql.
+  "184_ready_made_plan_type_custom.sql",
+  // 185/186: CLAUDE.md §20 (decision-maker ratified Aug 9 2026). 185 promotes DMO extracted
+  // places from the extracted_data.places JSON blob to child rows (additive table + idempotent
+  // backfill; blob thereafter historical). 186 creates market_geography (DB-backed market
+  // water/parks/roads layer for the admin "Add market" flow; no seed — code-literal fallback
+  // keeps an empty table behavior-neutral). Both declared in shared/schema.ts (publish-trap).
+  "185_dmo_extracted_places.sql",
+  "186_market_geography.sql",
+  // 187: CLAUDE.md §21 (decision-maker ratified Aug 9 2026). Traveler-facing Expert Notes:
+  // itinerary_items.expert_note + trips.expert_traveler_note (additive nullable). DISTINCT from
+  // trips.expert_notes (the PRIVATE build notes). Declared in shared/schema.ts (publish-trap).
+  "187_expert_notes_two_level.sql",
+  // 188: source-map execution (decision-maker directed Aug 9 2026; extends §20a). Additive
+  // nullable dmo_extracted_places.enrichment jsonb — open-data facts (Wikidata/OSM), never
+  // prose, never overwrites expert ticketing_url. Declared in shared/schema.ts (publish-trap).
+  "188_extracted_place_enrichment.sql",
 ] as const;

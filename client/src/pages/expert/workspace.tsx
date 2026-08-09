@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, Component, type ReactNode, type ErrorInfo } from "react";
+import { useState, useEffect, useRef, useCallback, useSyncExternalStore, Component, type ReactNode, type ErrorInfo } from "react";
 import { PlanCard } from "@/components/plancard/PlanCard";
 import { ItemComments } from "@/components/plancard/ItemComments";
 import { useParams, useLocation } from "wouter";
@@ -21,6 +21,9 @@ import { SocialKitCard } from "@/components/build-formats/SocialKitCard";
 import { STORE_GATE_MESSAGE } from "@shared/launch-markets";
 import { APIProvider, Map, InfoWindow, useMap, useMapsLibrary } from "@vis.gl/react-google-maps";
 import { MapMarker, GOOGLE_MAPS_MAP_ID } from "@/components/ui/map-marker";
+// Advisor Phase 1 — the route layer's per-day polylines on the Google branch (Leaflet's own
+// react-leaflet Polyline is used directly inside leaflet-plan-map.tsx instead).
+import { Polyline } from "@/components/ui/map-polyline";
 import {
   MapPin, ChevronRight, ChevronDown, ChevronUp, Pencil, Sparkles, Link2, PenSquare,
   Send, MessageSquare, Plus, Lock, Eye, EyeOff,
@@ -28,7 +31,7 @@ import {
   CreditCard, CalendarDays, Loader2, ArrowLeft, Users,
   Search, Star, MapPinned, Shield, BatteryLow,
   ShoppingBag, Store, Copy, Megaphone, AlertTriangle, Lightbulb, XCircle,
-  Trash2, RefreshCw, Route,
+  Trash2, RefreshCw, Route, Building2,
 } from "lucide-react";
 // L4b: the mode picker's chauffeured-field gate mirrors the SAME shared constant/predicate the
 // server uses (CLAUDE.md §18's chauffeured set) — never a hand-typed duplicate list.
@@ -45,6 +48,51 @@ import { usePublishMapCandidates, useMapCandidates, type MapCandidate } from "@/
 import { LeafletPlanMap } from "@/components/expert/leaflet-plan-map";
 
 const MAPS_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "";
+
+/** Runtime Google Maps auth-failure detection — Google calls the global `gm_authFailure` hook
+ *  when the JS API loads but the key is rejected (RefererNotAllowedMapError, ExpiredKeyMapError,
+ *  BillingNotEnabled…). A build-time `MAPS_KEY` check can't see these, so without this the plan
+ *  map dead-ends on Google's "AuthFailure" overlay even though the keyless Leaflet fallback
+ *  works. Module-level store + useSyncExternalStore so every map surface reacts at once. */
+let googleMapsAuthFailed = false;
+const gmAuthListeners = new Set<() => void>();
+if (typeof window !== "undefined") {
+  // @vis.gl/react-google-maps assigns its OWN window.gm_authFailure (that's where its
+  // "Error: AuthFailure" overlay comes from), which would clobber a plain assignment made here
+  // at module-eval time. An accessor property survives that: any later assignment lands in
+  // `inner` and our detector stays wrapped around whatever handler is current.
+  const w = window as any;
+  // Idempotent across HMR / repeated module evaluation — install exactly once.
+  if (!w.__gmAuthFailureHooked) {
+    let inner: (() => void) | undefined = typeof w.gm_authFailure === "function" ? w.gm_authFailure : undefined;
+    // ONE stable wrapper (not a fresh closure per get) so `window.gm_authFailure =
+    // window.gm_authFailure` round-trips harmlessly; the setter drops assignments of the
+    // wrapper itself, so it can never end up as its own `inner` (no recursion).
+    const wrapper = () => {
+      googleMapsAuthFailed = true;
+      gmAuthListeners.forEach(l => l());
+      inner?.();
+    };
+    try {
+      Object.defineProperty(w, "gm_authFailure", {
+        configurable: true,
+        get: () => wrapper,
+        set(fn: unknown) { if (fn !== wrapper) inner = typeof fn === "function" ? (fn as () => void) : undefined; },
+      });
+      w.__gmAuthFailureHooked = true;
+    } catch {
+      // Non-configurable pre-existing descriptor — leave the global alone; the map simply
+      // keeps Google's own AuthFailure overlay (the pre-fallback behavior), never a crash.
+    }
+  }
+}
+function useGoogleMapsAuthFailed(): boolean {
+  return useSyncExternalStore(
+    (cb) => { gmAuthListeners.add(cb); return () => gmAuthListeners.delete(cb); },
+    () => googleMapsAuthFailed,
+    () => false,
+  );
+}
 
 // ── Console tokens (§17 two-palettes rule: never raw hex in console pages) ──
 // These resolve against the .console-scope block in client/src/index.css (light + dark),
@@ -315,7 +363,7 @@ function BookingBriefModal({ provider, bookingUrl, tripId, onClose }: { provider
  *  input styling. `onChange` fires on every keystroke regardless of API state, so typing is never
  *  gated on Places being available — only the SUGGESTIONS are. */
 function PlacesAutocompleteInputInner({
-  value, onChange, onPlaceSelected, placeholder, testId, disabled, style,
+  value, onChange, onPlaceSelected, placeholder, testId, disabled, style, autoFocus, onKeyDown, onBlur,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -324,6 +372,13 @@ function PlacesAutocompleteInputInner({
   testId: string;
   disabled?: boolean;
   style: React.CSSProperties;
+  autoFocus?: boolean;
+  /** Passthroughs for hosts that commit on Enter/blur (the destination chip editor). Composed
+   *  with — never replacing — the dropdown's own close-on-blur. Suggestion clicks use onMouseDown
+   *  preventDefault, so picking a suggestion does NOT blur the input and cannot mis-fire a
+   *  blur-commit. */
+  onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void;
+  onBlur?: () => void;
 }) {
   const placesLib = useMapsLibrary("places");
   const [predictions, setPredictions] = useState<google.maps.places.AutocompletePrediction[]>([]);
@@ -409,12 +464,14 @@ function PlacesAutocompleteInputInner({
       <input
         value={value}
         onChange={e => handleChange(e.target.value)}
-        onBlur={() => { setTimeout(() => setOpen(false), 150); }}
+        onBlur={() => { setTimeout(() => setOpen(false), 150); onBlur?.(); }}
         onFocus={() => { if (predictions.length > 0) setOpen(true); }}
+        onKeyDown={onKeyDown}
         placeholder={placeholder}
         data-testid={testId}
         disabled={disabled}
         style={style}
+        autoFocus={autoFocus}
         autoComplete="off"
       />
       {open && predictions.length > 0 && (
@@ -456,17 +513,24 @@ function PlacesAutocompleteInput(props: {
   testId: string;
   disabled?: boolean;
   style: React.CSSProperties;
+  autoFocus?: boolean;
+  onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void;
+  onBlur?: () => void;
 }) {
   const [loadFailed, setLoadFailed] = useState(false);
-  if (!MAPS_KEY || loadFailed) {
+  const mapsAuthFailed = useGoogleMapsAuthFailed();
+  if (!MAPS_KEY || loadFailed || mapsAuthFailed) {
     return (
       <input
         value={props.value}
         onChange={e => props.onChange(e.target.value)}
+        onKeyDown={props.onKeyDown}
+        onBlur={props.onBlur}
         placeholder={props.placeholder}
         data-testid={props.testId}
         disabled={props.disabled}
         style={props.style}
+        autoFocus={props.autoFocus}
       />
     );
   }
@@ -475,6 +539,32 @@ function PlacesAutocompleteInput(props: {
       <PlacesAutocompleteInputInner {...props} />
     </APIProvider>
   );
+}
+
+/** The ONE submit-time geocode fallback for Workstation location fields (spec: "one resolver,
+ *  not three") — used by InlineAddItemForm, LogBookingForm and the item editor's location field
+ *  whenever no exact Places pick supplied coordinates. Same server rail as everything else
+ *  (`GET /api/geocode`), `destination` only ever a disambiguation suffix on real item-level text
+ *  (§13 — the caller must not pass an empty locationName). Best-effort: any failure/miss returns
+ *  undefined and the item stays honestly coordinate-less; the Part A resolve-on-write backfill
+ *  retries server-side on the next item-list read. */
+async function geocodeLocationText(
+  locationName: string,
+  destination?: string,
+): Promise<{ latitude: string; longitude: string } | undefined> {
+  try {
+    const address = destination ? `${locationName}, ${destination}` : locationName;
+    const res = await fetch(`/api/geocode?address=${encodeURIComponent(address)}`);
+    if (res.ok) {
+      const j = await res.json();
+      if (Number.isFinite(j?.lat) && Number.isFinite(j?.lng)) {
+        return { latitude: String(j.lat), longitude: String(j.lng) };
+      }
+    }
+  } catch {
+    // Geocode failure must never block the write — submit without coords, exactly as today.
+  }
+  return undefined;
 }
 
 /** The Add panel's "Custom" source — same fields, same POST /api/trips/:tripId/itinerary-items
@@ -505,9 +595,8 @@ function InlineAddItemForm({ tripId, dayNumber, destination, onAdded }: { tripId
   });
   // FIX 4 (QA pass) + item 17: attach real coordinates, never fabricate. Preference order:
   // (1) an exact Places pick (placeCoords) — skip the geocode entirely, it's already exact;
-  // (2) FALLBACK — the existing submit-time /api/geocode rail (same one the destination
-  //     map-center lookup above uses) with "<locationName>, <destination>", unchanged from
-  //     before this lane (this is the "Places unavailable → behaves exactly as today" path,
+  // (2) FALLBACK — the shared submit-time geocode (geocodeLocationText above), unchanged
+  //     behavior (this is the "Places unavailable → behaves exactly as today" path,
   //     item 17's mandatory fallback). On any failure/miss: no coords, honest null — never a
   //     city-center guess. Geocoding is best-effort and must never block the add.
   const handleSubmit = async () => {
@@ -518,20 +607,8 @@ function InlineAddItemForm({ tripId, dayNumber, destination, onAdded }: { tripId
       coords = { latitude: placeCoords.lat, longitude: placeCoords.lng };
     } else if (locationName) {
       setGeocoding(true);
-      try {
-        const address = destination ? `${locationName}, ${destination}` : locationName;
-        const res = await fetch(`/api/geocode?address=${encodeURIComponent(address)}`);
-        if (res.ok) {
-          const j = await res.json();
-          if (Number.isFinite(j?.lat) && Number.isFinite(j?.lng)) {
-            coords = { latitude: String(j.lat), longitude: String(j.lng) };
-          }
-        }
-      } catch {
-        // Geocode failure must not block the add — submit without coords, exactly as today.
-      } finally {
-        setGeocoding(false);
-      }
+      coords = await geocodeLocationText(locationName, destination);
+      setGeocoding(false);
     }
     createMutation.mutate({
       ...form,
@@ -603,10 +680,15 @@ function InlineAddItemForm({ tripId, dayNumber, destination, onAdded }: { tripId
  *  `providerName` (a plain string), never the partner's `websiteUrl`/affiliate link, so there is
  *  nothing to leak into the write even by accident. */
 function LogBookingForm({
-  tripId, dayNumber, providerName, onAdded, onClose,
-}: { tripId: string; dayNumber: number; providerName: string; onAdded: () => void; onClose: () => void }) {
+  tripId, dayNumber, providerName, destination, onAdded, onClose,
+}: { tripId: string; dayNumber: number; providerName: string; destination?: string; onAdded: () => void; onClose: () => void }) {
   const { toast } = useToast();
   const [form, setForm] = useState({ title: "", startTime: "", estimatedCost: "", locationName: "" });
+  // Location resolution (workstation improvement, Aug 9 2026): same two-tier shape as
+  // InlineAddItemForm — an exact Places pick carries its own coords (cleared on hand-edit, since
+  // edited text may no longer match the picked place), else the shared submit-time geocode.
+  const [placeCoords, setPlaceCoords] = useState<{ lat: string; lng: string } | null>(null);
+  const [geocoding, setGeocoding] = useState(false);
   const createMutation = useMutation({
     mutationFn: async (data: any) => { const res = await apiRequest("POST", `/api/trips/${tripId}/itinerary-items`, data); return res.json(); },
     onSuccess: () => {
@@ -618,17 +700,27 @@ function LogBookingForm({
     },
     onError: (err: any) => toast({ title: "Failed to log booking", description: parseApiErrorMessage(err, "Please check the fields and try again."), variant: "destructive" }),
   });
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!form.title.trim()) return;
+    let coords: { latitude: string; longitude: string } | undefined;
+    const locationName = form.locationName.trim();
+    if (placeCoords) {
+      coords = { latitude: placeCoords.lat, longitude: placeCoords.lng };
+    } else if (locationName) {
+      setGeocoding(true);
+      coords = await geocodeLocationText(locationName, destination);
+      setGeocoding(false);
+    }
     createMutation.mutate({
       title: form.title.trim(),
       itemType: "activity",
       dayNumber,
       startTime: form.startTime || undefined,
       estimatedCost: form.estimatedCost ? String(parseFloat(form.estimatedCost)) : undefined,
-      locationName: form.locationName.trim() || undefined,
+      locationName: locationName || undefined,
       description: `Booked via ${providerName}`,
       bookingStatus: "confirmed",
+      ...(coords ?? {}),
     });
   };
   const labelStyle: React.CSSProperties = { fontSize: 11, fontWeight: 600, color: MID, display: "block", marginBottom: 3 };
@@ -652,17 +744,27 @@ function LogBookingForm({
       </div>
       <div>
         <label style={labelStyle}>Location (optional)</label>
-        <input value={form.locationName} onChange={e => setForm(f => ({ ...f, locationName: e.target.value }))} placeholder="Meeting point" data-testid="input-log-booking-location" style={inputStyle} />
+        <PlacesAutocompleteInput
+          value={form.locationName}
+          onChange={v => { setForm(f => ({ ...f, locationName: v })); setPlaceCoords(null); }}
+          onPlaceSelected={place => {
+            setForm(f => ({ ...f, locationName: place.text }));
+            setPlaceCoords(place.lat && place.lng ? { lat: place.lat, lng: place.lng } : null);
+          }}
+          placeholder="Meeting point"
+          testId="input-log-booking-location"
+          style={inputStyle}
+        />
       </div>
       <div style={{ display: "flex", gap: 6 }}>
         <button onClick={onClose} data-testid="button-log-booking-cancel" style={{ ...btnQuietStyle, flex: 1, padding: "6px", fontSize: 12 }}>Cancel</button>
         <button
           onClick={handleSubmit}
-          disabled={!form.title.trim() || createMutation.isPending}
+          disabled={!form.title.trim() || createMutation.isPending || geocoding}
           data-testid="button-log-booking-confirm"
-          style={{ ...btnPrimaryStyle, flex: 2, padding: "6px", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, opacity: !form.title.trim() || createMutation.isPending ? 0.6 : 1 }}
+          style={{ ...btnPrimaryStyle, flex: 2, padding: "6px", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, opacity: !form.title.trim() || createMutation.isPending || geocoding ? 0.6 : 1 }}
         >
-          {createMutation.isPending ? <Loader2 style={{ width: 12, height: 12 }} className="animate-spin" /> : <CheckCircle style={{ width: 12, height: 12 }} />} Log booking
+          {(createMutation.isPending || geocoding) ? <Loader2 style={{ width: 12, height: 12 }} className="animate-spin" /> : <CheckCircle style={{ width: 12, height: 12 }} />} Log booking
         </button>
       </div>
     </div>
@@ -715,11 +817,15 @@ class MapSectionErrorBoundary extends Component<{ children: ReactNode }, { hasEr
  *  DOM-addressable list the canvas renders (the day list itself is the shared PlanCard, a
  *  read-mostly component this lane deliberately does not modify). */
 function ItemsEditorPanel({
-  tripId, days, maxDay, onDayMoved, onOpenBookingBrief, focusItemId, onFocusHandled, onSelectItem,
+  tripId, days, maxDay, destination, onDayMoved, onOpenBookingBrief, focusItemId, onFocusHandled, onSelectItem,
+  suggestOrderForDay, onSuggestHandled,
 }: {
   tripId: string;
   days: { dayNumber: number; items: ItineraryItem[] }[];
   maxDay: number;
+  /** Geocode disambiguation suffix for the location editor below — same role it plays in
+   *  InlineAddItemForm ("<location>, <destination>"), never the sole address (§13). */
+  destination?: string;
   onDayMoved: () => void;
   // W3-A: opens the shared BookingBriefModal for a partner-sourced item. The item's mere
   // presence here is the gate itself — on an assignment trip a partner item ONLY reaches
@@ -736,11 +842,26 @@ function ItemsEditorPanel({
   // itself here so the plan map can pan to and select the matching pin. Undefined for a row with
   // no coordinates (nothing to show — never a guessed pin, §13).
   onSelectItem?: (itemId: string) => void;
+  // Advisor Phase 2-4: a THIRD one-shot signal, same shape/contract as focusItemId above — when
+  // set, this panel opens (if closed) and fires its OWN optimizeMutation for that day (the
+  // existing staged "Suggested order" apply/discard UI below takes over from there — never a
+  // second, duplicated write/algorithm), then reports back via onSuggestHandled so the caller
+  // clears the request.
+  suggestOrderForDay?: number | null;
+  onSuggestHandled?: () => void;
 }) {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
+  // Location editor (workstation improvement, Aug 9 2026): per-item drafts mirroring noteDrafts,
+  // plus the exact-Places-pick coords (cleared on hand-edit — edited text may no longer match the
+  // picked place) and which row is mid-geocode. This is the fix-up path for the plan map's
+  // "not on map" tray: before this, an unlocated item had NO surface in the Workstation where a
+  // location could be added at all.
+  const [locationDrafts, setLocationDrafts] = useState<Record<string, string>>({});
+  const [locationPickCoords, setLocationPickCoords] = useState<Record<string, { lat: string; lng: string } | null>>({});
+  const [geocodingItemId, setGeocodingItemId] = useState<string | null>(null);
   // dayNumber → machine-suggested id order, staged from optimize-order and applied only on
   // explicit confirm (never auto-applied).
   const [suggestedOrder, setSuggestedOrder] = useState<Record<number, string[]>>({});
@@ -792,6 +913,18 @@ function ItemsEditorPanel({
     onError: (err: any) => toast({ title: "Couldn't suggest an order", description: parseApiErrorMessage(err, "Please try again."), variant: "destructive" }),
   });
 
+  // Advisor Phase 2-4's one-shot: open the panel and fire the SAME optimizeMutation the per-day
+  // "Suggest best order" button uses — the staged suggestion (with its existing Apply/Discard UI
+  // below) is what actually appears; this effect only triggers the existing flow, it never
+  // computes or applies an order itself.
+  useEffect(() => {
+    if (suggestOrderForDay == null) return;
+    setOpen(true);
+    optimizeMutation.mutate(suggestOrderForDay);
+    onSuggestHandled?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [suggestOrderForDay]);
+
   const applySuggestedOrder = (dayNumber: number) => {
     const itemIds = suggestedOrder[dayNumber];
     if (!itemIds) return;
@@ -812,6 +945,16 @@ function ItemsEditorPanel({
       if ("dayNumber" in vars.data) {
         onDayMoved();
         toast({ title: "Item moved" });
+      } else if ("locationName" in vars.data) {
+        // Honest wording (§13): only claim a pin when coordinates were actually attached.
+        toast({
+          title: "Location saved",
+          description: "latitude" in vars.data
+            ? "Pinned on the plan map."
+            : vars.data.locationName
+              ? "No map pin yet — the location couldn't be geocoded right now."
+              : undefined,
+        });
       } else {
         toast({ title: "Expert note saved" });
       }
@@ -842,6 +985,28 @@ function ItemsEditorPanel({
     // See the update mutation's onError above — same mode-flip 409, same honest surfacing.
     onError: (err: any) => toast({ title: "Failed to remove item", description: parseApiErrorMessage(err, "Please try again."), variant: "destructive" }),
   });
+
+  // Same two-tier resolution as InlineAddItemForm: an exact Places pick wins; otherwise the
+  // shared submit-time geocode. Coords are PATCHed only when NEW ones were actually resolved —
+  // clearing the text never wipes existing coordinates, which may be real facts from the item's
+  // source (a DMO row's own lat/lng) rather than derived from this label (§13: don't destroy
+  // real data on a label edit; the pin outliving a cleared label is the honest state).
+  const saveLocation = async (item: ItineraryItem) => {
+    const text = (locationDrafts[item.id] ?? item.locationName ?? "").trim();
+    const picked = locationPickCoords[item.id];
+    let coords: { latitude: string; longitude: string } | undefined;
+    if (picked) {
+      coords = { latitude: picked.lat, longitude: picked.lng };
+    } else if (text) {
+      setGeocodingItemId(item.id);
+      coords = await geocodeLocationText(text, destination);
+      setGeocodingItemId(null);
+    }
+    updateMutation.mutate(
+      { itemId: item.id, data: { locationName: text || null, ...(coords ?? {}) } },
+      { onSuccess: () => setLocationPickCoords(c => ({ ...c, [item.id]: null })) },
+    );
+  };
 
   const allItems = days.flatMap(d => d.items);
   if (allItems.length === 0) return null;
@@ -978,6 +1143,44 @@ function ItemsEditorPanel({
                           <option key={n} value={n}>Day {n}</option>
                         ))}
                       </select>
+                    </div>
+                    <div>
+                      <label style={labelStyle}>
+                        Location{" "}
+                        <span style={{ fontWeight: 400, color: FAINT }}>
+                          {isLocatedItem(item) ? "(pinned on the plan map)" : "(no map pin yet)"}
+                        </span>
+                      </label>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <div style={{ flex: 1 }}>
+                          <PlacesAutocompleteInput
+                            value={locationDrafts[item.id] ?? (item.locationName ?? "")}
+                            onChange={v => {
+                              setLocationDrafts(d => ({ ...d, [item.id]: v }));
+                              setLocationPickCoords(c => ({ ...c, [item.id]: null }));
+                            }}
+                            onPlaceSelected={place => {
+                              setLocationDrafts(d => ({ ...d, [item.id]: place.text }));
+                              setLocationPickCoords(c => ({
+                                ...c,
+                                [item.id]: place.lat && place.lng ? { lat: place.lat, lng: place.lng } : null,
+                              }));
+                            }}
+                            placeholder="Venue or address…"
+                            testId={`input-item-location-${item.id}`}
+                            style={fieldStyle}
+                          />
+                        </div>
+                        <button
+                          onClick={() => void saveLocation(item)}
+                          disabled={updateMutation.isPending || geocodingItemId === item.id}
+                          data-testid={`button-save-location-${item.id}`}
+                          style={{ ...btnPrimaryStyle, padding: "5px 12px", fontSize: 11.5, display: "flex", alignItems: "center", gap: 5, opacity: updateMutation.isPending || geocodingItemId === item.id ? 0.6 : 1 }}
+                        >
+                          {geocodingItemId === item.id ? <Loader2 style={{ width: 11, height: 11 }} className="animate-spin" /> : null}
+                          Save location
+                        </button>
+                      </div>
                     </div>
                     <div>
                       <label style={labelStyle}>Expert note <span style={{ fontWeight: 400, color: FAINT }}>(traveler-visible tip)</span></label>
@@ -1135,6 +1338,89 @@ function MapCandidatesPublisher({
   return null;
 }
 
+/** GOOGLE-PLACES-SOURCE-PILL: case-insensitive, either-direction substring match — mirrors the
+ *  Research Reader's best-effort place-highlight matching (dmo-picker-modal.tsx). Used ONLY to
+ *  offer a "Also on Traveloure" cross-link chip; never gates anything, so a false positive/negative
+ *  here is cosmetic, not a correctness issue. */
+function namesMatch(a: string | null | undefined, b: string | null | undefined): boolean {
+  const x = (a ?? "").trim().toLowerCase();
+  const y = (b ?? "").trim().toLowerCase();
+  if (!x || !y) return false;
+  return x.includes(y) || y.includes(x);
+}
+
+/** GOOGLE-PLACES-SOURCE-PILL split "+ Day N ▾" add button for a Google Places result — mirrors
+ *  dmo-picker-modal.tsx's AddPlaceSplitButton (shadcn DropdownMenu there), reimplemented with a
+ *  plain absolutely-positioned menu since this file doesn't use shadcn dropdowns elsewhere. Left
+ *  side adds straight to `focusDay`; the caret opens Day 1..maxDay plus "+ New day" (maxDay+1). */
+function GooglePlaceSplitButton({
+  placeKey, focusDay, maxDay, pending, onPick,
+}: {
+  placeKey: string;
+  focusDay: number;
+  maxDay: number;
+  pending: boolean;
+  onPick: (day: number) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+  const dayOptions = Array.from({ length: maxDay }, (_, i) => i + 1);
+  return (
+    <div ref={rootRef} style={{ position: "relative", display: "inline-flex", flexShrink: 0 }}>
+      <div style={{ display: "inline-flex", borderRadius: 8, overflow: "hidden", border: `1px solid ${BRAND}` }}>
+        <button
+          onClick={() => onPick(focusDay)}
+          disabled={pending}
+          data-testid={`button-add-gplace-${placeKey}`}
+          style={{ padding: "4px 8px", fontSize: 11, fontWeight: 800, cursor: pending ? "default" : "pointer", background: BRAND_SOFT, color: BRAND, border: "none", whiteSpace: "nowrap" }}
+        >
+          + Day {focusDay}
+        </button>
+        <button
+          onClick={() => setOpen(o => !o)}
+          disabled={pending}
+          data-testid={`menu-add-gplace-${placeKey}`}
+          style={{ padding: "4px 6px", cursor: pending ? "default" : "pointer", background: BRAND_SOFT, color: BRAND, border: "none", borderLeft: `1px solid ${BRAND}`, display: "flex", alignItems: "center" }}
+        >
+          <ChevronDown style={{ width: 11, height: 11 }} />
+        </button>
+      </div>
+      {open && (
+        <div style={{ position: "absolute", top: "100%", right: 0, marginTop: 3, zIndex: 40, background: CARD, border: `1px solid ${LINE}`, borderRadius: 8, boxShadow: "0 4px 14px rgba(0,0,0,0.18)", minWidth: 100, overflow: "hidden" }}>
+          {dayOptions.map(d => (
+            <button
+              key={d}
+              onClick={() => { setOpen(false); onPick(d); }}
+              style={{ display: "block", width: "100%", textAlign: "left", padding: "6px 10px", fontSize: 12, background: "none", border: "none", cursor: "pointer", color: INK }}
+            >
+              Day {d}
+            </button>
+          ))}
+          <button
+            onClick={() => { setOpen(false); onPick(maxDay + 1); }}
+            style={{ display: "block", width: "100%", textAlign: "left", padding: "6px 10px", fontSize: 12, background: "none", border: "none", borderTop: `1px solid ${LINE}`, cursor: "pointer", color: MID }}
+          >
+            + New day
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** QA_PUNCH_LIST item 16 (plan layer) + item 19 (discovery layer) — the plan map ON the build
  *  canvas.
  *
@@ -1185,6 +1471,9 @@ function CanvasMapSection({
   // focusing a day filters the pins to it). Deliberately its OWN state, not the Add panel's
   // `focusDay`: that control picks WHERE a new item is added; this picks WHICH pins show.
   const [mapDayFilter, setMapDayFilter] = useState<number | "all">("all");
+  // Runtime key rejection (gm_authFailure) — flips the render below to the Leaflet fallback.
+  const mapsAuthFailed = useGoogleMapsAuthFailed();
+  const googleMapActive = !!MAPS_KEY && !mapsAuthFailed;
   const [selectedPinItem, setSelectedPinItem] = useState<ItineraryItem | null>(null);
   // Item 19 — the discovery layer's own selection, kept separate from the plan layer's so
   // opening one InfoWindow never closes/overrides the other's state by accident.
@@ -1224,7 +1513,7 @@ function CanvasMapSection({
   // half of "vice versa" is handled here instead, gated to when Leaflet is actually the active
   // renderer. The Google branch's own PlanMapFocusFromList/onFocus callback covers that branch.
   useEffect(() => {
-    if (MAPS_KEY || !focusFromListItem) return;
+    if (googleMapActive || !focusFromListItem) return;
     setSelectedPinItem(focusFromListItem);
     onListFocusHandled?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1245,6 +1534,54 @@ function CanvasMapSection({
     enabled: open && !!destination && locatedItems.length === 0,
     staleTime: Infinity,
   });
+
+  // ── Advisor Phase 1 — route layer (persisted per-trip like the map-open toggle above). ──
+  const routesStorageKey = `workstation-map-routes-${tripId}`;
+  const [routesOn, setRoutesOn] = useState<boolean>(() => {
+    try { return sessionStorage.getItem(routesStorageKey) === "1"; } catch { return false; }
+  });
+  useEffect(() => {
+    try { sessionStorage.setItem(routesStorageKey, routesOn ? "1" : "0"); } catch { /* best-effort */ }
+  }, [routesOn, routesStorageKey]);
+
+  // Same query key TransportLegsPanel uses (`includeProposed: 1`) — a shared react-query cache
+  // entry, not a second fetch; enabled only while the map is open, matching this section's own
+  // "only pay for it while visible" convention (mirrors the fallback-geocode query above).
+  const { data: routeLegsData } = useQuery<TripTransportLegsResponse>({
+    queryKey: [`/api/trips/${tripId}/transport-legs`, { includeProposed: 1 }],
+    enabled: !!tripId && open,
+  });
+  // Trip-scoped legs only (proposalStatus NULL = legacy variant-scoped legs — see
+  // TransportLegsPanel's identical filter/comment below).
+  const routeTripLegs = (routeLegsData?.legs ?? []).filter(
+    (l) => l.proposalStatus === "proposed" || l.proposalStatus === "confirmed",
+  );
+  const hasRouteLegsData = routeTripLegs.length > 0;
+  const routeDistanceMetersByDay: Record<number, number> = {};
+  for (const leg of routeTripLegs) {
+    routeDistanceMetersByDay[leg.dayNumber] = (routeDistanceMetersByDay[leg.dayNumber] ?? 0) + (leg.distanceMeters || 0);
+  }
+  // Respect mapDayFilter — only visible days ever get a line or a chip.
+  const routeVisibleDayNumbers = mapDayFilter === "all" ? dayNumbersWithItems : [mapDayFilter];
+  // §13: never estimate a distance client-side — a line is drawn from the items' OWN real
+  // coordinates (order-visualization only), a chip is drawn ONLY from the engine's own leg sums.
+  const routeDayColor = (dayNumber: number): string =>
+    [BRAND, "var(--console-info)", OK, WARN][(dayNumber - 1) % 4];
+  const routeLines: { day: number; color: string; points: { lat: number; lng: number }[] }[] = routesOn
+    ? days
+        .filter((d) => routeVisibleDayNumbers.includes(d.dayNumber))
+        .map((d) => ({
+          day: d.dayNumber,
+          color: routeDayColor(d.dayNumber),
+          points: d.items
+            .filter(isLocatedItem)
+            .map((i) => ({ lat: parseFloat(String(i.latitude)), lng: parseFloat(String(i.longitude)) })),
+        }))
+        .filter((r) => r.points.length >= 2)
+    : [];
+  const routeDistanceChipDays = routesOn && hasRouteLegsData
+    ? routeVisibleDayNumbers.filter((d) => routeDistanceMetersByDay[d] != null).sort((a, b) => a - b)
+    : [];
 
   if (allItems.length === 0) return null;
 
@@ -1272,31 +1609,45 @@ function CanvasMapSection({
       </button>
       {open && (
         <div style={{ padding: "0 14px 12px" }}>
-          {dayNumbersWithItems.length > 1 && (
-            <div style={{ display: "flex", gap: 5, overflowX: "auto", paddingBottom: 8 }}>
+          {(dayNumbersWithItems.length > 1 || locatedItems.length > 0) && (
+            <div style={{ display: "flex", gap: 5, overflowX: "auto", paddingBottom: 8, alignItems: "center" }}>
+              {dayNumbersWithItems.length > 1 && (
+                <>
+                  <button
+                    onClick={() => setMapDayFilter("all")}
+                    data-testid="button-map-day-filter-all"
+                    style={{ padding: "4px 10px", borderRadius: 99, fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap", border: mapDayFilter === "all" ? `1.5px solid ${BRAND}` : `1.5px solid ${LINE}`, background: mapDayFilter === "all" ? BRAND_SOFT : CARD, color: mapDayFilter === "all" ? BRAND : MID }}
+                  >
+                    All days
+                  </button>
+                  {dayNumbersWithItems.map(n => (
+                    <button
+                      key={n}
+                      onClick={() => setMapDayFilter(n)}
+                      data-testid={`button-map-day-filter-${n}`}
+                      style={{ padding: "4px 10px", borderRadius: 99, fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap", border: mapDayFilter === n ? `1.5px solid ${BRAND}` : `1.5px solid ${LINE}`, background: mapDayFilter === n ? BRAND_SOFT : CARD, color: mapDayFilter === n ? BRAND : MID }}
+                    >
+                      Day {n}
+                    </button>
+                  ))}
+                </>
+              )}
+              {/* Advisor Phase 1 — route layer toggle. Draws per-day polylines connecting that
+                  day's located items in their current order (never a distance claim by itself —
+                  see the distance-chip gating below, which needs real engine data). */}
               <button
-                onClick={() => setMapDayFilter("all")}
-                data-testid="button-map-day-filter-all"
-                style={{ padding: "4px 10px", borderRadius: 99, fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap", border: mapDayFilter === "all" ? `1.5px solid ${BRAND}` : `1.5px solid ${LINE}`, background: mapDayFilter === "all" ? BRAND_SOFT : CARD, color: mapDayFilter === "all" ? BRAND : MID }}
+                onClick={() => setRoutesOn(r => !r)}
+                data-testid="button-toggle-routes"
+                style={{ marginLeft: dayNumbersWithItems.length > 1 ? "auto" : undefined, display: "flex", alignItems: "center", gap: 4, padding: "4px 10px", borderRadius: 99, fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap", border: routesOn ? `1.5px solid ${BRAND}` : `1.5px solid ${LINE}`, background: routesOn ? BRAND_SOFT : CARD, color: routesOn ? BRAND : MID }}
               >
-                All days
+                <Route style={{ width: 11, height: 11 }} /> Routes
               </button>
-              {dayNumbersWithItems.map(n => (
-                <button
-                  key={n}
-                  onClick={() => setMapDayFilter(n)}
-                  data-testid={`button-map-day-filter-${n}`}
-                  style={{ padding: "4px 10px", borderRadius: 99, fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap", border: mapDayFilter === n ? `1.5px solid ${BRAND}` : `1.5px solid ${LINE}`, background: mapDayFilter === n ? BRAND_SOFT : CARD, color: mapDayFilter === n ? BRAND : MID }}
-                >
-                  Day {n}
-                </button>
-              ))}
             </div>
           )}
 
           <div style={{ height: 260, borderRadius: 8, overflow: "hidden", position: "relative" }}>
             <MapSectionErrorBoundary>
-              {MAPS_KEY && canShowMap ? (
+              {googleMapActive && canShowMap ? (
                 <APIProvider apiKey={MAPS_KEY}>
                   <Map
                     mapId={GOOGLE_MAPS_MAP_ID}
@@ -1313,6 +1664,18 @@ function CanvasMapSection({
                       items={locatedItems}
                       onFocus={(item) => { setSelectedPinItem(item); onListFocusHandled?.(); }}
                     />
+
+                    {/* Advisor Phase 1 — route layer: per-day polylines, day-color cycling. */}
+                    {routeLines.map(r => (
+                      <Polyline
+                        key={`route-${r.day}`}
+                        path={r.points}
+                        strokeColor={r.color}
+                        strokeOpacity={0.9}
+                        strokeWeight={3}
+                      />
+                    ))}
+
                     {visibleItems.map(item => (
                       <MapMarker
                         key={item.id}
@@ -1404,8 +1767,9 @@ function CanvasMapSection({
                 </APIProvider>
               ) : canShowMap ? (
                 // WORKSTATION_LOCATION_MAP_SPEC Part B — the "Google swap point": no client Maps
-                // key ⇒ Leaflet + OSM tiles (keyless) instead of an unavailable notice. The moment
-                // MAPS_KEY is set, the branch above takes over on its own; nothing here changes.
+                // key OR a runtime key rejection (gm_authFailure) ⇒ Leaflet + OSM tiles (keyless)
+                // instead of an unavailable notice / dead AuthFailure overlay. The moment a valid
+                // MAPS_KEY loads cleanly, the branch above takes over on its own.
                 <LeafletPlanMap
                   items={visibleItems.map(item => ({
                     id: item.id,
@@ -1425,6 +1789,11 @@ function CanvasMapSection({
                     lat: parseFloat(String(focusFromListItem.latitude)),
                     lng: parseFloat(String(focusFromListItem.longitude)),
                   } : null}
+                  candidates={candidateItems}
+                  candidateSourceLabel={candidateSourceLabel}
+                  onAddCandidate={onAddCandidate}
+                  addCandidateLabel={`Add to Day ${discoveryDayNumber}`}
+                  routes={routeLines.map(r => ({ day: r.day, color: r.color, points: r.points.map(p => [p.lat, p.lng] as [number, number]) }))}
                 />
               ) : (
                 <div data-testid="text-plan-map-unavailable" style={{ height: "100%", background: GROUND, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 6 }}>
@@ -1433,6 +1802,24 @@ function CanvasMapSection({
                 </div>
               )}
             </MapSectionErrorBoundary>
+
+            {/* Advisor Phase 1 — per-day distance chips, engine sums only. Lines draw as soon as
+                Routes is on (order-visualization); a distance chip only ever appears once the
+                transport-legs engine has actually computed that day — never a client estimate
+                (§13). No legs data ⇒ no chips, even with the lines showing. */}
+            {routeDistanceChipDays.length > 0 && (
+              <div style={{ position: "absolute", left: 8, bottom: 8, zIndex: 20, display: "flex", flexDirection: "column", gap: 3 }}>
+                {routeDistanceChipDays.map(d => (
+                  <div
+                    key={d}
+                    data-testid={`chip-route-distance-day-${d}`}
+                    style={{ background: CARD, border: `1px solid ${LINE}`, borderRadius: 999, padding: "2px 8px", fontSize: 10.5, fontWeight: 700, color: INK, boxShadow: "0 1px 4px rgba(0,0,0,0.15)" }}
+                  >
+                    Day {d} · {(routeDistanceMetersByDay[d] / 1000).toFixed(1)} km
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* §13: honest, never fabricated — the "not on map" tray lists the actual unlocated
@@ -1885,6 +2272,43 @@ interface TransportGapSkip {
 interface TransportGapDayResult { dayNumber: number; pairs: TransportGapPair[]; skipped: TransportGapSkip[]; }
 interface TransportGapAnalysis { tripId: string; days: TransportGapDayResult[]; }
 
+// Advisor Phase 2-4 (client build against the server contract below — built in parallel):
+//   GET  /api/trips/:tripId/advisor/route-efficiency
+//   GET  /api/trips/:tripId/advisor/stay-anchor
+//   GET  /api/trips/:tripId/advisor/narration  (204 when none generated yet)
+//   POST /api/trips/:tripId/advisor/narration  (502 on generation failure)
+interface AdvisorRouteEfficiencyDay {
+  dayNumber: number; itemCount: number; currentKm: number; optimizedKm: number;
+  savingsKm: number; savingsPct: number; materiallyImprovable: boolean; optimizedOrder: string[];
+}
+interface AdvisorRouteEfficiencyResponse { metric: "straight_line"; days: AdvisorRouteEfficiencyDay[]; }
+interface AdvisorPlatformStay { providerServiceId: string; name: string; distanceKm: number; price?: number | string | null; }
+interface AdvisorStayAnchorResponse {
+  anchor: { lat: number; lng: number; spreadKm: number; neighborhood?: string | null } | null;
+  platformStays: AdvisorPlatformStay[];
+  placesHint: { source: "google"; category: string };
+}
+interface AdvisorNarrationResponse { narration: string; generatedAt: string; stale: boolean; }
+interface AdvisorNarrationPostResponse { narration: string; generatedAt: string; planHash: string; cached: boolean; }
+
+// Advisor fundamentals (CLAUDE.md §21's ratified checklist) — built by the sibling server agent
+// in parallel: GET /api/trips/:tripId/advisor/fundamentals. Deterministic, §13-honest: a check
+// omitted for insufficient data is named with its reason, never silently dropped or guessed.
+interface AdvisorFundamentalCheck {
+  key: string;
+  tier: 1 | 2 | 3;
+  dayNumber?: number;
+  message: string;
+  cta?: "stays" | "editor" | "distribute";
+  data?: Record<string, any>;
+}
+interface AdvisorFundamentalOmission { key: string; reason: string; }
+interface AdvisorFundamentalsResponse {
+  checks: AdvisorFundamentalCheck[];
+  omitted: AdvisorFundamentalOmission[];
+  tripDays: number;
+}
+
 const TRANSPORT_GAP_FLAG_COPY: Record<TransportGapFlag, string> = {
   transport_gap: "No confirmed transport arranged for this leg.",
   timing_infeasible: "The estimated travel time doesn't fit in the gap between these stops.",
@@ -1978,6 +2402,7 @@ const ADD_SOURCES: { k: string; l: string; caption: string; comingSoon?: boolean
   { k: "dmo", l: "DMO Library", caption: "Local research your admin has approved for Kyoto — refine it, then drop it into a day." },
   { k: "content", l: "Platform content", caption: "The shared Traveloure content library, scoped to this build's destination." },
   { k: "platform", l: "Platform services", caption: "Traveloure's approved bookable services in this city, plus a map to browse them." },
+  { k: "google", l: "Google Places", caption: "Live Google Places search for this destination — nothing here is stored in Traveloure's catalog." },
   { k: "partner", l: "Partner inventory", caption: "Browse tours & activities from Traveloure's partner networks, or jump straight to a network's booking site." },
   { k: "mine", l: "My services", caption: "Your own approved, active listings — drop one straight onto this build." },
   { k: "custom", l: "Custom", caption: "Add anything by hand — a place, a note, or a reservation with no catalog match." },
@@ -2217,6 +2642,9 @@ function writeExtraMaxDay(tripId: string, value: number): void {
 
 export default function ExpertWorkspace() {
   const { tripId } = useParams<{ tripId: string }>();
+  // (The runtime-auth-failure hook is consumed inside PlacesAutocompleteInput and
+  // CanvasMapSection; ExpertWorkspace's own copy served only the retired in-drawer
+  // browse map and was removed with it in the merge.)
   const [, setLocation] = useLocation();
   const { toast } = useToast();
 
@@ -2284,6 +2712,15 @@ export default function ExpertWorkspace() {
   const [, setNowTick] = useState(0);
   const noteInitialized = useRef(false);
   const notesDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // CLAUDE.md §21 (ratified Aug 9, 2026) — the trip-level "Expert Notes" card, traveler-visible
+  // (trips.expert_traveler_note, migration 187), distinct from the private Build notes state
+  // directly above. Mirrors that card's own save/debounce/status pattern exactly.
+  const [travelerNoteText, setTravelerNoteText] = useState("");
+  const [travelerNoteSaveStatus, setTravelerNoteSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
+  const [travelerNoteLastSavedAt, setTravelerNoteLastSavedAt] = useState<Date | null>(null);
+  const [travelerNotesOpen, setTravelerNotesOpen] = useState(false);
+  const travelerNoteInitialized = useRef(false);
+  const travelerNotesDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [bookingBrief, setBookingBrief] = useState<{ provider: string; bookingUrl?: string } | null>(null);
   const [servicePickerOpen, setServicePickerOpen] = useState(false);
   // W1-A: "Log completed booking" — which affiliate-network card (by name) has its inline
@@ -2311,6 +2748,11 @@ export default function ExpertWorkspace() {
   // OPPOSITE direction, from a list row's "Show on map" button to CanvasMapSection, which pans to
   // and selects the matching pin, then clears this back to null.
   const [mapFocusItemId, setMapFocusItemId] = useState<string | null>(null);
+  // Advisor Phase 2-4: a THIRD one-shot signal, same shape as focusItemId — the reorder-nudge
+  // card's "See suggested order" button sets a dayNumber here; ItemsEditorPanel opens itself and
+  // fires its OWN optimizeMutation for that day (never a duplicated algorithm/write here), then
+  // clears this back to null via onSuggestHandled.
+  const [suggestOrderForDay, setSuggestOrderForDay] = useState<number | null>(null);
 
   useEffect(() => {
     if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
@@ -2505,6 +2947,19 @@ export default function ExpertWorkspace() {
     enabled: !!tripId,
   });
 
+  // CLAUDE.md §21 — the trip-level traveler-facing note's INITIAL value. There is no dedicated
+  // GET for `trips.expert_traveler_note` (only the PATCH below); the field rides the plancard
+  // fetch instead (contract: "the trip GET will include expertTravelerNote" — the plancard route
+  // is the trip GET every other traveler-facing surface already reads it from, PlanCard.tsx
+  // included). Reuses the SAME query key every itinerary/plancard mutation in this file already
+  // invalidates, so this stays in sync for free rather than adding a second cache to babysit.
+  const { data: plancardForNote } = useQuery<{ trip?: { expertTravelerNote?: string | null } }>({
+    queryKey: [`/api/trips/${tripId}/plancard`],
+    enabled: !!tripId,
+    staleTime: 30 * 1000,
+    retry: false,
+  });
+
   const { data: workspaceConstraints, isLoading: constraintsLoading } = useQuery<WorkspaceConstraints>({
     queryKey: [`/api/trips/${tripId}/workspace-constraints`],
     enabled: !!tripId,
@@ -2517,6 +2972,74 @@ export default function ExpertWorkspace() {
   const { data: transportGaps, isLoading: transportGapsLoading } = useQuery<TransportGapAnalysis>({
     queryKey: [`/api/trips/${tripId}/transport-gaps`],
     enabled: !!tripId && rightTab === "gaps",
+  });
+
+  // Advisor Phase 1 — the Route summary card's data. Same queryKey/shape TransportLegsPanel and
+  // CanvasMapSection's own route layer use (`includeProposed: 1`) — a shared react-query cache
+  // entry, gated the same "only while the tab is open" way transportGaps above is.
+  const { data: advisorLegsData } = useQuery<TripTransportLegsResponse>({
+    queryKey: [`/api/trips/${tripId}/transport-legs`, { includeProposed: 1 }],
+    enabled: !!tripId && rightTab === "gaps",
+  });
+
+  // Advisor Phase 2-4 — reorder-nudge source (route-efficiency), stays card (stay-anchor), and
+  // the on-open narration read. All three gate on the tab being open exactly like advisorLegsData
+  // above; staleTime keeps a tab flip from re-fetching every time within the same minute. Errors
+  // are swallowed (§13: a failed card renders nothing or a one-line muted note, never breaks the
+  // tab) — react-query's own `isError` flag is read directly rather than a toast.
+  const { data: advisorRouteEfficiency, isError: advisorRouteEfficiencyError } = useQuery<AdvisorRouteEfficiencyResponse>({
+    queryKey: [`/api/trips/${tripId}/advisor/route-efficiency`],
+    enabled: !!tripId && rightTab === "gaps",
+    staleTime: 60 * 1000,
+    retry: false,
+  });
+
+  const { data: advisorStayAnchor, isError: advisorStayAnchorError } = useQuery<AdvisorStayAnchorResponse>({
+    queryKey: [`/api/trips/${tripId}/advisor/stay-anchor`],
+    enabled: !!tripId && rightTab === "gaps",
+    staleTime: 60 * 1000,
+    retry: false,
+  });
+
+  // Narration GET can 204 ("none yet") — a bare res.json() would throw on the empty body, so this
+  // is a custom queryFn that reads the status first. 204 resolves to `null`, which is a valid,
+  // successful "no narration yet" state (distinct from isLoading/isError).
+  const { data: advisorNarration, isLoading: advisorNarrationLoading, isError: advisorNarrationError } = useQuery<AdvisorNarrationResponse | null>({
+    queryKey: [`/api/trips/${tripId}/advisor/narration`],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/trips/${tripId}/advisor/narration`);
+      if (res.status === 204) return null;
+      return res.json();
+    },
+    enabled: !!tripId && rightTab === "gaps",
+    staleTime: 60 * 1000,
+    retry: false,
+  });
+
+  // POST /advisor/narration is explicitly ON-DEMAND (never auto-fired) — the button below is its
+  // only caller. A 502 is surfaced as an honest inline error, not retried automatically.
+  const narrateMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/trips/${tripId}/advisor/narration`, {});
+      return res.json() as Promise<AdvisorNarrationPostResponse>;
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData([`/api/trips/${tripId}/advisor/narration`], { narration: data.narration, generatedAt: data.generatedAt, stale: false });
+    },
+  });
+
+  // Fundamentals card — deterministic pass/fail checklist (§21's ratified list, built
+  // server-side). staleTime keeps a tab flip from re-fetching every time within the same window,
+  // same convention as the other three advisor queries just above; the default queryFn throws
+  // on a non-2xx OR on a route the sibling hasn't mounted yet (Vite's catch-all 200-HTML fails
+  // res.json() parsing — CLAUDE.md rule 9, never trust a 404 as the dead-route signal, but either
+  // way this ends up isError, which the card below renders as an honest "unavailable" line rather
+  // than fake results (§13).
+  const { data: fundamentalsData, isLoading: fundamentalsLoading, isError: fundamentalsError } = useQuery<AdvisorFundamentalsResponse>({
+    queryKey: [`/api/trips/${tripId}/advisor/fundamentals`],
+    enabled: !!tripId && rightTab === "gaps",
+    staleTime: 30 * 1000,
+    retry: false,
   });
 
   const proposeLegsMutation = useMutation({
@@ -2694,44 +3217,72 @@ export default function ExpertWorkspace() {
     }
   }, [expertNotesData]);
 
-  // ── Browse: geocode destination for map center ──
+  useEffect(() => {
+    if (plancardForNote !== undefined && !travelerNoteInitialized.current) {
+      setTravelerNoteText(plancardForNote.trip?.expertTravelerNote || "");
+      travelerNoteInitialized.current = true;
+    }
+  }, [plancardForNote]);
+
+  // (The destination-geocode map-center query that lived here served only the retired
+  // in-drawer browse map; CanvasMapSection keeps its own identical query for its fallback
+  // center, so the shared ["/api/geocode", destination] cache entry lives on there.)
   const destination = (trip as any)?.destination || "";
-  const { data: geocodeData } = useQuery<{ lat: number; lng: number }>({
-    queryKey: ["/api/geocode", destination],
-    queryFn: async () => {
-      // 404/errors return a JSON error body — must NOT flow into geocodeData, or the
-      // map receives a non-LatLng object as `center` and vis.gl throws obj.toJSON().
-      const res = await fetch(`/api/geocode?address=${encodeURIComponent(destination)}`);
-      if (!res.ok) return null;
-      const j = await res.json();
-      return Number.isFinite(j?.lat) && Number.isFinite(j?.lng) ? j : null;
-    },
-    enabled: !!destination && rightTab === "add" && addSource === "platform",
-    staleTime: Infinity,
-  });
 
   // ── Browse: live experience search (lives under the Add panel's "Platform services" pill) ──
+  // GOOGLE-PLACES-SOURCE-PILL: narrowed to sources=platform (the two sources no longer share one
+  // ambiguous surface — Google-sourced results now live only under the "google" pill's own query
+  // below). The queryKey carries the "platform" marker so its cache entry never collides with the
+  // unfiltered pre-narrowing key or the new google-only key.
   const searchEnabled = rightTab === "add" && addSource === "platform" && !!(debouncedQuery || destination);
   const { data: searchData, isFetching: searchFetching } = useQuery<{ results: any[]; count: number }>({
-    queryKey: ["/api/search/experiences", debouncedQuery, destination, cat],
+    queryKey: ["/api/search/experiences", "platform", debouncedQuery, destination, cat],
     queryFn: () => {
       const params = new URLSearchParams();
       if (debouncedQuery) params.set("q", debouncedQuery);
       if (destination) params.set("destination", destination);
       if (cat && cat !== "all") params.set("category", cat);
+      params.set("sources", "platform");
       return fetch(`/api/search/experiences?${params}`).then(r => r.json());
     },
     enabled: searchEnabled,
     staleTime: 2 * 60 * 1000,
   });
   const searchResults = searchData?.results || [];
-  const mapCenter = (Number.isFinite((geocodeData as any)?.lat) && Number.isFinite((geocodeData as any)?.lng))
-    ? geocodeData!
-    : { lat: 35.6762, lng: 139.6503 };
 
-  // ── Browse: add result to itinerary (day-aware — targets the focused day) ──
+  // ── Browse: Google Places-only search (the "Google Places" Add-panel pill). Shares the same
+  // browseQuery/debouncedQuery/cat state as the platform drawer above (one search box concept,
+  // never a duplicated query field) but hits sources=google so results are Google-only — no
+  // platform inventory shows up here (that stays the platform pill's job). ──
+  const googleSearchEnabled = rightTab === "add" && addSource === "google" && !!(debouncedQuery || destination);
+  const { data: googleSearchData, isFetching: googleSearchFetching } = useQuery<{ results: any[]; count: number }>({
+    queryKey: ["/api/search/experiences", "google", debouncedQuery, destination, cat],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (debouncedQuery) params.set("q", debouncedQuery);
+      if (destination) params.set("destination", destination);
+      if (cat && cat !== "all") params.set("category", cat);
+      params.set("sources", "google");
+      return fetch(`/api/search/experiences?${params}`).then(r => r.json());
+    },
+    enabled: googleSearchEnabled,
+    staleTime: 2 * 60 * 1000,
+  });
+  const googleSearchResults = googleSearchData?.results || [];
+  // Per-result "added" state (green check chip) — keyed by placeId (falls back to the result's
+  // own id if a placeId is ever absent). Best-effort cross-link: matched against whatever the
+  // platform drawer's OWN query currently has cached (may be empty/stale if that drawer was never
+  // opened this session — skip cleanly rather than firing a second fetch just for this).
+  const [googleAddedDays, setGoogleAddedDays] = useState<Record<string, number>>({});
+
+  // ── Browse: add result to itinerary (day-aware — targets a chosen day, defaulting to the
+  // focused day). GOOGLE-PLACES-SOURCE-PILL: generalized from a hardcoded `focusDay` write to an
+  // explicit `day` field on the mutation variables so the new Google Places drawer's split-button
+  // day picker can target any day (or a brand-new one) — the two pre-existing callsites below now
+  // just pass `focusDay` explicitly, so their behavior is byte-identical to before. ──
   const addFromSearchMutation = useMutation({
-    mutationFn: async (result: any) => {
+    mutationFn: async (vars: { result: any; day: number }) => {
+      const { result, day } = vars;
       const catToType: Record<string, string> = { dining: "dining", hotel: "hotel", culture: "culture", activity: "activity" };
       // L27-P1: carry through the pin's own coordinates — this is the SAME result.location
       // already used to render the AdvancedMarker above (:~2287), so it is real, not
@@ -2744,7 +3295,7 @@ export default function ExpertWorkspace() {
       const body = {
         title: result.name,
         itemType: catToType[result.category] || "activity",
-        dayNumber: focusDay,
+        dayNumber: day,
         locationName: result.address || result.name,
         ...(hasCoords ? { latitude: String(result.location.lat), longitude: String(result.location.lng) } : {}),
         // Audit A-4 (§13): Google's priceLevel is a 0-4 band, not a dollar amount — never
@@ -2757,15 +3308,21 @@ export default function ExpertWorkspace() {
         ...(result.source === "platform" && result.platformId
           ? { providerServiceId: result.platformId }
           : {}),
+        // GOOGLE-PLACES-SOURCE-PILL: carry the Google Place id through when the result actually
+        // has one (itinerary_items.google_place_id, shared/schema.ts) — never invented for a
+        // platform-sourced result (§13).
+        ...(result.source === "google_places" && result.placeId
+          ? { googlePlaceId: result.placeId }
+          : {}),
       };
       const res = await apiRequest("POST", `/api/trips/${tripId}/itinerary-items`, body);
       return res.json();
     },
-    onSuccess: (_, result) => {
+    onSuccess: (_, vars) => {
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/itinerary-items`] });
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/commission`] });
       triggerEnergyRecalc();
-      toast({ title: "Added to itinerary", description: `${result.name} → Day ${focusDay}` });
+      toast({ title: "Added to itinerary", description: `${vars.result.name} → Day ${vars.day}` });
       setSelectedPin(null);
     },
     // Plan-approval mode flip (migration 164) — see ItemsEditorPanel's updateMutation above.
@@ -2858,21 +3415,56 @@ export default function ExpertWorkspace() {
     return () => { if (notesDebounceRef.current) clearTimeout(notesDebounceRef.current); };
   }, []);
 
+  // CLAUDE.md §21 — trip-level traveler-facing "Expert Notes" autosave. Mirrors
+  // autoSaveNotesMutation/handleNoteChange above exactly (same debounce, same status lifecycle),
+  // pointed at the DELIVERED field instead of the private one. Also invalidates the plancard
+  // query on success — that's the query PlanCard.tsx itself reads, so a save here is reflected
+  // the next time the traveler-facing card refetches, with no separate push needed.
+  const autoSaveTravelerNoteMutation = useMutation({
+    mutationFn: async (note: string) => {
+      const res = await apiRequest("PATCH", `/api/trips/${tripId}/expert-traveler-note`, { expertTravelerNote: note || null });
+      return res.json();
+    },
+    onSuccess: () => {
+      setTravelerNoteSaveStatus("saved");
+      setTravelerNoteLastSavedAt(new Date());
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+      const t = setTimeout(() => setTravelerNoteSaveStatus("idle"), 2000);
+      return () => clearTimeout(t);
+    },
+    onError: () => setTravelerNoteSaveStatus("idle"),
+  });
+
+  const handleTravelerNoteChange = (text: string) => {
+    setTravelerNoteText(text);
+    setTravelerNoteSaveStatus("saving");
+    if (travelerNotesDebounceRef.current) clearTimeout(travelerNotesDebounceRef.current);
+    travelerNotesDebounceRef.current = setTimeout(() => {
+      autoSaveTravelerNoteMutation.mutate(text);
+    }, 1500);
+  };
+
+  useEffect(() => {
+    return () => { if (travelerNotesDebounceRef.current) clearTimeout(travelerNotesDebounceRef.current); };
+  }, []);
+
   // ── beforeunload guard: warn on tab close / refresh while save is pending ──
+  // Covers BOTH note fields (private Build notes + the traveler-facing card below) — same guard,
+  // widened rather than duplicated.
   useEffect(() => {
     const handler = (e: BeforeUnloadEvent) => {
-      if (noteSaveStatus === "saving") {
+      if (noteSaveStatus === "saving" || travelerNoteSaveStatus === "saving") {
         e.preventDefault();
         e.returnValue = "";
       }
     };
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
-  }, [noteSaveStatus]);
+  }, [noteSaveStatus, travelerNoteSaveStatus]);
 
   // ── popstate guard: intercept browser back/forward while save is pending ──
   useEffect(() => {
-    if (noteSaveStatus !== "saving") return;
+    if (noteSaveStatus !== "saving" && travelerNoteSaveStatus !== "saving") return;
 
     const currentPath = window.location.pathname + window.location.search;
 
@@ -2886,11 +3478,11 @@ export default function ExpertWorkspace() {
 
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
-  }, [noteSaveStatus]);
+  }, [noteSaveStatus, travelerNoteSaveStatus]);
 
   // ── safeNavigate: intercept in-app navigation while save is pending ──
   const safeNavigate = (path: string) => {
-    if (noteSaveStatus === "saving") {
+    if (noteSaveStatus === "saving" || travelerNoteSaveStatus === "saving") {
       const confirmed = window.confirm("Your notes haven't been saved yet. Leave anyway?");
       if (!confirmed) return;
     }
@@ -2911,6 +3503,22 @@ export default function ExpertWorkspace() {
   const boundaryViolations = workspaceConstraints?.boundaryViolations || [];
   const optimizerScores = workspaceConstraints?.optimizerScores || null;
   const totalConstraintIssues = anchorConflicts.reduce((sum, c) => sum + c.impacts.length, 0) + energyTracking.filter(e => e.recoveryNeeded).length + boundaryViolations.length;
+
+  // Advisor Phase 1 — Routing-blocked card: the real unlocated rows (§13 — never just a count),
+  // same isLocatedItem predicate the plan map and the transport-leg engine both use.
+  const advisorUnlocatedItems = days.flatMap(d => d.items).filter(i => !isLocatedItem(i));
+
+  // Advisor Phase 1 — Route summary card: trip-scoped legs only (`proposalStatus != null` per
+  // the brief — legacy variant-scoped legs carry a NULL proposalStatus and belong to a separate
+  // mechanism this card doesn't touch). Distances are the engine's own `distanceMeters` sums —
+  // never estimated client-side (§13).
+  const advisorTripLegs = (advisorLegsData?.legs ?? []).filter((l) => l.proposalStatus != null);
+  const advisorLegMetersByDay: Record<number, number> = {};
+  for (const leg of advisorTripLegs) {
+    advisorLegMetersByDay[leg.dayNumber] = (advisorLegMetersByDay[leg.dayNumber] ?? 0) + (leg.distanceMeters || 0);
+  }
+  const advisorLegDays = Object.keys(advisorLegMetersByDay).map(Number).sort((a, b) => a - b);
+  const advisorLegTotalMeters = advisorTripLegs.reduce((sum, l) => sum + (l.distanceMeters || 0), 0);
 
   const isLoading = ctxLoading || (!isAuthoring && (tripsLoading || assignmentLoading));
 
@@ -3245,16 +3853,23 @@ export default function ExpertWorkspace() {
             derive from trip.destination and recompute when the context query invalidates).
             Assignment trips keep it read-only (the destination belongs to the traveler). */}
         {editingDest ? (
-          <input
-            value={destDraft}
-            autoFocus
-            onChange={e => setDestDraft(e.target.value)}
-            onBlur={commitDestination}
-            onKeyDown={e => { if (e.key === "Enter") commitDestination(); if (e.key === "Escape") setEditingDest(false); }}
-            data-testid="input-build-destination"
-            placeholder="Destination city"
-            style={{ fontSize: 12, color: INK, border: `1.5px solid ${LINE}`, borderRadius: 999, padding: "2px 10px", outline: "none", background: CARD, width: 150 }}
-          />
+          // Workstation improvement (Aug 9 2026): same Places typeahead the landing page's
+          // new-build destination field already has — text-only (the destination geocode rail
+          // elsewhere handles centering off it). Commit-on-blur is safe with the dropdown: a
+          // suggestion click uses onMouseDown preventDefault, so picking never blurs mid-pick.
+          <div style={{ width: 180 }}>
+            <PlacesAutocompleteInput
+              value={destDraft}
+              autoFocus
+              onChange={setDestDraft}
+              onPlaceSelected={place => setDestDraft(place.text)}
+              onBlur={commitDestination}
+              onKeyDown={e => { if (e.key === "Enter") commitDestination(); if (e.key === "Escape") setEditingDest(false); }}
+              testId="input-build-destination"
+              placeholder="Destination city"
+              style={{ fontSize: 12, color: INK, border: `1.5px solid ${LINE}`, borderRadius: 999, padding: "2px 10px", outline: "none", background: CARD, width: "100%", boxSizing: "border-box" }}
+            />
+          </div>
         ) : trip?.destination ? (
           isAuthoring ? (
             <button
@@ -3415,11 +4030,14 @@ export default function ExpertWorkspace() {
                   tripId={tripId}
                   days={days}
                   maxDay={maxDay}
+                  destination={destination}
                   onDayMoved={triggerEnergyRecalc}
                   onOpenBookingBrief={(network) => setBookingBrief({ provider: network, bookingUrl: resolvePartnerBookingUrl(network) })}
                   focusItemId={focusItemId}
                   onFocusHandled={() => setFocusItemId(null)}
                   onSelectItem={(itemId) => setMapFocusItemId(itemId)}
+                  suggestOrderForDay={suggestOrderForDay}
+                  onSuggestHandled={() => setSuggestOrderForDay(null)}
                 />
               )}
 
@@ -3434,7 +4052,10 @@ export default function ExpertWorkspace() {
           <div style={{ borderBottom: `1px solid ${LINE}`, padding: "0 10px", display: "flex", gap: 2, flexShrink: 0 }}>
             {[
               { k: "add", l: "Add" },
-              { k: "gaps", l: totalConstraintIssues > 0 ? `AI Gaps (${totalConstraintIssues})` : "AI Gaps" },
+              // Advisor Phase 1: visible label only — the "gaps" key/testids are untouched below
+              // so every existing consumer (tab-right-gaps, the AI Gaps section content, etc.)
+              // stays exactly as it was.
+              { k: "gaps", l: totalConstraintIssues > 0 ? `Advisor (${totalConstraintIssues})` : "Advisor" },
               { k: "distribute", l: "Distribute" },
             ].map(t => (
               <button key={t.k} onClick={() => setRightTab(t.k)} data-testid={`tab-right-${t.k}`} style={{ padding: "10px 10px 8px", fontSize: 12, fontWeight: 650, cursor: "pointer", background: "none", border: "none", borderBottom: rightTab === t.k ? `2px solid ${BRAND}` : "2px solid transparent", color: rightTab === t.k ? INK : MID, whiteSpace: "nowrap" }}>{t.l}</button>
@@ -3457,7 +4078,10 @@ export default function ExpertWorkspace() {
                   <button
                     key={s.k}
                     onClick={() => setAddSource(s.k)}
-                    data-testid={`pill-add-${s.k}`}
+                    // GOOGLE-PLACES-SOURCE-PILL: the mockup names this pill's testid
+                    // `button-add-source-google` specifically — every other pill keeps the
+                    // pre-existing `pill-add-<key>` convention untouched.
+                    data-testid={s.k === "google" ? "button-add-source-google" : `pill-add-${s.k}`}
                     style={{
                       padding: "4px 11px", borderRadius: 99, fontSize: 11.5, fontWeight: 700, whiteSpace: "nowrap",
                       cursor: "pointer", opacity: s.comingSoon && addSource !== s.k ? 0.6 : 1,
@@ -3527,7 +4151,7 @@ export default function ExpertWorkspace() {
           {/* Add · DMO Library — the picker's core, embedded (same fetch + same write). */}
           {rightTab === "add" && addSource === "dmo" && (
             <div style={{ flex: 1, overflowY: "auto", padding: "12px 12px" }}>
-              <DmoPickerCore tripId={tripId!} dayNumber={focusDay} onAdded={triggerEnergyRecalc} />
+              <DmoPickerCore tripId={tripId!} dayNumber={focusDay} maxDay={maxDay} onAdded={triggerEnergyRecalc} />
             </div>
           )}
 
@@ -3554,7 +4178,7 @@ export default function ExpertWorkspace() {
                   .map((r: any) => ({ id: r.id, title: r.name, lat: r.location.lat, lng: r.location.lng, price: r.priceLabel ?? null }))}
                 onAdd={(id) => {
                   const result = searchResults.find((r: any) => r.id === id);
-                  if (result) addFromSearchMutation.mutate(result);
+                  if (result) addFromSearchMutation.mutate({ result, day: focusDay });
                 }}
               />
 
@@ -3581,88 +4205,12 @@ export default function ExpertWorkspace() {
                 </div>
               </div>
 
-              {/* Map — browse surface (lives ONLY here, P2-18). D-1 (Workstation audit):
-                  wrapped in a section-local error boundary — Maps can throw at mount
-                  (billing/key errors) and must not blank the results list below it. */}
-              <div style={{ height: 220, flexShrink: 0, position: "relative" }}>
-                <MapSectionErrorBoundary>
-                {MAPS_KEY ? (
-                  <APIProvider apiKey={MAPS_KEY}>
-                    <Map
-                      mapId={GOOGLE_MAPS_MAP_ID}
-                      defaultCenter={mapCenter}
-                      center={mapCenter}
-                      defaultZoom={13}
-                      gestureHandling="greedy"
-                      disableDefaultUI={true}
-                      style={{ width: "100%", height: "100%" }}
-                      onClick={() => setSelectedPin(null)}
-                    >
-                      {searchResults.filter(r => r.location?.lat).map((result: any) => (
-                        <MapMarker
-                          key={result.id}
-                          position={{ lat: result.location.lat, lng: result.location.lng }}
-                          onClick={() => setSelectedPin(result)}
-                        >
-                          <div style={{ background: "var(--console-brand)", color: "var(--console-card)", borderRadius: 20, padding: "3px 8px", fontSize: 11, fontWeight: 700, boxShadow: "0 2px 6px rgba(0,0,0,0.3)", border: selectedPin?.id === result.id ? `2px solid var(--console-card)` : "none", whiteSpace: "nowrap", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis" }}>
-                            {result.name.length > 16 ? result.name.slice(0, 16) + "…" : result.name}
-                          </div>
-                        </MapMarker>
-                      ))}
-
-                      {selectedPin && selectedPin.location?.lat && (
-                        <InfoWindow
-                          position={{ lat: selectedPin.location.lat, lng: selectedPin.location.lng }}
-                          onCloseClick={() => setSelectedPin(null)}
-                        >
-                          <div style={{ fontFamily: "'Inter',-apple-system,sans-serif", minWidth: 180, maxWidth: 220 }}>
-                            <div style={{ fontSize: 13, fontWeight: 700, color: INK, marginBottom: 3 }}>{selectedPin.name}</div>
-                            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
-                              {selectedPin.rating && (
-                                <span style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 12, color: WARN, fontWeight: 600 }}>
-                                  <Star style={{ width: 11, height: 11 }} /> {selectedPin.rating}
-                                  {selectedPin.reviewCount && <span style={{ color: FAINT, fontWeight: 400 }}>({selectedPin.reviewCount.toLocaleString()})</span>}
-                                </span>
-                              )}
-                              {selectedPin.priceLabel && <span style={{ fontSize: 11, color: MID, background: GROUND, padding: "1px 5px", borderRadius: 4 }}>{selectedPin.priceLabel}</span>}
-                            </div>
-                            {selectedPin.address && <div style={{ fontSize: 11, color: MID, marginBottom: 7, lineHeight: 1.4 }}>{selectedPin.address}</div>}
-                            <div style={{ display: "flex", gap: 5 }}>
-                              <button
-                                onClick={() => addFromSearchMutation.mutate(selectedPin)}
-                                disabled={addFromSearchMutation.isPending}
-                                data-testid={`button-add-from-map-${selectedPin.id}`}
-                                style={{ ...btnPrimaryStyle, flex: 1, padding: "5px 8px", borderRadius: 7, fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}
-                              >
-                                {addFromSearchMutation.isPending ? <Loader2 style={{ width: 11, height: 11 }} className="animate-spin" /> : <Plus style={{ width: 11, height: 11 }} />}
-                                + Day {focusDay}
-                              </button>
-                              {selectedPin.mapsUrl && (
-                                <a href={selectedPin.mapsUrl} target="_blank" rel="noopener noreferrer">
-                                  <button data-testid={`button-maps-link-${selectedPin.id}`} style={{ ...btnQuietStyle, padding: "5px 8px", borderRadius: 7, fontSize: 12, display: "flex", alignItems: "center", gap: 3, color: MID }}>
-                                    <MapPinned style={{ width: 11, height: 11 }} />
-                                  </button>
-                                </a>
-                              )}
-                            </div>
-                          </div>
-                        </InfoWindow>
-                      )}
-                    </Map>
-                  </APIProvider>
-                ) : (
-                  <div style={{ height: "100%", background: GROUND, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 6 }}>
-                    <MapPin style={{ width: 24, height: 24, color: FAINT }} />
-                    <span style={{ fontSize: 12, color: MID }}>Map unavailable</span>
-                  </div>
-                )}
-                </MapSectionErrorBoundary>
-                {searchResults.filter((r: any) => r.location?.lat).length > 0 && (
-                  <div style={{ position: "absolute", bottom: 8, left: 8, background: CARD, borderRadius: 99, padding: "2px 8px", fontSize: 11, fontWeight: 600, color: INK, boxShadow: "0 1px 4px rgba(0,0,0,0.2)", zIndex: 10 }}>
-                    {searchResults.filter((r: any) => r.location?.lat).length} pins
-                  </div>
-                )}
-              </div>
+              {/* RETIRED (decision-maker, Aug 9 2026): the in-drawer browse map that lived here
+                  (P2-18 "lives ONLY here") is gone — superseded by the canvas Plan map's
+                  discovery layer (item 19): MapCandidatesPublisher above already renders this
+                  SAME filtered result set as candidate pins on the ONE canvas map, so two maps
+                  were showing identical pins. The list below plus the canvas pins are the whole
+                  browse surface now. `selectedPin` survives as the list's row-highlight state. */}
 
               {/* Results list — day-aware add rows ("+ Day N", v9 :277-292) */}
               <div style={{ flex: 1, overflowY: "auto", padding: "8px 10px" }}>
@@ -3705,7 +4253,7 @@ export default function ExpertWorkspace() {
                             </div>
                           </div>
                           <button
-                            onClick={e => { e.stopPropagation(); addFromSearchMutation.mutate(result); }}
+                            onClick={e => { e.stopPropagation(); addFromSearchMutation.mutate({ result, day: focusDay }); }}
                             disabled={addFromSearchMutation.isPending}
                             data-testid={`button-add-result-${result.id}`}
                             style={{ padding: "4px 10px", borderRadius: 8, background: BRAND_SOFT, color: BRAND, border: `1px solid ${BRAND}`, fontSize: 11, fontWeight: 800, cursor: "pointer", flexShrink: 0, whiteSpace: "nowrap" }}
@@ -3723,6 +4271,167 @@ export default function ExpertWorkspace() {
                 {/* W-3 task 2: Google attribution stays (TOS), but the catalog is Traveloure's —
                     only the supplemental places results are Google's. */}
                 <span style={{ fontSize: 10, color: FAINT }}>Traveloure platform catalog · Places results powered by Google</span>
+              </div>
+            </div>
+          )}
+
+          {/* Add · Google Places — GOOGLE-PLACES-SOURCE-PILL (approved mockup): a Google-only
+              live search (sources=google — no platform inventory shows here, that's the Platform
+              services pill's job). Writes through the SAME addFromSearchMutation the platform
+              drawer uses, extended with googlePlaceId when the server result carries one. */}
+          {rightTab === "add" && addSource === "google" && (
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+
+              {/* Item 19 discovery layer — its own "google-places" source key so the two drawers'
+                  candidate pins never collide (ADD_SOURCES is single-select — only one drawer, and
+                  so only one publisher, is ever mounted at a time). */}
+              <MapCandidatesPublisher
+                source="google-places"
+                sourceLabel="Google Places"
+                items={googleSearchResults
+                  .filter((r: any) => Number.isFinite(r.location?.lat) && Number.isFinite(r.location?.lng))
+                  .map((r: any) => ({ id: r.id, title: r.name, lat: r.location.lat, lng: r.location.lng, price: r.priceLabel ?? null }))}
+                onAdd={(id) => {
+                  const result = googleSearchResults.find((r: any) => r.id === id);
+                  if (!result) return;
+                  const placeKey = result.placeId ?? result.id;
+                  addFromSearchMutation.mutate({ result, day: focusDay }, {
+                    onSuccess: () => setGoogleAddedDays(prev => ({ ...prev, [placeKey]: focusDay })),
+                  });
+                }}
+              />
+
+              {/* Search bar + category chips — shares browseQuery/debouncedQuery/cat with the
+                  platform drawer (one search-box concept), sources=google underneath. */}
+              <div style={{ padding: "10px 12px 8px", borderBottom: `1px solid ${LINE}`, background: CARD, flexShrink: 0 }}>
+                <div style={{ position: "relative", marginBottom: 8 }}>
+                  <Search style={{ position: "absolute", left: 9, top: "50%", transform: "translateY(-50%)", width: 14, height: 14, color: FAINT, pointerEvents: "none" }} />
+                  <input
+                    value={browseQuery}
+                    onChange={e => setBrowseQuery(e.target.value)}
+                    placeholder={`Search Google Places in ${destination || "destination"}…`}
+                    data-testid="input-browse-search-google"
+                    style={{ width: "100%", paddingLeft: 30, paddingRight: googleSearchFetching ? 30 : 10, paddingTop: 7, paddingBottom: 7, borderRadius: 8, border: `1.5px solid ${LINE}`, fontSize: 13, outline: "none", boxSizing: "border-box", background: GROUND, color: INK }}
+                  />
+                  {googleSearchFetching && <Loader2 style={{ position: "absolute", right: 9, top: "50%", transform: "translateY(-50%)", width: 13, height: 13, color: FAINT }} className="animate-spin" />}
+                </div>
+                <div style={{ display: "flex", gap: 5, overflowX: "auto", paddingBottom: 2 }}>
+                  {[{ k: "all", l: "All" }, { k: "dining", l: "Dining" }, { k: "activities", l: "Activities" }, { k: "hotels", l: "Hotels" }].map(c => (
+                    <Chip key={c.k} active={cat === c.k} onClick={() => setCat(c.k)}>{c.l}</Chip>
+                  ))}
+                </div>
+              </div>
+
+              {/* Results list — approved mockup card shape: photo thumb, name, neutral "Google"
+                  badge, rating/price-band/category line, address, split-button add. */}
+              <div style={{ flex: 1, overflowY: "auto", padding: "8px 10px" }}>
+                {googleSearchFetching && googleSearchResults.length === 0 ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                    {[1, 2, 3].map(i => <div key={i} style={{ height: 72, borderRadius: 8, background: GROUND }}><Skeleton className="h-full w-full rounded-lg" /></div>)}
+                  </div>
+                ) : googleSearchResults.length === 0 ? (
+                  <div style={{ textAlign: "center", padding: "24px 0", color: MID }}>
+                    <Search style={{ width: 28, height: 28, color: FAINT, margin: "0 auto 8px" }} />
+                    <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 4 }}>
+                      {destination ? `Showing ${destination}` : "Type to search"}
+                    </div>
+                    <div style={{ fontSize: 11, color: FAINT }}>Try "ramen", "temple", "rooftop bar"</div>
+                  </div>
+                ) : (
+                  <>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: FAINT, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 6, paddingLeft: 2 }}>
+                      {googleSearchResults.length} results
+                    </div>
+                    {googleSearchResults.map((result: any) => {
+                      const placeKey = result.placeId ?? result.id;
+                      const addedDay = googleAddedDays[placeKey];
+                      // Best-effort cross-link: reads whatever the platform drawer's OWN query
+                      // already has cached (react-query keeps it around after that drawer closes,
+                      // for as long as its cache entry survives) — never fires a second fetch just
+                      // for this chip; when nothing is cached yet, this simply finds nothing (§13
+                      // "skip cleanly").
+                      const crossLinkedPlatform = searchResults.find((p: any) => p.source === "platform" && namesMatch(p.name, result.name));
+                      return (
+                        <div
+                          key={result.id}
+                          data-testid={`card-gplace-${placeKey}`}
+                          style={{ display: "flex", flexDirection: "column", gap: 6, padding: 9, borderRadius: 9, border: `1px solid ${LINE}`, background: CARD, marginBottom: 7 }}
+                        >
+                          <div style={{ display: "flex", alignItems: "flex-start", gap: 9 }}>
+                            <div style={{ width: 40, height: 40, borderRadius: 7, background: result.photoUrl ? "transparent" : GROUND, border: result.photoUrl ? "none" : `1px solid ${LINE}`, flexShrink: 0, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                              {result.photoUrl ? <img src={result.photoUrl} alt={result.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <MapPin style={{ width: 16, height: 16, color: FAINT }} />}
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                <span style={{ fontSize: 12.5, fontWeight: 700, color: INK, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{result.name}</span>
+                                <StateChip tone="mut">Google</StateChip>
+                              </div>
+                              <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 2, fontSize: 10.5, color: MID, flexWrap: "wrap" }}>
+                                {result.rating != null && (
+                                  <span style={{ display: "flex", alignItems: "center", gap: 2 }}>
+                                    <Star style={{ width: 9, height: 9, color: WARN }} />
+                                    {result.rating}{result.reviewCount != null && ` (${result.reviewCount.toLocaleString()})`}
+                                  </span>
+                                )}
+                                {result.rating != null && result.priceLabel && <span style={{ color: FAINT }}>·</span>}
+                                {/* Google's priceLevel (0-4) surfaces ONLY as its $ band (priceLabel,
+                                    already server-derived) — never converted into an invented
+                                    dollar figure here (§13). */}
+                                {result.priceLabel && <span>{result.priceLabel}</span>}
+                                {(result.rating != null || result.priceLabel) && result.category && <span style={{ color: FAINT }}>·</span>}
+                                {result.category && <span style={{ textTransform: "capitalize" }}>{result.category}</span>}
+                              </div>
+                              {result.address && (
+                                <div style={{ fontSize: 10.5, color: FAINT, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{result.address}</div>
+                              )}
+                            </div>
+                            <div onClick={e => e.stopPropagation()} style={{ flexShrink: 0 }}>
+                              {addedDay != null ? (
+                                <span
+                                  data-testid={`button-add-gplace-${placeKey}`}
+                                  style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 9px", borderRadius: 8, background: OK_SOFT, color: OK, fontSize: 11, fontWeight: 800, whiteSpace: "nowrap" }}
+                                >
+                                  <CheckCircle style={{ width: 11, height: 11 }} /> Day {addedDay}
+                                </span>
+                              ) : (
+                                <GooglePlaceSplitButton
+                                  placeKey={placeKey}
+                                  focusDay={focusDay}
+                                  maxDay={maxDay}
+                                  pending={addFromSearchMutation.isPending}
+                                  onPick={(day) => {
+                                    // Mirrors the existing "+ Day" affordance (A-1, Workstation
+                                    // audit): picking "+ New day" extends the selectable range.
+                                    if (day > maxDay) {
+                                      setExtraMaxDay(day);
+                                      if (tripId) writeExtraMaxDay(tripId, day);
+                                    }
+                                    addFromSearchMutation.mutate({ result, day }, {
+                                      onSuccess: () => setGoogleAddedDays(prev => ({ ...prev, [placeKey]: day })),
+                                    });
+                                  }}
+                                />
+                              )}
+                            </div>
+                          </div>
+                          {crossLinkedPlatform && (
+                            <button
+                              onClick={() => setAddSource("platform")}
+                              data-testid={`chip-gplace-platform-${placeKey}`}
+                              style={{ alignSelf: "flex-start", display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 9px", borderRadius: 999, fontSize: 10.5, fontWeight: 700, background: BRAND_SOFT, color: BRAND, border: "none", cursor: "pointer" }}
+                            >
+                              Also on Traveloure — bookable
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </>
+                )}
+              </div>
+
+              <div style={{ borderTop: `1px solid ${LINE}`, padding: "5px 12px", textAlign: "center", flexShrink: 0 }}>
+                <span style={{ fontSize: 10, color: FAINT }}>Places results powered by Google · live search, nothing stored</span>
               </div>
             </div>
           )}
@@ -3832,6 +4541,7 @@ export default function ExpertWorkspace() {
                         tripId={tripId!}
                         dayNumber={focusDay}
                         providerName={aff.name}
+                        destination={destination}
                         onAdded={triggerEnergyRecalc}
                         onClose={() => setLogBookingOpenFor(null)}
                       />
@@ -3856,6 +4566,328 @@ export default function ExpertWorkspace() {
           {/* ── AI Gaps: the ONE home for Schedule Check (P2-15/P3-19) ── */}
           {rightTab === "gaps" && (
             <div style={{ flex: 1, overflowY: "auto", padding: "14px 12px" }}>
+
+              {/* Advisor Phase 2-4 — narration block, FIRST in the tab. Strictly ON-DEMAND: the
+                  POST only ever fires from a click on button-advisor-narrate, never automatically
+                  on tab open (only the GET runs then). A GET failure renders nothing (quiet —
+                  never breaks the tab); a POST failure renders an honest inline note next to
+                  whatever was already known, with no auto-retry loop. */}
+              {!advisorNarrationError && (
+                <div data-testid="card-advisor-narration" style={{ border: `1px solid ${BRAND}`, borderRadius: 10, padding: "10px 12px", marginBottom: 10, background: BRAND_SOFT }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 7 }}>
+                    <Sparkles style={{ width: 13, height: 13, color: BRAND }} />
+                    <span style={{ fontSize: 12.5, fontWeight: 700, color: INK }}>Today's read on this build</span>
+                  </div>
+
+                  {narrateMutation.isPending ? (
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: MID }}>
+                      <Loader2 style={{ width: 12, height: 12 }} className="animate-spin" />
+                      Reading your build…
+                    </div>
+                  ) : (
+                    <>
+                      {narrateMutation.isError && (
+                        <div data-testid="text-advisor-narration-error" style={{ fontSize: 11.5, color: MID, fontStyle: "italic", marginBottom: 8 }}>
+                          Advice unavailable right now.
+                        </div>
+                      )}
+                      {advisorNarrationLoading ? null : advisorNarration ? (
+                        <>
+                          <div data-testid="text-advisor-narration" style={{ fontSize: 12, color: INK, lineHeight: 1.55, whiteSpace: "pre-wrap" }}>
+                            {advisorNarration.narration}
+                          </div>
+                          <div style={{ fontSize: 10.5, color: FAINT, marginTop: 7 }}>
+                            AI summary · {formatRelativeTime(new Date(advisorNarration.generatedAt))}
+                          </div>
+                          {advisorNarration.stale && (
+                            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 7, flexWrap: "wrap" }}>
+                              <span style={{ display: "inline-flex", alignItems: "center", padding: "2px 8px", borderRadius: 999, background: WARN_SOFT, color: WARN, fontSize: 10, fontWeight: 700 }}>
+                                Plan changed — advice may be stale
+                              </span>
+                              <button
+                                onClick={() => narrateMutation.mutate()}
+                                data-testid="button-advisor-narrate"
+                                style={{ ...btnQuietStyle, padding: "3px 9px", fontSize: 10.5, display: "flex", alignItems: "center", gap: 4 }}
+                              >
+                                <RefreshCw style={{ width: 10, height: 10 }} />
+                                Refresh advice
+                              </button>
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <button
+                          onClick={() => narrateMutation.mutate()}
+                          data-testid="button-advisor-narrate"
+                          style={{ ...btnPrimaryStyle, padding: "6px 11px", fontSize: 11.5 }}
+                        >
+                          Get advice on this build
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* CLAUDE.md §21 — Fundamentals card, FIRST after the narration card (before the
+                  reorder nudges). Deterministic checklist from the sibling server's
+                  GET /api/trips/:tripId/advisor/fundamentals — built in parallel; an honest
+                  "unavailable" line renders on 404/error, never fake results (§13). */}
+              <div data-testid="card-advisor-fundamentals" style={{ border: `1px solid ${LINE}`, borderRadius: 10, padding: "10px 12px", marginBottom: 10, background: CARD }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 7 }}>
+                  <ShieldCheck style={{ width: 13, height: 13, color: BRAND }} />
+                  <span style={{ fontSize: 12.5, fontWeight: 700, color: INK }}>Fundamentals</span>
+                </div>
+                {fundamentalsError ? (
+                  <div data-testid="text-fundamentals-unavailable" style={{ fontSize: 11.5, color: FAINT, fontStyle: "italic" }}>
+                    Fundamentals unavailable
+                  </div>
+                ) : fundamentalsLoading ? (
+                  <div style={{ fontSize: 11.5, color: MID, display: "flex", alignItems: "center", gap: 6 }}>
+                    <Loader2 style={{ width: 12, height: 12 }} className="animate-spin" /> Checking the plan…
+                  </div>
+                ) : !fundamentalsData ? (
+                  <div data-testid="text-fundamentals-unavailable" style={{ fontSize: 11.5, color: FAINT, fontStyle: "italic" }}>
+                    Fundamentals unavailable
+                  </div>
+                ) : (() => {
+                  const checks = fundamentalsData.checks ?? [];
+                  const omitted = fundamentalsData.omitted ?? [];
+                  const tier1 = checks.filter(c => c.tier === 1);
+                  const tier2 = checks.filter(c => c.tier === 2);
+                  const tier3 = checks.filter(c => c.tier === 3);
+
+                  if (checks.length === 0) {
+                    return (
+                      <div data-testid="text-fundamentals-clear" style={{ fontSize: 11.5, color: OK, display: "flex", alignItems: "center", gap: 6 }}>
+                        <CheckCircle style={{ width: 12, height: 12 }} /> All fundamentals covered
+                      </div>
+                    );
+                  }
+
+                  const rowTestId = (c: AdvisorFundamentalCheck) => `row-fundamental-${c.key}${c.dayNumber != null ? `-${c.dayNumber}` : ""}`;
+                  const ctaLabel = (cta?: AdvisorFundamentalCheck["cta"]) =>
+                    cta === "stays" ? "View stays" : cta === "editor" ? "Fix in editor" : cta === "distribute" ? "Go to Distribute" : "";
+                  const runCta = (c: AdvisorFundamentalCheck) => {
+                    if (c.cta === "stays") {
+                      document.querySelector('[data-testid="card-advisor-stays"]')?.scrollIntoView({ behavior: "smooth", block: "center" });
+                    } else if (c.cta === "editor") {
+                      // Reuses the SAME focusItemId one-shot button-advisor-add-locations uses
+                      // above — day-scoped when the check names a day (its first item stands in
+                      // for "this day's row" since ItemsEditorPanel opens/expands by item id,
+                      // not by day), otherwise the plan's first item, otherwise just opens the
+                      // panel via its own toggle (no items to focus at all).
+                      let itemId = c.data?.itemId as string | undefined;
+                      if (!itemId && c.dayNumber != null) itemId = days.find(d => d.dayNumber === c.dayNumber)?.items[0]?.id;
+                      if (!itemId) itemId = days.flatMap(d => d.items)[0]?.id;
+                      if (itemId) setFocusItemId(itemId);
+                      else (document.querySelector('[data-testid="button-toggle-item-editor"]') as HTMLElement | null)?.click();
+                    } else if (c.cta === "distribute") {
+                      setRightTab("distribute");
+                    }
+                  };
+
+                  return (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                      {tier1.map(c => (
+                        <div key={rowTestId(c)} data-testid={rowTestId(c)} style={{ border: `1px solid ${WARN}`, borderRadius: 8, padding: "8px 10px", background: WARN_SOFT, display: "flex", alignItems: "flex-start", gap: 7 }}>
+                          <AlertTriangle style={{ width: 13, height: 13, color: WARN, flexShrink: 0, marginTop: 1 }} />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 12, color: INK, fontWeight: 600, lineHeight: 1.4 }}>
+                              {c.dayNumber != null && <span style={{ color: FAINT, fontWeight: 700 }}>D{c.dayNumber} · </span>}
+                              {c.message}
+                            </div>
+                            {c.cta && (
+                              <button onClick={() => runCta(c)} data-testid={`button-fundamental-${c.key}${c.dayNumber != null ? `-${c.dayNumber}` : ""}`} style={{ ...btnPrimaryStyle, marginTop: 6, padding: "4px 10px", fontSize: 10.5 }}>
+                                {ctaLabel(c.cta)}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+
+                      {tier2.length > 0 && (
+                        <>
+                          <div style={{ ...sectionLabelStyle, marginTop: tier1.length > 0 ? 2 : 0, marginBottom: 0 }}>Worth a look</div>
+                          {tier2.map(c => (
+                            <div key={rowTestId(c)} data-testid={rowTestId(c)} style={{ display: "flex", alignItems: "flex-start", gap: 6, fontSize: 11.5, color: MID }}>
+                              <Lightbulb style={{ width: 11, height: 11, color: FAINT, flexShrink: 0, marginTop: 2 }} />
+                              <span style={{ flex: 1 }}>
+                                {c.dayNumber != null && <span style={{ color: FAINT, fontWeight: 700 }}>D{c.dayNumber} · </span>}
+                                {c.message}
+                                {c.cta && (
+                                  <button onClick={() => runCta(c)} data-testid={`button-fundamental-${c.key}${c.dayNumber != null ? `-${c.dayNumber}` : ""}`} style={{ background: "none", border: "none", padding: 0, marginLeft: 6, color: BRAND, fontWeight: 700, cursor: "pointer", fontSize: 11, textDecoration: "underline" }}>
+                                    {ctaLabel(c.cta)}
+                                  </button>
+                                )}
+                              </span>
+                            </div>
+                          ))}
+                        </>
+                      )}
+
+                      {tier3.length > 0 && (
+                        <>
+                          <div style={{ ...sectionLabelStyle, marginTop: 2, marginBottom: 0 }}>Polish</div>
+                          {tier3.map(c => (
+                            <div key={rowTestId(c)} data-testid={rowTestId(c)} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: FAINT }}>
+                              <span style={{ width: 4, height: 4, borderRadius: "50%", background: FAINT, flexShrink: 0 }} />
+                              <span>{c.dayNumber != null && `D${c.dayNumber} · `}{c.message}</span>
+                            </div>
+                          ))}
+                        </>
+                      )}
+
+                      {omitted.length > 0 && (
+                        <div
+                          data-testid="text-fundamentals-omitted"
+                          title={omitted.map(o => `${o.key}: ${o.reason}`).join("\n")}
+                          style={{ fontSize: 10, color: FAINT, marginTop: 2 }}
+                        >
+                          {omitted.length} check{omitted.length === 1 ? "" : "s"} skipped (insufficient data)
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Advisor Phase 2-4 — reorder-nudge cards. Source: route-efficiency's own per-day
+                  straight-line comparison (§13: the "straight-line comparison" label is
+                  load-bearing honesty — this is NOT a real routed distance, keep the wording).
+                  Only materially-improvable days render anything; a day with no meaningful
+                  savings shows nothing (no noise). A failed fetch renders nothing (same quiet
+                  posture as the narration GET above). */}
+              {!advisorRouteEfficiencyError && (advisorRouteEfficiency?.days ?? []).filter(d => d.materiallyImprovable).map(d => (
+                <div key={d.dayNumber} data-testid={`card-advisor-reorder-day-${d.dayNumber}`} style={{ border: `1px solid ${LINE}`, borderRadius: 10, padding: "10px 12px", marginBottom: 10, background: CARD }}>
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: 6, marginBottom: 4 }}>
+                    <Lightbulb style={{ width: 13, height: 13, color: BRAND, flexShrink: 0, marginTop: 1 }} />
+                    <span style={{ fontSize: 12.5, fontWeight: 700, color: INK }}>
+                      Day {d.dayNumber} walks {d.savingsKm.toFixed(1)} km further than it needs to
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 11, color: MID, marginBottom: 9, paddingLeft: 19 }}>
+                    Current {d.currentKm.toFixed(1)} km → best found {d.optimizedKm.toFixed(1)} km · straight-line comparison
+                  </div>
+                  <button
+                    onClick={() => setSuggestOrderForDay(d.dayNumber)}
+                    data-testid={`button-advisor-suggest-order-${d.dayNumber}`}
+                    style={{ ...btnPrimaryStyle, padding: "5px 11px", fontSize: 11 }}
+                  >
+                    See suggested order
+                  </button>
+                </div>
+              ))}
+
+              {/* Advisor Phase 1 — routing-blocked card. Shown only when at least one item fails
+                  isLocatedItem (the SAME predicate the plan map and transport-leg engine use —
+                  never a second, looser notion of "located"). */}
+              {advisorUnlocatedItems.length > 0 && (
+                <div data-testid="card-advisor-routing-blocked" style={{ border: `1px solid ${LINE}`, borderRadius: 10, padding: "10px 12px", marginBottom: 10, background: WARN_SOFT }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 7 }}>
+                    <AlertTriangle style={{ width: 13, height: 13, color: WARN }} />
+                    <span style={{ fontSize: 12.5, fontWeight: 700, color: INK }}>
+                      {advisorUnlocatedItems.length} item{advisorUnlocatedItems.length === 1 ? "" : "s"} can't be routed
+                    </span>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 3, marginBottom: 9 }}>
+                    {advisorUnlocatedItems.slice(0, 4).map(item => (
+                      <div key={item.id} style={{ fontSize: 11, color: MID, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        <span style={{ fontWeight: 700, color: FAINT }}>D{item.dayNumber}</span> {item.title}
+                      </div>
+                    ))}
+                    {advisorUnlocatedItems.length > 4 && (
+                      <div style={{ fontSize: 10, color: FAINT }}>+{advisorUnlocatedItems.length - 4} more</div>
+                    )}
+                  </div>
+                  <button
+                    // Reuses the EXISTING focusItemId one-shot (item 16) — ItemsEditorPanel
+                    // opens/expands/scrolls to this row, where the location field lives.
+                    onClick={() => setFocusItemId(advisorUnlocatedItems[0].id)}
+                    data-testid="button-advisor-add-locations"
+                    style={{ ...btnPrimaryStyle, padding: "6px 11px", fontSize: 11.5 }}
+                  >
+                    Add locations
+                  </button>
+                </div>
+              )}
+
+              {/* Advisor Phase 1 — route summary card. Per-day + total distance, engine sums only
+                  (never a client-side estimate, §13); an honest empty state when nothing has been
+                  generated yet rather than a fabricated zero. */}
+              <div data-testid="card-advisor-route-summary" style={{ border: `1px solid ${LINE}`, borderRadius: 10, padding: "10px 12px", marginBottom: 14, background: CARD }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 7 }}>
+                  <Route style={{ width: 13, height: 13, color: BRAND }} />
+                  <span style={{ fontSize: 12.5, fontWeight: 700, color: INK }}>Route summary</span>
+                </div>
+                {advisorLegDays.length === 0 ? (
+                  <div data-testid="text-advisor-no-routes" style={{ fontSize: 11.5, color: MID }}>
+                    No routes computed yet.{" "}
+                    <button
+                      onClick={() => document.querySelector('[data-testid="button-toggle-transport-legs"]')?.scrollIntoView({ behavior: "smooth", block: "center" })}
+                      data-testid="button-advisor-goto-transport-legs"
+                      style={{ background: "none", border: "none", padding: 0, color: BRAND, fontWeight: 700, cursor: "pointer", fontSize: 11.5, textDecoration: "underline" }}
+                    >
+                      Generate transport legs
+                    </button>{" "}
+                    on the canvas to see day-by-day distances.
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    {advisorLegDays.map(d => (
+                      <div key={d} data-testid={`advisor-route-day-${d}`} style={{ display: "flex", justifyContent: "space-between", fontSize: 11.5, color: MID }}>
+                        <span>Day {d}</span>
+                        <span style={{ fontWeight: 600, color: INK }}>{(advisorLegMetersByDay[d] / 1000).toFixed(1)} km</span>
+                      </div>
+                    ))}
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, fontWeight: 700, color: INK, borderTop: `1px solid ${LINE}`, paddingTop: 5, marginTop: 2 }}>
+                      <span>Total</span>
+                      <span data-testid="text-advisor-route-total">{(advisorLegTotalMeters / 1000).toFixed(1)} km</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Advisor Phase 2-4 — stays card. §16: platform inventory is listed FIRST by
+                  design; the Google Places hop below stays inside our own live-search Add-panel
+                  surface (never an external/off-site link — the same rule the affiliate-outbound
+                  cards on Discover follow). No anchor (nothing to cluster near yet) → nothing
+                  rendered; a failed fetch is the same quiet no-render. */}
+              {!advisorStayAnchorError && advisorStayAnchor?.anchor && (
+                <div data-testid="card-advisor-stays" style={{ border: `1px solid ${LINE}`, borderRadius: 10, padding: "10px 12px", marginBottom: 14, background: CARD }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 7 }}>
+                    <Building2 style={{ width: 13, height: 13, color: BRAND }} />
+                    <span style={{ fontSize: 12.5, fontWeight: 700, color: INK }}>
+                      Days cluster near {advisorStayAnchor.anchor.neighborhood ?? "your route center"}
+                    </span>
+                  </div>
+                  {advisorStayAnchor.platformStays.length === 0 ? (
+                    <div data-testid="text-advisor-no-stays" style={{ fontSize: 11.5, color: MID, marginBottom: 9 }}>
+                      No bookable stays on Traveloure within 5 km yet.
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 9 }}>
+                      {advisorStayAnchor.platformStays.map(stay => (
+                        <div key={stay.providerServiceId} data-testid={`row-advisor-stay-${stay.providerServiceId}`} style={{ fontSize: 11.5, color: INK, display: "flex", justifyContent: "space-between", gap: 6 }}>
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{stay.name}</span>
+                          <span style={{ color: MID, flexShrink: 0 }}>
+                            {stay.distanceKm.toFixed(1)} km{stay.price != null ? ` · $${stay.price}` : ""}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <button
+                    onClick={() => { setRightTab("add"); setAddSource("google"); setCat("hotels"); }}
+                    data-testid="button-advisor-stays-places"
+                    style={{ ...btnQuietStyle, padding: "5px 10px", fontSize: 11, display: "flex", alignItems: "center", gap: 5 }}
+                  >
+                    <Search style={{ width: 11, height: 11 }} />
+                    Browse more stays on Google Places
+                  </button>
+                </div>
+              )}
+
               <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 14 }}>
                 <Shield style={{ width: 14, height: 14, color: BRAND }} />
                 <span style={{ fontSize: 14, fontWeight: 700, color: INK }}>AI Gaps</span>
@@ -4558,6 +5590,58 @@ export default function ExpertWorkspace() {
                 />
                 <div style={{ fontSize: 10, color: FAINT, marginTop: 3, display: "flex", alignItems: "center", gap: 3 }}>
                   <Lock style={{ width: 9, height: 9 }} /> Only you can see this
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* ── Expert Notes (traveler-visible) — CLAUDE.md §21 (ratified Aug 9, 2026). Directly
+              adjacent to Build notes (private) above; mirrors that card's own collapsible/
+              save-status/debounce pattern exactly, but writes trips.expert_traveler_note (via
+              the sibling server's PATCH /expert-traveler-note) — a DIFFERENT column from the
+              private trips.expert_notes card above, delivered to the traveler rather than kept
+              back. ── */}
+          <div style={{ borderTop: `1px solid ${LINE}`, flexShrink: 0 }} data-testid="card-trip-expert-note">
+            <button
+              onClick={() => setTravelerNotesOpen(o => !o)}
+              data-testid="button-toggle-trip-expert-note"
+              style={{ width: "100%", padding: "8px 12px", background: CARD, border: "none", display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}
+            >
+              <Eye style={{ width: 12, height: 12, color: MID }} />
+              <span style={{ fontSize: 11.5, fontWeight: 700, color: INK }}>Expert Notes</span>
+              <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6 }}>
+                {travelerNoteSaveStatus === "saving" && (
+                  <span data-testid="text-trip-expert-note-saving" style={{ fontSize: 10, color: MID, display: "flex", alignItems: "center", gap: 3 }}>
+                    <Loader2 style={{ width: 9, height: 9 }} className="animate-spin" /> Saving…
+                  </span>
+                )}
+                {travelerNoteSaveStatus === "saved" && (
+                  <span data-testid="text-trip-expert-note-saved" style={{ fontSize: 10, color: OK, display: "flex", alignItems: "center", gap: 3 }}>
+                    <CheckCircle style={{ width: 9, height: 9 }} /> Saved
+                  </span>
+                )}
+                {travelerNoteSaveStatus === "idle" && travelerNoteLastSavedAt && (
+                  <span data-testid="text-trip-expert-note-last-saved" style={{ fontSize: 10, color: MID, display: "flex", alignItems: "center", gap: 3 }}>
+                    <Clock style={{ width: 9, height: 9 }} /> {formatRelativeTime(travelerNoteLastSavedAt)}
+                  </span>
+                )}
+                <span style={{ display: "flex", color: FAINT }}>
+                  {travelerNotesOpen ? <ChevronDown style={{ width: 12, height: 12 }} /> : <ChevronUp style={{ width: 12, height: 12 }} />}
+                </span>
+              </span>
+            </button>
+            {travelerNotesOpen && (
+              <div style={{ padding: "0 12px 10px" }}>
+                <div style={{ fontSize: 10, color: FAINT, marginBottom: 4 }}>Delivered with the plan — visible to your traveler</div>
+                <textarea
+                  value={travelerNoteText}
+                  onChange={e => handleTravelerNoteChange(e.target.value)}
+                  placeholder="A note that ships with the plan — arrival tips, what to expect, how to reach you…"
+                  data-testid="input-trip-expert-note"
+                  style={{ width: "100%", minHeight: 64, padding: "6px 9px", fontSize: 11.5, color: INK, lineHeight: 1.55, background: GROUND, border: `1px solid ${LINE}`, borderRadius: 8, resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box" as any }}
+                />
+                <div style={{ fontSize: 10, color: FAINT, marginTop: 3, display: "flex", alignItems: "center", gap: 3 }}>
+                  <Eye style={{ width: 9, height: 9 }} /> Your traveler will see this
                 </div>
               </div>
             )}

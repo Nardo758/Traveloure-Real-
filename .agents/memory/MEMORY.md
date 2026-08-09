@@ -21,4 +21,6 @@
 - [Journey suite conventions](journey-suite-wave1.md) — --workers=1 + JOURNEY_DB_WRITES_OK=1 locally; fee gates payable in Stripe test mode via connector key; OPEN: optimizer AI generation broken (J1 gate path).
 - [Post-merge boot failures](post-merge-boot-failures.md) — ERR_MODULE_NOT_FOUND after a merge = node_modules not synced; npm install, don't hunt branch bugs.
 - [Passport is live auth](passport-is-live-auth.md) — Clerk secrets exist but no Clerk code; Passport powers all auth flows, never remove it on a "Clerk migration" premise.
+- [GitHub push auth](github-push-auth.md) — shell push failures were an expired token embedded in remote.origin.url + stale askpass; plain URL + env-token credential helper now; gitPush callback is the fallback.
+- [Google Maps runtime fallback](google-maps-runtime-fallback.md) — vis.gl clobbers gm_authFailure; use the accessor wrapper + useGoogleMapsAuthFailed(); curl can't test referrer restrictions.
 - [Kyoto bench fixture](kyoto-bench-fixture.md) — durable dev-DB expert kyoto-temples@traveloure.test with lifecycle provenance; never seed Kyoto experts by bare role flip; no DB CHECK on application status.

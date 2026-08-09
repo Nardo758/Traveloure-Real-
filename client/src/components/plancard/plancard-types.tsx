@@ -371,8 +371,14 @@ export interface PlanCardData {
    * startDate/endDate so the "polished final" dress also fires once R-F's finalized-primacy rule
    * fires — same rule the Slip's "Your Trip Card is ready" banner uses. Absent/undefined on older
    * responses → `tripCardIsPrimary` degrades to its date-only arms, never throws.
+   *
+   * CLAUDE.md §21 (ratified Aug 9, 2026) — `expertTravelerNote` passthrough (migration 187's
+   * `trips.expert_traveler_note`, distinct from the PRIVATE `trips.expert_notes` build-notes
+   * field). This is the ONLY traveler-facing trip-level expert note; absent/undefined on a
+   * pre-migration response or before the server route is wired → renders nothing (§13), never a
+   * placeholder.
    */
-  trip?: { finalizedAt?: string | null };
+  trip?: { finalizedAt?: string | null; expertTravelerNote?: string | null };
 }
 
 export interface PlanCardTrip {

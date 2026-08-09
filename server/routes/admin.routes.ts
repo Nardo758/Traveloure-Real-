@@ -68,6 +68,7 @@ import { grokService } from "../services/grok.service";
 import { feverService } from "../services/fever.service";
 import { partnerEventsCacheService } from "../services/partner-events-cache.service";
 import { ingestKyotoHeritage, ingestKyotoContentGaps, isDmoIngestReady } from "../services/dmo-ingestion.service";
+import { ingestYoutubeGuides, isYoutubeIngestReady } from "../services/youtube-ingestion.service";
 import { analyzeKyotoContentGaps, listOpenKyotoGaps } from "../services/content-gap.service";
 import { getGapFillSummary, getGapFillSourceTotals } from "../services/optimizer-gap-ledger.service";
 import { getProviderHealth } from "../services/provider-health.service";
@@ -1334,6 +1335,50 @@ router.post("/api/admin/dmo/ingest-gaps", isAuthenticated, async (req, res) => {
   }
 });
 
+// ── YouTube guide-video ingestion (social-source build, decision-maker ratified Aug 9 2026) ──────
+// "Top 10 <city>" guide videos are the same content shape the Research Reader already extracts
+// places from; see server/services/youtube-ingestion.service.ts for the full posture writeup.
+// Rows land born-hidden (D1a) — the existing DMO intake queue/approve endpoints above admit them
+// into the expert library exactly like any other dmo_raw_content row. Auth: this path is under
+// /api/admin, so the blanket adminApiGuard (server/routes.ts, §2) is the real gate; the inline
+// getFullAdminUser check below is belt-and-suspenders, matching every neighboring dmo endpoint's
+// style — no extra middleware is added here.
+const youtubeIngestBodySchema = z.object({
+  market: z.string().trim().min(1).max(100),
+  city: z.string().trim().min(1).max(100),
+  query: z.string().trim().min(1).max(300).optional(),
+  maxResults: z.number().int().min(1).max(15).optional(),
+});
+
+router.post("/api/admin/dmo/ingest-youtube", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser(getUserId(req)!);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  // Keyless check first and separate from body validation, so an unconfigured environment always
+  // reports 503 regardless of what else is (or isn't) in the request body (§13 — honest keyless).
+  if (!isYoutubeIngestReady()) {
+    return res.status(503).json({ message: "YouTube ingestion not configured (YOUTUBE_API_KEY)" });
+  }
+  const parsed = youtubeIngestBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid body", errors: parsed.error.flatten() });
+  }
+  try {
+    const stats = await ingestYoutubeGuides(parsed.data);
+    if (!stats.ready) {
+      // Not the keyless case (already handled above) — e.g. the youtube.com dmo_sources row isn't
+      // registered yet. Mirrors the neighboring ingest-kyoto/ingest-gaps endpoints' 200-with-reason
+      // shape for this class of "ready:false but not a config error" outcome.
+      return res.status(200).json({ message: stats.reason || "YouTube ingestion not ready", stats });
+    }
+    res.json({ message: "YouTube guide ingestion complete", stats });
+  } catch (err: any) {
+    console.error("YouTube DMO ingestion error:", err);
+    res.status(500).json({ message: "YouTube ingestion failed", error: err.message });
+  }
+});
+
 // ── Optimizer gap-fill ledger (OPTIMIZER_SOURCING_BUILD_SPEC WP-B) ──────────────
 // Real-time, market-agnostic sibling of the Kyoto-only content-gap tracker above: every time the
 // optimizer/Apply flow could not place a platform (provider_services) match, one row lands in
@@ -1476,6 +1521,19 @@ router.post("/api/admin/dmo/intake/:id/approve", isAuthenticated, async (req, re
       const { registerDmoContentById } = await import("../services/dmo-registry-sync.service");
       await registerDmoContentById(updated.id);
     } catch { /* non-blocking */ }
+    // Pre-extraction hook (decision-maker ratified, Aug 9 2026, part 1 of 3 — see
+    // dmo-place-extraction.service.ts header): fire the place-extraction pipeline the moment a
+    // guide-shaped row enters the expert library, so it's already pre-extracted before an expert
+    // opens the Research Reader. FIRE-AND-FORGET — the approve response must never wait on an AI
+    // call, and a failure here must never fail the approve. The service's own shape gate no-ops
+    // for `place`-shaped rows at zero cost, so no classifyDmoShape check is duplicated here.
+    void (async () => {
+      const { runPlaceExtraction } = await import("../services/dmo-place-extraction.service");
+      const outcome = await runPlaceExtraction(updated.id, { source: "admin_approve", actorId: user.id });
+      console.log(`[dmo-intake-approve] pre-extraction hook finished for ${updated.id}: ${outcome.status}`);
+    })().catch((err) =>
+      console.error(`[dmo-intake-approve] pre-extraction hook failed for ${updated.id}:`, err),
+    );
     res.json({ message: "Approved into the expert library", item: updated });
   } catch (err: any) {
     console.error("DMO intake approve error:", err);
