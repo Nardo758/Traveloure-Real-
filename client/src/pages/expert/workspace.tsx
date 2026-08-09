@@ -2291,6 +2291,24 @@ interface AdvisorStayAnchorResponse {
 interface AdvisorNarrationResponse { narration: string; generatedAt: string; stale: boolean; }
 interface AdvisorNarrationPostResponse { narration: string; generatedAt: string; planHash: string; cached: boolean; }
 
+// Advisor fundamentals (CLAUDE.md §21's ratified checklist) — built by the sibling server agent
+// in parallel: GET /api/trips/:tripId/advisor/fundamentals. Deterministic, §13-honest: a check
+// omitted for insufficient data is named with its reason, never silently dropped or guessed.
+interface AdvisorFundamentalCheck {
+  key: string;
+  tier: 1 | 2 | 3;
+  dayNumber?: number;
+  message: string;
+  cta?: "stays" | "editor" | "distribute";
+  data?: Record<string, any>;
+}
+interface AdvisorFundamentalOmission { key: string; reason: string; }
+interface AdvisorFundamentalsResponse {
+  checks: AdvisorFundamentalCheck[];
+  omitted: AdvisorFundamentalOmission[];
+  tripDays: number;
+}
+
 const TRANSPORT_GAP_FLAG_COPY: Record<TransportGapFlag, string> = {
   transport_gap: "No confirmed transport arranged for this leg.",
   timing_infeasible: "The estimated travel time doesn't fit in the gap between these stops.",
@@ -2694,6 +2712,15 @@ export default function ExpertWorkspace() {
   const [, setNowTick] = useState(0);
   const noteInitialized = useRef(false);
   const notesDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // CLAUDE.md §21 (ratified Aug 9, 2026) — the trip-level "Expert Notes" card, traveler-visible
+  // (trips.expert_traveler_note, migration 187), distinct from the private Build notes state
+  // directly above. Mirrors that card's own save/debounce/status pattern exactly.
+  const [travelerNoteText, setTravelerNoteText] = useState("");
+  const [travelerNoteSaveStatus, setTravelerNoteSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
+  const [travelerNoteLastSavedAt, setTravelerNoteLastSavedAt] = useState<Date | null>(null);
+  const [travelerNotesOpen, setTravelerNotesOpen] = useState(false);
+  const travelerNoteInitialized = useRef(false);
+  const travelerNotesDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [bookingBrief, setBookingBrief] = useState<{ provider: string; bookingUrl?: string } | null>(null);
   const [servicePickerOpen, setServicePickerOpen] = useState(false);
   // W1-A: "Log completed booking" — which affiliate-network card (by name) has its inline
@@ -2920,6 +2947,19 @@ export default function ExpertWorkspace() {
     enabled: !!tripId,
   });
 
+  // CLAUDE.md §21 — the trip-level traveler-facing note's INITIAL value. There is no dedicated
+  // GET for `trips.expert_traveler_note` (only the PATCH below); the field rides the plancard
+  // fetch instead (contract: "the trip GET will include expertTravelerNote" — the plancard route
+  // is the trip GET every other traveler-facing surface already reads it from, PlanCard.tsx
+  // included). Reuses the SAME query key every itinerary/plancard mutation in this file already
+  // invalidates, so this stays in sync for free rather than adding a second cache to babysit.
+  const { data: plancardForNote } = useQuery<{ trip?: { expertTravelerNote?: string | null } }>({
+    queryKey: [`/api/trips/${tripId}/plancard`],
+    enabled: !!tripId,
+    staleTime: 30 * 1000,
+    retry: false,
+  });
+
   const { data: workspaceConstraints, isLoading: constraintsLoading } = useQuery<WorkspaceConstraints>({
     queryKey: [`/api/trips/${tripId}/workspace-constraints`],
     enabled: !!tripId,
@@ -2986,6 +3026,20 @@ export default function ExpertWorkspace() {
     onSuccess: (data) => {
       queryClient.setQueryData([`/api/trips/${tripId}/advisor/narration`], { narration: data.narration, generatedAt: data.generatedAt, stale: false });
     },
+  });
+
+  // Fundamentals card — deterministic pass/fail checklist (§21's ratified list, built
+  // server-side). staleTime keeps a tab flip from re-fetching every time within the same window,
+  // same convention as the other three advisor queries just above; the default queryFn throws
+  // on a non-2xx OR on a route the sibling hasn't mounted yet (Vite's catch-all 200-HTML fails
+  // res.json() parsing — CLAUDE.md rule 9, never trust a 404 as the dead-route signal, but either
+  // way this ends up isError, which the card below renders as an honest "unavailable" line rather
+  // than fake results (§13).
+  const { data: fundamentalsData, isLoading: fundamentalsLoading, isError: fundamentalsError } = useQuery<AdvisorFundamentalsResponse>({
+    queryKey: [`/api/trips/${tripId}/advisor/fundamentals`],
+    enabled: !!tripId && rightTab === "gaps",
+    staleTime: 30 * 1000,
+    retry: false,
   });
 
   const proposeLegsMutation = useMutation({
@@ -3162,6 +3216,13 @@ export default function ExpertWorkspace() {
       noteInitialized.current = true;
     }
   }, [expertNotesData]);
+
+  useEffect(() => {
+    if (plancardForNote !== undefined && !travelerNoteInitialized.current) {
+      setTravelerNoteText(plancardForNote.trip?.expertTravelerNote || "");
+      travelerNoteInitialized.current = true;
+    }
+  }, [plancardForNote]);
 
   // (The destination-geocode map-center query that lived here served only the retired
   // in-drawer browse map; CanvasMapSection keeps its own identical query for its fallback
@@ -3354,21 +3415,56 @@ export default function ExpertWorkspace() {
     return () => { if (notesDebounceRef.current) clearTimeout(notesDebounceRef.current); };
   }, []);
 
+  // CLAUDE.md §21 — trip-level traveler-facing "Expert Notes" autosave. Mirrors
+  // autoSaveNotesMutation/handleNoteChange above exactly (same debounce, same status lifecycle),
+  // pointed at the DELIVERED field instead of the private one. Also invalidates the plancard
+  // query on success — that's the query PlanCard.tsx itself reads, so a save here is reflected
+  // the next time the traveler-facing card refetches, with no separate push needed.
+  const autoSaveTravelerNoteMutation = useMutation({
+    mutationFn: async (note: string) => {
+      const res = await apiRequest("PATCH", `/api/trips/${tripId}/expert-traveler-note`, { expertTravelerNote: note || null });
+      return res.json();
+    },
+    onSuccess: () => {
+      setTravelerNoteSaveStatus("saved");
+      setTravelerNoteLastSavedAt(new Date());
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+      const t = setTimeout(() => setTravelerNoteSaveStatus("idle"), 2000);
+      return () => clearTimeout(t);
+    },
+    onError: () => setTravelerNoteSaveStatus("idle"),
+  });
+
+  const handleTravelerNoteChange = (text: string) => {
+    setTravelerNoteText(text);
+    setTravelerNoteSaveStatus("saving");
+    if (travelerNotesDebounceRef.current) clearTimeout(travelerNotesDebounceRef.current);
+    travelerNotesDebounceRef.current = setTimeout(() => {
+      autoSaveTravelerNoteMutation.mutate(text);
+    }, 1500);
+  };
+
+  useEffect(() => {
+    return () => { if (travelerNotesDebounceRef.current) clearTimeout(travelerNotesDebounceRef.current); };
+  }, []);
+
   // ── beforeunload guard: warn on tab close / refresh while save is pending ──
+  // Covers BOTH note fields (private Build notes + the traveler-facing card below) — same guard,
+  // widened rather than duplicated.
   useEffect(() => {
     const handler = (e: BeforeUnloadEvent) => {
-      if (noteSaveStatus === "saving") {
+      if (noteSaveStatus === "saving" || travelerNoteSaveStatus === "saving") {
         e.preventDefault();
         e.returnValue = "";
       }
     };
     window.addEventListener("beforeunload", handler);
     return () => window.removeEventListener("beforeunload", handler);
-  }, [noteSaveStatus]);
+  }, [noteSaveStatus, travelerNoteSaveStatus]);
 
   // ── popstate guard: intercept browser back/forward while save is pending ──
   useEffect(() => {
-    if (noteSaveStatus !== "saving") return;
+    if (noteSaveStatus !== "saving" && travelerNoteSaveStatus !== "saving") return;
 
     const currentPath = window.location.pathname + window.location.search;
 
@@ -3382,11 +3478,11 @@ export default function ExpertWorkspace() {
 
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
-  }, [noteSaveStatus]);
+  }, [noteSaveStatus, travelerNoteSaveStatus]);
 
   // ── safeNavigate: intercept in-app navigation while save is pending ──
   const safeNavigate = (path: string) => {
-    if (noteSaveStatus === "saving") {
+    if (noteSaveStatus === "saving" || travelerNoteSaveStatus === "saving") {
       const confirmed = window.confirm("Your notes haven't been saved yet. Leave anyway?");
       if (!confirmed) return;
     }
@@ -4533,6 +4629,129 @@ export default function ExpertWorkspace() {
                 </div>
               )}
 
+              {/* CLAUDE.md §21 — Fundamentals card, FIRST after the narration card (before the
+                  reorder nudges). Deterministic checklist from the sibling server's
+                  GET /api/trips/:tripId/advisor/fundamentals — built in parallel; an honest
+                  "unavailable" line renders on 404/error, never fake results (§13). */}
+              <div data-testid="card-advisor-fundamentals" style={{ border: `1px solid ${LINE}`, borderRadius: 10, padding: "10px 12px", marginBottom: 10, background: CARD }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 7 }}>
+                  <ShieldCheck style={{ width: 13, height: 13, color: BRAND }} />
+                  <span style={{ fontSize: 12.5, fontWeight: 700, color: INK }}>Fundamentals</span>
+                </div>
+                {fundamentalsError ? (
+                  <div data-testid="text-fundamentals-unavailable" style={{ fontSize: 11.5, color: FAINT, fontStyle: "italic" }}>
+                    Fundamentals unavailable
+                  </div>
+                ) : fundamentalsLoading ? (
+                  <div style={{ fontSize: 11.5, color: MID, display: "flex", alignItems: "center", gap: 6 }}>
+                    <Loader2 style={{ width: 12, height: 12 }} className="animate-spin" /> Checking the plan…
+                  </div>
+                ) : !fundamentalsData ? (
+                  <div data-testid="text-fundamentals-unavailable" style={{ fontSize: 11.5, color: FAINT, fontStyle: "italic" }}>
+                    Fundamentals unavailable
+                  </div>
+                ) : (() => {
+                  const checks = fundamentalsData.checks ?? [];
+                  const omitted = fundamentalsData.omitted ?? [];
+                  const tier1 = checks.filter(c => c.tier === 1);
+                  const tier2 = checks.filter(c => c.tier === 2);
+                  const tier3 = checks.filter(c => c.tier === 3);
+
+                  if (checks.length === 0) {
+                    return (
+                      <div data-testid="text-fundamentals-clear" style={{ fontSize: 11.5, color: OK, display: "flex", alignItems: "center", gap: 6 }}>
+                        <CheckCircle style={{ width: 12, height: 12 }} /> All fundamentals covered
+                      </div>
+                    );
+                  }
+
+                  const rowTestId = (c: AdvisorFundamentalCheck) => `row-fundamental-${c.key}${c.dayNumber != null ? `-${c.dayNumber}` : ""}`;
+                  const ctaLabel = (cta?: AdvisorFundamentalCheck["cta"]) =>
+                    cta === "stays" ? "View stays" : cta === "editor" ? "Fix in editor" : cta === "distribute" ? "Go to Distribute" : "";
+                  const runCta = (c: AdvisorFundamentalCheck) => {
+                    if (c.cta === "stays") {
+                      document.querySelector('[data-testid="card-advisor-stays"]')?.scrollIntoView({ behavior: "smooth", block: "center" });
+                    } else if (c.cta === "editor") {
+                      // Reuses the SAME focusItemId one-shot button-advisor-add-locations uses
+                      // above — day-scoped when the check names a day (its first item stands in
+                      // for "this day's row" since ItemsEditorPanel opens/expands by item id,
+                      // not by day), otherwise the plan's first item, otherwise just opens the
+                      // panel via its own toggle (no items to focus at all).
+                      let itemId = c.data?.itemId as string | undefined;
+                      if (!itemId && c.dayNumber != null) itemId = days.find(d => d.dayNumber === c.dayNumber)?.items[0]?.id;
+                      if (!itemId) itemId = days.flatMap(d => d.items)[0]?.id;
+                      if (itemId) setFocusItemId(itemId);
+                      else (document.querySelector('[data-testid="button-toggle-item-editor"]') as HTMLElement | null)?.click();
+                    } else if (c.cta === "distribute") {
+                      setRightTab("distribute");
+                    }
+                  };
+
+                  return (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                      {tier1.map(c => (
+                        <div key={rowTestId(c)} data-testid={rowTestId(c)} style={{ border: `1px solid ${WARN}`, borderRadius: 8, padding: "8px 10px", background: WARN_SOFT, display: "flex", alignItems: "flex-start", gap: 7 }}>
+                          <AlertTriangle style={{ width: 13, height: 13, color: WARN, flexShrink: 0, marginTop: 1 }} />
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontSize: 12, color: INK, fontWeight: 600, lineHeight: 1.4 }}>
+                              {c.dayNumber != null && <span style={{ color: FAINT, fontWeight: 700 }}>D{c.dayNumber} · </span>}
+                              {c.message}
+                            </div>
+                            {c.cta && (
+                              <button onClick={() => runCta(c)} data-testid={`button-fundamental-${c.key}${c.dayNumber != null ? `-${c.dayNumber}` : ""}`} style={{ ...btnPrimaryStyle, marginTop: 6, padding: "4px 10px", fontSize: 10.5 }}>
+                                {ctaLabel(c.cta)}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+
+                      {tier2.length > 0 && (
+                        <>
+                          <div style={{ ...sectionLabelStyle, marginTop: tier1.length > 0 ? 2 : 0, marginBottom: 0 }}>Worth a look</div>
+                          {tier2.map(c => (
+                            <div key={rowTestId(c)} data-testid={rowTestId(c)} style={{ display: "flex", alignItems: "flex-start", gap: 6, fontSize: 11.5, color: MID }}>
+                              <Lightbulb style={{ width: 11, height: 11, color: FAINT, flexShrink: 0, marginTop: 2 }} />
+                              <span style={{ flex: 1 }}>
+                                {c.dayNumber != null && <span style={{ color: FAINT, fontWeight: 700 }}>D{c.dayNumber} · </span>}
+                                {c.message}
+                                {c.cta && (
+                                  <button onClick={() => runCta(c)} data-testid={`button-fundamental-${c.key}${c.dayNumber != null ? `-${c.dayNumber}` : ""}`} style={{ background: "none", border: "none", padding: 0, marginLeft: 6, color: BRAND, fontWeight: 700, cursor: "pointer", fontSize: 11, textDecoration: "underline" }}>
+                                    {ctaLabel(c.cta)}
+                                  </button>
+                                )}
+                              </span>
+                            </div>
+                          ))}
+                        </>
+                      )}
+
+                      {tier3.length > 0 && (
+                        <>
+                          <div style={{ ...sectionLabelStyle, marginTop: 2, marginBottom: 0 }}>Polish</div>
+                          {tier3.map(c => (
+                            <div key={rowTestId(c)} data-testid={rowTestId(c)} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: FAINT }}>
+                              <span style={{ width: 4, height: 4, borderRadius: "50%", background: FAINT, flexShrink: 0 }} />
+                              <span>{c.dayNumber != null && `D${c.dayNumber} · `}{c.message}</span>
+                            </div>
+                          ))}
+                        </>
+                      )}
+
+                      {omitted.length > 0 && (
+                        <div
+                          data-testid="text-fundamentals-omitted"
+                          title={omitted.map(o => `${o.key}: ${o.reason}`).join("\n")}
+                          style={{ fontSize: 10, color: FAINT, marginTop: 2 }}
+                        >
+                          {omitted.length} check{omitted.length === 1 ? "" : "s"} skipped (insufficient data)
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+
               {/* Advisor Phase 2-4 — reorder-nudge cards. Source: route-efficiency's own per-day
                   straight-line comparison (§13: the "straight-line comparison" label is
                   load-bearing honesty — this is NOT a real routed distance, keep the wording).
@@ -5371,6 +5590,58 @@ export default function ExpertWorkspace() {
                 />
                 <div style={{ fontSize: 10, color: FAINT, marginTop: 3, display: "flex", alignItems: "center", gap: 3 }}>
                   <Lock style={{ width: 9, height: 9 }} /> Only you can see this
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* ── Expert Notes (traveler-visible) — CLAUDE.md §21 (ratified Aug 9, 2026). Directly
+              adjacent to Build notes (private) above; mirrors that card's own collapsible/
+              save-status/debounce pattern exactly, but writes trips.expert_traveler_note (via
+              the sibling server's PATCH /expert-traveler-note) — a DIFFERENT column from the
+              private trips.expert_notes card above, delivered to the traveler rather than kept
+              back. ── */}
+          <div style={{ borderTop: `1px solid ${LINE}`, flexShrink: 0 }} data-testid="card-trip-expert-note">
+            <button
+              onClick={() => setTravelerNotesOpen(o => !o)}
+              data-testid="button-toggle-trip-expert-note"
+              style={{ width: "100%", padding: "8px 12px", background: CARD, border: "none", display: "flex", alignItems: "center", gap: 6, cursor: "pointer" }}
+            >
+              <Eye style={{ width: 12, height: 12, color: MID }} />
+              <span style={{ fontSize: 11.5, fontWeight: 700, color: INK }}>Expert Notes</span>
+              <span style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6 }}>
+                {travelerNoteSaveStatus === "saving" && (
+                  <span data-testid="text-trip-expert-note-saving" style={{ fontSize: 10, color: MID, display: "flex", alignItems: "center", gap: 3 }}>
+                    <Loader2 style={{ width: 9, height: 9 }} className="animate-spin" /> Saving…
+                  </span>
+                )}
+                {travelerNoteSaveStatus === "saved" && (
+                  <span data-testid="text-trip-expert-note-saved" style={{ fontSize: 10, color: OK, display: "flex", alignItems: "center", gap: 3 }}>
+                    <CheckCircle style={{ width: 9, height: 9 }} /> Saved
+                  </span>
+                )}
+                {travelerNoteSaveStatus === "idle" && travelerNoteLastSavedAt && (
+                  <span data-testid="text-trip-expert-note-last-saved" style={{ fontSize: 10, color: MID, display: "flex", alignItems: "center", gap: 3 }}>
+                    <Clock style={{ width: 9, height: 9 }} /> {formatRelativeTime(travelerNoteLastSavedAt)}
+                  </span>
+                )}
+                <span style={{ display: "flex", color: FAINT }}>
+                  {travelerNotesOpen ? <ChevronDown style={{ width: 12, height: 12 }} /> : <ChevronUp style={{ width: 12, height: 12 }} />}
+                </span>
+              </span>
+            </button>
+            {travelerNotesOpen && (
+              <div style={{ padding: "0 12px 10px" }}>
+                <div style={{ fontSize: 10, color: FAINT, marginBottom: 4 }}>Delivered with the plan — visible to your traveler</div>
+                <textarea
+                  value={travelerNoteText}
+                  onChange={e => handleTravelerNoteChange(e.target.value)}
+                  placeholder="A note that ships with the plan — arrival tips, what to expect, how to reach you…"
+                  data-testid="input-trip-expert-note"
+                  style={{ width: "100%", minHeight: 64, padding: "6px 9px", fontSize: 11.5, color: INK, lineHeight: 1.55, background: GROUND, border: `1px solid ${LINE}`, borderRadius: 8, resize: "vertical", outline: "none", fontFamily: "inherit", boxSizing: "border-box" as any }}
+                />
+                <div style={{ fontSize: 10, color: FAINT, marginTop: 3, display: "flex", alignItems: "center", gap: 3 }}>
+                  <Eye style={{ width: 9, height: 9 }} /> Your traveler will see this
                 </div>
               </div>
             )}

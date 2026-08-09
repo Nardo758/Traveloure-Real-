@@ -1567,7 +1567,7 @@ router.post("/api/trips/:tripId/activate-transport", isAuthenticated, async (req
         });
       }
 
-      const data: any = genItinerary.itineraryData;
+      const data: any = (genItinerary as any).itineraryData;
       const daysData: any[] = data?.days || data?.dailyItinerary || [];
 
       const activities: import("../services/transport-leg-calculator").ActivityLocation[] = [];
