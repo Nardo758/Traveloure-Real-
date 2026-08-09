@@ -24,6 +24,7 @@ import {
   TrendingUp,
   Users,
   Wrench,
+  BookOpen,
 } from "lucide-react";
 
 // Console IA C9 (§17 17→9 collapse): the provider console adopts the SAME nine-module IA the
@@ -97,11 +98,12 @@ const menuGroups = [
       // the actionable verification/preferences surface). /provider/profile redirects to
       // /provider/settings?tab=profile.
       { title: "Settings", href: "/provider/settings", icon: Settings },
-      // C9 note — /provider/resources (static onboarding guides) stays ROUTED but keeps its
-      // pre-C9 state of having no sidebar entry: it is not one of the NINE, its content is
-      // static sample-guide copy with no backing content system, and promoting it to the
-      // nav would advertise a surface §13 can't stand behind. Retiring the route outright
-      // needs a home (e.g. a help center) that doesn't exist yet.
+      // Playbook (formerly Resources, /provider/resources → /provider/playbook): rebuilt as
+      // real, written-in-the-page content grounded in how approval/booking/payouts/availability
+      // actually work in this codebase (no invented guides, videos, or downloads — §13). Now
+      // that its content is honest it rejoins the nav; it's still not one of the NINE modules,
+      // so it lives here in Account rather than in Work/Business.
+      { title: "Playbook", href: "/provider/playbook", icon: BookOpen },
     ],
   },
 ];

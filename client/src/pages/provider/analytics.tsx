@@ -41,8 +41,13 @@ interface ProviderAnalytics {
   }>;
   benchmarks: {
     avgBookingValue: number;
-    categoryAvg: number;
-    topPerformerAvg: number;
+    // §13: real computed aggregates, not fabricated literals. status "ok" means
+    // categoryAvg/topPerformerAvg are real numbers over `sampleSize` comparable listings;
+    // "no_data" means sampleSize was too small (<5) and both are null — render honestly.
+    status: "ok" | "no_data";
+    sampleSize: number;
+    categoryAvg: number | null;
+    topPerformerAvg: number | null;
   };
 }
 
@@ -197,29 +202,39 @@ export default function ProviderAnalytics({ embedded = false }: { embedded?: boo
         <Card>
           <CardHeader>
             <CardTitle>Industry Benchmarks</CardTitle>
-            <CardDescription>How you compare to other providers in your category</CardDescription>
+            <CardDescription>
+              {analytics?.benchmarks?.status === "ok"
+                ? `How you compare to other providers in your category (n=${analytics.benchmarks.sampleSize} listings)`
+                : "How you compare to other providers in your category"}
+            </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
-                <p className="text-sm text-console-dark">Your Avg Booking Value</p>
-                <p className="text-2xl font-bold text-console-darkest mt-2">
-                  ${(analytics?.benchmarks?.avgBookingValue || 0).toLocaleString()}
-                </p>
+            {analytics?.benchmarks?.status === "ok" ? (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                  <p className="text-sm text-console-dark">Your Avg Booking Value</p>
+                  <p className="text-2xl font-bold text-console-darkest mt-2">
+                    ${(analytics?.benchmarks?.avgBookingValue || 0).toLocaleString()}
+                  </p>
+                </div>
+                <div className="p-4 bg-purple-50 rounded-lg border border-purple-200">
+                  <p className="text-sm text-console-dark">Category Average</p>
+                  <p className="text-2xl font-bold text-console-darkest mt-2">
+                    ${(analytics.benchmarks.categoryAvg ?? 0).toLocaleString()}
+                  </p>
+                </div>
+                <div className="p-4 bg-amber-50 rounded-lg border border-amber-200">
+                  <p className="text-sm text-console-dark">Top Quartile Average</p>
+                  <p className="text-2xl font-bold text-console-darkest mt-2">
+                    ${(analytics.benchmarks.topPerformerAvg ?? 0).toLocaleString()}
+                  </p>
+                </div>
               </div>
-              <div className="p-4 bg-purple-50 rounded-lg border border-purple-200">
-                <p className="text-sm text-console-dark">Category Average</p>
-                <p className="text-2xl font-bold text-console-darkest mt-2">
-                  ${(analytics?.benchmarks?.categoryAvg || 0).toLocaleString()}
-                </p>
-              </div>
-              <div className="p-4 bg-amber-50 rounded-lg border border-amber-200">
-                <p className="text-sm text-console-dark">Top Performer Average</p>
-                <p className="text-2xl font-bold text-console-darkest mt-2">
-                  ${(analytics?.benchmarks?.topPerformerAvg || 0).toLocaleString()}
-                </p>
-              </div>
-            </div>
+            ) : (
+              <p className="text-sm text-console-dark" data-testid="text-benchmark-no-data">
+                Not enough comparable listings in your market yet.
+              </p>
+            )}
           </CardContent>
         </Card>
 
