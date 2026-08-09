@@ -574,7 +574,13 @@ router.patch(
         }, { message: "ticketingUrl must be a valid URL" })
         .nullable(),
     });
-    const { ticketingUrl } = schema.parse(req.body);
+    // safeParse → the file's ValidationError (400): a bare .parse throw falls through the
+    // error middleware as a 500, which mislabels a client mistake as a server fault.
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      throw new ValidationError(parsed.error.errors[0]?.message ?? "Invalid ticketingUrl");
+    }
+    const { ticketingUrl } = parsed.data;
 
     const index = Number(req.params.index);
     const placesRaw = (item.extractedData as { places?: unknown } | null)?.places;
