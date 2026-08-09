@@ -27,7 +27,7 @@ import { eq, and, sql } from "drizzle-orm";
 import { db } from "../db";
 import { users, providerServices, expertTemplates, readyMadeTrips, localExpertForms, serviceProviderForms, expertNeighborhoods, cityNeighborhoods } from "@shared/schema";
 import { EARNER_ROLES as CANONICAL_EARNER_ROLES, isEarnerRole, isProviderRole } from "@shared/roles";
-import { planTypeLabel } from "@shared/ready-made-plan-types";
+import { planTypeLabel, isCustomPlanType } from "@shared/ready-made-plan-types";
 import { transformDevHtml } from "../vite-dev-html";
 
 const router = Router();
@@ -814,6 +814,7 @@ router.get("/ready-made/:id", async (req, res, next) => {
         id: readyMadeTrips.id,
         title: readyMadeTrips.title,
         planType: readyMadeTrips.planType,
+        planTypeCustom: readyMadeTrips.planTypeCustom,
         market: readyMadeTrips.market,
         durationDays: readyMadeTrips.durationDays,
         heroImageUrl: readyMadeTrips.heroImageUrl,
@@ -830,7 +831,12 @@ router.get("/ready-made/:id", async (req, res, next) => {
 
     if (!listing) return next(); // unapproved/unknown → default SPA shell (no draft oracle)
 
-    const planLabel = planTypeLabel(listing.planType) ?? "trip plan";
+    // Migration 184: "custom" plan types carry their theme in planTypeCustom, not the closed
+    // planType vocabulary — prefer it here so the OG description says "Kimono Rental Day Trip"
+    // rather than "Custom…".
+    const planLabel = (isCustomPlanType(listing.planType) && listing.planTypeCustom)
+      ? listing.planTypeCustom
+      : (planTypeLabel(listing.planType) ?? "trip plan");
     const title = `${listing.title} | Traveloure`;
     const description = `A ${listing.durationDays}-day ${planLabel.toLowerCase()} for ${listing.market}, expert-built on Traveloure — buy it and it becomes your own editable trip.`;
     const shareUrl = `${req.protocol}://${req.get("host")}/ready-made/${listing.id}`;
