@@ -945,6 +945,11 @@ export const serviceReviews = pgTable("service_reviews", {
   reviewText: text("review_text"),
   responseText: text("response_text"), // Provider response
   responseAt: timestamp("response_at"),
+  // §06d (ratified Aug 9 2026): ONE public reply by the service owner; write-gated to the
+  // listing's owner; rendered traveler-side beside the review; visible to admin
+  // review-moderation.
+  providerReply: text("provider_reply"),
+  providerRepliedAt: timestamp("provider_replied_at"),
   isVerified: boolean("is_verified").default(false),
   // Moderation (REV-MOD)
   status: varchar("status", { length: 20 }).default("pending").notNull(), // pending | approved | flagged | removed
@@ -1739,7 +1744,7 @@ export const createBookingRequestSchema = insertServiceBookingSchema.pick({
   bookingMetadata: true,
 });
 
-export const insertServiceReviewSchema = createInsertSchema(serviceReviews).omit({ id: true, responseText: true, responseAt: true, createdAt: true, status: true, flagReason: true, moderatedBy: true, moderatedAt: true }).extend({
+export const insertServiceReviewSchema = createInsertSchema(serviceReviews).omit({ id: true, responseText: true, responseAt: true, providerReply: true, providerRepliedAt: true, createdAt: true, status: true, flagReason: true, moderatedBy: true, moderatedAt: true }).extend({
   rating: z.number().int().min(1, "Rating must be at least 1 star").max(5, "Rating cannot exceed 5 stars"),
 });
 export const insertCartItemSchema = createInsertSchema(cartItems).omit({ id: true, userId: true, createdAt: true });
