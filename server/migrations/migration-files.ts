@@ -848,4 +848,8 @@ export const MIGRATION_FILES = [
   // keeps an empty table behavior-neutral). Both declared in shared/schema.ts (publish-trap).
   "185_dmo_extracted_places.sql",
   "186_market_geography.sql",
+  // 187: CLAUDE.md §21 (decision-maker ratified Aug 9 2026). Traveler-facing Expert Notes:
+  // itinerary_items.expert_note + trips.expert_traveler_note (additive nullable). DISTINCT from
+  // trips.expert_notes (the PRIVATE build notes). Declared in shared/schema.ts (publish-trap).
+  "187_expert_notes_two_level.sql",
 ] as const;

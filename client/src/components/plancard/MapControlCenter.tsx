@@ -22,6 +22,15 @@ interface MapControlCenterProps {
   days: PlanCardDay[];
   selectedDay: number;
   onSelectDay: (i: number) => void;
+  /**
+   * CLAUDE.md §21 (ratified Aug 9, 2026) — the TRAVELER-FACING trip-level note
+   * (`trips.expert_traveler_note`, migration 187), passed down from the plancard fetch PlanCard
+   * already owns. Bug fix, same ruling: the notes-layer panel below previously fetched the
+   * PRIVATE `/api/trips/:id/expert-notes` endpoint directly and rendered `trips.expert_notes`
+   * (the Workstation's private build notes) here — an unintentional leak to the trip owner,
+   * closed by reading the correct field from this prop instead.
+   */
+  expertTravelerNote?: string | null;
 }
 
 interface GeocodedActivity extends PlanCardActivity {
@@ -267,18 +276,10 @@ export function MapControlCenter({
   days,
   selectedDay,
   onSelectDay,
+  expertTravelerNote,
 }: MapControlCenterProps) {
   const [layers, setLayers] = useState({ activities: true, transport: true, expertNotes: true });
   const [selectedPinId, setSelectedPinId] = useState<string | null>(null);
-
-  // Trip-level expert notes blob (readable by owner + assigned expert). Surfaced
-  // as a panel under the notes layer toggle, alongside the per-item note pins.
-  const { data: tripNotes } = useQuery<{ expertNotes: string }>({
-    queryKey: [`/api/trips/${tripId}/expert-notes`],
-    queryFn: () =>
-      fetch(`/api/trips/${tripId}/expert-notes`).then((r) => (r.ok ? r.json() : { expertNotes: "" })),
-    staleTime: 60_000,
-  });
 
   const day = days[selectedDay];
 
@@ -542,7 +543,7 @@ export function MapControlCenter({
           </div>
         )}
 
-        {layers.expertNotes && tripNotes?.expertNotes?.trim() && (
+        {layers.expertNotes && expertTravelerNote?.trim() && (
           <div
             className="mt-3.5 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30"
             data-testid={`expert-notes-panel-${tripId}`}
@@ -551,7 +552,7 @@ export function MapControlCenter({
               <MessageSquare className="w-3.5 h-3.5" /> Expert Notes
             </div>
             <p className="text-[13px] text-foreground/80 whitespace-pre-wrap leading-relaxed" data-testid={`expert-notes-panel-body-${tripId}`}>
-              {tripNotes.expertNotes}
+              {expertTravelerNote}
             </p>
           </div>
         )}
