@@ -16,8 +16,8 @@ import { isAuthenticated } from "../replit_integrations/auth";
 import { authorizeTripLogistics } from "../utils/trip-logistics-auth";
 import { aiRateLimit } from "../middleware/rateLimiter";
 import { db } from "../db";
-import { itineraryItems, trips, transportLegs, providerServices, serviceCategories, cityNeighborhoods } from "@shared/schema";
-import { eq, and, asc, isNull, isNotNull, ilike } from "drizzle-orm";
+import { itineraryItems, trips, transportLegs, providerServices, serviceCategories, cityNeighborhoods, users } from "@shared/schema";
+import { eq, and, asc, isNull, isNotNull, ilike, or, sql } from "drizzle-orm";
 import { trackAICost, calculateAnthropicCost } from "../services/ai-cost-tracker";
 // Advisor Fundamentals (Part 1, decision-maker-ratified check list, Aug 9 2026) — the deterministic
 // checks live in their own service (route stays thin); `Coord`/`parseCoord`/`LODGING_PATTERN`/
@@ -249,7 +249,13 @@ async function computeStayAnchor(tripId: string): Promise<StayAnchorResult> {
   }
 
   // Platform-first stays (§16): provider_services only, approved + active, real coords
-  // (migration-129 columns), within 5km of the centroid, top 5 by distance.
+  // (migration-129 columns), within 5km of the centroid, top 5 by distance. Vacation mode
+  // (provider back-office wave, migration 189, decision-maker ratified Aug 9 2026): an owner
+  // whose vacationUntil is non-null AND in the future is excluded from this platform-first
+  // inventory — business-level flag only, so this is a WHERE-clause exclusion on the join, not
+  // a mutation of providerServices (its status/approvalStatus are untouched, and this row still
+  // exists/renders on the owner's own storefront and console — just not surfaced here as a
+  // recommendable stay for a new trip).
   const rows = await db
     .select({
       id: providerServices.id,
@@ -265,12 +271,14 @@ async function computeStayAnchor(tripId: string): Promise<StayAnchorResult> {
     })
     .from(providerServices)
     .leftJoin(serviceCategories, eq(providerServices.categoryId, serviceCategories.id))
+    .leftJoin(users, eq(providerServices.userId, users.id))
     .where(
       and(
         eq(providerServices.status, "active"),
         eq(providerServices.approvalStatus, "approved"),
         isNotNull(providerServices.latitude),
         isNotNull(providerServices.longitude),
+        or(isNull(users.vacationUntil), sql`${users.vacationUntil} <= NOW()`),
       ),
     );
 

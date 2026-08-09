@@ -24,7 +24,9 @@ import {
   LinkIcon,
   Loader2,
   FileText,
+  Plane,
 } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
 import { useState, useEffect, lazy, Suspense } from "react";
 import { useSearch } from "wouter";
 
@@ -308,6 +310,179 @@ function VerificationPayoutsSection() {
   );
 }
 
+// Vacation mode (mockup §06b, provider back-office wave, decision-maker ratified Aug 9 2026).
+// Business-level flag ONLY — GET/PATCH /api/me/vacation touches users.vacationUntil/
+// vacationMessage; nothing here ever reads or writes provider_services. Server derives `active`
+// (vacationUntil non-null AND in the future) so the chip below reads the same truth the
+// storefront/advisor/checkout enforcement points use, never re-derived client-side.
+interface VacationStatus {
+  vacationUntil: string | null;
+  vacationMessage: string | null;
+  active: boolean;
+}
+
+function VacationModeSection() {
+  const { toast } = useToast();
+  const { data, isLoading } = useQuery<VacationStatus>({
+    queryKey: ["/api/me/vacation"],
+  });
+
+  const [enabled, setEnabled] = useState(false);
+  const [returnDate, setReturnDate] = useState(""); // yyyy-mm-dd, <input type="date"> shape
+  const [message, setMessage] = useState("");
+  const [dateError, setDateError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!data) return;
+    setEnabled(data.active);
+    setReturnDate(data.vacationUntil ? data.vacationUntil.slice(0, 10) : "");
+    setMessage(data.vacationMessage ?? "");
+  }, [data]);
+
+  const saveMutation = useMutation({
+    mutationFn: async (body: { vacationUntil: string | null; vacationMessage?: string | null }) => {
+      const res = await apiRequest("PATCH", "/api/me/vacation", body);
+      return res.json() as Promise<VacationStatus>;
+    },
+    onSuccess: (result) => {
+      queryClient.setQueryData(["/api/me/vacation"], result);
+      toast({
+        title: result.active ? "Vacation mode on" : "Vacation mode off",
+        description: result.active
+          ? `New bookings are paused until ${new Date(result.vacationUntil!).toLocaleDateString()}.`
+          : "You're accepting new bookings again.",
+      });
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Couldn't save vacation settings",
+        description: err?.message ?? "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleSave = () => {
+    if (!enabled) {
+      setDateError(null);
+      saveMutation.mutate({ vacationUntil: null });
+      return;
+    }
+    if (!returnDate) {
+      setDateError("Choose a return date to turn vacation mode on.");
+      return;
+    }
+    // End-of-day local time on the chosen date, so "today" picks that are still hours away
+    // aren't rejected by the server's future-only check.
+    const until = new Date(`${returnDate}T23:59:59`);
+    if (Number.isNaN(until.getTime()) || until.getTime() <= Date.now()) {
+      setDateError("Return date must be in the future.");
+      return;
+    }
+    setDateError(null);
+    saveMutation.mutate({
+      vacationUntil: until.toISOString(),
+      vacationMessage: message.trim() ? message.trim() : null,
+    });
+  };
+
+  const chipLabel = data?.active && data.vacationUntil
+    ? `ON until ${new Date(data.vacationUntil).toLocaleDateString(undefined, { month: "short", day: "numeric" })}`
+    : "OFF";
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Plane className="w-5 h-5 text-console-mid" />
+            Vacation Mode
+          </div>
+          {isLoading ? (
+            <Loader2 className="w-4 h-4 animate-spin text-console-mid" />
+          ) : (
+            <Badge
+              variant={data?.active ? "default" : "secondary"}
+              data-testid="badge-vacation-status"
+            >
+              {chipLabel}
+            </Badge>
+          )}
+        </CardTitle>
+        <CardDescription>
+          Pause new bookings while you're away, without touching your listings.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="space-y-0.5">
+            <Label className="text-base">Away</Label>
+            <p className="text-sm text-console-mid">
+              New bookings will be blocked while you're away. Your listings stay visible but
+              can't be booked. Confirmed bookings are not affected.
+            </p>
+          </div>
+          <Switch
+            checked={enabled}
+            onCheckedChange={(checked) => {
+              setEnabled(checked);
+              setDateError(null);
+            }}
+            data-testid="switch-vacation-mode"
+          />
+        </div>
+
+        {enabled && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+            <div className="space-y-2">
+              <Label htmlFor="vacation-return-date">Return date</Label>
+              <Input
+                id="vacation-return-date"
+                type="date"
+                value={returnDate}
+                onChange={(e) => {
+                  setReturnDate(e.target.value);
+                  setDateError(null);
+                }}
+                data-testid="input-vacation-return-date"
+              />
+              {dateError && <p className="text-sm text-red-600">{dateError}</p>}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="vacation-message">Message to travelers (optional)</Label>
+              <Textarea
+                id="vacation-message"
+                value={message}
+                onChange={(e) => setMessage(e.target.value.slice(0, 200))}
+                placeholder="e.g. Back from a family trip on the 24th!"
+                maxLength={200}
+                rows={2}
+                data-testid="input-vacation-message"
+              />
+              <p className="text-xs text-console-mid text-right">{message.length}/200</p>
+            </div>
+          </div>
+        )}
+
+        <div className="flex justify-end">
+          <Button
+            onClick={handleSave}
+            disabled={saveMutation.isPending}
+            data-testid="button-save-vacation"
+          >
+            {saveMutation.isPending ? (
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              <Save className="w-4 h-4 mr-2" />
+            )}
+            Save
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function ProviderSettings() {
   const { toast } = useToast();
 
@@ -508,6 +683,9 @@ export default function ProviderSettings() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Vacation Mode — mockup §06b */}
+        <VacationModeSection />
 
         {/* Notification Settings */}
         <Card>
