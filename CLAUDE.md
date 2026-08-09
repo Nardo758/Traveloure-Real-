@@ -72,6 +72,19 @@ This document captures architectural decisions to maintain consistency across co
     remains REQUIRED wherever any of this renders. The **vector-tile interactive map is PARKED** by the same
     ruling — do not start it as a side effect of geography work.
 
+21. **Expert Notes are two-level and traveler-facing; `trips.expert_notes` stays PRIVATE (decision-maker
+    ratified Aug 9, 2026).** UI label for both new fields is **"Expert Notes"**: per-item
+    `itinerary_items.expert_note` and trip-level `trips.expert_traveler_note` (migration 187, additive
+    nullable, declared in `shared/schema.ts`) are **delivered to the traveler** (PlanCard + delivered-plan
+    surfaces, "from your expert" treatment). **`trips.expert_notes` is a DIFFERENT field** — the Workstation's
+    private "Build notes" (`PATCH /api/trips/:id/expert-notes`) — and must never leak to traveler surfaces;
+    do not rename or merge the three. Writes to the new fields gate on the same §12 advisor WRITE statuses as
+    other item/trip mutations. Same ruling: **traveler-facing distance on map surfaces is ALLOWED** (store
+    teaser day-km legend ratified — "users should be able to see the difference"); the Delta-framework
+    brief's L3 ("distance never traveler-facing") is amended to headline *delta claims* only, not map
+    annotation. The Advisor **fundamentals** checklist (ratified list in `server/routes/advisor.routes.ts`)
+    is deterministic, §13-honest (a check with insufficient data is omitted with a reason, never guessed).
+
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 
 Defect state is VOLATILE and no longer lives in this file (ruling 26 §5): open defects live in findings/audit docs

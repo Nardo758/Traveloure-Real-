@@ -106,7 +106,12 @@ export const trips = pgTable("trips", {
   travelers: integer("travelers"),
   specialRequests: text("special_requests"),
   expertId: varchar("expert_id", { length: 255 }).references(() => users.id, { onDelete: "set null" }),
+  // PRIVATE Workstation build notes (PATCH /api/trips/:id/expert-notes) — never delivered to the
+  // traveler. The traveler-facing trip-level note is expertTravelerNote below (§21) — never merge.
   expertNotes: text("expert_notes"),
+  // Traveler-facing trip-level "Expert Notes" (§21, migration 187) — one delivery note shown at
+  // the top of the delivered plan ("from your expert").
+  expertTravelerNote: text("expert_traveler_note"),
   expertModifiedAt: timestamp("expert_modified_at"),
   // Master Integration Brief — Phase 3.
   // primaryExpertId: neighborhood-lead expert assigned to this trip. Distinct

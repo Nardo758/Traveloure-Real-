@@ -936,8 +936,10 @@ export async function assembleTripPlan(
     meta: baseMeta(fallbackDays || days.length),
     days,
     legs,
-    // Trip-level expert note (the §18 "Note from your expert" section). Null when unwritten.
-    tripNote: trip.expertNotes ?? null,
+    // Trip-level expert note ("Note from your expert"). Sourced from trips.expert_traveler_note —
+    // the TRAVELER-FACING field (§21, migration 187). NEVER trips.expertNotes: that column is the
+    // Workstation's PRIVATE build notes, and sourcing it here was the §21 leak this line fixes.
+    tripNote: (trip as any).expertTravelerNote ?? null,
     budget,
     changeLogRef: { tripId: trip.id, endpoint: `/api/trips/${trip.id}/changes` },
     // W4 (H2): every real booking on this trip, including ones no plan item points at — the whole
@@ -967,6 +969,9 @@ export async function assembleTripPlan(
         // client derives Trip Card primacy from this + startDate/endDate via
         // shared/trip-primary-surface.ts, never from `status`.
         finalizedAt: (trip as any).finalizedAt ? String((trip as any).finalizedAt) : null,
+        // §21 (migration 187): the traveler-facing trip-level Expert Note. PlanCard renders it as
+        // "From your expert". The PRIVATE trips.expertNotes must never appear on this object.
+        expertTravelerNote: (trip as any).expertTravelerNote ?? null,
       },
       changeLog,
       metrics: metricsMap,
