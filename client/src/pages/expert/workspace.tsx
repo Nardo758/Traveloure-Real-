@@ -1609,6 +1609,10 @@ function CanvasMapSection({
                     lat: parseFloat(String(focusFromListItem.latitude)),
                     lng: parseFloat(String(focusFromListItem.longitude)),
                   } : null}
+                  candidates={candidateItems}
+                  candidateSourceLabel={candidateSourceLabel}
+                  onAddCandidate={onAddCandidate}
+                  addCandidateLabel={`Add to Day ${discoveryDayNumber}`}
                 />
               ) : (
                 <div data-testid="text-plan-map-unavailable" style={{ height: "100%", background: GROUND, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 6 }}>
