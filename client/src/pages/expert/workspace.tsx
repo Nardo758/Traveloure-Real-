@@ -31,7 +31,7 @@ import {
   CreditCard, CalendarDays, Loader2, ArrowLeft, Users,
   Search, Star, MapPinned, Shield, BatteryLow,
   ShoppingBag, Store, Copy, Megaphone, AlertTriangle, Lightbulb, XCircle,
-  Trash2, RefreshCw, Route,
+  Trash2, RefreshCw, Route, Building2,
 } from "lucide-react";
 // L4b: the mode picker's chauffeured-field gate mirrors the SAME shared constant/predicate the
 // server uses (CLAUDE.md §18's chauffeured set) — never a hand-typed duplicate list.
@@ -818,6 +818,7 @@ class MapSectionErrorBoundary extends Component<{ children: ReactNode }, { hasEr
  *  read-mostly component this lane deliberately does not modify). */
 function ItemsEditorPanel({
   tripId, days, maxDay, destination, onDayMoved, onOpenBookingBrief, focusItemId, onFocusHandled, onSelectItem,
+  suggestOrderForDay, onSuggestHandled,
 }: {
   tripId: string;
   days: { dayNumber: number; items: ItineraryItem[] }[];
@@ -841,6 +842,13 @@ function ItemsEditorPanel({
   // itself here so the plan map can pan to and select the matching pin. Undefined for a row with
   // no coordinates (nothing to show — never a guessed pin, §13).
   onSelectItem?: (itemId: string) => void;
+  // Advisor Phase 2-4: a THIRD one-shot signal, same shape/contract as focusItemId above — when
+  // set, this panel opens (if closed) and fires its OWN optimizeMutation for that day (the
+  // existing staged "Suggested order" apply/discard UI below takes over from there — never a
+  // second, duplicated write/algorithm), then reports back via onSuggestHandled so the caller
+  // clears the request.
+  suggestOrderForDay?: number | null;
+  onSuggestHandled?: () => void;
 }) {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
@@ -904,6 +912,18 @@ function ItemsEditorPanel({
     },
     onError: (err: any) => toast({ title: "Couldn't suggest an order", description: parseApiErrorMessage(err, "Please try again."), variant: "destructive" }),
   });
+
+  // Advisor Phase 2-4's one-shot: open the panel and fire the SAME optimizeMutation the per-day
+  // "Suggest best order" button uses — the staged suggestion (with its existing Apply/Discard UI
+  // below) is what actually appears; this effect only triggers the existing flow, it never
+  // computes or applies an order itself.
+  useEffect(() => {
+    if (suggestOrderForDay == null) return;
+    setOpen(true);
+    optimizeMutation.mutate(suggestOrderForDay);
+    onSuggestHandled?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [suggestOrderForDay]);
 
   const applySuggestedOrder = (dayNumber: number) => {
     const itemIds = suggestedOrder[dayNumber];
@@ -2252,6 +2272,25 @@ interface TransportGapSkip {
 interface TransportGapDayResult { dayNumber: number; pairs: TransportGapPair[]; skipped: TransportGapSkip[]; }
 interface TransportGapAnalysis { tripId: string; days: TransportGapDayResult[]; }
 
+// Advisor Phase 2-4 (client build against the server contract below — built in parallel):
+//   GET  /api/trips/:tripId/advisor/route-efficiency
+//   GET  /api/trips/:tripId/advisor/stay-anchor
+//   GET  /api/trips/:tripId/advisor/narration  (204 when none generated yet)
+//   POST /api/trips/:tripId/advisor/narration  (502 on generation failure)
+interface AdvisorRouteEfficiencyDay {
+  dayNumber: number; itemCount: number; currentKm: number; optimizedKm: number;
+  savingsKm: number; savingsPct: number; materiallyImprovable: boolean; optimizedOrder: string[];
+}
+interface AdvisorRouteEfficiencyResponse { metric: "straight_line"; days: AdvisorRouteEfficiencyDay[]; }
+interface AdvisorPlatformStay { providerServiceId: string; name: string; distanceKm: number; price?: number | string | null; }
+interface AdvisorStayAnchorResponse {
+  anchor: { lat: number; lng: number; spreadKm: number; neighborhood?: string | null } | null;
+  platformStays: AdvisorPlatformStay[];
+  placesHint: { source: "google"; category: string };
+}
+interface AdvisorNarrationResponse { narration: string; generatedAt: string; stale: boolean; }
+interface AdvisorNarrationPostResponse { narration: string; generatedAt: string; planHash: string; cached: boolean; }
+
 const TRANSPORT_GAP_FLAG_COPY: Record<TransportGapFlag, string> = {
   transport_gap: "No confirmed transport arranged for this leg.",
   timing_infeasible: "The estimated travel time doesn't fit in the gap between these stops.",
@@ -2682,6 +2721,11 @@ export default function ExpertWorkspace() {
   // OPPOSITE direction, from a list row's "Show on map" button to CanvasMapSection, which pans to
   // and selects the matching pin, then clears this back to null.
   const [mapFocusItemId, setMapFocusItemId] = useState<string | null>(null);
+  // Advisor Phase 2-4: a THIRD one-shot signal, same shape as focusItemId — the reorder-nudge
+  // card's "See suggested order" button sets a dayNumber here; ItemsEditorPanel opens itself and
+  // fires its OWN optimizeMutation for that day (never a duplicated algorithm/write here), then
+  // clears this back to null via onSuggestHandled.
+  const [suggestOrderForDay, setSuggestOrderForDay] = useState<number | null>(null);
 
   useEffect(() => {
     if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
@@ -2896,6 +2940,52 @@ export default function ExpertWorkspace() {
   const { data: advisorLegsData } = useQuery<TripTransportLegsResponse>({
     queryKey: [`/api/trips/${tripId}/transport-legs`, { includeProposed: 1 }],
     enabled: !!tripId && rightTab === "gaps",
+  });
+
+  // Advisor Phase 2-4 — reorder-nudge source (route-efficiency), stays card (stay-anchor), and
+  // the on-open narration read. All three gate on the tab being open exactly like advisorLegsData
+  // above; staleTime keeps a tab flip from re-fetching every time within the same minute. Errors
+  // are swallowed (§13: a failed card renders nothing or a one-line muted note, never breaks the
+  // tab) — react-query's own `isError` flag is read directly rather than a toast.
+  const { data: advisorRouteEfficiency, isError: advisorRouteEfficiencyError } = useQuery<AdvisorRouteEfficiencyResponse>({
+    queryKey: [`/api/trips/${tripId}/advisor/route-efficiency`],
+    enabled: !!tripId && rightTab === "gaps",
+    staleTime: 60 * 1000,
+    retry: false,
+  });
+
+  const { data: advisorStayAnchor, isError: advisorStayAnchorError } = useQuery<AdvisorStayAnchorResponse>({
+    queryKey: [`/api/trips/${tripId}/advisor/stay-anchor`],
+    enabled: !!tripId && rightTab === "gaps",
+    staleTime: 60 * 1000,
+    retry: false,
+  });
+
+  // Narration GET can 204 ("none yet") — a bare res.json() would throw on the empty body, so this
+  // is a custom queryFn that reads the status first. 204 resolves to `null`, which is a valid,
+  // successful "no narration yet" state (distinct from isLoading/isError).
+  const { data: advisorNarration, isLoading: advisorNarrationLoading, isError: advisorNarrationError } = useQuery<AdvisorNarrationResponse | null>({
+    queryKey: [`/api/trips/${tripId}/advisor/narration`],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/trips/${tripId}/advisor/narration`);
+      if (res.status === 204) return null;
+      return res.json();
+    },
+    enabled: !!tripId && rightTab === "gaps",
+    staleTime: 60 * 1000,
+    retry: false,
+  });
+
+  // POST /advisor/narration is explicitly ON-DEMAND (never auto-fired) — the button below is its
+  // only caller. A 502 is surfaced as an honest inline error, not retried automatically.
+  const narrateMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/trips/${tripId}/advisor/narration`, {});
+      return res.json() as Promise<AdvisorNarrationPostResponse>;
+    },
+    onSuccess: (data) => {
+      queryClient.setQueryData([`/api/trips/${tripId}/advisor/narration`], { narration: data.narration, generatedAt: data.generatedAt, stale: false });
+    },
   });
 
   const proposeLegsMutation = useMutation({
@@ -3850,6 +3940,8 @@ export default function ExpertWorkspace() {
                   focusItemId={focusItemId}
                   onFocusHandled={() => setFocusItemId(null)}
                   onSelectItem={(itemId) => setMapFocusItemId(itemId)}
+                  suggestOrderForDay={suggestOrderForDay}
+                  onSuggestHandled={() => setSuggestOrderForDay(null)}
                 />
               )}
 
@@ -4379,6 +4471,95 @@ export default function ExpertWorkspace() {
           {rightTab === "gaps" && (
             <div style={{ flex: 1, overflowY: "auto", padding: "14px 12px" }}>
 
+              {/* Advisor Phase 2-4 — narration block, FIRST in the tab. Strictly ON-DEMAND: the
+                  POST only ever fires from a click on button-advisor-narrate, never automatically
+                  on tab open (only the GET runs then). A GET failure renders nothing (quiet —
+                  never breaks the tab); a POST failure renders an honest inline note next to
+                  whatever was already known, with no auto-retry loop. */}
+              {!advisorNarrationError && (
+                <div data-testid="card-advisor-narration" style={{ border: `1px solid ${BRAND}`, borderRadius: 10, padding: "10px 12px", marginBottom: 10, background: BRAND_SOFT }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 7 }}>
+                    <Sparkles style={{ width: 13, height: 13, color: BRAND }} />
+                    <span style={{ fontSize: 12.5, fontWeight: 700, color: INK }}>Today's read on this build</span>
+                  </div>
+
+                  {narrateMutation.isPending ? (
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11.5, color: MID }}>
+                      <Loader2 style={{ width: 12, height: 12 }} className="animate-spin" />
+                      Reading your build…
+                    </div>
+                  ) : (
+                    <>
+                      {narrateMutation.isError && (
+                        <div data-testid="text-advisor-narration-error" style={{ fontSize: 11.5, color: MID, fontStyle: "italic", marginBottom: 8 }}>
+                          Advice unavailable right now.
+                        </div>
+                      )}
+                      {advisorNarrationLoading ? null : advisorNarration ? (
+                        <>
+                          <div data-testid="text-advisor-narration" style={{ fontSize: 12, color: INK, lineHeight: 1.55, whiteSpace: "pre-wrap" }}>
+                            {advisorNarration.narration}
+                          </div>
+                          <div style={{ fontSize: 10.5, color: FAINT, marginTop: 7 }}>
+                            AI summary · {formatRelativeTime(new Date(advisorNarration.generatedAt))}
+                          </div>
+                          {advisorNarration.stale && (
+                            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 7, flexWrap: "wrap" }}>
+                              <span style={{ display: "inline-flex", alignItems: "center", padding: "2px 8px", borderRadius: 999, background: WARN_SOFT, color: WARN, fontSize: 10, fontWeight: 700 }}>
+                                Plan changed — advice may be stale
+                              </span>
+                              <button
+                                onClick={() => narrateMutation.mutate()}
+                                data-testid="button-advisor-narrate"
+                                style={{ ...btnQuietStyle, padding: "3px 9px", fontSize: 10.5, display: "flex", alignItems: "center", gap: 4 }}
+                              >
+                                <RefreshCw style={{ width: 10, height: 10 }} />
+                                Refresh advice
+                              </button>
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <button
+                          onClick={() => narrateMutation.mutate()}
+                          data-testid="button-advisor-narrate"
+                          style={{ ...btnPrimaryStyle, padding: "6px 11px", fontSize: 11.5 }}
+                        >
+                          Get advice on this build
+                        </button>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+
+              {/* Advisor Phase 2-4 — reorder-nudge cards. Source: route-efficiency's own per-day
+                  straight-line comparison (§13: the "straight-line comparison" label is
+                  load-bearing honesty — this is NOT a real routed distance, keep the wording).
+                  Only materially-improvable days render anything; a day with no meaningful
+                  savings shows nothing (no noise). A failed fetch renders nothing (same quiet
+                  posture as the narration GET above). */}
+              {!advisorRouteEfficiencyError && (advisorRouteEfficiency?.days ?? []).filter(d => d.materiallyImprovable).map(d => (
+                <div key={d.dayNumber} data-testid={`card-advisor-reorder-day-${d.dayNumber}`} style={{ border: `1px solid ${LINE}`, borderRadius: 10, padding: "10px 12px", marginBottom: 10, background: CARD }}>
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: 6, marginBottom: 4 }}>
+                    <Lightbulb style={{ width: 13, height: 13, color: BRAND, flexShrink: 0, marginTop: 1 }} />
+                    <span style={{ fontSize: 12.5, fontWeight: 700, color: INK }}>
+                      Day {d.dayNumber} walks {d.savingsKm.toFixed(1)} km further than it needs to
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 11, color: MID, marginBottom: 9, paddingLeft: 19 }}>
+                    Current {d.currentKm.toFixed(1)} km → best found {d.optimizedKm.toFixed(1)} km · straight-line comparison
+                  </div>
+                  <button
+                    onClick={() => setSuggestOrderForDay(d.dayNumber)}
+                    data-testid={`button-advisor-suggest-order-${d.dayNumber}`}
+                    style={{ ...btnPrimaryStyle, padding: "5px 11px", fontSize: 11 }}
+                  >
+                    See suggested order
+                  </button>
+                </div>
+              ))}
+
               {/* Advisor Phase 1 — routing-blocked card. Shown only when at least one item fails
                   isLocatedItem (the SAME predicate the plan map and transport-leg engine use —
                   never a second, looser notion of "located"). */}
@@ -4447,6 +4628,46 @@ export default function ExpertWorkspace() {
                   </div>
                 )}
               </div>
+
+              {/* Advisor Phase 2-4 — stays card. §16: platform inventory is listed FIRST by
+                  design; the Google Places hop below stays inside our own live-search Add-panel
+                  surface (never an external/off-site link — the same rule the affiliate-outbound
+                  cards on Discover follow). No anchor (nothing to cluster near yet) → nothing
+                  rendered; a failed fetch is the same quiet no-render. */}
+              {!advisorStayAnchorError && advisorStayAnchor?.anchor && (
+                <div data-testid="card-advisor-stays" style={{ border: `1px solid ${LINE}`, borderRadius: 10, padding: "10px 12px", marginBottom: 14, background: CARD }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 7 }}>
+                    <Building2 style={{ width: 13, height: 13, color: BRAND }} />
+                    <span style={{ fontSize: 12.5, fontWeight: 700, color: INK }}>
+                      Days cluster near {advisorStayAnchor.anchor.neighborhood ?? "your route center"}
+                    </span>
+                  </div>
+                  {advisorStayAnchor.platformStays.length === 0 ? (
+                    <div data-testid="text-advisor-no-stays" style={{ fontSize: 11.5, color: MID, marginBottom: 9 }}>
+                      No bookable stays on Traveloure within 5 km yet.
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 9 }}>
+                      {advisorStayAnchor.platformStays.map(stay => (
+                        <div key={stay.providerServiceId} data-testid={`row-advisor-stay-${stay.providerServiceId}`} style={{ fontSize: 11.5, color: INK, display: "flex", justifyContent: "space-between", gap: 6 }}>
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{stay.name}</span>
+                          <span style={{ color: MID, flexShrink: 0 }}>
+                            {stay.distanceKm.toFixed(1)} km{stay.price != null ? ` · $${stay.price}` : ""}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <button
+                    onClick={() => { setRightTab("add"); setAddSource("google"); setCat("hotels"); }}
+                    data-testid="button-advisor-stays-places"
+                    style={{ ...btnQuietStyle, padding: "5px 10px", fontSize: 11, display: "flex", alignItems: "center", gap: 5 }}
+                  >
+                    <Search style={{ width: 11, height: 11 }} />
+                    Browse more stays on Google Places
+                  </button>
+                </div>
+              )}
 
               <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 14 }}>
                 <Shield style={{ width: 14, height: 14, color: BRAND }} />
