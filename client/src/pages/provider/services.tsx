@@ -89,6 +89,8 @@ import {
   ExternalLink,
   CalendarClock,
   ChevronDown,
+  ImageOff,
+  CheckCircle2,
 } from "lucide-react";
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
@@ -121,6 +123,15 @@ interface Service {
   // PB (§17 Product Builder): a bundle IS a provider_services row (product_shape='bundle',
   // migration 151) — it appears in this list like any listing; NULL = single service.
   productShape?: string | null;
+  // Listing Health (below): these ride the EXISTING /api/provider/services row — storage.
+  // getProviderServices does an unfiltered db.select(), so photo + pin fields are already on
+  // the wire. Sourcing the thumbnail/pin chip from here (not the new health endpoint) is what
+  // lets both render pre-mount.
+  serviceImage?: string | null;
+  galleryImages?: string[] | null;
+  latitude?: string | number | null;
+  longitude?: string | number | null;
+  locationPrecision?: string | null;
 }
 
 const AFFINITY_TAG_LABELS: Record<string, string> = {
@@ -572,6 +583,147 @@ function AvailabilitySection() {
   );
 }
 
+// ─── Listing Health (ratified "Listing Health" layer, CLAUDE.md §13/§16/§18) ─────────────
+//
+// Audit finding: ~97% of provider listings ride the approximate neighborhood-centroid
+// location backfill and zero carry a provider-confirmed exact pin, because nothing surfaced
+// it. Photo + pin render from fields ALREADY on the /api/provider/services row (below), so
+// they work even before the new health router is mounted; only the "Health N/M" score/meter
+// depends on GET /api/provider/services/health, and that section renders NOTHING (no
+// skeleton, no guess) when the endpoint is unavailable — honest absence, §13.
+
+interface HealthCheck {
+  key: string;
+  ok: boolean;
+  detail?: string;
+}
+interface ServiceHealth {
+  serviceId: string;
+  checks: HealthCheck[];
+  score: { passed: number; total: number };
+}
+interface HealthResponse {
+  services: ServiceHealth[];
+  omitted: { key: string; reason: string }[];
+}
+
+// Short, compact labels for the failing-checks inline list (the check KEY, not the longer
+// server-provided `detail` prose — "no photo · no exact pin · no availability").
+const HEALTH_CHECK_LABELS: Record<string, string> = {
+  photo: "no photo",
+  exact_pin: "no exact pin",
+  description: "short description",
+  pricing: "no price",
+  availability: "no availability",
+  approval: "not approved",
+};
+
+const TONE_CLASSNAMES = {
+  ok: "bg-green-100 text-green-700 border-green-200",
+  warn: "bg-amber-100 text-amber-700 border-amber-200",
+  bad: "bg-red-100 text-red-700 border-red-200",
+} as const;
+
+/** 62×46 rounded thumbnail from serviceImage/galleryImages[0]; an honest neutral placeholder
+ *  tile (muted icon, no fake image) when neither is present. Sourced from the services list
+ *  row directly — no dependency on the health endpoint. */
+function ServiceThumb({ service }: { service: Service }) {
+  const gallery = Array.isArray(service.galleryImages) ? service.galleryImages : [];
+  const src = service.serviceImage || gallery[0] || null;
+  if (src) {
+    return (
+      <img
+        src={src}
+        alt=""
+        className="w-[62px] h-[46px] rounded-md object-cover flex-shrink-0 border border-console-light bg-console-bg"
+        data-testid={`img-service-thumb-${service.id}`}
+      />
+    );
+  }
+  return (
+    <div
+      className="w-[62px] h-[46px] rounded-md flex-shrink-0 border border-dashed border-console-light bg-console-bg flex items-center justify-center"
+      data-testid={`img-service-thumb-${service.id}`}
+    >
+      <ImageOff className="w-4 h-4 text-console-mid/50" />
+    </div>
+  );
+}
+
+/** Pin-status chip. Semantics mirror the server's exact_pin health check exactly (exact pin =
+ *  lat+lng present AND locationPrecision='exact'; else approximate-vs-none by coordinate
+ *  presence), computed locally from the services-list row so it renders pre-mount too. */
+function pinStatus(service: Service): { label: string; tone: keyof typeof TONE_CLASSNAMES; title: string } {
+  const hasCoords = service.latitude != null && service.longitude != null && service.latitude !== "" && service.longitude !== "";
+  const isExact = hasCoords && service.locationPrecision === "exact";
+  if (isExact) {
+    return { label: "📍 Exact pin", tone: "ok", title: "Provider-confirmed exact location." };
+  }
+  if (hasCoords) {
+    return {
+      label: "📍 Approximate area",
+      tone: "warn",
+      title: "Approximate area — neighborhood-level location from the platform backfill. Edit this service to set an exact pin.",
+    };
+  }
+  return { label: "📍 No location", tone: "bad", title: "No location on file yet. Edit this service to add one." };
+}
+
+/** Pin chip: clicking it opens the service's Edit (the existing edit navigation) — the pin
+ *  picker lives in the form, not here. */
+function PinChip({ service, isBundle }: { service: Service; isBundle: boolean }) {
+  const { label, tone, title } = pinStatus(service);
+  const editHref = isBundle ? "/provider/workstation" : `/provider/services/${service.id}/edit`;
+  return (
+    <Link href={editHref}>
+      <Badge
+        variant="outline"
+        title={title}
+        className={`text-[10px] cursor-pointer ${TONE_CLASSNAMES[tone]}`}
+        data-testid={`chip-pin-${service.id}`}
+      >
+        {label}
+      </Badge>
+    </Link>
+  );
+}
+
+/** "Health N/M" meter + failing-check names. Renders NOTHING when the health endpoint hasn't
+ *  returned data for this service (endpoint unavailable pre-mount, or the service is missing
+ *  from the response) — honest absence per §13, never a skeleton or a guess. */
+function HealthRow({ health }: { health: ServiceHealth | undefined }) {
+  if (!health) return null;
+  const { passed, total } = health.score;
+  if (total <= 0) return null;
+  const allPassing = passed === total;
+  const failingLabels = health.checks
+    .filter((c) => !c.ok)
+    .map((c) => HEALTH_CHECK_LABELS[c.key] ?? c.key);
+
+  return (
+    <div className="mt-3 pt-3 border-t border-console-light" data-testid={`health-row-${health.serviceId}`}>
+      <div className="flex items-center gap-2 flex-wrap">
+        <span className="text-xs font-medium text-console-darkest">
+          Health {passed}/{total}
+        </span>
+        <div className="w-24 h-1.5 rounded-full bg-console-light overflow-hidden">
+          <div
+            className={`h-full rounded-full ${allPassing ? "bg-green-500" : "bg-amber-500"}`}
+            style={{ width: `${Math.round((passed / total) * 100)}%` }}
+          />
+        </div>
+        {allPassing ? (
+          <Badge className={`text-[10px] ${TONE_CLASSNAMES.ok}`} variant="outline">
+            <CheckCircle2 className="w-3 h-3 mr-1" /> Ready
+          </Badge>
+        ) : (
+          <span className="text-xs text-console-mid">{failingLabels.join(" · ")}</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function ProviderServices() {
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [shareTarget, setShareTarget] = useState<Service | null>(null);
@@ -585,6 +737,20 @@ export default function ProviderServices() {
   const { data: services, isLoading } = useQuery<Service[]>({
     queryKey: ["/api/provider/services"],
   });
+
+  // Listing Health score — ONE query, keyed on the services list. 404s (200-HTML pre-mount, per
+  // CLAUDE.md's dead-route note) land the query in an error state with no data; HealthRow
+  // renders nothing per service in that case (§13 honest absence), so this is safe to mount
+  // unconditionally ahead of the health router's own mount.
+  const { data: healthData } = useQuery<HealthResponse>({
+    queryKey: ["/api/provider/services/health"],
+    enabled: !!services && services.length > 0,
+  });
+  // `Map` the constructor is shadowed on this page by the lucide-react `Map` icon import — use
+  // globalThis.Map explicitly rather than renaming the icon import everywhere it's used.
+  const healthByServiceId = new globalThis.Map<string, ServiceHealth>(
+    (healthData?.services ?? []).map((h) => [h.serviceId, h]),
+  );
 
   const toggleMutation = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: string }) => {
@@ -801,6 +967,7 @@ export default function ProviderServices() {
                 >
                   <CardContent className="p-4">
                     <div className="flex items-start justify-between gap-4">
+                      <ServiceThumb service={service} />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
                           <h3 className="font-semibold text-console-darkest truncate">{displayName}</h3>
@@ -835,6 +1002,7 @@ export default function ProviderServices() {
                           <span className="flex items-center gap-1 font-semibold text-green-600" data-testid={`text-price-${service.id}`}>
                             <DollarSign className="w-4 h-4" /> {priceDisplay}
                           </span>
+                          <PinChip service={service} isBundle={isBundle} />
                           {service.deliveryTimeframe && (
                             <span className="flex items-center gap-1 text-console-mid">
                               <Clock className="w-4 h-4" /> {service.deliveryTimeframe}
@@ -937,6 +1105,8 @@ export default function ProviderServices() {
                         <Trash2 className="w-4 h-4 mr-1" /> Delete
                       </Button>
                     </div>
+
+                    <HealthRow health={healthByServiceId.get(service.id)} />
                   </CardContent>
                 </Card>
               );
