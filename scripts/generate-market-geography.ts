@@ -27,7 +27,7 @@
  * renders — shared/geo/market-geography.ts's consumers already carry that text; do not drop it.
  *
  * USAGE:
- *   npx tsx scripts/generate-market-geography.ts <marketSlug> <west> <south> <east> <north> [--out <path>] [--max-points <n>]
+ *   npx tsx scripts/generate-market-geography.ts <marketSlug> <west> <south> <east> <north> [--out <path>] [--max-points <n>] [--max-ways <n>]
  *
  * EXAMPLE (Kyoto city core, matching the committed KYOTO_GEOGRAPHY.bbox):
  *   npx tsx scripts/generate-market-geography.ts kyoto 135.72 34.975 135.80 35.045 \
@@ -41,6 +41,43 @@
 const OVERPASS_ENDPOINT = "https://overpass-api.de/api/interpreter";
 const COORD_DECIMALS = 5; // ~1.1m precision — plenty for a background illustration layer
 const DEFAULT_MAX_POINTS = 40; // per way, after thinning — keeps the literal readable/committable
+
+// Per-layer selection caps. A city-core bbox returns THOUSANDS of ways (Kyoto: 421 water /
+// 1284 parks / 494 roads) — committing them all would bloat the client bundle (shared/ ships to
+// the browser) and the renderers, for a layer whose whole job is "recognizable at a glance".
+// Ways are ranked by real geographic length (haversine over the raw geometry, before thinning),
+// so the caps keep the major river segments, the big parks, and the main arteries and drop the
+// pond-sized noise. Override uniformly with --max-ways <n>. What was dropped is always logged —
+// a capped extract must never read as "everything Overpass had" (§13).
+const DEFAULT_MAX_WAYS: Record<"water" | "parks" | "roads", number> = {
+  water: 20,
+  parks: 25,
+  roads: 35,
+};
+// Ways shorter than this never make the cut, even under the cap — a 50m garden strip or a
+// road stub adds bytes, not recognizability.
+const MIN_WAY_KM: Record<"water" | "parks" | "roads", number> = {
+  water: 0.4,
+  parks: 0.35,
+  roads: 0.8,
+};
+
+const EARTH_RADIUS_KM = 6371;
+function haversineKm(a: OverpassGeomPoint, b: OverpassGeomPoint): number {
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(b.lat - a.lat);
+  const dLon = toRad(b.lon - a.lon);
+  const s =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * Math.sin(dLon / 2) ** 2;
+  return 2 * EARTH_RADIUS_KM * Math.asin(Math.sqrt(s));
+}
+
+function wayLengthKm(points: OverpassGeomPoint[]): number {
+  let km = 0;
+  for (let i = 1; i < points.length; i++) km += haversineKm(points[i - 1], points[i]);
+  return km;
+}
 
 interface OverpassGeomPoint {
   lat: number;
@@ -61,7 +98,7 @@ interface OverpassResponse {
 function usageAndExit(message?: string): never {
   if (message) console.error(`Error: ${message}\n`);
   console.error(
-    "Usage: npx tsx scripts/generate-market-geography.ts <marketSlug> <west> <south> <east> <north> [--out <path>] [--max-points <n>]",
+    "Usage: npx tsx scripts/generate-market-geography.ts <marketSlug> <west> <south> <east> <north> [--out <path>] [--max-points <n>] [--max-ways <n>]",
   );
   process.exit(1);
 }
@@ -82,8 +119,19 @@ function parseArgs(argv: string[]) {
   const outPath = outIdx >= 0 ? argv[outIdx + 1] : null;
   const maxPointsIdx = argv.indexOf("--max-points");
   const maxPoints = maxPointsIdx >= 0 ? Number(argv[maxPointsIdx + 1]) : DEFAULT_MAX_POINTS;
+  const maxWaysIdx = argv.indexOf("--max-ways");
+  const maxWaysOverride = maxWaysIdx >= 0 ? Number(argv[maxWaysIdx + 1]) : null;
+  if (maxWaysOverride !== null && (!Number.isFinite(maxWaysOverride) || maxWaysOverride < 1)) {
+    usageAndExit("--max-ways must be a positive number");
+  }
 
-  return { marketSlug, bbox: [west, south, east, north] as [number, number, number, number], outPath, maxPoints };
+  return {
+    marketSlug,
+    bbox: [west, south, east, north] as [number, number, number, number],
+    outPath,
+    maxPoints,
+    maxWaysOverride,
+  };
 }
 
 /** Overpass QL: water (natural=water polygons, waterway=river/canal ways), parks
@@ -176,32 +224,45 @@ function formatLine(points: [number, number][]): string {
 }
 
 async function main() {
-  const { marketSlug, bbox, outPath, maxPoints } = parseArgs(process.argv.slice(2));
+  const { marketSlug, bbox, outPath, maxPoints, maxWaysOverride } = parseArgs(process.argv.slice(2));
 
   console.error(`[generate-market-geography] querying Overpass for "${marketSlug}" bbox=[${bbox.join(", ")}] ...`);
   const query = buildQuery(bbox);
   const data = await fetchOverpass(query);
   console.error(`[generate-market-geography] Overpass returned ${data.elements.length} element(s)`);
 
-  const water: [number, number][][] = [];
-  const parks: [number, number][][] = [];
-  const roads: [number, number][][] = [];
-
+  // Collect every classified way with its real length, then rank-and-cap per layer.
+  const collected: Record<"water" | "parks" | "roads", { points: OverpassGeomPoint[]; km: number }[]> = {
+    water: [],
+    parks: [],
+    roads: [],
+  };
   for (const el of data.elements) {
     if (!el.geometry || el.geometry.length < 2) continue; // no inline geometry (rare) — skip, never guess
     const kind = classify(el);
     if (!kind) continue;
-    const simplified = simplify(el.geometry, maxPoints);
-    (kind === "water" ? water : kind === "parks" ? parks : roads).push(simplified);
+    collected[kind].push({ points: el.geometry, km: wayLengthKm(el.geometry) });
   }
 
-  console.error(
-    `[generate-market-geography] classified: ${water.length} water way(s), ${parks.length} park(s), ${roads.length} road(s)`,
-  );
+  const layers: Record<"water" | "parks" | "roads", [number, number][][]> = { water: [], parks: [], roads: [] };
+  for (const kind of ["water", "parks", "roads"] as const) {
+    const cap = maxWaysOverride ?? DEFAULT_MAX_WAYS[kind];
+    const eligible = collected[kind].filter((w) => w.km >= MIN_WAY_KM[kind]);
+    const kept = eligible.sort((a, b) => b.km - a.km).slice(0, cap);
+    layers[kind] = kept.map((w) => simplify(w.points, maxPoints));
+    console.error(
+      `[generate-market-geography] ${kind}: kept ${kept.length}/${collected[kind].length} way(s) ` +
+        `(length-ranked, min ${MIN_WAY_KM[kind]}km, cap ${cap}; dropped ` +
+        `${collected[kind].length - kept.length})`,
+    );
+  }
+  const { water, parks, roads } = layers;
 
   const constName = `${marketSlug.toUpperCase().replace(/[^A-Z0-9]/g, "_")}_GEOGRAPHY`;
   const literal = `/** ${marketSlug} — generated by scripts/generate-market-geography.ts from live OSM/Overpass data
- *  (bbox=[${bbox.join(", ")}]) on ${new Date().toISOString().slice(0, 10)}. Review before committing —
+ *  (bbox=[${bbox.join(", ")}]) on ${new Date().toISOString().slice(0, 10)}. NOT exhaustive by design: each layer keeps
+ *  only the longest ways (water ${water.length}, parks ${parks.length}, roads ${roads.length} kept) — a recognizable
+ *  background illustration, not full OSM coverage. Review before committing —
  *  Overpass coverage varies by market; a sparse result (few/no ways) means the bbox or tag set needs
  *  adjusting, not that the market has no water/parks/roads. */
 export const ${constName}: MarketGeography = {
