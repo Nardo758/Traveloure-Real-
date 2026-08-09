@@ -2828,21 +2828,10 @@ export default function ExpertWorkspace() {
     }
   }, [expertNotesData]);
 
-  // ── Browse: geocode destination for map center ──
+  // (The destination-geocode map-center query that lived here served only the retired
+  // in-drawer browse map; CanvasMapSection keeps its own identical query for its fallback
+  // center, so the shared ["/api/geocode", destination] cache entry lives on there.)
   const destination = (trip as any)?.destination || "";
-  const { data: geocodeData } = useQuery<{ lat: number; lng: number }>({
-    queryKey: ["/api/geocode", destination],
-    queryFn: async () => {
-      // 404/errors return a JSON error body — must NOT flow into geocodeData, or the
-      // map receives a non-LatLng object as `center` and vis.gl throws obj.toJSON().
-      const res = await fetch(`/api/geocode?address=${encodeURIComponent(destination)}`);
-      if (!res.ok) return null;
-      const j = await res.json();
-      return Number.isFinite(j?.lat) && Number.isFinite(j?.lng) ? j : null;
-    },
-    enabled: !!destination && rightTab === "add" && addSource === "platform",
-    staleTime: Infinity,
-  });
 
   // ── Browse: live experience search (lives under the Add panel's "Platform services" pill) ──
   const searchEnabled = rightTab === "add" && addSource === "platform" && !!(debouncedQuery || destination);
@@ -2859,9 +2848,6 @@ export default function ExpertWorkspace() {
     staleTime: 2 * 60 * 1000,
   });
   const searchResults = searchData?.results || [];
-  const mapCenter = (Number.isFinite((geocodeData as any)?.lat) && Number.isFinite((geocodeData as any)?.lng))
-    ? geocodeData!
-    : { lat: 35.6762, lng: 139.6503 };
 
   // ── Browse: add result to itinerary (day-aware — targets the focused day) ──
   const addFromSearchMutation = useMutation({
@@ -3723,88 +3709,12 @@ export default function ExpertWorkspace() {
                 </div>
               </div>
 
-              {/* Map — browse surface (lives ONLY here, P2-18). D-1 (Workstation audit):
-                  wrapped in a section-local error boundary — Maps can throw at mount
-                  (billing/key errors) and must not blank the results list below it. */}
-              <div style={{ height: 220, flexShrink: 0, position: "relative" }}>
-                <MapSectionErrorBoundary>
-                {MAPS_KEY ? (
-                  <APIProvider apiKey={MAPS_KEY}>
-                    <Map
-                      mapId={GOOGLE_MAPS_MAP_ID}
-                      defaultCenter={mapCenter}
-                      center={mapCenter}
-                      defaultZoom={13}
-                      gestureHandling="greedy"
-                      disableDefaultUI={true}
-                      style={{ width: "100%", height: "100%" }}
-                      onClick={() => setSelectedPin(null)}
-                    >
-                      {searchResults.filter(r => r.location?.lat).map((result: any) => (
-                        <MapMarker
-                          key={result.id}
-                          position={{ lat: result.location.lat, lng: result.location.lng }}
-                          onClick={() => setSelectedPin(result)}
-                        >
-                          <div style={{ background: "var(--console-brand)", color: "var(--console-card)", borderRadius: 20, padding: "3px 8px", fontSize: 11, fontWeight: 700, boxShadow: "0 2px 6px rgba(0,0,0,0.3)", border: selectedPin?.id === result.id ? `2px solid var(--console-card)` : "none", whiteSpace: "nowrap", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis" }}>
-                            {result.name.length > 16 ? result.name.slice(0, 16) + "…" : result.name}
-                          </div>
-                        </MapMarker>
-                      ))}
-
-                      {selectedPin && selectedPin.location?.lat && (
-                        <InfoWindow
-                          position={{ lat: selectedPin.location.lat, lng: selectedPin.location.lng }}
-                          onCloseClick={() => setSelectedPin(null)}
-                        >
-                          <div style={{ fontFamily: "'Inter',-apple-system,sans-serif", minWidth: 180, maxWidth: 220 }}>
-                            <div style={{ fontSize: 13, fontWeight: 700, color: INK, marginBottom: 3 }}>{selectedPin.name}</div>
-                            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
-                              {selectedPin.rating && (
-                                <span style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 12, color: WARN, fontWeight: 600 }}>
-                                  <Star style={{ width: 11, height: 11 }} /> {selectedPin.rating}
-                                  {selectedPin.reviewCount && <span style={{ color: FAINT, fontWeight: 400 }}>({selectedPin.reviewCount.toLocaleString()})</span>}
-                                </span>
-                              )}
-                              {selectedPin.priceLabel && <span style={{ fontSize: 11, color: MID, background: GROUND, padding: "1px 5px", borderRadius: 4 }}>{selectedPin.priceLabel}</span>}
-                            </div>
-                            {selectedPin.address && <div style={{ fontSize: 11, color: MID, marginBottom: 7, lineHeight: 1.4 }}>{selectedPin.address}</div>}
-                            <div style={{ display: "flex", gap: 5 }}>
-                              <button
-                                onClick={() => addFromSearchMutation.mutate(selectedPin)}
-                                disabled={addFromSearchMutation.isPending}
-                                data-testid={`button-add-from-map-${selectedPin.id}`}
-                                style={{ ...btnPrimaryStyle, flex: 1, padding: "5px 8px", borderRadius: 7, fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}
-                              >
-                                {addFromSearchMutation.isPending ? <Loader2 style={{ width: 11, height: 11 }} className="animate-spin" /> : <Plus style={{ width: 11, height: 11 }} />}
-                                + Day {focusDay}
-                              </button>
-                              {selectedPin.mapsUrl && (
-                                <a href={selectedPin.mapsUrl} target="_blank" rel="noopener noreferrer">
-                                  <button data-testid={`button-maps-link-${selectedPin.id}`} style={{ ...btnQuietStyle, padding: "5px 8px", borderRadius: 7, fontSize: 12, display: "flex", alignItems: "center", gap: 3, color: MID }}>
-                                    <MapPinned style={{ width: 11, height: 11 }} />
-                                  </button>
-                                </a>
-                              )}
-                            </div>
-                          </div>
-                        </InfoWindow>
-                      )}
-                    </Map>
-                  </APIProvider>
-                ) : (
-                  <div style={{ height: "100%", background: GROUND, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 6 }}>
-                    <MapPin style={{ width: 24, height: 24, color: FAINT }} />
-                    <span style={{ fontSize: 12, color: MID }}>Map unavailable</span>
-                  </div>
-                )}
-                </MapSectionErrorBoundary>
-                {searchResults.filter((r: any) => r.location?.lat).length > 0 && (
-                  <div style={{ position: "absolute", bottom: 8, left: 8, background: CARD, borderRadius: 99, padding: "2px 8px", fontSize: 11, fontWeight: 600, color: INK, boxShadow: "0 1px 4px rgba(0,0,0,0.2)", zIndex: 10 }}>
-                    {searchResults.filter((r: any) => r.location?.lat).length} pins
-                  </div>
-                )}
-              </div>
+              {/* RETIRED (decision-maker, Aug 9 2026): the in-drawer browse map that lived here
+                  (P2-18 "lives ONLY here") is gone — superseded by the canvas Plan map's
+                  discovery layer (item 19): MapCandidatesPublisher above already renders this
+                  SAME filtered result set as candidate pins on the ONE canvas map, so two maps
+                  were showing identical pins. The list below plus the canvas pins are the whole
+                  browse surface now. `selectedPin` survives as the list's row-highlight state. */}
 
               {/* Results list — day-aware add rows ("+ Day N", v9 :277-292) */}
               <div style={{ flex: 1, overflowY: "auto", padding: "8px 10px" }}>
