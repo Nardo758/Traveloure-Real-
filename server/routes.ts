@@ -111,6 +111,7 @@ import conciergeRoutes from "./routes/concierge.routes";
 import upsellRoutes from "./routes/upsell.routes";
 import tripsRoutes from "./routes/trips.routes";
 import advisorRoutes from "./routes/advisor.routes";
+import providerListingHealthRoutes from "./routes/provider-listing-health.routes";
 import marketsRoutes from "./routes/markets.routes";
 import adminMarketsRoutes from "./routes/admin-markets.routes";
 import { dedupedRequest, callWithCircuitBreaker } from "./utils/requestDeduplication";
@@ -880,6 +881,11 @@ export async function registerRoutes(
 
   // Provider supply tools — /api/provider/settings (Kyoto-supply activation); provider-role gated
   app.use(providerRoutes);
+
+  // Listing Health (Catalog card meter, §13-deterministic checks). MUST mount before the inline
+  // GET /api/provider/services/:id below (~line 2075) — that route greedily matches /health as
+  // id="health" and 404s (live-verified), so order is load-bearing here.
+  app.use(providerListingHealthRoutes);
 
   // Public earner storefront (backoffice Phase 1a/1b) — /p/:handle OG shell + /api/storefront/:handle
   // + PATCH /api/me/handle. Mounted per §9; /p/:handle must register before the Vite catch-all.
@@ -5522,7 +5528,67 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         rating: Number(s.averageRating || 0),
         status: s.status
       })).sort((a, b) => b.revenue - a.revenue);
-      
+
+      // Benchmarks (§13 fix — the previous `categoryAvg: 280, topPerformerAvg: 450` were
+      // fabricated literals). "Primary category" = the categoryId most common among the
+      // provider's OWN listings (mode, ties broken by first-seen); a provider with no
+      // categorized listings has no category to benchmark against, hence no_data.
+      // Comparison pool: OTHER providers' approved+active, priced listings in that same
+      // category (this provider's own rows are excluded — comparing yourself to yourself
+      // isn't a benchmark). categoryAvg = plain mean price. topPerformerAvg = the average
+      // price of listings at/above the 75th percentile ("top quartile average" — a top
+      // performer's typical price, not just the boundary value). Below a 5-listing sample
+      // the numbers are too noisy to be honest, so we return a `no_data` status with NO
+      // numbers rather than a fabricated fallback (§13).
+      const categoryCounts = new Map<string, number>();
+      for (const s of services) {
+        if (s.categoryId) categoryCounts.set(s.categoryId, (categoryCounts.get(s.categoryId) || 0) + 1);
+      }
+      let primaryCategoryId: string | null = null;
+      let primaryCategoryCount = 0;
+      for (const [catId, cnt] of Array.from(categoryCounts.entries())) {
+        if (cnt > primaryCategoryCount) {
+          primaryCategoryId = catId;
+          primaryCategoryCount = cnt;
+        }
+      }
+
+      let benchmarkSampleSize = 0;
+      let benchmarkCategoryAvg: number | null = null;
+      let benchmarkTopPerformerAvg: number | null = null;
+      if (primaryCategoryId) {
+        const statsResult = await db.execute(sql`
+          WITH priced AS (
+            SELECT price::numeric AS price
+            FROM provider_services
+            WHERE category_id = ${primaryCategoryId}
+              AND approval_status = 'approved'
+              AND status = 'active'
+              AND user_id != ${userId}
+              AND price IS NOT NULL
+          ),
+          stats AS (
+            SELECT
+              COUNT(*)::int AS sample_size,
+              AVG(price) AS category_avg,
+              percentile_cont(0.75) WITHIN GROUP (ORDER BY price) AS p75
+            FROM priced
+          )
+          SELECT
+            s.sample_size,
+            s.category_avg,
+            (SELECT AVG(price) FROM priced WHERE price >= s.p75) AS top_quartile_avg
+          FROM stats s
+        `);
+        const row = statsResult.rows?.[0] as any;
+        benchmarkSampleSize = row ? Number(row.sample_size) || 0 : 0;
+        if (benchmarkSampleSize >= 5) {
+          benchmarkCategoryAvg = row.category_avg !== null ? Math.round(Number(row.category_avg)) : null;
+          benchmarkTopPerformerAvg = row.top_quartile_avg !== null ? Math.round(Number(row.top_quartile_avg)) : null;
+        }
+      }
+      const benchmarkStatus = benchmarkSampleSize >= 5 ? "ok" : "no_data";
+
       res.json({
         summary: {
           totalRevenue,
@@ -5536,8 +5602,12 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         servicePerformance,
         benchmarks: {
           avgBookingValue: totalBookings > 0 ? totalRevenue / totalBookings : 0,
-          categoryAvg: 280,
-          topPerformerAvg: 450
+          // status/sampleSize are additive; categoryAvg/topPerformerAvg keep their names but
+          // are null (never a fabricated number) when status is "no_data".
+          status: benchmarkStatus,
+          sampleSize: benchmarkSampleSize,
+          categoryAvg: benchmarkCategoryAvg,
+          topPerformerAvg: benchmarkTopPerformerAvg,
         }
       });
     } catch (err) {
