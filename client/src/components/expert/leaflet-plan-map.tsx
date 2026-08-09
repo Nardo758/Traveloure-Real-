@@ -15,7 +15,7 @@
  * through the drawer's own add handler.
  */
 import { useEffect } from "react";
-import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Popup, useMap, Polyline } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
@@ -44,6 +44,15 @@ export interface LeafletCandidate {
   lat: number;
   lng: number;
   price?: string | null;
+}
+
+/** Advisor Phase 1 route layer (workspace.tsx's CanvasMapSection): one day's polyline, points
+ *  already resolved to that day's LOCATED items in their current order — this component never
+ *  computes or fabricates a point, it only draws what the caller already validated (§13). */
+export interface LeafletRoute {
+  day: number;
+  color: string;
+  points: [number, number][];
 }
 
 function candidateDivIcon(id: string): L.DivIcon {
@@ -99,6 +108,7 @@ function FocusFromList({ target }: { target: LeafletPlanMapItem | null }) {
 export function LeafletPlanMap({
   items, center, selectedId, onSelect, onGoToItem, focusTarget,
   candidates = [], candidateSourceLabel, onAddCandidate, addCandidateLabel,
+  routes = [],
 }: {
   items: LeafletPlanMapItem[];
   center: { lat: number; lng: number };
@@ -114,6 +124,9 @@ export function LeafletPlanMap({
   onAddCandidate?: (id: string) => void;
   /** Button text for the candidate popup's add action, e.g. "Add to Day 2". */
   addCandidateLabel?: string;
+  /** Advisor Phase 1 route layer: per-day polylines (empty when the "Routes" toggle is off, or
+   *  when a visible day has fewer than 2 located items — the caller already filtered those out). */
+  routes?: LeafletRoute[];
 }) {
   return (
     <MapContainer
@@ -128,6 +141,13 @@ export function LeafletPlanMap({
       />
       <FitBounds items={items} />
       <FocusFromList target={focusTarget ?? null} />
+      {routes.map(r => (
+        <Polyline
+          key={`route-${r.day}`}
+          positions={r.points}
+          pathOptions={{ color: r.color, weight: 3, opacity: 0.9 }}
+        />
+      ))}
       {items.map(item => (
         <Marker
           key={item.id}
