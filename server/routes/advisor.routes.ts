@@ -19,6 +19,17 @@ import { db } from "../db";
 import { itineraryItems, trips, transportLegs, providerServices, serviceCategories, cityNeighborhoods } from "@shared/schema";
 import { eq, and, asc, isNull, isNotNull, ilike } from "drizzle-orm";
 import { trackAICost, calculateAnthropicCost } from "../services/ai-cost-tracker";
+// Advisor Fundamentals (Part 1, decision-maker-ratified check list, Aug 9 2026) — the deterministic
+// checks live in their own service (route stays thin); `Coord`/`parseCoord`/`LODGING_PATTERN`/
+// `isLodgingShaped` are EXTRACTED there so this file and the fundamentals service share exactly one
+// definition of "located" and "lodging-shaped" (no second regex).
+import {
+  computeAdvisorFundamentals,
+  parseCoord,
+  LODGING_PATTERN,
+  isLodgingShaped,
+  type Coord,
+} from "../services/advisor-fundamentals.service";
 // The ONE ordering algorithm the pre-existing POST /api/trips/:tripId/itinerary/optimize-order
 // endpoint uses (server/routes.ts, itineraryIntelligenceService.optimizeOrder — see that file's
 // header comment). Called here, not re-implemented — "one author, not two". Note honestly: this
@@ -31,22 +42,7 @@ import { itineraryIntelligenceService } from "../services/itinerary-intelligence
 const router = Router();
 
 // ─── Geometry helpers (local to this router — shared/ and the geocode util are untouched) ────
-
-interface Coord {
-  lat: number;
-  lng: number;
-}
-
-/** Finite, in-range, non-(0,0) coordinate — the LOCATED-item predicate this whole file shares. */
-function parseCoord(latRaw: unknown, lngRaw: unknown): Coord | null {
-  if (latRaw === null || latRaw === undefined || lngRaw === null || lngRaw === undefined) return null;
-  const lat = parseFloat(String(latRaw));
-  const lng = parseFloat(String(lngRaw));
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
-  if (lat === 0 && lng === 0) return null; // Null Island — never a real located item
-  return { lat, lng };
-}
+// `Coord`/`parseCoord` are imported above (extracted to advisor-fundamentals.service.ts).
 
 function haversineKm(a: Coord, b: Coord): number {
   const R = 6371;
@@ -156,6 +152,27 @@ router.get("/api/trips/:tripId/advisor/route-efficiency", isAuthenticated, async
   }
 });
 
+// ─── #1b Advisor fundamentals (decision-maker-ratified check list, Aug 9 2026) ────────────────
+// Deterministic checks live in advisor-fundamentals.service.ts (route stays thin, per the
+// convention #1/#2 above already follow). Same read-access gate as the other advisor endpoints.
+
+router.get("/api/trips/:tripId/advisor/fundamentals", isAuthenticated, async (req, res) => {
+  try {
+    const userId = getUserId(req)!;
+    const { tripId } = req.params;
+    const denied = await authorizeTripLogistics(
+      tripId, userId, "GET /api/trips/:tripId/advisor/fundamentals",
+    );
+    if (denied) return res.status(denied.status).json({ message: denied.message });
+
+    const result = await computeAdvisorFundamentals(tripId);
+    res.json(result);
+  } catch (error) {
+    console.error("[advisor] fundamentals error:", error);
+    res.status(500).json({ message: "Failed to compute advisor fundamentals" });
+  }
+});
+
 // ─── #2 Stay anchor (also shared by narration facts assembly) ─────────────────────────────────
 
 interface PlatformStay {
@@ -172,33 +189,10 @@ interface StayAnchorResult {
   placesHint: { source: "google"; category: "hotels" };
 }
 
-// Lodging-shaped predicate. §16 funnel doctrine: platform inventory only, this NEVER reaches
-// external listings. Grepped real data before writing this (see task notes): provider_services
-// seed rows use serviceType in {consultation, planning, experience, photography, specialty,
-// transportation, concierge} — none literal "hotel"/"lodging" today — while
-// shared/constants/providerCategories.ts's `hotels`/`accommodations` tab mapping (the
-// /api/search/experiences category bridge) keys off the words hotel/accommodation/lodging/
-// resort/hostel/inn, so we match those same words case-insensitively against serviceType AND
-// the joined service_categories name/slug. We ALSO treat `productShape = 'property'` as
-// lodging-shaped — that column is the actual structural marker for an accommodation storefront
-// listing (migration 153; "a property IS a provider_services row", server/routes/provider.routes.ts:407)
-// — so a real property listing matches even before/without a text-keyword category. No serviceType
-// value is invented to make this match; if the catalog has no lodging-shaped approved+active row
-// with real coordinates, platformStays is honestly empty.
-const LODGING_PATTERN = /hotel|lodg|accommodat|resort|hostel|\binn\b/i;
-
-function isLodgingShaped(row: {
-  serviceType: string | null;
-  productShape: string | null;
-  categoryName: string | null;
-  categorySlug: string | null;
-}): boolean {
-  if (row.productShape === "property") return true;
-  if (row.serviceType && LODGING_PATTERN.test(row.serviceType)) return true;
-  if (row.categoryName && LODGING_PATTERN.test(row.categoryName)) return true;
-  if (row.categorySlug && LODGING_PATTERN.test(row.categorySlug)) return true;
-  return false;
-}
+// Lodging-shaped predicate: `LODGING_PATTERN`/`isLodgingShaped` are imported above (extracted to
+// advisor-fundamentals.service.ts, which also needs them for the no_stay check). §16 funnel
+// doctrine unchanged: platform inventory only, this NEVER reaches external listings. See that
+// module's header comment for the full "why these words, why productShape" rationale.
 
 async function computeStayAnchor(tripId: string): Promise<StayAnchorResult> {
   const placesHint = { source: "google" as const, category: "hotels" as const };
@@ -336,11 +330,19 @@ interface AdvisorDayFacts {
   itemTitles: string[];
 }
 
+interface AdvisorFundamentalsSummary {
+  tier1: number;
+  tier2: number;
+  tier3: number;
+  keys: string[];
+}
+
 interface AdvisorFacts {
   tripId: string;
   days: AdvisorDayFacts[];
   routeEfficiency: RouteEfficiencyDay[];
   stayAnchor: StayAnchorResult;
+  fundamentals: AdvisorFundamentalsSummary;
 }
 
 const TITLE_BUDGET = 40;
@@ -410,12 +412,23 @@ async function assembleFacts(tripId: string): Promise<{ facts: AdvisorFacts; pla
 
   const planHash = hash.digest("hex");
   // Reuse #1 and #2 verbatim — one author for each computation, not a narration-only copy.
-  const [routeEfficiency, stayAnchor] = await Promise.all([
+  // `planHash` is finalized ABOVE this line — fundamentals output is deliberately excluded from
+  // its inputs. Fundamentals derives from the same items already hashed (coords/dayNumber/
+  // updatedAt), so folding its own output in too would be circular churn (a fundamentals-only
+  // change can't happen without one of those inputs already having changed the hash).
+  const [routeEfficiency, stayAnchor, fundamentalsResult] = await Promise.all([
     computeRouteEfficiencyDays(tripId),
     computeStayAnchor(tripId),
+    computeAdvisorFundamentals(tripId),
   ]);
+  const fundamentals: AdvisorFundamentalsSummary = {
+    tier1: fundamentalsResult.checks.filter((c) => c.tier === 1).length,
+    tier2: fundamentalsResult.checks.filter((c) => c.tier === 2).length,
+    tier3: fundamentalsResult.checks.filter((c) => c.tier === 3).length,
+    keys: Array.from(new Set(fundamentalsResult.checks.map((c) => c.key))),
+  };
 
-  return { facts: { tripId, days, routeEfficiency, stayAnchor }, planHash };
+  return { facts: { tripId, days, routeEfficiency, stayAnchor, fundamentals }, planHash };
 }
 
 // Process-lifetime cache only (documented honestly, per task spec — no schema change for v1).

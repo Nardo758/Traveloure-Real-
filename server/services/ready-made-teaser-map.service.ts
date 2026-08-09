@@ -11,17 +11,22 @@
  * a stop, a route, or a distance that isn't backed by a real DB row; it only DISPLACES real
  * points by a bounded, reproducible offset.
  *
- * Geography layer: shared/geo/market-geography.ts's self-rendered OSM-derived vector sketch
- * (water/parks/roads) beneath the route — never Google-derived (see that module's header). When
- * no geography exists for the trip's market, this renders routes/dots alone on plain ground —
- * never another city's shapes (§13 honesty).
+ * Geography layer: server/services/market-geography.service.ts's DB-first lookup (migration 186)
+ * over the self-rendered OSM-derived vector sketch (water/parks/roads) beneath the route — never
+ * Google-derived (see shared/geo/market-geography.ts's header). When no geography exists for the
+ * trip's market, this renders routes/dots alone on plain ground — never another city's shapes
+ * (§13 honesty).
+ *
+ * SYNC LOOKUP, DELIBERATELY (see market-geography.service.ts's getMarketGeographyForDestinationSync
+ * doc comment): this module's export stays a synchronous `(opts) => string` because its one caller,
+ * GET /api/ready-made/:id/teaser-map.svg in server/routes/ready-made.routes.ts, is outside this
+ * build's file-ownership scope and calls it without awaiting. The sync lookup is DB-first once the
+ * in-process cache has warmed (moments after boot, and on every admin geography write); until then
+ * it falls back to the committed literal — the same honest-absence posture §13 already uses for "no
+ * row matches", applied to "not loaded yet".
  */
-import {
-  getMarketGeography,
-  projectPath,
-  projectPoint,
-  type MarketGeography,
-} from "@shared/geo/market-geography";
+import { projectPath, projectPoint, type MarketGeography } from "@shared/geo/market-geography";
+import { getMarketGeographyForDestinationSync } from "./market-geography.service";
 
 const VIEW_WIDTH = 800;
 const VIEW_HEIGHT = 420;
@@ -176,7 +181,7 @@ export function renderReadyMadeTeaserMapSvg(opts: TeaserMapOptions): string {
     stops.push({ dayNumber: item.dayNumber, lon: jLon, lat: jLat });
   }
 
-  const geo = getMarketGeography(destination);
+  const geo = getMarketGeographyForDestinationSync(destination);
   const stopsBbox = computeBbox(stops.map((s) => [s.lon, s.lat] as [number, number]));
 
   let bbox: Bbox;
