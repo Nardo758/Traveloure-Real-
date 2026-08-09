@@ -435,6 +435,16 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   const [offeringPickerOpen, setOfferingPickerOpen] = useState(false);
   const [offeringSearchQuery, setOfferingSearchQuery] = useState("");
 
+  // "Don't see your offering?" (ratified flow, mockup §06c — migration 189 /
+  // offering_type_requests). Shown at the bottom of the picker's list AND in its
+  // zero-match state. Submitting auto-selects the catch-all 'custom_other_offering'
+  // (seeded by migration 189) via the existing handleSelectProviderOffering path so the
+  // provider can proceed immediately — the request itself is reviewed separately by admin.
+  const [requestOfferingOpen, setRequestOfferingOpen] = useState(false);
+  const [requestOfferingName, setRequestOfferingName] = useState("");
+  const [requestOfferingDescription, setRequestOfferingDescription] = useState("");
+  const [requestOfferingConfirmedName, setRequestOfferingConfirmedName] = useState<string | null>(null);
+
   // Category label lookup for the offering picker's group headers — prefers
   // the /api/service-categories row's name, falls back to prettifying the
   // offering's own category_key (never fabricates a category).
@@ -679,6 +689,31 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     }));
   };
 
+  // POST /api/me/offering-requests (offering-requests.routes.ts). userId comes from the
+  // session server-side (§14-by-analogy) — never sent from here.
+  const requestOfferingMutation = useMutation({
+    mutationFn: async () => {
+      const name = requestOfferingName.trim();
+      return apiRequest("POST", "/api/me/offering-requests", {
+        requestedName: name,
+        description: requestOfferingDescription.trim() || undefined,
+      });
+    },
+    onSuccess: () => {
+      const confirmedName = requestOfferingName.trim();
+      setRequestOfferingConfirmedName(confirmedName);
+      setRequestOfferingOpen(false);
+      setRequestOfferingName("");
+      setRequestOfferingDescription("");
+      // Auto-select the catch-all offering so the provider can proceed immediately
+      // instead of being blocked on admin review of the new type.
+      const catchAll = providerOfferingTypes.find((o) => o.offering_type_key === "custom_other_offering");
+      if (catchAll) handleSelectProviderOffering(catchAll);
+      setOfferingPickerOpen(false);
+      setOfferingSearchQuery("");
+    },
+  });
+
   const handleAddIncluded = () => {
     if (newIncluded.trim()) {
       set("whatIncluded", [...formData.whatIncluded, newIncluded.trim()]);
@@ -730,6 +765,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     setLocationPointTouched(false);
     setNewIncluded("");
     setNewRequirement("");
+    setRequestOfferingConfirmedName(null);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -953,6 +989,71 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     );
   }
 
+  // "Don't see your offering?" row, rendered at the bottom of the picker's list AND inside
+  // its zero-match state (same block, both call sites below).
+  const renderDontSeeYourOffering = () => {
+    if (requestOfferingOpen) {
+      return (
+        <div className="p-3 space-y-2 border-t border-gray-100">
+          <p className="text-xs font-medium text-gray-700">Tell us what you do</p>
+          <Input
+            value={requestOfferingName}
+            onChange={(e) => setRequestOfferingName(e.target.value)}
+            placeholder="e.g., Falconry experience"
+            data-testid="input-request-offering-name"
+          />
+          <Textarea
+            value={requestOfferingDescription}
+            onChange={(e) => setRequestOfferingDescription(e.target.value)}
+            placeholder="Optional — a sentence or two about it"
+            className="min-h-[60px] text-sm"
+            data-testid="input-request-offering-description"
+          />
+          {requestOfferingMutation.isError && (
+            <p className="text-xs text-red-600" data-testid="text-request-offering-error">
+              Couldn't submit your request — please try again.
+            </p>
+          )}
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              size="sm"
+              disabled={requestOfferingName.trim().length < 3 || requestOfferingMutation.isPending}
+              onClick={() => requestOfferingMutation.mutate()}
+              data-testid="button-submit-request-offering"
+            >
+              {requestOfferingMutation.isPending ? "Submitting…" : "Submit request"}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setRequestOfferingOpen(false);
+                requestOfferingMutation.reset();
+              }}
+              data-testid="button-cancel-request-offering"
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      );
+    }
+    return (
+      <div className="p-3 border-t border-gray-100">
+        <button
+          type="button"
+          className="text-sm text-primary hover:underline"
+          onClick={() => setRequestOfferingOpen(true)}
+          data-testid="button-request-offering"
+        >
+          Don't see your offering? Request it
+        </button>
+      </div>
+    );
+  };
+
   return (
     <div className="p-6 max-w-3xl space-y-6">
 
@@ -991,25 +1092,35 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             {providerOfferingTypesRaw.length === 0 ? (
               <p className="text-xs text-muted-foreground">Loading offerings…</p>
             ) : !expanded ? (
-              <div className="flex items-center justify-between gap-3 rounded-lg border-2 border-primary bg-primary/5 p-3">
-                <div className="min-w-0">
-                  <p className="font-medium text-sm text-gray-900 truncate">
-                    {selectedProviderOffering?.display_name}
-                  </p>
-                  <p className="text-xs text-gray-500 truncate">
-                    {selectedProviderOfferingLabel}
-                    {selectedProviderOffering?.tagline ? ` — ${selectedProviderOffering.tagline}` : ""}
-                  </p>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-3 rounded-lg border-2 border-primary bg-primary/5 p-3">
+                  <div className="min-w-0">
+                    <p className="font-medium text-sm text-gray-900 truncate">
+                      {selectedProviderOffering?.display_name}
+                    </p>
+                    <p className="text-xs text-gray-500 truncate">
+                      {selectedProviderOfferingLabel}
+                      {selectedProviderOffering?.tagline ? ` — ${selectedProviderOffering.tagline}` : ""}
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setRequestOfferingConfirmedName(null);
+                      setOfferingPickerOpen(true);
+                    }}
+                    data-testid="button-reopen-offering-picker"
+                  >
+                    Change
+                  </Button>
                 </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setOfferingPickerOpen(true)}
-                  data-testid="button-reopen-offering-picker"
-                >
-                  Change
-                </Button>
+                {requestOfferingConfirmedName && selectedProviderOffering?.offering_type_key === "custom_other_offering" && (
+                  <p className="text-xs text-muted-foreground" data-testid="text-request-offering-confirmed">
+                    Requested: {requestOfferingConfirmedName} — meanwhile your listing continues under Custom / Other
+                  </p>
+                )}
               </div>
             ) : (
               <>
@@ -1021,41 +1132,48 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                 />
                 <div className="max-h-[420px] overflow-y-auto rounded-md border border-gray-200 divide-y divide-gray-100">
                   {offeringGroups.length === 0 ? (
-                    <p className="text-xs text-muted-foreground p-3">
-                      No offerings match '{offeringSearchQuery}'
-                    </p>
+                    <div>
+                      <p className="text-xs text-muted-foreground p-3">
+                        No offerings match '{offeringSearchQuery}'
+                      </p>
+                      {renderDontSeeYourOffering()}
+                    </div>
                   ) : (
-                    offeringGroups.map((group) => (
-                      <div key={group.key} className="p-2">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground px-1 pb-1 sticky top-0 bg-background">
-                          {group.label}
-                        </p>
-                        <div className="space-y-1">
-                          {group.items.map((o) => (
-                            <button
-                              key={o.id}
-                              type="button"
-                              onClick={() => {
-                                handleSelectProviderOffering(o);
-                                setOfferingPickerOpen(false);
-                                setOfferingSearchQuery("");
-                              }}
-                              className={`w-full text-left px-2 py-2 rounded-md border transition-colors flex items-baseline gap-2 ${
-                                formData.serviceOfferingTypeId === o.id
-                                  ? "border-primary bg-primary/5"
-                                  : "border-transparent hover:border-gray-200 hover:bg-gray-50"
-                              }`}
-                              data-testid={`option-offering-${o.offering_type_key}`}
-                            >
-                              <span className="font-medium text-sm text-gray-900 shrink-0">{o.display_name}</span>
-                              {o.tagline && (
-                                <span className="text-xs text-gray-500 truncate">{o.tagline}</span>
-                              )}
-                            </button>
-                          ))}
+                    <>
+                      {offeringGroups.map((group) => (
+                        <div key={group.key} className="p-2">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground px-1 pb-1 sticky top-0 bg-background">
+                            {group.label}
+                          </p>
+                          <div className="space-y-1">
+                            {group.items.map((o) => (
+                              <button
+                                key={o.id}
+                                type="button"
+                                onClick={() => {
+                                  setRequestOfferingConfirmedName(null);
+                                  handleSelectProviderOffering(o);
+                                  setOfferingPickerOpen(false);
+                                  setOfferingSearchQuery("");
+                                }}
+                                className={`w-full text-left px-2 py-2 rounded-md border transition-colors flex items-baseline gap-2 ${
+                                  formData.serviceOfferingTypeId === o.id
+                                    ? "border-primary bg-primary/5"
+                                    : "border-transparent hover:border-gray-200 hover:bg-gray-50"
+                                }`}
+                                data-testid={`option-offering-${o.offering_type_key}`}
+                              >
+                                <span className="font-medium text-sm text-gray-900 shrink-0">{o.display_name}</span>
+                                {o.tagline && (
+                                  <span className="text-xs text-gray-500 truncate">{o.tagline}</span>
+                                )}
+                              </button>
+                            ))}
+                          </div>
                         </div>
-                      </div>
-                    ))
+                      ))}
+                      {renderDontSeeYourOffering()}
+                    </>
                   )}
                 </div>
                 <p className="text-xs text-muted-foreground">

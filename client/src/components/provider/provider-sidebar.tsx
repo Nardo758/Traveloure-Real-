@@ -43,9 +43,11 @@ const menuGroups = [
   {
     label: "Work",
     items: [
-      // C9: "Dashboard" relabeled "Today" (module 1, ops home) — route unchanged; the page
-      // already leads with today's bookings + pending action items.
-      { title: "Today", href: "/provider/dashboard", icon: Home },
+      // C9 originally relabeled "Dashboard" → "Today" (module 1, ops home). Renamed back to
+      // "Dashboard" (ratified provider back-office wave, Aug 9 2026) — route unchanged; the
+      // page still leads with today's bookings + pending action items. A sibling change
+      // renames the page's own header to match.
+      { title: "Dashboard", href: "/provider/dashboard", icon: Home },
       // C9: /provider/calendar is now the Channel Calendar (the ratified 9th module — the
       // expert C3 pattern on GET /api/me/calendar, provider-real chips only). The old
       // availability-editor sheets there were non-persisting previews; REAL slot editing

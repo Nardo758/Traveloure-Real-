@@ -27,6 +27,14 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { 
   Plus, 
   Edit, 
@@ -95,6 +103,24 @@ interface ServiceCategory {
   subcategories: ServiceSubcategory[];
 }
 
+// Provider "don't see your offering" requests — offering-requests.routes.ts,
+// GET /api/admin/offering-requests (migration 189 / offering_type_requests).
+interface OfferingTypeRequest {
+  id: string;
+  userId: string;
+  requestedName: string;
+  description: string | null;
+  status: string;
+  createdAt: string;
+  updatedAt: string;
+  requesterEmail: string | null;
+}
+
+interface OfferingRequestsResponse {
+  requests: OfferingTypeRequest[];
+  customOtherListingsCount: number;
+}
+
 const categoryIcons: Record<string, any> = {
   "photography-videography": Camera,
   "transportation-logistics": Car,
@@ -155,6 +181,18 @@ export default function AdminCategories() {
   const { data: categories = [], isLoading } = useQuery<ServiceCategory[]>({
     queryKey: ["/api/admin/categories"],
   });
+
+  // "Don't see your offering?" flow (mockup §06c) — read-only v1. The
+  // approve/reject workflow (flipping offering_type_requests.status and creating a
+  // matching service_offering_types row) is a follow-up; this section only surfaces
+  // what's pending and how many listings are parked in Custom/Other while it's reviewed.
+  const { data: offeringRequestsData, isLoading: offeringRequestsLoading } =
+    useQuery<OfferingRequestsResponse>({
+      queryKey: ["/api/admin/offering-requests"],
+    });
+  const offeringRequests = offeringRequestsData?.requests ?? [];
+  const pendingOfferingRequests = offeringRequests.filter((r) => r.status === "pending");
+  const customOtherListingsCount = offeringRequestsData?.customOtherListingsCount ?? 0;
 
   const createMutation = useMutation({
     mutationFn: async (data: typeof newCategory) => {
@@ -341,6 +379,69 @@ export default function AdminCategories() {
             </CardContent>
           </Card>
         </div>
+
+        {/* ── "Don't see your offering?" — mockup §06c (migration 189 / offering_type_requests) ──
+            Read-only v1: lists pending requests and how many provider_services listings are
+            currently parked in Custom/Other while they wait on review. Approve/reject
+            (flip status + create the matching service_offering_types row) is a follow-up —
+            not built here. */}
+        <Card>
+          <CardHeader>
+            <CardTitle data-testid="text-requested-types-title">
+              Requested types ({pendingOfferingRequests.length})
+            </CardTitle>
+            <CardDescription>
+              Providers who couldn't find their offering in the picker and asked for a new type.
+              Approve/reject workflow is a follow-up — this is read-only for now.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-gray-600 dark:text-gray-400" data-testid="text-custom-other-count">
+              {customOtherListingsCount} listing{customOtherListingsCount === 1 ? "" : "s"} waiting in Custom/Other
+            </p>
+            {offeringRequestsLoading ? (
+              <div className="space-y-2">
+                {[...Array(3)].map((_, i) => (
+                  <Skeleton key={i} className="h-10 w-full" />
+                ))}
+              </div>
+            ) : pendingOfferingRequests.length === 0 ? (
+              <div className="text-center py-8 text-gray-500" data-testid="text-no-offering-requests">
+                <HelpCircle className="w-10 h-10 mx-auto mb-3 text-gray-400" />
+                <p>No pending requests.</p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table data-testid="table-offering-requests">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Requested name</TableHead>
+                      <TableHead>Description</TableHead>
+                      <TableHead>Requester</TableHead>
+                      <TableHead>Date</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {pendingOfferingRequests.map((r) => (
+                      <TableRow key={r.id} data-testid={`row-offering-request-${r.id}`}>
+                        <TableCell className="font-medium">{r.requestedName}</TableCell>
+                        <TableCell className="text-sm text-gray-500 max-w-xs truncate">
+                          {r.description || "—"}
+                        </TableCell>
+                        <TableCell className="text-sm text-gray-500">
+                          {r.requesterEmail || r.userId}
+                        </TableCell>
+                        <TableCell className="text-sm text-gray-500">
+                          {new Date(r.createdAt).toLocaleDateString()}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         <Card>
           <CardHeader>
