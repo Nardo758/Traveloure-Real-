@@ -23,8 +23,60 @@ These run server-side when an admin submits the Add-market form (`POST /api/admi
   extract failed.
 - **The checklist API.** `GET /api/admin/markets` reports, per market: `geographyReady` (a row
   exists with a non-zero way count), `neighborhoodsSeeded` (count ≥ 1, with the count shown), and —
-  where the DB can answer cheaply — `approvedLodgingWithCoords` and `dmoContentVisible`. A check the
-  query can't answer straightforwardly is omitted (`null`) in the response, never guessed at.
+  where the DB can answer cheaply — `approvedLodgingWithCoords`, `dmoContentVisible`, and
+  `dmoSourceKit` (see "Content source kit" below). A check the query can't answer straightforwardly
+  is omitted (`null`) in the response, never guessed at.
+
+## Content source kit
+
+The decision-maker's ratified content-source map defines four tiers: **Tier 1** government/DMO,
+**Tier 2** open data, **Tier 3** primary venue/registries, **Tier 4** events (incl. social). A
+market's "source kit" is the set of `dmo_sources` registry rows (`server/seeds/dmo-sources.seed.ts`,
+upserted at boot from `server/index.ts`) that cover it — a row counts for a market if
+`dmo_sources.market` equals the market's slug, equals its `country` (lowercased,
+spaces→underscored — e.g. `"Japan"` → `"japan"`), or equals the global catch-all `"global"`.
+
+**The full kit, per market, is seven registrations:**
+
+1. National tourism board (Tier 1) — e.g. JNTO for Japan, VisitBritain for the UK. **Registry row
+   today.**
+2. Regional/prefectural board (Tier 1) — e.g. Tourism Queensland, Kyoto Prefecture. **Registry row
+   today** (where seeded).
+3. City DMO + tourist information center (Tier 1) — e.g. Go Tokyo, Turisme de Barcelona, Visit
+   Lisboa, Paris je t'aime, Osaka Convention & Tourism Bureau. **Registry row today.**
+4. Open-data portal (Tier 2) — city/national statistics or GIS open-data portal, e.g. Paris Open
+   Data, NYC Open Data, Barcelona Open Data (Open Data BCN). **Registry row today.**
+5. Wikidata / OpenStreetMap pull (Tier 2) — structured entity data (Wikidata, CC0) and POI geometry
+   (OpenStreetMap via Overpass, ODbL). **Registry row today**; note the Overpass POI pull
+   (`dmo-global-osm-overpass`) is a distinct use from the market_geography water/parks/roads extract
+   this doc already documents above — both carry the same ODbL attribution requirement.
+6. Heritage register + national parks (Tier 3) — e.g. Historic England, Agency for Cultural Affairs
+   (Japan), Ministry of the Environment national parks (Japan). **Registry row today.**
+7. Event calendar with a refresh cadence (Tier 4) — festival/event listings that need periodic
+   re-scraping or an API poll, not a one-time pull. **Registry row for the source definition is not
+   sufficient by itself here** — an event calendar additionally needs a working refresh cadence
+   (a scheduled scrape/poll job), which is ingestion-adapter work, not registry seeding. The Tier 4
+   `dmo-global-youtube` row (destination-guide video metadata) is the current example of a registry
+   row that predates its adapter: it is seeded and `isActive`, but `notes` on the row says so
+   explicitly (`adapter = youtube-ingestion.service`) — it does nothing until that adapter exists.
+
+**Registry row vs. working ingestion — do not conflate the two.** `dmoSourceKit`'s count (and the
+admin page's "Sources" badge) reflects registry rows only — it says a source *definition* exists and
+is active, exactly like `geographyReady`/`neighborhoodsSeeded` say a row exists. It does **not** mean
+content from that source has been ingested, reviewed, or is visible anywhere — that is what
+`dmoContentVisible` (a completely separate check, against `dmo_raw_content`) tracks. A market can be
+`dmoSourceKit: { ok: true }` with `dmoContentVisible: { ok: false }` — the kit is registered, nothing
+has been pulled through it yet. ok threshold: **≥ 3** active matching rows (a market with only its
+`market: "global"`-inherited sources plus one local row is not meaningfully kitted out yet).
+
+**Facts vs. expression — the licensing line (CLAUDE.md §13).** Government/registry *facts*
+(a landmark's coordinates, a park's designation, a heritage listing's boundary) are not copyrightable
+in most jurisdictions; the *expression* around them (a DMO's photography, written copy, curated
+descriptions) usually is and is what `attributionRequired`/`attributionText` on `dmo_sources` govern.
+`dmo_sources` has no `license` column — Tier 2 open-data licensing detail (CC0, ODbL, "unknown — not
+confirmed, do not assume permissive") is recorded in each row's `notes` field instead of a schema
+change, consistent with this file's file-ownership boundary for this change (only
+`server/seeds/dmo-sources.seed.ts` was touched, not `shared/schema.ts`).
 
 ## Manual before launch
 
