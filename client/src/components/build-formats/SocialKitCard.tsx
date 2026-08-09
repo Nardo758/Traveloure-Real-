@@ -22,7 +22,8 @@ import { Copy, Link2 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { resolveFormat } from "@/lib/build-formats/registry";
-import { getMarketGeography, projectPath, projectPoint } from "@shared/geo/market-geography";
+import { projectPath, projectPoint } from "@shared/geo/market-geography";
+import { useMarketGeography } from "@/lib/use-market-geography";
 import {
   INK, MID, FAINT, LINE, GROUND, CARD, BRAND,
   type FormatDay, type FlatFormatItem, flattenDays, compareChrono,
@@ -227,9 +228,12 @@ export function SocialKitCard({ tripTitle, destination, experienceType, days, li
   const dayCount = days.length;
 
   // Route frame data — the digitized-clone geography layer (real OSM-derived water/parks/roads
-  // for launch markets) plus real located items only (§13). Absent geography or a market with no
-  // layer → route+dots project against the located points' own bbox instead ("plain ground").
-  const geography = getMarketGeography(destination);
+  // for launch markets) plus real located items only (§13). Fetched (not bundled) via
+  // useMarketGeography — DB-first, migration 186. Absent geography (including "still loading":
+  // an export frame doesn't need a spinner, it just renders as the honest no-layer state until the
+  // fetch lands) or a market with no layer → route+dots project against the located points' own
+  // bbox instead ("plain ground").
+  const { geography } = useMarketGeography(destination);
   const routePoints = buildRoutePoints(days);
   const routeDayGroups = groupRouteByDay(routePoints);
   const routeBbox = geography?.bbox ?? (routePoints.length > 0 ? fallbackBbox(routePoints) : null);

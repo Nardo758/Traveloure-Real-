@@ -28,6 +28,14 @@ import {
 import { searchWorkstationPlatformContent } from "../services/content-query.service";
 import { geocodeAddress } from "../utils/geocode";
 import { trackAICost, calculateAnthropicCost } from "../services/ai-cost-tracker";
+import {
+  getExtractedPlaceRows,
+  mapRowsToPlaces,
+  replaceExtractedPlaces,
+  updateTicketingUrlByPosition,
+  getExtractedPlacesCounts,
+  isConcludedEmptyMarker,
+} from "../services/dmo-extracted-places.service";
 
 const router = Router();
 
@@ -133,17 +141,20 @@ export function classifyDmoShape(row: {
   return "place";
 }
 
-// Number of venues an earlier extract-places run found in this row's extracted_data, or null
-// if extraction has never run (distinct from 0, which means "ran and found nothing").
-function extractedPlacesCount(extractedData: unknown): number | null {
-  if (
-    extractedData &&
-    typeof extractedData === "object" &&
-    Array.isArray((extractedData as { places?: unknown }).places)
-  ) {
-    return (extractedData as { places: unknown[] }).places.length;
-  }
-  return null;
+// Number of venues an earlier extract-places run found for this row, sourced from the
+// dmo_extracted_places child rows (§20a) — the source of truth, not extracted_data. Returns
+// null if extraction has never run (distinct from 0, which means "ran and found nothing"). A
+// present, non-zero row count answers it outright; an absent one falls back to the
+// extracted_data "concluded empty via live fetch" marker (the one state a zero-row count can't
+// distinguish from "never ran" on its own — see the extract-places cache rule below).
+function extractedPlacesCountFromRows(
+  contentId: string,
+  countsByContentId: Map<string, number>,
+  extractedData: unknown,
+): number | null {
+  const rowCount = countsByContentId.get(contentId);
+  if (rowCount) return rowCount;
+  return isConcludedEmptyMarker(extractedData) ? 0 : null;
 }
 
 const libraryQuerySchema = z.object({
@@ -264,6 +275,11 @@ router.get(
     // per-expert, not collaborative — leaking cross-expert overlays would silently attribute
     // one expert's wording/tags to another's library view).
     const ids = items.map((i) => i.id);
+
+    // Batched (avoids N+1): one grouped COUNT over dmo_extracted_places for the whole page,
+    // rather than a per-row read (§20a — child rows are the source of truth for the count).
+    const extractedPlacesCounts = await getExtractedPlacesCounts(ids);
+
     const editsByContentId = new Map<string, typeof expertDmoEdits.$inferSelect>();
     if (ids.length > 0 && expertId) {
       const edits = await db
@@ -303,7 +319,7 @@ router.get(
           // Reader-list additions (shape classification never overridden by an expert edit —
           // it describes the underlying content, not the refined wording).
           shape: classifyDmoShape(item),
-          extractedPlacesCount: extractedPlacesCount(item.extractedData),
+          extractedPlacesCount: extractedPlacesCountFromRows(item.id, extractedPlacesCounts, item.extractedData),
         };
       }),
     });
@@ -324,8 +340,28 @@ router.get(
       throw new NotFoundError("Content not found");
     }
 
+    // extractedData served to the reader is now sourced from the dmo_extracted_places child
+    // rows (§20a), not the extracted_data blob — same {places, extractedAt, source} shape so
+    // the client is byte-compatible. A zero-row guide falls back to the blob ONLY for the
+    // "concluded empty via live fetch" marker (mirrors the extract-places cache rule); otherwise
+    // there is honestly nothing to serve, matching "extraction never ran".
+    const extractedRows = await getExtractedPlaceRows(id);
+    let extractedDataResponse: { places: ReturnType<typeof mapRowsToPlaces>; extractedAt: Date | string | null; source: string } | null;
+    if (extractedRows.length > 0) {
+      extractedDataResponse = {
+        places: mapRowsToPlaces(extractedRows),
+        extractedAt: extractedRows[0].extractedAt,
+        source: extractedRows[0].source,
+      };
+    } else if (isConcludedEmptyMarker(item.extractedData)) {
+      const blob = item.extractedData as { extractedAt?: string; source?: string };
+      extractedDataResponse = { places: [], extractedAt: blob.extractedAt ?? null, source: blob.source ?? "live_fetch" };
+    } else {
+      extractedDataResponse = null;
+    }
+
     // DMO Research Reader drawer: the field set the reader actually renders, plus the
-    // computed `shape` and the raw `extractedData` (place-extraction results, if any run).
+    // computed `shape` and the derived `extractedData` (place-extraction results, if any run).
     // Deliberately narrower than the raw row — no rawData/normalizedData/embeddingVector.
     res.json({
       id: item.id,
@@ -345,7 +381,7 @@ router.get(
       tags: item.tags,
       primaryImageUrl: item.primaryImageUrl,
       shape: classifyDmoShape(item),
-      extractedData: item.extractedData,
+      extractedData: extractedDataResponse,
     });
   }),
 );
@@ -485,17 +521,18 @@ router.post(
       throw new NotFoundError("Content not found");
     }
 
-    // Run-once cache. A non-empty extraction is always served as-is. An EMPTY one is served
-    // only when it came from a live fetch — the strongest attempt this endpoint can make —
-    // so a pre-ruling empty stored_text run gets automatically upgraded through the fetch
-    // path on its next open instead of being stuck empty forever.
-    const existingData = item.extractedData as { places?: unknown; source?: string } | null;
-    const existingPlaces = existingData?.places;
-    if (
-      Array.isArray(existingPlaces) &&
-      (existingPlaces.length > 0 || existingData?.source === "live_fetch")
-    ) {
-      return res.json({ places: existingPlaces, cached: true });
+    // Run-once cache — served from the dmo_extracted_places child rows (§20a), the source of
+    // truth. A non-empty row set is always served as-is. Rows are indistinguishable from
+    // "extraction never ran" when EMPTY, so the "ran via live fetch, found nothing" conclusion —
+    // the strongest attempt this endpoint can make — is the one state still read from the
+    // extracted_data blob marker: it keeps an empty live_fetch result from re-fetching on every
+    // open, while an empty stored_text run (no live fetch yet) stays retryable.
+    const existingRows = await getExtractedPlaceRows(id);
+    if (existingRows.length > 0) {
+      return res.json({ places: mapRowsToPlaces(existingRows), cached: true });
+    }
+    if (isConcludedEmptyMarker(item.extractedData)) {
+      return res.json({ places: [], cached: true });
     }
 
     // Assemble stored text: the row's description plus obviously-textual string fields of the
@@ -596,12 +633,21 @@ router.post(
     // nothing (that empty IS the answer — cache it, see the cache rule above). An empty result
     // whose fetch FAILED stays unpersisted so the next open retries the fetch.
     if (places.length > 0 || extractionSource === "live_fetch") {
+      const extractedAt = new Date();
+      // Child rows are the source of truth (§20a) — replace-by-position, preserving any
+      // expert-added ticketing_url across the refresh by normalized_name match. The response is
+      // built from the SAME rows just persisted so a preserved URL is visible to the caller too.
+      const insertedRows = await replaceExtractedPlaces(id, places, extractedAt, extractionSource);
+      // Dual-write to extracted_data for rollback safety (§20a) — this is also the ONLY place
+      // the empty-live_fetch "concluded" marker survives (see the cache rule above); the blob is
+      // otherwise never read for places again.
       await db
         .update(dmoRawContent)
         .set({
-          extractedData: { places, extractedAt: new Date().toISOString(), source: extractionSource },
+          extractedData: { places, extractedAt: extractedAt.toISOString(), source: extractionSource },
         })
         .where(eq(dmoRawContent.id, id));
+      return res.json({ places: mapRowsToPlaces(insertedRows), cached: false });
     }
 
     res.json({ places, cached: false });
@@ -656,21 +702,39 @@ router.patch(
     const { ticketingUrl } = parsed.data;
 
     const index = Number(req.params.index);
-    const placesRaw = (item.extractedData as { places?: unknown } | null)?.places;
-    if (!Number.isInteger(index) || !Array.isArray(placesRaw) || index < 0 || index >= placesRaw.length) {
+    if (!Number.isInteger(index) || index < 0) {
       throw new NotFoundError("Extracted place not found");
     }
 
-    const places = placesRaw.slice();
-    const updatedPlace = { ...(places[index] as Record<string, unknown>), ticketingUrl };
-    places[index] = updatedPlace;
+    // position === index + 1: extraction always writes contiguous 1-based positions in article
+    // order, so array-index and position coincide — the same semantics the old blob-array index
+    // had (§20a). A missing row (bad index, or the guide was never extracted) is the 404.
+    const updatedRow = await updateTicketingUrlByPosition(id, index + 1, ticketingUrl);
+    if (!updatedRow) {
+      throw new NotFoundError("Extracted place not found");
+    }
 
-    await db
-      .update(dmoRawContent)
-      .set({
-        extractedData: { ...(item.extractedData as Record<string, unknown>), places },
-      })
-      .where(eq(dmoRawContent.id, id));
+    // Mirror into the extracted_data blob (dual-write, §20a) so the historical blob never holds
+    // a stale ticketing_url.
+    const placesRaw = (item.extractedData as { places?: unknown } | null)?.places;
+    if (Array.isArray(placesRaw) && index < placesRaw.length) {
+      const places = placesRaw.slice();
+      places[index] = { ...(places[index] as Record<string, unknown>), ticketingUrl };
+      await db
+        .update(dmoRawContent)
+        .set({
+          extractedData: { ...(item.extractedData as Record<string, unknown>), places },
+        })
+        .where(eq(dmoRawContent.id, id));
+    }
+
+    // Same response contract as before: the full place object with ticketingUrl always present
+    // (string or null) — optional fields omitted only when genuinely absent.
+    const updatedPlace: Record<string, unknown> = { n: updatedRow.position, name: updatedRow.name };
+    if (updatedRow.latitude != null) updatedPlace.latitude = updatedRow.latitude;
+    if (updatedRow.longitude != null) updatedPlace.longitude = updatedRow.longitude;
+    if (updatedRow.inLibraryId != null) updatedPlace.inLibraryId = updatedRow.inLibraryId;
+    updatedPlace.ticketingUrl = updatedRow.ticketingUrl;
 
     res.json(updatedPlace);
   }),

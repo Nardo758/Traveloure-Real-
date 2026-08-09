@@ -841,4 +841,11 @@ export const MIGRATION_FILES = [
   // never receives free text. No CHECK (migration-159/173/181 posture). Declared in
   // shared/schema.ts in the same commit. See 184_ready_made_plan_type_custom.sql.
   "184_ready_made_plan_type_custom.sql",
+  // 185/186: CLAUDE.md §20 (decision-maker ratified Aug 9 2026). 185 promotes DMO extracted
+  // places from the extracted_data.places JSON blob to child rows (additive table + idempotent
+  // backfill; blob thereafter historical). 186 creates market_geography (DB-backed market
+  // water/parks/roads layer for the admin "Add market" flow; no seed — code-literal fallback
+  // keeps an empty table behavior-neutral). Both declared in shared/schema.ts (publish-trap).
+  "185_dmo_extracted_places.sql",
+  "186_market_geography.sql",
 ] as const;
