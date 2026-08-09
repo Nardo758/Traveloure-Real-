@@ -37,6 +37,7 @@ import { itineraryGenerationSweepScheduler } from "./services/itinerary-generati
 import { runDailyAdminDigest } from "./jobs/dailyAdminDigest";
 import { runNightlyQA } from "./jobs/nightlyQA";
 import { runStripeReconciliation } from "./jobs/stripeReconciliation";
+import { runDmoExtractionWarmupSweep } from "./jobs/dmoExtractionWarmup";
 import {
   logger,
   httpLogger,
@@ -601,6 +602,16 @@ if (process.env.NODE_ENV === "production") {
       runStripeReconciliation();
       setInterval(runStripeReconciliation, 24 * 60 * 60 * 1000);
     }, 60 * 60 * 1000);
+
+    // DMO extraction warmup sweep (part 2/3 of the pre-extraction design, CLAUDE.md-adjacent
+    // ruling Aug 9 2026 — see server/jobs/dmoExtractionWarmup.ts). Delayed ~60s so it never
+    // competes with startup; runs ONCE per boot (a "per boot" cap, not a recurring interval —
+    // the admin-approve hook already covers new approvals, this only mops up backlog/misses).
+    setTimeout(() => {
+      runDmoExtractionWarmupSweep().catch((err) =>
+        logger.error({ err }, "[dmo-extraction-warmup] sweep failed unexpectedly"),
+      );
+    }, 60 * 1000);
 
     (() => {
       const now = new Date();
