@@ -262,7 +262,21 @@ router.get(api.trips.get.path, async (req, res) => {
       .orderBy(desc(tripExpertAdvisors.assignedAt))
       .limit(1);
 
-    res.json({ ...trip, expertWorkspaceStatus: advisorRow?.workspaceStatus ?? null });
+    // §21 (ratified Aug 9 2026): `trips.expertNotes` is the Workstation's PRIVATE build-note
+    // field (PATCH /api/trips/:tripId/expert-notes, booking-actions.ts) — it must never be
+    // delivered to the traveler. This handler's viewer set includes the trip OWNER (the
+    // traveler themselves) and a plain-shareToken guest, neither of which is a builder-side
+    // principal; only the trip-column expert / managing EA is. Redact it here rather than trust
+    // every future consumer of the `...trip` spread to know not to render it — the same posture
+    // `/api/itinerary-share/:token` below already takes for its own (unrelated)
+    // `shared_itineraries.expertNotes` column. `expertTravelerNote` (§21's traveler-facing
+    // counterpart) is NOT redacted — it is meant for exactly this audience.
+    const canSeePrivateExpertNotes = isExpert || isManagingEa;
+    res.json({
+      ...trip,
+      expertNotes: canSeePrivateExpertNotes ? trip.expertNotes : null,
+      expertWorkspaceStatus: advisorRow?.workspaceStatus ?? null,
+    });
   });
 
 
@@ -2207,6 +2221,20 @@ router.get("/api/itinerary-share/:token", async (req, res) => {
       // content. A plain "view" link (the everyday friend/family share) never sees it.
       const canSeeExpertContent = isOwner || shared.permissions === "suggest" || shared.permissions === "edit";
 
+      // §21 (ratified Aug 9 2026): the TRAVELER-FACING trip-level delivery note. This is a
+      // DIFFERENT column (`trips.expertTravelerNote`) from the `expertNotes`/`expertDiff` above
+      // (`shared_itineraries`' own private per-share-review commentary) — never confuse the two.
+      // Unlike those, this field is meant for EVERY viewer of a delivered plan (no
+      // `canSeeExpertContent` gate) — a "view"-only friend/family link is exactly the audience
+      // §21 wrote this note for. Best-effort: `plan.meta.tripId` is nullable for a variant
+      // produced off a trip-less optimizer comparison (shared/trip-plan.ts), in which case there
+      // is no `trips` row to read the note from and it stays null (§13 — never guessed).
+      let expertTravelerNote: string | null = null;
+      if (plan.meta.tripId) {
+        const linkedTrip = await storage.getTrip(plan.meta.tripId);
+        expertTravelerNote = linkedTrip?.expertTravelerNote ?? null;
+      }
+
       res.json({
         variant: {
           id: plan.meta.sourceRef.id,
@@ -2248,6 +2276,8 @@ router.get("/api/itinerary-share/:token", async (req, res) => {
         // Private expert review content — never sent to a non-owner "view"-only link holder.
         expertNotes: canSeeExpertContent ? (shared.expertNotes || null) : null,
         expertDiff: canSeeExpertContent ? (shared.expertDiff || null) : null,
+        // §21: traveler-facing trip-level note — every viewer gets it, see comment above.
+        expertTravelerNote,
         transportPreferences: shared.transportPreferences,
         shareToken: token,
         isOwner,
@@ -3158,6 +3188,12 @@ router.patch("/api/trips/:tripId/itinerary-items/:itemId", isAuthenticated, asyn
       // Strip immutable/ownership fields to prevent mass-assignment. `origin` (D2, ratified Aug 7
       // 2026) is provenance stamped only at CREATE time — a PATCH must never let a client
       // retroactively rewrite it.
+      // `expertNote` is DELIBERATELY left in `safeBody` and reaches the DB write below — it is the
+      // TRAVELER-FACING per-item note (§21, migration 152) PlanCard already renders, distinct from
+      // the trip-level PRIVATE `trips.expertNotes` (Workstation build notes) and the trip-level
+      // traveler-facing `trips.expertTravelerNote` (PATCH /api/trips/:tripId/expert-traveler-note,
+      // below). This write path already carried it — the §21 audit's "Workstation write path" gap
+      // was the client never sending the field, not a missing server allow-list entry.
       const { id: _id, tripId: _tripId, createdAt: _createdAt, updatedAt: _updatedAt, suggestedBy: _sb, origin: _origin, ...safeBody } = req.body as any;
       const updated = await storage.updateItineraryItem(itemId, safeBody);
       if (!updated) return res.status(404).json({ message: "Item not found" });
@@ -3191,6 +3227,49 @@ router.delete("/api/trips/:tripId/itinerary-items/:itemId", isAuthenticated, asy
     } catch (err) {
       console.error("[ItineraryItems] DELETE error:", err);
       res.status(500).json({ message: "Failed to delete itinerary item" });
+    }
+  });
+
+
+// PATCH /api/trips/:tripId/expert-traveler-note — §21 (ratified Aug 9 2026, migration 187):
+// TRAVELER-FACING trip-level delivery note ("Note from your expert", rendered atop the delivered
+// plan — client/src/components/plancard/PlanCard.tsx). DISTINCT from the PRIVATE
+// PATCH /api/trips/:tripId/expert-notes (server/routes/booking-actions.ts), which is the
+// Workstation's own build-notes rail and must NEVER be delivered to the traveler — never merge
+// the two write rails, never let one endpoint write the other's column.
+//
+// Write-gated through the canonical `authorizeTripLogistics` posture (owner ‖ accepted/assigned
+// advisor ‖ trip author ‖ audit-logged admin) with `requireWriteAccess: true` — the same §12
+// posture ("a PENDING advisor may not write") the itinerary-item mutation routes above use — since
+// this endpoint mutates trip-visible content exactly like they do. This is a deliberately BROADER
+// gate than the private-notes PATCH it mirrors in shape (that one is assignment-only, a known
+// narrower gap — see this file's PATCH itinerary-items handler for the same owner/author/advisor
+// posture already established elsewhere in this router).
+router.patch("/api/trips/:tripId/expert-traveler-note", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req)!;
+      const { tripId } = req.params;
+      const denied = await authorizeTripLogistics(
+        tripId, userId, "PATCH /api/trips/:tripId/expert-traveler-note", { requireWriteAccess: true },
+      );
+      if (denied) return res.status(denied.status).json({ message: denied.message });
+
+      const raw = (req.body as any)?.expertTravelerNote;
+      if (raw !== null && raw !== undefined && typeof raw !== "string") {
+        return res.status(400).json({ message: "expertTravelerNote must be a string or null" });
+      }
+      const trimmed = typeof raw === "string" ? raw.trim() : null;
+      if (trimmed && trimmed.length > 2000) {
+        return res.status(400).json({ message: "expertTravelerNote must be 2000 characters or fewer" });
+      }
+      // Empty string → null (the "no note" value), matching the private rail's own convention.
+      const expertTravelerNote = trimmed ? trimmed : null;
+
+      await storage.updateTrip(tripId, { expertTravelerNote });
+      res.json({ ok: true, expertTravelerNote });
+    } catch (err) {
+      console.error("[Advisor] saveExpertTravelerNote error:", err);
+      res.status(500).json({ message: "Failed to save expert traveler note" });
     }
   });
 
