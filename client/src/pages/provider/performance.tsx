@@ -53,8 +53,14 @@ interface ProviderAnalytics {
   }>;
   benchmarks: {
     avgBookingValue: number;
-    categoryAvg: number;
-    topPerformerAvg: number;
+    // §13: real computed aggregates, not fabricated literals. status "ok" means
+    // categoryAvg/topPerformerAvg are real numbers over `sampleSize` comparable listings;
+    // "no_data" means sampleSize was too small (<5) and both are null — render honestly,
+    // never fall back to a made-up number.
+    status: "ok" | "no_data";
+    sampleSize: number;
+    categoryAvg: number | null;
+    topPerformerAvg: number | null;
   };
 }
 
@@ -96,12 +102,19 @@ export default function ProviderPerformance() {
   // D5 (UX audit Jul 29): "Below Average" was rendered even for an account with zero
   // bookings (avgBookingValue 0 always fails the benchmark check) — a judgment against
   // no data, not a real comparison. `no_data` is a distinct, honest status (§13 pattern).
-  const getBenchmarkStatus = (value: number, benchmark: number) => {
-    if (value <= 0) return "no_data";
+  // benchmark is now `null` when the server has no comparable-listing sample (<5) for this
+  // provider's category — that is also honestly "no_data", never compared against a fallback.
+  const getBenchmarkStatus = (value: number, benchmark: number | null) => {
+    if (value <= 0 || benchmark === null) return "no_data";
     if (value >= benchmark * 1.2) return "excellent";
     if (value >= benchmark) return "good";
     return "needs_improvement";
   };
+
+  const benchmarkHasData = analytics?.benchmarks?.status === "ok";
+  const categoryAvg = analytics?.benchmarks?.categoryAvg ?? null;
+  const topPerformerAvg = analytics?.benchmarks?.topPerformerAvg ?? null;
+  const benchmarkSampleSize = analytics?.benchmarks?.sampleSize ?? 0;
 
   return (
     <ProviderLayout title="Performance">
@@ -189,6 +202,11 @@ export default function ProviderPerformance() {
                   <CardDescription>Compare your performance with peers</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
+                  {!benchmarkHasData && (
+                    <p className="text-sm text-muted-foreground" data-testid="text-benchmark-no-data">
+                      Not enough comparable listings in your market yet.
+                    </p>
+                  )}
                   <div className="space-y-4">
                     <div className="flex items-center justify-between p-4 rounded-lg border" data-testid="benchmark-your-avg">
                       <div>
@@ -199,44 +217,52 @@ export default function ProviderPerformance() {
                         <p className="text-2xl font-bold text-foreground">${Math.round(analytics?.benchmarks?.avgBookingValue || 0)}</p>
                         <Badge
                           className={
-                            getBenchmarkStatus(analytics?.benchmarks?.avgBookingValue || 0, analytics?.benchmarks?.categoryAvg || 280) === "excellent"
+                            getBenchmarkStatus(analytics?.benchmarks?.avgBookingValue || 0, categoryAvg) === "excellent"
                               ? "bg-green-100 text-green-700 border-green-200"
-                              : getBenchmarkStatus(analytics?.benchmarks?.avgBookingValue || 0, analytics?.benchmarks?.categoryAvg || 280) === "good"
+                              : getBenchmarkStatus(analytics?.benchmarks?.avgBookingValue || 0, categoryAvg) === "good"
                               ? "bg-blue-100 text-blue-700 border-blue-200"
-                              : getBenchmarkStatus(analytics?.benchmarks?.avgBookingValue || 0, analytics?.benchmarks?.categoryAvg || 280) === "no_data"
+                              : getBenchmarkStatus(analytics?.benchmarks?.avgBookingValue || 0, categoryAvg) === "no_data"
                               ? "bg-muted text-muted-foreground border-border"
                               : "bg-amber-100 text-amber-700 border-amber-200"
                           }
                         >
-                          {getBenchmarkStatus(analytics?.benchmarks?.avgBookingValue || 0, analytics?.benchmarks?.categoryAvg || 280) === "excellent"
+                          {getBenchmarkStatus(analytics?.benchmarks?.avgBookingValue || 0, categoryAvg) === "excellent"
                             ? "Excellent"
-                            : getBenchmarkStatus(analytics?.benchmarks?.avgBookingValue || 0, analytics?.benchmarks?.categoryAvg || 280) === "good"
+                            : getBenchmarkStatus(analytics?.benchmarks?.avgBookingValue || 0, categoryAvg) === "good"
                             ? "Good"
-                            : getBenchmarkStatus(analytics?.benchmarks?.avgBookingValue || 0, analytics?.benchmarks?.categoryAvg || 280) === "no_data"
+                            : getBenchmarkStatus(analytics?.benchmarks?.avgBookingValue || 0, categoryAvg) === "no_data"
                             ? "No data yet"
                             : "Below Average"
                           }
                         </Badge>
                       </div>
                     </div>
-                    
+
                     <div className="flex items-center justify-between p-4 rounded-lg border bg-muted/30" data-testid="benchmark-category-avg">
                       <div>
                         <p className="font-medium text-foreground">Category Average</p>
-                        <p className="text-sm text-muted-foreground">Similar providers</p>
+                        <p className="text-sm text-muted-foreground">
+                          {benchmarkHasData ? `Similar providers (n=${benchmarkSampleSize} listings)` : "Similar providers"}
+                        </p>
                       </div>
                       <div className="text-right">
-                        <p className="text-2xl font-bold text-muted-foreground">${analytics?.benchmarks?.categoryAvg || 280}</p>
+                        <p className="text-2xl font-bold text-muted-foreground">
+                          {categoryAvg !== null ? `$${categoryAvg}` : "No data yet"}
+                        </p>
                       </div>
                     </div>
-                    
+
                     <div className="flex items-center justify-between p-4 rounded-lg border bg-muted/30" data-testid="benchmark-top-performer">
                       <div>
-                        <p className="font-medium text-foreground">Top Performers</p>
-                        <p className="text-sm text-muted-foreground">Top 10%</p>
+                        <p className="font-medium text-foreground">Top Quartile</p>
+                        <p className="text-sm text-muted-foreground">
+                          {benchmarkHasData ? `Top 25% average (n=${benchmarkSampleSize} listings)` : "Top 25% average"}
+                        </p>
                       </div>
                       <div className="text-right">
-                        <p className="text-2xl font-bold text-muted-foreground">${analytics?.benchmarks?.topPerformerAvg || 450}</p>
+                        <p className="text-2xl font-bold text-muted-foreground">
+                          {topPerformerAvg !== null ? `$${topPerformerAvg}` : "No data yet"}
+                        </p>
                       </div>
                     </div>
                   </div>
