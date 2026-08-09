@@ -625,7 +625,22 @@ function DmoReader({
                   )}
                 </div>
               ) : places.length === 0 ? (
-                <p className="text-sm py-2" style={{ color: "var(--console-mid)" }}>No places found in this guide.</p>
+                // Empty ≠ the article has no places — it means the STORED excerpt names none
+                // (scrapers often capture only the page top: title + disclosure + intro, while
+                // the venue list lives further down). Say so honestly and hand the expert the
+                // source, exactly like the thin-text state — never a dead end.
+                <div className="text-center py-4 space-y-2">
+                  <p className="text-sm" style={{ color: "var(--console-mid)" }}>
+                    No places named in the stored excerpt — the full article may list more. Read the source.
+                  </p>
+                  {detail.sourceUrl && (
+                    <a href={detail.sourceUrl} target="_blank" rel="noopener noreferrer">
+                      <Button size="sm" variant="outline" data-testid="button-dmo-reader-source-fallback">
+                        View source <ExternalLink className="w-3 h-3 ml-1" />
+                      </Button>
+                    </a>
+                  )}
+                </div>
               ) : (
                 <div className="space-y-1">
                   <div className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: "var(--console-faint)" }}>
