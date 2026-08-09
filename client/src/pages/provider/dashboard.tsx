@@ -20,6 +20,7 @@ import {
   Package,
   Loader2,
   AlertCircle,
+  Plane,
 } from "lucide-react";
 import { Link } from "wouter";
 import { PayoutBanner } from "@/components/expert/PayoutBanner";
@@ -67,6 +68,15 @@ interface BusinessSetupSummary {
 // page never writes it (the card's own "X" button is the sole writer).
 const SETUP_DISMISS_KEY_PREFIX = "traveloure_setup_dismissed_";
 
+// Vacation mode (mockup §06b, provider back-office wave, decision-maker ratified Aug 9 2026).
+// Read-only here — GET /api/me/vacation, the same server-derived `active` the Settings card
+// and storefront/advisor/checkout enforcement points all read. Business-level flag only.
+interface VacationStatus {
+  vacationUntil: string | null;
+  vacationMessage: string | null;
+  active: boolean;
+}
+
 export default function ProviderDashboard() {
   const { user } = useAuth();
 
@@ -84,6 +94,11 @@ export default function ProviderDashboard() {
 
   const { data: requestsData } = useQuery<{ requests: any[] }>({
     queryKey: ["/api/provider/booking-requests"],
+  });
+
+  const { data: vacationStatus } = useQuery<VacationStatus>({
+    queryKey: ["/api/me/vacation"],
+    enabled: !!user,
   });
 
   // Same query key SetupChecklistCard uses internally — read here only to size the compact
@@ -142,12 +157,14 @@ export default function ProviderDashboard() {
   }
 
   // Console IA C9 (§17 17→9 collapse): this dashboard is the provider console's TODAY seat
-  // (module 1, ops home) — the sidebar entry is labeled "Today" and the route stays
-  // /provider/dashboard (label-only rename, the cheapest honest move; no expert today-strip
-  // rebuild — this page already leads with today's bookings + pending action items).
+  // (module 1, ops home) — the route stays /provider/dashboard (label-only rename, the
+  // cheapest honest move; no expert today-strip rebuild — this page already leads with
+  // today's bookings + pending action items). Provider back-office wave (Aug 9 2026): the
+  // topbar/header title below is renamed "Today" → "Dashboard"; the sidebar entry's own label
+  // is a separate file, renamed by a sibling change.
   if (analyticsLoading) {
     return (
-      <ProviderLayout title="Today">
+      <ProviderLayout title="Dashboard">
         <div className="flex items-center justify-center h-64">
           <Loader2 className="w-8 h-8 animate-spin text-console-dark" />
         </div>
@@ -156,12 +173,38 @@ export default function ProviderDashboard() {
   }
 
   return (
-    <ProviderLayout title="Today">
+    <ProviderLayout title="Dashboard">
       <div className="p-6 space-y-6">
         <PayoutBanner
           stripeConnectStatus={stripeStatus?.status ?? "not_started"}
           isPayable={stripeStatus?.connected ?? false}
         />
+
+        {/* Vacation mode banner (mockup §06b) — business-level flag only, read-only here.
+            Rendered above the KPIs per spec, linking to Settings' Vacation Mode card. */}
+        {vacationStatus?.active && vacationStatus.vacationUntil && (
+          <div
+            className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 flex-wrap"
+            data-testid="banner-vacation-mode"
+          >
+            <div className="flex items-center gap-2 text-sm text-amber-800">
+              <Plane className="w-4 h-4 flex-shrink-0" />
+              <span>
+                Vacation mode ON until{" "}
+                {new Date(vacationStatus.vacationUntil).toLocaleDateString(undefined, {
+                  month: "short",
+                  day: "numeric",
+                })}{" "}
+                — new bookings paused
+              </span>
+            </div>
+            <Link href="/provider/settings">
+              <Button variant="outline" size="sm" className="border-amber-300 text-amber-800 hover:bg-amber-100" data-testid="link-vacation-settings">
+                Manage <ChevronRight className="w-3.5 h-3.5 ml-1" />
+              </Button>
+            </Link>
+          </div>
+        )}
 
         {/* Welcome Section — the "N this month" subtitle was removed: it exactly duplicated
             the "This Month" KPI two rows below (§13, no reason to say the same number twice). */}
