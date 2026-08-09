@@ -2915,6 +2915,32 @@ export const cityNeighborhoods = pgTable("city_neighborhoods", {
   uniqCitySlug: unique("city_neighborhoods_city_country_slug_uniq").on(table.city, table.country, table.slug),
 }));
 
+// A market's self-rendered geography layer (water/parks/roads polylines in lon/lat), DB-backed
+// so the admin "Add market" flow is one action with no code commit per market (CLAUDE.md §20b,
+// migration 186; decision-maker ratified Aug 9 2026). Written by the server-side Overpass
+// extract (same length-ranked caps as scripts/generate-market-geography.ts); read DB-first with
+// the committed KYOTO_GEOGRAPHY literal as server-side fallback. Absent row = the market
+// honestly renders without a geography layer (§13 — never another city's shapes). ODbL: every
+// render of this data carries "© OpenStreetMap contributors". Declared here per the
+// publish-trap rule — an undeclared table would be dropped by the deploy push.
+export const marketGeography = pgTable("market_geography", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  market: varchar("market", { length: 100 }).notNull().unique(), // slug, matches getMarketGeography contains-lookup
+  displayName: varchar("display_name", { length: 100 }),
+  country: varchar("country", { length: 100 }),
+  bbox: jsonb("bbox").notNull(), // [west, south, east, north] lon/lat
+  water: jsonb("water").notNull().default([]), // [[lon,lat],...][] polylines
+  parks: jsonb("parks").notNull().default([]),
+  roads: jsonb("roads").notNull().default([]),
+  // Honesty metadata: {water:{kept,total},parks:{...},roads:{...}} — a capped extract must
+  // never read as full OSM coverage (§13).
+  wayCounts: jsonb("way_counts"),
+  source: varchar("source", { length: 30 }).notNull().default("overpass"),
+  extractedAt: timestamp("extracted_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // ─── Phase 3 join + target tables ───────────────────────────────────────────
 // expertNeighborhoods: expert ↔ neighborhood. Soft-exclusive "lead" enforced
 // at DB level by a partial unique index (one is_lead=true per neighborhood).
@@ -7216,6 +7242,33 @@ export const dmoRawContent = pgTable("dmo_raw_content", {
   sourceUrlUnique: unique("dmo_raw_content_source_url_unique").on(table.sourceUrl, table.sourceId),
   marketIdx: uniqueIndex("dmo_raw_content_market_idx").on(table.country, table.city, table.contentType),
   statusIdx: uniqueIndex("dmo_raw_content_status_idx").on(table.status, table.expertWorkspaceVisible),
+}));
+
+// Places extracted from a DMO guide, promoted from the extracted_data.places JSON blob to
+// first-class child rows (CLAUDE.md §20a, migration 185; decision-maker ratified Aug 9 2026).
+// Source of truth for the Research Reader's harvest panel: re-extract replaces by position but
+// preserves expert-added ticketing_url by normalized_name match. The parent's extracted_data
+// blob is backfilled-from and thereafter historical (never read). Declared here per the
+// publish-trap rule — an undeclared table would be dropped by the deploy push.
+export const dmoExtractedPlaces = pgTable("dmo_extracted_places", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  dmoContentId: varchar("dmo_content_id").notNull().references(() => dmoRawContent.id, { onDelete: "cascade" }),
+  position: integer("position").notNull(), // 1-based article order (the reader's numbered dots)
+  name: varchar("name", { length: 255 }).notNull(),
+  normalizedName: varchar("normalized_name", { length: 255 }).notNull(), // lower(trim(name)) — merge/dedupe key
+  // Best-effort geocode at extraction time; NULL = honestly coordinate-less (§13 — no city-center fallback).
+  latitude: decimal("latitude", { precision: 10, scale: 7 }),
+  longitude: decimal("longitude", { precision: 10, scale: 7 }),
+  inLibraryId: varchar("in_library_id"), // soft ref → dmo_raw_content.id (same-city library match; no FK — advisory only)
+  ticketingUrl: text("ticketing_url"), // expert-added https:// reference link — survives re-extract
+  source: varchar("source", { length: 30 }).notNull().default("stored_text"), // 'stored_text' | 'live_fetch' (app-enforced, no CHECK)
+  extractedAt: timestamp("extracted_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  contentPositionUnique: unique("dmo_extracted_places_content_position_unique").on(table.dmoContentId, table.position),
+  contentIdx: index("dmo_extracted_places_content_idx").on(table.dmoContentId),
+  normalizedNameIdx: index("dmo_extracted_places_normalized_name_idx").on(table.normalizedName),
 }));
 
 export const expertDmoCollections = pgTable("expert_dmo_collections", {
