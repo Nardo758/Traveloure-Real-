@@ -477,6 +477,30 @@ function DmoReader({
   const rawPlaces = extractQuery.data?.places ?? [];
   const places = rawPlaces.map((p) => (ticketingOverrides[p.n] !== undefined ? { ...p, ticketingUrl: ticketingOverrides[p.n] } : p));
 
+  // Discovery layer while reading: the guide's EXTRACTED places (never the guide article
+  // itself — an article is not a place) publish as candidate pins on the canvas map. Own
+  // source key beside the list's "dmo" one; the list publisher goes inactive while the
+  // reader is open (see DmoPickerCore), so the slot is cleanly handed over. Excludes rows
+  // without server-supplied coords (§13), already-added rows (they become real plan pins on
+  // refetch), and in-library rows (their affordance is "view", not a map add).
+  usePublishMapCandidates(
+    "dmo-reader",
+    "Places in this guide",
+    places
+      .filter((p) => addedDays[p.n] == null && !p.inLibraryId && p.latitude != null && p.latitude !== "" && p.longitude != null && p.longitude !== "")
+      .map((p) => ({
+        id: String(p.n),
+        title: p.name,
+        lat: parseFloat(String(p.latitude)),
+        lng: parseFloat(String(p.longitude)),
+        price: null,
+      })),
+    (id) => {
+      const place = places.find((p) => String(p.n) === id);
+      if (place) addPlaceMutation.mutate({ place, day: focusDay });
+    },
+  );
+
   const addPlaceMutation = useMutation({
     mutationFn: async ({ place, day }: { place: Place; day: number }) => {
       // Contract: same write as the list's addMutation — title/itemType/locationName/
@@ -625,7 +649,22 @@ function DmoReader({
                   )}
                 </div>
               ) : places.length === 0 ? (
-                <p className="text-sm py-2" style={{ color: "var(--console-mid)" }}>No places found in this guide.</p>
+                // Empty ≠ the article has no places — it means the STORED excerpt names none
+                // (scrapers often capture only the page top: title + disclosure + intro, while
+                // the venue list lives further down). Say so honestly and hand the expert the
+                // source, exactly like the thin-text state — never a dead end.
+                <div className="text-center py-4 space-y-2">
+                  <p className="text-sm" style={{ color: "var(--console-mid)" }}>
+                    No places named in the stored excerpt — the full article may list more. Read the source.
+                  </p>
+                  {detail.sourceUrl && (
+                    <a href={detail.sourceUrl} target="_blank" rel="noopener noreferrer">
+                      <Button size="sm" variant="outline" data-testid="button-dmo-reader-source-fallback">
+                        View source <ExternalLink className="w-3 h-3 ml-1" />
+                      </Button>
+                    </a>
+                  )}
+                </div>
               ) : (
                 <div className="space-y-1">
                   <div className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: "var(--console-faint)" }}>
@@ -820,12 +859,16 @@ export function DmoPickerCore({
   // W5-A (QA_PUNCH_LIST item 19) — publish this SAME filtered list (search already applied) as
   // candidate pins for the canvas map's discovery layer. Excludes already-`added` rows (once
   // added they become a real plan pin on the next refetch, so they shouldn't linger as a
-  // separate candidate at the same coordinate) and anything failing the real-coords check (§13).
+  // separate candidate at the same coordinate), anything failing the real-coords check (§13),
+  // and GUIDE-shaped rows — an article is not a place, so a "Top 10…" listicle must never pin
+  // on the map even when the scraper attached page-level coordinates to it; only its EXTRACTED
+  // places pin (published by DmoReader below while the reader is open). Inactive while the
+  // reader is open so the reader's publisher owns the discovery layer.
   usePublishMapCandidates(
     "dmo",
     "DMO Library",
     items
-      .filter((it) => hasRealCoords(it) && !added.has(it.id))
+      .filter((it) => (it.shape ?? "place") !== "guide" && hasRealCoords(it) && !added.has(it.id))
       .map((it) => ({
         id: it.id,
         title: it.name,
@@ -837,6 +880,7 @@ export function DmoPickerCore({
       const it = items.find((i) => i.id === id);
       if (it) addMutation.mutate(it);
     },
+    !readerId,
   );
 
   if (readerId) {

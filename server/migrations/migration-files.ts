@@ -835,4 +835,10 @@ export const MIGRATION_FILES = [
   // for them); no CHECK (recommendation-only payload, nothing money/ownership reads it). Declared
   // in shared/schema.ts in the same commit. See 183_itinerary_comparisons_segmentation_proposal.sql.
   "183_itinerary_comparisons_segmentation_proposal.sql",
+  // 184: "Custom…" plan type theme label (decision-maker approved Aug 9 2026). Additive nullable
+  // `ready_made_trips.plan_type_custom` VARCHAR(80) — carries free text ONLY when
+  // `plan_type = 'custom'` (shared/ready-made-plan-types.ts); the closed `plan_type` column itself
+  // never receives free text. No CHECK (migration-159/173/181 posture). Declared in
+  // shared/schema.ts in the same commit. See 184_ready_made_plan_type_custom.sql.
+  "184_ready_made_plan_type_custom.sql",
 ] as const;

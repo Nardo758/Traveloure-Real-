@@ -399,6 +399,78 @@ function collectTextualStrings(value: unknown, depth = 0, acc: string[] = []): s
   return acc;
 }
 
+// Transient source fetch (decision-maker ruling, Aug 9 2026): when the STORED excerpt is thin
+// or names no venues (scrapers often capture only the page top — title + disclosure + intro —
+// while the venue list lives further down), the extractor may fetch the article once, extract
+// venue NAMES from the live text, and store ONLY the derived facts. The fetched body is never
+// persisted anywhere. `sourceUrl` is admin-ingested registry provenance (NOT NULL, written by
+// the ingestion pipeline), never a client-supplied URL — no SSRF surface from req.body.
+async function fetchSourceArticleText(url: string | null | undefined): Promise<string | null> {
+  if (!url || !/^https?:\/\//i.test(url)) return null;
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 10_000);
+    const res = await fetch(url, {
+      signal: ctrl.signal,
+      redirect: "follow",
+      headers: { "User-Agent": "TraveloureBot/1.0 (+https://traveloure.com; content research)" },
+    });
+    clearTimeout(timer);
+    if (!res.ok) return null;
+    const contentType = res.headers.get("content-type") ?? "";
+    if (!/text\/html|text\/plain/i.test(contentType)) return null;
+    let html = await res.text();
+    if (html.length > 2_000_000) html = html.slice(0, 2_000_000);
+    const text = html
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<noscript[\s\S]*?<\/noscript>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&nbsp;/g, " ")
+      .replace(/&amp;/g, "&")
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&quot;/g, '"')
+      .replace(/&#0?39;/g, "'")
+      .replace(/\s+/g, " ")
+      .trim();
+    return text || null;
+  } catch (err) {
+    console.error("[dmo-extract-places] source fetch failed:", err);
+    return null;
+  }
+}
+
+// The one AI extraction call (shared by the stored-text and live-fetch passes) — throws on
+// any failure so the route can map it to its 502. Cost-tracked per CLAUDE.md (the
+// ai_cost_tracking table is load-bearing for the admin cost breakdown).
+async function extractPlaceNamesWithAI(text: string, expertId: string): Promise<string[]> {
+  const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const response = await client.messages.create({
+    model: "claude-sonnet-4-5",
+    max_tokens: 500,
+    system: EXTRACT_PLACES_SYSTEM_PROMPT,
+    messages: [{ role: "user", content: text.slice(0, 12_000) }],
+  });
+  const inputTokens = response.usage?.input_tokens ?? 0;
+  const outputTokens = response.usage?.output_tokens ?? 0;
+  if (inputTokens > 0 || outputTokens > 0) {
+    trackAICost({
+      sourceType: "dmo_extract_places",
+      modelUsed: "claude-sonnet-4-5",
+      userId: expertId,
+      costUsd: calculateAnthropicCost(inputTokens, outputTokens),
+      tokensIn: inputTokens,
+      tokensOut: outputTokens,
+    }).catch((err) => console.error("[cost-tracker] dmo_extract_places:", err));
+  }
+  const textBlock = response.content.find((b) => b.type === "text");
+  const raw = textBlock && "text" in textBlock ? textBlock.text : "";
+  const parsed = raw ? parsePlaceNamesJson(raw) : null;
+  if (parsed === null) throw new Error("Unparseable extraction response");
+  return parsed.slice(0, 15);
+}
+
 router.post(
   "/library/:id/extract-places",
   requireExpert,
@@ -413,63 +485,59 @@ router.post(
       throw new NotFoundError("Content not found");
     }
 
-    // Run-once cache: an existing non-empty extraction is served as-is, no AI call.
-    const existingPlaces = (item.extractedData as { places?: unknown } | null)?.places;
-    if (Array.isArray(existingPlaces) && existingPlaces.length > 0) {
+    // Run-once cache. A non-empty extraction is always served as-is. An EMPTY one is served
+    // only when it came from a live fetch — the strongest attempt this endpoint can make —
+    // so a pre-ruling empty stored_text run gets automatically upgraded through the fetch
+    // path on its next open instead of being stuck empty forever.
+    const existingData = item.extractedData as { places?: unknown; source?: string } | null;
+    const existingPlaces = existingData?.places;
+    if (
+      Array.isArray(existingPlaces) &&
+      (existingPlaces.length > 0 || existingData?.source === "live_fetch")
+    ) {
       return res.json({ places: existingPlaces, cached: true });
     }
 
-    // Assemble source text: the row's description plus obviously-textual string fields of the
-    // scraper's rawData payload. Both are the row's OWN stored content — never a live fetch.
+    // Assemble stored text: the row's description plus obviously-textual string fields of the
+    // scraper's rawData payload.
     const rawDataText = collectTextualStrings(item.rawData).join("\n\n");
-    const sourceText = [item.description, rawDataText].filter(Boolean).join("\n\n").trim();
-
-    // §13: a teaser-length source must never be extrapolated into fabricated places — no AI
-    // call at all below this bar, so a thin row can't even accidentally hallucinate one venue.
-    if (sourceText.length < 300) {
-      return res.json({ thinText: true, places: null });
-    }
+    const storedText = [item.description, rawDataText].filter(Boolean).join("\n\n").trim();
 
     if (!process.env.ANTHROPIC_API_KEY) {
       return res.status(502).json({ message: "Extraction failed — read the source instead" });
     }
 
-    let candidateNames: string[];
+    // Two-pass extraction (ruling, Aug 9 2026): stored text first; when it is thin (<300 —
+    // §13: a teaser must never be extrapolated into fabricated places, no AI call below the
+    // bar) OR the AI finds no venue names in it (the bontraveler case: the scrape captured
+    // title + affiliate disclosure, the venue list lives further down the article), fall back
+    // to a TRANSIENT fetch of the source article. The fetched body is used for this one call
+    // and discarded — only derived facts persist.
+    let candidateNames: string[] | null = null;
+    let extractionSource: "stored_text" | "live_fetch" = "stored_text";
     try {
-      const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-      const response = await client.messages.create({
-        model: "claude-sonnet-4-5",
-        max_tokens: 500,
-        system: EXTRACT_PLACES_SYSTEM_PROMPT,
-        messages: [{ role: "user", content: sourceText.slice(0, 12_000) }],
-      });
-
-      // ai_cost_tracking instrumentation — same signature as trip-context.routes.ts's
-      // extraction call (CLAUDE.md: the table is load-bearing for the admin cost breakdown).
-      const inputTokens = response.usage?.input_tokens ?? 0;
-      const outputTokens = response.usage?.output_tokens ?? 0;
-      if (inputTokens > 0 || outputTokens > 0) {
-        trackAICost({
-          sourceType: "dmo_extract_places",
-          modelUsed: "claude-sonnet-4-5",
-          userId: expertId,
-          costUsd: calculateAnthropicCost(inputTokens, outputTokens),
-          tokensIn: inputTokens,
-          tokensOut: outputTokens,
-        }).catch((err) => console.error("[cost-tracker] dmo_extract_places:", err));
+      if (storedText.length >= 300) {
+        candidateNames = await extractPlaceNamesWithAI(storedText, expertId);
       }
-
-      const textBlock = response.content.find((b) => b.type === "text");
-      const raw = textBlock && "text" in textBlock ? textBlock.text : "";
-      const parsed = raw ? parsePlaceNamesJson(raw) : null;
-      if (parsed === null) {
-        throw new Error("Unparseable extraction response");
+      if (candidateNames === null || candidateNames.length === 0) {
+        const fetchedText = await fetchSourceArticleText(item.sourceUrl);
+        if (fetchedText && fetchedText.length >= 300) {
+          candidateNames = await extractPlaceNamesWithAI(fetchedText, expertId);
+          extractionSource = "live_fetch";
+        } else if (candidateNames === null) {
+          // Stored text was thin AND the source is unreachable — nothing honest to extract from.
+          return res.json({ thinText: true, places: null });
+        }
+        // else: stored text yielded nothing and the fetch failed — fall through with the
+        // empty result, UNPERSISTED (see below), so a later open can retry the fetch.
       }
-      candidateNames = parsed.slice(0, 15);
     } catch (err) {
       console.error("[dmo-extract-places] AI call failed:", err);
       return res.status(502).json({ message: "Extraction failed — read the source instead" });
     }
+
+    // Every exit above either returned or left an array (possibly empty) here.
+    const finalNames: string[] = candidateNames ?? [];
 
     // Per candidate, in article order: best-effort geocode + dedupe against the library.
     // Neither failure aborts the batch — one bad name must not sink the other 14.
@@ -482,8 +550,8 @@ router.post(
       ticketingUrl?: string | null;
     }> = [];
 
-    for (let i = 0; i < candidateNames.length; i++) {
-      const name = candidateNames[i];
+    for (let i = 0; i < finalNames.length; i++) {
+      const name = finalNames[i];
       const place: (typeof places)[number] = { n: i + 1, name };
 
       try {
@@ -524,12 +592,17 @@ router.post(
       places.push(place);
     }
 
-    await db
-      .update(dmoRawContent)
-      .set({
-        extractedData: { places, extractedAt: new Date().toISOString(), source: "stored_text" },
-      })
-      .where(eq(dmoRawContent.id, id));
+    // Persist when there is a real result, or when the live fetch ran and legitimately found
+    // nothing (that empty IS the answer — cache it, see the cache rule above). An empty result
+    // whose fetch FAILED stays unpersisted so the next open retries the fetch.
+    if (places.length > 0 || extractionSource === "live_fetch") {
+      await db
+        .update(dmoRawContent)
+        .set({
+          extractedData: { places, extractedAt: new Date().toISOString(), source: extractionSource },
+        })
+        .where(eq(dmoRawContent.id, id));
+    }
 
     res.json({ places, cached: false });
   }),

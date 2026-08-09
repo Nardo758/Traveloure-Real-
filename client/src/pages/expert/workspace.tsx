@@ -21,6 +21,9 @@ import { SocialKitCard } from "@/components/build-formats/SocialKitCard";
 import { STORE_GATE_MESSAGE } from "@shared/launch-markets";
 import { APIProvider, Map, InfoWindow, useMap, useMapsLibrary } from "@vis.gl/react-google-maps";
 import { MapMarker, GOOGLE_MAPS_MAP_ID } from "@/components/ui/map-marker";
+// Advisor Phase 1 — the route layer's per-day polylines on the Google branch (Leaflet's own
+// react-leaflet Polyline is used directly inside leaflet-plan-map.tsx instead).
+import { Polyline } from "@/components/ui/map-polyline";
 import {
   MapPin, ChevronRight, ChevronDown, ChevronUp, Pencil, Sparkles, Link2, PenSquare,
   Send, MessageSquare, Plus, Lock, Eye, EyeOff,
@@ -1315,6 +1318,89 @@ function MapCandidatesPublisher({
   return null;
 }
 
+/** GOOGLE-PLACES-SOURCE-PILL: case-insensitive, either-direction substring match — mirrors the
+ *  Research Reader's best-effort place-highlight matching (dmo-picker-modal.tsx). Used ONLY to
+ *  offer a "Also on Traveloure" cross-link chip; never gates anything, so a false positive/negative
+ *  here is cosmetic, not a correctness issue. */
+function namesMatch(a: string | null | undefined, b: string | null | undefined): boolean {
+  const x = (a ?? "").trim().toLowerCase();
+  const y = (b ?? "").trim().toLowerCase();
+  if (!x || !y) return false;
+  return x.includes(y) || y.includes(x);
+}
+
+/** GOOGLE-PLACES-SOURCE-PILL split "+ Day N ▾" add button for a Google Places result — mirrors
+ *  dmo-picker-modal.tsx's AddPlaceSplitButton (shadcn DropdownMenu there), reimplemented with a
+ *  plain absolutely-positioned menu since this file doesn't use shadcn dropdowns elsewhere. Left
+ *  side adds straight to `focusDay`; the caret opens Day 1..maxDay plus "+ New day" (maxDay+1). */
+function GooglePlaceSplitButton({
+  placeKey, focusDay, maxDay, pending, onPick,
+}: {
+  placeKey: string;
+  focusDay: number;
+  maxDay: number;
+  pending: boolean;
+  onPick: (day: number) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+  const dayOptions = Array.from({ length: maxDay }, (_, i) => i + 1);
+  return (
+    <div ref={rootRef} style={{ position: "relative", display: "inline-flex", flexShrink: 0 }}>
+      <div style={{ display: "inline-flex", borderRadius: 8, overflow: "hidden", border: `1px solid ${BRAND}` }}>
+        <button
+          onClick={() => onPick(focusDay)}
+          disabled={pending}
+          data-testid={`button-add-gplace-${placeKey}`}
+          style={{ padding: "4px 8px", fontSize: 11, fontWeight: 800, cursor: pending ? "default" : "pointer", background: BRAND_SOFT, color: BRAND, border: "none", whiteSpace: "nowrap" }}
+        >
+          + Day {focusDay}
+        </button>
+        <button
+          onClick={() => setOpen(o => !o)}
+          disabled={pending}
+          data-testid={`menu-add-gplace-${placeKey}`}
+          style={{ padding: "4px 6px", cursor: pending ? "default" : "pointer", background: BRAND_SOFT, color: BRAND, border: "none", borderLeft: `1px solid ${BRAND}`, display: "flex", alignItems: "center" }}
+        >
+          <ChevronDown style={{ width: 11, height: 11 }} />
+        </button>
+      </div>
+      {open && (
+        <div style={{ position: "absolute", top: "100%", right: 0, marginTop: 3, zIndex: 40, background: CARD, border: `1px solid ${LINE}`, borderRadius: 8, boxShadow: "0 4px 14px rgba(0,0,0,0.18)", minWidth: 100, overflow: "hidden" }}>
+          {dayOptions.map(d => (
+            <button
+              key={d}
+              onClick={() => { setOpen(false); onPick(d); }}
+              style={{ display: "block", width: "100%", textAlign: "left", padding: "6px 10px", fontSize: 12, background: "none", border: "none", cursor: "pointer", color: INK }}
+            >
+              Day {d}
+            </button>
+          ))}
+          <button
+            onClick={() => { setOpen(false); onPick(maxDay + 1); }}
+            style={{ display: "block", width: "100%", textAlign: "left", padding: "6px 10px", fontSize: 12, background: "none", border: "none", borderTop: `1px solid ${LINE}`, cursor: "pointer", color: MID }}
+          >
+            + New day
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** QA_PUNCH_LIST item 16 (plan layer) + item 19 (discovery layer) — the plan map ON the build
  *  canvas.
  *
@@ -1429,6 +1515,54 @@ function CanvasMapSection({
     staleTime: Infinity,
   });
 
+  // ── Advisor Phase 1 — route layer (persisted per-trip like the map-open toggle above). ──
+  const routesStorageKey = `workstation-map-routes-${tripId}`;
+  const [routesOn, setRoutesOn] = useState<boolean>(() => {
+    try { return sessionStorage.getItem(routesStorageKey) === "1"; } catch { return false; }
+  });
+  useEffect(() => {
+    try { sessionStorage.setItem(routesStorageKey, routesOn ? "1" : "0"); } catch { /* best-effort */ }
+  }, [routesOn, routesStorageKey]);
+
+  // Same query key TransportLegsPanel uses (`includeProposed: 1`) — a shared react-query cache
+  // entry, not a second fetch; enabled only while the map is open, matching this section's own
+  // "only pay for it while visible" convention (mirrors the fallback-geocode query above).
+  const { data: routeLegsData } = useQuery<TripTransportLegsResponse>({
+    queryKey: [`/api/trips/${tripId}/transport-legs`, { includeProposed: 1 }],
+    enabled: !!tripId && open,
+  });
+  // Trip-scoped legs only (proposalStatus NULL = legacy variant-scoped legs — see
+  // TransportLegsPanel's identical filter/comment below).
+  const routeTripLegs = (routeLegsData?.legs ?? []).filter(
+    (l) => l.proposalStatus === "proposed" || l.proposalStatus === "confirmed",
+  );
+  const hasRouteLegsData = routeTripLegs.length > 0;
+  const routeDistanceMetersByDay: Record<number, number> = {};
+  for (const leg of routeTripLegs) {
+    routeDistanceMetersByDay[leg.dayNumber] = (routeDistanceMetersByDay[leg.dayNumber] ?? 0) + (leg.distanceMeters || 0);
+  }
+  // Respect mapDayFilter — only visible days ever get a line or a chip.
+  const routeVisibleDayNumbers = mapDayFilter === "all" ? dayNumbersWithItems : [mapDayFilter];
+  // §13: never estimate a distance client-side — a line is drawn from the items' OWN real
+  // coordinates (order-visualization only), a chip is drawn ONLY from the engine's own leg sums.
+  const routeDayColor = (dayNumber: number): string =>
+    [BRAND, "var(--console-info)", OK, WARN][(dayNumber - 1) % 4];
+  const routeLines: { day: number; color: string; points: { lat: number; lng: number }[] }[] = routesOn
+    ? days
+        .filter((d) => routeVisibleDayNumbers.includes(d.dayNumber))
+        .map((d) => ({
+          day: d.dayNumber,
+          color: routeDayColor(d.dayNumber),
+          points: d.items
+            .filter(isLocatedItem)
+            .map((i) => ({ lat: parseFloat(String(i.latitude)), lng: parseFloat(String(i.longitude)) })),
+        }))
+        .filter((r) => r.points.length >= 2)
+    : [];
+  const routeDistanceChipDays = routesOn && hasRouteLegsData
+    ? routeVisibleDayNumbers.filter((d) => routeDistanceMetersByDay[d] != null).sort((a, b) => a - b)
+    : [];
+
   if (allItems.length === 0) return null;
 
   // Three-tier center rule (item 16 spec): located pins → bounds-fit; none but a destination
@@ -1455,25 +1589,39 @@ function CanvasMapSection({
       </button>
       {open && (
         <div style={{ padding: "0 14px 12px" }}>
-          {dayNumbersWithItems.length > 1 && (
-            <div style={{ display: "flex", gap: 5, overflowX: "auto", paddingBottom: 8 }}>
+          {(dayNumbersWithItems.length > 1 || locatedItems.length > 0) && (
+            <div style={{ display: "flex", gap: 5, overflowX: "auto", paddingBottom: 8, alignItems: "center" }}>
+              {dayNumbersWithItems.length > 1 && (
+                <>
+                  <button
+                    onClick={() => setMapDayFilter("all")}
+                    data-testid="button-map-day-filter-all"
+                    style={{ padding: "4px 10px", borderRadius: 99, fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap", border: mapDayFilter === "all" ? `1.5px solid ${BRAND}` : `1.5px solid ${LINE}`, background: mapDayFilter === "all" ? BRAND_SOFT : CARD, color: mapDayFilter === "all" ? BRAND : MID }}
+                  >
+                    All days
+                  </button>
+                  {dayNumbersWithItems.map(n => (
+                    <button
+                      key={n}
+                      onClick={() => setMapDayFilter(n)}
+                      data-testid={`button-map-day-filter-${n}`}
+                      style={{ padding: "4px 10px", borderRadius: 99, fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap", border: mapDayFilter === n ? `1.5px solid ${BRAND}` : `1.5px solid ${LINE}`, background: mapDayFilter === n ? BRAND_SOFT : CARD, color: mapDayFilter === n ? BRAND : MID }}
+                    >
+                      Day {n}
+                    </button>
+                  ))}
+                </>
+              )}
+              {/* Advisor Phase 1 — route layer toggle. Draws per-day polylines connecting that
+                  day's located items in their current order (never a distance claim by itself —
+                  see the distance-chip gating below, which needs real engine data). */}
               <button
-                onClick={() => setMapDayFilter("all")}
-                data-testid="button-map-day-filter-all"
-                style={{ padding: "4px 10px", borderRadius: 99, fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap", border: mapDayFilter === "all" ? `1.5px solid ${BRAND}` : `1.5px solid ${LINE}`, background: mapDayFilter === "all" ? BRAND_SOFT : CARD, color: mapDayFilter === "all" ? BRAND : MID }}
+                onClick={() => setRoutesOn(r => !r)}
+                data-testid="button-toggle-routes"
+                style={{ marginLeft: dayNumbersWithItems.length > 1 ? "auto" : undefined, display: "flex", alignItems: "center", gap: 4, padding: "4px 10px", borderRadius: 99, fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap", border: routesOn ? `1.5px solid ${BRAND}` : `1.5px solid ${LINE}`, background: routesOn ? BRAND_SOFT : CARD, color: routesOn ? BRAND : MID }}
               >
-                All days
+                <Route style={{ width: 11, height: 11 }} /> Routes
               </button>
-              {dayNumbersWithItems.map(n => (
-                <button
-                  key={n}
-                  onClick={() => setMapDayFilter(n)}
-                  data-testid={`button-map-day-filter-${n}`}
-                  style={{ padding: "4px 10px", borderRadius: 99, fontSize: 12, fontWeight: 600, cursor: "pointer", whiteSpace: "nowrap", border: mapDayFilter === n ? `1.5px solid ${BRAND}` : `1.5px solid ${LINE}`, background: mapDayFilter === n ? BRAND_SOFT : CARD, color: mapDayFilter === n ? BRAND : MID }}
-                >
-                  Day {n}
-                </button>
-              ))}
             </div>
           )}
 
@@ -1496,6 +1644,18 @@ function CanvasMapSection({
                       items={locatedItems}
                       onFocus={(item) => { setSelectedPinItem(item); onListFocusHandled?.(); }}
                     />
+
+                    {/* Advisor Phase 1 — route layer: per-day polylines, day-color cycling. */}
+                    {routeLines.map(r => (
+                      <Polyline
+                        key={`route-${r.day}`}
+                        path={r.points}
+                        strokeColor={r.color}
+                        strokeOpacity={0.9}
+                        strokeWeight={3}
+                      />
+                    ))}
+
                     {visibleItems.map(item => (
                       <MapMarker
                         key={item.id}
@@ -1609,6 +1769,11 @@ function CanvasMapSection({
                     lat: parseFloat(String(focusFromListItem.latitude)),
                     lng: parseFloat(String(focusFromListItem.longitude)),
                   } : null}
+                  candidates={candidateItems}
+                  candidateSourceLabel={candidateSourceLabel}
+                  onAddCandidate={onAddCandidate}
+                  addCandidateLabel={`Add to Day ${discoveryDayNumber}`}
+                  routes={routeLines.map(r => ({ day: r.day, color: r.color, points: r.points.map(p => [p.lat, p.lng] as [number, number]) }))}
                 />
               ) : (
                 <div data-testid="text-plan-map-unavailable" style={{ height: "100%", background: GROUND, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 6 }}>
@@ -1617,6 +1782,24 @@ function CanvasMapSection({
                 </div>
               )}
             </MapSectionErrorBoundary>
+
+            {/* Advisor Phase 1 — per-day distance chips, engine sums only. Lines draw as soon as
+                Routes is on (order-visualization); a distance chip only ever appears once the
+                transport-legs engine has actually computed that day — never a client estimate
+                (§13). No legs data ⇒ no chips, even with the lines showing. */}
+            {routeDistanceChipDays.length > 0 && (
+              <div style={{ position: "absolute", left: 8, bottom: 8, zIndex: 20, display: "flex", flexDirection: "column", gap: 3 }}>
+                {routeDistanceChipDays.map(d => (
+                  <div
+                    key={d}
+                    data-testid={`chip-route-distance-day-${d}`}
+                    style={{ background: CARD, border: `1px solid ${LINE}`, borderRadius: 999, padding: "2px 8px", fontSize: 10.5, fontWeight: 700, color: INK, boxShadow: "0 1px 4px rgba(0,0,0,0.15)" }}
+                  >
+                    Day {d} · {(routeDistanceMetersByDay[d] / 1000).toFixed(1)} km
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* §13: honest, never fabricated — the "not on map" tray lists the actual unlocated
@@ -2162,6 +2345,7 @@ const ADD_SOURCES: { k: string; l: string; caption: string; comingSoon?: boolean
   { k: "dmo", l: "DMO Library", caption: "Local research your admin has approved for Kyoto — refine it, then drop it into a day." },
   { k: "content", l: "Platform content", caption: "The shared Traveloure content library, scoped to this build's destination." },
   { k: "platform", l: "Platform services", caption: "Traveloure's approved bookable services in this city, plus a map to browse them." },
+  { k: "google", l: "Google Places", caption: "Live Google Places search for this destination — nothing here is stored in Traveloure's catalog." },
   { k: "partner", l: "Partner inventory", caption: "Browse tours & activities from Traveloure's partner networks, or jump straight to a network's booking site." },
   { k: "mine", l: "My services", caption: "Your own approved, active listings — drop one straight onto this build." },
   { k: "custom", l: "Custom", caption: "Add anything by hand — a place, a note, or a reservation with no catalog match." },
@@ -2401,8 +2585,9 @@ function writeExtraMaxDay(tripId: string, value: number): void {
 
 export default function ExpertWorkspace() {
   const { tripId } = useParams<{ tripId: string }>();
-  // Runtime Google Maps key rejection — swaps the browse map to its honest fallback.
-  const mapsAuthFailed = useGoogleMapsAuthFailed();
+  // (The runtime-auth-failure hook is consumed inside PlacesAutocompleteInput and
+  // CanvasMapSection; ExpertWorkspace's own copy served only the retired in-drawer
+  // browse map and was removed with it in the merge.)
   const [, setLocation] = useLocation();
   const { toast } = useToast();
 
@@ -2705,6 +2890,14 @@ export default function ExpertWorkspace() {
     enabled: !!tripId && rightTab === "gaps",
   });
 
+  // Advisor Phase 1 — the Route summary card's data. Same queryKey/shape TransportLegsPanel and
+  // CanvasMapSection's own route layer use (`includeProposed: 1`) — a shared react-query cache
+  // entry, gated the same "only while the tab is open" way transportGaps above is.
+  const { data: advisorLegsData } = useQuery<TripTransportLegsResponse>({
+    queryKey: [`/api/trips/${tripId}/transport-legs`, { includeProposed: 1 }],
+    enabled: !!tripId && rightTab === "gaps",
+  });
+
   const proposeLegsMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", `/api/trips/${tripId}/transport-legs/generate`, {});
@@ -2880,44 +3073,65 @@ export default function ExpertWorkspace() {
     }
   }, [expertNotesData]);
 
-  // ── Browse: geocode destination for map center ──
+  // (The destination-geocode map-center query that lived here served only the retired
+  // in-drawer browse map; CanvasMapSection keeps its own identical query for its fallback
+  // center, so the shared ["/api/geocode", destination] cache entry lives on there.)
   const destination = (trip as any)?.destination || "";
-  const { data: geocodeData } = useQuery<{ lat: number; lng: number }>({
-    queryKey: ["/api/geocode", destination],
-    queryFn: async () => {
-      // 404/errors return a JSON error body — must NOT flow into geocodeData, or the
-      // map receives a non-LatLng object as `center` and vis.gl throws obj.toJSON().
-      const res = await fetch(`/api/geocode?address=${encodeURIComponent(destination)}`);
-      if (!res.ok) return null;
-      const j = await res.json();
-      return Number.isFinite(j?.lat) && Number.isFinite(j?.lng) ? j : null;
-    },
-    enabled: !!destination && rightTab === "add" && addSource === "platform",
-    staleTime: Infinity,
-  });
 
   // ── Browse: live experience search (lives under the Add panel's "Platform services" pill) ──
+  // GOOGLE-PLACES-SOURCE-PILL: narrowed to sources=platform (the two sources no longer share one
+  // ambiguous surface — Google-sourced results now live only under the "google" pill's own query
+  // below). The queryKey carries the "platform" marker so its cache entry never collides with the
+  // unfiltered pre-narrowing key or the new google-only key.
   const searchEnabled = rightTab === "add" && addSource === "platform" && !!(debouncedQuery || destination);
   const { data: searchData, isFetching: searchFetching } = useQuery<{ results: any[]; count: number }>({
-    queryKey: ["/api/search/experiences", debouncedQuery, destination, cat],
+    queryKey: ["/api/search/experiences", "platform", debouncedQuery, destination, cat],
     queryFn: () => {
       const params = new URLSearchParams();
       if (debouncedQuery) params.set("q", debouncedQuery);
       if (destination) params.set("destination", destination);
       if (cat && cat !== "all") params.set("category", cat);
+      params.set("sources", "platform");
       return fetch(`/api/search/experiences?${params}`).then(r => r.json());
     },
     enabled: searchEnabled,
     staleTime: 2 * 60 * 1000,
   });
   const searchResults = searchData?.results || [];
-  const mapCenter = (Number.isFinite((geocodeData as any)?.lat) && Number.isFinite((geocodeData as any)?.lng))
-    ? geocodeData!
-    : { lat: 35.6762, lng: 139.6503 };
 
-  // ── Browse: add result to itinerary (day-aware — targets the focused day) ──
+  // ── Browse: Google Places-only search (the "Google Places" Add-panel pill). Shares the same
+  // browseQuery/debouncedQuery/cat state as the platform drawer above (one search box concept,
+  // never a duplicated query field) but hits sources=google so results are Google-only — no
+  // platform inventory shows up here (that stays the platform pill's job). ──
+  const googleSearchEnabled = rightTab === "add" && addSource === "google" && !!(debouncedQuery || destination);
+  const { data: googleSearchData, isFetching: googleSearchFetching } = useQuery<{ results: any[]; count: number }>({
+    queryKey: ["/api/search/experiences", "google", debouncedQuery, destination, cat],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (debouncedQuery) params.set("q", debouncedQuery);
+      if (destination) params.set("destination", destination);
+      if (cat && cat !== "all") params.set("category", cat);
+      params.set("sources", "google");
+      return fetch(`/api/search/experiences?${params}`).then(r => r.json());
+    },
+    enabled: googleSearchEnabled,
+    staleTime: 2 * 60 * 1000,
+  });
+  const googleSearchResults = googleSearchData?.results || [];
+  // Per-result "added" state (green check chip) — keyed by placeId (falls back to the result's
+  // own id if a placeId is ever absent). Best-effort cross-link: matched against whatever the
+  // platform drawer's OWN query currently has cached (may be empty/stale if that drawer was never
+  // opened this session — skip cleanly rather than firing a second fetch just for this).
+  const [googleAddedDays, setGoogleAddedDays] = useState<Record<string, number>>({});
+
+  // ── Browse: add result to itinerary (day-aware — targets a chosen day, defaulting to the
+  // focused day). GOOGLE-PLACES-SOURCE-PILL: generalized from a hardcoded `focusDay` write to an
+  // explicit `day` field on the mutation variables so the new Google Places drawer's split-button
+  // day picker can target any day (or a brand-new one) — the two pre-existing callsites below now
+  // just pass `focusDay` explicitly, so their behavior is byte-identical to before. ──
   const addFromSearchMutation = useMutation({
-    mutationFn: async (result: any) => {
+    mutationFn: async (vars: { result: any; day: number }) => {
+      const { result, day } = vars;
       const catToType: Record<string, string> = { dining: "dining", hotel: "hotel", culture: "culture", activity: "activity" };
       // L27-P1: carry through the pin's own coordinates — this is the SAME result.location
       // already used to render the AdvancedMarker above (:~2287), so it is real, not
@@ -2930,7 +3144,7 @@ export default function ExpertWorkspace() {
       const body = {
         title: result.name,
         itemType: catToType[result.category] || "activity",
-        dayNumber: focusDay,
+        dayNumber: day,
         locationName: result.address || result.name,
         ...(hasCoords ? { latitude: String(result.location.lat), longitude: String(result.location.lng) } : {}),
         // Audit A-4 (§13): Google's priceLevel is a 0-4 band, not a dollar amount — never
@@ -2943,15 +3157,21 @@ export default function ExpertWorkspace() {
         ...(result.source === "platform" && result.platformId
           ? { providerServiceId: result.platformId }
           : {}),
+        // GOOGLE-PLACES-SOURCE-PILL: carry the Google Place id through when the result actually
+        // has one (itinerary_items.google_place_id, shared/schema.ts) — never invented for a
+        // platform-sourced result (§13).
+        ...(result.source === "google_places" && result.placeId
+          ? { googlePlaceId: result.placeId }
+          : {}),
       };
       const res = await apiRequest("POST", `/api/trips/${tripId}/itinerary-items`, body);
       return res.json();
     },
-    onSuccess: (_, result) => {
+    onSuccess: (_, vars) => {
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/itinerary-items`] });
       queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/commission`] });
       triggerEnergyRecalc();
-      toast({ title: "Added to itinerary", description: `${result.name} → Day ${focusDay}` });
+      toast({ title: "Added to itinerary", description: `${vars.result.name} → Day ${vars.day}` });
       setSelectedPin(null);
     },
     // Plan-approval mode flip (migration 164) — see ItemsEditorPanel's updateMutation above.
@@ -3097,6 +3317,22 @@ export default function ExpertWorkspace() {
   const boundaryViolations = workspaceConstraints?.boundaryViolations || [];
   const optimizerScores = workspaceConstraints?.optimizerScores || null;
   const totalConstraintIssues = anchorConflicts.reduce((sum, c) => sum + c.impacts.length, 0) + energyTracking.filter(e => e.recoveryNeeded).length + boundaryViolations.length;
+
+  // Advisor Phase 1 — Routing-blocked card: the real unlocated rows (§13 — never just a count),
+  // same isLocatedItem predicate the plan map and the transport-leg engine both use.
+  const advisorUnlocatedItems = days.flatMap(d => d.items).filter(i => !isLocatedItem(i));
+
+  // Advisor Phase 1 — Route summary card: trip-scoped legs only (`proposalStatus != null` per
+  // the brief — legacy variant-scoped legs carry a NULL proposalStatus and belong to a separate
+  // mechanism this card doesn't touch). Distances are the engine's own `distanceMeters` sums —
+  // never estimated client-side (§13).
+  const advisorTripLegs = (advisorLegsData?.legs ?? []).filter((l) => l.proposalStatus != null);
+  const advisorLegMetersByDay: Record<number, number> = {};
+  for (const leg of advisorTripLegs) {
+    advisorLegMetersByDay[leg.dayNumber] = (advisorLegMetersByDay[leg.dayNumber] ?? 0) + (leg.distanceMeters || 0);
+  }
+  const advisorLegDays = Object.keys(advisorLegMetersByDay).map(Number).sort((a, b) => a - b);
+  const advisorLegTotalMeters = advisorTripLegs.reduce((sum, l) => sum + (l.distanceMeters || 0), 0);
 
   const isLoading = ctxLoading || (!isAuthoring && (tripsLoading || assignmentLoading));
 
@@ -3628,7 +3864,10 @@ export default function ExpertWorkspace() {
           <div style={{ borderBottom: `1px solid ${LINE}`, padding: "0 10px", display: "flex", gap: 2, flexShrink: 0 }}>
             {[
               { k: "add", l: "Add" },
-              { k: "gaps", l: totalConstraintIssues > 0 ? `AI Gaps (${totalConstraintIssues})` : "AI Gaps" },
+              // Advisor Phase 1: visible label only — the "gaps" key/testids are untouched below
+              // so every existing consumer (tab-right-gaps, the AI Gaps section content, etc.)
+              // stays exactly as it was.
+              { k: "gaps", l: totalConstraintIssues > 0 ? `Advisor (${totalConstraintIssues})` : "Advisor" },
               { k: "distribute", l: "Distribute" },
             ].map(t => (
               <button key={t.k} onClick={() => setRightTab(t.k)} data-testid={`tab-right-${t.k}`} style={{ padding: "10px 10px 8px", fontSize: 12, fontWeight: 650, cursor: "pointer", background: "none", border: "none", borderBottom: rightTab === t.k ? `2px solid ${BRAND}` : "2px solid transparent", color: rightTab === t.k ? INK : MID, whiteSpace: "nowrap" }}>{t.l}</button>
@@ -3651,7 +3890,10 @@ export default function ExpertWorkspace() {
                   <button
                     key={s.k}
                     onClick={() => setAddSource(s.k)}
-                    data-testid={`pill-add-${s.k}`}
+                    // GOOGLE-PLACES-SOURCE-PILL: the mockup names this pill's testid
+                    // `button-add-source-google` specifically — every other pill keeps the
+                    // pre-existing `pill-add-<key>` convention untouched.
+                    data-testid={s.k === "google" ? "button-add-source-google" : `pill-add-${s.k}`}
                     style={{
                       padding: "4px 11px", borderRadius: 99, fontSize: 11.5, fontWeight: 700, whiteSpace: "nowrap",
                       cursor: "pointer", opacity: s.comingSoon && addSource !== s.k ? 0.6 : 1,
@@ -3748,7 +3990,7 @@ export default function ExpertWorkspace() {
                   .map((r: any) => ({ id: r.id, title: r.name, lat: r.location.lat, lng: r.location.lng, price: r.priceLabel ?? null }))}
                 onAdd={(id) => {
                   const result = searchResults.find((r: any) => r.id === id);
-                  if (result) addFromSearchMutation.mutate(result);
+                  if (result) addFromSearchMutation.mutate({ result, day: focusDay });
                 }}
               />
 
@@ -3775,88 +4017,12 @@ export default function ExpertWorkspace() {
                 </div>
               </div>
 
-              {/* Map — browse surface (lives ONLY here, P2-18). D-1 (Workstation audit):
-                  wrapped in a section-local error boundary — Maps can throw at mount
-                  (billing/key errors) and must not blank the results list below it. */}
-              <div style={{ height: 220, flexShrink: 0, position: "relative" }}>
-                <MapSectionErrorBoundary>
-                {MAPS_KEY && !mapsAuthFailed ? (
-                  <APIProvider apiKey={MAPS_KEY}>
-                    <Map
-                      mapId={GOOGLE_MAPS_MAP_ID}
-                      defaultCenter={mapCenter}
-                      center={mapCenter}
-                      defaultZoom={13}
-                      gestureHandling="greedy"
-                      disableDefaultUI={true}
-                      style={{ width: "100%", height: "100%" }}
-                      onClick={() => setSelectedPin(null)}
-                    >
-                      {searchResults.filter(r => r.location?.lat).map((result: any) => (
-                        <MapMarker
-                          key={result.id}
-                          position={{ lat: result.location.lat, lng: result.location.lng }}
-                          onClick={() => setSelectedPin(result)}
-                        >
-                          <div style={{ background: "var(--console-brand)", color: "var(--console-card)", borderRadius: 20, padding: "3px 8px", fontSize: 11, fontWeight: 700, boxShadow: "0 2px 6px rgba(0,0,0,0.3)", border: selectedPin?.id === result.id ? `2px solid var(--console-card)` : "none", whiteSpace: "nowrap", maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis" }}>
-                            {result.name.length > 16 ? result.name.slice(0, 16) + "…" : result.name}
-                          </div>
-                        </MapMarker>
-                      ))}
-
-                      {selectedPin && selectedPin.location?.lat && (
-                        <InfoWindow
-                          position={{ lat: selectedPin.location.lat, lng: selectedPin.location.lng }}
-                          onCloseClick={() => setSelectedPin(null)}
-                        >
-                          <div style={{ fontFamily: "'Inter',-apple-system,sans-serif", minWidth: 180, maxWidth: 220 }}>
-                            <div style={{ fontSize: 13, fontWeight: 700, color: INK, marginBottom: 3 }}>{selectedPin.name}</div>
-                            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
-                              {selectedPin.rating && (
-                                <span style={{ display: "flex", alignItems: "center", gap: 3, fontSize: 12, color: WARN, fontWeight: 600 }}>
-                                  <Star style={{ width: 11, height: 11 }} /> {selectedPin.rating}
-                                  {selectedPin.reviewCount && <span style={{ color: FAINT, fontWeight: 400 }}>({selectedPin.reviewCount.toLocaleString()})</span>}
-                                </span>
-                              )}
-                              {selectedPin.priceLabel && <span style={{ fontSize: 11, color: MID, background: GROUND, padding: "1px 5px", borderRadius: 4 }}>{selectedPin.priceLabel}</span>}
-                            </div>
-                            {selectedPin.address && <div style={{ fontSize: 11, color: MID, marginBottom: 7, lineHeight: 1.4 }}>{selectedPin.address}</div>}
-                            <div style={{ display: "flex", gap: 5 }}>
-                              <button
-                                onClick={() => addFromSearchMutation.mutate(selectedPin)}
-                                disabled={addFromSearchMutation.isPending}
-                                data-testid={`button-add-from-map-${selectedPin.id}`}
-                                style={{ ...btnPrimaryStyle, flex: 1, padding: "5px 8px", borderRadius: 7, fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}
-                              >
-                                {addFromSearchMutation.isPending ? <Loader2 style={{ width: 11, height: 11 }} className="animate-spin" /> : <Plus style={{ width: 11, height: 11 }} />}
-                                + Day {focusDay}
-                              </button>
-                              {selectedPin.mapsUrl && (
-                                <a href={selectedPin.mapsUrl} target="_blank" rel="noopener noreferrer">
-                                  <button data-testid={`button-maps-link-${selectedPin.id}`} style={{ ...btnQuietStyle, padding: "5px 8px", borderRadius: 7, fontSize: 12, display: "flex", alignItems: "center", gap: 3, color: MID }}>
-                                    <MapPinned style={{ width: 11, height: 11 }} />
-                                  </button>
-                                </a>
-                              )}
-                            </div>
-                          </div>
-                        </InfoWindow>
-                      )}
-                    </Map>
-                  </APIProvider>
-                ) : (
-                  <div style={{ height: "100%", background: GROUND, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 6 }}>
-                    <MapPin style={{ width: 24, height: 24, color: FAINT }} />
-                    <span style={{ fontSize: 12, color: MID }}>Map unavailable</span>
-                  </div>
-                )}
-                </MapSectionErrorBoundary>
-                {searchResults.filter((r: any) => r.location?.lat).length > 0 && (
-                  <div style={{ position: "absolute", bottom: 8, left: 8, background: CARD, borderRadius: 99, padding: "2px 8px", fontSize: 11, fontWeight: 600, color: INK, boxShadow: "0 1px 4px rgba(0,0,0,0.2)", zIndex: 10 }}>
-                    {searchResults.filter((r: any) => r.location?.lat).length} pins
-                  </div>
-                )}
-              </div>
+              {/* RETIRED (decision-maker, Aug 9 2026): the in-drawer browse map that lived here
+                  (P2-18 "lives ONLY here") is gone — superseded by the canvas Plan map's
+                  discovery layer (item 19): MapCandidatesPublisher above already renders this
+                  SAME filtered result set as candidate pins on the ONE canvas map, so two maps
+                  were showing identical pins. The list below plus the canvas pins are the whole
+                  browse surface now. `selectedPin` survives as the list's row-highlight state. */}
 
               {/* Results list — day-aware add rows ("+ Day N", v9 :277-292) */}
               <div style={{ flex: 1, overflowY: "auto", padding: "8px 10px" }}>
@@ -3899,7 +4065,7 @@ export default function ExpertWorkspace() {
                             </div>
                           </div>
                           <button
-                            onClick={e => { e.stopPropagation(); addFromSearchMutation.mutate(result); }}
+                            onClick={e => { e.stopPropagation(); addFromSearchMutation.mutate({ result, day: focusDay }); }}
                             disabled={addFromSearchMutation.isPending}
                             data-testid={`button-add-result-${result.id}`}
                             style={{ padding: "4px 10px", borderRadius: 8, background: BRAND_SOFT, color: BRAND, border: `1px solid ${BRAND}`, fontSize: 11, fontWeight: 800, cursor: "pointer", flexShrink: 0, whiteSpace: "nowrap" }}
@@ -3917,6 +4083,167 @@ export default function ExpertWorkspace() {
                 {/* W-3 task 2: Google attribution stays (TOS), but the catalog is Traveloure's —
                     only the supplemental places results are Google's. */}
                 <span style={{ fontSize: 10, color: FAINT }}>Traveloure platform catalog · Places results powered by Google</span>
+              </div>
+            </div>
+          )}
+
+          {/* Add · Google Places — GOOGLE-PLACES-SOURCE-PILL (approved mockup): a Google-only
+              live search (sources=google — no platform inventory shows here, that's the Platform
+              services pill's job). Writes through the SAME addFromSearchMutation the platform
+              drawer uses, extended with googlePlaceId when the server result carries one. */}
+          {rightTab === "add" && addSource === "google" && (
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
+
+              {/* Item 19 discovery layer — its own "google-places" source key so the two drawers'
+                  candidate pins never collide (ADD_SOURCES is single-select — only one drawer, and
+                  so only one publisher, is ever mounted at a time). */}
+              <MapCandidatesPublisher
+                source="google-places"
+                sourceLabel="Google Places"
+                items={googleSearchResults
+                  .filter((r: any) => Number.isFinite(r.location?.lat) && Number.isFinite(r.location?.lng))
+                  .map((r: any) => ({ id: r.id, title: r.name, lat: r.location.lat, lng: r.location.lng, price: r.priceLabel ?? null }))}
+                onAdd={(id) => {
+                  const result = googleSearchResults.find((r: any) => r.id === id);
+                  if (!result) return;
+                  const placeKey = result.placeId ?? result.id;
+                  addFromSearchMutation.mutate({ result, day: focusDay }, {
+                    onSuccess: () => setGoogleAddedDays(prev => ({ ...prev, [placeKey]: focusDay })),
+                  });
+                }}
+              />
+
+              {/* Search bar + category chips — shares browseQuery/debouncedQuery/cat with the
+                  platform drawer (one search-box concept), sources=google underneath. */}
+              <div style={{ padding: "10px 12px 8px", borderBottom: `1px solid ${LINE}`, background: CARD, flexShrink: 0 }}>
+                <div style={{ position: "relative", marginBottom: 8 }}>
+                  <Search style={{ position: "absolute", left: 9, top: "50%", transform: "translateY(-50%)", width: 14, height: 14, color: FAINT, pointerEvents: "none" }} />
+                  <input
+                    value={browseQuery}
+                    onChange={e => setBrowseQuery(e.target.value)}
+                    placeholder={`Search Google Places in ${destination || "destination"}…`}
+                    data-testid="input-browse-search-google"
+                    style={{ width: "100%", paddingLeft: 30, paddingRight: googleSearchFetching ? 30 : 10, paddingTop: 7, paddingBottom: 7, borderRadius: 8, border: `1.5px solid ${LINE}`, fontSize: 13, outline: "none", boxSizing: "border-box", background: GROUND, color: INK }}
+                  />
+                  {googleSearchFetching && <Loader2 style={{ position: "absolute", right: 9, top: "50%", transform: "translateY(-50%)", width: 13, height: 13, color: FAINT }} className="animate-spin" />}
+                </div>
+                <div style={{ display: "flex", gap: 5, overflowX: "auto", paddingBottom: 2 }}>
+                  {[{ k: "all", l: "All" }, { k: "dining", l: "Dining" }, { k: "activities", l: "Activities" }, { k: "hotels", l: "Hotels" }].map(c => (
+                    <Chip key={c.k} active={cat === c.k} onClick={() => setCat(c.k)}>{c.l}</Chip>
+                  ))}
+                </div>
+              </div>
+
+              {/* Results list — approved mockup card shape: photo thumb, name, neutral "Google"
+                  badge, rating/price-band/category line, address, split-button add. */}
+              <div style={{ flex: 1, overflowY: "auto", padding: "8px 10px" }}>
+                {googleSearchFetching && googleSearchResults.length === 0 ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                    {[1, 2, 3].map(i => <div key={i} style={{ height: 72, borderRadius: 8, background: GROUND }}><Skeleton className="h-full w-full rounded-lg" /></div>)}
+                  </div>
+                ) : googleSearchResults.length === 0 ? (
+                  <div style={{ textAlign: "center", padding: "24px 0", color: MID }}>
+                    <Search style={{ width: 28, height: 28, color: FAINT, margin: "0 auto 8px" }} />
+                    <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 4 }}>
+                      {destination ? `Showing ${destination}` : "Type to search"}
+                    </div>
+                    <div style={{ fontSize: 11, color: FAINT }}>Try "ramen", "temple", "rooftop bar"</div>
+                  </div>
+                ) : (
+                  <>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: FAINT, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 6, paddingLeft: 2 }}>
+                      {googleSearchResults.length} results
+                    </div>
+                    {googleSearchResults.map((result: any) => {
+                      const placeKey = result.placeId ?? result.id;
+                      const addedDay = googleAddedDays[placeKey];
+                      // Best-effort cross-link: reads whatever the platform drawer's OWN query
+                      // already has cached (react-query keeps it around after that drawer closes,
+                      // for as long as its cache entry survives) — never fires a second fetch just
+                      // for this chip; when nothing is cached yet, this simply finds nothing (§13
+                      // "skip cleanly").
+                      const crossLinkedPlatform = searchResults.find((p: any) => p.source === "platform" && namesMatch(p.name, result.name));
+                      return (
+                        <div
+                          key={result.id}
+                          data-testid={`card-gplace-${placeKey}`}
+                          style={{ display: "flex", flexDirection: "column", gap: 6, padding: 9, borderRadius: 9, border: `1px solid ${LINE}`, background: CARD, marginBottom: 7 }}
+                        >
+                          <div style={{ display: "flex", alignItems: "flex-start", gap: 9 }}>
+                            <div style={{ width: 40, height: 40, borderRadius: 7, background: result.photoUrl ? "transparent" : GROUND, border: result.photoUrl ? "none" : `1px solid ${LINE}`, flexShrink: 0, overflow: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                              {result.photoUrl ? <img src={result.photoUrl} alt={result.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <MapPin style={{ width: 16, height: 16, color: FAINT }} />}
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                <span style={{ fontSize: 12.5, fontWeight: 700, color: INK, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{result.name}</span>
+                                <StateChip tone="mut">Google</StateChip>
+                              </div>
+                              <div style={{ display: "flex", alignItems: "center", gap: 4, marginTop: 2, fontSize: 10.5, color: MID, flexWrap: "wrap" }}>
+                                {result.rating != null && (
+                                  <span style={{ display: "flex", alignItems: "center", gap: 2 }}>
+                                    <Star style={{ width: 9, height: 9, color: WARN }} />
+                                    {result.rating}{result.reviewCount != null && ` (${result.reviewCount.toLocaleString()})`}
+                                  </span>
+                                )}
+                                {result.rating != null && result.priceLabel && <span style={{ color: FAINT }}>·</span>}
+                                {/* Google's priceLevel (0-4) surfaces ONLY as its $ band (priceLabel,
+                                    already server-derived) — never converted into an invented
+                                    dollar figure here (§13). */}
+                                {result.priceLabel && <span>{result.priceLabel}</span>}
+                                {(result.rating != null || result.priceLabel) && result.category && <span style={{ color: FAINT }}>·</span>}
+                                {result.category && <span style={{ textTransform: "capitalize" }}>{result.category}</span>}
+                              </div>
+                              {result.address && (
+                                <div style={{ fontSize: 10.5, color: FAINT, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{result.address}</div>
+                              )}
+                            </div>
+                            <div onClick={e => e.stopPropagation()} style={{ flexShrink: 0 }}>
+                              {addedDay != null ? (
+                                <span
+                                  data-testid={`button-add-gplace-${placeKey}`}
+                                  style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 9px", borderRadius: 8, background: OK_SOFT, color: OK, fontSize: 11, fontWeight: 800, whiteSpace: "nowrap" }}
+                                >
+                                  <CheckCircle style={{ width: 11, height: 11 }} /> Day {addedDay}
+                                </span>
+                              ) : (
+                                <GooglePlaceSplitButton
+                                  placeKey={placeKey}
+                                  focusDay={focusDay}
+                                  maxDay={maxDay}
+                                  pending={addFromSearchMutation.isPending}
+                                  onPick={(day) => {
+                                    // Mirrors the existing "+ Day" affordance (A-1, Workstation
+                                    // audit): picking "+ New day" extends the selectable range.
+                                    if (day > maxDay) {
+                                      setExtraMaxDay(day);
+                                      if (tripId) writeExtraMaxDay(tripId, day);
+                                    }
+                                    addFromSearchMutation.mutate({ result, day }, {
+                                      onSuccess: () => setGoogleAddedDays(prev => ({ ...prev, [placeKey]: day })),
+                                    });
+                                  }}
+                                />
+                              )}
+                            </div>
+                          </div>
+                          {crossLinkedPlatform && (
+                            <button
+                              onClick={() => setAddSource("platform")}
+                              data-testid={`chip-gplace-platform-${placeKey}`}
+                              style={{ alignSelf: "flex-start", display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 9px", borderRadius: 999, fontSize: 10.5, fontWeight: 700, background: BRAND_SOFT, color: BRAND, border: "none", cursor: "pointer" }}
+                            >
+                              Also on Traveloure — bookable
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </>
+                )}
+              </div>
+
+              <div style={{ borderTop: `1px solid ${LINE}`, padding: "5px 12px", textAlign: "center", flexShrink: 0 }}>
+                <span style={{ fontSize: 10, color: FAINT }}>Places results powered by Google · live search, nothing stored</span>
               </div>
             </div>
           )}
@@ -4051,6 +4378,76 @@ export default function ExpertWorkspace() {
           {/* ── AI Gaps: the ONE home for Schedule Check (P2-15/P3-19) ── */}
           {rightTab === "gaps" && (
             <div style={{ flex: 1, overflowY: "auto", padding: "14px 12px" }}>
+
+              {/* Advisor Phase 1 — routing-blocked card. Shown only when at least one item fails
+                  isLocatedItem (the SAME predicate the plan map and transport-leg engine use —
+                  never a second, looser notion of "located"). */}
+              {advisorUnlocatedItems.length > 0 && (
+                <div data-testid="card-advisor-routing-blocked" style={{ border: `1px solid ${LINE}`, borderRadius: 10, padding: "10px 12px", marginBottom: 10, background: WARN_SOFT }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 7 }}>
+                    <AlertTriangle style={{ width: 13, height: 13, color: WARN }} />
+                    <span style={{ fontSize: 12.5, fontWeight: 700, color: INK }}>
+                      {advisorUnlocatedItems.length} item{advisorUnlocatedItems.length === 1 ? "" : "s"} can't be routed
+                    </span>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 3, marginBottom: 9 }}>
+                    {advisorUnlocatedItems.slice(0, 4).map(item => (
+                      <div key={item.id} style={{ fontSize: 11, color: MID, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        <span style={{ fontWeight: 700, color: FAINT }}>D{item.dayNumber}</span> {item.title}
+                      </div>
+                    ))}
+                    {advisorUnlocatedItems.length > 4 && (
+                      <div style={{ fontSize: 10, color: FAINT }}>+{advisorUnlocatedItems.length - 4} more</div>
+                    )}
+                  </div>
+                  <button
+                    // Reuses the EXISTING focusItemId one-shot (item 16) — ItemsEditorPanel
+                    // opens/expands/scrolls to this row, where the location field lives.
+                    onClick={() => setFocusItemId(advisorUnlocatedItems[0].id)}
+                    data-testid="button-advisor-add-locations"
+                    style={{ ...btnPrimaryStyle, padding: "6px 11px", fontSize: 11.5 }}
+                  >
+                    Add locations
+                  </button>
+                </div>
+              )}
+
+              {/* Advisor Phase 1 — route summary card. Per-day + total distance, engine sums only
+                  (never a client-side estimate, §13); an honest empty state when nothing has been
+                  generated yet rather than a fabricated zero. */}
+              <div data-testid="card-advisor-route-summary" style={{ border: `1px solid ${LINE}`, borderRadius: 10, padding: "10px 12px", marginBottom: 14, background: CARD }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 7 }}>
+                  <Route style={{ width: 13, height: 13, color: BRAND }} />
+                  <span style={{ fontSize: 12.5, fontWeight: 700, color: INK }}>Route summary</span>
+                </div>
+                {advisorLegDays.length === 0 ? (
+                  <div data-testid="text-advisor-no-routes" style={{ fontSize: 11.5, color: MID }}>
+                    No routes computed yet.{" "}
+                    <button
+                      onClick={() => document.querySelector('[data-testid="button-toggle-transport-legs"]')?.scrollIntoView({ behavior: "smooth", block: "center" })}
+                      data-testid="button-advisor-goto-transport-legs"
+                      style={{ background: "none", border: "none", padding: 0, color: BRAND, fontWeight: 700, cursor: "pointer", fontSize: 11.5, textDecoration: "underline" }}
+                    >
+                      Generate transport legs
+                    </button>{" "}
+                    on the canvas to see day-by-day distances.
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    {advisorLegDays.map(d => (
+                      <div key={d} data-testid={`advisor-route-day-${d}`} style={{ display: "flex", justifyContent: "space-between", fontSize: 11.5, color: MID }}>
+                        <span>Day {d}</span>
+                        <span style={{ fontWeight: 600, color: INK }}>{(advisorLegMetersByDay[d] / 1000).toFixed(1)} km</span>
+                      </div>
+                    ))}
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, fontWeight: 700, color: INK, borderTop: `1px solid ${LINE}`, paddingTop: 5, marginTop: 2 }}>
+                      <span>Total</span>
+                      <span data-testid="text-advisor-route-total">{(advisorLegTotalMeters / 1000).toFixed(1)} km</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <div style={{ display: "flex", alignItems: "center", gap: 7, marginBottom: 14 }}>
                 <Shield style={{ width: 14, height: 14, color: BRAND }} />
                 <span style={{ fontSize: 14, fontWeight: 700, color: INK }}>AI Gaps</span>

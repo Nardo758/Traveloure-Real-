@@ -22,6 +22,7 @@ import { Copy, Link2 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { resolveFormat } from "@/lib/build-formats/registry";
+import { getMarketGeography, projectPath, projectPoint } from "@shared/geo/market-geography";
 import {
   INK, MID, FAINT, LINE, GROUND, CARD, BRAND,
   type FormatDay, type FlatFormatItem, flattenDays, compareChrono,
@@ -75,6 +76,85 @@ export function pickHighlightItems(days: FormatDay[], max = 4): FlatFormatItem[]
     picked.sort(compareChrono);
   }
   return picked;
+}
+
+/** The route frame's day-color palette (approved mock) — literal, not console tokens, because it
+ *  encodes DATA (which day a stop belongs to) rather than UI chrome; day 1 happens to land on the
+ *  same red as the console brand color, which is coincidental, not a dependency. */
+const DAY_ROUTE_COLORS = ["#E85D55", "#3B6EA5", "#2E7D5B", "#B45309"];
+const ROUTE_VIEW_W = 120;
+const ROUTE_VIEW_H = 160;
+
+interface RoutePoint {
+  id: string;
+  dayNumber: number;
+  lon: number;
+  lat: number;
+  /** 1-based position in itinerary order across the WHOLE trip (§13: guide-order, not per-day). */
+  guideOrder: number;
+}
+
+/** Mirrors workspace.tsx's `isLocatedItem` (finite, in-range, non-zero lat/lng) — implemented
+ *  locally per this build's file ownership split; an item lacking real coordinates is simply
+ *  absent from the route, never given a fabricated position (§13). `FormatItem` doesn't type
+ *  latitude/longitude (format-shared.ts is out of scope here), but the real itinerary-items GET
+ *  the workspace feeds this card from carries them on every row. */
+function isLocatedPoint(lat: unknown, lng: unknown): lat is number {
+  const latNum = lat == null ? NaN : typeof lat === "number" ? lat : parseFloat(String(lat));
+  const lngNum = lng == null ? NaN : typeof lng === "number" ? lng : parseFloat(String(lng));
+  if (!Number.isFinite(latNum) || !Number.isFinite(lngNum)) return false;
+  if (Math.abs(latNum) > 90 || Math.abs(lngNum) > 180) return false;
+  if (latNum === 0 && lngNum === 0) return false;
+  return true;
+}
+
+/** Real located items only, in itinerary order (chronological across the whole trip — the same
+ *  ordering `pickHighlightItems` uses), each stamped with its trip-wide guide-order number. */
+function buildRoutePoints(days: FormatDay[]): RoutePoint[] {
+  const chrono = flattenDays(days).slice().sort(compareChrono);
+  const points: RoutePoint[] = [];
+  for (const item of chrono) {
+    const raw = item as unknown as { latitude?: unknown; longitude?: unknown };
+    if (!isLocatedPoint(raw.latitude, raw.longitude)) continue;
+    points.push({
+      id: item.id,
+      dayNumber: item.dayNumber,
+      lat: typeof raw.latitude === "number" ? raw.latitude : parseFloat(String(raw.latitude)),
+      lon: typeof raw.longitude === "number" ? raw.longitude : parseFloat(String(raw.longitude)),
+      guideOrder: points.length + 1,
+    });
+  }
+  return points;
+}
+
+/** Groups already-chronological points into contiguous same-day runs, so each run renders as one
+ *  polyline in that day's color — never connecting across a day boundary. */
+function groupRouteByDay(points: RoutePoint[]): RoutePoint[][] {
+  const groups: RoutePoint[][] = [];
+  let current: RoutePoint[] = [];
+  let currentDay: number | null = null;
+  for (const p of points) {
+    if (p.dayNumber !== currentDay) {
+      if (current.length) groups.push(current);
+      current = [];
+      currentDay = p.dayNumber;
+    }
+    current.push(p);
+  }
+  if (current.length) groups.push(current);
+  return groups;
+}
+
+/** No geography layer for this market → project against the located points' own bounding box
+ *  (padded) instead, so the route still draws sensibly on plain ground rather than being skipped. */
+function fallbackBbox(points: RoutePoint[]): [number, number, number, number] {
+  const lons = points.map((p) => p.lon);
+  const lats = points.map((p) => p.lat);
+  const w = Math.min(...lons), e = Math.max(...lons);
+  const s = Math.min(...lats), n = Math.max(...lats);
+  const padLon = Math.max((e - w) * 0.18, 0.01);
+  const padLat = Math.max((n - s) * 0.18, 0.01);
+  return [w - padLon, s - padLat, e + padLon, n + padLat];
 }
 
 /** Frame gradients — a cohesive ink↔brand family derived from the console tokens (design only). */
@@ -146,13 +226,22 @@ export function SocialKitCard({ tripTitle, destination, experienceType, days, li
   const highlights = pickHighlightItems(days, 4);
   const dayCount = days.length;
 
+  // Route frame data — the digitized-clone geography layer (real OSM-derived water/parks/roads
+  // for launch markets) plus real located items only (§13). Absent geography or a market with no
+  // layer → route+dots project against the located points' own bbox instead ("plain ground").
+  const geography = getMarketGeography(destination);
+  const routePoints = buildRoutePoints(days);
+  const routeDayGroups = groupRouteByDay(routePoints);
+  const routeBbox = geography?.bbox ?? (routePoints.length > 0 ? fallbackBbox(routePoints) : null);
+  const routeStopCount = routePoints.length;
+
   // CTA link (§13 — only a REAL link, never a placeholder URL): the storefront handle first
   // (the durable public page), else the Direct channel's trackable short-link when the author
   // already created one this session; neither → the honest claim-your-handle state.
   const ctaUrl = handle ? `${window.location.origin}/p/${handle}` : directLink;
   const ctaDisplay = ctaUrl ? ctaUrl.replace(/^https?:\/\//, "") : null;
 
-  const totalFrames = highlights.length + 2; // hero + highlights + CTA
+  const totalFrames = highlights.length + 3; // hero + route + highlights + CTA
 
   // Caption pack — the EXISTING promo-text engine, ready_made target (owner-gated server-side).
   // Only fetched when the build has a store listing; no listing → honest gate, no parallel path.
@@ -201,10 +290,89 @@ export function SocialKitCard({ tripTitle, destination, experienceType, days, li
             <FrameTitle>{tripTitle}</FrameTitle>
           </div>
 
+          {/* Route frame — the digitized-clone geography layer beneath day-colored polylines
+              connecting each day's REAL located items in trip order (§13: unlocated items are
+              simply absent, never guessed). New page in the story; nothing existing changes. */}
+          <div
+            style={{
+              ...frameBaseStyle,
+              background: "linear-gradient(180deg, #F7F4EA 0%, #EEE8D6 100%)",
+              justifyContent: "flex-start",
+              color: "#2A2A28",
+            }}
+            data-testid="social-frame-route"
+          >
+            <FrameNum n={2} total={totalFrames} />
+            <small style={{ display: "block", fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.14em", color: BRAND, marginBottom: 4 }}>
+              The Route
+            </small>
+            <svg
+              viewBox={`0 0 ${ROUTE_VIEW_W} ${ROUTE_VIEW_H}`}
+              preserveAspectRatio="xMidYMid meet"
+              style={{ flex: 1, width: "100%", minHeight: 0, display: "block" }}
+              data-testid="svg-route-frame"
+            >
+              {geography && routeBbox && (
+                <>
+                  {geography.water.map((line, i) => (
+                    <path
+                      key={`w-${i}`}
+                      d={projectPath(line, routeBbox, ROUTE_VIEW_W, ROUTE_VIEW_H)}
+                      fill="none" stroke="#B9D2E8" strokeWidth={5} strokeLinecap="round" strokeLinejoin="round" opacity={0.5}
+                    />
+                  ))}
+                  {geography.parks.map((ring, i) => (
+                    <path
+                      key={`p-${i}`}
+                      d={projectPath(ring, routeBbox, ROUTE_VIEW_W, ROUTE_VIEW_H, true)}
+                      fill="#BFE0C4" opacity={0.5}
+                    />
+                  ))}
+                  {geography.roads.map((line, i) => (
+                    <path
+                      key={`r-${i}`}
+                      d={projectPath(line, routeBbox, ROUTE_VIEW_W, ROUTE_VIEW_H)}
+                      fill="none" stroke="#C9C2AE" strokeWidth={0.6} opacity={0.5}
+                    />
+                  ))}
+                </>
+              )}
+              {routeBbox && routeDayGroups.map((group, gi) => (
+                group.length > 1 && (
+                  <path
+                    key={`route-${gi}`}
+                    d={projectPath(group.map((p): [number, number] => [p.lon, p.lat]), routeBbox, ROUTE_VIEW_W, ROUTE_VIEW_H)}
+                    fill="none"
+                    stroke={DAY_ROUTE_COLORS[(group[0].dayNumber - 1) % DAY_ROUTE_COLORS.length]}
+                    strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
+                  />
+                )
+              ))}
+              {routeBbox && routePoints.map((p) => {
+                const [x, y] = projectPoint([p.lon, p.lat], routeBbox, ROUTE_VIEW_W, ROUTE_VIEW_H);
+                const color = DAY_ROUTE_COLORS[(p.dayNumber - 1) % DAY_ROUTE_COLORS.length];
+                return (
+                  <g key={p.id}>
+                    <circle cx={x} cy={y} r={5} fill={color} stroke="white" strokeWidth={1} />
+                    <text x={x} y={y + 2.2} fontSize={5} fontWeight={700} fill="white" textAnchor="middle">{p.guideOrder}</text>
+                  </g>
+                );
+              })}
+            </svg>
+            <div style={{ fontSize: 10.5, fontWeight: 700, marginTop: 4 }} data-testid="text-route-stops">
+              {routeStopCount} {routeStopCount === 1 ? "stop" : "stops"}
+            </div>
+            {geography && (
+              <div style={{ fontSize: 6, opacity: 0.7, marginTop: 2 }} data-testid="text-route-attribution">
+                Map © OpenStreetMap contributors
+              </div>
+            )}
+          </div>
+
           {/* Highlight frames — real items, earliest per distinct area/day (§13) */}
           {highlights.map((item, i) => (
             <div key={item.id} style={{ ...frameBaseStyle, background: HIGHLIGHT_GRADIENTS[i % HIGHLIGHT_GRADIENTS.length] }} data-testid={`social-frame-highlight-${i + 1}`}>
-              <FrameNum n={i + 2} total={totalFrames} />
+              <FrameNum n={i + 3} total={totalFrames} />
               <FrameKicker>{(item.locationName ?? "").trim() || `Day ${item.dayNumber}`}</FrameKicker>
               <FrameTitle>{item.title}</FrameTitle>
             </div>

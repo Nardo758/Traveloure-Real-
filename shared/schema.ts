@@ -7588,6 +7588,13 @@ export const readyMadeTrips = pgTable("ready_made_trips", {
   // draft; the submit gate requires it. Vocabulary: shared/ready-made-plan-types.ts (code-validated,
   // no DB CHECK, so the editorial list can grow without a schema migration).
   planType: varchar("plan_type", { length: 60 }),
+  // Free-text theme label for planType='custom' only (migration 184, decision-maker approved Aug 9
+  // 2026 — shared/ready-made-plan-types.ts's "custom" vocabulary entry). NULL for every non-custom
+  // key; server validation (server/routes/ready-made.routes.ts) requires 3..80 trimmed chars
+  // whenever planType==='custom' and clears/nulls this column on any save that picks a non-custom
+  // key, so free text never leaks into the validated planType column and the closed taxonomy can't
+  // sprawl (see the module header on shared/ready-made-plan-types.ts).
+  planTypeCustom: varchar("plan_type_custom", { length: 80 }),
   bestSeason: varchar("best_season", { length: 60 }),
   pricingMode: varchar("pricing_mode", { length: 20 }).notNull().default("fixed"), // CHECK fixed|per_traveler
   priceCents: integer("price_cents"), // display/charge base; USD-only v1; resolved with fee band
