@@ -315,7 +315,7 @@ function BookingBriefModal({ provider, bookingUrl, tripId, onClose }: { provider
  *  input styling. `onChange` fires on every keystroke regardless of API state, so typing is never
  *  gated on Places being available — only the SUGGESTIONS are. */
 function PlacesAutocompleteInputInner({
-  value, onChange, onPlaceSelected, placeholder, testId, disabled, style,
+  value, onChange, onPlaceSelected, placeholder, testId, disabled, style, autoFocus, onKeyDown, onBlur,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -324,6 +324,13 @@ function PlacesAutocompleteInputInner({
   testId: string;
   disabled?: boolean;
   style: React.CSSProperties;
+  autoFocus?: boolean;
+  /** Passthroughs for hosts that commit on Enter/blur (the destination chip editor). Composed
+   *  with — never replacing — the dropdown's own close-on-blur. Suggestion clicks use onMouseDown
+   *  preventDefault, so picking a suggestion does NOT blur the input and cannot mis-fire a
+   *  blur-commit. */
+  onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void;
+  onBlur?: () => void;
 }) {
   const placesLib = useMapsLibrary("places");
   const [predictions, setPredictions] = useState<google.maps.places.AutocompletePrediction[]>([]);
@@ -409,12 +416,14 @@ function PlacesAutocompleteInputInner({
       <input
         value={value}
         onChange={e => handleChange(e.target.value)}
-        onBlur={() => { setTimeout(() => setOpen(false), 150); }}
+        onBlur={() => { setTimeout(() => setOpen(false), 150); onBlur?.(); }}
         onFocus={() => { if (predictions.length > 0) setOpen(true); }}
+        onKeyDown={onKeyDown}
         placeholder={placeholder}
         data-testid={testId}
         disabled={disabled}
         style={style}
+        autoFocus={autoFocus}
         autoComplete="off"
       />
       {open && predictions.length > 0 && (
@@ -456,6 +465,9 @@ function PlacesAutocompleteInput(props: {
   testId: string;
   disabled?: boolean;
   style: React.CSSProperties;
+  autoFocus?: boolean;
+  onKeyDown?: (e: React.KeyboardEvent<HTMLInputElement>) => void;
+  onBlur?: () => void;
 }) {
   const [loadFailed, setLoadFailed] = useState(false);
   if (!MAPS_KEY || loadFailed) {
@@ -463,10 +475,13 @@ function PlacesAutocompleteInput(props: {
       <input
         value={props.value}
         onChange={e => props.onChange(e.target.value)}
+        onKeyDown={props.onKeyDown}
+        onBlur={props.onBlur}
         placeholder={props.placeholder}
         data-testid={props.testId}
         disabled={props.disabled}
         style={props.style}
+        autoFocus={props.autoFocus}
       />
     );
   }
@@ -475,6 +490,32 @@ function PlacesAutocompleteInput(props: {
       <PlacesAutocompleteInputInner {...props} />
     </APIProvider>
   );
+}
+
+/** The ONE submit-time geocode fallback for Workstation location fields (spec: "one resolver,
+ *  not three") — used by InlineAddItemForm, LogBookingForm and the item editor's location field
+ *  whenever no exact Places pick supplied coordinates. Same server rail as everything else
+ *  (`GET /api/geocode`), `destination` only ever a disambiguation suffix on real item-level text
+ *  (§13 — the caller must not pass an empty locationName). Best-effort: any failure/miss returns
+ *  undefined and the item stays honestly coordinate-less; the Part A resolve-on-write backfill
+ *  retries server-side on the next item-list read. */
+async function geocodeLocationText(
+  locationName: string,
+  destination?: string,
+): Promise<{ latitude: string; longitude: string } | undefined> {
+  try {
+    const address = destination ? `${locationName}, ${destination}` : locationName;
+    const res = await fetch(`/api/geocode?address=${encodeURIComponent(address)}`);
+    if (res.ok) {
+      const j = await res.json();
+      if (Number.isFinite(j?.lat) && Number.isFinite(j?.lng)) {
+        return { latitude: String(j.lat), longitude: String(j.lng) };
+      }
+    }
+  } catch {
+    // Geocode failure must never block the write — submit without coords, exactly as today.
+  }
+  return undefined;
 }
 
 /** The Add panel's "Custom" source — same fields, same POST /api/trips/:tripId/itinerary-items
@@ -505,9 +546,8 @@ function InlineAddItemForm({ tripId, dayNumber, destination, onAdded }: { tripId
   });
   // FIX 4 (QA pass) + item 17: attach real coordinates, never fabricate. Preference order:
   // (1) an exact Places pick (placeCoords) — skip the geocode entirely, it's already exact;
-  // (2) FALLBACK — the existing submit-time /api/geocode rail (same one the destination
-  //     map-center lookup above uses) with "<locationName>, <destination>", unchanged from
-  //     before this lane (this is the "Places unavailable → behaves exactly as today" path,
+  // (2) FALLBACK — the shared submit-time geocode (geocodeLocationText above), unchanged
+  //     behavior (this is the "Places unavailable → behaves exactly as today" path,
   //     item 17's mandatory fallback). On any failure/miss: no coords, honest null — never a
   //     city-center guess. Geocoding is best-effort and must never block the add.
   const handleSubmit = async () => {
@@ -518,20 +558,8 @@ function InlineAddItemForm({ tripId, dayNumber, destination, onAdded }: { tripId
       coords = { latitude: placeCoords.lat, longitude: placeCoords.lng };
     } else if (locationName) {
       setGeocoding(true);
-      try {
-        const address = destination ? `${locationName}, ${destination}` : locationName;
-        const res = await fetch(`/api/geocode?address=${encodeURIComponent(address)}`);
-        if (res.ok) {
-          const j = await res.json();
-          if (Number.isFinite(j?.lat) && Number.isFinite(j?.lng)) {
-            coords = { latitude: String(j.lat), longitude: String(j.lng) };
-          }
-        }
-      } catch {
-        // Geocode failure must not block the add — submit without coords, exactly as today.
-      } finally {
-        setGeocoding(false);
-      }
+      coords = await geocodeLocationText(locationName, destination);
+      setGeocoding(false);
     }
     createMutation.mutate({
       ...form,
@@ -603,10 +631,15 @@ function InlineAddItemForm({ tripId, dayNumber, destination, onAdded }: { tripId
  *  `providerName` (a plain string), never the partner's `websiteUrl`/affiliate link, so there is
  *  nothing to leak into the write even by accident. */
 function LogBookingForm({
-  tripId, dayNumber, providerName, onAdded, onClose,
-}: { tripId: string; dayNumber: number; providerName: string; onAdded: () => void; onClose: () => void }) {
+  tripId, dayNumber, providerName, destination, onAdded, onClose,
+}: { tripId: string; dayNumber: number; providerName: string; destination?: string; onAdded: () => void; onClose: () => void }) {
   const { toast } = useToast();
   const [form, setForm] = useState({ title: "", startTime: "", estimatedCost: "", locationName: "" });
+  // Location resolution (workstation improvement, Aug 9 2026): same two-tier shape as
+  // InlineAddItemForm — an exact Places pick carries its own coords (cleared on hand-edit, since
+  // edited text may no longer match the picked place), else the shared submit-time geocode.
+  const [placeCoords, setPlaceCoords] = useState<{ lat: string; lng: string } | null>(null);
+  const [geocoding, setGeocoding] = useState(false);
   const createMutation = useMutation({
     mutationFn: async (data: any) => { const res = await apiRequest("POST", `/api/trips/${tripId}/itinerary-items`, data); return res.json(); },
     onSuccess: () => {
@@ -618,17 +651,27 @@ function LogBookingForm({
     },
     onError: (err: any) => toast({ title: "Failed to log booking", description: parseApiErrorMessage(err, "Please check the fields and try again."), variant: "destructive" }),
   });
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!form.title.trim()) return;
+    let coords: { latitude: string; longitude: string } | undefined;
+    const locationName = form.locationName.trim();
+    if (placeCoords) {
+      coords = { latitude: placeCoords.lat, longitude: placeCoords.lng };
+    } else if (locationName) {
+      setGeocoding(true);
+      coords = await geocodeLocationText(locationName, destination);
+      setGeocoding(false);
+    }
     createMutation.mutate({
       title: form.title.trim(),
       itemType: "activity",
       dayNumber,
       startTime: form.startTime || undefined,
       estimatedCost: form.estimatedCost ? String(parseFloat(form.estimatedCost)) : undefined,
-      locationName: form.locationName.trim() || undefined,
+      locationName: locationName || undefined,
       description: `Booked via ${providerName}`,
       bookingStatus: "confirmed",
+      ...(coords ?? {}),
     });
   };
   const labelStyle: React.CSSProperties = { fontSize: 11, fontWeight: 600, color: MID, display: "block", marginBottom: 3 };
@@ -652,17 +695,27 @@ function LogBookingForm({
       </div>
       <div>
         <label style={labelStyle}>Location (optional)</label>
-        <input value={form.locationName} onChange={e => setForm(f => ({ ...f, locationName: e.target.value }))} placeholder="Meeting point" data-testid="input-log-booking-location" style={inputStyle} />
+        <PlacesAutocompleteInput
+          value={form.locationName}
+          onChange={v => { setForm(f => ({ ...f, locationName: v })); setPlaceCoords(null); }}
+          onPlaceSelected={place => {
+            setForm(f => ({ ...f, locationName: place.text }));
+            setPlaceCoords(place.lat && place.lng ? { lat: place.lat, lng: place.lng } : null);
+          }}
+          placeholder="Meeting point"
+          testId="input-log-booking-location"
+          style={inputStyle}
+        />
       </div>
       <div style={{ display: "flex", gap: 6 }}>
         <button onClick={onClose} data-testid="button-log-booking-cancel" style={{ ...btnQuietStyle, flex: 1, padding: "6px", fontSize: 12 }}>Cancel</button>
         <button
           onClick={handleSubmit}
-          disabled={!form.title.trim() || createMutation.isPending}
+          disabled={!form.title.trim() || createMutation.isPending || geocoding}
           data-testid="button-log-booking-confirm"
-          style={{ ...btnPrimaryStyle, flex: 2, padding: "6px", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, opacity: !form.title.trim() || createMutation.isPending ? 0.6 : 1 }}
+          style={{ ...btnPrimaryStyle, flex: 2, padding: "6px", fontSize: 12, display: "flex", alignItems: "center", justifyContent: "center", gap: 5, opacity: !form.title.trim() || createMutation.isPending || geocoding ? 0.6 : 1 }}
         >
-          {createMutation.isPending ? <Loader2 style={{ width: 12, height: 12 }} className="animate-spin" /> : <CheckCircle style={{ width: 12, height: 12 }} />} Log booking
+          {(createMutation.isPending || geocoding) ? <Loader2 style={{ width: 12, height: 12 }} className="animate-spin" /> : <CheckCircle style={{ width: 12, height: 12 }} />} Log booking
         </button>
       </div>
     </div>
@@ -715,11 +768,14 @@ class MapSectionErrorBoundary extends Component<{ children: ReactNode }, { hasEr
  *  DOM-addressable list the canvas renders (the day list itself is the shared PlanCard, a
  *  read-mostly component this lane deliberately does not modify). */
 function ItemsEditorPanel({
-  tripId, days, maxDay, onDayMoved, onOpenBookingBrief, focusItemId, onFocusHandled, onSelectItem,
+  tripId, days, maxDay, destination, onDayMoved, onOpenBookingBrief, focusItemId, onFocusHandled, onSelectItem,
 }: {
   tripId: string;
   days: { dayNumber: number; items: ItineraryItem[] }[];
   maxDay: number;
+  /** Geocode disambiguation suffix for the location editor below — same role it plays in
+   *  InlineAddItemForm ("<location>, <destination>"), never the sole address (§13). */
+  destination?: string;
   onDayMoved: () => void;
   // W3-A: opens the shared BookingBriefModal for a partner-sourced item. The item's mere
   // presence here is the gate itself — on an assignment trip a partner item ONLY reaches
@@ -741,6 +797,14 @@ function ItemsEditorPanel({
   const [open, setOpen] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [noteDrafts, setNoteDrafts] = useState<Record<string, string>>({});
+  // Location editor (workstation improvement, Aug 9 2026): per-item drafts mirroring noteDrafts,
+  // plus the exact-Places-pick coords (cleared on hand-edit — edited text may no longer match the
+  // picked place) and which row is mid-geocode. This is the fix-up path for the plan map's
+  // "not on map" tray: before this, an unlocated item had NO surface in the Workstation where a
+  // location could be added at all.
+  const [locationDrafts, setLocationDrafts] = useState<Record<string, string>>({});
+  const [locationPickCoords, setLocationPickCoords] = useState<Record<string, { lat: string; lng: string } | null>>({});
+  const [geocodingItemId, setGeocodingItemId] = useState<string | null>(null);
   // dayNumber → machine-suggested id order, staged from optimize-order and applied only on
   // explicit confirm (never auto-applied).
   const [suggestedOrder, setSuggestedOrder] = useState<Record<number, string[]>>({});
@@ -812,6 +876,16 @@ function ItemsEditorPanel({
       if ("dayNumber" in vars.data) {
         onDayMoved();
         toast({ title: "Item moved" });
+      } else if ("locationName" in vars.data) {
+        // Honest wording (§13): only claim a pin when coordinates were actually attached.
+        toast({
+          title: "Location saved",
+          description: "latitude" in vars.data
+            ? "Pinned on the plan map."
+            : vars.data.locationName
+              ? "No map pin yet — the location couldn't be geocoded right now."
+              : undefined,
+        });
       } else {
         toast({ title: "Expert note saved" });
       }
@@ -842,6 +916,28 @@ function ItemsEditorPanel({
     // See the update mutation's onError above — same mode-flip 409, same honest surfacing.
     onError: (err: any) => toast({ title: "Failed to remove item", description: parseApiErrorMessage(err, "Please try again."), variant: "destructive" }),
   });
+
+  // Same two-tier resolution as InlineAddItemForm: an exact Places pick wins; otherwise the
+  // shared submit-time geocode. Coords are PATCHed only when NEW ones were actually resolved —
+  // clearing the text never wipes existing coordinates, which may be real facts from the item's
+  // source (a DMO row's own lat/lng) rather than derived from this label (§13: don't destroy
+  // real data on a label edit; the pin outliving a cleared label is the honest state).
+  const saveLocation = async (item: ItineraryItem) => {
+    const text = (locationDrafts[item.id] ?? item.locationName ?? "").trim();
+    const picked = locationPickCoords[item.id];
+    let coords: { latitude: string; longitude: string } | undefined;
+    if (picked) {
+      coords = { latitude: picked.lat, longitude: picked.lng };
+    } else if (text) {
+      setGeocodingItemId(item.id);
+      coords = await geocodeLocationText(text, destination);
+      setGeocodingItemId(null);
+    }
+    updateMutation.mutate(
+      { itemId: item.id, data: { locationName: text || null, ...(coords ?? {}) } },
+      { onSuccess: () => setLocationPickCoords(c => ({ ...c, [item.id]: null })) },
+    );
+  };
 
   const allItems = days.flatMap(d => d.items);
   if (allItems.length === 0) return null;
@@ -978,6 +1074,44 @@ function ItemsEditorPanel({
                           <option key={n} value={n}>Day {n}</option>
                         ))}
                       </select>
+                    </div>
+                    <div>
+                      <label style={labelStyle}>
+                        Location{" "}
+                        <span style={{ fontWeight: 400, color: FAINT }}>
+                          {isLocatedItem(item) ? "(pinned on the plan map)" : "(no map pin yet)"}
+                        </span>
+                      </label>
+                      <div style={{ display: "flex", gap: 6 }}>
+                        <div style={{ flex: 1 }}>
+                          <PlacesAutocompleteInput
+                            value={locationDrafts[item.id] ?? (item.locationName ?? "")}
+                            onChange={v => {
+                              setLocationDrafts(d => ({ ...d, [item.id]: v }));
+                              setLocationPickCoords(c => ({ ...c, [item.id]: null }));
+                            }}
+                            onPlaceSelected={place => {
+                              setLocationDrafts(d => ({ ...d, [item.id]: place.text }));
+                              setLocationPickCoords(c => ({
+                                ...c,
+                                [item.id]: place.lat && place.lng ? { lat: place.lat, lng: place.lng } : null,
+                              }));
+                            }}
+                            placeholder="Venue or address…"
+                            testId={`input-item-location-${item.id}`}
+                            style={fieldStyle}
+                          />
+                        </div>
+                        <button
+                          onClick={() => void saveLocation(item)}
+                          disabled={updateMutation.isPending || geocodingItemId === item.id}
+                          data-testid={`button-save-location-${item.id}`}
+                          style={{ ...btnPrimaryStyle, padding: "5px 12px", fontSize: 11.5, display: "flex", alignItems: "center", gap: 5, opacity: updateMutation.isPending || geocodingItemId === item.id ? 0.6 : 1 }}
+                        >
+                          {geocodingItemId === item.id ? <Loader2 style={{ width: 11, height: 11 }} className="animate-spin" /> : null}
+                          Save location
+                        </button>
+                      </div>
                     </div>
                     <div>
                       <label style={labelStyle}>Expert note <span style={{ fontWeight: 400, color: FAINT }}>(traveler-visible tip)</span></label>
@@ -3245,16 +3379,23 @@ export default function ExpertWorkspace() {
             derive from trip.destination and recompute when the context query invalidates).
             Assignment trips keep it read-only (the destination belongs to the traveler). */}
         {editingDest ? (
-          <input
-            value={destDraft}
-            autoFocus
-            onChange={e => setDestDraft(e.target.value)}
-            onBlur={commitDestination}
-            onKeyDown={e => { if (e.key === "Enter") commitDestination(); if (e.key === "Escape") setEditingDest(false); }}
-            data-testid="input-build-destination"
-            placeholder="Destination city"
-            style={{ fontSize: 12, color: INK, border: `1.5px solid ${LINE}`, borderRadius: 999, padding: "2px 10px", outline: "none", background: CARD, width: 150 }}
-          />
+          // Workstation improvement (Aug 9 2026): same Places typeahead the landing page's
+          // new-build destination field already has — text-only (the destination geocode rail
+          // elsewhere handles centering off it). Commit-on-blur is safe with the dropdown: a
+          // suggestion click uses onMouseDown preventDefault, so picking never blurs mid-pick.
+          <div style={{ width: 180 }}>
+            <PlacesAutocompleteInput
+              value={destDraft}
+              autoFocus
+              onChange={setDestDraft}
+              onPlaceSelected={place => setDestDraft(place.text)}
+              onBlur={commitDestination}
+              onKeyDown={e => { if (e.key === "Enter") commitDestination(); if (e.key === "Escape") setEditingDest(false); }}
+              testId="input-build-destination"
+              placeholder="Destination city"
+              style={{ fontSize: 12, color: INK, border: `1.5px solid ${LINE}`, borderRadius: 999, padding: "2px 10px", outline: "none", background: CARD, width: "100%", boxSizing: "border-box" }}
+            />
+          </div>
         ) : trip?.destination ? (
           isAuthoring ? (
             <button
@@ -3415,6 +3556,7 @@ export default function ExpertWorkspace() {
                   tripId={tripId}
                   days={days}
                   maxDay={maxDay}
+                  destination={destination}
                   onDayMoved={triggerEnergyRecalc}
                   onOpenBookingBrief={(network) => setBookingBrief({ provider: network, bookingUrl: resolvePartnerBookingUrl(network) })}
                   focusItemId={focusItemId}
@@ -3832,6 +3974,7 @@ export default function ExpertWorkspace() {
                         tripId={tripId!}
                         dayNumber={focusDay}
                         providerName={aff.name}
+                        destination={destination}
                         onAdded={triggerEnergyRecalc}
                         onClose={() => setLogBookingOpenFor(null)}
                       />
