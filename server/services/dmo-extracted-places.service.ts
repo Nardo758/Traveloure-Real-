@@ -9,12 +9,15 @@
 import { db } from "../db";
 import { dmoExtractedPlaces } from "@shared/schema";
 import { and, asc, count, eq, inArray, isNotNull } from "drizzle-orm";
+import type { PlaceEnrichment } from "./place-enrichment.service";
 
 export type ExtractedPlaceRow = typeof dmoExtractedPlaces.$inferSelect;
 
 // The response shape every rail serves — unchanged from the pre-child-row JSON blob contract so
 // clients stay byte-compatible. Optional keys are OMITTED (not null), matching the original
 // extract-places response, which never set a key it had no value for.
+// `officialUrl` (migration 188) is surfaced here ONLY — the row's full `enrichment` envelope is
+// never sent as-is; today's Reader only ever renders the official-site link.
 export type ExtractedPlaceResponse = {
   n: number;
   name: string;
@@ -22,16 +25,20 @@ export type ExtractedPlaceResponse = {
   longitude?: string;
   inLibraryId?: string;
   ticketingUrl?: string | null;
+  officialUrl?: string;
 };
 
 // A freshly-extracted candidate, pre-merge — the same shape the extract-places route already
 // builds (geocode + library-dedupe applied, ticketingUrl never set here — only PATCH sets it).
+// `enrichment` (migration 188) is optional open-data output from place-enrichment.service.ts —
+// fresh on every extraction, never carried over from a prior run (see replaceExtractedPlaces).
 export type CandidatePlace = {
   n: number;
   name: string;
   latitude?: string;
   longitude?: string;
   inLibraryId?: string;
+  enrichment?: PlaceEnrichment | null;
 };
 
 export async function getExtractedPlaceRows(dmoContentId: string): Promise<ExtractedPlaceRow[]> {
@@ -52,6 +59,12 @@ export function mapRowsToPlaces(rows: ExtractedPlaceRow[]): ExtractedPlaceRespon
       if (row.longitude != null) place.longitude = row.longitude;
       if (row.inLibraryId != null) place.inLibraryId = row.inLibraryId;
       if (row.ticketingUrl != null) place.ticketingUrl = row.ticketingUrl;
+      // Migration 188: surface only officialUrl from the enrichment envelope — omit the key
+      // entirely when there's no real value (matches this function's existing omit convention).
+      const officialUrl = row.enrichment && typeof row.enrichment === "object"
+        ? (row.enrichment as Record<string, unknown>).officialUrl
+        : undefined;
+      if (typeof officialUrl === "string" && officialUrl) place.officialUrl = officialUrl;
       return place;
     });
 }
@@ -96,6 +109,12 @@ export async function replaceExtractedPlaces(
             longitude: p.longitude ?? null,
             inLibraryId: p.inLibraryId ?? null,
             ticketingUrl: preservedUrls.get(normalizedName) ?? null,
+            // Migration 188: fresh enrichment wins on every re-extraction — deliberately NOT
+            // merged forward from the old row the way ticketingUrl is above. ticketingUrl is
+            // expert curation (must survive a refresh); enrichment is derived open-data output
+            // that a fresh pipeline run has just recomputed, so stale enrichment from a prior
+            // run would be strictly worse than either the new value or an honest NULL.
+            enrichment: p.enrichment ?? null,
             source,
             extractedAt,
           };

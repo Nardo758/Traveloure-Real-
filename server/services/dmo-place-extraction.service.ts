@@ -47,6 +47,13 @@ import {
   type ExtractedPlaceResponse,
   type CandidatePlace,
 } from "./dmo-extracted-places.service";
+import { enrichPlace } from "./place-enrichment.service";
+
+// Pacing between per-place enrichment calls in the sequential loop below — never parallel-fanned
+// (be rate-kind to Wikidata/OSM's free public tiers; this pipeline can process up to 15 places per
+// guide). Small enough not to meaningfully slow a single extraction, large enough to not hammer a
+// shared public API back-to-back.
+const ENRICHMENT_PACING_MS = 250;
 
 // ============================================================
 // SHAPE CLASSIFICATION — moved verbatim from expert-workspace.routes.ts so this file (and the
@@ -388,7 +395,46 @@ async function runPlaceExtractionInner(
       console.error(`[dmo-extract-places] dedupe lookup failed for "${name}":`, err);
     }
 
+    // Best-effort open-data enrichment (CLAUDE.md §20a extension, migration 188) — Wikidata
+    // (CC0) + OSM/Overpass (ODbL). Never throws (place-enrichment.service.ts's own contract);
+    // a null result just means this place stays honestly unenriched.
+    try {
+      const inputLat = place.latitude != null ? Number(place.latitude) : null;
+      const inputLng = place.longitude != null ? Number(place.longitude) : null;
+      const enrichment = await enrichPlace({
+        name,
+        city: item.city,
+        lat: inputLat != null && Number.isFinite(inputLat) ? inputLat : null,
+        lng: inputLng != null && Number.isFinite(inputLng) ? inputLng : null,
+      });
+      if (enrichment) {
+        // A coordinate this call filled in for a geocode miss carries its own provenance
+        // (coordsFrom) — use it to complete the place's location, but only when the geocode
+        // above genuinely missed (never overwrite a real geocode hit, §13).
+        if (
+          enrichment.coordsFrom === "wikidata" &&
+          place.latitude == null &&
+          place.longitude == null &&
+          typeof enrichment.lat === "number" &&
+          typeof enrichment.lng === "number"
+        ) {
+          place.latitude = String(enrichment.lat);
+          place.longitude = String(enrichment.lng);
+        }
+        place.enrichment = enrichment;
+      }
+    } catch (err) {
+      console.error(`[dmo-extract-places] enrichment failed for "${name}":`, err);
+    }
+
     places.push(place);
+
+    // Be rate-kind to Wikidata/OSM's free public tiers: this loop is sequential (never
+    // parallel-fanned), and this small pacing gap sits between per-place enrichment calls —
+    // skipped after the last name so the batch doesn't pay a trailing delay for nothing.
+    if (i < finalNames.length - 1) {
+      await new Promise((resolve) => setTimeout(resolve, ENRICHMENT_PACING_MS));
+    }
   }
 
   // Persist when there is a real result, or when the live fetch ran and legitimately found
