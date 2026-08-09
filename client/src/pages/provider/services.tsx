@@ -88,6 +88,7 @@ import {
   Share2,
   ExternalLink,
   CalendarClock,
+  ChevronDown,
 } from "lucide-react";
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
@@ -334,6 +335,9 @@ function AvailabilitySection() {
   const [date, setDate] = useState("");
   const [startTime, setStartTime] = useState("");
   const [capacity, setCapacity] = useState("");
+  // Collapsible section — default OPEN (this is a primary task), header states real
+  // service/slot-count data so collapsing loses no information (§13).
+  const [sectionOpen, setSectionOpen] = useState(true);
 
   const list = Array.isArray(services) ? services : [];
   const activeServiceId = selectedServiceId || list[0]?.id || "";
@@ -388,13 +392,41 @@ function AvailabilitySection() {
     },
   });
 
+  const currentService = list.find((s) => s.id === activeServiceId);
+  const slotCountLabel = slotsLoading
+    ? "…"
+    : slots && slots.length > 0
+    ? `${slots.length} slot${slots.length === 1 ? "" : "s"}`
+    : "none yet";
+  const headerSummary = servicesLoading
+    ? ""
+    : list.length === 0
+    ? "no services yet"
+    : `${currentService?.serviceName ?? currentService?.name ?? "Untitled"} · ${slotCountLabel}`;
+
   return (
     <section data-testid="section-catalog-availability">
-      <h2 className="text-sm font-semibold text-console-mid uppercase tracking-wide mb-2">
-        Availability
-      </h2>
+      <button
+        type="button"
+        onClick={() => setSectionOpen((o) => !o)}
+        className="w-full flex items-center justify-between mb-2 py-1 group"
+        data-testid="button-toggle-availability"
+      >
+        <h2 className="text-sm font-semibold text-console-mid uppercase tracking-wide flex items-center gap-1.5">
+          Availability
+          {headerSummary && (
+            <span className="normal-case font-normal text-console-mid/80" data-testid="text-availability-summary">
+              · {headerSummary}
+            </span>
+          )}
+        </h2>
+        <ChevronDown
+          className={`w-4 h-4 text-console-mid transition-transform ${sectionOpen ? "rotate-180" : ""}`}
+        />
+      </button>
+      {sectionOpen && (
       <Card className="border border-console-light">
-        <CardContent className="p-4 space-y-4">
+        <CardContent className="p-3 space-y-3">
           {servicesLoading ? (
             <Skeleton className="h-9 w-64" />
           ) : list.length === 0 ? (
@@ -434,12 +466,13 @@ function AvailabilitySection() {
                   <Skeleton className="h-10 w-full" />
                 </div>
               ) : !slots || slots.length === 0 ? (
-                <EmptyState
-                  icon={CalendarClock}
-                  title="No availability published yet"
-                  body="Travelers can't pick a time until you add slots."
-                  testId="empty-catalog-no-slots"
-                />
+                <div
+                  className="flex items-center gap-2 rounded-lg border border-dashed border-console-light px-3 py-2.5 text-sm text-console-mid"
+                  data-testid="empty-catalog-no-slots"
+                >
+                  <CalendarClock className="w-4 h-4 flex-shrink-0 text-console-mid/60" />
+                  <span>No availability published yet — travelers can't pick a time until you add slots.</span>
+                </div>
               ) : (
                 <div className="space-y-2">
                   {slots.map((slot) => (
@@ -474,7 +507,7 @@ function AvailabilitySection() {
               )}
 
               <form
-                className="flex items-end gap-2 flex-wrap pt-2 border-t border-console-light"
+                className="flex items-end gap-2 flex-wrap pt-1.5 border-t border-console-light"
                 onSubmit={(e) => {
                   e.preventDefault();
                   if (!date || !activeServiceId) return;
@@ -486,6 +519,7 @@ function AvailabilitySection() {
                   <Input
                     id="catalog-slot-date"
                     type="date"
+                    className="h-8"
                     min={new Date().toISOString().slice(0, 10)}
                     value={date}
                     onChange={(e) => setDate(e.target.value)}
@@ -498,6 +532,7 @@ function AvailabilitySection() {
                   <Input
                     id="catalog-slot-time"
                     type="time"
+                    className="h-8"
                     value={startTime}
                     onChange={(e) => setStartTime(e.target.value)}
                     data-testid="input-slot-start-time"
@@ -508,6 +543,7 @@ function AvailabilitySection() {
                   <Input
                     id="catalog-slot-capacity"
                     type="number"
+                    className="h-8"
                     min={1}
                     max={100}
                     placeholder="1"
@@ -531,6 +567,7 @@ function AvailabilitySection() {
           )}
         </CardContent>
       </Card>
+      )}
     </section>
   );
 }
@@ -600,7 +637,7 @@ export default function ProviderServices() {
   }, {});
 
   // Derive unique filter labels from live services
-  const usedCategoryIds = [...new Set((services || []).map(s => s.categoryId).filter(Boolean))] as string[];
+  const usedCategoryIds = Array.from(new Set((services || []).map(s => s.categoryId).filter(Boolean))) as string[];
   const filterLabels = ["All", ...usedCategoryIds.map(id => categoryNameById[id] || id)];
 
   const filteredServices = !services
