@@ -1,21 +1,25 @@
 import { ProviderLayout } from "@/components/provider/provider-layout";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { 
-  DollarSign, 
-  TrendingUp, 
-  Clock, 
-  CheckCircle, 
+import {
+  DollarSign,
+  TrendingUp,
+  Clock,
+  CheckCircle,
   Calendar,
   Download,
   ArrowUpRight,
   Loader2,
   PieChart,
   Shield,
+  Link2,
+  MousePointerClick,
+  Copy,
 } from "lucide-react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
+import { Link } from "wouter";
 import type { ServiceBooking, ProviderService } from "@shared/schema";
 import { StripeConnectCard } from "@/components/stripe-connect-card";
 import { EarningsBySourcePanel } from "@/components/backoffice/earnings-by-source-panel";
@@ -41,6 +45,229 @@ interface ProviderEarningsSummary {
   pending: number; // held in escrow, not yet releasable
   available: number; // releasable — payable now
   paidOut: number;
+}
+
+// "Link performance" card (§06a mockup). Reads the S5/S6 short-link rails
+// (server/routes/short-links.routes.ts) — real data only (§13), never a fabricated trend: clicks
+// are a lifetime counter with no per-day log, so there is deliberately no click-over-time chart here.
+interface LinkAnalyticsRow {
+  code: string;
+  targetType: "storefront" | "service" | "template" | "ready_made";
+  targetId: string | null;
+  clicks: number;
+  bookings: number;
+  revenue: number;
+}
+
+interface LinkAnalyticsResponse {
+  range: { days: number; since: string };
+  clicksAreLifetime: boolean;
+  links: LinkAnalyticsRow[];
+  totals: {
+    totalClicks: number;
+    totalBookings: number;
+    totalRevenue: number;
+    conversionRate: number | null;
+  };
+}
+
+interface SourceSplitBucket {
+  source: "direct" | "link" | "cross_sell";
+  label: string;
+  count: number;
+  revenue: number;
+}
+
+interface EarningsBySourceResponse {
+  buckets: SourceSplitBucket[];
+  totals: { count: number; revenue: number };
+  preAttributionCaveat: boolean;
+}
+
+const LINK_TARGET_LABEL: Record<LinkAnalyticsRow["targetType"], string> = {
+  storefront: "Your storefront",
+  service: "Service",
+  template: "Itinerary template",
+  ready_made: "Ready Made Trip",
+};
+
+const SOURCE_BAR_COLOR: Record<SourceSplitBucket["source"], string> = {
+  direct: "bg-console-mid",
+  link: "bg-primary",
+  cross_sell: "bg-blue-500",
+};
+
+function LinkPerformanceCard() {
+  const { toast } = useToast();
+  const [copiedCode, setCopiedCode] = useState<string | null>(null);
+
+  // days=365 is the widest range the rail offers (RANGE_DAYS in short-links.routes.ts) — the
+  // closest honest approximation of "lifetime" for bookings/revenue, which — unlike clicks — are
+  // NOT true lifetime counters server-side.
+  const linkAnalyticsQuery = useQuery<LinkAnalyticsResponse>({
+    queryKey: ["/api/me/link-analytics", { days: 365 }],
+  });
+  const sourceQuery = useQuery<EarningsBySourceResponse>({
+    queryKey: ["/api/me/earnings-by-source"],
+  });
+  const servicesQuery = useQuery<ProviderService[]>({
+    queryKey: ["/api/provider/services"],
+  });
+
+  // Endpoint error -> render nothing. An honest absence beats a broken/half-populated card.
+  if (linkAnalyticsQuery.isError) return null;
+
+  const links = linkAnalyticsQuery.data?.links ?? [];
+  const totals = linkAnalyticsQuery.data?.totals;
+  const hasLinks = links.length > 0;
+
+  const serviceNameById = new Map((servicesQuery.data ?? []).map((s) => [s.id, s.serviceName]));
+  function targetName(row: LinkAnalyticsRow): string {
+    if (row.targetType === "service" && row.targetId) {
+      return serviceNameById.get(row.targetId) ?? "Service";
+    }
+    return LINK_TARGET_LABEL[row.targetType];
+  }
+
+  async function copyLink(code: string) {
+    const url = `${window.location.origin}/r/${code}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopiedCode(code);
+      toast({ title: "Copied", description: "Share link copied to your clipboard." });
+      setTimeout(() => setCopiedCode((c) => (c === code ? null : c)), 2000);
+    } catch {
+      toast({ title: "Couldn't copy", description: "Please copy the link manually.", variant: "destructive" });
+    }
+  }
+
+  const sourceBuckets = sourceQuery.data?.buckets ?? [];
+  const sourceTotalRevenue = sourceQuery.data?.totals?.revenue ?? 0;
+
+  return (
+    <Card className="border border-console-light" data-testid="card-link-performance">
+      <CardHeader>
+        <CardTitle className="text-lg flex items-center gap-2">
+          <Link2 className="w-5 h-5 text-primary" />
+          Link Performance
+        </CardTitle>
+        <CardDescription data-testid="text-link-performance-caveat">
+          Stats count tracked share links only — a raw URL texted or pasted outside Traveloure isn't
+          visible to this dashboard.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {!hasLinks ? (
+          <EmptyState
+            icon={Link2}
+            title="Share a service from your Catalog to start tracking clicks and bookings"
+            cta={
+              <Button size="sm" variant="outline" asChild data-testid="button-empty-link-performance">
+                <Link href="/provider/services">Go to Catalog</Link>
+              </Button>
+            }
+            testId="empty-link-performance"
+          />
+        ) : (
+          <div className="space-y-6">
+            <div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <StatCard
+                  label="Clicks"
+                  value={(totals?.totalClicks ?? 0).toLocaleString()}
+                  icon={MousePointerClick}
+                  testId="stat-link-clicks"
+                />
+                <StatCard
+                  label="Bookings via links"
+                  value={(totals?.totalBookings ?? 0).toLocaleString()}
+                  icon={CheckCircle}
+                  iconClassName="bg-green-100 text-green-600"
+                  testId="stat-link-bookings"
+                />
+                <StatCard
+                  label="Revenue via links"
+                  value={`$${(totals?.totalRevenue ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                  icon={DollarSign}
+                  iconClassName="bg-console-bg text-console-darkest"
+                  testId="stat-link-revenue"
+                />
+              </div>
+              <p className="text-xs text-console-mid mt-2">Lifetime totals.</p>
+            </div>
+
+            <div className="space-y-2">
+              {links.map((row) => (
+                <div
+                  key={row.code}
+                  className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-lg border border-console-light bg-console-bg"
+                  data-testid={`row-link-${row.code}`}
+                >
+                  <div className="min-w-0">
+                    <p className="font-medium text-console-darkest truncate">{targetName(row)}</p>
+                    <p className="text-xs text-console-mid truncate">{`${window.location.origin}/r/${row.code}`}</p>
+                  </div>
+                  <div className="flex items-center gap-4 text-sm flex-shrink-0">
+                    <div className="text-center">
+                      <p className="font-semibold text-console-darkest">{row.clicks.toLocaleString()}</p>
+                      <p className="text-xs text-console-mid">clicks</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="font-semibold text-console-darkest">{row.bookings.toLocaleString()}</p>
+                      <p className="text-xs text-console-mid">bookings</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="font-semibold text-console-darkest">
+                        ${row.revenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </p>
+                      <p className="text-xs text-console-mid">revenue</p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => copyLink(row.code)}
+                      data-testid={`button-copy-link-${row.code}`}
+                    >
+                      <Copy className="w-3.5 h-3.5 mr-1.5" />
+                      {copiedCode === row.code ? "Copied" : "Copy"}
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {sourceBuckets.length > 0 && sourceTotalRevenue > 0 && (
+              <div>
+                <p className="text-sm font-medium text-console-darkest mb-2">Revenue by source</p>
+                <div className="h-3 rounded-full overflow-hidden flex bg-console-bg" data-testid="bar-link-source-split">
+                  {sourceBuckets.map((b) => {
+                    const pct = (b.revenue / sourceTotalRevenue) * 100;
+                    return <div key={b.source} className={SOURCE_BAR_COLOR[b.source]} style={{ width: `${pct}%` }} />;
+                  })}
+                </div>
+                <div className="flex flex-wrap justify-between gap-2 text-xs text-console-mid mt-1">
+                  {sourceBuckets.map((b) => {
+                    const pct = Math.round((b.revenue / sourceTotalRevenue) * 100);
+                    return (
+                      <span key={b.source} data-testid={`text-link-source-${b.source}`}>
+                        {b.label} {pct}%
+                      </span>
+                    );
+                  })}
+                </div>
+                {sourceQuery.data?.preAttributionCaveat && (
+                  <p className="text-xs text-console-mid mt-2" data-testid="text-link-split-caveat">
+                    This split isn't retroactive — bookings made before link tracking launched are
+                    counted as Direct by default, not because they were confirmed direct.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
 }
 
 export default function ProviderEarnings() {
@@ -382,6 +609,8 @@ export default function ProviderEarnings() {
         </Card>
 
         <EarningsBySourcePanel />
+
+        <LinkPerformanceCard />
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2">
