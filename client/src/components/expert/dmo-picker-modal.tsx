@@ -100,6 +100,8 @@ interface Place {
   longitude?: string;
   inLibraryId?: string;
   ticketingUrl?: string;
+  // Migration 188 (open-data enrichment, Wikidata CC0 / OSM ODbL): best-effort, may be absent.
+  officialUrl?: string;
 }
 
 interface ExtractPlacesResponse {
@@ -291,6 +293,27 @@ function TicketingSubline({ place, ticketingUrl, onSave }: { place: Place; ticke
   );
 }
 
+// Official-site link — open-data enrichment (migration 188, Wikidata CC0 / OSM ODbL), best-effort
+// and rendered only when the server actually supplied one (§13: absence stays absence, no filler).
+// Styled deliberately less prominent than TicketingSubline's pill: the expert's own curated
+// ticketing link keeps visual precedence whenever both exist — this is a quieter, secondary
+// reference, not a competing CTA.
+function OfficialSiteLink({ place, officialUrl }: { place: Place; officialUrl: string }) {
+  const host = hostnameOf(officialUrl) ?? officialUrl;
+  return (
+    <a
+      href={officialUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      data-testid={`link-official-site-${place.n}`}
+      className="inline-flex items-center gap-1 text-[10px] font-medium"
+      style={{ color: "var(--console-mid)" }}
+    >
+      Official site ({host}) <ExternalLink className="w-2.5 h-2.5" />
+    </a>
+  );
+}
+
 function PlaceRow({
   place,
   focusDay,
@@ -299,6 +322,7 @@ function PlaceRow({
   isFlashed,
   dotState,
   ticketingUrl,
+  officialUrl,
   onRowRef,
   onRowClick,
   onAdd,
@@ -313,6 +337,7 @@ function PlaceRow({
   isFlashed: boolean;
   dotState: PlaceDotState;
   ticketingUrl?: string;
+  officialUrl?: string;
   onRowRef: (n: number, el: HTMLDivElement | null) => void;
   onRowClick: (n: number) => void;
   onAdd: (place: Place, day: number) => void;
@@ -362,8 +387,9 @@ function PlaceRow({
             )}
           </div>
         </div>
-        <div onClick={(e) => e.stopPropagation()} className="mt-1.5">
+        <div onClick={(e) => e.stopPropagation()} className="mt-1.5 flex items-center gap-2 flex-wrap">
           <TicketingSubline place={place} ticketingUrl={ticketingUrl} onSave={(url) => onSaveTicketing(place, url)} />
+          {officialUrl && <OfficialSiteLink place={place} officialUrl={officialUrl} />}
         </div>
       </div>
     </div>
@@ -681,6 +707,7 @@ function DmoReader({
                         isFlashed={flashN === place.n}
                         dotState={dotStateFor(place.n)}
                         ticketingUrl={place.ticketingUrl}
+                        officialUrl={place.officialUrl}
                         onRowRef={(n, el) => { if (el) rowRefs.current.set(n, el); else rowRefs.current.delete(n); }}
                         onRowClick={scrollToHighlight}
                         onAdd={(p, day) => addPlaceMutation.mutate({ place: p, day })}
