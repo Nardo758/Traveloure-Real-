@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from "express";
+import Anthropic from "@anthropic-ai/sdk";
 import { getUserId } from "../utils/auth";
 import { z } from "zod";
 import { db } from "../db";
@@ -25,6 +26,8 @@ import {
   getMarketGapSummary,
 } from "../content/providers/DMOSourceRegistry";
 import { searchWorkstationPlatformContent } from "../services/content-query.service";
+import { geocodeAddress } from "../utils/geocode";
+import { trackAICost, calculateAnthropicCost } from "../services/ai-cost-tracker";
 
 const router = Router();
 
@@ -95,6 +98,53 @@ router.get(
 // ============================================================
 // DMO LIBRARY — Browse raw ingested content
 // ============================================================
+
+// ─── Shape classification: place vs. guide ──────────────────────────────────
+// The DMO library holds two content shapes under one table: `place` content describes
+// ONE venue (has real coordinates/an address), `guide` content is a listicle article about
+// MANY venues ("Top 10 Temples in Kyoto"). The library previously treated every row as a
+// place; this classifies each row so the Research Reader can pick the right UI (single-venue
+// card vs. article + extracted-places list). Title pattern wins outright (an explicit
+// "Top 10 ..." headline is a guide even if the scraper happened to attach coordinates to the
+// page); otherwise a row with no real location AND a long body reads as prose, not a venue card.
+const GUIDE_TITLE_RE = /\b(top\s*\d+|best|guide|favou?rite|must[- ]?see|things\s+to\s+do)\b/i;
+
+function hasRealCoords(lat: unknown, lng: unknown): boolean {
+  const latNum = typeof lat === "string" ? parseFloat(lat) : (lat as number | null | undefined);
+  const lngNum = typeof lng === "string" ? parseFloat(lng) : (lng as number | null | undefined);
+  if (latNum == null || lngNum == null || !Number.isFinite(latNum) || !Number.isFinite(lngNum)) return false;
+  if (latNum < -90 || latNum > 90 || lngNum < -180 || lngNum > 180) return false;
+  if (latNum === 0 && lngNum === 0) return false; // (0,0) is the classic "no real coord" sentinel
+  return true;
+}
+
+export function classifyDmoShape(row: {
+  name?: string | null;
+  latitude?: string | null;
+  longitude?: string | null;
+  address?: string | null;
+  description?: string | null;
+}): "place" | "guide" {
+  if (row.name && GUIDE_TITLE_RE.test(row.name)) return "guide";
+  const noCoords = !hasRealCoords(row.latitude, row.longitude);
+  const noAddress = !row.address || !row.address.trim();
+  const longDescription = (row.description?.length ?? 0) > 300;
+  if (noCoords && noAddress && longDescription) return "guide";
+  return "place";
+}
+
+// Number of venues an earlier extract-places run found in this row's extracted_data, or null
+// if extraction has never run (distinct from 0, which means "ran and found nothing").
+function extractedPlacesCount(extractedData: unknown): number | null {
+  if (
+    extractedData &&
+    typeof extractedData === "object" &&
+    Array.isArray((extractedData as { places?: unknown }).places)
+  ) {
+    return (extractedData as { places: unknown[] }).places.length;
+  }
+  return null;
+}
 
 const libraryQuerySchema = z.object({
   market: z.string().optional(),
@@ -250,6 +300,10 @@ router.get(
           ...overlay,
           isRefined: Boolean(edit),
           raw,
+          // Reader-list additions (shape classification never overridden by an expert edit —
+          // it describes the underlying content, not the refined wording).
+          shape: classifyDmoShape(item),
+          extractedPlacesCount: extractedPlacesCount(item.extractedData),
         };
       }),
     });
@@ -270,7 +324,276 @@ router.get(
       throw new NotFoundError("Content not found");
     }
 
-    res.json(item);
+    // DMO Research Reader drawer: the field set the reader actually renders, plus the
+    // computed `shape` and the raw `extractedData` (place-extraction results, if any run).
+    // Deliberately narrower than the raw row — no rawData/normalizedData/embeddingVector.
+    res.json({
+      id: item.id,
+      name: item.name,
+      description: item.description,
+      shortDescription: item.shortDescription,
+      contentType: item.contentType,
+      neighborhood: item.neighborhood,
+      city: item.city,
+      address: item.address,
+      latitude: item.latitude,
+      longitude: item.longitude,
+      sourceUrl: item.sourceUrl,
+      sourcePageTitle: item.sourcePageTitle,
+      scrapedAt: item.scrapedAt,
+      license: item.license,
+      tags: item.tags,
+      primaryImageUrl: item.primaryImageUrl,
+      shape: classifyDmoShape(item),
+      extractedData: item.extractedData,
+    });
+  }),
+);
+
+// ============================================================
+// EXTRACT PLACES — AI-assisted venue extraction from guide-shaped content
+// ============================================================
+//
+// Run-once by design: a `guide` row's article text is expensive to re-parse, so a prior
+// successful run is served straight from `extracted_data.places` with no AI call at all
+// (hard cost invariant — do not relax the cache check below "just to refresh one row").
+
+const EXTRACT_PLACES_SYSTEM_PROMPT = `You read a travel/DMO article and extract the distinct real-world venue or place names it mentions — the specific attractions, temples, restaurants, museums, parks, etc. a traveler could visit. Not neighborhoods, not cities, not generic categories.
+
+Rules:
+- Only extract names the text actually states. Never invent, guess, or infer a place that is not named.
+- List each distinct venue once, in the order it first appears in the text.
+- List at most 15 venues.
+- Respond with ONLY a JSON array of strings, no other text, e.g. ["Fushimi Inari Shrine", "Kiyomizu-dera Temple"]. If no venues are named, respond with [].`;
+
+// Defensive parse: the model may wrap its answer in prose or a code fence despite instructions.
+function parsePlaceNamesJson(raw: string): string[] | null {
+  try {
+    const cleaned = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
+    const jsonMatch = cleaned.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) return null;
+    const parsed = JSON.parse(jsonMatch[0]);
+    if (!Array.isArray(parsed)) return null;
+    const names = parsed
+      .filter((n): n is string => typeof n === "string" && n.trim().length > 0)
+      .map((n) => n.trim());
+    return names;
+  } catch {
+    return null;
+  }
+}
+
+// Walks rawData collecting string values long enough / prose-shaped enough to be article body
+// text — skips short id/code-shaped strings and bare URLs. Depth-capped: rawData is an
+// arbitrary source payload, not a schema we control.
+function collectTextualStrings(value: unknown, depth = 0, acc: string[] = []): string[] {
+  if (depth > 3) return acc;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (trimmed.length >= 20 && !/^https?:\/\//i.test(trimmed)) acc.push(trimmed);
+  } else if (Array.isArray(value)) {
+    for (const v of value) collectTextualStrings(v, depth + 1, acc);
+  } else if (value && typeof value === "object") {
+    for (const v of Object.values(value)) collectTextualStrings(v, depth + 1, acc);
+  }
+  return acc;
+}
+
+router.post(
+  "/library/:id/extract-places",
+  requireExpert,
+  asyncHandler(async (req: any, res: Response) => {
+    const id = req.params.id;
+    const expertId = getUserId(req)!;
+    const item = await storage.getDmoRawContentById(id);
+
+    // Same intake gate as the detail read (§12 audit A-3 pattern) — extraction is not a
+    // side door around content the admin hasn't approved into the library.
+    if (!item || item.expertWorkspaceVisible !== true || item.status === "rejected") {
+      throw new NotFoundError("Content not found");
+    }
+
+    // Run-once cache: an existing non-empty extraction is served as-is, no AI call.
+    const existingPlaces = (item.extractedData as { places?: unknown } | null)?.places;
+    if (Array.isArray(existingPlaces) && existingPlaces.length > 0) {
+      return res.json({ places: existingPlaces, cached: true });
+    }
+
+    // Assemble source text: the row's description plus obviously-textual string fields of the
+    // scraper's rawData payload. Both are the row's OWN stored content — never a live fetch.
+    const rawDataText = collectTextualStrings(item.rawData).join("\n\n");
+    const sourceText = [item.description, rawDataText].filter(Boolean).join("\n\n").trim();
+
+    // §13: a teaser-length source must never be extrapolated into fabricated places — no AI
+    // call at all below this bar, so a thin row can't even accidentally hallucinate one venue.
+    if (sourceText.length < 300) {
+      return res.json({ thinText: true, places: null });
+    }
+
+    if (!process.env.ANTHROPIC_API_KEY) {
+      return res.status(502).json({ message: "Extraction failed — read the source instead" });
+    }
+
+    let candidateNames: string[];
+    try {
+      const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+      const response = await client.messages.create({
+        model: "claude-sonnet-4-5",
+        max_tokens: 500,
+        system: EXTRACT_PLACES_SYSTEM_PROMPT,
+        messages: [{ role: "user", content: sourceText.slice(0, 12_000) }],
+      });
+
+      // ai_cost_tracking instrumentation — same signature as trip-context.routes.ts's
+      // extraction call (CLAUDE.md: the table is load-bearing for the admin cost breakdown).
+      const inputTokens = response.usage?.input_tokens ?? 0;
+      const outputTokens = response.usage?.output_tokens ?? 0;
+      if (inputTokens > 0 || outputTokens > 0) {
+        trackAICost({
+          sourceType: "dmo_extract_places",
+          modelUsed: "claude-sonnet-4-5",
+          userId: expertId,
+          costUsd: calculateAnthropicCost(inputTokens, outputTokens),
+          tokensIn: inputTokens,
+          tokensOut: outputTokens,
+        }).catch((err) => console.error("[cost-tracker] dmo_extract_places:", err));
+      }
+
+      const textBlock = response.content.find((b) => b.type === "text");
+      const raw = textBlock && "text" in textBlock ? textBlock.text : "";
+      const parsed = raw ? parsePlaceNamesJson(raw) : null;
+      if (parsed === null) {
+        throw new Error("Unparseable extraction response");
+      }
+      candidateNames = parsed.slice(0, 15);
+    } catch (err) {
+      console.error("[dmo-extract-places] AI call failed:", err);
+      return res.status(502).json({ message: "Extraction failed — read the source instead" });
+    }
+
+    // Per candidate, in article order: best-effort geocode + dedupe against the library.
+    // Neither failure aborts the batch — one bad name must not sink the other 14.
+    const places: Array<{
+      n: number;
+      name: string;
+      latitude?: string;
+      longitude?: string;
+      inLibraryId?: string;
+      ticketingUrl?: string | null;
+    }> = [];
+
+    for (let i = 0; i < candidateNames.length; i++) {
+      const name = candidateNames[i];
+      const place: (typeof places)[number] = { n: i + 1, name };
+
+      try {
+        // The ONE server geocode path (server/utils/geocode.ts) — city-qualified so a bare
+        // venue name has a fighting chance; a miss omits coords entirely rather than falling
+        // back to the city centre (§13 — a city-centre pin would be a fabricated location).
+        const geo = await geocodeAddress(`${name}, ${item.city}`);
+        if (geo && Number.isFinite(geo.lat) && Number.isFinite(geo.lng)) {
+          place.latitude = String(geo.lat);
+          place.longitude = String(geo.lng);
+        }
+      } catch (err) {
+        console.error(`[dmo-extract-places] geocode failed for "${name}":`, err);
+      }
+
+      try {
+        // Dedupe against the visible library, same city, contains-either-direction match —
+        // catches both "Fushimi Inari Shrine" ⊂ "Fushimi Inari Taisha Shrine" and the reverse.
+        const pattern = `%${name}%`;
+        const [match] = await db
+          .select({ id: dmoRawContent.id })
+          .from(dmoRawContent)
+          .where(
+            and(
+              eq(dmoRawContent.city, item.city),
+              eq(dmoRawContent.expertWorkspaceVisible, true),
+              ne(dmoRawContent.status, "rejected"),
+              ne(dmoRawContent.id, item.id),
+              or(ilike(dmoRawContent.name, pattern), sql`${name} ILIKE '%' || ${dmoRawContent.name} || '%'`),
+            ),
+          )
+          .limit(1);
+        if (match) place.inLibraryId = match.id;
+      } catch (err) {
+        console.error(`[dmo-extract-places] dedupe lookup failed for "${name}":`, err);
+      }
+
+      places.push(place);
+    }
+
+    await db
+      .update(dmoRawContent)
+      .set({
+        extractedData: { places, extractedAt: new Date().toISOString(), source: "stored_text" },
+      })
+      .where(eq(dmoRawContent.id, id));
+
+    res.json({ places, cached: false });
+  }),
+);
+
+// ============================================================
+// EXTRACTED-PLACE TICKETING LINK — expert-console-only metadata
+// ============================================================
+//
+// §16: this is NOT a traveler-facing "Book" CTA and must never be rendered as one — any
+// traveler-facing booking action routes through the booking-agent rail
+// (POST /api/affiliate-booking-requests), which keeps the affiliate URL server-side and logs
+// the booking onto the trip. This field is a reference link an expert stores for their own use
+// while advising a traveler (e.g. "here's where I'd buy tickets"), scoped to one extracted
+// place inside one DMO content row.
+
+router.patch(
+  "/library/:id/extracted-places/:index",
+  requireExpert,
+  asyncHandler(async (req: Request, res: Response) => {
+    const id = req.params.id;
+    const item = await storage.getDmoRawContentById(id);
+
+    if (!item || item.expertWorkspaceVisible !== true || item.status === "rejected") {
+      throw new NotFoundError("Content not found");
+    }
+
+    // §14 note: ticketingUrl is reference metadata, not a money field — no amount/rate/id from
+    // this body reaches any charge, payout, or ownership decision.
+    const schema = z.object({
+      ticketingUrl: z
+        .string()
+        .max(500)
+        .refine((u) => u.startsWith("https://"), { message: "ticketingUrl must be an https:// URL" })
+        .refine((u) => {
+          try {
+            new URL(u);
+            return true;
+          } catch {
+            return false;
+          }
+        }, { message: "ticketingUrl must be a valid URL" })
+        .nullable(),
+    });
+    const { ticketingUrl } = schema.parse(req.body);
+
+    const index = Number(req.params.index);
+    const placesRaw = (item.extractedData as { places?: unknown } | null)?.places;
+    if (!Number.isInteger(index) || !Array.isArray(placesRaw) || index < 0 || index >= placesRaw.length) {
+      throw new NotFoundError("Extracted place not found");
+    }
+
+    const places = placesRaw.slice();
+    const updatedPlace = { ...(places[index] as Record<string, unknown>), ticketingUrl };
+    places[index] = updatedPlace;
+
+    await db
+      .update(dmoRawContent)
+      .set({
+        extractedData: { ...(item.extractedData as Record<string, unknown>), places },
+      })
+      .where(eq(dmoRawContent.id, id));
+
+    res.json(updatedPlace);
   }),
 );
 
