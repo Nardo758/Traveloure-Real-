@@ -996,6 +996,31 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
           <PlanApprovalBanner tripId={trip.id} planApproval={plancardData?.meta?.planApproval} />
         )}
 
+        {/* CLAUDE.md §21 (ratified Aug 9, 2026) — trip-level "Expert Notes", DELIVERED to the
+            traveler (distinct from the private `trips.expert_notes` build notes, which never
+            reach this surface). Echoes ActivitiesSection's per-item "Expert Tip" callout
+            treatment (amber inset, 💡 label) so the two note surfaces read as one system.
+            Renders ONLY when the plancard payload actually carries a non-empty note (§13) — no
+            placeholder while the sibling server route is still landing, no empty callout once it
+            has. Near the top, ahead of the day-by-day content, same position as the plan-approval
+            banner above it. */}
+        {plancardData?.trip?.expertTravelerNote?.trim() && (
+          <div
+            className="mx-3 sm:mx-5 mt-2.5 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 px-3 py-2.5"
+            data-testid="text-plancard-expert-note"
+          >
+            <div className="flex items-center gap-1.5 mb-1">
+              <span className="text-[12px]">💡</span>
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-300">
+                From your expert
+              </span>
+            </div>
+            <p className="text-[12.5px] text-amber-900 dark:text-amber-200 whitespace-pre-wrap leading-relaxed">
+              {plancardData.trip.expertTravelerNote}
+            </p>
+          </div>
+        )}
+
         {/* Concierge — front and center for TRAVELERS; suppressed in the Workstation embed
             (a hire-an-expert module shown to the expert is duplicate/contradictory chrome). */}
         {!embedded && (
@@ -1135,6 +1160,7 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
               perPersonDisplay={perPersonDisplay}
               days={days}
               bookings={plancardData?.bookings}
+              expertTravelerNote={plancardData?.trip?.expertTravelerNote}
             />
 
             {/* Upsell ontrip slot — live "near you" nudge, after content per mockup v3. Self-guards to in-trip window.
@@ -1189,6 +1215,7 @@ export function PlanCard({ trip, score, index = 0, role = "owner", stage = "full
             days={days}
             selectedDay={selectedDay}
             onSelectDay={setSelectedDay}
+            expertTravelerNote={plancardData?.trip?.expertTravelerNote}
           />
         )}
 
