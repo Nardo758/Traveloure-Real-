@@ -1476,6 +1476,19 @@ router.post("/api/admin/dmo/intake/:id/approve", isAuthenticated, async (req, re
       const { registerDmoContentById } = await import("../services/dmo-registry-sync.service");
       await registerDmoContentById(updated.id);
     } catch { /* non-blocking */ }
+    // Pre-extraction hook (decision-maker ratified, Aug 9 2026, part 1 of 3 — see
+    // dmo-place-extraction.service.ts header): fire the place-extraction pipeline the moment a
+    // guide-shaped row enters the expert library, so it's already pre-extracted before an expert
+    // opens the Research Reader. FIRE-AND-FORGET — the approve response must never wait on an AI
+    // call, and a failure here must never fail the approve. The service's own shape gate no-ops
+    // for `place`-shaped rows at zero cost, so no classifyDmoShape check is duplicated here.
+    void (async () => {
+      const { runPlaceExtraction } = await import("../services/dmo-place-extraction.service");
+      const outcome = await runPlaceExtraction(updated.id, { source: "admin_approve", actorId: user.id });
+      console.log(`[dmo-intake-approve] pre-extraction hook finished for ${updated.id}: ${outcome.status}`);
+    })().catch((err) =>
+      console.error(`[dmo-intake-approve] pre-extraction hook failed for ${updated.id}:`, err),
+    );
     res.json({ message: "Approved into the expert library", item: updated });
   } catch (err: any) {
     console.error("DMO intake approve error:", err);
