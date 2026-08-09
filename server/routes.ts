@@ -110,6 +110,9 @@ import optimizationRoutes from "./routes/optimization.routes";
 import conciergeRoutes from "./routes/concierge.routes";
 import upsellRoutes from "./routes/upsell.routes";
 import tripsRoutes from "./routes/trips.routes";
+import advisorRoutes from "./routes/advisor.routes";
+import marketsRoutes from "./routes/markets.routes";
+import adminMarketsRoutes from "./routes/admin-markets.routes";
 import { dedupedRequest, callWithCircuitBreaker } from "./utils/requestDeduplication";
 import adminRoutes from "./routes/admin.routes";
 import { insertAccessAuditLog } from "./services/admin-query.service";
@@ -815,6 +818,17 @@ export async function registerRoutes(
 
   // PlanCard routes - change tracking, comments, structured day data
   app.use(plancardRoutes);
+
+  // Advisor Phases 2-4: route-efficiency (straight-line optimize-order comparison),
+  // stay-anchor (platform-first lodging near the trip's located-item centroid), and on-demand
+  // narration (cached per tripId, planHash staleness key). Full paths declared in the router.
+  app.use(advisorRoutes);
+
+  // Market geography (CLAUDE.md §20b): public DB-first read for the client geography layer,
+  // and the admin "Add market" flow (paths under /api/admin/markets — §2 blanket requireAdmin
+  // on the /api/admin prefix is the auth).
+  app.use(marketsRoutes);
+  app.use(adminMarketsRoutes);
 
   // Optimization routes - heuristic preview + payment-gated AI optimization
   app.use(optimizationRoutes);

@@ -19,7 +19,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Check, ImageIcon, Loader2, Search, Send, X } from "lucide-react";
-import { READY_MADE_PLAN_TYPES } from "@shared/ready-made-plan-types";
+import { READY_MADE_PLAN_TYPES, isCustomPlanType } from "@shared/ready-made-plan-types";
 
 // Same neutral scale as the workspace right rail this panel is rendered inside
 // (client/src/pages/expert/workspace.tsx) so it doesn't read as a foreign element. The primary
@@ -37,6 +37,9 @@ export interface ReadyMadeListing {
   market: string;
   durationDays: number;
   planType: string | null;
+  /** Free-text theme label, required 3..80 trimmed chars ONLY when planType === "custom" —
+   *  the one escape from the closed plan-type vocabulary (shared/ready-made-plan-types.ts). */
+  planTypeCustom: string | null;
   bestSeason: string | null;
   pricingMode: "fixed" | "per_traveler";
   priceCents: number | null;
@@ -112,6 +115,7 @@ export default function ReadyMadeListingPanel({
   const [draft, setDraft] = useState({
     title: listing.title,
     planType: listing.planType ?? "",
+    planTypeCustom: listing.planTypeCustom ?? "",
     bestSeason: listing.bestSeason ?? "",
     durationDays: String(listing.durationDays),
     pricingMode: listing.pricingMode,
@@ -121,6 +125,13 @@ export default function ReadyMadeListingPanel({
   const [heroOpen, setHeroOpen] = useState(false);
   const [heroQuery, setHeroQuery] = useState(listing.market);
   const [heroSubmitted, setHeroSubmitted] = useState("");
+
+  // Custom theme validation mirrors the server: 3..80 trimmed chars required when planType is
+  // "custom" (shared/ready-made-plan-types.ts isCustomPlanType). Only evaluated/shown for the
+  // custom flow so the vocabulary-picked path is never blocked by it.
+  const customThemeTrimmed = draft.planTypeCustom.trim();
+  const customThemeInvalid = isCustomPlanType(draft.planType)
+    && (customThemeTrimmed.length < 3 || customThemeTrimmed.length > 80);
 
   const { data: earnings, isLoading: earningsLoading } = useQuery<EarningsPreview>({
     queryKey: [`/api/expert/ready-made/${listing.id}/earnings-preview`],
@@ -168,9 +179,16 @@ export default function ReadyMadeListingPanel({
   });
 
   const saveDetails = () => {
+    if (customThemeInvalid) {
+      toast({ title: "Custom theme needs 3–80 characters", variant: "destructive" });
+      return;
+    }
     const patch: Record<string, unknown> = {
       title: draft.title.trim(),
       planType: draft.planType === "" ? null : draft.planType,
+      // Only carries a value for the custom flow — every other key keeps the validated column
+      // free of free text (§13-adjacent: the closed vocabulary stays closed).
+      planTypeCustom: isCustomPlanType(draft.planType) ? customThemeTrimmed : null,
       bestSeason: draft.bestSeason.trim() === "" ? null : draft.bestSeason.trim(),
       pricingMode: draft.pricingMode,
     };
@@ -267,6 +285,7 @@ export default function ReadyMadeListingPanel({
   const dirty =
     draft.title !== listing.title ||
     draft.planType !== (listing.planType ?? "") ||
+    draft.planTypeCustom !== (listing.planTypeCustom ?? "") ||
     draft.bestSeason !== (listing.bestSeason ?? "") ||
     durationDirty ||
     draft.pricingMode !== listing.pricingMode ||
@@ -361,14 +380,17 @@ export default function ReadyMadeListingPanel({
       {/* Details */}
       <div style={{ display: "flex", flexDirection: "column", gap: 11, marginBottom: 14 }}>
         <div>
-          <span style={label}>Listing title</span>
+          <span style={label}>Trip Theme</span>
           <input
             value={draft.title}
             onChange={(e) => setDraft((d) => ({ ...d, title: e.target.value }))}
             data-testid="input-listing-title"
-            placeholder="Three slow days in Higashiyama"
+            placeholder="Hidden Temples of Higashiyama"
             style={field}
           />
+          <div style={{ fontSize: 10, color: G[400], marginTop: 4 }}>
+            Name the theme, not just the place — "Hidden Temples of Higashiyama" sells better than "Kyoto Trip".
+          </div>
         </div>
         <div>
           <span style={label}>Type of plan</span>
@@ -383,6 +405,24 @@ export default function ReadyMadeListingPanel({
               <option key={t.key} value={t.key}>{t.label}</option>
             ))}
           </select>
+          {isCustomPlanType(draft.planType) && (
+            <div style={{ marginTop: 8 }}>
+              <span style={label}>Custom theme</span>
+              <input
+                value={draft.planTypeCustom}
+                onChange={(e) => setDraft((d) => ({ ...d, planTypeCustom: e.target.value }))}
+                data-testid="input-plan-type-custom"
+                placeholder="Slow Food Trail"
+                maxLength={80}
+                style={{ ...field, borderColor: customThemeInvalid ? "#FCA5A5" : G[200] }}
+              />
+              <div style={{ fontSize: 10.5, color: customThemeInvalid ? "#B45309" : G[400], marginTop: 4 }} data-testid="text-plan-type-custom-hint">
+                {customThemeInvalid
+                  ? "Needs 3–80 characters."
+                  : `${customThemeTrimmed.length}/80`}
+              </div>
+            </div>
+          )}
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
           <div>
@@ -449,13 +489,13 @@ export default function ReadyMadeListingPanel({
         <div style={{ fontSize: 10.5, color: G[400] }}>Market: {listing.market}</div>
         <button
           onClick={saveDetails}
-          disabled={!dirty || save.isPending}
+          disabled={!dirty || save.isPending || customThemeInvalid}
           data-testid="button-save-listing"
           style={{
             padding: "8px", borderRadius: 8, border: "none", fontSize: 12.5, fontWeight: 700,
-            background: dirty && !save.isPending ? P : G[200],
-            color: dirty && !save.isPending ? "white" : G[400],
-            cursor: dirty && !save.isPending ? "pointer" : "not-allowed",
+            background: dirty && !save.isPending && !customThemeInvalid ? P : G[200],
+            color: dirty && !save.isPending && !customThemeInvalid ? "white" : G[400],
+            cursor: dirty && !save.isPending && !customThemeInvalid ? "pointer" : "not-allowed",
             display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
           }}
         >

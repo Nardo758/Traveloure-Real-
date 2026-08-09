@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -11,7 +11,8 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { MapPin, Plus, Check, Library, Search, Pencil, Sparkles } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { MapPin, Plus, Check, Library, Search, Pencil, Sparkles, BookOpen, ArrowLeft, Loader2, ExternalLink, ChevronDown } from "lucide-react";
 import { usePublishMapCandidates } from "@/lib/map-candidates";
 
 interface DmoItem {
@@ -39,6 +40,11 @@ interface DmoItem {
     shortDescription?: string | null;
     tags?: string[] | null;
   };
+  // Research Reader (DMO_READER contract): "place" behaves byte-identically to pre-Reader
+  // rows; "guide" swaps the Add action for Read (adding a whole article as an itinerary
+  // item is the bug the Reader closes). Absent on older/unaugmented rows → treat as "place".
+  shape?: "place" | "guide";
+  extractedPlacesCount?: number | null;
 }
 
 // Mirrors workspace.tsx's isLocatedItem: decimal columns arrive as strings over JSON;
@@ -60,6 +66,700 @@ const TYPE_TO_ITEM: Record<string, string> = {
   transport: "transport",
 };
 
+// ---------------------------------------------------------------------------------------
+// Research Reader — GET /api/expert-workspace/library/:id detail + POST extract-places.
+// §13: never invent coordinates or extracted places client-side; every state below reflects
+// exactly what the server returned (loading / thin-text / error / real places), no filler.
+// ---------------------------------------------------------------------------------------
+
+interface DmoLibraryDetail {
+  id: string;
+  name: string;
+  description?: string | null;
+  shortDescription?: string | null;
+  contentType: string;
+  neighborhood?: string | null;
+  city: string;
+  address?: string | null;
+  latitude?: string | number | null;
+  longitude?: string | number | null;
+  sourceUrl?: string | null;
+  sourcePageTitle?: string | null;
+  scrapedAt?: string | null;
+  license?: string | null;
+  tags?: string[] | null;
+  primaryImageUrl?: string | null;
+  shape: "place" | "guide";
+  extractedData?: unknown;
+}
+
+interface Place {
+  n: number;
+  name: string;
+  latitude?: string;
+  longitude?: string;
+  inLibraryId?: string;
+  ticketingUrl?: string;
+  // Migration 188 (open-data enrichment, Wikidata CC0 / OSM ODbL): best-effort, may be absent.
+  officialUrl?: string;
+}
+
+interface ExtractPlacesResponse {
+  places: Place[] | null;
+  cached?: boolean;
+  thinText?: boolean;
+}
+
+type PlaceDotState = "default" | "added" | "library";
+
+function hostnameOf(url?: string | null): string | null {
+  if (!url) return null;
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return null;
+  }
+}
+
+// 19px default / 15px inline (full-text prefix) / 16px (library-tile chip) per the mockup's
+// dot spec: brand = untouched, ok = added to a day, hollow = already a library item.
+function PlaceDot({ n, state, size = 19, testId }: { n: number; state: PlaceDotState; size?: number; testId?: string }) {
+  const isLibrary = state === "library";
+  const isAdded = state === "added";
+  return (
+    <span
+      data-testid={testId}
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        width: size,
+        height: size,
+        minWidth: size,
+        borderRadius: "50%",
+        flexShrink: 0,
+        fontFamily: "monospace",
+        fontWeight: 800,
+        fontSize: Math.round(size * 0.5),
+        lineHeight: 1,
+        background: isAdded ? "var(--console-ok)" : isLibrary ? "var(--console-card)" : "var(--console-brand)",
+        color: isLibrary ? "var(--console-mid)" : "#FFFFFF",
+        border: isLibrary ? "1.5px solid var(--console-faint)" : "none",
+      }}
+    >
+      {n}
+    </span>
+  );
+}
+
+function GeoChip({ hasCoords }: { hasCoords: boolean }) {
+  return hasCoords ? (
+    <span
+      className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold"
+      style={{ background: "var(--console-ok-soft)", color: "var(--console-ok)" }}
+    >
+      <MapPin className="w-2.5 h-2.5" /> pinned
+    </span>
+  ) : (
+    <span
+      className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold"
+      style={{ background: "var(--console-warn-soft)", color: "var(--console-warn)" }}
+    >
+      no pin yet
+    </span>
+  );
+}
+
+// Split "+ Day N ▾" add button — left side adds to focusDay directly, caret opens Day
+// 1..maxDay plus "+ New day" (maxDay+1, mirrors workspace.tsx's own add-day affordance).
+function AddPlaceSplitButton({
+  place,
+  focusDay,
+  maxDay,
+  pending,
+  onPick,
+}: {
+  place: Place;
+  focusDay: number;
+  maxDay: number;
+  pending: boolean;
+  onPick: (day: number) => void;
+}) {
+  const days = Array.from({ length: maxDay }, (_, i) => i + 1);
+  return (
+    <div className="inline-flex rounded-md overflow-hidden" style={{ border: "1px solid var(--console-brand)" }}>
+      <button
+        onClick={() => onPick(focusDay)}
+        disabled={pending}
+        data-testid={`button-add-place-${place.n}`}
+        className="flex items-center gap-1 px-2 py-1 text-[11px] font-bold"
+        style={{ background: "var(--console-brand-soft)", color: "var(--console-brand)", cursor: pending ? "default" : "pointer" }}
+      >
+        {pending ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Plus className="w-2.5 h-2.5" />}
+        Day {focusDay}
+      </button>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            data-testid={`menu-add-place-${place.n}`}
+            disabled={pending}
+            className="px-1.5 py-1"
+            style={{ background: "var(--console-brand-soft)", color: "var(--console-brand)", borderLeft: "1px solid var(--console-brand)", cursor: pending ? "default" : "pointer" }}
+          >
+            <ChevronDown className="w-2.5 h-2.5" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          {days.map((d) => (
+            <DropdownMenuItem key={d} onClick={() => onPick(d)}>
+              Day {d}
+            </DropdownMenuItem>
+          ))}
+          <DropdownMenuItem onClick={() => onPick(maxDay + 1)}>+ New day</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+}
+
+// Ticketing sub-line — informational outbound only (§16 governs traveler-facing off-site
+// "Book" CTAs; this is an expert-console reference link to where the expert can buy tickets,
+// never surfaced to a traveler). PATCHes the contract's extracted-places endpoint on save.
+function TicketingSubline({ place, ticketingUrl, onSave }: { place: Place; ticketingUrl?: string; onSave: (url: string) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  if (ticketingUrl) {
+    const host = hostnameOf(ticketingUrl) ?? ticketingUrl;
+    return (
+      <a
+        href={ticketingUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        data-testid={`link-ticketing-${place.n}`}
+        className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold"
+        style={{ background: "var(--console-info-soft)", color: "var(--console-info)" }}
+      >
+        {host} <ExternalLink className="w-2.5 h-2.5" />
+      </a>
+    );
+  }
+
+  if (!editing) {
+    return (
+      <button
+        onClick={() => setEditing(true)}
+        data-testid={`button-add-ticketing-${place.n}`}
+        className="text-[10px] font-medium rounded-full px-2 py-0.5"
+        style={{ color: "var(--console-mid)", border: "1px dashed var(--console-line)" }}
+      >
+        + Add ticketing link
+      </button>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-1.5 flex-wrap">
+      <Input
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        placeholder="https://…"
+        className="h-6 text-[11px] px-2 w-40"
+        data-testid={`input-ticketing-${place.n}`}
+      />
+      <Button
+        size="sm"
+        className="h-6 px-2 text-[11px]"
+        data-testid={`button-save-ticketing-${place.n}`}
+        onClick={() => {
+          const url = draft.trim();
+          if (!/^https:\/\//i.test(url)) {
+            setError("Must start with https://");
+            return;
+          }
+          setError(null);
+          onSave(url);
+          setEditing(false);
+        }}
+      >
+        Save
+      </Button>
+      <button onClick={() => { setEditing(false); setError(null); }} className="text-[10px]" style={{ color: "var(--console-faint)" }}>
+        Cancel
+      </button>
+      {error && <span className="text-[10px] w-full" style={{ color: "var(--console-warn)" }}>{error}</span>}
+    </div>
+  );
+}
+
+// Official-site link — open-data enrichment (migration 188, Wikidata CC0 / OSM ODbL), best-effort
+// and rendered only when the server actually supplied one (§13: absence stays absence, no filler).
+// Styled deliberately less prominent than TicketingSubline's pill: the expert's own curated
+// ticketing link keeps visual precedence whenever both exist — this is a quieter, secondary
+// reference, not a competing CTA.
+function OfficialSiteLink({ place, officialUrl }: { place: Place; officialUrl: string }) {
+  const host = hostnameOf(officialUrl) ?? officialUrl;
+  return (
+    <a
+      href={officialUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      data-testid={`link-official-site-${place.n}`}
+      className="inline-flex items-center gap-1 text-[10px] font-medium"
+      style={{ color: "var(--console-mid)" }}
+    >
+      Official site ({host}) <ExternalLink className="w-2.5 h-2.5" />
+    </a>
+  );
+}
+
+function PlaceRow({
+  place,
+  focusDay,
+  maxDay,
+  addedDay,
+  isFlashed,
+  dotState,
+  ticketingUrl,
+  officialUrl,
+  onRowRef,
+  onRowClick,
+  onAdd,
+  addPending,
+  onViewInLibrary,
+  onSaveTicketing,
+}: {
+  place: Place;
+  focusDay: number;
+  maxDay: number;
+  addedDay: number | null;
+  isFlashed: boolean;
+  dotState: PlaceDotState;
+  ticketingUrl?: string;
+  officialUrl?: string;
+  onRowRef: (n: number, el: HTMLDivElement | null) => void;
+  onRowClick: (n: number) => void;
+  onAdd: (place: Place, day: number) => void;
+  addPending: boolean;
+  onViewInLibrary: (place: Place) => void;
+  onSaveTicketing: (place: Place, url: string) => void;
+}) {
+  const hasCoords = place.latitude != null && place.latitude !== "" && place.longitude != null && place.longitude !== "";
+  return (
+    <div
+      ref={(el) => onRowRef(place.n, el)}
+      onClick={() => onRowClick(place.n)}
+      data-testid={`row-place-${place.n}`}
+      className="flex gap-2 rounded-lg p-2 cursor-pointer transition-colors"
+      style={{ background: isFlashed ? "var(--console-brand-soft)" : "transparent" }}
+    >
+      <PlaceDot n={place.n} state={dotState} testId={`dot-place-${place.n}`} />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <div className="text-sm font-semibold" style={{ color: "var(--console-ink)" }}>{place.name}</div>
+            <div className="mt-1"><GeoChip hasCoords={hasCoords} /></div>
+          </div>
+          <div onClick={(e) => e.stopPropagation()} className="shrink-0">
+            {place.inLibraryId ? (
+              <div className="flex items-center gap-1.5">
+                <span
+                  className="text-[10px] font-semibold rounded-full px-1.5 py-0.5"
+                  style={{ background: "var(--console-ground)", color: "var(--console-mid)", border: "1px solid var(--console-line)" }}
+                >
+                  in library
+                </span>
+                <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" data-testid={`button-view-place-${place.n}`} onClick={() => onViewInLibrary(place)}>
+                  view
+                </Button>
+              </div>
+            ) : addedDay != null ? (
+              <span
+                data-testid={`button-add-place-${place.n}`}
+                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[11px] font-bold"
+                style={{ background: "var(--console-ok-soft)", color: "var(--console-ok)" }}
+              >
+                <Check className="w-3 h-3" /> Day {addedDay}
+              </span>
+            ) : (
+              <AddPlaceSplitButton place={place} focusDay={focusDay} maxDay={maxDay} pending={addPending} onPick={(day) => onAdd(place, day)} />
+            )}
+          </div>
+        </div>
+        <div onClick={(e) => e.stopPropagation()} className="mt-1.5 flex items-center gap-2 flex-wrap">
+          <TicketingSubline place={place} ticketingUrl={ticketingUrl} onSave={(url) => onSaveTicketing(place, url)} />
+          {officialUrl && <OfficialSiteLink place={place} officialUrl={officialUrl} />}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Best-effort linking: first case-insensitive occurrence of each place name, non-overlapping,
+// earliest-start wins. A name absent from the text simply gets no highlight — never forced
+// (§13 honesty). Built as React nodes, never dangerouslySetInnerHTML.
+function splitTextWithHighlights(
+  text: string,
+  places: Place[],
+  dotStateFor: (n: number) => PlaceDotState,
+  registerHighlightRef: (n: number, el: HTMLElement | null) => void,
+  onHighlightClick: (n: number) => void,
+): React.ReactNode[] {
+  const lower = text.toLowerCase();
+  const matches: { start: number; end: number; place: Place }[] = [];
+  for (const p of places) {
+    if (!p.name) continue;
+    const idx = lower.indexOf(p.name.toLowerCase());
+    if (idx === -1) continue;
+    matches.push({ start: idx, end: idx + p.name.length, place: p });
+  }
+  matches.sort((a, b) => a.start - b.start);
+  const kept: typeof matches = [];
+  let cursor = 0;
+  for (const m of matches) {
+    if (m.start >= cursor) {
+      kept.push(m);
+      cursor = m.end;
+    }
+  }
+  const nodes: React.ReactNode[] = [];
+  let pos = 0;
+  kept.forEach((m) => {
+    if (m.start > pos) nodes.push(text.slice(pos, m.start));
+    nodes.push(
+      <span
+        key={`hl-${m.place.n}`}
+        ref={(el) => { registerHighlightRef(m.place.n, el); }}
+        onClick={() => onHighlightClick(m.place.n)}
+        data-testid={`highlight-place-${m.place.n}`}
+        className="inline-flex items-baseline gap-1 cursor-pointer rounded-sm px-0.5"
+        style={{ background: "var(--console-brand-soft)", borderBottom: "1.5px solid var(--console-brand)" }}
+      >
+        <PlaceDot n={m.place.n} state={dotStateFor(m.place.n)} size={15} />
+        {text.slice(m.start, m.end)}
+      </span>,
+    );
+    pos = m.end;
+  });
+  if (pos < text.length) nodes.push(text.slice(pos));
+  return nodes;
+}
+
+/**
+ * DmoReader — the picker's "Research Reader" view state: header + (guides only) the
+ * places-first harvest panel + full text with best-effort place highlighting + source block.
+ * Fetches GET .../library/:id (react-query) and, for guides, fires POST .../extract-places
+ * exactly once (query keyed by id at staleTime:Infinity — react-query dedupes concurrent
+ * fetches of the same key, so a StrictMode double-invoke never produces a second POST; the
+ * server's own run-once cache is the second line of defense).
+ */
+function DmoReader({
+  itemId,
+  tripId,
+  focusDay,
+  maxDay,
+  onBack,
+  onAdded,
+  onViewInLibrary,
+}: {
+  itemId: string;
+  tripId: string;
+  focusDay: number;
+  maxDay: number;
+  onBack: () => void;
+  onAdded: () => void;
+  onViewInLibrary: (name: string) => void;
+}) {
+  const { toast } = useToast();
+  const [addedDays, setAddedDays] = useState<Record<number, number>>({});
+  const [ticketingOverrides, setTicketingOverrides] = useState<Record<number, string>>({});
+  const [flashN, setFlashN] = useState<number | null>(null);
+  const rowRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+  const highlightRefs = useRef<Map<number, HTMLElement>>(new Map());
+  const flashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const detailQuery = useQuery<DmoLibraryDetail>({
+    queryKey: ["/api/expert-workspace/library", itemId],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/expert-workspace/library/${itemId}`);
+      return res.json();
+    },
+  });
+
+  const isGuide = detailQuery.data?.shape === "guide";
+
+  const extractQuery = useQuery<ExtractPlacesResponse>({
+    queryKey: ["/api/expert-workspace/library", itemId, "extract-places"],
+    queryFn: async () => {
+      const res = await apiRequest("POST", `/api/expert-workspace/library/${itemId}/extract-places`);
+      return res.json();
+    },
+    enabled: isGuide,
+    staleTime: Infinity,
+    retry: false,
+  });
+
+  const rawPlaces = extractQuery.data?.places ?? [];
+  const places = rawPlaces.map((p) => (ticketingOverrides[p.n] !== undefined ? { ...p, ticketingUrl: ticketingOverrides[p.n] } : p));
+
+  // Discovery layer while reading: the guide's EXTRACTED places (never the guide article
+  // itself — an article is not a place) publish as candidate pins on the canvas map. Own
+  // source key beside the list's "dmo" one; the list publisher goes inactive while the
+  // reader is open (see DmoPickerCore), so the slot is cleanly handed over. Excludes rows
+  // without server-supplied coords (§13), already-added rows (they become real plan pins on
+  // refetch), and in-library rows (their affordance is "view", not a map add).
+  usePublishMapCandidates(
+    "dmo-reader",
+    "Places in this guide",
+    places
+      .filter((p) => addedDays[p.n] == null && !p.inLibraryId && p.latitude != null && p.latitude !== "" && p.longitude != null && p.longitude !== "")
+      .map((p) => ({
+        id: String(p.n),
+        title: p.name,
+        lat: parseFloat(String(p.latitude)),
+        lng: parseFloat(String(p.longitude)),
+        price: null,
+      })),
+    (id) => {
+      const place = places.find((p) => String(p.n) === id);
+      if (place) addPlaceMutation.mutate({ place, day: focusDay });
+    },
+  );
+
+  const addPlaceMutation = useMutation({
+    mutationFn: async ({ place, day }: { place: Place; day: number }) => {
+      // Contract: same write as the list's addMutation — title/itemType/locationName/
+      // dayNumber, coords carried ONLY when the server-supplied place already has them
+      // (never geocoded or invented client-side, §13).
+      const hasCoords = place.latitude != null && place.latitude !== "" && place.longitude != null && place.longitude !== "";
+      const res = await apiRequest("POST", `/api/trips/${tripId}/itinerary-items`, {
+        title: place.name,
+        itemType: "activity",
+        locationName: place.name,
+        ...(hasCoords ? { latitude: String(place.latitude), longitude: String(place.longitude) } : {}),
+        dayNumber: day,
+      });
+      return res.json();
+    },
+    onSuccess: (_res, { place, day }) => {
+      setAddedDays((prev) => ({ ...prev, [place.n]: day }));
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/itinerary-items`] });
+      queryClient.invalidateQueries({ queryKey: [`/api/trips/${tripId}/plancard`] });
+      onAdded();
+      toast({ title: "Added to itinerary", description: `${place.name} → Day ${day}` });
+    },
+    onError: (err: any) => {
+      toast({ title: "Couldn't add place", description: parseApiErrorMessage(err, "Please try again."), variant: "destructive" });
+    },
+  });
+
+  const ticketingMutation = useMutation({
+    mutationFn: async ({ index, url }: { index: number; url: string }) => {
+      const res = await apiRequest("PATCH", `/api/expert-workspace/library/${itemId}/extracted-places/${index}`, { ticketingUrl: url });
+      return res.json() as Promise<Place>;
+    },
+    onSuccess: (updated) => {
+      setTicketingOverrides((prev) => ({ ...prev, [updated.n]: updated.ticketingUrl ?? "" }));
+      toast({ title: "Saved", description: "Ticketing link added." });
+    },
+    onError: (err: any) => {
+      toast({ title: "Couldn't save link", description: parseApiErrorMessage(err, "Please try again."), variant: "destructive" });
+    },
+  });
+
+  function dotStateFor(n: number): PlaceDotState {
+    if (addedDays[n] != null) return "added";
+    const place = places.find((p) => p.n === n);
+    if (place?.inLibraryId) return "library";
+    return "default";
+  }
+
+  function flash(n: number) {
+    setFlashN(n);
+    if (flashTimer.current) clearTimeout(flashTimer.current);
+    flashTimer.current = setTimeout(() => setFlashN(null), 900);
+  }
+
+  function scrollToHighlight(n: number) {
+    const el = highlightRefs.current.get(n);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+    flash(n);
+  }
+
+  function scrollToRow(n: number) {
+    const el = rowRefs.current.get(n);
+    if (el) el.scrollIntoView({ behavior: "smooth", block: "center" });
+    flash(n);
+  }
+
+  const detail = detailQuery.data;
+  const fullText = detail?.description ?? "";
+  const textNodes =
+    isGuide && places.length > 0 && fullText
+      ? splitTextWithHighlights(
+          fullText,
+          places,
+          dotStateFor,
+          (n, el) => { if (el) highlightRefs.current.set(n, el); else highlightRefs.current.delete(n); },
+          scrollToRow,
+        )
+      : [fullText];
+
+  const hostname = hostnameOf(detail?.sourceUrl);
+  const scrapedDate = detail?.scrapedAt
+    ? (() => {
+        const d = new Date(detail.scrapedAt as string);
+        return Number.isNaN(d.getTime()) ? null : d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+      })()
+    : null;
+
+  return (
+    <div className="space-y-4">
+      <Button size="sm" variant="ghost" onClick={onBack} data-testid="button-dmo-reader-back" className="gap-1 -ml-2">
+        <ArrowLeft className="w-3.5 h-3.5" /> Back to library
+      </Button>
+
+      {detailQuery.isLoading ? (
+        <div className="space-y-2">
+          <Skeleton className="h-6 w-2/3" />
+          <Skeleton className="h-24 rounded-lg" />
+        </div>
+      ) : detailQuery.error || !detail ? (
+        <p className="text-sm text-muted-foreground py-6 text-center">Could not load this item.</p>
+      ) : (
+        <>
+          <div>
+            <h3 className="text-base font-semibold" style={{ color: "var(--console-ink)" }}>{detail.name}</h3>
+            <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+              {isGuide ? (
+                <Badge variant="outline" className="text-[10px]" style={{ background: "var(--console-info-soft)", color: "var(--console-info)", borderColor: "var(--console-info)" }}>
+                  Guide
+                </Badge>
+              ) : (
+                <Badge variant="outline" className="capitalize text-[10px]">{detail.contentType}</Badge>
+              )}
+              {hostname && <span className="text-[11px]" style={{ color: "var(--console-mid)" }}>{hostname}</span>}
+              {scrapedDate && <span className="text-[11px]" style={{ color: "var(--console-faint)" }}>scraped {scrapedDate}</span>}
+            </div>
+          </div>
+
+          {isGuide && (
+            <div className="rounded-lg border p-3" data-testid="panel-dmo-extraction">
+              {extractQuery.isLoading ? (
+                <div className="flex items-center gap-2 text-sm" style={{ color: "var(--console-mid)" }}>
+                  <Loader2 className="w-4 h-4 animate-spin" /> Finding places in this guide…
+                </div>
+              ) : extractQuery.data?.thinText ? (
+                <div className="text-center py-4 space-y-2">
+                  <p className="text-sm" style={{ color: "var(--console-mid)" }}>
+                    Not enough stored text to find places — read the source.
+                  </p>
+                  {detail.sourceUrl && (
+                    <a href={detail.sourceUrl} target="_blank" rel="noopener noreferrer">
+                      <Button size="sm" variant="outline" data-testid="button-dmo-reader-source-fallback">
+                        View source <ExternalLink className="w-3 h-3 ml-1" />
+                      </Button>
+                    </a>
+                  )}
+                </div>
+              ) : extractQuery.error ? (
+                <div className="text-center py-4 space-y-2">
+                  <p className="text-sm" style={{ color: "var(--console-warn)" }}>Couldn't extract places right now.</p>
+                  {detail.sourceUrl && (
+                    <a href={detail.sourceUrl} target="_blank" rel="noopener noreferrer">
+                      <Button size="sm" variant="outline" data-testid="button-dmo-reader-source-fallback">
+                        View source <ExternalLink className="w-3 h-3 ml-1" />
+                      </Button>
+                    </a>
+                  )}
+                </div>
+              ) : places.length === 0 ? (
+                // Empty ≠ the article has no places — it means the STORED excerpt names none
+                // (scrapers often capture only the page top: title + disclosure + intro, while
+                // the venue list lives further down). Say so honestly and hand the expert the
+                // source, exactly like the thin-text state — never a dead end.
+                <div className="text-center py-4 space-y-2">
+                  <p className="text-sm" style={{ color: "var(--console-mid)" }}>
+                    No places named in the stored excerpt — the full article may list more. Read the source.
+                  </p>
+                  {detail.sourceUrl && (
+                    <a href={detail.sourceUrl} target="_blank" rel="noopener noreferrer">
+                      <Button size="sm" variant="outline" data-testid="button-dmo-reader-source-fallback">
+                        View source <ExternalLink className="w-3 h-3 ml-1" />
+                      </Button>
+                    </a>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  <div className="text-[10px] font-semibold uppercase tracking-wide" style={{ color: "var(--console-faint)" }}>
+                    {places.length} place{places.length === 1 ? "" : "s"} in this guide · numbered in the guide's order
+                  </div>
+                  <div className="space-y-1">
+                    {places.map((place) => (
+                      <PlaceRow
+                        key={place.n}
+                        place={place}
+                        focusDay={focusDay}
+                        maxDay={maxDay}
+                        addedDay={addedDays[place.n] ?? null}
+                        isFlashed={flashN === place.n}
+                        dotState={dotStateFor(place.n)}
+                        ticketingUrl={place.ticketingUrl}
+                        officialUrl={place.officialUrl}
+                        onRowRef={(n, el) => { if (el) rowRefs.current.set(n, el); else rowRefs.current.delete(n); }}
+                        onRowClick={scrollToHighlight}
+                        onAdd={(p, day) => addPlaceMutation.mutate({ place: p, day })}
+                        addPending={addPlaceMutation.isPending && addPlaceMutation.variables?.place?.n === place.n}
+                        onViewInLibrary={(p) => onViewInLibrary(p.name)}
+                        onSaveTicketing={(p, url) => {
+                          const idx = places.findIndex((pp) => pp.n === p.n);
+                          ticketingMutation.mutate({ index: idx, url });
+                        }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          <div>
+            <div className="text-[10px] font-semibold uppercase tracking-wide mb-1.5" style={{ color: "var(--console-faint)", fontFamily: "monospace" }}>
+              Full text
+            </div>
+            <div className="text-sm leading-relaxed rounded-lg border p-3" style={{ whiteSpace: "pre-wrap", color: "var(--console-ink)" }} data-testid="text-dmo-full">
+              {fullText ? textNodes : <span style={{ color: "var(--console-faint)" }}>No stored text for this item.</span>}
+            </div>
+          </div>
+
+          <div className="rounded-lg border p-3 text-xs" style={{ background: "var(--console-ground)", color: "var(--console-mid)" }} data-testid="block-dmo-source">
+            <div>
+              Source{hostname ? ` · ${hostname}` : ""}
+              {detail.sourcePageTitle ? ` — "${detail.sourcePageTitle}"` : ""}
+              {scrapedDate ? ` · scraped ${scrapedDate}` : ""}
+              {detail.license ? ` · license: ${detail.license}` : ""}
+            </div>
+            {detail.sourceUrl && (
+              <a
+                href={detail.sourceUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                data-testid="link-dmo-source"
+                className="inline-flex items-center gap-1 mt-1 font-medium"
+                style={{ color: "var(--console-info)" }}
+              >
+                View source <ExternalLink className="w-3 h-3" />
+              </a>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 /**
  * DmoPickerCore — the modal's search + list + add body, extracted (Phase A2) so the
  * workspace's Add panel can embed the same browse/add flow inline without the Dialog
@@ -69,20 +769,26 @@ const TYPE_TO_ITEM: Record<string, string> = {
  * from the retired dmo-library.tsx — same POST /api/expert-workspace/content/:id/edit →
  * PATCH /api/expert-workspace/edits/:id/submit write, verbatim — so the Add panel's DMO
  * drawer is the library's one home; /expert/dmo-library redirects to the Workstation.
+ *
+ * DMO_READER: `maxDay` feeds the Research Reader's day-picker (Day 1..maxDay + "New day");
+ * the one call site (workspace.tsx) already computes `maxDay` for its own add-day control.
  */
 export function DmoPickerCore({
   tripId,
   dayNumber,
+  maxDay,
   onAdded,
 }: {
   tripId: string;
   dayNumber: number;
+  maxDay: number;
   onAdded: () => void;
 }) {
   const { toast } = useToast();
   const [, navigate] = useLocation();
   const [q, setQ] = useState("");
   const [added, setAdded] = useState<Set<string>>(new Set());
+  const [readerId, setReaderId] = useState<string | null>(null);
 
   // Refine editor state (one open editor at a time, form state scoped to it).
   const [refiningId, setRefiningId] = useState<string | null>(null);
@@ -180,12 +886,16 @@ export function DmoPickerCore({
   // W5-A (QA_PUNCH_LIST item 19) — publish this SAME filtered list (search already applied) as
   // candidate pins for the canvas map's discovery layer. Excludes already-`added` rows (once
   // added they become a real plan pin on the next refetch, so they shouldn't linger as a
-  // separate candidate at the same coordinate) and anything failing the real-coords check (§13).
+  // separate candidate at the same coordinate), anything failing the real-coords check (§13),
+  // and GUIDE-shaped rows — an article is not a place, so a "Top 10…" listicle must never pin
+  // on the map even when the scraper attached page-level coordinates to it; only its EXTRACTED
+  // places pin (published by DmoReader below while the reader is open). Inactive while the
+  // reader is open so the reader's publisher owns the discovery layer.
   usePublishMapCandidates(
     "dmo",
     "DMO Library",
     items
-      .filter((it) => hasRealCoords(it) && !added.has(it.id))
+      .filter((it) => (it.shape ?? "place") !== "guide" && hasRealCoords(it) && !added.has(it.id))
       .map((it) => ({
         id: it.id,
         title: it.name,
@@ -197,7 +907,27 @@ export function DmoPickerCore({
       const it = items.find((i) => i.id === id);
       if (it) addMutation.mutate(it);
     },
+    !readerId,
   );
+
+  if (readerId) {
+    return (
+      <div className="space-y-3">
+        <DmoReader
+          itemId={readerId}
+          tripId={tripId}
+          focusDay={dayNumber}
+          maxDay={maxDay}
+          onBack={() => setReaderId(null)}
+          onAdded={onAdded}
+          onViewInLibrary={(name) => {
+            setQ(name);
+            setReaderId(null);
+          }}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-3">
@@ -223,17 +953,32 @@ export function DmoPickerCore({
           </p>
         ) : (
           <div className="space-y-2">
-            {items.map((it) => (
+            {items.map((it) => {
+              const isGuideItem = (it.shape ?? "place") === "guide";
+              return (
               <div
                 key={it.id}
                 className="rounded-lg border p-3"
                 data-testid={`dmo-picker-row-${it.id}`}
               >
-                <div className="flex items-start justify-between gap-3">
+                <div
+                  className="flex items-start justify-between gap-3 cursor-pointer"
+                  onClick={() => setReaderId(it.id)}
+                >
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="font-medium text-sm truncate">{it.name}</span>
-                      <Badge variant="outline" className="capitalize shrink-0 text-xs">{it.contentType}</Badge>
+                      {isGuideItem ? (
+                        <Badge
+                          variant="outline"
+                          className="shrink-0 text-xs"
+                          style={{ background: "var(--console-info-soft)", color: "var(--console-info)", borderColor: "var(--console-info)" }}
+                        >
+                          Guide
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="capitalize shrink-0 text-xs">{it.contentType}</Badge>
+                      )}
                       {it.isRefined && (
                         <Badge className="shrink-0 text-xs gap-1" data-testid={`badge-refined-${it.id}`}>
                           <Sparkles className="w-3 h-3" /> Refined
@@ -248,21 +993,41 @@ export function DmoPickerCore({
                     {it.description && (
                       <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{it.description}</p>
                     )}
+                    {isGuideItem && (it.extractedPlacesCount ?? 0) > 0 && (
+                      <div className="flex items-center gap-1.5 mt-1.5" data-testid={`chip-dmo-extracted-${it.id}`}>
+                        <PlaceDot n={it.extractedPlacesCount ?? 0} state="default" size={16} />
+                        <span className="text-[11px]" style={{ color: "var(--console-mid)" }}>places extracted</span>
+                      </div>
+                    )}
                   </div>
-                  <div className="flex flex-col items-stretch gap-1 shrink-0">
-                    <Button
-                      size="sm"
-                      variant={added.has(it.id) ? "outline" : "default"}
-                      disabled={added.has(it.id) || addMutation.isPending}
-                      onClick={() => addMutation.mutate(it)}
-                      data-testid={`button-dmo-add-${it.id}`}
-                    >
-                      {added.has(it.id) ? (
-                        <><Check className="w-3.5 h-3.5 mr-1" />Added</>
-                      ) : (
-                        <><Plus className="w-3.5 h-3.5 mr-1" />Add</>
-                      )}
-                    </Button>
+                  <div className="flex flex-col items-stretch gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                    {isGuideItem ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        style={{ background: "var(--console-info-soft)", color: "var(--console-info)", borderColor: "var(--console-info)" }}
+                        onClick={() => setReaderId(it.id)}
+                        data-testid={`button-dmo-read-${it.id}`}
+                      >
+                        <BookOpen className="w-3.5 h-3.5 mr-1" /> Read
+                      </Button>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant={added.has(it.id) ? "outline" : "default"}
+                        disabled={added.has(it.id) || addMutation.isPending}
+                        onClick={() => addMutation.mutate(it)}
+                        data-testid={`button-dmo-add-${it.id}`}
+                      >
+                        {added.has(it.id) ? (
+                          <><Check className="w-3.5 h-3.5 mr-1" />Added</>
+                        ) : (
+                          <><Plus className="w-3.5 h-3.5 mr-1" />Add</>
+                        )}
+                      </Button>
+                    )}
+                    {/* Refine (name/description/tags) is trivially compatible with guides —
+                        it edits content metadata, not the itinerary-item shape — so it's kept. */}
                     <Button
                       size="sm"
                       variant="ghost"
@@ -277,7 +1042,7 @@ export function DmoPickerCore({
                 </div>
 
                 {refiningId === it.id && (
-                  <div className="mt-3 rounded-md border bg-muted/30 p-3 space-y-3" data-testid={`dmo-refine-editor-${it.id}`}>
+                  <div className="mt-3 rounded-md border bg-muted/30 p-3 space-y-3" data-testid={`dmo-refine-editor-${it.id}`} onClick={(e) => e.stopPropagation()}>
                     <p className="text-xs text-muted-foreground flex gap-2">
                       <Sparkles className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
                       Refine the raw content below so it's ready to build into a Ready Made Trip or a
@@ -348,7 +1113,8 @@ export function DmoPickerCore({
                   </div>
                 )}
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
     </div>
@@ -384,7 +1150,10 @@ export function DmoPickerModal({
             Your admin-approved Kyoto research content. Add a place to this trip's itinerary.
           </DialogDescription>
         </DialogHeader>
-        <DmoPickerCore tripId={tripId} dayNumber={dayNumber} onAdded={onAdded} />
+        {/* This standalone modal (unused by any call site today) has no day-list context
+            beyond its own dayNumber — maxDay falls back to dayNumber itself. The workspace's
+            embedded DmoPickerCore usage passes its real maxDay. */}
+        <DmoPickerCore tripId={tripId} dayNumber={dayNumber} maxDay={dayNumber} onAdded={onAdded} />
       </DialogContent>
     </Dialog>
   );

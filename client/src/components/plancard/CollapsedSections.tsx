@@ -8,7 +8,6 @@
  */
 import * as React from "react";
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ChevronDown, MessageSquare, Map as MapIcon, Route, Wallet, History, ShoppingBag } from "lucide-react";
 import { openDayInMaps, addDayToCalendar } from "./day-map-actions";
@@ -36,6 +35,17 @@ interface CollapsedSectionsProps {
   days?: PlanCardDay[];
   /** Every real `service_bookings` row on this trip (plancard route's `bookings` key, W4/H2). */
   bookings?: TripPlanBooking[];
+  /**
+   * CLAUDE.md §21 (ratified Aug 9, 2026) — the TRAVELER-FACING trip-level note
+   * (`trips.expert_traveler_note`, migration 187), passed down from the plancard fetch PlanCard
+   * already owns. Bug fix, same ruling: this section previously fetched the PRIVATE
+   * `/api/trips/:id/expert-notes` endpoint directly and rendered `trips.expert_notes` (the
+   * Workstation's private build notes) under this exact "Note from your expert" heading — an
+   * unintentional leak of private content to the trip owner, closed by reading the correct field
+   * from the prop instead of a second, wrong-field fetch (§19-shape: one canonical source, not a
+   * component-local reach for the nearest-looking endpoint).
+   */
+  expertTravelerNote?: string | null;
 }
 
 function SectionShell({
@@ -87,13 +97,8 @@ export function CollapsedSections({
   perPersonDisplay,
   days,
   bookings,
+  expertTravelerNote,
 }: CollapsedSectionsProps) {
-  const { data: tripNotes } = useQuery<{ expertNotes: string }>({
-    queryKey: [`/api/trips/${tripId}/expert-notes`],
-    queryFn: () => fetch(`/api/trips/${tripId}/expert-notes`).then((r) => (r.ok ? r.json() : { expertNotes: "" })),
-    staleTime: 60_000,
-  });
-
   const activitiesCount = day?.activities?.length ?? 0;
   const transportCount = day?.transports?.length ?? 0;
   const hasBudget = totalCostNum != null && totalCostNum > 0 || (budgetNum != null && budgetNum > 0);
@@ -111,14 +116,14 @@ export function CollapsedSections({
 
   return (
     <div className="flex flex-col gap-2 px-3 sm:px-5 pb-3" data-testid={`collapsed-sections-${tripId}`}>
-      {tripNotes?.expertNotes?.trim() && (
+      {expertTravelerNote?.trim() && (
         <SectionShell
           icon={<MessageSquare className="w-3.5 h-3.5 text-primary" />}
           title="Note from your expert"
           testId={`collapsed-expert-note-${tripId}`}
         >
           <p className="text-[12.5px] text-foreground/80 whitespace-pre-wrap leading-relaxed pt-2" data-testid={`text-collapsed-expert-note-${tripId}`}>
-            {tripNotes.expertNotes}
+            {expertTravelerNote}
           </p>
         </SectionShell>
       )}

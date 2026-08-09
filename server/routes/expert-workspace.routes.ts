@@ -25,6 +25,14 @@ import {
   getMarketGapSummary,
 } from "../content/providers/DMOSourceRegistry";
 import { searchWorkstationPlatformContent } from "../services/content-query.service";
+import {
+  getExtractedPlaceRows,
+  mapRowsToPlaces,
+  updateTicketingUrlByPosition,
+  getExtractedPlacesCounts,
+  isConcludedEmptyMarker,
+} from "../services/dmo-extracted-places.service";
+import { classifyDmoShape, runPlaceExtraction } from "../services/dmo-place-extraction.service";
 
 const router = Router();
 
@@ -95,6 +103,30 @@ router.get(
 // ============================================================
 // DMO LIBRARY — Browse raw ingested content
 // ============================================================
+
+// ─── Shape classification: place vs. guide ──────────────────────────────────
+// Moved to server/services/dmo-place-extraction.service.ts (the extraction pipeline's shape gate
+// needs it too, and needed it without a route→service circular import) — `classifyDmoShape` is
+// imported above. The DMO library holds two content shapes under one table: `place` content
+// describes ONE venue (has real coordinates/an address), `guide` content is a listicle article
+// about MANY venues ("Top 10 Temples in Kyoto"). This classifies each row so the Research Reader
+// can pick the right UI (single-venue card vs. article + extracted-places list).
+
+// Number of venues an earlier extract-places run found for this row, sourced from the
+// dmo_extracted_places child rows (§20a) — the source of truth, not extracted_data. Returns
+// null if extraction has never run (distinct from 0, which means "ran and found nothing"). A
+// present, non-zero row count answers it outright; an absent one falls back to the
+// extracted_data "concluded empty via live fetch" marker (the one state a zero-row count can't
+// distinguish from "never ran" on its own — see the extract-places cache rule below).
+function extractedPlacesCountFromRows(
+  contentId: string,
+  countsByContentId: Map<string, number>,
+  extractedData: unknown,
+): number | null {
+  const rowCount = countsByContentId.get(contentId);
+  if (rowCount) return rowCount;
+  return isConcludedEmptyMarker(extractedData) ? 0 : null;
+}
 
 const libraryQuerySchema = z.object({
   market: z.string().optional(),
@@ -214,6 +246,11 @@ router.get(
     // per-expert, not collaborative — leaking cross-expert overlays would silently attribute
     // one expert's wording/tags to another's library view).
     const ids = items.map((i) => i.id);
+
+    // Batched (avoids N+1): one grouped COUNT over dmo_extracted_places for the whole page,
+    // rather than a per-row read (§20a — child rows are the source of truth for the count).
+    const extractedPlacesCounts = await getExtractedPlacesCounts(ids);
+
     const editsByContentId = new Map<string, typeof expertDmoEdits.$inferSelect>();
     if (ids.length > 0 && expertId) {
       const edits = await db
@@ -250,6 +287,10 @@ router.get(
           ...overlay,
           isRefined: Boolean(edit),
           raw,
+          // Reader-list additions (shape classification never overridden by an expert edit —
+          // it describes the underlying content, not the refined wording).
+          shape: classifyDmoShape(item),
+          extractedPlacesCount: extractedPlacesCountFromRows(item.id, extractedPlacesCounts, item.extractedData),
         };
       }),
     });
@@ -270,7 +311,185 @@ router.get(
       throw new NotFoundError("Content not found");
     }
 
-    res.json(item);
+    // extractedData served to the reader is now sourced from the dmo_extracted_places child
+    // rows (§20a), not the extracted_data blob — same {places, extractedAt, source} shape so
+    // the client is byte-compatible. A zero-row guide falls back to the blob ONLY for the
+    // "concluded empty via live fetch" marker (mirrors the extract-places cache rule); otherwise
+    // there is honestly nothing to serve, matching "extraction never ran".
+    const extractedRows = await getExtractedPlaceRows(id);
+    let extractedDataResponse: { places: ReturnType<typeof mapRowsToPlaces>; extractedAt: Date | string | null; source: string } | null;
+    if (extractedRows.length > 0) {
+      extractedDataResponse = {
+        places: mapRowsToPlaces(extractedRows),
+        extractedAt: extractedRows[0].extractedAt,
+        source: extractedRows[0].source,
+      };
+    } else if (isConcludedEmptyMarker(item.extractedData)) {
+      const blob = item.extractedData as { extractedAt?: string; source?: string };
+      extractedDataResponse = { places: [], extractedAt: blob.extractedAt ?? null, source: blob.source ?? "live_fetch" };
+    } else {
+      extractedDataResponse = null;
+    }
+
+    // DMO Research Reader drawer: the field set the reader actually renders, plus the
+    // computed `shape` and the derived `extractedData` (place-extraction results, if any run).
+    // Deliberately narrower than the raw row — no rawData/normalizedData/embeddingVector.
+    res.json({
+      id: item.id,
+      name: item.name,
+      description: item.description,
+      shortDescription: item.shortDescription,
+      contentType: item.contentType,
+      neighborhood: item.neighborhood,
+      city: item.city,
+      address: item.address,
+      latitude: item.latitude,
+      longitude: item.longitude,
+      sourceUrl: item.sourceUrl,
+      sourcePageTitle: item.sourcePageTitle,
+      scrapedAt: item.scrapedAt,
+      license: item.license,
+      tags: item.tags,
+      primaryImageUrl: item.primaryImageUrl,
+      shape: classifyDmoShape(item),
+      extractedData: extractedDataResponse,
+    });
+  }),
+);
+
+// ============================================================
+// EXTRACT PLACES — AI-assisted venue extraction from guide-shaped content
+// ============================================================
+//
+// Run-once by design: a `guide` row's article text is expensive to re-parse, so a prior
+// successful run is served straight from `extracted_data.places` with no AI call at all
+// (hard cost invariant — do not relax the cache check below "just to refresh one row").
+//
+// Thin caller (pre-extraction refactor, Aug 9 2026, decision-maker ratified §15c pattern): the
+// actual pipeline — stored-text assembly, the AI call, the thin/zero-result live-fetch fallback,
+// per-name geocode + library dedupe, and the replaceExtractedPlaces + extracted_data dual-write —
+// now lives in `runPlaceExtraction` (dmo-place-extraction.service.ts), shared with the
+// admin-approve hook and the boot-time backlog sweep. This route keeps its own auth + intake gate
+// (so a 404 stays a 404 here, not inside the service) and translates the service's tagged outcome
+// back into the EXACT response shapes this endpoint returned before the refactor.
+router.post(
+  "/library/:id/extract-places",
+  requireExpert,
+  asyncHandler(async (req: any, res: Response) => {
+    const id = req.params.id;
+    const expertId = getUserId(req)!;
+    const item = await storage.getDmoRawContentById(id);
+
+    // Same intake gate as the detail read (§12 audit A-3 pattern) — extraction is not a
+    // side door around content the admin hasn't approved into the library.
+    if (!item || item.expertWorkspaceVisible !== true || item.status === "rejected") {
+      throw new NotFoundError("Content not found");
+    }
+
+    const outcome = await runPlaceExtraction(id, { source: "on_open", actorId: expertId });
+
+    switch (outcome.status) {
+      case "not_found":
+        // Race: the gate check above passed, but the row changed under us before the service's
+        // own (re-)fetch. Same 404 the pre-refactor gate produced.
+        throw new NotFoundError("Content not found");
+      case "cached":
+        return res.json({ places: outcome.places, cached: true });
+      case "no_api_key":
+        return res.status(502).json({ message: "Extraction failed — read the source instead" });
+      case "thin_text":
+        return res.json({ thinText: true, places: null });
+      case "ai_error":
+        return res.status(502).json({ message: "Extraction failed — read the source instead" });
+      case "extracted":
+        return res.json({ places: outcome.places, cached: false });
+    }
+  }),
+);
+
+// ============================================================
+// EXTRACTED-PLACE TICKETING LINK — expert-console-only metadata
+// ============================================================
+//
+// §16: this is NOT a traveler-facing "Book" CTA and must never be rendered as one — any
+// traveler-facing booking action routes through the booking-agent rail
+// (POST /api/affiliate-booking-requests), which keeps the affiliate URL server-side and logs
+// the booking onto the trip. This field is a reference link an expert stores for their own use
+// while advising a traveler (e.g. "here's where I'd buy tickets"), scoped to one extracted
+// place inside one DMO content row.
+
+router.patch(
+  "/library/:id/extracted-places/:index",
+  requireExpert,
+  asyncHandler(async (req: Request, res: Response) => {
+    const id = req.params.id;
+    const item = await storage.getDmoRawContentById(id);
+
+    if (!item || item.expertWorkspaceVisible !== true || item.status === "rejected") {
+      throw new NotFoundError("Content not found");
+    }
+
+    // §14 note: ticketingUrl is reference metadata, not a money field — no amount/rate/id from
+    // this body reaches any charge, payout, or ownership decision.
+    const schema = z.object({
+      ticketingUrl: z
+        .string()
+        .max(500)
+        .refine((u) => u.startsWith("https://"), { message: "ticketingUrl must be an https:// URL" })
+        .refine((u) => {
+          try {
+            new URL(u);
+            return true;
+          } catch {
+            return false;
+          }
+        }, { message: "ticketingUrl must be a valid URL" })
+        .nullable(),
+    });
+    // safeParse → the file's ValidationError (400): a bare .parse throw falls through the
+    // error middleware as a 500, which mislabels a client mistake as a server fault.
+    const parsed = schema.safeParse(req.body);
+    if (!parsed.success) {
+      throw new ValidationError(parsed.error.errors[0]?.message ?? "Invalid ticketingUrl");
+    }
+    const { ticketingUrl } = parsed.data;
+
+    const index = Number(req.params.index);
+    if (!Number.isInteger(index) || index < 0) {
+      throw new NotFoundError("Extracted place not found");
+    }
+
+    // position === index + 1: extraction always writes contiguous 1-based positions in article
+    // order, so array-index and position coincide — the same semantics the old blob-array index
+    // had (§20a). A missing row (bad index, or the guide was never extracted) is the 404.
+    const updatedRow = await updateTicketingUrlByPosition(id, index + 1, ticketingUrl);
+    if (!updatedRow) {
+      throw new NotFoundError("Extracted place not found");
+    }
+
+    // Mirror into the extracted_data blob (dual-write, §20a) so the historical blob never holds
+    // a stale ticketing_url.
+    const placesRaw = (item.extractedData as { places?: unknown } | null)?.places;
+    if (Array.isArray(placesRaw) && index < placesRaw.length) {
+      const places = placesRaw.slice();
+      places[index] = { ...(places[index] as Record<string, unknown>), ticketingUrl };
+      await db
+        .update(dmoRawContent)
+        .set({
+          extractedData: { ...(item.extractedData as Record<string, unknown>), places },
+        })
+        .where(eq(dmoRawContent.id, id));
+    }
+
+    // Same response contract as before: the full place object with ticketingUrl always present
+    // (string or null) — optional fields omitted only when genuinely absent.
+    const updatedPlace: Record<string, unknown> = { n: updatedRow.position, name: updatedRow.name };
+    if (updatedRow.latitude != null) updatedPlace.latitude = updatedRow.latitude;
+    if (updatedRow.longitude != null) updatedPlace.longitude = updatedRow.longitude;
+    if (updatedRow.inLibraryId != null) updatedPlace.inLibraryId = updatedRow.inLibraryId;
+    updatedPlace.ticketingUrl = updatedRow.ticketingUrl;
+
+    res.json(updatedPlace);
   }),
 );
 

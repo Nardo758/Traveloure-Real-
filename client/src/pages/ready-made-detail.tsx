@@ -35,7 +35,7 @@ import StripeCheckout from "@/components/booking/StripeCheckout";
 import { StorefrontLink } from "@/components/marketplace/storefront-link";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
-import { planTypeLabel } from "@shared/ready-made-plan-types";
+import { planTypeLabel, isCustomPlanType } from "@shared/ready-made-plan-types";
 import { resolveFormat } from "@/lib/build-formats/registry";
 import { CalendarDays, Loader2, MapPin, ShoppingBag, Sun } from "lucide-react";
 
@@ -43,6 +43,8 @@ interface DetailListing {
   id: string;
   title: string;
   planType: string | null;
+  /** Free-text theme label, only meaningful when planType === "custom" (shared/ready-made-plan-types.ts). */
+  planTypeCustom: string | null;
   market: string;
   durationDays: number;
   bestSeason: string | null;
@@ -79,6 +81,15 @@ const PLAN_TYPE_EXPERIENCE: Record<string, string> = {
   city_itinerary: "travel",
   food_culture_itinerary: "travel",
 };
+
+/** The headline plan-type text: the closed vocabulary's label, or — for the one escape from it —
+ *  the author's own free-text theme (isCustomPlanType, shared/ready-made-plan-types.ts). */
+function planTypeDisplay(listing: Pick<DetailListing, "planType" | "planTypeCustom">): string {
+  if (isCustomPlanType(listing.planType)) {
+    return listing.planTypeCustom?.trim() || "Trip plan";
+  }
+  return planTypeLabel(listing.planType) ?? "Trip plan";
+}
 
 interface CityNeighborhood {
   id: string;
@@ -120,6 +131,9 @@ export default function ReadyMadeDetailPage() {
   const { user } = useAuth();
   const [paymentIntent, setPaymentIntent] = useState<{ clientSecret: string; paymentIntentId: string; amount: number } | null>(null);
   const [confirming, setConfirming] = useState(false);
+  // Teaser map section is additive — a broken image must never ship on a listing page, so a
+  // load failure hides the whole section rather than showing a broken-image block.
+  const [teaserMapFailed, setTeaserMapFailed] = useState(false);
 
   const { data, isLoading, error } = useQuery<{ listing: DetailListing; preview: boolean }>({
     queryKey: [`/api/ready-made/${id}`],
@@ -199,6 +213,11 @@ export default function ReadyMadeDetailPage() {
   const storeFormat = resolveFormat("store", experienceType, listing.market);
   const lead = (storeFormat.layout?.lead as "map-strip" | "venue-hero" | "standard" | undefined) ?? "standard";
 
+  // Public teaser-map endpoint: a sibling of this listing's own detail GET
+  // (queryKey [`/api/ready-made/${id}`]) under the same route family — no itinerary/coordinates
+  // ever reach this page's DTO (§10 teaser gate), so the SVG is rendered server-side instead.
+  const teaserMapUrl = `/api/ready-made/${id}/teaser-map.svg`;
+
   return (
     <div className="max-w-3xl mx-auto p-4 sm:p-6">
       {/* ── Branded page header — the quality structure's frame ── */}
@@ -227,7 +246,7 @@ export default function ReadyMadeDetailPage() {
           data-testid="lead-venue-hero"
         >
           <div className="text-xs font-semibold uppercase tracking-wide text-white/80" data-testid="text-plan-type">
-            {planTypeLabel(listing.planType) ?? "Trip plan"}
+            {planTypeDisplay(listing)}
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold mt-1" data-testid="text-rm-title">
             {listing.title} — {listing.market}
@@ -241,7 +260,7 @@ export default function ReadyMadeDetailPage() {
         <>
           {/* Type of Plan — the structure's headline */}
           <div className="text-sm font-semibold uppercase tracking-wide text-muted-foreground" data-testid="text-plan-type">
-            {planTypeLabel(listing.planType) ?? "Trip plan"}
+            {planTypeDisplay(listing)}
           </div>
           <h1 className="text-2xl sm:text-3xl font-bold text-foreground mt-1 mb-3" data-testid="text-rm-title">{listing.title}</h1>
         </>
@@ -273,6 +292,29 @@ export default function ReadyMadeDetailPage() {
               Photo by <a className="underline" href={listing.heroImageMeta.profileUrl} target="_blank" rel="noreferrer">{listing.heroImageMeta.photographer}</a> on Unsplash
             </div>
           )}
+        </div>
+      )}
+
+      {/* Teaser map — public teaser-map.svg for this listing. No itinerary/pins are exposed
+          pre-purchase (the SVG bakes only geography + generic route shape); a load failure hides
+          the whole section (a broken-image block must never ship on a listing page, §13/§17). */}
+      {!teaserMapFailed && (
+        <div className="mb-5" data-testid="section-route-teaser">
+          <div className="relative overflow-hidden rounded-2xl border border-border">
+            <img
+              src={teaserMapUrl}
+              alt="Route preview"
+              className="w-full h-auto block"
+              data-testid="img-route-teaser"
+              onError={() => setTeaserMapFailed(true)}
+            />
+            <span className="absolute top-2 right-2 rounded-full bg-black/60 px-2.5 py-1 text-[11px] font-medium text-white">
+              Stops unlock with purchase
+            </span>
+          </div>
+          <div className="text-[11px] text-muted-foreground mt-1">
+            Traveloure map · © OpenStreetMap contributors
+          </div>
         </div>
       )}
 
