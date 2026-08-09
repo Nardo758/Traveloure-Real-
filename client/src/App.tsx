@@ -124,6 +124,7 @@ const AdminFeeBands = lazy(() => import("@/pages/admin/fee-bands"));
 const AdminOfferingTypes = lazy(() => import("@/pages/admin/offering-types"));
 const AdminCategoryFees = lazy(() => import("@/pages/admin/category-fees"));
 const AdminNeighborhoods = lazy(() => import("@/pages/admin/neighborhoods"));
+const AdminMarkets = lazy(() => import("@/pages/admin/markets"));
 const AdminEventPackages = lazy(() => import("@/pages/admin/event-packages"));
 const AdminPlatformProviders = lazy(() => import("@/pages/admin/platform-providers"));
 const AdminRoutingQueue = lazy(() => import("@/pages/admin/routing-queue"));
@@ -1018,6 +1019,9 @@ function Router() {
       </Route>
       <Route path="/admin/neighborhoods">
         {() => <ProtectedRoute component={AdminNeighborhoods} requiredRole="admin" />}
+      </Route>
+      <Route path="/admin/markets">
+        {() => <ProtectedRoute component={AdminMarkets} requiredRole="admin" />}
       </Route>
       <Route path="/admin/event-packages">
         {() => <ProtectedRoute component={AdminEventPackages} requiredRole="admin" />}
