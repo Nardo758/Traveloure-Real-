@@ -7266,6 +7266,11 @@ export const dmoExtractedPlaces = pgTable("dmo_extracted_places", {
   longitude: decimal("longitude", { precision: 10, scale: 7 }),
   inLibraryId: varchar("in_library_id"), // soft ref → dmo_raw_content.id (same-city library match; no FK — advisory only)
   ticketingUrl: text("ticketing_url"), // expert-added https:// reference link — survives re-extract
+  // Open-data enrichment envelope (migration 188): {officialUrl, openingHours, heritage,
+  // wikidataId, osmId, source, fetchedAt} from explicitly-licensed sources (Wikidata CC0,
+  // OSM ODbL). Facts only, never prose (§13); NULL = not enriched. Never overwrites the
+  // expert-curated ticketingUrl above.
+  enrichment: jsonb("enrichment"),
   source: varchar("source", { length: 30 }).notNull().default("stored_text"), // 'stored_text' | 'live_fetch' (app-enforced, no CHECK)
   extractedAt: timestamp("extracted_at"),
   createdAt: timestamp("created_at").defaultNow(),

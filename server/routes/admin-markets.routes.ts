@@ -13,8 +13,8 @@
 import { Router } from "express";
 import { z } from "zod";
 import { db } from "../db";
-import { marketGeography, cityNeighborhoods, providerServices, dmoRawContent } from "@shared/schema";
-import { and, eq, sql, count } from "drizzle-orm";
+import { marketGeography, cityNeighborhoods, providerServices, dmoRawContent, dmoSources } from "@shared/schema";
+import { and, eq, sql, count, inArray } from "drizzle-orm";
 import {
   extractMarketGeography,
   extractNeighborhoods,
@@ -126,6 +126,30 @@ router.get("/api/admin/markets", async (_req, res) => {
           console.warn(`[admin-markets] dmoContentVisible check failed for "${m.market}" — omitting:`, err);
         }
 
+        // Source-kit check (dmoSourceKit): count of active dmo_sources rows whose `market`
+        // column matches this market. Matching rule — a row counts if dmo_sources.market
+        // equals EITHER (a) the market slug (m.market, lowercased — already lowercase by
+        // the addMarketSchema regex, but normalized here defensively), OR (b) the market's
+        // `country` lowercased and spaces→underscored (e.g. "Japan" -> "japan",
+        // "United Kingdom" -> "united_kingdom" — the same convention ALL_DMO_SOURCES already
+        // uses for its `market` field, see DMOSourceRegistry.ts), OR (c) the literal
+        // "global" catch-all (mirrors getSourcesByMarket's `s.market === "global"` fallback).
+        // If `country` is null on the market_geography row, only slug + "global" are matched.
+        let dmoSourceKit: number | null = null;
+        try {
+          const countryKey = m.country ? m.country.toLowerCase().trim().replace(/\s+/g, "_") : null;
+          const marketKeys = countryKey
+            ? [m.market.toLowerCase(), countryKey, "global"]
+            : [m.market.toLowerCase(), "global"];
+          const [kitRow] = await db
+            .select({ n: count() })
+            .from(dmoSources)
+            .where(and(eq(dmoSources.isActive, true), inArray(dmoSources.market, marketKeys)));
+          dmoSourceKit = kitRow?.n ?? 0;
+        } catch (err) {
+          console.warn(`[admin-markets] dmoSourceKit check failed for "${m.market}" — omitting:`, err);
+        }
+
         return {
           market: m.market,
           displayName: m.displayName,
@@ -143,6 +167,9 @@ router.get("/api/admin/markets", async (_req, res) => {
             // null = not computed (query failed) — the client renders "unavailable", never a fake 0.
             approvedLodgingWithCoords: approvedLodgingWithCoords === null ? null : { ok: approvedLodgingWithCoords >= 1, count: approvedLodgingWithCoords },
             dmoContentVisible: dmoContentVisible === null ? null : { ok: dmoContentVisible >= 1, count: dmoContentVisible },
+            // ok threshold: >= 3 active sources matched (slug/country/global) — see the
+            // matching-rule comment above where dmoSourceKit is computed.
+            dmoSourceKit: dmoSourceKit === null ? null : { ok: dmoSourceKit >= 3, count: dmoSourceKit },
           },
         };
       }),

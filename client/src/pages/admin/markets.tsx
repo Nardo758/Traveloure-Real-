@@ -47,6 +47,7 @@ interface AdminMarketRow {
     neighborhoodsSeeded: ChecklistItem;
     approvedLodgingWithCoords: ChecklistItem | null;
     dmoContentVisible: ChecklistItem | null;
+    dmoSourceKit: ChecklistItem | null;
   };
 }
 
@@ -313,6 +314,7 @@ export default function AdminMarkets() {
                             <ChecklistBadge label="Neighborhoods" item={m.launchChecklist.neighborhoodsSeeded} />
                             <ChecklistBadge label="Lodging w/ coords" item={m.launchChecklist.approvedLodgingWithCoords} />
                             <ChecklistBadge label="DMO content visible" item={m.launchChecklist.dmoContentVisible} />
+                            <ChecklistBadge label="Sources" item={m.launchChecklist.dmoSourceKit} />
                           </div>
                         </td>
                         <td className="py-2 px-3">
