@@ -108,6 +108,13 @@ export function usePublishMapCandidates(
   sourceLabel: string,
   items: MapCandidate[],
   onAdd: (id: string) => void,
+  /** DMO Research Reader exception to "one drawer = one publisher": the DMO drawer hosts TWO
+   *  views (list ⇄ reader) inside one mount, each with its own publisher hook under its own
+   *  source key. `active: false` makes a publisher yield the slot (clearing only its OWN
+   *  source, so it can never clobber the other's publish — React runs child effects before
+   *  parent effects, and the guarded clear() makes that ordering safe). Defaults true, so
+   *  every existing single-view drawer is untouched. */
+  active: boolean = true,
 ): void {
   const onAddRef = useRef(onAdd);
   onAddRef.current = onAdd;
@@ -115,8 +122,12 @@ export function usePublishMapCandidates(
   // parent re-render (mirrors CanvasMapSection's own PlanMapFitBounds `fitKey` pattern).
   const key = items.map((i) => `${i.id}:${i.lat}:${i.lng}:${i.price ?? ""}`).join("|");
   useEffect(() => {
+    if (!active) {
+      clear(source);
+      return;
+    }
     publish(source, sourceLabel, items, (id) => onAddRef.current(id));
     return () => clear(source);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [source, sourceLabel, key]);
+  }, [source, sourceLabel, key, active]);
 }
