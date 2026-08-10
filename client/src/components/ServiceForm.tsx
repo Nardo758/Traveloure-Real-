@@ -145,6 +145,11 @@ interface ServiceFormData {
   // Media
   serviceImage: string;
   galleryImages: string[];
+  // D3 (docs/briefs/SERVICE_FUNDAMENTALS_DECISIONS.md): the deliverable file URL for a
+  // pdf-delivery listing. Same URL-paste mechanism as serviceImage/galleryImages (there is
+  // no upload/object-storage rail in this codebase to reuse — every media field here is a
+  // pasted URL). Only meaningful (and only rendered) when deliveryMethod === "pdf".
+  serviceFile: string;
   // Per-category dynamic attributes
   categoryAttributes: Record<string, any>;
 }
@@ -215,6 +220,7 @@ function buildEmptyForm(role: "expert" | "provider"): ServiceFormData {
     leadTime: "",
     serviceImage: "",
     galleryImages: [],
+    serviceFile: "",
     categoryAttributes: {},
   };
 }
@@ -299,6 +305,9 @@ function mapServiceToForm(s: any, role: "expert" | "provider"): ServiceFormData 
     leadTime: s.leadTime || "",
     serviceImage: s.serviceImage || "",
     galleryImages: Array.isArray(s.galleryImages) ? s.galleryImages : [],
+    // Owner-only field — this hydration only ever runs off the owner-gated
+    // GET /api/provider/services/:id read, never a public surface.
+    serviceFile: s.serviceFile || "",
     categoryAttributes: (s.categoryAttributes && typeof s.categoryAttributes === "object") ? s.categoryAttributes : {},
   };
 }
@@ -851,6 +860,11 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         leadTime: formData.leadTime || null,
         serviceImage: formData.serviceImage || null,
         galleryImages: formData.galleryImages,
+        // D3: the deliverable file only means something for pdf delivery — never send a
+        // stale value up for a listing that has since switched to a different delivery
+        // method (a leftover file URL on a call/in-person row would be dead weight, and
+        // could confuse the delivery_asset fundamentals check).
+        serviceFile: formData.deliveryMethod === "pdf" ? (formData.serviceFile || null) : null,
         categoryAttributes: formData.categoryAttributes,
       };
 
@@ -1780,6 +1794,33 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               </div>
             );
           })()}
+
+          {/* D3 (docs/briefs/SERVICE_FUNDAMENTALS_DECISIONS.md): the deliverable file —
+              only relevant for pdf delivery. Buyers unlock this URL after a confirmed
+              booking (never before purchase); this field is only ever hydrated from the
+              owner-gated read. */}
+          {formData.deliveryMethod === "pdf" && (
+            <div>
+              <Label htmlFor="serviceFile">Deliverable File URL *</Label>
+              <Input
+                id="serviceFile"
+                value={formData.serviceFile}
+                onChange={(e) => set("serviceFile", e.target.value)}
+                placeholder="https://... (link to the PDF a buyer receives after purchase)"
+                className="mt-2"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Buyers can download this link only after their booking is confirmed. It is
+                never shown before purchase.
+              </p>
+              {!formData.serviceFile && (
+                <p className="text-xs text-amber-600 dark:text-amber-500 mt-1">
+                  A pdf-delivery listing needs a deliverable file before travelers can receive
+                  anything after buying it.
+                </p>
+              )}
+            </div>
+          )}
 
         </CardContent>
       </Card>

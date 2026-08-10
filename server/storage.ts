@@ -4,6 +4,7 @@ import { availableAtFor } from "./config/earnings-hold.config";
 import { isTripAdvisor, isTripAdvisorWithWriteAccess } from "./utils/trip-advisor";
 import { PROCESSING_FEE_RATE, resolveCommissionRates, resolveServiceOwnerShareRate } from "./services/commission";
 import { isProviderRole } from "@shared/roles";
+import { omitFields } from "./utils/data-sanitizer";
 import { 
   trips, generatedItineraries, touristPlaceResults, touristPlacesSearches,
   userAndExpertChats, helpGuideTrips, vendors,
@@ -1652,9 +1653,13 @@ export class DatabaseStorage implements IStorage {
     if (location) {
       conditions.push(ilike(providerServices.location, `%${location}%`));
     }
-    return await db.select().from(providerServices)
+    const rows = await db.select().from(providerServices)
       .where(and(...conditions))
       .orderBy(desc(providerServices.bookingsCount));
+    // D3 leak-prevention: this function's one caller is GET /api/services (unauthenticated
+    // public browse) — serviceFile is the pdf-delivery product itself and must never surface
+    // pre-purchase. Redacted to null (not omitted) so the return type stays ProviderService[].
+    return rows.map((r) => ({ ...r, serviceFile: null }));
   }
 
   async toggleServiceStatus(id: string, status: string): Promise<ProviderService | undefined> {
@@ -2105,7 +2110,11 @@ export class DatabaseStorage implements IStorage {
     }
 
     return {
-      services: enrichedServices,
+      // D3 leak-prevention: this function's one caller is GET /api/discover (unauthenticated
+      // public search) — serviceFile is the pdf-delivery product itself and must never
+      // surface pre-purchase. Redacted to null (not omitted) so the return type stays
+      // ProviderService[].
+      services: enrichedServices.map((s) => ({ ...s, serviceFile: null })),
       packages,
       total: filtered.length
     };
@@ -2210,7 +2219,16 @@ export class DatabaseStorage implements IStorage {
             .where(eq(vendorAvailabilitySlots.id, item.slotId));
           if (slotRow) slot = { date: String(slotRow.date), startTime: slotRow.startTime, endTime: slotRow.endTime };
         }
-        return { ...item, isCustomVenue: false, slot, service: service ? { ...service, providerName, categorySlug } : null };
+        // D3 leak-prevention: the cart is pre-purchase by definition (an item sitting in cart
+        // has no confirmed booking yet) — serviceFile must never ride this read even though
+        // it's the cart owner's own cart, or a buyer could add-to-cart, read the file URL, and
+        // abandon the cart without ever paying.
+        return {
+          ...item,
+          isCustomVenue: false,
+          slot,
+          service: service ? omitFields({ ...service, providerName, categorySlug }, ["serviceFile"] as const) : null,
+        };
       }
       return { ...item, service: null };
     }));
@@ -2908,13 +2926,16 @@ export class DatabaseStorage implements IStorage {
   // F2 public read-gate variant: the approved+active subset of an expert's listings, for PUBLIC
   // surfaces (the /api/experts/:id/services profile page and the experts-browse card embed). Keeps
   // the owner view (above) ungated so an expert still sees their own submitted/draft listings.
+  // D3 leak-prevention: every caller of this function is a public surface (verified — see the
+  // two call sites), so serviceFile is stripped HERE rather than at each call site.
   async getApprovedServicesForExpert(expertId: string): Promise<any[]> {
-    return await db.select().from(providerServices)
+    const rows = await db.select().from(providerServices)
       .where(and(
         eq(providerServices.userId, expertId),
         eq(providerServices.approvalStatus, "approved"),
         eq(providerServices.status, "active"),
       ));
+    return rows.map((r) => omitFields(r, ["serviceFile"] as const));
   }
 
   async addExpertSelectedService(expertId: string, serviceOfferingId: string, customPrice?: string): Promise<any> {
