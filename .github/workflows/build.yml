@@ -46,9 +46,12 @@ jobs:
       # @ ea0bbc05, 199 before PR #430). Before this step existed the discipline
       # had no machine enforcement at all — every "baseline" in the repo was a
       # stale prose number (191/209/254/~137, none of them current).
+      # 183 measured 2026-08-10 on PR #451 (down from 190) — the ratchet fired
+      # exactly as designed: this lane's work removed 7 errors and the gate
+      # refused to let the headroom survive. Locked in here, same PR.
       - name: tsc baseline ratchet (down-only)
         env:
-          TSC_BASELINE: '190'
+          TSC_BASELINE: '183'
         run: |
           count=$(npx tsc --noEmit 2>&1 | grep -c "error TS" || true)
           echo "tsc --noEmit: $count error(s); baseline ceiling: $TSC_BASELINE"
