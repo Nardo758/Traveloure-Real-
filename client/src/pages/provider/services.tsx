@@ -48,6 +48,7 @@ import {
   StorefrontShareTools,
   ensureShortLink,
 } from "@/components/backoffice/share-tools";
+import { CatalogMapView } from "@/components/provider/catalog-map-view";
 import { useAuth } from "@/hooks/use-auth";
 import {
   Plus,
@@ -726,6 +727,9 @@ function HealthRow({ health }: { health: ServiceHealth | undefined }) {
 
 export default function ProviderServices() {
   const [selectedCategory, setSelectedCategory] = useState("All");
+  // Ruling 22(b): Catalog is the map's home — this toggle swaps the card grid for the map
+  // authoring surface (CatalogMapView); everything below the content block is untouched.
+  const [viewMode, setViewMode] = useState<"list" | "map">("list");
   const [shareTarget, setShareTarget] = useState<Service | null>(null);
   const [, navigate] = useLocation();
   const { toast } = useToast();
@@ -855,15 +859,37 @@ export default function ProviderServices() {
               <p className="text-console-mid text-sm">{activeCount} of {totalServices} services active</p>
             )}
           </div>
-          <Link href="/provider/services/new">
-            <Button className="bg-primary hover:bg-primary/90" data-testid="button-add-service">
-              <Plus className="w-4 h-4 mr-2" /> Add New Service
-            </Button>
-          </Link>
+          <div className="flex items-center gap-2">
+            <div className="flex rounded-lg border border-console-light overflow-hidden">
+              <Button
+                variant={viewMode === "list" ? "default" : "ghost"}
+                size="sm"
+                className="rounded-none"
+                onClick={() => setViewMode("list")}
+                data-testid="button-view-list"
+              >
+                List
+              </Button>
+              <Button
+                variant={viewMode === "map" ? "default" : "ghost"}
+                size="sm"
+                className="rounded-none"
+                onClick={() => setViewMode("map")}
+                data-testid="button-view-map"
+              >
+                Map
+              </Button>
+            </div>
+            <Link href="/provider/services/new">
+              <Button className="bg-primary hover:bg-primary/90" data-testid="button-add-service">
+                <Plus className="w-4 h-4 mr-2" /> Add New Service
+              </Button>
+            </Link>
+          </div>
         </div>
 
-        {/* Category Filter — only show when there are services */}
-        {totalServices > 0 && filterLabels.length > 1 && (
+        {/* Category Filter — only show when there are services (list view only) */}
+        {viewMode === "list" && totalServices > 0 && filterLabels.length > 1 && (
           <div className="flex gap-2 flex-wrap">
             {filterLabels.map((label) => (
               <Button
@@ -923,6 +949,9 @@ export default function ProviderServices() {
               </Link>
             </div>
           </div>
+        ) : viewMode === "map" ? (
+          /* Ruling 22(b): the map authoring surface — selector rail, canvas, pin + route cards */
+          <CatalogMapView services={services ?? []} />
         ) : isFilterEmpty ? (
           <Card>
             <CardContent className="p-8 text-center">

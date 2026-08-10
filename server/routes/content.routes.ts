@@ -1987,6 +1987,10 @@ router.get("/api/services/:id", async (req, res) => {
       owner?.vacationUntil && owner.vacationUntil.getTime() > Date.now()
         ? { until: owner.vacationUntil.toISOString(), message: owner.vacationMessage ?? null }
         : null;
+    // Ruling 22: ordered route stops ride the public detail on every product shape. The
+    // traveler map renders LOCATED stops only; unlocated stops still list by name and the
+    // client states "X of Y stops located" rather than guessing a pin (§13).
+    const routePoints = await storage.getServiceRoutePoints(service.id);
     // §17 bundles (migration 151): additive component list on the public detail. Same F2
     // read-gate per component — only components STILL approved+active are exposed; an
     // unapproved/paused component never leaks through the bundle's page.
@@ -2005,7 +2009,7 @@ router.get("/api/services/:id", async (req, res) => {
           eq(providerServices.status, "active"),
         ))
         .orderBy(asc(bundleComponents.position));
-      return res.json({ ...service, bundleComponents: components, away });
+      return res.json({ ...service, bundleComponents: components, away, routePoints });
     }
     // §17 Product Builder — PROPERTY rung: additive room list on a property's public detail.
     // Same F2 read-gate as the bundle branch above — only STILL approved+active rooms are ever
@@ -2026,7 +2030,7 @@ router.get("/api/services/:id", async (req, res) => {
           eq(providerServices.status, "active"),
         ))
         .orderBy(asc(providerServices.price));
-      return res.json({ ...service, rooms, away });
+      return res.json({ ...service, rooms, away, routePoints });
     }
     // A room's detail carries a link back to its property — gated the same way (an
     // unapproved/paused property never surfaces as a clickable link on its own room's page).
@@ -2044,9 +2048,9 @@ router.get("/api/services/:id", async (req, res) => {
         property && property.approvalStatus === "approved" && property.status === "active"
           ? { id: property.id, serviceName: property.serviceName }
           : null;
-      return res.json({ ...service, property: visibleProperty, away });
+      return res.json({ ...service, property: visibleProperty, away, routePoints });
     }
-    res.json({ ...service, away });
+    res.json({ ...service, away, routePoints });
   });
 
   // C2: public read-only availability calendar for a service's detail page.
