@@ -188,6 +188,7 @@ export const adminRoutesConfig: RoleRouteConfig[] = [
   { href: '/admin/destination-events',  description: 'Destination events management' },
   { href: '/admin/analytics/cross-sell', description: 'Cross-sell analytics' },
   { href: '/admin/qa-checklist',        description: 'QA checklist' },
+  { href: '/admin/content-ops',         description: 'Content Ops — YouTube ingestion, extraction status, offering requests, market checklist' },
 ];
 
 // ── Convenience accessors ─────────────────────────────────────────────────────
