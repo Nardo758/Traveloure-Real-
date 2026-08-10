@@ -98,6 +98,7 @@ import { Link, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { isClassifiable, isPlaceAnchored } from "@shared/service-fundamentals";
 
 interface Service {
   id: string;
@@ -133,6 +134,9 @@ interface Service {
   latitude?: string | number | null;
   longitude?: string | number | null;
   locationPrecision?: string | null;
+  // D2 method-aware fundamentals: rides the same unfiltered row; drives which chip the card
+  // shows (pin for place-anchored services, delivery-method for the rest).
+  deliveryMethod?: string | null;
 }
 
 const AFFINITY_TAG_LABELS: Record<string, string> = {
@@ -602,6 +606,9 @@ interface ServiceHealth {
   serviceId: string;
   checks: HealthCheck[];
   score: { passed: number; total: number };
+  // D2 method-aware fundamentals: checks that don't apply to this service's shape, omitted
+  // with a reason — rendered as a muted "n/a" note, never as a failure.
+  omitted?: { key: string; reason: string }[];
 }
 interface HealthResponse {
   services: ServiceHealth[];
@@ -623,7 +630,24 @@ const TONE_CLASSNAMES = {
   ok: "bg-green-100 text-green-700 border-green-200",
   warn: "bg-amber-100 text-amber-700 border-amber-200",
   bad: "bg-red-100 text-red-700 border-red-200",
+  neutral: "bg-console-bg text-console-mid border-console-light",
 } as const;
+
+// Short "n/a" labels for method-omitted checks (D2) — the muted note beside the health meter.
+const OMITTED_CHECK_LABELS: Record<string, string> = {
+  exact_pin: "pin",
+  availability: "calendar",
+};
+
+// Delivery-method chip for non-place-anchored services — shown INSTEAD of a pin chip, because
+// scoring a PDF guide red for "no location" was exactly the unfairness D2 removes.
+const DELIVERY_CHIP_LABELS: Record<string, string> = {
+  pdf: "📄 PDF delivery",
+  video: "🎥 Video call",
+  call: "📞 Call",
+  voice_notes: "🎙️ Voice notes",
+  async_messaging: "💬 Messaging",
+};
 
 /** 62×46 rounded thumbnail from serviceImage/galleryImages[0]; an honest neutral placeholder
  *  tile (muted icon, no fake image) when neither is present. Sourced from the services list
@@ -671,10 +695,29 @@ function pinStatus(service: Service): { label: string; tone: keyof typeof TONE_C
 }
 
 /** Pin chip: clicking it opens the service's Edit (the existing edit navigation) — the pin
- *  picker lives in the form, not here. */
+ *  picker lives in the form, not here. D2 method-aware: a non-place-anchored service (PDF,
+ *  call, voice notes, messaging…) gets a neutral delivery-method chip instead — its location
+ *  status is not a defect and must not render as one. Unclassifiable rows (no deliveryMethod,
+ *  not a property) keep the historical pin chip, mirroring the server's applicability rule. */
 function PinChip({ service, isBundle }: { service: Service; isBundle: boolean }) {
-  const { label, tone, title } = pinStatus(service);
+  const shape = { deliveryMethod: service.deliveryMethod, productShape: service.productShape };
   const editHref = isBundle ? "/provider/workstation" : `/provider/services/${service.id}/edit`;
+
+  if (isClassifiable(shape) && !isPlaceAnchored(shape)) {
+    const label = DELIVERY_CHIP_LABELS[service.deliveryMethod ?? ""] ?? "Digital delivery";
+    return (
+      <Badge
+        variant="outline"
+        title="Delivered remotely — no meeting point needed for this service."
+        className={`text-[10px] ${TONE_CLASSNAMES.neutral}`}
+        data-testid={`chip-pin-${service.id}`}
+      >
+        {label}
+      </Badge>
+    );
+  }
+
+  const { label, tone, title } = pinStatus(service);
   return (
     <Link href={editHref}>
       <Badge
@@ -700,6 +743,9 @@ function HealthRow({ health }: { health: ServiceHealth | undefined }) {
   const failingLabels = health.checks
     .filter((c) => !c.ok)
     .map((c) => HEALTH_CHECK_LABELS[c.key] ?? c.key);
+  // D2: method-omitted checks render as a muted "n/a" note (reason on hover) — visibly not
+  // counted, never presented as failures.
+  const omitted = health.omitted ?? [];
 
   return (
     <div className="mt-3 pt-3 border-t border-console-light" data-testid={`health-row-${health.serviceId}`}>
@@ -719,6 +765,15 @@ function HealthRow({ health }: { health: ServiceHealth | undefined }) {
           </Badge>
         ) : (
           <span className="text-xs text-console-mid">{failingLabels.join(" · ")}</span>
+        )}
+        {omitted.length > 0 && (
+          <span
+            className="text-[11px] italic text-console-mid/60"
+            title={omitted.map((o) => o.reason).join("; ")}
+            data-testid={`health-omitted-${health.serviceId}`}
+          >
+            n/a: {omitted.map((o) => OMITTED_CHECK_LABELS[o.key] ?? o.key).join(", ")}
+          </span>
         )}
       </div>
     </div>
