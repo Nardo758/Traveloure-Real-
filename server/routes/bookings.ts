@@ -417,48 +417,6 @@ router.post('/estimate-cost', isAuthenticated, async (req, res) => {
   }
 });
 
-/**
- * POST /api/bookings/apply-promo
- * Apply promo code to booking
- */
-router.post('/apply-promo', isAuthenticated, async (req, res) => {
-  try {
-    // userId from the session, never the body (was the same client-trusted-identity class as
-    // process-cart: a client could pass another user's id to probe/bypass the per-user promo
-    // limit). This is a discount PREVIEW only — no money moves and no usage is recorded here
-    // (recordPromoUsage runs at checkout); `amount` is the client subtotal to preview against and
-    // is not authoritative — the actual charge + promo are re-derived server-side at /api/checkout.
-    const sessionUserId = getUserId(req)!;
-    if (!sessionUserId) return res.status(401).json({ error: 'Not authenticated' });
-
-    const { code, amount } = req.body; // money-derive-ok: preview subtotal only; charge re-derives at /api/checkout
-
-    if (!code || !amount) {
-      return res.status(400).json({ error: 'Missing required fields' });
-    }
-
-    const result = await pricingService.applyPromoCode(code, amount, sessionUserId);
-
-    if (result.valid) {
-      res.json({
-        success: true,
-        ...result,
-      });
-    } else {
-      res.status(400).json({
-        success: false,
-        error: result.error,
-      });
-    }
-  } catch (error: any) {
-    console.error('Apply promo error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-    });
-  }
-});
-
 // MONEY_MAP F-2: production guard — STRIPE_WEBHOOK_SECRET defaults to '' below, and passing an
 // empty secret into constructEvent just throws inside the try/catch on every delivery (a noisy,
 // per-request 400 that masks the real misconfiguration). In production specifically, refuse the
