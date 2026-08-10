@@ -84,6 +84,15 @@ interface EarningsBySourceResponse {
   preAttributionCaveat: boolean;
 }
 
+// Statements (mockup §06e). Reads server/routes/statements.routes.ts — months with real ledger
+// activity only (§13: a quiet month is simply absent from this list, never a zeroed row).
+interface StatementMonth {
+  month: string; // "2026-07"
+  bookings: number;
+  gross: number;
+  net: number;
+}
+
 const LINK_TARGET_LABEL: Record<LinkAnalyticsRow["targetType"], string> = {
   storefront: "Your storefront",
   service: "Service",
@@ -270,6 +279,83 @@ function LinkPerformanceCard() {
   );
 }
 
+function monthLabel(month: string): string {
+  const d = new Date(`${month}-01T00:00:00`);
+  if (isNaN(d.getTime())) return month;
+  return d.toLocaleString("default", { month: "long", year: "numeric" });
+}
+
+function StatementsCard() {
+  // Endpoint 404 (pending mount, or a real "not applicable" 404) -> render nothing (§13 — an honest
+  // absence beats a broken card). A 200-HTML unmounted-router response (§9 signature) fails res.json()
+  // parsing the same way a real error does, so isError covers both cases uniformly.
+  const statementsQuery = useQuery<StatementMonth[]>({
+    queryKey: ["/api/me/statements"],
+  });
+
+  if (statementsQuery.isError) return null;
+
+  const months = statementsQuery.data ?? [];
+
+  return (
+    <Card className="border border-console-light" data-testid="card-statements">
+      <CardHeader>
+        <CardTitle className="text-lg flex items-center gap-2">
+          <Download className="w-5 h-5 text-primary" />
+          Statements
+        </CardTitle>
+        <CardDescription>Download a CSV of every earning and payout event for a given month.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {months.length === 0 ? (
+          <EmptyState
+            icon={Download}
+            title="Statements appear after your first booking month"
+            testId="empty-statements"
+          />
+        ) : (
+          <div className="space-y-2">
+            {months.map((row) => (
+              <div
+                key={row.month}
+                className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-lg border border-console-light bg-console-bg"
+                data-testid={`row-statement-${row.month}`}
+              >
+                <div className="min-w-0">
+                  <p className="font-medium text-console-darkest">{monthLabel(row.month)}</p>
+                  <p className="text-xs text-console-mid">
+                    {row.bookings} {row.bookings === 1 ? "booking" : "bookings"}
+                  </p>
+                </div>
+                <div className="flex items-center gap-4 text-sm flex-shrink-0">
+                  <div className="text-center">
+                    <p className="font-semibold text-console-darkest">
+                      ${row.gross.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                    <p className="text-xs text-console-mid">gross</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="font-semibold text-console-darkest">
+                      ${row.net.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                    <p className="text-xs text-console-mid">net</p>
+                  </div>
+                  <Button size="sm" variant="outline" asChild data-testid={`button-statement-csv-${row.month}`}>
+                    <a href={`/api/me/statements/${row.month}.csv`} download={`statement-${row.month}.csv`}>
+                      <Download className="w-3.5 h-3.5 mr-1.5" />
+                      CSV
+                    </a>
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function ProviderEarnings() {
   const { toast } = useToast();
   const [requested, setRequested] = useState(false);
@@ -438,12 +524,6 @@ export default function ProviderEarnings() {
               </CardContent>
             </Card>
           ))}
-        </div>
-
-        <div className="flex flex-wrap gap-3 items-center">
-          <Button variant="outline" data-testid="button-download-statement">
-            <Download className="w-4 h-4 mr-2" /> Download Statement
-          </Button>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -729,6 +809,8 @@ export default function ProviderEarnings() {
             </CardContent>
           </Card>
         </div>
+
+        <StatementsCard />
       </div>
     </ProviderLayout>
   );

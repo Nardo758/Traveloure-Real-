@@ -5523,6 +5523,10 @@ router.get("/api/admin/reviews", isAuthenticated, async (req, res) => {
           reviewText: r.reviewText ?? null,
           responseText: r.responseText ?? null,
           responseAt: r.responseAt ?? null,
+          // §06d: the provider's public reply (distinct from the legacy responseText/responseAt
+          // above) — moderators see it here, read-only in v1 (no clear-reply admin action).
+          providerReply: r.providerReply ?? null,
+          providerRepliedAt: r.providerRepliedAt ?? null,
           status: r.status,
           flagReason: r.flagReason ?? null,
           moderatedAt: r.moderatedAt ?? null,

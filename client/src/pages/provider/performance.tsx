@@ -8,7 +8,7 @@
  * page's 9-tab picker), so no ?sub= seam is needed. /provider/analytics redirects to
  * /provider/performance?tab=analytics.
  */
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useState } from "react";
 import { useSearch } from "wouter";
 import { ProviderLayout } from "@/components/provider/provider-layout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -17,14 +17,20 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
-import { useQuery } from "@tanstack/react-query";
+import { Textarea } from "@/components/ui/textarea";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { format } from "date-fns";
 import {
   Star,
   TrendingUp,
   DollarSign,
   Users,
   BarChart3,
-  Calendar
+  Calendar,
+  MessageSquare,
+  AlertTriangle,
 } from "lucide-react";
 import { ProviderServiceRecommendations } from "@/components/provider/service-recommendations";
 
@@ -64,9 +70,28 @@ interface ProviderAnalytics {
   };
 }
 
+// §06d Reviews tab response shapes.
+interface ProviderReview {
+  id: string;
+  rating: number;
+  reviewText: string | null;
+  createdAt: string;
+  providerReply: string | null;
+  providerRepliedAt: string | null;
+  serviceId: string;
+  serviceName: string;
+  travelerName: string;
+}
+
+interface ProviderReviewsResponse {
+  reviews: ProviderReview[];
+  summary: { total: number; avgRating: number; awaitingReply: number };
+}
+
 export default function ProviderPerformance() {
   const search = useSearch();
-  const tabParam = new URLSearchParams(search).get("tab") === "analytics" ? "analytics" : "overview";
+  const tabQuery = new URLSearchParams(search).get("tab");
+  const tabParam = tabQuery === "analytics" ? "analytics" : tabQuery === "reviews" ? "reviews" : "overview";
 
   const { data: analytics, isLoading } = useQuery<ProviderAnalytics>({
     queryKey: ["/api/provider/analytics/dashboard"],
@@ -129,6 +154,7 @@ export default function ProviderPerformance() {
           <TabsList data-testid="tabs-performance">
             <TabsTrigger value="overview" data-testid="tab-performance-overview">Overview</TabsTrigger>
             <TabsTrigger value="analytics" data-testid="tab-performance-analytics">Analytics</TabsTrigger>
+            <TabsTrigger value="reviews" data-testid="tab-performance-reviews">Reviews</TabsTrigger>
           </TabsList>
         </div>
 
@@ -360,7 +386,188 @@ export default function ProviderPerformance() {
             <ProviderAnalyticsPage embedded />
           </Suspense>
         </TabsContent>
+
+        {/* §06d Reviews tab — GET /api/me/reviews (session provider's reviews across all their
+            services), PATCH /api/me/reviews/:id/reply to post/edit the public reply. */}
+        <TabsContent value="reviews" data-testid="content-performance-reviews">
+          <div className="p-6">
+            <ReviewsTab />
+          </div>
+        </TabsContent>
       </Tabs>
     </ProviderLayout>
+  );
+}
+
+function Stars({ rating }: { rating: number }) {
+  return (
+    <div className="flex items-center gap-0.5">
+      {[1, 2, 3, 4, 5].map((star) => (
+        <Star
+          key={star}
+          className={`w-4 h-4 ${star <= rating ? "text-amber-500 fill-amber-500" : "text-muted-foreground"}`}
+        />
+      ))}
+    </div>
+  );
+}
+
+function ReviewReplyRow({ review }: { review: ProviderReview }) {
+  const { toast } = useToast();
+  const [draft, setDraft] = useState("");
+
+  const replyMutation = useMutation({
+    mutationFn: (reply: string) =>
+      apiRequest("PATCH", `/api/me/reviews/${review.id}/reply`, { reply }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/me/reviews"] });
+      toast({ title: "Reply posted" });
+      setDraft("");
+    },
+    onError: () => toast({ title: "Failed to post reply", variant: "destructive" }),
+  });
+
+  return (
+    <div className="border rounded-lg p-4 space-y-3" data-testid={`row-review-${review.id}`}>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap mb-1">
+            <span className="font-medium text-sm">{review.travelerName}</span>
+            <span className="text-muted-foreground text-xs">on</span>
+            <span className="text-sm font-medium truncate max-w-[220px]">{review.serviceName}</span>
+          </div>
+          <div className="flex items-center gap-2 mb-2">
+            <Stars rating={review.rating} />
+            <span className="text-xs text-muted-foreground">
+              {format(new Date(review.createdAt), "MMM d, yyyy")}
+            </span>
+          </div>
+          {review.reviewText ? (
+            <p className="text-sm text-foreground">{review.reviewText}</p>
+          ) : (
+            <p className="text-sm text-muted-foreground italic">No review text.</p>
+          )}
+        </div>
+      </div>
+
+      {review.providerReply ? (
+        <div className="rounded-md border bg-muted/40 px-3 py-2">
+          <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground mb-1">
+            <MessageSquare className="w-3 h-3" />
+            Your reply (public)
+            {review.providerRepliedAt && (
+              <span className="font-normal opacity-70">
+                {format(new Date(review.providerRepliedAt), "MMM d, yyyy")}
+              </span>
+            )}
+          </div>
+          <p className="text-sm text-foreground">{review.providerReply}</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <Textarea
+            placeholder="Write a public reply to this review…"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            className="text-sm h-20"
+            maxLength={1000}
+            data-testid={`input-reply-${review.id}`}
+          />
+          <Button
+            size="sm"
+            disabled={!draft.trim() || replyMutation.isPending}
+            onClick={() => replyMutation.mutate(draft.trim())}
+            data-testid={`button-post-reply-${review.id}`}
+          >
+            {replyMutation.isPending ? "Posting…" : "Post reply"}
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ReviewsTab() {
+  const { data, isLoading } = useQuery<ProviderReviewsResponse>({
+    queryKey: ["/api/me/reviews"],
+  });
+
+  const reviews = data?.reviews ?? [];
+  const summary = data?.summary ?? { total: 0, avgRating: 0, awaitingReply: 0 };
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {[1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-24 rounded-lg" />
+          ))}
+        </div>
+        <Skeleton className="h-32 w-full rounded-lg" />
+        <Skeleton className="h-32 w-full rounded-lg" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card data-testid="card-reviews-average">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Average</p>
+                <p className="text-2xl font-bold text-foreground">{summary.avgRating.toFixed(1)}<span className="text-base font-normal text-muted-foreground">/5</span></p>
+              </div>
+              <Star className="w-8 h-8 text-amber-500 fill-amber-500" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card data-testid="card-reviews-total">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Total</p>
+                <p className="text-2xl font-bold text-foreground">{summary.total}</p>
+              </div>
+              <Users className="w-8 h-8 text-primary" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card
+          data-testid="card-reviews-awaiting"
+          className={summary.awaitingReply > 0 ? "border-amber-300 bg-amber-50/50 dark:bg-amber-950/10" : ""}
+        >
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Awaiting reply</p>
+                <p className={`text-2xl font-bold ${summary.awaitingReply > 0 ? "text-amber-700 dark:text-amber-500" : "text-foreground"}`}>
+                  {summary.awaitingReply}
+                </p>
+              </div>
+              {summary.awaitingReply > 0 ? (
+                <AlertTriangle className="w-8 h-8 text-amber-500" />
+              ) : (
+                <MessageSquare className="w-8 h-8 text-primary" />
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {reviews.length === 0 ? (
+        <div className="text-center py-12 text-muted-foreground" data-testid="text-reviews-empty">
+          <MessageSquare className="w-10 h-10 mx-auto mb-3 opacity-40" />
+          <p>No reviews yet — they appear after completed bookings.</p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {reviews.map((review) => (
+            <ReviewReplyRow key={review.id} review={review} />
+          ))}
+        </div>
+      )}
+    </div>
   );
 }

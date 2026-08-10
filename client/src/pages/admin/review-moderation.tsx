@@ -34,6 +34,9 @@ interface ModerationReview {
   reviewText: string | null;
   responseText: string | null;
   responseAt: string | null;
+  // §06d: the provider's public reply (distinct from the legacy responseText/responseAt above).
+  providerReply: string | null;
+  providerRepliedAt: string | null;
   status: ReviewStatus;
   flagReason: string | null;
   moderatedAt: string | null;
@@ -120,6 +123,18 @@ function ReviewRow({ review, onAction, isFeatured, onToggleFeature }: {
                 )}
               </div>
               <p className="text-sm text-foreground" data-testid={`text-response-body-${review.id}`}>{review.responseText}</p>
+            </div>
+          )}
+          {review.providerReply && (
+            <div className="mt-2 rounded border bg-muted/40 px-2.5 py-2" data-testid={`block-provider-reply-${review.id}`}>
+              <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground mb-1">
+                <MessageSquare className="w-3 h-3" />
+                Provider reply (public)
+                {review.providerRepliedAt && (
+                  <span className="font-normal opacity-70">{format(new Date(review.providerRepliedAt), "MMM d, yyyy")}</span>
+                )}
+              </div>
+              <p className="text-sm text-foreground" data-testid={`text-provider-reply-${review.id}`}>{review.providerReply}</p>
             </div>
           )}
         </div>
