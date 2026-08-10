@@ -566,6 +566,7 @@ router.post('/refund', isAuthenticated, async (req, res) => {
     // the cancel-preview endpoint shows. Admin-initiated refunds (dispute resolution, goodwill)
     // remain full-amount and are NOT policy-limited.
     let amountOverride: number | undefined;
+    let refundFraction = 1;
     if (!isAdmin) {
       const { quoteCancellationForBooking } = await import('../services/cancellation-policy.service');
       const quote = await quoteCancellationForBooking(bookingId);
@@ -586,6 +587,7 @@ router.post('/refund', isAuthenticated, async (req, res) => {
         }
         if (quote.refundPercent < 100) {
           amountOverride = quote.refundAmount;
+          refundFraction = quote.refundPercent / 100;
         }
       }
     }
@@ -602,11 +604,19 @@ router.post('/refund', isAuthenticated, async (req, res) => {
     // fully-reversed ledger that a retry simply re-confirms as a no-op. The previous
     // Stripe-first order had the opposite failure mode: money out the door with the ledger
     // still crediting the earner if the reversal then threw.
-    const reversal = await storage.reverseEarningsForBooking(bookingId);
-    const reversedRevenueRows = await storage.reversePlatformRevenueForBooking(bookingId);
+    // PROPORTIONAL for policy partial refunds: a 50% refund reverses only half the recognised
+    // platform revenue (retained share stays recognised) and does NOT reverse earnings — the
+    // in-escrow earnings correspond to the provider's retained economics, and zeroing them for a
+    // partial refund undercounted every partial cancellation. Full refunds keep the original
+    // full-reversal behavior.
+    const reversal =
+      refundFraction >= 1
+        ? await storage.reverseEarningsForBooking(bookingId)
+        : { reversed: 0, skippedPaidOut: 0 };
+    const reversedRevenueRows = await storage.reversePlatformRevenueForBooking(bookingId, new Date(), refundFraction);
 
-    // Amount server-derived from service_bookings.total_amount; idempotent (atomic status
-    // claim + deterministic Stripe idempotencyKey `refund-sb-<bookingId>`).
+    // Amount server-derived from service_bookings.total_amount (policy-scaled when partial);
+    // idempotent (atomic status claim + amount-unambiguous Stripe idempotencyKey).
     const result = await stripePaymentService.refundServiceBooking(
       bookingId,
       reason,

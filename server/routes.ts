@@ -5000,23 +5000,53 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const quote = await quoteCancellationForBooking(req.params.id);
       if (!quote) return res.status(404).json({ message: "Booking not found or not yours" });
 
-      // Always record the cancellation first (stamps cancelledAt + reason). If a refund is due,
-      // the refund flow below then flips cancelled → refunded under its atomic claim.
-      const updated = await storage.updateServiceBookingStatus(req.params.id, "cancelled", reason);
+      const refundDue = quote.automaticRefundAllowed && quote.refundAmount > 0 && !!booking.stripePaymentIntentId;
 
       let refundResult: any = null;
-      if (quote.automaticRefundAllowed && quote.refundAmount > 0 && booking.stripePaymentIntentId) {
-        // Same ledger-first order + idempotent reversals as POST /api/bookings/refund.
-        await storage.reverseEarningsForBooking(req.params.id);
-        await storage.reversePlatformRevenueForBooking(req.params.id);
+      let updated: any;
+      if (refundDue) {
+        // RETRY-SAFE ORDER: refund BEFORE any terminal status write. refundServiceBooking's
+        // atomic claim flips pending/confirmed → refunded; if Stripe fails it restores the
+        // prior status and throws, so the booking stays cancellable and the traveler can
+        // simply retry — no cancelled-but-unrefunded dead end.
+        //
+        // Ledger: same ledger-first order as POST /api/bookings/refund, but PROPORTIONAL —
+        // a partial (e.g. 50%) refund reverses only the refunded fraction of platform
+        // revenue, keeping the retained share recognised. Both reversals are idempotent
+        // flips, so a Stripe failure + retry re-confirms them as no-ops. Earnings for a
+        // pending/confirmed booking don't exist yet (they are created at completion), so a
+        // full-fraction earnings reversal is only run for 100% refunds as a safety net —
+        // never on a partial refund, where it would wrongly zero any retained share.
+        const refundFraction = quote.refundPercent / 100;
+        if (quote.refundPercent === 100) {
+          await storage.reverseEarningsForBooking(req.params.id);
+        }
+        await storage.reversePlatformRevenueForBooking(req.params.id, new Date(), refundFraction);
+
         const { stripePaymentService } = await import("./services/stripe-payment.service");
         refundResult = await stripePaymentService.refundServiceBooking(
           req.params.id,
           reason || "requested_by_customer",
           { amountOverride: quote.refundAmount },
         );
+
+        // Refund succeeded (status now 'refunded') — stamp the cancellation audit fields
+        // without touching the terminal status.
+        const { db } = await import("./db");
+        const { sql } = await import("drizzle-orm");
+        await db.execute(sql`
+          UPDATE service_bookings
+          SET cancelled_at = NOW(), cancellation_reason = ${reason ?? null}, updated_at = NOW()
+          WHERE id = ${req.params.id}
+        `);
+        updated = await storage.getServiceBooking(req.params.id);
+
         const { revertPurchasedItemsForBooking } = await import("./services/item-routing.service");
         await revertPurchasedItemsForBooking(req.params.id);
+      } else {
+        // No automatic refund (non-refundable policy, lapsed window, or nothing charged) —
+        // a plain status cancellation, exactly what the preview told the traveler.
+        updated = await storage.updateServiceBookingStatus(req.params.id, "cancelled", reason);
       }
 
       res.json({
