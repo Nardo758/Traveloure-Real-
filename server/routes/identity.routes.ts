@@ -56,102 +56,16 @@ router.post("/create-session", isAuthenticated, async (req, res) => {
   }
 });
 
-// POST /api/identity/business/create-inquiry — Persona KYB for providers
-router.post("/business/create-inquiry", isAuthenticated, async (req, res) => {
-  try {
-    const userId = getUserId(req)!;
-    const { country, registrationNumber, additionalDocUrl } = req.body as { country: string; registrationNumber: string; additionalDocUrl?: string };
-
-    if (!country || !registrationNumber) {
-      return res.status(400).json({ message: "country and registrationNumber are required" });
-    }
-
-    // Fetch existing form to capture already-uploaded document URLs
-    const [form] = await db
-      .select()
-      .from(serviceProviderForms)
-      .where(eq(serviceProviderForms.userId, userId))
-      .limit(1);
-
-    if (!form) {
-      return res.status(404).json({ message: "Provider application not found" });
-    }
-
-    // Collect already-uploaded documents from the application form
-    const existingDocuments: Record<string, string> = {};
-    if ((form as any).businessLicense) existingDocuments.businessLicense = (form as any).businessLicense;
-    if ((form as any).businessGstTax) existingDocuments.businessGstTax = (form as any).businessGstTax;
-    if ((form as any).businessLogo) existingDocuments.businessLogo = (form as any).businessLogo;
-    // Include any additional document URL submitted at verification time
-    if (additionalDocUrl) existingDocuments.additionalDoc = additionalDocUrl;
-
-    const PERSONA_API_KEY = process.env.PERSONA_API_KEY;
-
-    if (!PERSONA_API_KEY) {
-      // No Persona key — store details and mark as submitted for manual admin review
-      await db
-        .update(serviceProviderForms)
-        .set({
-          businessVerificationStatus: "submitted",
-          businessCountry: country,
-          businessRegistrationNumber: registrationNumber,
-          businessDocuments: existingDocuments,
-        } as any)
-        .where(eq(serviceProviderForms.userId, userId));
-
-      return res.json({ success: true, inquiryUrl: null, message: "Submitted for manual review" });
-    }
-
-    // Persona API
-    const personaRes = await fetch("https://withpersona.com/api/v1/inquiries", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${PERSONA_API_KEY}`,
-        "Content-Type": "application/json",
-        "Persona-Version": "2023-01-05",
-      },
-      body: JSON.stringify({
-        data: {
-          attributes: {
-            "inquiry-template-id": process.env.PERSONA_TEMPLATE_ID,
-            "reference-id": userId,
-            fields: {
-              "business-registration-number": registrationNumber,
-              "business-country-code": country,
-            },
-          },
-        },
-      }),
-    });
-
-    const personaData = await personaRes.json();
-
-    if (!personaRes.ok) {
-      throw new Error(personaData.errors?.[0]?.detail || "Persona API error");
-    }
-
-    const inquiryId = personaData.data?.id;
-    const sessionToken = personaData.data?.attributes?.["session-token"];
-    const inquiryUrl = inquiryId && sessionToken
-      ? `https://withpersona.com/verify?inquiry-id=${inquiryId}&session-token=${sessionToken}`
-      : null;
-
-    await db
-      .update(serviceProviderForms)
-      .set({
-        personaInquiryId: inquiryId,
-        businessVerificationStatus: "submitted",
-        businessCountry: country,
-        businessRegistrationNumber: registrationNumber,
-        businessDocuments: existingDocuments,
-      } as any)
-      .where(eq(serviceProviderForms.userId, userId));
-
-    res.json({ inquiryUrl, inquiryId });
-  } catch (err: any) {
-    console.error("Persona KYB error:", err);
-    res.status(500).json({ message: err.message || "Failed to create business verification" });
-  }
+// POST /api/identity/business/create-inquiry — RETIRED (Persona KYB removed Aug 2026)
+// Business verification is now derived from the provider's Stripe Connect Express account
+// via the account.updated webhook. Stripe performs its own KYB during Express onboarding.
+// Any existing client calling this endpoint should be directed to the Connect onboarding flow.
+router.post("/business/create-inquiry", (_req, res) => {
+  res.status(410).json({
+    message: "Persona KYB has been retired. Business verification is now handled through Stripe Connect onboarding.",
+    code: "PERSONA_KYB_RETIRED",
+    action: "Complete your Stripe Connect onboarding to verify your business.",
+  });
 });
 
 export default router;

@@ -9,12 +9,11 @@
 
 import { Router } from "express";
 import Stripe from "stripe";
-import crypto from "crypto";
 import { storage } from "../storage";
 import { revenueTrackingService } from "../services/revenue-tracking.service";
 import { stripePaymentService } from "../services/stripe-payment.service";
 import { db } from "../db";
-import { localExpertForms, serviceBookings, webhookEvents, bookings, adminNotifications, expertRequests } from "@shared/schema";
+import { localExpertForms, serviceProviderForms, serviceBookings, webhookEvents, bookings, adminNotifications, expertRequests, users } from "@shared/schema";
 import { eq, sql } from "drizzle-orm";
 
 const router = Router();
@@ -76,60 +75,10 @@ router.post("/stripe-identity", async (req: any, res) => {
   res.json({ received: true });
 });
 
-// POST /api/webhooks/persona
-// Verifies Persona HMAC signature when PERSONA_WEBHOOK_SECRET is configured.
-router.post("/persona", async (req: any, res) => {
-  const personaSecret = process.env.PERSONA_WEBHOOK_SECRET;
-
-  if (personaSecret) {
-    const personaSig = req.headers["persona-signature"] as string | undefined;
-    if (!personaSig) {
-      return res.status(400).json({ message: "Missing Persona-Signature header" });
-    }
-    // Persona uses t=<timestamp>,v1=<hmac> format
-    const parts: Record<string, string> = {};
-    personaSig.split(",").forEach(part => {
-      const [k, v] = part.split("=", 2);
-      parts[k] = v;
-    });
-    const timestamp = parts["t"];
-    const signature = parts["v1"];
-    if (!timestamp || !signature) {
-      return res.status(400).json({ message: "Malformed Persona-Signature header" });
-    }
-    // Rebuild signed payload: timestamp + "." + raw body
-    const rawPayload = req.rawBody ? req.rawBody.toString() : JSON.stringify(req.body);
-    const expected = crypto
-      .createHmac("sha256", personaSecret)
-      .update(`${timestamp}.${rawPayload}`)
-      .digest("hex");
-    if (expected !== signature) {
-      console.error("Persona webhook signature mismatch");
-      return res.status(400).json({ message: "Invalid Persona webhook signature" });
-    }
-  } else if (process.env.NODE_ENV === "production") {
-    // In production, PERSONA_WEBHOOK_SECRET must be set
-    return res.status(400).json({ message: "PERSONA_WEBHOOK_SECRET must be set in production" });
-  }
-
-  try {
-    const event = req.body;
-    const inquiryId: string | undefined = event.data?.id;
-    const status: string | undefined = event.data?.attributes?.status;
-
-    if (!inquiryId) return res.json({ received: true });
-
-    const newStatus =
-      status === "approved" ? "verified" :
-      status === "declined" ? "failed" :
-      "submitted";
-
-    await storage.updateProviderBusinessVerificationByInquiry(inquiryId, newStatus);
-  } catch (err) {
-    console.error("Persona webhook processing error:", err);
-  }
-
-  res.json({ received: true });
+// POST /api/webhooks/persona — RETIRED (Persona KYB removed Aug 2026)
+// Business verification now flows through the Stripe account.updated webhook below.
+router.post("/persona", (_req, res) => {
+  res.status(410).json({ message: "Persona KYB webhook retired. Business verification is now Stripe Connect-derived." });
 });
 
 // ─── Core Stripe event processor ────────────────────────────────────────────
@@ -252,6 +201,61 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
               `(${expert.firstName ?? ""} ${expert.lastName ?? ""}) ` +
               `account restricted. Reason: ${disabledReason}`
             );
+          }
+        }
+
+        // ── Path D: Derive businessVerificationStatus for service providers ──
+        // Stripe Connect Express performs its own KYB during Express onboarding.
+        // We map the account's verification signals to businessVerificationStatus
+        // so providers no longer need a separate Persona check. This replaces the
+        // retired Persona webhook handler.
+        //
+        // Lookup: users.stripeAccountId → users.id → serviceProviderForms.userId
+        // (serviceProviderForms has no stripeAccountId column; the Connect account ID
+        //  is stored only on the users row.)
+        //
+        // Mapping:
+        //   rejected.* disabled_reason          → "failed"
+        //   details_submitted + charges_enabled → "verified"
+        //   details_submitted only              → "submitted"  (mid-onboarding, manual fallback)
+        //   anything else                       → "pending"
+        const userByConnectId = await db
+          .select({ id: users.id })
+          .from(users)
+          .where(eq(users.stripeAccountId, account.id))
+          .limit(1);
+
+        if (userByConnectId.length > 0) {
+          const provUserId = userByConnectId[0].id;
+          const [providerForm] = await db
+            .select({
+              id: serviceProviderForms.id,
+              businessVerificationStatus: serviceProviderForms.businessVerificationStatus,
+            })
+            .from(serviceProviderForms)
+            .where(eq(serviceProviderForms.userId, provUserId))
+            .limit(1);
+
+          if (providerForm) {
+            const newBizStatus =
+              (disabledReason && /^rejected/i.test(disabledReason))
+                ? "failed"
+                : (!isRestricted && account.details_submitted && account.charges_enabled)
+                ? "verified"
+                : account.details_submitted
+                ? "submitted"
+                : "pending";
+
+            if (newBizStatus !== providerForm.businessVerificationStatus) {
+              await db
+                .update(serviceProviderForms)
+                .set({ businessVerificationStatus: newBizStatus } as any)
+                .where(eq(serviceProviderForms.id, providerForm.id));
+              console.log(
+                `[WEBHOOK] account.updated: provider userId=${provUserId} ` +
+                `businessVerificationStatus → ${newBizStatus} (connectId=${account.id})`
+              );
+            }
           }
         }
 

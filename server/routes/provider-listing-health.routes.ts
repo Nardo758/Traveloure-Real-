@@ -4,30 +4,25 @@ import { db } from "../db";
 import { getUserId } from "../utils/auth";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { providerServices, vendorAvailabilitySlots } from "@shared/schema";
+import { isClassifiable, isPlaceAnchored, needsScheduling } from "@shared/service-fundamentals";
 
 /**
- * Provider Listing Health — GET /api/provider/services/health (ratified "Listing Health" layer).
+ * Provider Listing Health — GET /api/provider/services/health (ratified "Listing Health" layer;
+ * method-aware fundamentals per the Aug 10, 2026 ratification, D2 of the fundamentals brief).
  *
- * INTENDED MOUNT (integrator wires this into server/routes.ts — this file does NOT self-mount):
- *   import providerListingHealthRoutes from "./routes/provider-listing-health.routes";
- *   ...
- *   app.use(providerListingHealthRoutes);
- * (same import/app.use shape as providerRoutes in provider.routes.ts).
+ * MOUNTED in server/routes.ts via `app.use(providerListingHealthRoutes)` (~line 902) — deliberately
+ * BEFORE the inline `app.get("/api/provider/services/:id", ...)` registration (~line 2075), because
+ * Express matches path segments positionally and `:id` would otherwise greedily swallow "health".
+ * Keep the mount in that slot when reordering routes.
  *
- * ROUTE-ORDER WARNING (verified against the running dev server, not just read from source):
- * server/routes.ts registers `app.get("/api/provider/services/:id", isAuthenticated, ...)` inline
- * (~line 2075). Express matches path segments positionally, so an unauthenticated OR authenticated
- * request to GET /api/provider/services/health is swallowed by that `:id` route (id="health") if it
- * is registered FIRST — confirmed live: hitting the path today already returns this route's 401
- * JSON body, not the 200-HTML dead-route fallback, because :id greedily matches "health". The mount
- * line above MUST land BEFORE that inline route registers — i.e. alongside `app.use(providerRoutes)`
- * (~line 882, well before line 2075), the same slot provider.routes.ts uses — or GET .../health will
- * always 404 as "service not found" post-mount instead of reaching this handler.
- *
- * Until mounted in that slot, every path below falls through to the pre-existing `:id` route's auth
- * check (401 unauthenticated) or 404 (authenticated) — NOT the Vite catch-all — because of the
- * collision above; the unmounted-router guard will correctly flag this file as pending-mount
- * regardless. That is expected for this change, not a defect.
+ * METHOD-AWARE SCORING (D2): a check that does not apply to a service's shape is OMITTED for that
+ * service with a reason — never scored as failing (§13). The applicability predicates live in
+ * shared/service-fundamentals.ts (ONE definition, shared with demand.routes.ts's hand-synced
+ * mirror and the client chips): exact_pin applies only to place-anchored services
+ * (in_person/hybrid delivery, or productShape='property'); availability applies only to services
+ * needing calendar slots (those plus live call/video sessions). photo, description, pricing and
+ * approval are universal. A row that cannot be classified (no deliveryMethod, not a property)
+ * keeps the historical all-checks behavior rather than guessing an omission.
  *
  * CONTEXT (CLAUDE.md audit finding): ~97% of provider listings ride the approximate
  * neighborhood-centroid location backfill (locationPrecision='neighborhood_centroid') and zero
@@ -74,6 +69,8 @@ router.get("/api/provider/services/health", isAuthenticated, async (req, res) =>
         latitude: providerServices.latitude,
         longitude: providerServices.longitude,
         locationPrecision: providerServices.locationPrecision,
+        deliveryMethod: providerServices.deliveryMethod,
+        productShape: providerServices.productShape,
       })
       .from(providerServices)
       .where(eq(providerServices.userId, userId));
@@ -113,6 +110,15 @@ router.get("/api/provider/services/health", isAuthenticated, async (req, res) =>
 
     const services = rows.map((s) => {
       const checks: HealthCheck[] = [];
+      const serviceOmitted: { key: string; reason: string }[] = [];
+
+      // D2 applicability (shared/service-fundamentals.ts). An unclassifiable row (no
+      // deliveryMethod, not a property) keeps the historical all-checks behavior — we can't
+      // honestly omit what we can't classify (§13).
+      const shape = { deliveryMethod: s.deliveryMethod, productShape: s.productShape };
+      const classifiable = isClassifiable(shape);
+      const placeAnchored = classifiable ? isPlaceAnchored(shape) : true;
+      const scheduled = classifiable ? needsScheduling(shape) : true;
 
       // photo: serviceImage present OR galleryImages non-empty.
       const gallery = Array.isArray(s.galleryImages) ? s.galleryImages : [];
@@ -123,20 +129,28 @@ router.get("/api/provider/services/health", isAuthenticated, async (req, res) =>
         ...(hasPhoto ? {} : { detail: "no photo uploaded" }),
       });
 
-      // exact_pin: latitude+longitude present AND locationPrecision='exact'.
-      const hasCoords = s.latitude != null && s.longitude != null;
-      const isExact = hasCoords && s.locationPrecision === "exact";
-      checks.push({
-        key: "exact_pin",
-        ok: isExact,
-        ...(isExact
-          ? {}
-          : {
-              detail: hasCoords
-                ? "approximate area (neighborhood-level)"
-                : "no location at all",
-            }),
-      });
+      // exact_pin: latitude+longitude present AND locationPrecision='exact'. Place-anchored
+      // services only — a PDF guide has no meeting point to pin (D2).
+      if (placeAnchored) {
+        const hasCoords = s.latitude != null && s.longitude != null;
+        const isExact = hasCoords && s.locationPrecision === "exact";
+        checks.push({
+          key: "exact_pin",
+          ok: isExact,
+          ...(isExact
+            ? {}
+            : {
+                detail: hasCoords
+                  ? "approximate area (neighborhood-level)"
+                  : "no location at all",
+              }),
+        });
+      } else {
+        serviceOmitted.push({
+          key: "exact_pin",
+          reason: `not a place-anchored service (${s.deliveryMethod} delivery)`,
+        });
+      }
 
       // description: trimmed length >= 80 chars.
       const descLen = (s.description ?? "").trim().length;
@@ -162,13 +176,24 @@ router.get("/api/provider/services/health", isAuthenticated, async (req, res) =>
       });
 
       // availability: at least 1 future vendor_availability_slots row for the service.
-      if (availabilityComputable) {
-        const count = slotCounts.get(s.id) ?? 0;
-        const availOk = count > 0;
-        checks.push({
+      // Scheduled services only (in-person/hybrid/property + live call/video sessions) — an
+      // artifact or async listing needs no calendar (D2). The query-failure omission stays
+      // top-level (it affects every scheduled service at once); the method omission is
+      // per-service.
+      if (scheduled) {
+        if (availabilityComputable) {
+          const count = slotCounts.get(s.id) ?? 0;
+          const availOk = count > 0;
+          checks.push({
+            key: "availability",
+            ok: availOk,
+            ...(availOk ? {} : { detail: "no upcoming availability" }),
+          });
+        }
+      } else {
+        serviceOmitted.push({
           key: "availability",
-          ok: availOk,
-          ...(availOk ? {} : { detail: "no upcoming availability" }),
+          reason: `no calendar needed for ${s.deliveryMethod} delivery`,
         });
       }
 
@@ -187,8 +212,13 @@ router.get("/api/provider/services/health", isAuthenticated, async (req, res) =>
       const passed = checks.filter((c) => c.ok).length;
       return {
         serviceId: s.id,
+        deliveryMethod: s.deliveryMethod,
+        productShape: s.productShape,
         checks,
+        // D2: the denominator is the APPLICABLE check count — an omitted check never dilutes
+        // or pads the score.
         score: { passed, total: checks.length },
+        omitted: serviceOmitted,
       };
     });
 

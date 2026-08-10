@@ -18,6 +18,7 @@ import { useToast } from "@/hooks/use-toast";
 import { SEOHead } from "@/components/seo-head";
 import { useAuth } from "@/hooks/use-auth";
 import { useAskExpert } from "@/lib/use-ask-expert";
+import { isPlaceAnchored } from "@shared/service-fundamentals";
 import {
   Star,
   MapPin,
@@ -56,6 +57,9 @@ interface StorefrontService {
   serviceImage: string | null;
   averageRating: string | null;
   reviewCount: number | null;
+  // D5: text-only location chip for place-anchored listings — city-level only, no map tiles.
+  city: string | null;
+  productShape: string | null;
 }
 
 interface StorefrontTemplate {
@@ -408,6 +412,11 @@ export default function StorefrontPage() {
                 const chips = s.deliveryMethod && DELIVERY_LABELS[s.deliveryMethod]
                   ? [DELIVERY_LABELS[s.deliveryMethod]]
                   : [];
+                // D5: place-anchored listings get a city-level location chip (text only, from
+                // the row's own city field — nothing derived, nothing mapped; §13).
+                if (isPlaceAnchored({ deliveryMethod: s.deliveryMethod, productShape: s.productShape }) && s.city?.trim()) {
+                  chips.push(`📍 ${s.city.trim()}`);
+                }
                 const unit = priceUnitLabel(s.priceType, s.pricingUnit);
                 const price = s.price ? `$${Number(s.price).toFixed(0)}` : "Custom quote";
                 // Vacation mode: the CTA stops promising "book" while the owner is away —

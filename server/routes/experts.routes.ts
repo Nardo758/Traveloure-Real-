@@ -1,5 +1,6 @@
 import { verifyTripOwnership } from '../utils/trip-ownership';
 import { getUserId } from "../utils/auth";
+import { isProviderRole } from "@shared/roles";
 import { authorizeTripLogistics } from '../utils/trip-logistics-auth';
 import { checkProviderPublishGate } from '../services/provider-publish.service';
 import { withQueryTimer } from '../utils/queryTimer';
@@ -450,7 +451,7 @@ router.post("/api/provider/blackout-dates", isAuthenticated, async (req, res) =>
       const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
-      if (!user || (user.role !== "provider" && user.role !== "service_provider" && user.role !== "admin")) {
+      if (!user || (!isProviderRole(user.role) && user.role !== "admin")) {
         return res.status(403).json({ message: "Provider access required" });
       }
       const blackoutInput = z.object({
@@ -477,7 +478,7 @@ router.delete("/api/provider/blackout-dates/:id", isAuthenticated, async (req, r
       const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
-      if (!user || (user.role !== "provider" && user.role !== "service_provider" && user.role !== "admin")) {
+      if (!user || (!isProviderRole(user.role) && user.role !== "admin")) {
         return res.status(403).json({ message: "Provider access required" });
       }
       // SECURITY (§13 cross-provider IDOR, class B): this handler used to gate on the provider
@@ -516,7 +517,7 @@ router.get("/api/provider/booking-requests", isAuthenticated, async (req, res) =
       const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
-      if (!user || (user.role !== "provider" && user.role !== "service_provider" && user.role !== "admin")) {
+      if (!user || (!isProviderRole(user.role) && user.role !== "admin")) {
         return res.status(403).json({ message: "Provider access required" });
       }
       const requests = await storage.getBookingRequests(userId);
@@ -532,7 +533,7 @@ router.put("/api/provider/booking-requests/:requestId/respond", isAuthenticated,
       const userId = getUserId(req)!;
       if (!userId) return res.status(401).json({ message: "Not authenticated" });
       const user = await storage.getUser(userId);
-      if (!user || (user.role !== "provider" && user.role !== "service_provider" && user.role !== "admin")) {
+      if (!user || (!isProviderRole(user.role) && user.role !== "admin")) {
         return res.status(403).json({ message: "Provider access required" });
       }
       const responseInput = z.object({
