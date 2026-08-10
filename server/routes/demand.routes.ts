@@ -32,7 +32,7 @@ import {
   DEMAND_SIGNAL_EVENT_KINDS,
   type DemandSignalEventKind,
 } from "@shared/schema";
-import { isClassifiable, isPlaceAnchored } from "@shared/service-fundamentals";
+import { isClassifiable, isPlaceAnchored, isArtifactDelivery } from "@shared/service-fundamentals";
 
 const router = Router();
 
@@ -257,7 +257,8 @@ router.get("/api/me/demand-signals", isAuthenticated, async (req, res) => {
 // Checks mirrored per service: photo, description, pricing, approval (universal) + exact_pin
 // (place-anchored services only — D2 method-aware fundamentals, shared/service-fundamentals.ts;
 // availability is not mirrored here, matching provider-listing-health.routes.ts's own omission
-// posture). The per-service applicable count is computed in the loop — no fixed constant.
+// posture) + delivery_asset (artifact-delivery services only — pdf; D3). The per-service
+// applicable count is computed in the loop — no fixed constant.
 const DESCRIPTION_MIN_LENGTH = 80;
 
 interface ListingHealthSummary {
@@ -289,13 +290,14 @@ async function getListingHealthSummary(userId: string): Promise<ListingHealthSum
       locationPrecision: providerServices.locationPrecision,
       deliveryMethod: providerServices.deliveryMethod,
       productShape: providerServices.productShape,
+      serviceFile: providerServices.serviceFile,
     })
     .from(providerServices)
     .where(eq(providerServices.userId, userId));
 
   if (rows.length === 0) return null;
 
-  const gapCounts: Record<string, number> = { photo: 0, exact_pin: 0, description: 0, pricing: 0, approval: 0 };
+  const gapCounts: Record<string, number> = { photo: 0, exact_pin: 0, description: 0, pricing: 0, approval: 0, delivery_asset: 0 };
   let passedTotal = 0;
   let applicableTotal = 0;
 
@@ -317,6 +319,14 @@ async function getListingHealthSummary(userId: string): Promise<ListingHealthSum
       const isExact = hasCoords && s.locationPrecision === "exact";
       rowChecks.push(isExact);
       if (!isExact) gapCounts.exact_pin++;
+    }
+
+    // delivery_asset (D3): artifact-delivery services only (pdf) — same applicability-gated
+    // shape as exact_pin above. No entry at all for a non-applicable row.
+    if (isArtifactDelivery(shape)) {
+      const hasFile = !!(s.serviceFile && s.serviceFile.trim().length > 0);
+      rowChecks.push(hasFile);
+      if (!hasFile) gapCounts.delivery_asset++;
     }
 
     if (!hasPhoto) gapCounts.photo++;
