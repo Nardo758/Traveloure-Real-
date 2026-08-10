@@ -117,9 +117,16 @@ business verified (current behavior, correct); experts → `local_expert_forms`,
 admin → bypass, but via the **DB role lookup** `requireAdmin` uses (CLAUDE.md §2), not the
 `req.user.role` session snapshot the current code reads; error message routed to each role's own
 status page. **Owner:** the KYB lane (the agent that built the gate) — it is mid-flight in this exact
-block, so a parallel edit risks a divergence. Coordinate before touching. **[DM]** call embedded:
-whether experts must be identity-verified to publish at all is a business decision, not an
-implementation detail — the fix above assumes yes (identity only).
+block, so a parallel edit risks a divergence. Coordinate before touching.
+**[DM] RESOLVED (Aug 10, 2026): "Yes, experts need to verify their identity."** Experts MUST be
+identity-verified to publish — `local_expert_forms.identity_verification_status = 'verified'` is a
+required condition on the expert branch of this gate. Business verification stays provider-only (the
+column does not exist on the expert form, correctly — an individual expert is not a business). Role
+resolution uses `isExpertRole`/`isProviderRole` (`shared/roles.ts`: EXPERT_ROLES =
+expert|local_expert|travel_expert|event_planner; PROVIDER_ROLES = service_provider) and the admin
+bypass uses the **DB role lookup** pattern `requireAdmin` uses (server/routes.ts ~:8861), never
+`req.user.role`. Roles in neither family (e.g. `executive_assistant`, plain `user`) stay blocked —
+default-deny. Error copy routes per role: providers → `/provider-status`, experts → `/expert-status`.
 
 1. **Partner drawer: close the book-off-site loop.** The pill promises "book off-site, log it here",
    but after booking on the partner site there is no "Log completed booking → add to Day N" action —
