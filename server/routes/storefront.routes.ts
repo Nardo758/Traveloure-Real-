@@ -545,6 +545,10 @@ async function loadStorefront(handle: string) {
       serviceImage: providerServices.serviceImage,
       averageRating: providerServices.averageRating,
       reviewCount: providerServices.reviewCount,
+      // D5 (ratified Aug 10, 2026): text-only location chips on storefront cards. City-level
+      // only — never the meeting point/address pre-purchase, and no map tiles here.
+      city: providerServices.city,
+      productShape: providerServices.productShape,
     })
     .from(providerServices)
     .where(
