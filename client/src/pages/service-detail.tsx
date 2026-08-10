@@ -132,11 +132,13 @@ interface RoomSummary {
 // X1: display labels for cancellationPolicyType — mirrors shared/schema.ts
 // CANCELLATION_POLICY_TYPE_LABELS (kept local to avoid a client bundle importing the
 // server schema module; the vocabulary itself is app-enforced, not a DB CHECK).
+// The concrete windows mirror the server's enforcement schedule in
+// server/services/cancellation-policy.service.ts (refundPercentFor).
 const CANCELLATION_POLICY_TYPE_LABELS: Record<string, string> = {
-  flexible: "Flexible — full refund if cancelled well in advance",
-  moderate: "Moderate — partial refund on shorter notice",
-  strict: "Strict — limited refund window",
-  non_refundable: "Non-refundable",
+  flexible: "Flexible — full refund if cancelled at least 24 hours before the start",
+  moderate: "Moderate — full refund 5+ days before the start; 50% refund 2+ days before",
+  strict: "Strict — 50% refund if cancelled at least 7 days before the start",
+  non_refundable: "Non-refundable — no refund once booked",
 };
 
 // In-person delivery methods that have a physical meeting point.

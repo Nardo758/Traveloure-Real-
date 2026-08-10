@@ -612,10 +612,12 @@ export const serviceStatusEnum = ["active", "paused", "draft"] as const;
 // hasn't declared a policy type (the honest state — never a fabricated blanket claim).
 export const cancellationPolicyTypeEnum = ["flexible", "moderate", "strict", "non_refundable"] as const;
 export const CANCELLATION_POLICY_TYPE_LABELS: Record<typeof cancellationPolicyTypeEnum[number], string> = {
-  flexible: "Flexible — full refund if cancelled well in advance",
-  moderate: "Moderate — partial refund on shorter notice",
-  strict: "Strict — limited refund window",
-  non_refundable: "Non-refundable",
+  // Concrete windows mirror the server enforcement schedule in
+  // server/services/cancellation-policy.service.ts (refundPercentFor).
+  flexible: "Flexible — full refund if cancelled at least 24 hours before the start",
+  moderate: "Moderate — full refund 5+ days before the start; 50% refund 2+ days before",
+  strict: "Strict — 50% refund if cancelled at least 7 days before the start",
+  non_refundable: "Non-refundable — no refund once booked",
 };
 
 export const providerServices = pgTable("provider_services", {
