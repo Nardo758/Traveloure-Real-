@@ -7,9 +7,13 @@ import { isAuthenticated } from "../replit_integrations/auth";
 
 const router = Router();
 
-const META_APP_ID = process.env.META_APP_ID;
-const META_APP_SECRET = process.env.META_APP_SECRET;
+const INSTAGRAM_APP_ID = process.env.INSTAGRAM_APP_ID;
+const INSTAGRAM_APP_SECRET = process.env.INSTAGRAM_APP_SECRET;
 const GRAPH_API_VERSION = "v21.0";
+
+router.get("/config", (req: Request, res: Response) => {
+  res.json({ appId: INSTAGRAM_APP_ID || null });
+});
 
 router.get("/callback", isAuthenticated, async (req: Request, res: Response) => {
   try {
@@ -24,21 +28,21 @@ router.get("/callback", isAuthenticated, async (req: Request, res: Response) => 
       return res.redirect("/expert/content-studio?error=no_code");
     }
 
-    if (!META_APP_ID || !META_APP_SECRET) {
-      console.error("Missing META_APP_ID or META_APP_SECRET");
+    if (!INSTAGRAM_APP_ID || !INSTAGRAM_APP_SECRET) {
+      console.error("Missing INSTAGRAM_APP_ID or INSTAGRAM_APP_SECRET");
       return res.redirect("/expert/content-studio?error=missing_config");
     }
 
     const redirectUri = `${req.protocol}://${req.get("host")}/api/instagram/callback`;
 
     const tokenResponse = await fetch(
-      `https://api.instagram.com/oauth/access_token`,
+      `https://graph.instagram.com/oauth/v2/access_token`,
       {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({
-          client_id: META_APP_ID,
-          client_secret: META_APP_SECRET,
+          client_id: INSTAGRAM_APP_ID,
+          client_secret: INSTAGRAM_APP_SECRET,
           grant_type: "authorization_code",
           redirect_uri: redirectUri,
           code: code as string,
@@ -56,10 +60,10 @@ router.get("/callback", isAuthenticated, async (req: Request, res: Response) => 
     const { access_token, user_id } = tokenData;
 
     const longLivedResponse = await fetch(
-      `https://graph.instagram.com/access_token?` +
+      `https://graph.instagram.com/oauth/v2/access_token?` +
         new URLSearchParams({
           grant_type: "ig_exchange_token",
-          client_secret: META_APP_SECRET,
+          client_secret: INSTAGRAM_APP_SECRET,
           access_token,
         })
     );
