@@ -2181,7 +2181,15 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       }
       const routePoints = await storage.replaceServiceRoutePoints(service.id, stops);
       res.json({ routePoints });
-    } catch (err) {
+    } catch (err: any) {
+      // The FOR UPDATE lock in replaceServiceRoutePoints serializes concurrent saves; a 23505
+      // here is the residual race backstop — the route changed under this caller, and a fresh
+      // read + retry succeeds. Never a silent 500 either way.
+      const pgCode = err?.code ?? err?.cause?.code;
+      if (pgCode === "23505") {
+        return res.status(409).json({ message: "Route changed elsewhere — reload and try again" });
+      }
+      console.error("[route-points] save failed:", err);
       res.status(500).json({ message: "Failed to save route stops" });
     }
   });
