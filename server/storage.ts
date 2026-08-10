@@ -7,7 +7,8 @@ import { isProviderRole } from "@shared/roles";
 import { 
   trips, generatedItineraries, touristPlaceResults, touristPlacesSearches,
   userAndExpertChats, helpGuideTrips, vendors,
-  localExpertForms, serviceProviderForms, providerServices,
+  localExpertForms, serviceProviderForms, providerServices, serviceRoutePoints,
+  type ServiceRoutePoint,
   serviceCategories, serviceSubcategories, faqs, wallets, creditTransactions,
   serviceTemplates, serviceBookings, serviceReviews, cartItems, userAndExpertContracts,
   notifications, experienceTypes, experienceTemplateSteps, expertExperienceTypes,
@@ -194,6 +195,8 @@ export interface IStorage {
   // Provider Services
   getProviderServices(userId: string, filters?: { destination?: string; category?: string; activeOnly?: boolean }): Promise<ProviderService[]>;
   getAllProviderServices(): Promise<ProviderService[]>;
+  getServiceRoutePoints(serviceId: string): Promise<ServiceRoutePoint[]>;
+  replaceServiceRoutePoints(serviceId: string, stops: Array<{ name: string; latitude: number | null; longitude: number | null }>): Promise<ServiceRoutePoint[]>;
   createProviderService(service: InsertProviderService & { userId: string }): Promise<ProviderService>;
   updateProviderService(id: string, updates: Partial<InsertProviderService>): Promise<ProviderService | undefined>;
   deleteProviderService(id: string): Promise<void>;
@@ -1201,6 +1204,43 @@ export class DatabaseStorage implements IStorage {
 
   async getAllProviderServices(): Promise<ProviderService[]> {
     return await db.select().from(providerServices).where(eq(providerServices.status, 'active'));
+  }
+
+  // Ruling 22: ordered route stops for a service, always position-ascending — the one read
+  // path both the owner console and the public detail endpoint use.
+  async getServiceRoutePoints(serviceId: string): Promise<ServiceRoutePoint[]> {
+    return await db.select().from(serviceRoutePoints)
+      .where(eq(serviceRoutePoints.serviceId, serviceId))
+      .orderBy(serviceRoutePoints.position);
+  }
+
+  // Ruling 22: replace-list write — the route editor submits the full ordered list and the
+  // server derives 1-based positions from array order (never client-numbered). Atomic
+  // delete+insert so a failed save can't leave a half-replaced route. lat/lng arrive already
+  // validated (both-or-neither, range-checked) from the route's allowlist parse; NULL means
+  // honestly unlocated (§13).
+  async replaceServiceRoutePoints(
+    serviceId: string,
+    stops: Array<{ name: string; latitude: number | null; longitude: number | null }>,
+  ): Promise<ServiceRoutePoint[]> {
+    return await db.transaction(async (tx) => {
+      // Serialize concurrent replaces on the same service: under READ COMMITTED two parallel
+      // delete+insert transactions each miss the other's rows and collide on the (service_id,
+      // position) UNIQUE. Locking the parent row first makes the second caller wait and then
+      // replace cleanly (found by the pre-ship concurrency test — 5 parallel PUTs → 23505).
+      await tx.execute(sql`SELECT id FROM provider_services WHERE id = ${serviceId} FOR UPDATE`);
+      await tx.delete(serviceRoutePoints).where(eq(serviceRoutePoints.serviceId, serviceId));
+      if (stops.length === 0) return [];
+      return await tx.insert(serviceRoutePoints).values(
+        stops.map((stop, i) => ({
+          serviceId,
+          position: i + 1,
+          name: stop.name,
+          latitude: stop.latitude === null ? null : String(stop.latitude),
+          longitude: stop.longitude === null ? null : String(stop.longitude),
+        })),
+      ).returning();
+    });
   }
 
   async createProviderService(service: InsertProviderService & { userId: string }): Promise<ProviderService> {
