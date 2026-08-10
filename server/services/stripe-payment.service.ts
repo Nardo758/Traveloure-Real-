@@ -863,7 +863,17 @@ class StripePaymentService {
    * deterministic Stripe idempotencyKey so even a cross-process retry returns the same refund rather
    * than issuing a second one.
    */
-  async refundServiceBooking(bookingId: string, reason?: string) {
+  async refundServiceBooking(
+    bookingId: string,
+    reason?: string,
+    options?: {
+      /**
+       * Policy-derived partial refund (cancellation-policy.service.ts). Still SERVER-derived —
+       * never client-supplied (§14). Clamped to [0, total_amount]; undefined = full refund.
+       */
+      amountOverride?: number;
+    },
+  ) {
     const rows = await db.execute(sql`
       SELECT id, total_amount, stripe_payment_intent_id, status, slot_id
       FROM service_bookings WHERE id = ${bookingId} LIMIT 1
@@ -871,7 +881,14 @@ class StripePaymentService {
     const row = rows.rows?.[0] as any;
     if (!row) throw new Error('Service booking not found');
 
-    const amount = parseFloat(row.total_amount || '0');
+    const totalAmount = parseFloat(row.total_amount || '0');
+    const amount =
+      options?.amountOverride !== undefined
+        ? Math.min(Math.max(options.amountOverride, 0), totalAmount)
+        : totalAmount;
+    if (options?.amountOverride !== undefined && amount <= 0) {
+      throw new Error('Refund amount must be greater than zero');
+    }
     if (row.status === 'refunded') {
       return { alreadyRefunded: true, amount, status: 'refunded' as const };
     }
@@ -897,16 +914,28 @@ class StripePaymentService {
     const internalReason = (reason ?? '').trim() || 'requested_by_customer';
     const stripeReason = toStripeRefundReason(internalReason);
 
+    // The idempotency key must be UNAMBIGUOUS for the (operation, amount) pair: Stripe rejects a
+    // key reuse with different params, so a policy-scaled partial refund cannot share the plain
+    // `refund-sb-<id>` key a full refund may have attempted earlier (or vice versa, or a retry
+    // after the policy window shifted the computed amount). Amount-scoped keys keep each distinct
+    // refund attempt retry-safe while the atomic status claim above still guarantees at most ONE
+    // refund actually proceeds per booking.
+    const amountCents = Math.round(amount * 100);
+    const idempotencyKey =
+      options?.amountOverride !== undefined
+        ? `refund-sb-${bookingId}-${amountCents}`
+        : `refund-sb-${bookingId}`;
+
     let refund: Stripe.Refund;
     try {
       refund = await stripe.refunds.create(
         {
           payment_intent: paymentIntentId,
-          amount: Math.round(amount * 100),
+          amount: amountCents,
           reason: stripeReason,
           metadata: { bookingId, source: 'service_booking' },
         },
-        { idempotencyKey: `refund-sb-${bookingId}` },
+        { idempotencyKey },
       );
     } catch (err: any) {
       // Stripe failed — revert the optimistic status claim so a later retry can proceed cleanly.
