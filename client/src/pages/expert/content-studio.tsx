@@ -329,7 +329,36 @@ export default function ContentStudio() {
       toast({ title: "Published!", description: "Your content is now live on Instagram." });
     },
     onError: (error: any) => {
-      toast({ title: "Publish Failed", description: error.message || "Could not publish to Instagram", variant: "destructive" });
+      // The server returns { error, reason } in the JSON body. apiRequest
+      // stringifies the body as the error message: "<status>: <json-body>".
+      // Parse the reason so we can show a reconnect prompt instead of a
+      // raw API error when the token has expired.
+      let reason: string | undefined;
+      try {
+        const jsonStart = (error.message as string).indexOf("{");
+        if (jsonStart !== -1) {
+          const parsed = JSON.parse((error.message as string).slice(jsonStart));
+          reason = parsed?.reason;
+        }
+      } catch {
+        // ignore parse errors — fall through to generic message
+      }
+
+      if (reason === "token_expired") {
+        toast({
+          title: "Instagram Session Expired",
+          description: "Your Instagram session has expired. Please reconnect your account.",
+          variant: "destructive",
+        });
+        // Refresh status so the reconnect banner appears immediately.
+        queryClient.invalidateQueries({ queryKey: ["/api/instagram/status"] });
+      } else {
+        toast({
+          title: "Publish Failed",
+          description: error.message || "Could not publish to Instagram",
+          variant: "destructive",
+        });
+      }
     },
   });
 
