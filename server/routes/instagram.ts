@@ -1,4 +1,5 @@
 import { Router, Request, Response } from "express";
+import { createHmac } from "crypto";
 import { getUserId } from "../utils/auth";
 import { db } from "../db";
 import { users } from "@shared/schema";
@@ -484,6 +485,117 @@ router.post("/disconnect", isAuthenticated, async (req: Request, res: Response) 
   } catch (error) {
     console.error("Instagram disconnect error:", error);
     res.status(500).json({ error: "Failed to disconnect Instagram" });
+  }
+});
+
+/**
+ * Shared helper: parse and verify Meta's signed_request parameter.
+ * Meta encodes as base64url(HMAC-SHA256(payload, appSecret)) + "." + base64url(payload).
+ * Returns the decoded payload object, or null if the signature is invalid or the
+ * app secret is missing. Never throws — callers should treat null as "reject with 400".
+ */
+function parseSignedRequest(signedRequest: string): Record<string, unknown> | null {
+  const secret = INSTAGRAM_APP_SECRET;
+  if (!secret) return null;
+
+  const parts = signedRequest.split(".");
+  if (parts.length !== 2) return null;
+  const [encodedSig, payload] = parts;
+
+  // base64url → base64 → Buffer
+  const toBase64 = (s: string) => s.replace(/-/g, "+").replace(/_/g, "/");
+  const sig = Buffer.from(toBase64(encodedSig), "base64");
+  const expected = createHmac("sha256", secret).update(payload).digest();
+
+  if (!sig.equals(expected)) return null;
+
+  try {
+    return JSON.parse(Buffer.from(toBase64(payload), "base64").toString("utf8"));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * POST /api/instagram/deauthorize
+ * Meta calls this (with a signed_request form field) when an Instagram user removes
+ * the app from their account settings. We clear their stored token so the platform
+ * doesn't attempt further API calls with it.
+ *
+ * Must respond 200 — Meta does not retry on non-2xx, but a 5xx will generate a
+ * platform alert in the App Dashboard.
+ */
+router.post("/deauthorize", async (req: Request, res: Response) => {
+  try {
+    const { signed_request } = req.body as { signed_request?: string };
+    if (!signed_request) {
+      return res.status(400).json({ error: "missing signed_request" });
+    }
+
+    const payload = parseSignedRequest(signed_request);
+    if (!payload) {
+      return res.status(400).json({ error: "invalid signed_request" });
+    }
+
+    // payload.user_id is the Instagram-scoped user ID, stored in users.instagramUserId
+    const instagramUserId = payload.user_id as string | undefined;
+    if (instagramUserId) {
+      await db
+        .update(users)
+        .set({ instagramUserId: null, instagramAccessToken: null })
+        .where(eq(users.instagramUserId, instagramUserId));
+      console.info(`Instagram deauthorize: cleared token for ig_user=${instagramUserId}`);
+    }
+
+    res.status(200).json({ success: true });
+  } catch (error) {
+    console.error("Instagram deauthorize error:", error);
+    res.status(500).json({ error: "deauthorize failed" });
+  }
+});
+
+/**
+ * POST /api/instagram/data-deletion
+ * Meta calls this (with a signed_request form field) when a user submits a data
+ * deletion request through Facebook's privacy tools. We clear the stored Instagram
+ * credentials and return the confirmation envelope Meta requires:
+ *   { url: <status-page>, confirmation_code: <unique-id> }
+ *
+ * Meta's App Review checks that this endpoint exists and returns the right shape.
+ */
+router.post("/data-deletion", async (req: Request, res: Response) => {
+  try {
+    const { signed_request } = req.body as { signed_request?: string };
+    if (!signed_request) {
+      return res.status(400).json({ error: "missing signed_request" });
+    }
+
+    const payload = parseSignedRequest(signed_request);
+    if (!payload) {
+      return res.status(400).json({ error: "invalid signed_request" });
+    }
+
+    const instagramUserId = payload.user_id as string | undefined;
+    const confirmationCode = `IG-DEL-${Date.now()}${instagramUserId ? `-${instagramUserId.slice(-6)}` : ""}`;
+
+    if (instagramUserId) {
+      await db
+        .update(users)
+        .set({ instagramUserId: null, instagramAccessToken: null })
+        .where(eq(users.instagramUserId, instagramUserId));
+      console.info(`Instagram data deletion: cleared token for ig_user=${instagramUserId}, code=${confirmationCode}`);
+    }
+
+    // Meta requires this exact response shape. The url must be publicly reachable
+    // and display a human-readable deletion confirmation (privacy page suffices).
+    const baseUrl = process.env.APP_BASE_URL || "https://traveloure.com";
+    res.status(200).json({
+      url: `${baseUrl}/privacy`,
+      confirmation_code: confirmationCode,
+    });
+  } catch (error) {
+    console.error("Instagram data-deletion error:", error);
+    res.status(500).json({ error: "data deletion failed" });
   }
 });
 
