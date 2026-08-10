@@ -229,7 +229,7 @@ export default function StorefrontPage() {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background">
-        <Skeleton className="h-40 sm:h-56 w-full rounded-none" />
+        <Skeleton className="h-28 sm:h-56 w-full rounded-none" />
         <div className="max-w-5xl mx-auto px-4 py-10 space-y-6">
           <Skeleton className="h-24 w-full rounded-xl" />
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -299,9 +299,12 @@ export default function StorefrontPage() {
         </div>
       </div>
 
-      {/* Cover band — earner-chosen (users.preferences.storefront.coverImageUrl), gradient fallback. */}
+      {/* Cover band — earner-chosen (users.preferences.storefront.coverImageUrl), gradient fallback.
+          Link-landing polish (mockup §08): shorter on mobile (h-28) so a texted storefront link
+          gets its first bookable card above the fold on a 375px viewport — same band, same image,
+          just less of it above small screens. */}
       <div
-        className={`h-40 sm:h-56 w-full ${earner.coverImageUrl ? "bg-cover bg-center" : "bg-gradient-to-br from-primary/50 via-primary/70 to-primary"}`}
+        className={`h-28 sm:h-56 w-full ${earner.coverImageUrl ? "bg-cover bg-center" : "bg-gradient-to-br from-primary/50 via-primary/70 to-primary"}`}
         style={earner.coverImageUrl ? { backgroundImage: `url(${earner.coverImageUrl})` } : undefined}
         data-testid="storefront-cover"
       />
@@ -398,7 +401,7 @@ export default function StorefrontPage() {
 
         {/* Lane 1: services — book directly */}
         {services.length > 0 && (
-          <section className="mt-12" data-testid="storefront-lane-services">
+          <section className="mt-8 sm:mt-12" data-testid="storefront-lane-services">
             <LaneHeader eyebrow="Book directly" title="Services" count={services.length} />
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {services.map((s) => {
