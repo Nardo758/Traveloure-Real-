@@ -4,7 +4,7 @@ import { db } from "../db";
 import { getUserId } from "../utils/auth";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { providerServices, vendorAvailabilitySlots } from "@shared/schema";
-import { isClassifiable, isPlaceAnchored, needsScheduling } from "@shared/service-fundamentals";
+import { isClassifiable, isPlaceAnchored, needsScheduling, isArtifactDelivery } from "@shared/service-fundamentals";
 
 /**
  * Provider Listing Health — GET /api/provider/services/health (ratified "Listing Health" layer;
@@ -23,6 +23,13 @@ import { isClassifiable, isPlaceAnchored, needsScheduling } from "@shared/servic
  * needing calendar slots (those plus live call/video sessions). photo, description, pricing and
  * approval are universal. A row that cannot be classified (no deliveryMethod, not a property)
  * keeps the historical all-checks behavior rather than guessing an omission.
+ *
+ * D3 (docs/briefs/SERVICE_FUNDAMENTALS_DECISIONS.md, landed): `delivery_asset` applies only to
+ * artifact-delivery services (`isArtifactDelivery` — pdf only; see that predicate's comment for
+ * why `video` is deliberately excluded). Unlike exact_pin/availability, a non-applicable service
+ * gets NEITHER a check NOR an `omitted` entry for this key — the check simply does not exist
+ * for it (D3's own text: "failing a provider on something the product gives them no way to fix
+ * is not honest scoring", and an omission entry would still read as "this could apply to you").
  *
  * CONTEXT (CLAUDE.md audit finding): ~97% of provider listings ride the approximate
  * neighborhood-centroid location backfill (locationPrecision='neighborhood_centroid') and zero
@@ -71,6 +78,7 @@ router.get("/api/provider/services/health", isAuthenticated, async (req, res) =>
         locationPrecision: providerServices.locationPrecision,
         deliveryMethod: providerServices.deliveryMethod,
         productShape: providerServices.productShape,
+        serviceFile: providerServices.serviceFile,
       })
       .from(providerServices)
       .where(eq(providerServices.userId, userId));
@@ -194,6 +202,17 @@ router.get("/api/provider/services/health", isAuthenticated, async (req, res) =>
         serviceOmitted.push({
           key: "availability",
           reason: `no calendar needed for ${s.deliveryMethod} delivery`,
+        });
+      }
+
+      // delivery_asset (D3): applies only to artifact-delivery services (pdf). No omission
+      // entry for the rest — the check simply doesn't exist for a call/in-person/etc. listing.
+      if (isArtifactDelivery(shape)) {
+        const hasFile = !!(s.serviceFile && s.serviceFile.trim().length > 0);
+        checks.push({
+          key: "delivery_asset",
+          ok: hasFile,
+          ...(hasFile ? {} : { detail: "no deliverable file uploaded" }),
         });
       }
 

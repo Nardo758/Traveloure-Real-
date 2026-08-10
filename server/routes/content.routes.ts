@@ -125,7 +125,7 @@ import { emergencyService } from "../services/emergency.service";
 import { experienceCatalogService } from "../services/experience-catalog.service";
 import { opportunityEngineService } from "../services/opportunity-engine.service";
 import { aiUsageService } from "../services/ai-usage.service";
-import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, createPublicProfile, getDisplayName, redactContactInfo } from "../utils/data-sanitizer";
+import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, createPublicProfile, getDisplayName, redactContactInfo, omitFields } from "../utils/data-sanitizer";
 import { transportLegs, sharedItineraries, mapsExportCache, expertUpdatedItineraries, affiliateProducts, affiliatePartners, contentRegistry } from "@shared/schema";
 import { calculateTransportLegs, regenerateMapsUrlsFromLegs } from "../services/transport-leg-calculator";
 import { buildGoogleNavUrl, buildAppleNavUrl } from "../services/maps-url-builder";
@@ -1965,12 +1965,16 @@ router.delete("/api/destination-calendar/events/:id", isAuthenticated, async (re
   });
 
 router.get("/api/services/:id", async (req, res) => {
-    const service = await storage.getProviderServiceById(req.params.id);
+    const rawService = await storage.getProviderServiceById(req.params.id);
     // Public surface: F2 read-gate (approval_status = 'approved') — harvested from the
     // routes.ts shadow copy, where 23ece804 applied the gate to the dead duplicate.
-    if (!service || service.status !== "active" || service.approvalStatus !== "approved") {
+    if (!rawService || rawService.status !== "active" || rawService.approvalStatus !== "approved") {
       return res.status(404).json({ message: "Service not found" });
     }
+    // D3 leak-prevention: this is the public service-detail read — serviceFile is the
+    // pdf-delivery product itself and must never surface pre-purchase. Stripped once, up
+    // front, so every branch below (bundle/property/room/default) inherits the strip.
+    const service = omitFields(rawService, ["serviceFile"] as const);
     // Vacation mode (link-landing polish, mockup §08 / CLAUDE.md §06b, migration 189): the
     // storefront read (storefront.routes.ts loadStorefront) already surfaces the owner's
     // away state as `away:{until,message}`; the service-detail read did not carry it at all,
