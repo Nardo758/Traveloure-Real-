@@ -1,11 +1,10 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ProviderLayout } from "@/components/provider/provider-layout";
 import { StatCard } from "@/components/backoffice/primitives";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { TravelPulseTicker } from "@/components/shared/travel-pulse-ticker";
 import {
   CalendarCheck,
   Calendar,
@@ -16,17 +15,17 @@ import {
   Clock,
   Users,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
   Package,
   Loader2,
   AlertCircle,
-  TrendingDown,
-  Zap,
-  CheckCircle
+  Plane,
 } from "lucide-react";
 import { Link } from "wouter";
-import { ProviderAvailabilityManager, ProviderBookingContextPanel } from "@/components/logistics";
 import { PayoutBanner } from "@/components/expert/PayoutBanner";
 import { SetupChecklistCard } from "@/components/backoffice/SetupChecklistCard";
+import { useAuth } from "@/hooks/use-auth";
 
 interface ProviderAnalytics {
   summary: {
@@ -46,10 +45,41 @@ interface BookingRequest {
   bookingDetails: any;
   traveler?: { displayName: string };
   service?: { serviceName: string; serviceType: string };
+  referredBy?: string;
   createdAt: string;
 }
 
+// Minimal shape of GET /api/me/business-setup — same endpoint SetupChecklistCard queries
+// (react-query dedups the shared key, so this doesn't add a network round-trip). Used only
+// to drive the compact/expanded toggle around that card without duplicating its rendering.
+interface BusinessSetupSummary {
+  eligible: boolean;
+  steps?: {
+    handle: { done: boolean };
+    payouts: { done: boolean };
+    firstOffering: { done: boolean };
+    approvedOffering: { done: boolean };
+    availability: { done: boolean; applicable?: boolean };
+    verification: { done: boolean; requiredForStorefront?: boolean };
+  };
+}
+
+// Must match SetupChecklistCard's own dismiss-key format exactly — read-only here, this
+// page never writes it (the card's own "X" button is the sole writer).
+const SETUP_DISMISS_KEY_PREFIX = "traveloure_setup_dismissed_";
+
+// Vacation mode (mockup §06b, provider back-office wave, decision-maker ratified Aug 9 2026).
+// Read-only here — GET /api/me/vacation, the same server-derived `active` the Settings card
+// and storefront/advisor/checkout enforcement points all read. Business-level flag only.
+interface VacationStatus {
+  vacationUntil: string | null;
+  vacationMessage: string | null;
+  active: boolean;
+}
+
 export default function ProviderDashboard() {
+  const { user } = useAuth();
+
   const { data: stripeStatus } = useQuery<{ connected: boolean; status: string }>({
     queryKey: ["/api/stripe/connect/status"],
   });
@@ -65,6 +95,36 @@ export default function ProviderDashboard() {
   const { data: requestsData } = useQuery<{ requests: any[] }>({
     queryKey: ["/api/provider/booking-requests"],
   });
+
+  const { data: vacationStatus } = useQuery<VacationStatus>({
+    queryKey: ["/api/me/vacation"],
+    enabled: !!user,
+  });
+
+  // Same query key SetupChecklistCard uses internally — read here only to size the compact
+  // summary row (doneCount/total, eligibility). No extra request: react-query serves both
+  // observers off the one cached fetch.
+  const { data: setupSummary } = useQuery<BusinessSetupSummary>({
+    queryKey: ["/api/me/business-setup"],
+    enabled: !!user,
+  });
+  const setupDismissed = user?.id
+    ? localStorage.getItem(SETUP_DISMISS_KEY_PREFIX + user.id) === "1"
+    : false;
+  let setupDoneCount = 0;
+  let setupTotalCount = 0;
+  if (setupSummary?.steps) {
+    const s = setupSummary.steps;
+    const flags = [s.handle.done, s.payouts.done, s.firstOffering.done, s.approvedOffering.done];
+    if (s.availability?.applicable) flags.push(s.availability.done);
+    if (s.verification?.requiredForStorefront) flags.push(s.verification.done);
+    setupTotalCount = flags.length;
+    setupDoneCount = flags.filter(Boolean).length;
+  }
+  const setupVisible = !setupDismissed && !!setupSummary?.eligible && !!setupSummary.steps;
+  const [setupManualExpanded, setSetupManualExpanded] = useState<boolean | null>(null);
+  // Default expanded only when nothing is done yet; otherwise a compact summary row.
+  const setupExpanded = setupManualExpanded !== null ? setupManualExpanded : setupDoneCount === 0;
 
   const pendingBookings = bookings?.filter(b => b.status === "pending") || [];
   const confirmedBookings = bookings?.filter(b => b.status === "confirmed") || [];
@@ -97,12 +157,14 @@ export default function ProviderDashboard() {
   }
 
   // Console IA C9 (§17 17→9 collapse): this dashboard is the provider console's TODAY seat
-  // (module 1, ops home) — the sidebar entry is labeled "Today" and the route stays
-  // /provider/dashboard (label-only rename, the cheapest honest move; no expert today-strip
-  // rebuild — this page already leads with today's bookings + pending action items).
+  // (module 1, ops home) — the route stays /provider/dashboard (label-only rename, the
+  // cheapest honest move; no expert today-strip rebuild — this page already leads with
+  // today's bookings + pending action items). Provider back-office wave (Aug 9 2026): the
+  // topbar/header title below is renamed "Today" → "Dashboard"; the sidebar entry's own label
+  // is a separate file, renamed by a sibling change.
   if (analyticsLoading) {
     return (
-      <ProviderLayout title="Today">
+      <ProviderLayout title="Dashboard">
         <div className="flex items-center justify-center h-64">
           <Loader2 className="w-8 h-8 animate-spin text-console-dark" />
         </div>
@@ -111,26 +173,75 @@ export default function ProviderDashboard() {
   }
 
   return (
-    <ProviderLayout title="Today">
+    <ProviderLayout title="Dashboard">
       <div className="p-6 space-y-6">
         <PayoutBanner
           stripeConnectStatus={stripeStatus?.status ?? "not_started"}
           isPayable={stripeStatus?.connected ?? false}
         />
 
-        {/* Welcome Section */}
-        <div>
-          <h2 className="text-2xl font-bold text-console-darkest" data-testid="text-welcome">
-            Welcome back!
-          </h2>
-          <p className="text-console-dark mt-1">{analytics?.summary?.totalBookings || 0} this month</p>
-        </div>
+        {/* Vacation mode banner (mockup §06b) — business-level flag only, read-only here.
+            Rendered above the KPIs per spec, linking to Settings' Vacation Mode card. */}
+        {vacationStatus?.active && vacationStatus.vacationUntil && (
+          <div
+            className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 flex-wrap"
+            data-testid="banner-vacation-mode"
+          >
+            <div className="flex items-center gap-2 text-sm text-amber-800">
+              <Plane className="w-4 h-4 flex-shrink-0" />
+              <span>
+                Vacation mode ON until{" "}
+                {new Date(vacationStatus.vacationUntil).toLocaleDateString(undefined, {
+                  month: "short",
+                  day: "numeric",
+                })}{" "}
+                — new bookings paused
+              </span>
+            </div>
+            <Link href="/provider/settings">
+              <Button variant="outline" size="sm" className="border-amber-300 text-amber-800 hover:bg-amber-100" data-testid="link-vacation-settings">
+                Manage <ChevronRight className="w-3.5 h-3.5 ml-1" />
+              </Button>
+            </Link>
+          </div>
+        )}
 
-        {/* Travel Pulse Ticker — removed fabricated trending data per §13 */}
-        {/* <TravelPulseTicker items={[]} /> */}
+        {/* Welcome Section — the "N this month" subtitle was removed: it exactly duplicated
+            the "This Month" KPI two rows below (§13, no reason to say the same number twice). */}
+        <h2 className="text-2xl font-bold text-console-darkest" data-testid="text-welcome">
+          Welcome back!
+        </h2>
 
-        {/* Build 1: "Open your business" activation checklist — renders until setup is complete */}
-        <SetupChecklistCard />
+        {/* Build 1: "Open your business" activation checklist — a compact summary row by
+            default; expands to the full card (unchanged behavior/testids inside). Starts
+            expanded only when nothing is complete yet — otherwise it's just chrome. */}
+        {setupVisible && (
+          setupExpanded ? (
+            <div className="space-y-1.5">
+              <SetupChecklistCard />
+              <button
+                type="button"
+                onClick={() => setSetupManualExpanded(false)}
+                className="flex items-center gap-1 text-xs text-console-mid hover:text-console-darkest"
+                data-testid="button-collapse-setup"
+              >
+                <ChevronUp className="w-3.5 h-3.5" /> Collapse
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setSetupManualExpanded(true)}
+              className="w-full flex items-center justify-between px-4 py-2.5 rounded-lg border border-console-light bg-white hover:bg-console-hover transition-colors text-sm"
+              data-testid="button-expand-setup"
+            >
+              <span className="font-medium text-console-darkest">
+                Open your business · {setupDoneCount} of {setupTotalCount} complete
+              </span>
+              <ChevronDown className="w-4 h-4 text-console-mid" />
+            </button>
+          )
+        )}
 
         {/* Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -150,29 +261,40 @@ export default function ProviderDashboard() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left Panel - 60% width */}
           <div className="lg:col-span-2 space-y-6">
-            {/* Quick Actions */}
+            {/* Quick Actions — real navigation (wouter Link, same pattern the sidebar uses);
+                the previous 4 buttons had no onClick at all (§13 dead chrome). */}
             <Card className="border border-console-light">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg">Quick Actions</CardTitle>
+              <CardHeader className="pb-2 pt-3">
+                <CardTitle className="text-sm font-semibold text-console-mid uppercase tracking-wide">
+                  Quick Actions
+                </CardTitle>
               </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  <Button variant="outline" size="sm" className="w-full justify-center flex-col h-auto py-3" data-testid="button-messages">
-                    <MessageSquare className="w-5 h-5 mb-1" />
-                    <span className="text-xs">Messages</span>
-                  </Button>
-                  <Button variant="outline" size="sm" className="w-full justify-center flex-col h-auto py-3" data-testid="button-update-calendar">
-                    <Calendar className="w-5 h-5 mb-1" />
-                    <span className="text-xs">Calendar</span>
-                  </Button>
-                  <Button variant="outline" size="sm" className="w-full justify-center flex-col h-auto py-3" data-testid="button-my-services">
-                    <Package className="w-5 h-5 mb-1" />
-                    <span className="text-xs">Services</span>
-                  </Button>
-                  <Button variant="outline" size="sm" className="w-full justify-center flex-col h-auto py-3" data-testid="button-view-analytics">
-                    <TrendingUp className="w-5 h-5 mb-1" />
-                    <span className="text-xs">Analytics</span>
-                  </Button>
+              <CardContent className="pt-0 pb-3">
+                <div className="grid grid-cols-4 gap-2">
+                  <Link href="/provider/inbox">
+                    <Button variant="outline" size="sm" className="w-full justify-center flex-col h-auto py-2" data-testid="link-quick-inbox">
+                      <MessageSquare className="w-4 h-4 mb-1" />
+                      <span className="text-xs">Messages</span>
+                    </Button>
+                  </Link>
+                  <Link href="/provider/calendar">
+                    <Button variant="outline" size="sm" className="w-full justify-center flex-col h-auto py-2" data-testid="link-quick-calendar">
+                      <Calendar className="w-4 h-4 mb-1" />
+                      <span className="text-xs">Calendar</span>
+                    </Button>
+                  </Link>
+                  <Link href="/provider/services">
+                    <Button variant="outline" size="sm" className="w-full justify-center flex-col h-auto py-2" data-testid="link-quick-services">
+                      <Package className="w-4 h-4 mb-1" />
+                      <span className="text-xs">Services</span>
+                    </Button>
+                  </Link>
+                  <Link href="/provider/performance">
+                    <Button variant="outline" size="sm" className="w-full justify-center flex-col h-auto py-2" data-testid="link-quick-analytics">
+                      <TrendingUp className="w-4 h-4 mb-1" />
+                      <span className="text-xs">Analytics</span>
+                    </Button>
+                  </Link>
                 </div>
               </CardContent>
             </Card>
@@ -232,22 +354,7 @@ export default function ProviderDashboard() {
 
           {/* Right Panel - 40% width */}
           <div className="space-y-6 hidden lg:block">
-            {/* Earnings Card */}
-            <Card className="border border-console-light bg-gradient-to-br from-green-50 to-white">
-              <CardHeader className="pb-3">
-                <div className="flex items-center gap-2">
-                  <DollarSign className="w-5 h-5 text-green-600" />
-                  <CardTitle className="text-lg">Earnings</CardTitle>
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <p className="text-sm text-console-mid">This Month</p>
-                  <p className="text-3xl font-bold text-console-darkest">${(analytics?.summary?.totalRevenue ?? 0).toLocaleString()}</p>
-                </div>
-                {/* Progress bar removed — fabricated 72% width per §13 */}
-              </CardContent>
-            </Card>
+            {/* Earnings card removed — it exactly duplicated the "Revenue (MTD)" KPI above (§13). */}
 
             {/* Upcoming 5 Days — removed fabricated schedule with hardcoded rides/amounts per §13 */}
 
@@ -287,56 +394,44 @@ export default function ProviderDashboard() {
               </CardContent>
             </Card>
 
-            {/* Performance */}
+            {/* Performance — compacted to one row (was a 3-row card duplicating the Rating KPI
+                and bookings count already shown above); "View Details" is now a real link
+                (was a dead button with no onClick, §13). Completion rate stays removed —
+                fabricated 94% with no data source per §13. */}
             <Card className="border border-console-light">
-              <CardHeader className="pb-3">
-                <div className="flex items-center gap-2">
-                  <Star className="w-5 h-5 text-amber-500" />
-                  <CardTitle className="text-lg">Performance</CardTitle>
+              <CardContent className="p-3 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 text-sm min-w-0">
+                  <Star className="w-4 h-4 text-amber-500 flex-shrink-0" />
+                  <span className="font-semibold text-amber-600">{(analytics?.summary?.avgRating ?? 0).toFixed(1)}</span>
+                  <span className="text-console-mid truncate">· {analytics?.summary?.totalBookings ?? 0} bookings</span>
                 </div>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="text-sm">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-console-dark">Rating</span>
-                    <span className="font-semibold text-amber-600">{(analytics?.summary?.avgRating ?? 0).toFixed(1)}/5</span>
-                  </div>
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-console-dark">Bookings</span>
-                    <span className="font-semibold text-console-darkest">{analytics?.summary?.totalBookings ?? 0}</span>
-                  </div>
-                  {/* Completion rate removed — fabricated 94% with no data source per §13 */}
-                </div>
-                <Button variant="outline" size="sm" className="w-full" data-testid="button-view-performance">
-                  <TrendingUp className="w-4 h-4 mr-1" /> View Details
-                </Button>
+                <Link href="/provider/performance">
+                  <Button variant="ghost" size="sm" className="text-primary flex-shrink-0" data-testid="button-view-performance">
+                    View Details <ChevronRight className="w-3.5 h-3.5 ml-1" />
+                  </Button>
+                </Link>
               </CardContent>
             </Card>
 
             {/* Expert Partners — removed fabricated metrics (12 partners, $2,450 revenue, 28% of business) per §13 */}
           </div>
         </div>
-        {/* Logistics & Availability Management */}
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center gap-2">
-              <Package className="w-5 h-5 text-blue-600" />
-              <CardTitle>Logistics & Availability</CardTitle>
+        {/* Availability — the full Logistics & Availability manager (slot form + tabs) was
+            removed from here: it's a full duplicate of the Catalog page's availability
+            section (the ratified editing home) and was this page's single biggest length
+            cost. This page doesn't otherwise query slot counts, so the CTA states real,
+            non-fabricated copy rather than guessing a number (§13). */}
+        <Card className="border border-console-light" data-testid="card-availability-cta">
+          <CardContent className="p-4 flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-2 text-sm text-console-dark">
+              <Package className="w-4 h-4 text-blue-600 flex-shrink-0" />
+              <span>Manage your published time slots and booking availability on Catalog.</span>
             </div>
-          </CardHeader>
-          <CardContent>
-            <Tabs defaultValue="availability">
-              <TabsList>
-                <TabsTrigger value="availability">My Availability</TabsTrigger>
-                <TabsTrigger value="booking-requests">Booking Requests</TabsTrigger>
-              </TabsList>
-              <TabsContent value="availability" className="mt-4">
-                <ProviderAvailabilityManager />
-              </TabsContent>
-              <TabsContent value="booking-requests" className="mt-4">
-                <ProviderBookingContextPanel />
-              </TabsContent>
-            </Tabs>
+            <Link href="/provider/services">
+              <Button variant="outline" size="sm" data-testid="link-manage-availability">
+                Manage availability <ChevronRight className="w-4 h-4 ml-1" />
+              </Button>
+            </Link>
           </CardContent>
         </Card>
       </div>

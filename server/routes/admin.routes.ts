@@ -68,6 +68,7 @@ import { grokService } from "../services/grok.service";
 import { feverService } from "../services/fever.service";
 import { partnerEventsCacheService } from "../services/partner-events-cache.service";
 import { ingestKyotoHeritage, ingestKyotoContentGaps, isDmoIngestReady } from "../services/dmo-ingestion.service";
+import { ingestYoutubeGuides, isYoutubeIngestReady } from "../services/youtube-ingestion.service";
 import { analyzeKyotoContentGaps, listOpenKyotoGaps } from "../services/content-gap.service";
 import { getGapFillSummary, getGapFillSourceTotals } from "../services/optimizer-gap-ledger.service";
 import { getProviderHealth } from "../services/provider-health.service";
@@ -1331,6 +1332,50 @@ router.post("/api/admin/dmo/ingest-gaps", isAuthenticated, async (req, res) => {
   } catch (err: any) {
     console.error("DMO gap-fill error:", err);
     res.status(500).json({ message: "Gap-fill ingestion failed", error: err.message });
+  }
+});
+
+// ── YouTube guide-video ingestion (social-source build, decision-maker ratified Aug 9 2026) ──────
+// "Top 10 <city>" guide videos are the same content shape the Research Reader already extracts
+// places from; see server/services/youtube-ingestion.service.ts for the full posture writeup.
+// Rows land born-hidden (D1a) — the existing DMO intake queue/approve endpoints above admit them
+// into the expert library exactly like any other dmo_raw_content row. Auth: this path is under
+// /api/admin, so the blanket adminApiGuard (server/routes.ts, §2) is the real gate; the inline
+// getFullAdminUser check below is belt-and-suspenders, matching every neighboring dmo endpoint's
+// style — no extra middleware is added here.
+const youtubeIngestBodySchema = z.object({
+  market: z.string().trim().min(1).max(100),
+  city: z.string().trim().min(1).max(100),
+  query: z.string().trim().min(1).max(300).optional(),
+  maxResults: z.number().int().min(1).max(15).optional(),
+});
+
+router.post("/api/admin/dmo/ingest-youtube", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser(getUserId(req)!);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  // Keyless check first and separate from body validation, so an unconfigured environment always
+  // reports 503 regardless of what else is (or isn't) in the request body (§13 — honest keyless).
+  if (!isYoutubeIngestReady()) {
+    return res.status(503).json({ message: "YouTube ingestion not configured (YOUTUBE_API_KEY)" });
+  }
+  const parsed = youtubeIngestBodySchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ message: "Invalid body", errors: parsed.error.flatten() });
+  }
+  try {
+    const stats = await ingestYoutubeGuides(parsed.data);
+    if (!stats.ready) {
+      // Not the keyless case (already handled above) — e.g. the youtube.com dmo_sources row isn't
+      // registered yet. Mirrors the neighboring ingest-kyoto/ingest-gaps endpoints' 200-with-reason
+      // shape for this class of "ready:false but not a config error" outcome.
+      return res.status(200).json({ message: stats.reason || "YouTube ingestion not ready", stats });
+    }
+    res.json({ message: "YouTube guide ingestion complete", stats });
+  } catch (err: any) {
+    console.error("YouTube DMO ingestion error:", err);
+    res.status(500).json({ message: "YouTube ingestion failed", error: err.message });
   }
 });
 

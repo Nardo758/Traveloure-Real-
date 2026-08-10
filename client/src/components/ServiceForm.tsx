@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useLocation } from "wouter";
 import {
   Plus, Trash2, Loader2, CheckCircle, ArrowLeft,
@@ -369,6 +369,18 @@ function tierFormatsToAllowedMethods(formats: string[]): Set<string> {
   return allowed;
 }
 
+// Fallback label for a category_key when /api/service-categories has no
+// matching row's name (e.g. transient catalog drift) — replace_ with space,
+// title-case. aff_* keys never reach here (filtered out of
+// providerOfferingTypes upstream).
+function prettifyCategoryKey(key: string): string {
+  return key
+    .split("_")
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
 export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   const [, navigate] = useLocation();
   const { toast } = useToast();
@@ -416,6 +428,60 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     (o) => !!o.category_key && !isAffiliateCategory(o.category_key) && (o as any).is_active !== false
   );
 
+  // Provider offering picker (§17 compaction): the ~114-option list stays
+  // collapsed to a one-line summary once a selection exists (including on
+  // edit-mode load), and only expands to the search+list on "Change" or when
+  // nothing is selected yet — see the render block below for the derivation.
+  const [offeringPickerOpen, setOfferingPickerOpen] = useState(false);
+  const [offeringSearchQuery, setOfferingSearchQuery] = useState("");
+
+  // "Don't see your offering?" (ratified flow, mockup §06c — migration 189 /
+  // offering_type_requests). Shown at the bottom of the picker's list AND in its
+  // zero-match state. Submitting auto-selects the catch-all 'custom_other_offering'
+  // (seeded by migration 189) via the existing handleSelectProviderOffering path so the
+  // provider can proceed immediately — the request itself is reviewed separately by admin.
+  const [requestOfferingOpen, setRequestOfferingOpen] = useState(false);
+  const [requestOfferingName, setRequestOfferingName] = useState("");
+  const [requestOfferingDescription, setRequestOfferingDescription] = useState("");
+  const [requestOfferingConfirmedName, setRequestOfferingConfirmedName] = useState<string | null>(null);
+
+  // Category label lookup for the offering picker's group headers — prefers
+  // the /api/service-categories row's name, falls back to prettifying the
+  // offering's own category_key (never fabricates a category).
+  const categoryLabelByKey = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const c of categories as ServiceCategory[]) {
+      if (c.categoryKey) map.set(c.categoryKey, c.name);
+    }
+    return map;
+  }, [categories]);
+
+  // Group the offering catalog by category_key for the compact picker,
+  // applying the search filter (display_name + tagline + group label,
+  // case-insensitive) and dropping groups left empty by the filter. Group
+  // order follows first appearance in the already sort_order-sorted API
+  // response; item order within a group is untouched.
+  const offeringGroups = useMemo(() => {
+    const q = offeringSearchQuery.trim().toLowerCase();
+    const groups: { key: string; label: string; items: ProviderOfferingType[] }[] = [];
+    const indexByKey = new Map<string, number>();
+    for (const o of providerOfferingTypes) {
+      const label = categoryLabelByKey.get(o.category_key) ?? prettifyCategoryKey(o.category_key);
+      if (q) {
+        const haystack = `${o.display_name} ${o.tagline ?? ""} ${label}`.toLowerCase();
+        if (!haystack.includes(q)) continue;
+      }
+      let idx = indexByKey.get(o.category_key);
+      if (idx === undefined) {
+        idx = groups.length;
+        indexByKey.set(o.category_key, idx);
+        groups.push({ key: o.category_key, label, items: [] });
+      }
+      groups[idx].items.push(o);
+    }
+    return groups;
+  }, [providerOfferingTypes, categoryLabelByKey, offeringSearchQuery]);
+
   // Partition the expert tier picker by the signed-in user's expert role, using
   // the existing ratified serviceTier→role vocabulary in lib/earn-roles.ts
   // (never invented here). That module only defines a partition for
@@ -444,6 +510,13 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   });
 
   const [formData, setFormData] = useState<ServiceFormData>(buildEmptyForm(role));
+
+  const selectedProviderOffering = providerOfferingTypes.find(
+    (o) => o.id === formData.serviceOfferingTypeId
+  ) ?? null;
+  const selectedProviderOfferingLabel = selectedProviderOffering
+    ? (categoryLabelByKey.get(selectedProviderOffering.category_key) ?? prettifyCategoryKey(selectedProviderOffering.category_key))
+    : null;
 
   const { data: subcategories = [] } = useQuery<ServiceSubcategory[]>({
     queryKey: ["/api/service-categories", formData.categoryId, "subcategories"],
@@ -616,6 +689,31 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     }));
   };
 
+  // POST /api/me/offering-requests (offering-requests.routes.ts). userId comes from the
+  // session server-side (§14-by-analogy) — never sent from here.
+  const requestOfferingMutation = useMutation({
+    mutationFn: async () => {
+      const name = requestOfferingName.trim();
+      return apiRequest("POST", "/api/me/offering-requests", {
+        requestedName: name,
+        description: requestOfferingDescription.trim() || undefined,
+      });
+    },
+    onSuccess: () => {
+      const confirmedName = requestOfferingName.trim();
+      setRequestOfferingConfirmedName(confirmedName);
+      setRequestOfferingOpen(false);
+      setRequestOfferingName("");
+      setRequestOfferingDescription("");
+      // Auto-select the catch-all offering so the provider can proceed immediately
+      // instead of being blocked on admin review of the new type.
+      const catchAll = providerOfferingTypes.find((o) => o.offering_type_key === "custom_other_offering");
+      if (catchAll) handleSelectProviderOffering(catchAll);
+      setOfferingPickerOpen(false);
+      setOfferingSearchQuery("");
+    },
+  });
+
   const handleAddIncluded = () => {
     if (newIncluded.trim()) {
       set("whatIncluded", [...formData.whatIncluded, newIncluded.trim()]);
@@ -667,6 +765,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     setLocationPointTouched(false);
     setNewIncluded("");
     setNewRequirement("");
+    setRequestOfferingConfirmedName(null);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -890,6 +989,71 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     );
   }
 
+  // "Don't see your offering?" row, rendered at the bottom of the picker's list AND inside
+  // its zero-match state (same block, both call sites below).
+  const renderDontSeeYourOffering = () => {
+    if (requestOfferingOpen) {
+      return (
+        <div className="p-3 space-y-2 border-t border-gray-100">
+          <p className="text-xs font-medium text-gray-700">Tell us what you do</p>
+          <Input
+            value={requestOfferingName}
+            onChange={(e) => setRequestOfferingName(e.target.value)}
+            placeholder="e.g., Falconry experience"
+            data-testid="input-request-offering-name"
+          />
+          <Textarea
+            value={requestOfferingDescription}
+            onChange={(e) => setRequestOfferingDescription(e.target.value)}
+            placeholder="Optional — a sentence or two about it"
+            className="min-h-[60px] text-sm"
+            data-testid="input-request-offering-description"
+          />
+          {requestOfferingMutation.isError && (
+            <p className="text-xs text-red-600" data-testid="text-request-offering-error">
+              Couldn't submit your request — please try again.
+            </p>
+          )}
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              size="sm"
+              disabled={requestOfferingName.trim().length < 3 || requestOfferingMutation.isPending}
+              onClick={() => requestOfferingMutation.mutate()}
+              data-testid="button-submit-request-offering"
+            >
+              {requestOfferingMutation.isPending ? "Submitting…" : "Submit request"}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setRequestOfferingOpen(false);
+                requestOfferingMutation.reset();
+              }}
+              data-testid="button-cancel-request-offering"
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      );
+    }
+    return (
+      <div className="p-3 border-t border-gray-100">
+        <button
+          type="button"
+          className="text-sm text-primary hover:underline"
+          onClick={() => setRequestOfferingOpen(true)}
+          data-testid="button-request-offering"
+        >
+          Don't see your offering? Request it
+        </button>
+      </div>
+    );
+  };
+
   return (
     <div className="p-6 max-w-3xl space-y-6">
 
@@ -912,7 +1076,14 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           category derives from it below. Shown for both create and edit so an edited
           legacy row's (unset) linkage is visible, but only REQUIRED on a new create
           (enforced in createMutation + the Publish button, not here). ── */}
-      {role === "provider" && (
+      {role === "provider" && (() => {
+        // Collapse to a one-line summary once a selection exists (including
+        // an edit-mode row loaded with its linkage already set) — reopened
+        // by "Change". Nothing-selected always shows the expanded picker,
+        // regardless of offeringPickerOpen, so a required-on-create pick is
+        // never hidden behind a stale collapsed state.
+        const expanded = offeringPickerOpen || !formData.serviceOfferingTypeId;
+        return (
         <Card data-testid="provider-offering-picker">
           <CardHeader>
             <CardTitle>What are you offering? *</CardTitle>
@@ -920,36 +1091,102 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           <CardContent className="space-y-3">
             {providerOfferingTypesRaw.length === 0 ? (
               <p className="text-xs text-muted-foreground">Loading offerings…</p>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {providerOfferingTypes.map((o) => (
-                  <button
-                    key={o.id}
+            ) : !expanded ? (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-3 rounded-lg border-2 border-primary bg-primary/5 p-3">
+                  <div className="min-w-0">
+                    <p className="font-medium text-sm text-gray-900 truncate">
+                      {selectedProviderOffering?.display_name}
+                    </p>
+                    <p className="text-xs text-gray-500 truncate">
+                      {selectedProviderOfferingLabel}
+                      {selectedProviderOffering?.tagline ? ` — ${selectedProviderOffering.tagline}` : ""}
+                    </p>
+                  </div>
+                  <Button
                     type="button"
-                    onClick={() => handleSelectProviderOffering(o)}
-                    className={`text-left p-3 rounded-lg border-2 transition-colors ${
-                      formData.serviceOfferingTypeId === o.id
-                        ? "border-primary bg-primary/5"
-                        : "border-gray-200 hover:border-gray-300"
-                    }`}
-                    data-testid={`option-offering-${o.offering_type_key}`}
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setRequestOfferingConfirmedName(null);
+                      setOfferingPickerOpen(true);
+                    }}
+                    data-testid="button-reopen-offering-picker"
                   >
-                    <p className="font-medium text-sm text-gray-900">{o.display_name}</p>
-                    {o.tagline && (
-                      <p className="text-xs text-gray-500 mt-0.5">{o.tagline}</p>
-                    )}
-                  </button>
-                ))}
+                    Change
+                  </Button>
+                </div>
+                {requestOfferingConfirmedName && selectedProviderOffering?.offering_type_key === "custom_other_offering" && (
+                  <p className="text-xs text-muted-foreground" data-testid="text-request-offering-confirmed">
+                    Requested: {requestOfferingConfirmedName} — meanwhile your listing continues under Custom / Other
+                  </p>
+                )}
               </div>
+            ) : (
+              <>
+                <Input
+                  value={offeringSearchQuery}
+                  onChange={(e) => setOfferingSearchQuery(e.target.value)}
+                  placeholder="Search offerings — driver, photographer, chef…"
+                  data-testid="input-offering-search"
+                />
+                <div className="max-h-[420px] overflow-y-auto rounded-md border border-gray-200 divide-y divide-gray-100">
+                  {offeringGroups.length === 0 ? (
+                    <div>
+                      <p className="text-xs text-muted-foreground p-3">
+                        No offerings match '{offeringSearchQuery}'
+                      </p>
+                      {renderDontSeeYourOffering()}
+                    </div>
+                  ) : (
+                    <>
+                      {offeringGroups.map((group) => (
+                        <div key={group.key} className="p-2">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground px-1 pb-1 sticky top-0 bg-background">
+                            {group.label}
+                          </p>
+                          <div className="space-y-1">
+                            {group.items.map((o) => (
+                              <button
+                                key={o.id}
+                                type="button"
+                                onClick={() => {
+                                  setRequestOfferingConfirmedName(null);
+                                  handleSelectProviderOffering(o);
+                                  setOfferingPickerOpen(false);
+                                  setOfferingSearchQuery("");
+                                }}
+                                className={`w-full text-left px-2 py-2 rounded-md border transition-colors flex items-baseline gap-2 ${
+                                  formData.serviceOfferingTypeId === o.id
+                                    ? "border-primary bg-primary/5"
+                                    : "border-transparent hover:border-gray-200 hover:bg-gray-50"
+                                }`}
+                                data-testid={`option-offering-${o.offering_type_key}`}
+                              >
+                                <span className="font-medium text-sm text-gray-900 shrink-0">{o.display_name}</span>
+                                {o.tagline && (
+                                  <span className="text-xs text-gray-500 truncate">{o.tagline}</span>
+                                )}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                      {renderDontSeeYourOffering()}
+                    </>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Pick the offering that matches what you provide — this sets your category below and links
+                  your listing to the /earn catalog. Required before publishing; you can save as a draft
+                  without one and finish later.
+                </p>
+              </>
             )}
-            <p className="text-xs text-muted-foreground">
-              Pick the offering that matches what you provide — this sets your category below and links
-              your listing to the /earn catalog. Required before publishing; you can save as a draft
-              without one and finish later.
-            </p>
           </CardContent>
         </Card>
-      )}
+        );
+      })()}
 
       {/* ── Start from a template (expert create — absorbed from the wizard, Phase 2) ── */}
       {role === "expert" && !isEditMode && serviceTemplates.length > 0 && (

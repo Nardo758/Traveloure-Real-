@@ -945,6 +945,11 @@ export const serviceReviews = pgTable("service_reviews", {
   reviewText: text("review_text"),
   responseText: text("response_text"), // Provider response
   responseAt: timestamp("response_at"),
+  // §06d (ratified Aug 9 2026): ONE public reply by the service owner; write-gated to the
+  // listing's owner; rendered traveler-side beside the review; visible to admin
+  // review-moderation.
+  providerReply: text("provider_reply"),
+  providerRepliedAt: timestamp("provider_replied_at"),
   isVerified: boolean("is_verified").default(false),
   // Moderation (REV-MOD)
   status: varchar("status", { length: 20 }).default("pending").notNull(), // pending | approved | flagged | removed
@@ -1739,7 +1744,7 @@ export const createBookingRequestSchema = insertServiceBookingSchema.pick({
   bookingMetadata: true,
 });
 
-export const insertServiceReviewSchema = createInsertSchema(serviceReviews).omit({ id: true, responseText: true, responseAt: true, createdAt: true, status: true, flagReason: true, moderatedBy: true, moderatedAt: true }).extend({
+export const insertServiceReviewSchema = createInsertSchema(serviceReviews).omit({ id: true, responseText: true, responseAt: true, providerReply: true, providerRepliedAt: true, createdAt: true, status: true, flagReason: true, moderatedBy: true, moderatedAt: true }).extend({
   rating: z.number().int().min(1, "Rating must be at least 1 star").max(5, "Rating cannot exceed 5 stars"),
 });
 export const insertCartItemSchema = createInsertSchema(cartItems).omit({ id: true, userId: true, createdAt: true });
@@ -7266,6 +7271,11 @@ export const dmoExtractedPlaces = pgTable("dmo_extracted_places", {
   longitude: decimal("longitude", { precision: 10, scale: 7 }),
   inLibraryId: varchar("in_library_id"), // soft ref → dmo_raw_content.id (same-city library match; no FK — advisory only)
   ticketingUrl: text("ticketing_url"), // expert-added https:// reference link — survives re-extract
+  // Open-data enrichment envelope (migration 188): {officialUrl, openingHours, heritage,
+  // wikidataId, osmId, source, fetchedAt} from explicitly-licensed sources (Wikidata CC0,
+  // OSM ODbL). Facts only, never prose (§13); NULL = not enriched. Never overwrites the
+  // expert-curated ticketingUrl above.
+  enrichment: jsonb("enrichment"),
   source: varchar("source", { length: 30 }).notNull().default("stored_text"), // 'stored_text' | 'live_fetch' (app-enforced, no CHECK)
   extractedAt: timestamp("extracted_at"),
   createdAt: timestamp("created_at").defaultNow(),
@@ -7747,3 +7757,77 @@ export const shortLinks = pgTable("short_links", {
 export const insertShortLinkSchema = createInsertSchema(shortLinks).omit({ id: true, clicks: true, createdAt: true });
 export type ShortLink = typeof shortLinks.$inferSelect;
 export type InsertShortLink = z.infer<typeof insertShortLinkSchema>;
+
+// === Provider Back-Office Wave — migration 189 (decision-maker approved Aug 9 2026) ===
+// Two new tables, neither wired to enforcement yet — the feature builds that read/write these
+// beyond the create path land separately. Vacation mode itself lives on `users`
+// (shared/models/auth.ts: vacationUntil/vacationMessage), not here.
+
+// offering_type_requests — provider "I don't see my offering" requests. status is app-enforced
+// (pending|approved|rejected), no DB CHECK (house posture). Consumed by the admin categories page.
+export const offeringTypeRequests = pgTable("offering_type_requests", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  requestedName: varchar("requested_name", { length: 120 }).notNull(),
+  description: text("description"),
+  status: varchar("status", { length: 30 }).notNull().default("pending"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("offering_type_requests_status_idx").on(table.status),
+]);
+
+// ALLOWLIST (§19/#PS18 target shape, ratchet-exempt — new schemas must be .pick()-based per
+// scripts/check-omit-schema-ratchet.cjs): a request only ever needs to carry the requester's own
+// text; id/userId/status/timestamps are all server-derived (userId from the session, status
+// defaults 'pending', the rest by the DB).
+export const insertOfferingTypeRequestSchema = createInsertSchema(offeringTypeRequests).pick({
+  requestedName: true,
+  description: true,
+});
+export type OfferingTypeRequest = typeof offeringTypeRequests.$inferSelect;
+export type InsertOfferingTypeRequest = z.infer<typeof insertOfferingTypeRequestSchema>;
+
+/** App-enforced offering_type_requests.status vocabulary — no DB CHECK (house posture). */
+export const OFFERING_TYPE_REQUEST_STATUSES = ["pending", "approved", "rejected"] as const;
+export type OfferingTypeRequestStatus = (typeof OFFERING_TYPE_REQUEST_STATUSES)[number];
+
+// demand_signal_events — append-only §13 event log. Every trending/demand surface must read
+// ONLY these logged events; writers land in the feature builds that produce each signal kind,
+// not here. kind is app-enforced (stay_anchor_miss|places_fallthrough|no_stay_flag|
+// search_unfilled), no DB CHECK — same posture as optimizer_gap_fills (migration 182).
+export const demandSignalEvents = pgTable("demand_signal_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  kind: varchar("kind", { length: 40 }).notNull(),
+  market: varchar("market", { length: 100 }),
+  category: varchar("category", { length: 60 }),
+  latitude: decimal("latitude", { precision: 10, scale: 7 }),
+  longitude: decimal("longitude", { precision: 10, scale: 7 }),
+  context: jsonb("context"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("demand_signal_events_kind_created_idx").on(table.kind, table.createdAt),
+  index("demand_signal_events_market_idx").on(table.market),
+]);
+
+// ALLOWLIST (§19/#PS18 target shape, ratchet-exempt — see optimizer_gap_fills precedent): id/
+// createdAt are server-derived; every other column is writer-supplied signal data.
+export const insertDemandSignalEventSchema = createInsertSchema(demandSignalEvents).pick({
+  kind: true,
+  market: true,
+  category: true,
+  latitude: true,
+  longitude: true,
+  context: true,
+});
+export type DemandSignalEvent = typeof demandSignalEvents.$inferSelect;
+export type InsertDemandSignalEvent = z.infer<typeof insertDemandSignalEventSchema>;
+
+/** App-enforced demand_signal_events.kind vocabulary — no DB CHECK (house posture). */
+export const DEMAND_SIGNAL_EVENT_KINDS = [
+  "stay_anchor_miss",
+  "places_fallthrough",
+  "no_stay_flag",
+  "search_unfilled",
+] as const;
+export type DemandSignalEventKind = (typeof DEMAND_SIGNAL_EVENT_KINDS)[number];

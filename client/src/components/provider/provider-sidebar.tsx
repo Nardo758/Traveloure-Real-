@@ -24,6 +24,7 @@ import {
   TrendingUp,
   Users,
   Wrench,
+  BookOpen,
 } from "lucide-react";
 
 // Console IA C9 (§17 17→9 collapse): the provider console adopts the SAME nine-module IA the
@@ -42,9 +43,11 @@ const menuGroups = [
   {
     label: "Work",
     items: [
-      // C9: "Dashboard" relabeled "Today" (module 1, ops home) — route unchanged; the page
-      // already leads with today's bookings + pending action items.
-      { title: "Today", href: "/provider/dashboard", icon: Home },
+      // C9 originally relabeled "Dashboard" → "Today" (module 1, ops home). Renamed back to
+      // "Dashboard" (ratified provider back-office wave, Aug 9 2026) — route unchanged; the
+      // page still leads with today's bookings + pending action items. A sibling change
+      // renames the page's own header to match.
+      { title: "Dashboard", href: "/provider/dashboard", icon: Home },
       // C9: /provider/calendar is now the Channel Calendar (the ratified 9th module — the
       // expert C3 pattern on GET /api/me/calendar, provider-real chips only). The old
       // availability-editor sheets there were non-persisting previews; REAL slot editing
@@ -97,11 +100,12 @@ const menuGroups = [
       // the actionable verification/preferences surface). /provider/profile redirects to
       // /provider/settings?tab=profile.
       { title: "Settings", href: "/provider/settings", icon: Settings },
-      // C9 note — /provider/resources (static onboarding guides) stays ROUTED but keeps its
-      // pre-C9 state of having no sidebar entry: it is not one of the NINE, its content is
-      // static sample-guide copy with no backing content system, and promoting it to the
-      // nav would advertise a surface §13 can't stand behind. Retiring the route outright
-      // needs a home (e.g. a help center) that doesn't exist yet.
+      // Playbook (formerly Resources, /provider/resources → /provider/playbook): rebuilt as
+      // real, written-in-the-page content grounded in how approval/booking/payouts/availability
+      // actually work in this codebase (no invented guides, videos, or downloads — §13). Now
+      // that its content is honest it rejoins the nav; it's still not one of the NINE modules,
+      // so it lives here in Account rather than in Work/Business.
+      { title: "Playbook", href: "/provider/playbook", icon: BookOpen },
     ],
   },
 ];
