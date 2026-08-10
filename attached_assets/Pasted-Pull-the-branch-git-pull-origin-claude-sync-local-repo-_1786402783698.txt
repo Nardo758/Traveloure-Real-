@@ -1,0 +1,15 @@
+Pull the branch (git pull origin claude/sync-local-repo-2j7ghv) — three new commits: D4 social closers (8f080e7), the tsc-ratchet baseline lock (a6938de), and a punchlist entry (f6a82ca). Verify they land:
+
+1. Migration 193. Start the server and confirm it boots clean and applies 193_short_links_frame.sql; verify with \d short_links that a nullable frame varchar(20) column exists. It must be additive only — no existing row or link behavior changes.
+
+2. Frame-aware short links. As a provider with a storefront handle, create a share link with no frame (must behave exactly as before), then one with frame: "feed" and one with frame: "route" — each must mint a distinct code, and re-requesting the same frame must return the same code (dedupe). Confirm an invalid frame is rejected. Then open Performance → link analytics and confirm the per-frame breakdown renders, with any pre-existing links shown under "Untagged" rather than dropped or attributed to a real frame.
+
+3. Opportunity→frame. Confirm GET /api/me/posting-opportunities stamps suggestedFrame, and that share-tools opens the matching frame. A review opportunity should suggest review; an open-slot opportunity should suggest route only when that service actually has route stops, else feed.
+
+4. Instagram publish — the one thing that could NOT be proven in the build sandbox. With a real connected Instagram account, attempt an actual publish from the share kit. The Graph API fetches the image from its own servers, so this is the first real test that the resolved absolute share-image URL is publicly reachable from Replit. Report exactly what happens. Also confirm the button disables honestly (with a reason) for an unapproved listing and for a route frame on a service with no stops, and that a disconnected account shows the connect flow rather than a dead button.
+
+5. D3 spot check (already verified here, confirm it survived the merge): service-deliverable.http.test.ts 9/9, and serviceFile absent from public service reads.
+
+6. Guards + baseline. Run node scripts/check-money-endpoints.cjs, bash scripts/phase2-fee-gate.sh, node scripts/check-unmounted-routers.cjs — all exit 0. Confirm npx tsc --noEmit 2>&1 | grep -c "error TS" reports 183; the CI ratchet in .github/workflows/build.yml is now locked at 183, so if your work changes that number you must update the baseline in the same PR (the gate fails on decreases too, by design).
+
+Report results. Do not modify validate-env.ts, the F2 verification gate block in server/routes.ts, or the D3/D4 code unless a verification step forces a fix — and push promptly if it does.
