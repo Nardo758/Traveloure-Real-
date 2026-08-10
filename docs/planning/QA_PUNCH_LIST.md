@@ -95,7 +95,7 @@ the cart IS the design, not a gap. CLOSED.
 
 ## Open — build items
 
-**P0 — LIVE REGRESSION (found Aug 10, 2026; introduced by `be78a9c` on
+~~**P0 — LIVE REGRESSION (found Aug 10, 2026; introduced by `be78a9c` on
 `claude/sync-local-repo-2j7ghv`): the F2 publish gate blocks EVERY EXPERT from publishing.**
 The Phase-0.5 verification gate on POST/PATCH `/api/provider/services` (server/routes.ts, fires when
 `input.status === "active"`) blocks any non-admin with no `service_provider_forms` row. **Experts
@@ -117,7 +117,7 @@ business verified (current behavior, correct); experts → `local_expert_forms`,
 admin → bypass, but via the **DB role lookup** `requireAdmin` uses (CLAUDE.md §2), not the
 `req.user.role` session snapshot the current code reads; error message routed to each role's own
 status page. **Owner:** the KYB lane (the agent that built the gate) — it is mid-flight in this exact
-block, so a parallel edit risks a divergence. Coordinate before touching.
+block, so a parallel edit risks a divergence. Coordinate before touching.~~
 **[DM] RESOLVED (Aug 10, 2026): "Yes, experts need to verify their identity."** Experts MUST be
 identity-verified to publish — `local_expert_forms.identity_verification_status = 'verified'` is a
 required condition on the expert branch of this gate. Business verification stays provider-only (the
@@ -127,6 +127,10 @@ expert|local_expert|travel_expert|event_planner; PROVIDER_ROLES = service_provid
 bypass uses the **DB role lookup** pattern `requireAdmin` uses (server/routes.ts ~:8861), never
 `req.user.role`. Roles in neither family (e.g. `executive_assistant`, plain `user`) stay blocked —
 default-deny. Error copy routes per role: providers → `/provider-status`, experts → `/expert-status`.
+**FIXED (Aug 10, 2026):** landed as a single shared `checkPublishVerificationGate` helper (`server/routes.ts`)
+used by both POST and PATCH `/api/provider/services`, exactly per the [DM] ruling above — proven by
+`server/__tests__/f2-verification-gate.http.test.ts` (11/11: verified-expert publish, unverified-expert
+block routed to `/expert-status`, provider both-statuses-required, admin bypass, draft-never-gated).
 
 1. **Partner drawer: close the book-off-site loop.** The pill promises "book off-site, log it here",
    but after booking on the partner site there is no "Log completed booking → add to Day N" action —
