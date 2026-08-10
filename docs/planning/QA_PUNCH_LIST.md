@@ -95,6 +95,38 @@ the cart IS the design, not a gap. CLOSED.
 
 ## Open — build items
 
+**P1 — the D3 deliverable is LINK-delivery, not protected delivery (verified Aug 10, 2026;
+Service Fundamentals dispatch v1.2 §4).** `GET /api/service-bookings/:id/deliverable` server-derives
+every entitlement condition correctly, then returns **the raw `serviceFile` string verbatim**
+(`res.json({ fileUrl, deliveryMethod })` — no proxy, no signing, no redirect, no expiry) and performs
+**zero writes**. Because `serviceFile` is a provider-pasted external URL (no upload/object-storage
+pipeline exists anywhere in the platform — every media field is a pasted URL), the entitlement gates
+the **one-time reveal of a URL, not access to the file**: once any single buyer sees it, the link is
+permanently shareable, unrevokable, and outside platform control. §14-style server-side gating is
+satisfied in letter only. **Disposition (per the dispatch, needs [DM] ratification): promote the
+file-upload pipeline from "infrastructure decision" to the COMPLETION of D3** — platform-managed
+storage + signed, expiring URLs, with the serve path proxying rather than disclosing. Until it lands,
+label the rail honestly as link-delivery in the provider UI and state that the platform cannot protect
+a pasted link. Sequenced after the D6 attribution retrofit.
+
+**P2 — no completion event exists for artifact (pdf) bookings; the D8 auto-complete rule is
+unbuildable as written (verified Aug 10, 2026; dispatch v1.2 §2).** Premise correction for the D8
+ruling: D3 did **not** define completion "by accident" — it defines **nothing**. The deliverable read
+writes no row, logs no download, and touches no status. A pdf booking therefore reaches `completed`
+only via the same manual path as everything else (provider flips status → held earning →
+`POST /api/bookings/:id/confirm-completion` releases it), and **no auto-release timer exists**
+(grepped: no `autoRelease`/`escrowRelease` scheduler), so an inattentive traveler leaves a provider's
+earning held indefinitely on a product that was fully delivered the moment it was downloaded.
+Consequence for D8's proposed table: **"auto-complete after N days undownloaded" cannot be built
+today — there is no download signal to measure.** It requires D3 to start logging deliverable
+fetches (one write on the endpoint above), which should land with the P1 storage work rather than as
+a separate pass.
+
+**Filed (externally gated): Instagram publish round-trip unproven.** The D4 publish button self-gates
+honestly, but the real Graph API round-trip (image reachability from Instagram's servers) has never
+executed — no app credentials and no public URL in any build sandbox. Needs one verification run in
+the Replit environment with a connected account. Not a blocker.
+
 ~~**P0 — LIVE REGRESSION (found Aug 10, 2026; introduced by `be78a9c` on
 `claude/sync-local-repo-2j7ghv`): the F2 publish gate blocks EVERY EXPERT from publishing.**
 The Phase-0.5 verification gate on POST/PATCH `/api/provider/services` (server/routes.ts, fires when
