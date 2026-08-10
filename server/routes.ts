@@ -4959,7 +4959,31 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     }
   });
 
-  // Cancel booking (traveler action)
+  // Cancellation refund preview (traveler action) — what the traveler gets back if they cancel
+  // NOW, computed from the service's cancellation_policy_type + time-to-scheduled-start
+  // (cancellation-policy.service.ts). The confirmation dialog in my-bookings.tsx shows this
+  // before the traveler confirms, so there are no surprise deductions.
+  app.get("/api/bookings/:id/cancel-preview", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req)!;
+      const { quoteCancellationForBooking } = await import("./services/cancellation-policy.service");
+      const quote = await quoteCancellationForBooking(req.params.id);
+      if (!quote || quote.travelerId !== userId) {
+        return res.status(404).json({ message: "Booking not found or not yours" });
+      }
+      const cancellable = quote.bookingStatus === "pending" || quote.bookingStatus === "confirmed";
+      const { travelerId, bookingStatus, ...publicQuote } = quote;
+      res.json({ ...publicQuote, cancellable, bookingStatus });
+    } catch (err) {
+      console.error("Cancel preview error:", err);
+      res.status(500).json({ message: "Failed to compute cancellation preview" });
+    }
+  });
+
+  // Cancel booking (traveler action). Enforces the service's cancellation policy: the refund
+  // amount is server-derived from policy type + time-to-start — the same computation the
+  // preview endpoint above shows the traveler. Non-refundable (and lapsed-window) cancellations
+  // set status only; refundable ones also issue the policy-scaled Stripe refund.
   app.post("/api/bookings/:id/cancel", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req)!;
@@ -4971,9 +4995,42 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         return res.status(400).json({ message: "Cannot cancel this booking" });
       }
       const { reason } = req.body;
+
+      const { quoteCancellationForBooking } = await import("./services/cancellation-policy.service");
+      const quote = await quoteCancellationForBooking(req.params.id);
+      if (!quote) return res.status(404).json({ message: "Booking not found or not yours" });
+
+      // Always record the cancellation first (stamps cancelledAt + reason). If a refund is due,
+      // the refund flow below then flips cancelled → refunded under its atomic claim.
       const updated = await storage.updateServiceBookingStatus(req.params.id, "cancelled", reason);
-      res.json(updated);
+
+      let refundResult: any = null;
+      if (quote.automaticRefundAllowed && quote.refundAmount > 0 && booking.stripePaymentIntentId) {
+        // Same ledger-first order + idempotent reversals as POST /api/bookings/refund.
+        await storage.reverseEarningsForBooking(req.params.id);
+        await storage.reversePlatformRevenueForBooking(req.params.id);
+        const { stripePaymentService } = await import("./services/stripe-payment.service");
+        refundResult = await stripePaymentService.refundServiceBooking(
+          req.params.id,
+          reason || "requested_by_customer",
+          { amountOverride: quote.refundAmount },
+        );
+        const { revertPurchasedItemsForBooking } = await import("./services/item-routing.service");
+        await revertPurchasedItemsForBooking(req.params.id);
+      }
+
+      res.json({
+        ...updated,
+        refund: {
+          policyType: quote.policyType,
+          refundPercent: quote.refundPercent,
+          refundAmount: refundResult ? quote.refundAmount : 0,
+          message: quote.message,
+          issued: !!refundResult,
+        },
+      });
     } catch (err) {
+      console.error("Cancel booking error:", err);
       res.status(500).json({ message: "Failed to cancel booking" });
     }
   });
