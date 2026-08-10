@@ -391,21 +391,31 @@ export default function ContentStudio() {
   };
 
   const handleConnectInstagram = async () => {
-    const clientId = import.meta.env.VITE_META_APP_ID;
-    if (!clientId) {
+    try {
+      const configRes = await fetch("/api/instagram/config");
+      const config = await configRes.json();
+      const clientId = config?.appId;
+      if (!clientId) {
+        toast({ 
+          title: "Configuration Required", 
+          description: "Instagram integration requires Meta App setup.", 
+          variant: "destructive" 
+        });
+        return;
+      }
+      
+      const redirectUri = encodeURIComponent(`${window.location.origin}/api/instagram/callback`);
+      const scope = encodeURIComponent("instagram_business_basic,instagram_business_content_publish");
+      const authUrl = `https://www.instagram.com/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}`;
+      
+      window.location.href = authUrl;
+    } catch {
       toast({ 
-        title: "Configuration Required", 
-        description: "Instagram integration requires Meta App setup.", 
+        title: "Configuration Error", 
+        description: "Could not load Instagram configuration. Please try again.", 
         variant: "destructive" 
       });
-      return;
     }
-    
-    const redirectUri = encodeURIComponent(`${window.location.origin}/api/instagram/callback`);
-    const scope = encodeURIComponent("instagram_business_basic,instagram_business_content_publish");
-    const authUrl = `https://www.instagram.com/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}`;
-    
-    window.location.href = authUrl;
   };
 
   const filteredContent = mockContent.filter(item => {
