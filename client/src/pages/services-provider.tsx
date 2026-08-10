@@ -698,6 +698,26 @@ export default function ServicesProviderPage() {
                   </div>
                 </div>
 
+                {/* Verification sequence notice — prompts the applicant so the post-approval
+                    steps are not a surprise. Sequenced here (Phase 0.5) rather than as status-page
+                    buttons only. */}
+                <div className="p-4 rounded-lg border border-blue-200 bg-blue-50 dark:bg-blue-900/20 dark:border-blue-800">
+                  <div className="flex items-start gap-3">
+                    <Shield className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                    <div>
+                      <h4 className="font-medium text-blue-800 dark:text-blue-300 text-sm">What happens after approval</h4>
+                      <p className="text-xs text-blue-700 dark:text-blue-400 mt-1">
+                        Once your application is approved, you'll complete two quick steps before your first offering can go live:
+                      </p>
+                      <ol className="mt-2 space-y-1 text-xs text-blue-700 dark:text-blue-400 list-decimal list-inside">
+                        <li><strong>Identity verification</strong> — verify your government-issued ID via Stripe Identity (passport, national ID, or driver's license).</li>
+                        <li><strong>Connect onboarding</strong> — set up payouts and complete business verification via Stripe Connect. Stripe verifies your business during this flow.</li>
+                      </ol>
+                      <p className="text-xs text-blue-600 dark:text-blue-500 mt-2">Both steps are guided from your Provider Status page after approval.</p>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="flex items-start gap-3">
                   <Checkbox
                     id="terms"

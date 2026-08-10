@@ -2268,6 +2268,34 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
 
+      // F2 identity + business verification publish gate (Phase 0.5 — docs/backoffice/EARN_PIPELINE_EVAL.md).
+      // An offering cannot go live until the provider's identity and business verification are
+      // both confirmed as "verified" (Stripe Identity + Stripe Connect KYB respectively).
+      // No service_provider_forms row (e.g. admin creating a test service) passes through safely.
+      if (input.status === "active") {
+        const [provForm] = await db
+          .select({
+            identityVerificationStatus: serviceProviderForms.identityVerificationStatus,
+            businessVerificationStatus: serviceProviderForms.businessVerificationStatus,
+          })
+          .from(serviceProviderForms)
+          .where(eq(serviceProviderForms.userId, userId))
+          .limit(1);
+
+        if (provForm) {
+          const idOk = provForm.identityVerificationStatus === "verified";
+          const bizOk = provForm.businessVerificationStatus === "verified";
+          if (!idOk || !bizOk) {
+            return res.status(403).json({
+              message: "Identity and business verification must be complete before publishing an offering. Complete verification in your provider status page.",
+              code: "VERIFICATION_GATE",
+              identityVerified: idOk,
+              businessVerified: bizOk,
+            });
+          }
+        }
+      }
+
       const service = await storage.createProviderService({ ...input, ...locationPatch, userId });
 
       // Write (or clear) neighborhood coverage rows whenever the neighborhoods
@@ -2427,6 +2455,31 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
                 code: "VERIFICATION_REQUIRED",
               });
             }
+          }
+        }
+      }
+
+      // F2 identity + business verification publish gate (Phase 0.5 — same gate as CREATE above).
+      if (input.status === "active") {
+        const [provFormUpd] = await db
+          .select({
+            identityVerificationStatus: serviceProviderForms.identityVerificationStatus,
+            businessVerificationStatus: serviceProviderForms.businessVerificationStatus,
+          })
+          .from(serviceProviderForms)
+          .where(eq(serviceProviderForms.userId, userId))
+          .limit(1);
+
+        if (provFormUpd) {
+          const idOk = provFormUpd.identityVerificationStatus === "verified";
+          const bizOk = provFormUpd.businessVerificationStatus === "verified";
+          if (!idOk || !bizOk) {
+            return res.status(403).json({
+              message: "Identity and business verification must be complete before publishing an offering. Complete verification in your provider status page.",
+              code: "VERIFICATION_GATE",
+              identityVerified: idOk,
+              businessVerified: bizOk,
+            });
           }
         }
       }
