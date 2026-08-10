@@ -401,6 +401,17 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   // migration-129 neighborhood centroid into an `'exact'` claim.
   const [locationPointTouched, setLocationPointTouched] = useState(false);
 
+  // Audit item #10 (PROVIDER_CONSOLE_IMPROVEMENT_AUDIT.md): the form is a 4-step
+  // wizard instead of one ~7-viewport scroll. LAYOUT ONLY — the field set, zod/
+  // server validation, payload shape and endpoints are untouched. Navigation is
+  // FREE in both create and edit mode (steps are clickable, Next/Back never
+  // validate) — one code path for both modes; in edit mode the clickable
+  // indicator doubles as jump-nav, so a separate anchored layout isn't needed.
+  // Required-field enforcement stays exactly where it was (button disabled
+  // states + createMutation's own throws); the only addition is that a
+  // submit-time miss jumps the user to the step that holds the field.
+  const [currentStep, setCurrentStep] = useState(1);
+
   // Single category taxonomy
   const { data: categories = [] } = useQuery<ServiceCategory[]>({
     queryKey: ["/api/service-categories"],
@@ -761,6 +772,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   const handleAddAnother = () => {
     setCreationSuccess(false);
     setCreationOutcome({});
+    setCurrentStep(1);
     setFormData(buildEmptyForm(role));
     setLocationPointTouched(false);
     setNewIncluded("");
@@ -935,6 +947,48 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   const isProviderVerified = verificationStatus?.providerVerificationStatus === "verified";
   const publishBlocked = role === "provider" && isCategoryGated && !isProviderVerified;
 
+  // ── Step machinery (audit item #10) ──────────────────────────────────────
+  const STEP_TITLES = ["What you offer", "Details", "Photos", "Terms & requirements"];
+  const TOTAL_STEPS = STEP_TITLES.length;
+
+  const goToStep = (step: number) => {
+    setCurrentStep(Math.min(Math.max(step, 1), TOTAL_STEPS));
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  // Mirrors ONLY the checks already enforced elsewhere (button disabled states +
+  // createMutation's throws) — nothing new is required here. Used to (a) route a
+  // submit-time miss to the step holding the field and (b) explain a disabled
+  // final button. Draft saves stay check-free, exactly as before.
+  const missingForFinal: { step: number; label: string }[] = [];
+  if (!formData.name) missingForFinal.push({ step: 1, label: "Service name" });
+  if (!formData.categoryId) missingForFinal.push({ step: 1, label: "Category" });
+  if (role === "provider" && !isEditMode && !formData.serviceOfferingTypeId) {
+    missingForFinal.push({ step: 1, label: "An offering from the catalog" });
+  }
+  if (role === "expert" && !isEditMode && !formData.expertOfferingTypeId) {
+    missingForFinal.push({ step: 1, label: "Service tier" });
+  }
+  if (needsMeetingPoint && !formData.meetingPoint.trim()) {
+    missingForFinal.push({ step: 2, label: "Meeting point" });
+  }
+
+  const handleFinalSubmit = (action: "submit" | "publish") => {
+    const firstMissing = missingForFinal[0];
+    if (firstMissing) {
+      // Jump to the step that holds the invalid field; the mutation's own
+      // checks remain the backstop and are unchanged.
+      goToStep(firstMissing.step);
+      toast({
+        title: "A required field is missing",
+        description: `${firstMissing.label} (Step ${firstMissing.step}) is required before ${action === "publish" ? "publishing" : "submitting"}. You can Save Draft to finish later.`,
+        variant: "destructive",
+      });
+      return;
+    }
+    createMutation.mutate(action);
+  };
+
   if (isEditMode && loadingExisting) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -1071,6 +1125,45 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           {isEditMode ? "Edit Service" : "New Service"}
         </span>
       </div>
+
+      {/* ── Step indicator (audit item #10) — freely clickable in both modes ── */}
+      <nav aria-label="Form steps" className="overflow-x-auto" data-testid="service-form-steps">
+        <ol className="flex items-center gap-1 sm:gap-2">
+          {STEP_TITLES.map((title, i) => {
+            const stepNum = i + 1;
+            const isActive = currentStep === stepNum;
+            return (
+              <li key={stepNum} className="flex items-center gap-1 sm:gap-2 shrink-0">
+                {i > 0 && <div className="w-3 sm:w-6 h-px bg-border" aria-hidden="true" />}
+                <button
+                  type="button"
+                  onClick={() => goToStep(stepNum)}
+                  aria-current={isActive ? "step" : undefined}
+                  className={`flex items-center gap-1.5 rounded-full px-2 py-1 text-sm transition-colors ${
+                    isActive
+                      ? "text-foreground font-medium"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                  data-testid={`button-step-${stepNum}`}
+                >
+                  <span
+                    className={`flex items-center justify-center w-6 h-6 rounded-full text-xs font-semibold border ${
+                      isActive
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "bg-background text-muted-foreground border-border"
+                    }`}
+                  >
+                    {stepNum}
+                  </span>
+                  <span className="hidden sm:inline whitespace-nowrap">{title}</span>
+                </button>
+              </li>
+            );
+          })}
+        </ol>
+      </nav>
+
+      {currentStep === 1 && (<>
 
       {/* ── Offering-first provider create (§17): pick the /earn offering FIRST — ────
           category derives from it below. Shown for both create and edit so an edited
@@ -1332,19 +1425,6 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             </div>
           )}
 
-          {/* Description */}
-          <div>
-            <Label htmlFor="description">Description *</Label>
-            <Textarea
-              id="description"
-              value={formData.description}
-              onChange={(e) => set("description", e.target.value)}
-              placeholder="Describe what your service includes, what makes it special, and what travelers can expect..."
-              rows={4}
-              className="mt-2"
-            />
-          </div>
-
           {/* Pricing */}
           <div className="space-y-4">
             <div>
@@ -1566,6 +1646,33 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             </div>
           )}
 
+        </CardContent>
+      </Card>
+
+      </>)}
+
+      {currentStep === 2 && (<>
+
+      {/* ── Details & Delivery ── */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Details & Delivery</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-6">
+
+          {/* Description */}
+          <div>
+            <Label htmlFor="description">Description *</Label>
+            <Textarea
+              id="description"
+              value={formData.description}
+              onChange={(e) => set("description", e.target.value)}
+              placeholder="Describe what your service includes, what makes it special, and what travelers can expect..."
+              rows={4}
+              className="mt-2"
+            />
+          </div>
+
           {/* Duration */}
           <div>
             <Label htmlFor="duration">Duration *</Label>
@@ -1780,40 +1887,6 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         </CardContent>
       </Card>
 
-      {/* ── Requirements from Client (absorbed from the expert wizard, Phase 2) ── */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Requirements from Client</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            {formData.requirements.map((item, idx) => (
-              <div key={idx} className="flex items-center justify-between bg-secondary p-2 rounded">
-                <span className="text-sm">{item}</span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleRemoveRequirement(idx)}
-                >
-                  <Trash2 className="w-4 h-4" />
-                </Button>
-              </div>
-            ))}
-          </div>
-          <div className="flex gap-2">
-            <Input
-              value={newRequirement}
-              onChange={(e) => setNewRequirement(e.target.value)}
-              placeholder="e.g., Passport copy, Dietary restrictions, Preferred dates..."
-              onKeyDown={(e) => e.key === "Enter" && handleAddRequirement()}
-            />
-            <Button onClick={handleAddRequirement} variant="outline" size="icon">
-              <Plus className="w-4 h-4" />
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
       {/* ── Logistics (conditional based on delivery method) ── */}
       {needsMeetingPoint && (
         <Card>
@@ -2001,6 +2074,10 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         </Card>
       )}
 
+      </>)}
+
+      {currentStep === 4 && (<>
+
       {/* ── Booking Terms ── */}
       <Card>
         <CardHeader>
@@ -2058,6 +2135,44 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           </div>
         </CardContent>
       </Card>
+
+      {/* ── Requirements from Client (absorbed from the expert wizard, Phase 2) ── */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Requirements from Client</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            {formData.requirements.map((item, idx) => (
+              <div key={idx} className="flex items-center justify-between bg-secondary p-2 rounded">
+                <span className="text-sm">{item}</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleRemoveRequirement(idx)}
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <Input
+              value={newRequirement}
+              onChange={(e) => setNewRequirement(e.target.value)}
+              placeholder="e.g., Passport copy, Dietary restrictions, Preferred dates..."
+              onKeyDown={(e) => e.key === "Enter" && handleAddRequirement()}
+            />
+            <Button onClick={handleAddRequirement} variant="outline" size="icon">
+              <Plus className="w-4 h-4" />
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      </>)}
+
+      {currentStep === 3 && (<>
 
       {/* ── Photos ── */}
       <Card>
@@ -2141,8 +2256,10 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         </CardContent>
       </Card>
 
+      </>)}
+
       {/* ── Provider-Specific Features ── */}
-      {role === "provider" && (
+      {currentStep === 4 && role === "provider" && (
         <Card>
           <CardHeader>
             <CardTitle>Additional Features</CardTitle>
@@ -2234,7 +2351,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
       )}
 
       {/* ── Expert-Specific Approval Workflow ── */}
-      {role === "expert" && (
+      {currentStep === 4 && role === "expert" && (
         <Card>
           <CardHeader>
             <CardTitle>Submission & Approval</CardTitle>
@@ -2270,62 +2387,97 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         </Card>
       )}
 
-      {/* ── Action Buttons ── */}
+      {/* ── Step Navigation / Action Buttons ── */}
       <Card>
-        <CardContent className="p-6">
-          <div className="flex gap-3 flex-col sm:flex-row">
+        <CardContent className="p-6 space-y-3">
+          <div className="flex gap-3 flex-col sm:flex-row sm:items-center">
             <Button
-              variant="outline"
+              variant="ghost"
               onClick={() => navigate(`/${role}/services`)}
               disabled={createMutation.isPending}
             >
               Cancel
             </Button>
 
-            {role === "expert" ? (
-              <>
-                <Button
-                  variant="outline"
-                  onClick={() => createMutation.mutate("draft")}
-                  disabled={createMutation.isPending}
-                  className="flex-1"
-                >
-                  {createMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-                  Save as Draft
-                </Button>
-                <Button
-                  className="bg-primary hover:bg-primary/90 flex-1"
-                  onClick={() => createMutation.mutate("submit")}
-                  disabled={createMutation.isPending || !formData.name || !formData.categoryId || (!isEditMode && !formData.expertOfferingTypeId)}
-                >
-                  {createMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-                  Submit for Approval
-                </Button>
-              </>
+            {currentStep > 1 && (
+              <Button
+                variant="outline"
+                onClick={() => goToStep(currentStep - 1)}
+                disabled={createMutation.isPending}
+                data-testid="button-step-back"
+              >
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Back
+              </Button>
+            )}
+
+            <div className="flex-1" />
+
+            {/* Draft save is reachable from EVERY step (unchanged: drafts skip
+                required-field checks), so nobody has to walk to step 4 to bail out. */}
+            <Button
+              variant="outline"
+              onClick={() => createMutation.mutate("draft")}
+              disabled={createMutation.isPending}
+              data-testid="button-save-draft"
+            >
+              {createMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+              {role === "expert" ? "Save as Draft" : "Save Draft"}
+            </Button>
+
+            {currentStep < TOTAL_STEPS ? (
+              <Button
+                className="bg-primary hover:bg-primary/90"
+                onClick={() => goToStep(currentStep + 1)}
+                disabled={createMutation.isPending}
+                data-testid="button-step-next"
+              >
+                Next: {STEP_TITLES[currentStep]}
+              </Button>
+            ) : role === "expert" ? (
+              <Button
+                className="bg-primary hover:bg-primary/90"
+                onClick={() => handleFinalSubmit("submit")}
+                disabled={createMutation.isPending || !formData.name || !formData.categoryId || (!isEditMode && !formData.expertOfferingTypeId)}
+              >
+                {createMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                Submit for Approval
+              </Button>
             ) : (
-              <>
-                <Button
-                  variant="outline"
-                  onClick={() => createMutation.mutate("draft")}
-                  disabled={createMutation.isPending}
-                  className="flex-1"
-                >
-                  {createMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-                  Save Draft
-                </Button>
-                <Button
-                  className="bg-primary hover:bg-primary/90 flex-1"
-                  onClick={() => createMutation.mutate("publish")}
-                  disabled={createMutation.isPending || !formData.name || !formData.categoryId || publishBlocked || (!isEditMode && !formData.serviceOfferingTypeId)}
-                  title={publishBlocked ? "Complete background verification before publishing this category" : (!isEditMode && !formData.serviceOfferingTypeId) ? "Pick an offering from the /earn catalog first" : undefined}
-                  data-testid="button-publish-service"
-                >
-                  {createMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-                  {publishBlocked ? "Verification Required" : "Publish Service"}
-                </Button>
-              </>
+              <Button
+                className="bg-primary hover:bg-primary/90"
+                onClick={() => handleFinalSubmit("publish")}
+                disabled={createMutation.isPending || !formData.name || !formData.categoryId || publishBlocked || (!isEditMode && !formData.serviceOfferingTypeId)}
+                title={publishBlocked ? "Complete background verification before publishing this category" : (!isEditMode && !formData.serviceOfferingTypeId) ? "Pick an offering from the /earn catalog first" : undefined}
+                data-testid="button-publish-service"
+              >
+                {createMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                {publishBlocked ? "Verification Required" : "Publish Service"}
+              </Button>
             )}
           </div>
+
+          {/* Final-step disabled explanation: name WHICH step holds each missing
+              required field, with a jump link — mirrors the existing enforcement,
+              adds none. */}
+          {currentStep === TOTAL_STEPS && missingForFinal.length > 0 && (
+            <p className="text-xs text-muted-foreground sm:text-right" data-testid="text-missing-required">
+              Still needed before you {role === "expert" ? "submit" : "publish"}:{" "}
+              {missingForFinal.map((m, i) => (
+                <span key={`${m.step}-${m.label}`}>
+                  {i > 0 && ", "}
+                  <button
+                    type="button"
+                    className="underline hover:text-foreground"
+                    onClick={() => goToStep(m.step)}
+                  >
+                    {m.label} (Step {m.step})
+                  </button>
+                </span>
+              ))}
+              . Or Save Draft and finish later.
+            </p>
+          )}
         </CardContent>
       </Card>
 
