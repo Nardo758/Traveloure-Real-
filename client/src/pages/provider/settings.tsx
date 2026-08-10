@@ -1,5 +1,6 @@
 import { ProviderLayout } from "@/components/provider/provider-layout";
 import { HandleClaimCard } from "@/components/backoffice/handle-claim-card";
+import { StripeConnectCard } from "@/components/stripe-connect-card";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -20,8 +21,6 @@ import {
   CheckCircle2,
   AlertCircle,
   ExternalLink,
-  CheckCircle,
-  LinkIcon,
   Loader2,
   FileText,
   Plane,
@@ -60,9 +59,6 @@ function VerificationPayoutsSection() {
   const { data: idStatus, isLoading: idLoading } = useQuery<any>({
     queryKey: ["/api/provider/application-status"],
   });
-  const { data: stripeStatus, isLoading: stripeLoading } = useQuery<any>({
-    queryKey: ["/api/stripe/connect/status"],
-  });
   const { data: bgVerification, isLoading: bgLoading } = useQuery<{ providerVerificationStatus: string; backgroundCheckConfirmed: boolean }>({
     queryKey: ["/api/provider/verification-status"],
   });
@@ -94,17 +90,6 @@ function VerificationPayoutsSection() {
     onError: () => toast({ title: "Verification unavailable", description: "Please try again later.", variant: "destructive" }),
   });
 
-  const onboardMutation = useMutation({
-    mutationFn: async () => { const res = await apiRequest("POST", "/api/stripe/connect/onboard"); return res.json(); },
-    onSuccess: (data: any) => { if (data.url) window.open(data.url, "_blank"); },
-    onError: () => toast({ title: "Error", description: "Could not start Stripe setup.", variant: "destructive" }),
-  });
-
-  const dashboardMutation = useMutation({
-    mutationFn: async () => { const res = await fetch("/api/stripe/connect/dashboard", { credentials: "include" }); if (!res.ok) throw new Error(); return res.json(); },
-    onSuccess: (data: any) => { if (data.url) window.open(data.url, "_blank"); },
-  });
-
   const idVerifStatus = idStatus?.identityVerificationStatus ?? "pending";
   const bizVerifStatus = idStatus?.businessVerificationStatus ?? "pending";
 
@@ -114,15 +99,6 @@ function VerificationPayoutsSection() {
     if (s === "failed") return <Badge className="bg-red-100 text-red-700"><AlertCircle className="w-3 h-3 mr-1" />Failed</Badge>;
     return <Badge variant="secondary">Not started</Badge>;
   };
-
-  const stripeStatusKey = stripeStatus?.status ?? "not_connected";
-  const stripeBadge = stripeStatusKey === "active"
-    ? <Badge className="bg-green-100 text-green-700"><CheckCircle className="w-3 h-3 mr-1" />Active</Badge>
-    : stripeStatusKey === "onboarding_incomplete"
-    ? <Badge className="bg-orange-100 text-orange-700"><AlertCircle className="w-3 h-3 mr-1" />Incomplete</Badge>
-    : stripeStatusKey === "under_review"
-    ? <Badge className="bg-amber-100 text-amber-700"><Clock className="w-3 h-3 mr-1" />Under Review</Badge>
-    : <Badge variant="secondary">Not connected</Badge>;
 
   return (
     <div className="space-y-4">
@@ -262,50 +238,10 @@ function VerificationPayoutsSection() {
         );
       })()}
 
-      {/* Stripe Connect */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <CreditCard className="w-5 h-5 text-console-dark" />
-              Payout Account (Stripe Connect)
-            </div>
-            {stripeLoading ? <Loader2 className="w-4 h-4 animate-spin text-console-mid" /> : stripeBadge}
-          </CardTitle>
-          <CardDescription>Connect your Stripe account to receive payouts directly when clients book your services.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {!stripeStatus?.connected ? (
-            <div className="space-y-3">
-              <p className="text-sm text-console-dark">You'll be guided through a quick Stripe setup — about 5 minutes. Stripe securely collects your bank details.</p>
-              <Button onClick={() => onboardMutation.mutate()} disabled={onboardMutation.isPending} className="w-full" data-testid="button-connect-stripe">
-                {onboardMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <LinkIcon className="w-4 h-4 mr-2" />}
-                Connect Stripe Account
-              </Button>
-            </div>
-          ) : stripeStatusKey === "onboarding_incomplete" ? (
-            <div className="space-y-3">
-              <p className="text-sm text-orange-600">Your Stripe setup is incomplete. Finish to start receiving payouts.</p>
-              <Button onClick={() => onboardMutation.mutate()} disabled={onboardMutation.isPending} variant="outline" className="w-full border-orange-200 text-orange-700 hover:bg-orange-50" data-testid="button-continue-stripe">
-                {onboardMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ExternalLink className="w-4 h-4 mr-2" />}
-                Continue Setup
-              </Button>
-            </div>
-          ) : stripeStatusKey === "under_review" ? (
-            <p className="text-sm text-amber-700">Your account is under review by Stripe. Payouts will be enabled once approved.</p>
-          ) : (
-            <div className="space-y-3">
-              <div className="flex items-center gap-2 text-sm text-green-700 p-3 bg-green-50 rounded-lg border border-green-200">
-                <CheckCircle className="w-4 h-4" />Your account is active and ready to receive payouts.
-              </div>
-              <Button onClick={() => dashboardMutation.mutate()} disabled={dashboardMutation.isPending} variant="outline" className="w-full" data-testid="button-stripe-dashboard">
-                {dashboardMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ExternalLink className="w-4 h-4 mr-2" />}
-                View Stripe Dashboard
-              </Button>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      {/* Stripe Connect — the shared card (also used by the Money page). This section
+          previously hand-rolled the same status query + onboard/dashboard mutations; deduped
+          in the Aug 10 2026 provider-console fix wave so the two surfaces can't drift. */}
+      <StripeConnectCard />
     </div>
   );
 }
