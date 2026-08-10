@@ -95,6 +95,32 @@ the cart IS the design, not a gap. CLOSED.
 
 ## Open — build items
 
+**P0 — LIVE REGRESSION (found Aug 10, 2026; introduced by `be78a9c` on
+`claude/sync-local-repo-2j7ghv`): the F2 publish gate blocks EVERY EXPERT from publishing.**
+The Phase-0.5 verification gate on POST/PATCH `/api/provider/services` (server/routes.ts, fires when
+`input.status === "active"`) blocks any non-admin with no `service_provider_forms` row. **Experts
+never have one** — expert verification lives in `local_expert_forms` — and both consoles share the
+same `ServiceForm` component posting to the same route (CLAUDE.md "Service Creation Consolidation":
+experts create services through the provider route by design). Reproduced live: an `expert`-role
+account POSTing `status:"active"` gets `403 VERIFICATION_GATE {identityVerified:false,
+businessVerified:false}`, and the message tells them to visit "your provider status page" — a page
+experts do not have. Three aggravating facts: (a) `local_expert_forms` has **no
+`business_verification_status` column at all**, so an expert can never satisfy a business-verification
+check (correctly — an individual expert is not a business); (b) it hits EDITS too, since
+`ServiceForm` sets `payload.status = "active"` on any Publish click, so an expert editing a live
+listing is blocked (drafts still save); (c) local data: `expert` role = 12 users / 0 provider forms /
+12 expert forms, vs `service_provider` = 12 users / 9 provider forms / 0 expert forms. Nothing
+already-published is unpublished (the gate only fires on write); the block is on new publishes and
+re-publishes, affecting all 12 experts plus the 3 providers with no form row.
+**Fix (role-aware gate, not form-table-aware):** providers → `service_provider_forms`, identity AND
+business verified (current behavior, correct); experts → `local_expert_forms`, identity verified only;
+admin → bypass, but via the **DB role lookup** `requireAdmin` uses (CLAUDE.md §2), not the
+`req.user.role` session snapshot the current code reads; error message routed to each role's own
+status page. **Owner:** the KYB lane (the agent that built the gate) — it is mid-flight in this exact
+block, so a parallel edit risks a divergence. Coordinate before touching. **[DM]** call embedded:
+whether experts must be identity-verified to publish at all is a business decision, not an
+implementation detail — the fix above assumes yes (identity only).
+
 1. **Partner drawer: close the book-off-site loop.** The pill promises "book off-site, log it here",
    but after booking on the partner site there is no "Log completed booking → add to Day N" action —
    the expert must re-enter it by hand through Custom. Add a log-booking step to the drawer
