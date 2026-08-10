@@ -111,6 +111,7 @@ import conciergeRoutes from "./routes/concierge.routes";
 import upsellRoutes from "./routes/upsell.routes";
 import tripsRoutes from "./routes/trips.routes";
 import advisorRoutes from "./routes/advisor.routes";
+import demandRoutes from "./routes/demand.routes";
 import providerListingHealthRoutes from "./routes/provider-listing-health.routes";
 import marketsRoutes from "./routes/markets.routes";
 import adminMarketsRoutes from "./routes/admin-markets.routes";
@@ -830,6 +831,12 @@ export async function registerRoutes(
   // stay-anchor (platform-first lodging near the trip's located-item centroid), and on-demand
   // narration (cached per tripId, planHash staleness key). Full paths declared in the router.
   app.use(advisorRoutes);
+
+  // Demand tab / Trending rail / Business Advisor (ratified §10/§11/§12 build, migration 189's
+  // append-only demand_signal_events): GET /api/me/demand-signals + POST/GET
+  // /api/me/business-advisor. `logDemandSignal` (its named export) is the one writer used by
+  // advisor.routes.ts and content.routes.ts.
+  app.use(demandRoutes);
 
   // Market geography (CLAUDE.md §20b): public DB-first read for the client geography layer,
   // and the admin "Add market" flow (paths under /api/admin/markets — §2 blanket requireAdmin
