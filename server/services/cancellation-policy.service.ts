@@ -136,7 +136,7 @@ export async function quoteCancellationForBooking(bookingId: string): Promise<
   | null
 > {
   const rows = await db.execute(sql`
-    SELECT sb.status, sb.traveler_id, sb.total_amount,
+    SELECT sb.status, sb.traveler_id, sb.total_amount, sb.platform_fee, sb.insurance_fee,
            sb.booking_details ->> 'scheduledDate' AS scheduled_date,
            ps.cancellation_policy_type
     FROM service_bookings sb
@@ -147,9 +147,16 @@ export async function quoteCancellationForBooking(bookingId: string): Promise<
   const row = rows.rows?.[0] as any;
   if (!row) return null;
 
+  // Refund basis is the FULL amount the traveler was charged — service price + platform fee
+  // + insurance fee — per the platform-owner ruling (2026-08-10): the platform fee is refunded
+  // at the same policy percent, never silently retained.
+  const amountPaid =
+    parseFloat(row.total_amount || '0') +
+    parseFloat(row.platform_fee || '0') +
+    parseFloat(row.insurance_fee || '0');
   const quote = computeCancellationRefund({
     policyType: row.cancellation_policy_type,
-    totalAmount: parseFloat(row.total_amount || '0'),
+    totalAmount: amountPaid,
     scheduledDate: row.scheduled_date,
   });
   return { ...quote, bookingStatus: row.status, travelerId: row.traveler_id ?? null };

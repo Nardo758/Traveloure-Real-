@@ -12,3 +12,5 @@ Rules the completion review enforced (apply to any future refund-path work):
 
 **Why:** first completion attempt was rejected on exactly these three points.
 Integration test: `scripts/test-cancellation-refund-integration.ts` (real Stripe test mode + dev DB, covers 50% refund, failure/retry, concurrency). Unit: `server/services/__tests__/cancellation-policy.test.ts`.
+
+**Fee-inclusive refunds (platform-owner ruling 2026-08-10):** the refund basis is the FULL amount charged (total_amount + platform_fee + insurance_fee) — policy % of that for traveler cancels, always 100% for provider-initiated cancels of a Stripe-verified-paid booking. `refundServiceBooking` with no amountOverride now defaults to the charged amount, not total_amount. Owner cancel gates the refund branch on a live PI `succeeded` check (a stamped PI is not proof of payment). Both cancel paths write an in-app `booking_cancelled` notification; the losing racer of the atomic refund claim gets `alreadyRefunded` and must fire no ledger/notification side-effects.
