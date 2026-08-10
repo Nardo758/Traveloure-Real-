@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, Link, useLocation } from "wouter";
 import { Layout } from "@/components/layout";
+import { ServiceLocationMap, parseLatLng } from "@/components/service-location-map";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -113,6 +114,24 @@ interface Service {
   // (server: GET /api/services/:id, content.routes.ts). Null when the owner isn't away —
   // listings stay visible either way, booking is disabled only while `away` is set.
   away?: { until: string; message: string | null } | null;
+  // Ruling 22: the location facts were ALREADY on the wire (the endpoint spreads the row);
+  // this interface just stopped dropping them on the floor. Map renders only from a real
+  // confirmed pin / located stops — no city-center fallback (§13).
+  latitude?: string | number | null;
+  longitude?: string | number | null;
+  locationPrecision?: string | null;
+  serviceRadius?: string | number | null;
+  dropOffPoint?: string | null;
+  routePoints?: ServiceRoutePointRow[];
+}
+
+// Ruling 22: ordered route stops (service_route_points child rows, migration 192).
+interface ServiceRoutePointRow {
+  id: string;
+  position: number;
+  name: string;
+  latitude: string | null;
+  longitude: string | null;
 }
 
 interface BundleComponent {
@@ -645,6 +664,76 @@ export default function ServiceDetailPage() {
                 )}
               </CardContent>
             </Card>
+
+            {/* Ruling 22(c): Location & route — renders ONLY when the service has real
+                location facts (confirmed pin and/or route stops). Map draws located stops
+                only; unlocated stops stay listed with an honest "not on map" flag. The
+                connector is stop order, not travel routing — the map component says so. */}
+            {(() => {
+              const servicePin = parseLatLng(service.latitude, service.longitude);
+              const routeStops = service.routePoints ?? [];
+              if (!servicePin && routeStops.length === 0) return null;
+              const locatedStops = routeStops.filter((s) => parseLatLng(s.latitude, s.longitude) !== null);
+              const radiusKm = Number(service.serviceRadius);
+              return (
+                <Card data-testid="card-location-route">
+                  <CardHeader>
+                    <CardTitle>Location & route</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="rounded-lg overflow-hidden border">
+                      <ServiceLocationMap
+                        pin={servicePin}
+                        pinLabel={service.meetingPoint || service.serviceName}
+                        radiusKm={Number.isFinite(radiusKm) && radiusKm > 0 ? radiusKm : null}
+                        stops={routeStops.map((s) => {
+                          const p = parseLatLng(s.latitude, s.longitude);
+                          return { id: s.id, position: s.position, name: s.name, lat: p?.lat ?? null, lng: p?.lng ?? null };
+                        })}
+                        height={300}
+                        testIdPrefix="service-detail-map"
+                      />
+                    </div>
+                    {routeStops.length > 0 && (
+                      <div>
+                        <p className="text-sm font-medium mb-2" data-testid="text-route-summary">
+                          Route — {locatedStops.length} of {routeStops.length} stops located
+                        </p>
+                        <ol className="space-y-1.5">
+                          {routeStops
+                            .slice()
+                            .sort((a, b) => a.position - b.position)
+                            .map((s) => (
+                              <li key={s.id} className="flex items-center gap-2 text-sm" data-testid={`route-stop-${s.position}`}>
+                                <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground text-[11px] font-bold flex items-center justify-center shrink-0">
+                                  {s.position}
+                                </span>
+                                <span className="text-muted-foreground">{s.name}</span>
+                                {parseLatLng(s.latitude, s.longitude) === null && (
+                                  <Badge variant="outline" className="text-[10px]">not on map</Badge>
+                                )}
+                              </li>
+                            ))}
+                        </ol>
+                      </div>
+                    )}
+                    {(service.meetingPoint || service.pickupAddress || service.dropOffPoint) && (
+                      <div className="space-y-1 text-sm text-muted-foreground">
+                        {service.meetingPoint && (
+                          <p data-testid="text-map-meeting-point"><span className="font-medium text-foreground">Meet:</span> {service.meetingPoint}</p>
+                        )}
+                        {service.pickupAddress && (
+                          <p data-testid="text-map-pickup"><span className="font-medium text-foreground">Pickup:</span> {service.pickupAddress}</p>
+                        )}
+                        {service.dropOffPoint && (
+                          <p data-testid="text-map-dropoff"><span className="font-medium text-foreground">Drop-off:</span> {service.dropOffPoint}</p>
+                        )}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })()}
 
             {hasTiers && (
               <Card data-testid="card-pricing-tiers">

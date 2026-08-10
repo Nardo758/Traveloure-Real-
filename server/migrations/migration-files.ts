@@ -879,4 +879,11 @@ export const MIGRATION_FILES = [
   // counts jsonb, created_at) so the page's "last run" line can tell "ran and found nothing"
   // from "never ran". Additive, idempotent, no CHECK. Declared in shared/schema.ts (publish-trap).
   "191_dmo_extraction_runs.sql",
+  // 192: service_route_points — ordered route stops for a provider service (CLAUDE.md ruling 22,
+  // decision-maker ratified Aug 10 2026). dmo_extracted_places pattern: CASCADE child rows,
+  // UNIQUE (service_id, "position"), nullable lat/lng (an unlocated stop is honestly
+  // coordinate-less — §13, never guessed). Written only by the owner-gated replace-list
+  // endpoint; positions server-derived. Additive, idempotent, no CHECK. Declared in
+  // shared/schema.ts (publish-trap).
+  "192_service_route_points.sql",
 ] as const;

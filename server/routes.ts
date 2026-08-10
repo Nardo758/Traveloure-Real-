@@ -2140,9 +2140,57 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           neighborhoods = rows.map(r => r.slug);
         }
       }
-      res.json({ ...service, neighborhoods });
+      // Ruling 22: route stops ride the same owner read the edit surfaces already use
+      const routePoints = await storage.getServiceRoutePoints(service.id);
+      res.json({ ...service, neighborhoods, routePoints });
     } catch (err) {
       res.status(500).json({ message: "Failed to fetch service" });
+    }
+  });
+
+  // Ruling 22: replace-list write for a service's ordered route stops. Owner-gated like the
+  // sibling PATCH; ALLOWLIST body (§19 posture — nothing but name + coordinates can reach a
+  // row, and positions are derived server-side from array order, never client-numbered).
+  const routeStopsBodySchema = z.object({
+    stops: z.array(z.object({
+      name: z.string().trim().min(1).max(255),
+      latitude: z.number().min(-90).max(90).nullable().optional(),
+      longitude: z.number().min(-180).max(180).nullable().optional(),
+    })).max(40),
+  });
+  app.put("/api/provider/services/:id/route-points", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req)!;
+      const service = await storage.getProviderServiceById(req.params.id);
+      if (!service || service.userId !== userId) {
+        return res.status(404).json({ message: "Service not found" });
+      }
+      const parsed = routeStopsBodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid route stops", errors: parsed.error.flatten() });
+      }
+      const stops: Array<{ name: string; latitude: number | null; longitude: number | null }> = [];
+      for (const s of parsed.data.stops) {
+        const hasLat = typeof s.latitude === "number";
+        const hasLng = typeof s.longitude === "number";
+        if (hasLat !== hasLng) {
+          // A half-coordinate is a guess waiting to happen (§13): both or neither.
+          return res.status(400).json({ message: "A stop must carry both latitude and longitude, or neither" });
+        }
+        stops.push({ name: s.name, latitude: hasLat ? s.latitude! : null, longitude: hasLng ? s.longitude! : null });
+      }
+      const routePoints = await storage.replaceServiceRoutePoints(service.id, stops);
+      res.json({ routePoints });
+    } catch (err: any) {
+      // The FOR UPDATE lock in replaceServiceRoutePoints serializes concurrent saves; a 23505
+      // here is the residual race backstop — the route changed under this caller, and a fresh
+      // read + retry succeeds. Never a silent 500 either way.
+      const pgCode = err?.code ?? err?.cause?.code;
+      if (pgCode === "23505") {
+        return res.status(409).json({ message: "Route changed elsewhere — reload and try again" });
+      }
+      console.error("[route-points] save failed:", err);
+      res.status(500).json({ message: "Failed to save route stops" });
     }
   });
 

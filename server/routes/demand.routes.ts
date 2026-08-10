@@ -32,6 +32,7 @@ import {
   DEMAND_SIGNAL_EVENT_KINDS,
   type DemandSignalEventKind,
 } from "@shared/schema";
+import { isClassifiable, isPlaceAnchored } from "@shared/service-fundamentals";
 
 const router = Router();
 
@@ -253,7 +254,10 @@ router.get("/api/me/demand-signals", isAuthenticated, async (req, res) => {
 
 // ─── Business Advisor facts assembly (listing health + benchmarks + link stats + demand) ───────
 
-const HEALTH_CHECK_COUNT = 5; // photo, exact_pin, description, pricing, approval (availability omitted on query failure — see below, matches provider-listing-health.routes.ts's own omission posture)
+// Checks mirrored per service: photo, description, pricing, approval (universal) + exact_pin
+// (place-anchored services only — D2 method-aware fundamentals, shared/service-fundamentals.ts;
+// availability is not mirrored here, matching provider-listing-health.routes.ts's own omission
+// posture). The per-service applicable count is computed in the loop — no fixed constant.
 const DESCRIPTION_MIN_LENGTH = 80;
 
 interface ListingHealthSummary {
@@ -283,6 +287,8 @@ async function getListingHealthSummary(userId: string): Promise<ListingHealthSum
       latitude: providerServices.latitude,
       longitude: providerServices.longitude,
       locationPrecision: providerServices.locationPrecision,
+      deliveryMethod: providerServices.deliveryMethod,
+      productShape: providerServices.productShape,
     })
     .from(providerServices)
     .where(eq(providerServices.userId, userId));
@@ -291,24 +297,35 @@ async function getListingHealthSummary(userId: string): Promise<ListingHealthSum
 
   const gapCounts: Record<string, number> = { photo: 0, exact_pin: 0, description: 0, pricing: 0, approval: 0 };
   let passedTotal = 0;
+  let applicableTotal = 0;
 
   for (const s of rows) {
     const gallery = Array.isArray(s.galleryImages) ? s.galleryImages : [];
     const hasPhoto = !!(s.serviceImage && s.serviceImage.trim().length > 0) || gallery.length > 0;
-    const hasCoords = s.latitude != null && s.longitude != null;
-    const isExact = hasCoords && s.locationPrecision === "exact";
     const descOk = (s.description ?? "").trim().length >= DESCRIPTION_MIN_LENGTH;
     const priceNum = s.price == null ? NaN : Number(s.price);
     const priceOk = Number.isFinite(priceNum) && priceNum > 0;
     const approvalOk = s.approvalStatus === "approved";
 
+    const rowChecks = [hasPhoto, descOk, priceOk, approvalOk];
+
+    // exact_pin only counts for/against place-anchored services (D2); an unclassifiable row
+    // keeps the historical behavior, same as the canonical route.
+    const shape = { deliveryMethod: s.deliveryMethod, productShape: s.productShape };
+    if (!isClassifiable(shape) || isPlaceAnchored(shape)) {
+      const hasCoords = s.latitude != null && s.longitude != null;
+      const isExact = hasCoords && s.locationPrecision === "exact";
+      rowChecks.push(isExact);
+      if (!isExact) gapCounts.exact_pin++;
+    }
+
     if (!hasPhoto) gapCounts.photo++;
-    if (!isExact) gapCounts.exact_pin++;
     if (!descOk) gapCounts.description++;
     if (!priceOk) gapCounts.pricing++;
     if (!approvalOk) gapCounts.approval++;
 
-    passedTotal += [hasPhoto, isExact, descOk, priceOk, approvalOk].filter(Boolean).length;
+    applicableTotal += rowChecks.length;
+    passedTotal += rowChecks.filter(Boolean).length;
   }
 
   const topGaps = Object.entries(gapCounts)
@@ -317,7 +334,7 @@ async function getListingHealthSummary(userId: string): Promise<ListingHealthSum
     .slice(0, 3)
     .map(([key, count]) => ({ key, count }));
 
-  return { serviceCount: rows.length, passed: passedTotal, total: rows.length * HEALTH_CHECK_COUNT, topGaps };
+  return { serviceCount: rows.length, passed: passedTotal, total: applicableTotal, topGaps };
 }
 
 interface BenchmarkFacts {
