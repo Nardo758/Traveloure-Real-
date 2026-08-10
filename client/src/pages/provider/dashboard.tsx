@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ProviderLayout } from "@/components/provider/provider-layout";
-import { StatCard } from "@/components/backoffice/primitives";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -261,7 +260,7 @@ export default function ProviderDashboard() {
 
   return (
     <ProviderLayout title="Dashboard">
-      <div className="p-6 space-y-6">
+      <div className="p-5 space-y-3">
         <PayoutBanner
           stripeConnectStatus={stripeStatus?.status ?? "not_started"}
           isPayable={stripeStatus?.connected ?? false}
@@ -271,11 +270,11 @@ export default function ProviderDashboard() {
             Rendered above the KPIs per spec, linking to Settings' Vacation Mode card. */}
         {vacationStatus?.active && vacationStatus.vacationUntil && (
           <div
-            className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 flex-wrap"
+            className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 flex-wrap"
             data-testid="banner-vacation-mode"
           >
-            <div className="flex items-center gap-2 text-sm text-amber-800">
-              <Plane className="w-4 h-4 flex-shrink-0" />
+            <div className="flex items-center gap-2 text-xs text-amber-800">
+              <Plane className="w-3.5 h-3.5 flex-shrink-0" />
               <span>
                 Vacation mode ON until{" "}
                 {new Date(vacationStatus.vacationUntil).toLocaleDateString(undefined, {
@@ -286,7 +285,7 @@ export default function ProviderDashboard() {
               </span>
             </div>
             <Link href="/provider/settings">
-              <Button variant="outline" size="sm" className="border-amber-300 text-amber-800 hover:bg-amber-100" data-testid="link-vacation-settings">
+              <Button variant="outline" size="sm" className="h-7 text-xs border-amber-300 text-amber-800 hover:bg-amber-100" data-testid="link-vacation-settings">
                 Manage <ChevronRight className="w-3.5 h-3.5 ml-1" />
               </Button>
             </Link>
@@ -295,7 +294,7 @@ export default function ProviderDashboard() {
 
         {/* Welcome Section — the "N this month" subtitle was removed: it exactly duplicated
             the "This Month" KPI two rows below (§13, no reason to say the same number twice). */}
-        <h2 className="text-2xl font-bold text-console-darkest" data-testid="text-welcome">
+        <h2 className="text-lg font-bold text-console-darkest" data-testid="text-welcome">
           Welcome back!
         </h2>
 
@@ -319,118 +318,114 @@ export default function ProviderDashboard() {
             <button
               type="button"
               onClick={() => setSetupManualExpanded(true)}
-              className="w-full flex items-center justify-between px-4 py-2.5 rounded-lg border border-console-light bg-white hover:bg-console-hover transition-colors text-sm"
+              className="w-full flex items-center justify-between px-3 py-2 rounded-lg border border-console-light bg-white hover:bg-console-hover transition-colors text-xs"
               data-testid="button-expand-setup"
             >
-              <span className="font-medium text-console-darkest">
+              <span className="font-semibold text-console-darkest">
                 Open your business · {setupDoneCount} of {setupTotalCount} complete
               </span>
-              <ChevronDown className="w-4 h-4 text-console-mid" />
+              <ChevronDown className="w-3.5 h-3.5 text-console-mid" />
             </button>
           )
         )}
 
-        {/* Stats Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {stats.map((stat) => (
-            <StatCard
-              key={stat.label}
-              testId={`card-stat-${stat.label.toLowerCase().replace(/\s+/g, "-")}`}
-              label={stat.label}
-              value={stat.value}
-              icon={stat.icon}
-              iconClassName={stat.color}
-            />
-          ))}
+        {/* Stats Grid — dense KPI tiles matching the ratified mockup (§12): small uppercase
+            label, tight bold value, no icon. Renders inline rather than through the shared
+            StatCard primitive (used elsewhere with the chunkier icon-box treatment) — this
+            page owns its own compact density per the decision-maker's aesthetics ruling. */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {stats.map((stat) => {
+            const isPlaceholder = typeof stat.value === "string" && !/^[$\d]/.test(stat.value);
+            return (
+              <div
+                key={stat.label}
+                data-testid={`card-stat-${stat.label.toLowerCase().replace(/\s+/g, "-")}`}
+                className="rounded-lg border border-console-light bg-white px-3 py-2.5"
+              >
+                <p className="text-[10.5px] font-bold uppercase tracking-wide text-console-mid">{stat.label}</p>
+                <p className={isPlaceholder ? "text-[13px] text-console-mid mt-1" : "text-xl font-extrabold text-console-darkest mt-0.5"}>
+                  {stat.value}
+                </p>
+              </div>
+            );
+          })}
         </div>
 
         {/* Two-Panel Layout: Left 60%, Right 40% */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-3.5">
           {/* Left Panel - 60% width */}
-          <div className="lg:col-span-2 space-y-6">
+          <div className="lg:col-span-2 space-y-3">
             {/* Quick Actions — real navigation (wouter Link, same pattern the sidebar uses);
-                the previous 4 buttons had no onClick at all (§13 dead chrome). */}
-            <Card className="border border-console-light">
-              <CardHeader className="pb-2 pt-3">
-                <CardTitle className="text-sm font-semibold text-console-mid uppercase tracking-wide">
-                  Quick Actions
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="pt-0 pb-3">
-                <div className="grid grid-cols-4 gap-2">
-                  <Link href="/provider/inbox">
-                    <Button variant="outline" size="sm" className="w-full justify-center flex-col h-auto py-2" data-testid="link-quick-inbox">
-                      <MessageSquare className="w-4 h-4 mb-1" />
-                      <span className="text-xs">Messages</span>
-                    </Button>
-                  </Link>
-                  <Link href="/provider/calendar">
-                    <Button variant="outline" size="sm" className="w-full justify-center flex-col h-auto py-2" data-testid="link-quick-calendar">
-                      <Calendar className="w-4 h-4 mb-1" />
-                      <span className="text-xs">Calendar</span>
-                    </Button>
-                  </Link>
-                  <Link href="/provider/services">
-                    <Button variant="outline" size="sm" className="w-full justify-center flex-col h-auto py-2" data-testid="link-quick-services">
-                      <Package className="w-4 h-4 mb-1" />
-                      <span className="text-xs">Services</span>
-                    </Button>
-                  </Link>
-                  <Link href="/provider/performance">
-                    <Button variant="outline" size="sm" className="w-full justify-center flex-col h-auto py-2" data-testid="link-quick-analytics">
-                      <TrendingUp className="w-4 h-4 mb-1" />
-                      <span className="text-xs">Analytics</span>
-                    </Button>
-                  </Link>
-                </div>
-              </CardContent>
-            </Card>
+                the previous 4 buttons had no onClick at all (§13 dead chrome). Slim bordered
+                pills, icon+label inline (mockup §12/§01) — not stacked icon-over-label boxes. */}
+            <div className="flex flex-wrap gap-2">
+              <Link href="/provider/inbox">
+                <Button variant="outline" size="sm" className="h-7 px-2.5 text-xs font-semibold gap-1.5" data-testid="link-quick-inbox">
+                  <MessageSquare className="w-3.5 h-3.5" /> Messages
+                </Button>
+              </Link>
+              <Link href="/provider/calendar">
+                <Button variant="outline" size="sm" className="h-7 px-2.5 text-xs font-semibold gap-1.5" data-testid="link-quick-calendar">
+                  <Calendar className="w-3.5 h-3.5" /> Calendar
+                </Button>
+              </Link>
+              <Link href="/provider/services">
+                <Button variant="outline" size="sm" className="h-7 px-2.5 text-xs font-semibold gap-1.5" data-testid="link-quick-services">
+                  <Package className="w-3.5 h-3.5" /> Services
+                </Button>
+              </Link>
+              <Link href="/provider/performance">
+                <Button variant="outline" size="sm" className="h-7 px-2.5 text-xs font-semibold gap-1.5" data-testid="link-quick-analytics">
+                  <TrendingUp className="w-3.5 h-3.5" /> Analytics
+                </Button>
+              </Link>
+            </div>
 
             {/* Today's Bookings */}
             <Card className="border border-console-light">
-              <CardHeader className="pb-3">
+              <CardHeader className="pb-2 pt-3 px-4">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <CalendarCheck className="w-5 h-5 text-green-600" />
-                    <CardTitle className="text-lg">Today's Bookings</CardTitle>
+                  <div className="flex items-center gap-1.5">
+                    <CalendarCheck className="w-3.5 h-3.5 text-green-600" />
+                    <CardTitle className="text-[13px] font-bold">Today's Bookings</CardTitle>
                   </div>
                   <Link href="/provider/calendar">
-                    <Button variant="ghost" size="sm" className="text-primary" data-testid="button-view-all-bookings">
-                      View All <ChevronRight className="w-4 h-4 ml-1" />
+                    <Button variant="ghost" size="sm" className="h-6 px-1.5 text-xs text-primary" data-testid="button-view-all-bookings">
+                      View All <ChevronRight className="w-3.5 h-3.5 ml-0.5" />
                     </Button>
                   </Link>
                 </div>
               </CardHeader>
-              <CardContent className="space-y-4">
+              <CardContent className="px-4 pb-3 space-y-2">
                 {confirmedBookings.length > 0 ? confirmedBookings.slice(0, 4).map((booking) => (
                   <div
                     key={booking.id}
-                    className="p-4 rounded-lg border border-console-light bg-white hover:bg-console-hover transition-colors"
+                    className="p-2.5 rounded-lg border border-console-light bg-white hover:bg-console-hover transition-colors"
                     data-testid={`card-booking-${booking.id}`}
                   >
-                    <div className="flex items-start gap-3">
-                      <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center flex-shrink-0">
-                        <Calendar className="w-5 h-5 text-green-600" />
+                    <div className="flex items-start gap-2.5">
+                      <div className="w-8 h-8 rounded-lg bg-green-100 flex items-center justify-center flex-shrink-0">
+                        <Calendar className="w-4 h-4 text-green-600" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-start justify-between gap-2">
                           <div>
-                            <p className="font-semibold text-console-darkest">{booking.service?.serviceName || "Service"}</p>
-                            <p className="text-sm text-console-mid mt-0.5">{booking.traveler?.displayName || "Client"}</p>
+                            <p className="text-[13px] font-semibold text-console-darkest">{booking.service?.serviceName || "Service"}</p>
+                            <p className="text-xs text-console-mid mt-0.5">{booking.traveler?.displayName || "Client"}</p>
                           </div>
-                          <Badge variant="outline" className="text-xs flex-shrink-0">
+                          <Badge variant="outline" className="text-[10px] flex-shrink-0">
                             Confirmed
                           </Badge>
                         </div>
-                        <p className="text-sm font-medium text-console-darkest mt-2">${parseFloat(booking.totalAmount || "0").toLocaleString()}</p>
+                        <p className="text-xs font-medium text-console-darkest mt-1.5">${parseFloat(booking.totalAmount || "0").toLocaleString()}</p>
                         {booking.referredBy && booking.referredBy !== "Direct" && (
-                          <p className="text-xs text-[#2E8B8B] font-medium mt-1">via {booking.referredBy}</p>
+                          <p className="text-[10.5px] text-[#2E8B8B] font-medium mt-1">via {booking.referredBy}</p>
                         )}
                       </div>
                     </div>
                   </div>
                 )) : (
-                  <p className="text-console-mid text-center py-4">No confirmed bookings today</p>
+                  <p className="text-console-mid text-center text-xs py-2">No confirmed bookings today</p>
                 )}
               </CardContent>
             </Card>
@@ -440,43 +435,43 @@ export default function ProviderDashboard() {
           </div>
 
           {/* Right Panel - 40% width */}
-          <div className="space-y-6 hidden lg:block">
+          <div className="space-y-3 hidden lg:block">
             {/* Earnings card removed — it exactly duplicated the "Revenue (MTD)" KPI above (§13). */}
 
             {/* Upcoming 5 Days — removed fabricated schedule with hardcoded rides/amounts per §13 */}
 
             {/* Action Items */}
             <Card className="border border-console-light">
-              <CardHeader className="pb-3">
-                <div className="flex items-center gap-2">
-                  <AlertCircle className="w-5 h-5 text-amber-500" />
-                  <CardTitle className="text-lg">Action Items ({pendingBookings.length})</CardTitle>
+              <CardHeader className="pb-2 pt-3 px-4">
+                <div className="flex items-center gap-1.5">
+                  <AlertCircle className="w-3.5 h-3.5 text-amber-500" />
+                  <CardTitle className="text-[13px] font-bold">Action Items ({pendingBookings.length})</CardTitle>
                 </div>
               </CardHeader>
-              <CardContent className="space-y-2">
+              <CardContent className="px-4 pb-3 space-y-1.5">
                 {pendingBookings.length > 0 ? pendingBookings.slice(0, 3).map((request) => (
                   <div
                     key={request.id}
-                    className="p-3 rounded-lg border border-amber-200 bg-amber-50 text-sm"
+                    className="p-2 rounded-lg border border-amber-200 bg-amber-50 text-xs"
                     data-testid={`card-action-${request.id}`}
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex-1">
                         <p className="font-medium text-console-darkest">{request.service?.serviceName || "Request"}</p>
-                        <p className="text-xs text-console-dark mt-0.5">{request.traveler?.displayName || "Client"}</p>
+                        <p className="text-[10.5px] text-console-dark mt-0.5">{request.traveler?.displayName || "Client"}</p>
                       </div>
-                      <Badge variant="outline" className="text-xs flex-shrink-0 border-amber-300 bg-amber-100">
+                      <Badge variant="outline" className="text-[10px] flex-shrink-0 border-amber-300 bg-amber-100">
                         {request.status}
                       </Badge>
                     </div>
-                    <div className="mt-2 flex gap-1">
-                      <Button size="sm" variant="ghost" className="h-7 text-xs flex-1" data-testid={`button-action-${request.id}`}>
+                    <div className="mt-1.5 flex gap-1">
+                      <Button size="sm" variant="ghost" className="h-6 text-xs flex-1" data-testid={`button-action-${request.id}`}>
                         Review
                       </Button>
                     </div>
                   </div>
                 )) : (
-                  <p className="text-console-mid text-center py-3 text-sm">No pending items</p>
+                  <p className="text-console-mid text-center py-2 text-xs">No pending items</p>
                 )}
               </CardContent>
             </Card>
@@ -486,34 +481,34 @@ export default function ProviderDashboard() {
                 (honest absence, §13); the compact layout above/below is otherwise untouched. */}
             {!demandError && demandData?.market && (
               <Card className="border border-console-light" data-testid="card-trending-rail">
-                <CardHeader className="pb-3">
+                <CardHeader className="pb-2 pt-3 px-3.5">
                   <div className="flex items-center justify-between">
-                    <CardTitle className="text-base" data-testid="text-trending-title">
-                      📈 TRENDING · {demandData.market}
+                    <CardTitle className="text-[11px] font-extrabold tracking-wide" data-testid="text-trending-title">
+                      📈 TRENDING · {demandData.market.toUpperCase()}
                     </CardTitle>
                   </div>
                 </CardHeader>
-                <CardContent className="space-y-2">
+                <CardContent className="px-3.5 pb-3 space-y-1.5">
                   {trendingItems.length > 0 ? (
                     trendingItems.map((item) => (
                       <div
                         key={item.key}
-                        className="p-2.5 rounded-lg border border-console-light bg-white"
+                        className="p-2 rounded-lg border border-console-light bg-white"
                         data-testid={`row-trending-${item.key}`}
                       >
                         <div className="flex items-center justify-between gap-2">
-                          <p className="text-sm font-medium text-console-darkest truncate">{item.label}</p>
+                          <p className="text-[11px] font-medium text-console-darkest truncate">{item.label}</p>
                           {item.badge && (
-                            <Badge variant="outline" className="text-xs flex-shrink-0">
+                            <Badge variant="outline" className="text-[10px] flex-shrink-0 h-4 px-1.5">
                               {item.badge}
                             </Badge>
                           )}
                         </div>
-                        <p className="text-[11px] text-console-mid mt-0.5">{item.sourceLine}</p>
+                        <p className="text-[10.5px] text-console-mid mt-0.5">{item.sourceLine}</p>
                       </div>
                     ))
                   ) : (
-                    <p className="text-sm text-console-mid text-center py-3" data-testid="text-trending-low-signal">
+                    <p className="text-xs text-console-mid text-center py-2" data-testid="text-trending-low-signal">
                       Not enough signal yet.
                     </p>
                   )}
@@ -521,7 +516,7 @@ export default function ProviderDashboard() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="text-primary w-full justify-center mt-1"
+                      className="h-6 text-xs text-primary w-full justify-center mt-0.5"
                       data-testid="link-full-demand-view"
                     >
                       Full demand view <ChevronRight className="w-3.5 h-3.5 ml-1" />
@@ -536,15 +531,15 @@ export default function ProviderDashboard() {
                 (was a dead button with no onClick, §13). Completion rate stays removed —
                 fabricated 94% with no data source per §13. */}
             <Card className="border border-console-light">
-              <CardContent className="p-3 flex items-center justify-between gap-2">
-                <div className="flex items-center gap-1.5 text-sm min-w-0">
-                  <Star className="w-4 h-4 text-amber-500 flex-shrink-0" />
+              <CardContent className="p-2.5 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 text-xs min-w-0">
+                  <Star className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
                   <span className="font-semibold text-amber-600">{(analytics?.summary?.avgRating ?? 0).toFixed(1)}</span>
                   <span className="text-console-mid truncate">· {analytics?.summary?.totalBookings ?? 0} bookings</span>
                 </div>
                 <Link href="/provider/performance">
-                  <Button variant="ghost" size="sm" className="text-primary flex-shrink-0" data-testid="button-view-performance">
-                    View Details <ChevronRight className="w-3.5 h-3.5 ml-1" />
+                  <Button variant="ghost" size="sm" className="h-6 px-1.5 text-xs text-primary flex-shrink-0" data-testid="button-view-performance">
+                    View Details <ChevronRight className="w-3.5 h-3.5 ml-0.5" />
                   </Button>
                 </Link>
               </CardContent>
@@ -559,14 +554,14 @@ export default function ProviderDashboard() {
             cost. This page doesn't otherwise query slot counts, so the CTA states real,
             non-fabricated copy rather than guessing a number (§13). */}
         <Card className="border border-console-light" data-testid="card-availability-cta">
-          <CardContent className="p-4 flex items-center justify-between gap-3 flex-wrap">
-            <div className="flex items-center gap-2 text-sm text-console-dark">
-              <Package className="w-4 h-4 text-blue-600 flex-shrink-0" />
+          <CardContent className="p-2.5 flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-2 text-xs text-console-dark">
+              <Package className="w-3.5 h-3.5 text-blue-600 flex-shrink-0" />
               <span>Manage your published time slots and booking availability on Catalog.</span>
             </div>
             <Link href="/provider/services">
-              <Button variant="outline" size="sm" data-testid="link-manage-availability">
-                Manage availability <ChevronRight className="w-4 h-4 ml-1" />
+              <Button variant="outline" size="sm" className="h-7 text-xs" data-testid="link-manage-availability">
+                Manage availability <ChevronRight className="w-3.5 h-3.5 ml-1" />
               </Button>
             </Link>
           </CardContent>
