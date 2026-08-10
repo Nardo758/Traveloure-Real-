@@ -215,10 +215,15 @@ export default function ContentStudio() {
   const [editingNugget, setEditingNugget] = useState<LocalKnowledgeNugget | null>(null);
   const [nuggetSearch, setNuggetSearch] = useState("");
 
-  const { data: instagramStatus } = useQuery<{ connected: boolean }>({
+  const { data: instagramStatus, isLoading: instagramStatusLoading } = useQuery<{
+    connected: boolean;
+    reason?: "personal_account" | "token_expired" | "auth_error" | "verification_error";
+    accountType?: string;
+  }>({
     queryKey: ["/api/instagram/status"],
   });
   const isInstagramConnected = instagramStatus?.connected ?? false;
+  const instagramDisconnectReason = instagramStatus?.reason;
 
   const { data: nuggets = [], isLoading: nuggetsLoading } = useQuery<LocalKnowledgeNugget[]>({
     queryKey: ["/api/expert/knowledge-nuggets"],
@@ -391,21 +396,31 @@ export default function ContentStudio() {
   };
 
   const handleConnectInstagram = async () => {
-    const clientId = import.meta.env.VITE_META_APP_ID;
-    if (!clientId) {
+    try {
+      const configRes = await fetch("/api/instagram/config");
+      const config = await configRes.json();
+      const clientId = config?.appId;
+      if (!clientId) {
+        toast({ 
+          title: "Configuration Required", 
+          description: "Instagram integration requires Meta App setup.", 
+          variant: "destructive" 
+        });
+        return;
+      }
+      
+      const redirectUri = encodeURIComponent(`${window.location.origin}/api/instagram/callback`);
+      const scope = encodeURIComponent("instagram_business_basic,instagram_business_content_publish");
+      const authUrl = `https://www.instagram.com/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}`;
+      
+      window.location.href = authUrl;
+    } catch {
       toast({ 
-        title: "Configuration Required", 
-        description: "Instagram integration requires Meta App setup.", 
+        title: "Configuration Error", 
+        description: "Could not load Instagram configuration. Please try again.", 
         variant: "destructive" 
       });
-      return;
     }
-    
-    const redirectUri = encodeURIComponent(`${window.location.origin}/api/instagram/callback`);
-    const scope = encodeURIComponent("instagram_business_basic,instagram_business_content_publish");
-    const authUrl = `https://www.instagram.com/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}`;
-    
-    window.location.href = authUrl;
   };
 
   const filteredContent = mockContent.filter(item => {
@@ -746,6 +761,82 @@ export default function ContentStudio() {
             </Button>
           </div>
         </div>
+
+        {/* Instagram connection banner — shown whenever the account is not connected */}
+        {!instagramStatusLoading && !isInstagramConnected && (
+          <Card
+            className={cn(
+              "border",
+              instagramDisconnectReason === "personal_account"
+                ? "border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-700"
+                : "border-pink-200 bg-gradient-to-r from-purple-500/5 via-pink-500/5 to-orange-500/5"
+            )}
+            data-testid="card-instagram-connect-banner"
+          >
+            <CardContent className="p-5">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                <div className="flex items-center gap-3 flex-1 min-w-0">
+                  <div
+                    className={cn(
+                      "w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0",
+                      instagramDisconnectReason === "personal_account"
+                        ? "bg-amber-100 dark:bg-amber-900"
+                        : "bg-gradient-to-br from-purple-500 via-pink-500 to-orange-500"
+                    )}
+                  >
+                    {instagramDisconnectReason === "personal_account" ? (
+                      <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                    ) : (
+                      <Instagram className="w-5 h-5 text-white" />
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    {instagramDisconnectReason === "personal_account" ? (
+                      <>
+                        <p className="font-semibold text-amber-800 dark:text-amber-300">
+                          Business or Creator account required
+                        </p>
+                        <p className="text-sm text-amber-700 dark:text-amber-400 mt-0.5">
+                          Instagram only allows publishing from Business and Creator accounts. Switch your account type in the Instagram app under Settings → Account → Switch to Professional Account, then reconnect here.
+                        </p>
+                      </>
+                    ) : instagramDisconnectReason === "token_expired" ? (
+                      <>
+                        <p className="font-semibold">Instagram session expired</p>
+                        <p className="text-sm text-muted-foreground mt-0.5">
+                          Your Instagram connection has expired. Reconnect to continue publishing directly from Content Studio.
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="font-semibold">Connect your Instagram account</p>
+                        <p className="text-sm text-muted-foreground mt-0.5">
+                          Link your Business or Creator Instagram account to publish content directly from Content Studio.
+                        </p>
+                      </>
+                    )}
+                  </div>
+                </div>
+                <Button
+                  onClick={handleConnectInstagram}
+                  className={cn(
+                    "flex-shrink-0 gap-2",
+                    instagramDisconnectReason === "personal_account" && "bg-amber-600 hover:bg-amber-700 text-white"
+                  )}
+                  variant={instagramDisconnectReason === "personal_account" ? "default" : "default"}
+                  data-testid="button-instagram-banner-connect"
+                >
+                  <Instagram className="w-4 h-4" />
+                  {instagramDisconnectReason === "token_expired"
+                    ? "Reconnect Instagram"
+                    : instagramDisconnectReason === "personal_account"
+                    ? "Reconnect with Business Account"
+                    : "Connect Instagram"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Card>
@@ -1144,9 +1235,51 @@ export default function ContentStudio() {
                       />
 
                       {!isInstagramConnected && (
-                        <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400">
-                          <AlertCircle className="w-4 h-4" />
-                          <span className="text-sm">Connect your Instagram account to publish directly</span>
+                        <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400">
+                          <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                          <div className="text-sm">
+                            {instagramDisconnectReason === "personal_account" ? (
+                              <>
+                                <span className="font-medium">Business or Creator account required.</span>{" "}
+                                Instagram only allows publishing from Business and Creator accounts. Switch your account type in the Instagram app, then{" "}
+                                <button
+                                  type="button"
+                                  onClick={handleConnectInstagram}
+                                  className="underline font-medium hover:no-underline"
+                                  data-testid="button-reconnect-instagram-inline"
+                                >
+                                  reconnect here
+                                </button>
+                                .
+                              </>
+                            ) : instagramDisconnectReason === "token_expired" ? (
+                              <>
+                                Your Instagram session has expired.{" "}
+                                <button
+                                  type="button"
+                                  onClick={handleConnectInstagram}
+                                  className="underline font-medium hover:no-underline"
+                                  data-testid="button-reconnect-instagram-inline"
+                                >
+                                  Reconnect your account
+                                </button>{" "}
+                                to publish directly.
+                              </>
+                            ) : (
+                              <>
+                                Connect your Instagram account to publish directly.{" "}
+                                <button
+                                  type="button"
+                                  onClick={handleConnectInstagram}
+                                  className="underline font-medium hover:no-underline"
+                                  data-testid="button-connect-instagram-inline"
+                                >
+                                  Connect now
+                                </button>
+                                .
+                              </>
+                            )}
+                          </div>
                         </div>
                       )}
                     </div>
