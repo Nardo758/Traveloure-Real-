@@ -7,6 +7,35 @@ import { isAuthenticated } from "../replit_integrations/auth";
 
 const router = Router();
 
+/**
+ * Maps a Graph API verification response to the status payload returned by
+ * GET /api/instagram/status. Exported for unit testing.
+ *
+ * @param verifyOk   Whether the HTTP response had a 2xx status code
+ * @param verifyData Parsed JSON body from graph.instagram.com/me
+ */
+export function resolveInstagramVerifyStatus(
+  verifyOk: boolean,
+  verifyData: Record<string, unknown>,
+): { connected: boolean; reason?: string; accountType?: string } {
+  if (!verifyOk || verifyData.error) {
+    const errCode = (verifyData.error as { code?: number } | undefined)?.code;
+    // 190 = invalid/expired token; 102/104 = session expired
+    const isExpired = [102, 104, 190].includes(errCode as number);
+    return {
+      connected: false,
+      reason: isExpired ? "token_expired" : "auth_error",
+    };
+  }
+
+  const accountType: string = (verifyData.account_type as string) ?? "";
+  if (accountType === "PERSONAL") {
+    return { connected: false, reason: "personal_account" };
+  }
+
+  return { connected: true, accountType };
+}
+
 const INSTAGRAM_APP_ID = process.env.INSTAGRAM_APP_ID;
 const INSTAGRAM_APP_SECRET = process.env.INSTAGRAM_APP_SECRET;
 const GRAPH_API_VERSION = "v21.0";
@@ -121,25 +150,10 @@ router.get("/status", isAuthenticated, async (req: Request, res: Response) => {
       const verifyData = await verifyResponse.json();
 
       if (!verifyResponse.ok || verifyData.error) {
-        const errCode = verifyData.error?.code;
-        // 190 = invalid/expired token; 102/104 = session expired
-        const isExpired = [102, 104, 190].includes(errCode);
         console.warn("Instagram token verification failed:", verifyData.error?.message);
-        return res.json({
-          connected: false,
-          reason: isExpired ? "token_expired" : "auth_error",
-        });
       }
 
-      const accountType: string = verifyData.account_type ?? "";
-      if (accountType === "PERSONAL") {
-        return res.json({
-          connected: false,
-          reason: "personal_account",
-        });
-      }
-
-      return res.json({ connected: true, accountType });
+      return res.json(resolveInstagramVerifyStatus(verifyResponse.ok, verifyData));
     } catch (verifyErr) {
       // Network error during verification — treat as disconnected but don't
       // wipe the stored token; the user may just be offline temporarily.

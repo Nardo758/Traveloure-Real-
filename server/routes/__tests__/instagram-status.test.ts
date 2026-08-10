@@ -1,63 +1,37 @@
 /**
  * instagram-status.test.ts
  *
- * Covers the Graph API verification logic added to GET /api/instagram/status.
+ * Tests for the resolveInstagramVerifyStatus helper exported from
+ * server/routes/instagram.ts, which drives the GET /api/instagram/status
+ * response. This function is the single source of truth for how a Graph API
+ * response is mapped to the connected/disconnected payload — the route handler
+ * delegates entirely to it.
  *
- * The /status handler now makes a live fetch to graph.instagram.com to confirm
- * the stored token is still valid and that the account is a Business/Creator
- * type. This introduces three response paths that must behave correctly:
- *
- *   1. Valid Business token  → { connected: true, accountType: "BUSINESS" }
- *   2. Expired/revoked token → { connected: false, reason: "token_expired" }
- *   3. Personal account      → { connected: false, reason: "personal_account" }
- *
- * We also verify the error-code branching: codes 102, 104, 190 must all map
- * to "token_expired", while any other error code maps to "auth_error".
- *
- * Strategy: the decision logic is extracted as a pure function that mirrors
- * the handler's Graph API verification branch verbatim. This avoids needing
- * real DB/auth infrastructure while testing the exact contract the route ships.
- * A second suite uses a mock req/res pair + globalThis.fetch stub to exercise
- * the full handler end-to-end with fake DB and auth wiring.
+ * Three key scenarios (per task spec):
+ *   1. Valid Business/Creator token   → { connected: true, accountType }
+ *   2. Expired/revoked token (190)    → { connected: false, reason: "token_expired" }
+ *   3. Personal account               → { connected: false, reason: "personal_account" }
  *
  * Run with: npx tsx --test server/routes/__tests__/instagram-status.test.ts
  */
 
-import { describe, it, beforeEach, afterEach } from "node:test";
+import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 
-// ── Pure decision logic (mirrors the handler verbatim) ───────────────────────
-
-/**
- * Mirrors the Graph API verification branch in the /status route handler.
- * Any change to server/routes/instagram.ts must keep this in sync.
- */
-function resolveStatusFromGraphResponse(
-  verifyOk: boolean,
-  verifyData: Record<string, unknown>,
-): { connected: boolean; reason?: string; accountType?: string } {
-  if (!verifyOk || verifyData.error) {
-    const errCode = (verifyData.error as { code?: number } | undefined)?.code;
-    const isExpired = [102, 104, 190].includes(errCode as number);
-    return {
-      connected: false,
-      reason: isExpired ? "token_expired" : "auth_error",
-    };
-  }
-
-  const accountType: string = (verifyData.account_type as string) ?? "";
-  if (accountType === "PERSONAL") {
-    return { connected: false, reason: "personal_account" };
-  }
-
-  return { connected: true, accountType };
+// Set DATABASE_URL before importing the route module so the db import
+// doesn't throw at module init time (no real connection is made here).
+if (!process.env.DATABASE_URL) {
+  process.env.DATABASE_URL = "postgresql://test:test@localhost:5432/test";
 }
 
-// ── Suite 1: pure logic ──────────────────────────────────────────────────────
+// Import the real exported helper from the production route file.
+const { resolveInstagramVerifyStatus } = await import("../instagram.js");
 
-describe("resolveStatusFromGraphResponse — connected Business account", () => {
+// ── Suite 1: connected Business / Creator account ─────────────────────────────
+
+describe("resolveInstagramVerifyStatus — connected Business account", () => {
   it("returns connected:true with accountType for a valid BUSINESS token", () => {
-    const result = resolveStatusFromGraphResponse(true, {
+    const result = resolveInstagramVerifyStatus(true, {
       id: "123",
       account_type: "BUSINESS",
     });
@@ -65,7 +39,7 @@ describe("resolveStatusFromGraphResponse — connected Business account", () => 
   });
 
   it("returns connected:true with accountType for a valid CREATOR token", () => {
-    const result = resolveStatusFromGraphResponse(true, {
+    const result = resolveInstagramVerifyStatus(true, {
       id: "456",
       account_type: "CREATOR",
     });
@@ -73,52 +47,64 @@ describe("resolveStatusFromGraphResponse — connected Business account", () => 
   });
 });
 
-describe("resolveStatusFromGraphResponse — expired / revoked token", () => {
-  it("maps OAuthException code 190 to token_expired", () => {
-    const result = resolveStatusFromGraphResponse(false, {
-      error: { code: 190, message: "Invalid OAuth access token." },
+// ── Suite 2: expired / revoked token ─────────────────────────────────────────
+
+describe("resolveInstagramVerifyStatus — expired / revoked token", () => {
+  it("maps OAuthException code 190 (HTTP 400) to token_expired", () => {
+    const result = resolveInstagramVerifyStatus(false, {
+      error: { code: 190, type: "OAuthException", message: "Invalid OAuth access token." },
     });
     assert.equal(result.connected, false);
     assert.equal(result.reason, "token_expired");
   });
 
   it("maps error code 102 to token_expired", () => {
-    const result = resolveStatusFromGraphResponse(false, {
-      error: { code: 102, message: "Session key invalid." },
+    const result = resolveInstagramVerifyStatus(false, {
+      error: { code: 102, type: "OAuthException", message: "Session key invalid." },
     });
     assert.equal(result.connected, false);
     assert.equal(result.reason, "token_expired");
   });
 
   it("maps error code 104 to token_expired", () => {
-    const result = resolveStatusFromGraphResponse(false, {
-      error: { code: 104, message: "Incorrect signature." },
+    const result = resolveInstagramVerifyStatus(false, {
+      error: { code: 104, type: "OAuthException", message: "Incorrect signature." },
+    });
+    assert.equal(result.connected, false);
+    assert.equal(result.reason, "token_expired");
+  });
+
+  it("maps a 200-ok response body with embedded error code 190 to token_expired", () => {
+    // Graph API occasionally returns HTTP 200 with an error body
+    const result = resolveInstagramVerifyStatus(true, {
+      error: { code: 190, type: "OAuthException", message: "Invalid OAuth access token." },
     });
     assert.equal(result.connected, false);
     assert.equal(result.reason, "token_expired");
   });
 
   it("maps an unknown error code to auth_error (not token_expired)", () => {
-    const result = resolveStatusFromGraphResponse(false, {
-      error: { code: 200, message: "Permission denied." },
+    const result = resolveInstagramVerifyStatus(false, {
+      error: { code: 200, type: "OAuthException", message: "Permission denied." },
     });
     assert.equal(result.connected, false);
     assert.equal(result.reason, "auth_error");
   });
 
-  it("maps a 200-ok response with an embedded error object to token_expired if code is 190", () => {
-    // Graph API sometimes returns HTTP 200 but with an error body
-    const result = resolveStatusFromGraphResponse(true, {
-      error: { code: 190, message: "Invalid OAuth access token." },
+  it("maps a non-expiry HTTP error with no code to auth_error", () => {
+    const result = resolveInstagramVerifyStatus(false, {
+      error: { message: "Unknown error" },
     });
     assert.equal(result.connected, false);
-    assert.equal(result.reason, "token_expired");
+    assert.equal(result.reason, "auth_error");
   });
 });
 
-describe("resolveStatusFromGraphResponse — personal account", () => {
+// ── Suite 3: personal account ─────────────────────────────────────────────────
+
+describe("resolveInstagramVerifyStatus — personal account", () => {
   it("returns personal_account when account_type is PERSONAL", () => {
-    const result = resolveStatusFromGraphResponse(true, {
+    const result = resolveInstagramVerifyStatus(true, {
       id: "789",
       account_type: "PERSONAL",
     });
@@ -126,128 +112,94 @@ describe("resolveStatusFromGraphResponse — personal account", () => {
     assert.equal(result.reason, "personal_account");
   });
 
-  it("does not confuse a personal account with a token error", () => {
-    const result = resolveStatusFromGraphResponse(true, {
+  it("does not leak accountType into the disconnected personal_account payload", () => {
+    const result = resolveInstagramVerifyStatus(true, {
       id: "789",
       account_type: "PERSONAL",
     });
-    assert.ok(!("accountType" in result) || result.accountType !== "PERSONAL",
-      "accountType should not be returned for disconnected state");
-    assert.equal(result.reason, "personal_account");
+    // accountType must not be present (or must not be "PERSONAL") — the caller
+    // should not treat a personal account as a connected account type.
+    assert.ok(
+      !("accountType" in result) || result.accountType === "",
+      "accountType must not appear in a personal_account disconnected payload",
+    );
   });
 });
 
-// ── Suite 2: handler contract via stubbed fetch + mock req/res ───────────────
-//
-// We test the actual route handler code by wiring a fake DB record + a
-// globalThis.fetch stub directly. The isAuthenticated middleware is bypassed
-// by calling the inner handler logic indirectly — we validate that each Graph
-// API stub shape flows through to the expected JSON response.
+// ── Suite 4: full scenario integration ────────────────────────────────────────
 
-describe("GET /api/instagram/status — handler contract with stubbed fetch", () => {
-  const originalFetch = globalThis.fetch;
+describe("resolveInstagramVerifyStatus — scenario matrix", () => {
+  type Scenario = {
+    label: string;
+    verifyOk: boolean;
+    body: Record<string, unknown>;
+    expectConnected: boolean;
+    expectReason?: string;
+    expectAccountType?: string;
+  };
 
-  afterEach(() => {
-    globalThis.fetch = originalFetch;
-  });
+  const scenarios: Scenario[] = [
+    {
+      label: "valid BUSINESS token",
+      verifyOk: true,
+      body: { id: "1", account_type: "BUSINESS" },
+      expectConnected: true,
+      expectAccountType: "BUSINESS",
+    },
+    {
+      label: "valid CREATOR token",
+      verifyOk: true,
+      body: { id: "2", account_type: "CREATOR" },
+      expectConnected: true,
+      expectAccountType: "CREATOR",
+    },
+    {
+      label: "expired token — code 190",
+      verifyOk: false,
+      body: { error: { code: 190, message: "Invalid OAuth access token" } },
+      expectConnected: false,
+      expectReason: "token_expired",
+    },
+    {
+      label: "expired token — code 102",
+      verifyOk: false,
+      body: { error: { code: 102, message: "Session key invalid" } },
+      expectConnected: false,
+      expectReason: "token_expired",
+    },
+    {
+      label: "expired token — code 104",
+      verifyOk: false,
+      body: { error: { code: 104, message: "Incorrect signature" } },
+      expectConnected: false,
+      expectReason: "token_expired",
+    },
+    {
+      label: "permission error — non-expiry code",
+      verifyOk: false,
+      body: { error: { code: 200, message: "Permission denied" } },
+      expectConnected: false,
+      expectReason: "auth_error",
+    },
+    {
+      label: "personal account",
+      verifyOk: true,
+      body: { id: "3", account_type: "PERSONAL" },
+      expectConnected: false,
+      expectReason: "personal_account",
+    },
+  ];
 
-  /**
-   * Simulates what the route handler's inner verification block does when it
-   * receives a particular Graph API response. Returns what res.json() would
-   * be called with, exercising the exact same code path as the route handler.
-   */
-  async function simulateVerification(opts: {
-    graphStatus: number;
-    graphBody: Record<string, unknown>;
-    storedToken: string;
-  }): Promise<{ connected: boolean; reason?: string; accountType?: string }> {
-    // Stub globalThis.fetch so the handler's inner try{} block hits our response
-    globalThis.fetch = async (_url: string | URL | Request) => {
-      return {
-        ok: opts.graphStatus >= 200 && opts.graphStatus < 300,
-        json: async () => opts.graphBody,
-      } as Response;
-    };
-
-    // Replay the handler's verification block verbatim
-    const verifyResponse = await fetch(
-      `https://graph.instagram.com/me?fields=id,account_type&access_token=${opts.storedToken}`,
-    );
-    const verifyData = await verifyResponse.json();
-
-    if (!verifyResponse.ok || verifyData.error) {
-      const errCode = verifyData.error?.code;
-      const isExpired = [102, 104, 190].includes(errCode);
-      return {
-        connected: false,
-        reason: isExpired ? "token_expired" : "auth_error",
-      };
-    }
-
-    const accountType: string = verifyData.account_type ?? "";
-    if (accountType === "PERSONAL") {
-      return { connected: false, reason: "personal_account" };
-    }
-
-    return { connected: true, accountType };
+  for (const s of scenarios) {
+    it(s.label, () => {
+      const result = resolveInstagramVerifyStatus(s.verifyOk, s.body);
+      assert.equal(result.connected, s.expectConnected, `connected mismatch for "${s.label}"`);
+      if (s.expectReason !== undefined) {
+        assert.equal(result.reason, s.expectReason, `reason mismatch for "${s.label}"`);
+      }
+      if (s.expectAccountType !== undefined) {
+        assert.equal(result.accountType, s.expectAccountType, `accountType mismatch for "${s.label}"`);
+      }
+    });
   }
-
-  it("connected:true for a valid Business account token", async () => {
-    const result = await simulateVerification({
-      graphStatus: 200,
-      graphBody: { id: "111", account_type: "BUSINESS" },
-      storedToken: "valid-token-abc",
-    });
-    assert.deepEqual(result, { connected: true, accountType: "BUSINESS" });
-  });
-
-  it("connected:false reason:token_expired for Graph API 400 + error code 190", async () => {
-    const result = await simulateVerification({
-      graphStatus: 400,
-      graphBody: {
-        error: {
-          code: 190,
-          type: "OAuthException",
-          message: "Invalid OAuth access token - Cannot parse access token",
-        },
-      },
-      storedToken: "expired-token-xyz",
-    });
-    assert.equal(result.connected, false);
-    assert.equal(result.reason, "token_expired");
-  });
-
-  it("connected:false reason:personal_account when account_type is PERSONAL", async () => {
-    const result = await simulateVerification({
-      graphStatus: 200,
-      graphBody: { id: "222", account_type: "PERSONAL" },
-      storedToken: "personal-token",
-    });
-    assert.equal(result.connected, false);
-    assert.equal(result.reason, "personal_account");
-  });
-
-  it("connected:false reason:token_expired for error code 102 (session key invalid)", async () => {
-    const result = await simulateVerification({
-      graphStatus: 400,
-      graphBody: {
-        error: { code: 102, type: "OAuthException", message: "Session key invalid" },
-      },
-      storedToken: "stale-session-token",
-    });
-    assert.equal(result.connected, false);
-    assert.equal(result.reason, "token_expired");
-  });
-
-  it("connected:false reason:auth_error for a non-expiry error code (e.g. 200 permissions)", async () => {
-    const result = await simulateVerification({
-      graphStatus: 403,
-      graphBody: {
-        error: { code: 200, type: "OAuthException", message: "Permission denied" },
-      },
-      storedToken: "limited-token",
-    });
-    assert.equal(result.connected, false);
-    assert.equal(result.reason, "auth_error");
-  });
 });
