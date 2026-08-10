@@ -16,6 +16,9 @@ import { applyAttributionSubId } from "../services/travelpayouts/travelpayouts-c
 // replaced with opaque bookingTokens the booking-agent rail resolves back (affiliate-url-vault).
 import { vaultAndStripItems, mintBookingTokens, type VaultedBooking } from "../services/affiliate-url-vault.service";
 import { getProviderHealth } from "../services/provider-health.service";
+// Demand-signal writer (ratified §10/§11/§12 build, migration 189's demand_signal_events).
+// Fire-and-forget: never awaited, never allowed to fail the host request (see its own header).
+import { logDemandSignal } from "./demand.routes";
 import {
   verifyBookingRequest,
   VerificationInFlightError,
@@ -5681,6 +5684,19 @@ router.get("/api/search/experiences", async (req, res) => {
       const sourcesFilter = sources === "platform" || sources === "google" ? sources : "all";
       const includePlatform = sourcesFilter !== "google";
       const includeGoogle = sourcesFilter !== "platform";
+
+      // Demand signal (§10/§11/§12): sources=google means the caller already knows/decided the
+      // platform arm has nothing for this destination+category and fell through to Google Places
+      // — a real occurrence of unmet platform-catalog demand. Fire-and-forget, minimal context
+      // (no free-text query — §13 no-PII posture).
+      if (sourcesFilter === "google") {
+        logDemandSignal({
+          kind: "places_fallthrough",
+          market: destination || null,
+          category: category || null,
+          context: { hasQuery: !!q },
+        });
+      }
 
       const apiKey = process.env.GOOGLE_MAPS_API_KEY;
       const results: any[] = [];

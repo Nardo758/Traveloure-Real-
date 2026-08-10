@@ -38,6 +38,9 @@ import {
 // correct, honest outcome of comparing against the SAME order a caller of optimize-order would
 // actually get, rather than against a distance-minimizing order nobody can apply from the UI.
 import { itineraryIntelligenceService } from "../services/itinerary-intelligence.service";
+// Demand-signal writer (ratified §10/§11/§12 build, migration 189's demand_signal_events).
+// Fire-and-forget: never awaited, never allowed to fail the host request (see its own header).
+import { logDemandSignal } from "./demand.routes";
 
 const router = Router();
 
@@ -166,6 +169,14 @@ router.get("/api/trips/:tripId/advisor/fundamentals", isAuthenticated, async (re
     if (denied) return res.status(denied.status).json({ message: denied.message });
 
     const result = await computeAdvisorFundamentals(tripId);
+
+    // Demand signal (§10/§11/§12): the no_stay check firing is a real occurrence of a trip with
+    // no lodging on the plan — fire-and-forget, never blocks the response.
+    if (result.checks.some((c) => c.key === "no_stay")) {
+      const [trip] = await db.select({ destination: trips.destination }).from(trips).where(eq(trips.id, tripId));
+      logDemandSignal({ kind: "no_stay_flag", market: trip?.destination ?? null, context: { tripId } });
+    }
+
     res.json(result);
   } catch (error) {
     console.error("[advisor] fundamentals error:", error);
@@ -321,6 +332,20 @@ router.get("/api/trips/:tripId/advisor/stay-anchor", isAuthenticated, async (req
     if (denied) return res.status(denied.status).json({ message: denied.message });
 
     const result = await computeStayAnchor(tripId);
+
+    // Demand signal (§10/§11/§12): a real anchor with zero platform stays nearby is a real
+    // occurrence of unmet platform-lodging demand — fire-and-forget, never blocks the response.
+    if (result.anchor && result.platformStays.length === 0) {
+      const [trip] = await db.select({ destination: trips.destination }).from(trips).where(eq(trips.id, tripId));
+      logDemandSignal({
+        kind: "stay_anchor_miss",
+        market: trip?.destination ?? null,
+        latitude: result.anchor.lat,
+        longitude: result.anchor.lng,
+        context: { tripId, spreadKm: result.anchor.spreadKm },
+      });
+    }
+
     res.json(result);
   } catch (error) {
     console.error("[advisor] stay-anchor error:", error);
