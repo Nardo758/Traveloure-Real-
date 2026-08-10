@@ -475,7 +475,10 @@ export default function ProviderEarnings() {
   const maxEarning = Math.max(...monthlyEarnings.map(m => m.amount), 1);
 
   const revenueBreakdown = useMemo(() => {
-    if (!bookings) return { gross: 0, platformFee: 0, basePlatformFee: 0, insuranceFee: 0, providerShare: 0, effectiveRate: 0.30 };
+    // §8/§13: no client-side rate literal, no fabricated split. With zero gross there is no
+    // real split to show — effectiveRate is null and the UI renders an honest empty state.
+    // With gross > 0 the rate is derived from this provider's real booking rows (share/gross).
+    if (!bookings) return { gross: 0, platformFee: 0, basePlatformFee: 0, insuranceFee: 0, providerShare: 0, effectiveRate: null as number | null };
     let gross = 0, fee = 0, share = 0, insurance = 0;
     for (const b of bookings) {
       gross += Number(b.totalAmount ?? 0);
@@ -483,14 +486,14 @@ export default function ProviderEarnings() {
       share += Number(b.providerEarnings ?? 0);
       insurance += Number((b as any).insuranceFee ?? 0);
     }
-    const effectiveRate = gross > 0 ? share / gross : 0.30;
+    const effectiveRate: number | null = gross > 0 ? share / gross : null;
     const basePlatformFee = Math.round((fee - insurance) * 100) / 100;
     return { gross, platformFee: fee, basePlatformFee, insuranceFee: insurance, providerShare: share, effectiveRate };
   }, [bookings]);
 
   if (isLoading) {
     return (
-      <ProviderLayout title="Earnings">
+      <ProviderLayout title="Money">
         <div className="flex items-center justify-center h-64">
           <Loader2 className="w-8 h-8 animate-spin text-primary" />
         </div>
@@ -506,7 +509,7 @@ export default function ProviderEarnings() {
   ];
 
   return (
-    <ProviderLayout title="Earnings">
+    <ProviderLayout title="Money">
       <div className="p-6 space-y-6">
         <StripeConnectCard />
 
@@ -626,14 +629,14 @@ export default function ProviderEarnings() {
                 <p className="text-xs text-console-mid mt-1">Total from all bookings</p>
               </div>
               <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-100 dark:border-red-800 text-center" data-testid="stat-platform-fee">
-                <p className="text-sm text-red-600 mb-1">Platform Fee{revenueBreakdown.gross > 0 ? ` (${Math.round((1 - revenueBreakdown.effectiveRate) * 100)}%)` : ""}</p>
+                <p className="text-sm text-red-600 mb-1">Platform Fee{revenueBreakdown.effectiveRate != null ? ` (${Math.round((1 - revenueBreakdown.effectiveRate) * 100)}%)` : ""}</p>
                 <p className="text-xl font-bold text-red-700">
                   -${revenueBreakdown.platformFee.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </p>
                 <p className="text-xs text-red-400 mt-1">Traveloure service charge</p>
               </div>
               <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800 text-center" data-testid="stat-your-share">
-                <p className="text-sm text-green-600 mb-1">Your Share{revenueBreakdown.gross > 0 ? ` (${Math.round(revenueBreakdown.effectiveRate * 100)}%)` : ""}</p>
+                <p className="text-sm text-green-600 mb-1">Your Share{revenueBreakdown.effectiveRate != null ? ` (${Math.round(revenueBreakdown.effectiveRate * 100)}%)` : ""}</p>
                 <p className="text-xl font-bold text-green-700">
                   ${revenueBreakdown.providerShare.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </p>
@@ -674,17 +677,25 @@ export default function ProviderEarnings() {
               </div>
             </div>
 
-            <div className="mt-3 h-3 bg-console-bg rounded-full overflow-hidden flex" data-testid="bar-revenue-split">
-              <div
-                className="h-full bg-primary transition-all"
-                style={{ width: `${Math.round((1 - revenueBreakdown.effectiveRate) * 100)}%` }}
-              />
-              <div className="h-full bg-green-500 flex-1" />
-            </div>
-            <div className="flex justify-between text-xs text-console-mid mt-1">
-              <span>Platform {Math.round((1 - revenueBreakdown.effectiveRate) * 100)}%</span>
-              <span>You {Math.round(revenueBreakdown.effectiveRate * 100)}%</span>
-            </div>
+            {revenueBreakdown.effectiveRate != null ? (
+              <>
+                <div className="mt-3 h-3 bg-console-bg rounded-full overflow-hidden flex" data-testid="bar-revenue-split">
+                  <div
+                    className="h-full bg-primary transition-all"
+                    style={{ width: `${Math.round((1 - revenueBreakdown.effectiveRate) * 100)}%` }}
+                  />
+                  <div className="h-full bg-green-500 flex-1" />
+                </div>
+                <div className="flex justify-between text-xs text-console-mid mt-1">
+                  <span>Platform {Math.round((1 - revenueBreakdown.effectiveRate) * 100)}%</span>
+                  <span>You {Math.round(revenueBreakdown.effectiveRate * 100)}%</span>
+                </div>
+              </>
+            ) : (
+              <p className="mt-3 text-sm text-console-mid text-center" data-testid="text-revenue-split-empty">
+                No bookings yet — your split appears here after your first booking.
+              </p>
+            )}
           </CardContent>
         </Card>
 
