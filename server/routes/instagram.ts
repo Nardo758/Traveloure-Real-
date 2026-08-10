@@ -100,11 +100,52 @@ router.get("/status", isAuthenticated, async (req: Request, res: Response) => {
     }
 
     const [user] = await db
-      .select({ instagramUserId: users.instagramUserId })
+      .select({
+        instagramUserId: users.instagramUserId,
+        instagramAccessToken: users.instagramAccessToken,
+      })
       .from(users)
       .where(eq(users.id, userId));
 
-    res.json({ connected: !!user?.instagramUserId });
+    if (!user?.instagramUserId || !user?.instagramAccessToken) {
+      return res.json({ connected: false });
+    }
+
+    // Verify the token is still valid and check account type.
+    // A personal account will succeed the call but return account_type === "PERSONAL".
+    // An expired/revoked token returns an OAuthException error.
+    try {
+      const verifyResponse = await fetch(
+        `https://graph.instagram.com/me?fields=id,account_type&access_token=${user.instagramAccessToken}`
+      );
+      const verifyData = await verifyResponse.json();
+
+      if (!verifyResponse.ok || verifyData.error) {
+        const errCode = verifyData.error?.code;
+        // 190 = invalid/expired token; 102/104 = session expired
+        const isExpired = [102, 104, 190].includes(errCode);
+        console.warn("Instagram token verification failed:", verifyData.error?.message);
+        return res.json({
+          connected: false,
+          reason: isExpired ? "token_expired" : "auth_error",
+        });
+      }
+
+      const accountType: string = verifyData.account_type ?? "";
+      if (accountType === "PERSONAL") {
+        return res.json({
+          connected: false,
+          reason: "personal_account",
+        });
+      }
+
+      return res.json({ connected: true, accountType });
+    } catch (verifyErr) {
+      // Network error during verification — treat as disconnected but don't
+      // wipe the stored token; the user may just be offline temporarily.
+      console.error("Instagram token verification network error:", verifyErr);
+      return res.json({ connected: false, reason: "verification_error" });
+    }
   } catch (error) {
     console.error("Instagram status check error:", error);
     res.json({ connected: false });
