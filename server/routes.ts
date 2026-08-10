@@ -2276,20 +2276,25 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // F2 identity + business verification publish gate (Phase 0.5 — docs/backoffice/EARN_PIPELINE_EVAL.md).
       // An offering cannot go live until the provider's identity and business verification are
       // both confirmed as "verified" (Stripe Identity + Stripe Connect KYB respectively).
-      // No service_provider_forms row (e.g. admin creating a test service) passes through safely.
+      // Admin-role users bypass (no service_provider_forms row on admin accounts).
+      // Non-admins with NO form row are also blocked — absence of a form means the provider
+      // has not completed the application flow and cannot have verified status.
       if (input.status === "active") {
-        const [provForm] = await db
-          .select({
-            identityVerificationStatus: serviceProviderForms.identityVerificationStatus,
-            businessVerificationStatus: serviceProviderForms.businessVerificationStatus,
-          })
-          .from(serviceProviderForms)
-          .where(eq(serviceProviderForms.userId, userId))
-          .limit(1);
+        const reqUserRole = (req.user as any)?.role ?? (req.user as any)?.claims?.role;
+        const isAdmin = reqUserRole === "admin";
 
-        if (provForm) {
-          const idOk = provForm.identityVerificationStatus === "verified";
-          const bizOk = provForm.businessVerificationStatus === "verified";
+        if (!isAdmin) {
+          const [provForm] = await db
+            .select({
+              identityVerificationStatus: serviceProviderForms.identityVerificationStatus,
+              businessVerificationStatus: serviceProviderForms.businessVerificationStatus,
+            })
+            .from(serviceProviderForms)
+            .where(eq(serviceProviderForms.userId, userId))
+            .limit(1);
+
+          const idOk = provForm?.identityVerificationStatus === "verified";
+          const bizOk = provForm?.businessVerificationStatus === "verified";
           if (!idOk || !bizOk) {
             return res.status(403).json({
               message: "Identity and business verification must be complete before publishing an offering. Complete verification in your provider status page.",
@@ -2464,20 +2469,24 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
 
-      // F2 identity + business verification publish gate (Phase 0.5 — same gate as CREATE above).
+      // F2 identity + business verification publish gate (Phase 0.5 — same rule as CREATE above).
+      // Admin users bypass; all other roles require a verified service_provider_forms row.
       if (input.status === "active") {
-        const [provFormUpd] = await db
-          .select({
-            identityVerificationStatus: serviceProviderForms.identityVerificationStatus,
-            businessVerificationStatus: serviceProviderForms.businessVerificationStatus,
-          })
-          .from(serviceProviderForms)
-          .where(eq(serviceProviderForms.userId, userId))
-          .limit(1);
+        const reqUserRoleUpd = (req.user as any)?.role ?? (req.user as any)?.claims?.role;
+        const isAdminUpd = reqUserRoleUpd === "admin";
 
-        if (provFormUpd) {
-          const idOk = provFormUpd.identityVerificationStatus === "verified";
-          const bizOk = provFormUpd.businessVerificationStatus === "verified";
+        if (!isAdminUpd) {
+          const [provFormUpd] = await db
+            .select({
+              identityVerificationStatus: serviceProviderForms.identityVerificationStatus,
+              businessVerificationStatus: serviceProviderForms.businessVerificationStatus,
+            })
+            .from(serviceProviderForms)
+            .where(eq(serviceProviderForms.userId, userId))
+            .limit(1);
+
+          const idOk = provFormUpd?.identityVerificationStatus === "verified";
+          const bizOk = provFormUpd?.businessVerificationStatus === "verified";
           if (!idOk || !bizOk) {
             return res.status(403).json({
               message: "Identity and business verification must be complete before publishing an offering. Complete verification in your provider status page.",
