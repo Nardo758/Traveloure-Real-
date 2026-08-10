@@ -272,7 +272,16 @@ export default function ProviderPerformance() {
                     >
                       <div className="w-12 text-sm font-medium text-muted-foreground">{month.month}</div>
                       <div className="flex-1">
-                        <Progress value={(month.revenue / (analytics?.summary?.totalRevenue || 1)) * 100 * 8} className="h-4" />
+                        {month.revenue > 0 ? (
+                          <Progress value={(month.revenue / (analytics?.summary?.totalRevenue || 1)) * 100 * 8} className="h-4" />
+                        ) : (
+                          /* §13 zero state: a filled gray Progress track at value 0 reads as
+                             data — an empty dashed outline reads honestly as "nothing yet". */
+                          <div
+                            className="h-4 rounded-full border border-dashed border-border"
+                            data-testid={`bar-month-empty-${index}`}
+                          />
+                        )}
                       </div>
                       <div className="text-right w-28">
                         <p className="text-sm font-medium">${month.revenue.toLocaleString()}</p>

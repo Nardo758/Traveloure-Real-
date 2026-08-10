@@ -1,10 +1,11 @@
 import { ProviderLayout } from "@/components/provider/provider-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  Building,
   MapPin,
   Phone,
   Mail,
@@ -13,9 +14,16 @@ import {
   Users,
   Calendar,
   Camera,
-  CheckCircle
+  CheckCircle,
+  Pencil,
+  Loader2,
 } from "lucide-react";
+import { useState } from "react";
+import { useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
+import { initialsFromUser } from "@/lib/initials";
 
 // Console IA C9 (§17 17→9 collapse): this page is hosted as Settings' FIRST tab (provider
 // settings.tsx lazy-mounts it with embedded — the expert C8 pattern). It has no internal
@@ -23,17 +31,46 @@ import { useAuth } from "@/hooks/use-auth";
 // page's own p-6 (the Settings tab container already provides both).
 // /provider/profile redirects to /provider/settings?tab=profile.
 //
-// Punchlist Phase 3 (§13 honesty): this page's 7 "Edit"/"Change logo"/"Manage" buttons were
-// removed, not wired — audited every field they'd edit (businessName, businessType,
-// description, address, phone, email, website, amenities, capacities, photos, avatar) against
-// `users` (shared/models/auth.ts) and found none of them are real columns, and neither
-// PATCH /api/provider/settings (the seven booking/payout prefs only — instantBooking,
-// autoResponse, minimumLeadTimeDays, targetResponseTimeHours, payoutFrequency,
-// minimumPayoutAmount, notificationsJson) nor any other route writes them. No profile-write
-// rail exists for a provider to self-edit this content today — honest absence beats dead
-// chrome. Re-add these buttons only alongside a real backing endpoint.
+// Punchlist Phase 3 (§13 honesty), amended by the Aug 10 2026 provider-console fix wave
+// (docs/findings/PROVIDER_CONSOLE_IMPROVEMENT_AUDIT.md): of the page's original 7
+// "Edit"/"Change logo"/"Manage" buttons, SIX stay removed — their fields (businessName,
+// businessType, address, phone, website, amenities, capacities, photos) are not real `users`
+// columns (shared/models/auth.ts) and no route writes them (PATCH /api/provider/settings
+// covers the seven booking/payout prefs only). Honest absence beats dead chrome; re-add
+// those only alongside a real backing endpoint. The Phase-3 note's "none are real columns"
+// overreached for ONE control: `users.bio` (the About text below) IS a real column, written
+// by the mounted PATCH /api/profile (server/replit_integrations/auth/routes.ts
+// updateProfileSchema) — so Edit About is WIRED to that rail. The avatar likewise now shows
+// the real profileImageUrl when set and computes real initials (shared lib/initials.ts, the
+// sidebar's logic) instead of the old hardcoded "GE"; there is still no image-UPLOAD rail,
+// so no "Change logo" button.
 export default function ProviderProfile({ embedded = false }: { embedded?: boolean } = {}) {
   const { user } = useAuth();
+  const { toast } = useToast();
+
+  // Edit About — the one profile field with a real write rail (PATCH /api/profile → users.bio,
+  // the same endpoint/pattern useAuth's updatePreferredCurrency already uses).
+  const [editingAbout, setEditingAbout] = useState(false);
+  const [aboutDraft, setAboutDraft] = useState("");
+
+  const saveAboutMutation = useMutation({
+    mutationFn: async (bio: string) => {
+      const res = await apiRequest("PATCH", "/api/profile", { bio });
+      return res.json();
+    },
+    onSuccess: (updatedUser) => {
+      queryClient.setQueryData(["/api/auth/user"], updatedUser);
+      setEditingAbout(false);
+      toast({ title: "About updated", description: "Your business description has been saved." });
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Couldn't save",
+        description: err?.message || "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
 
   const businessInfo = {
     name: user?.businessName || `${user?.firstName} ${user?.lastName}`.trim() || "Service Provider",
@@ -71,10 +108,13 @@ export default function ProviderProfile({ embedded = false }: { embedded?: boole
             <div className="flex flex-col md:flex-row gap-6">
               <div className="relative">
                 <Avatar className="w-24 h-24">
-                  <AvatarFallback className="bg-primary/10 text-primary text-2xl">GE</AvatarFallback>
+                  {user?.profileImageUrl && <AvatarImage src={user.profileImageUrl} alt={businessInfo.name} />}
+                  <AvatarFallback className="bg-primary/10 text-primary text-2xl" data-testid="text-avatar-initials">
+                    {initialsFromUser(user)}
+                  </AvatarFallback>
                 </Avatar>
-                {/* No logo-upload rail exists (users has no avatar/logo column write path) —
-                    button removed rather than left dead. */}
+                {/* No image-UPLOAD rail exists — "Change logo" stays removed rather than left
+                    dead. profileImageUrl (a real users column) is displayed when set. */}
               </div>
               <div className="flex-1">
                 <div className="flex flex-wrap items-center gap-2">
@@ -124,12 +164,60 @@ export default function ProviderProfile({ embedded = false }: { embedded?: boole
           {/* About & Contact */}
           <div className="lg:col-span-2 space-y-6">
             <Card>
-              <CardHeader>
-                {/* No description/bio write rail for the provider console — edit button removed. */}
+              <CardHeader className="flex flex-row items-center justify-between space-y-0">
                 <CardTitle>About</CardTitle>
+                {!editingAbout && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setAboutDraft(user?.bio ?? "");
+                      setEditingAbout(true);
+                    }}
+                    data-testid="button-edit-about"
+                  >
+                    <Pencil className="w-3.5 h-3.5 mr-1.5" /> Edit
+                  </Button>
+                )}
               </CardHeader>
               <CardContent>
-                <p className="text-console-dark" data-testid="text-description">{businessInfo.description}</p>
+                {editingAbout ? (
+                  <div className="space-y-3">
+                    <Textarea
+                      value={aboutDraft}
+                      onChange={(e) => setAboutDraft(e.target.value.slice(0, 500))}
+                      maxLength={500}
+                      rows={4}
+                      placeholder="Tell travelers about your business…"
+                      data-testid="input-about"
+                    />
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs text-console-mid">{aboutDraft.length}/500</p>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setEditingAbout(false)}
+                          disabled={saveAboutMutation.isPending}
+                          data-testid="button-cancel-about"
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={() => saveAboutMutation.mutate(aboutDraft)}
+                          disabled={saveAboutMutation.isPending}
+                          data-testid="button-save-about"
+                        >
+                          {saveAboutMutation.isPending && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />}
+                          Save
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-console-dark" data-testid="text-description">{businessInfo.description}</p>
+                )}
               </CardContent>
             </Card>
 

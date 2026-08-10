@@ -1,5 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
+import { initialsFromUser } from "@/lib/initials";
 import {
   Sidebar,
   SidebarContent,
@@ -37,8 +38,8 @@ import {
 // ② the bundle money path = ONE booking row at the bundle's own stored price (§14
 // server-derived; components re-verified approved+active at booking). The bundle rung is
 // live (born-submitted, unlocks at 2+ approved services — the §17 creation ladder); the
-// property rung (per-night pricing, room availability) is a later phase and renders as an
-// honest non-interactive card, not a dead button.
+// property rung (per-night pricing, room availability) is ALSO live — Workstation's Property
+// card opens the real create dialog (openPropertyCreate in workstation.tsx).
 const menuGroups = [
   {
     label: "Work",
@@ -114,20 +115,7 @@ export function ProviderSidebar() {
   const [location] = useLocation();
   const { user, logout } = useAuth();
 
-  const initials = (() => {
-    if (user?.businessName) {
-      return user.businessName
-        .split(" ")
-        .map((n) => n[0])
-        .join("")
-        .slice(0, 2)
-        .toUpperCase();
-    }
-    if (user?.firstName && user?.lastName) {
-      return (user.firstName[0] + user.lastName[0]).toUpperCase();
-    }
-    return "P";
-  })();
+  const initials = initialsFromUser(user);
 
   const displayName =
     user?.businessName ||
