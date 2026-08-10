@@ -37,6 +37,10 @@ class StripeConnectService {
     const account = await stripe.accounts.create({
       type: 'express',
       email,
+      // business_type drives the KYB questions Stripe asks during Express onboarding.
+      // Providers are businesses (company); experts are individuals.
+      // This replaces the retired Persona KYB check for provider business verification.
+      business_type: type === 'provider' ? 'company' : 'individual',
       metadata: {
         userId,
         userType: type,

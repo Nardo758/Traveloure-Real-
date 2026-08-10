@@ -72,7 +72,10 @@ import { ingestYoutubeGuides, isYoutubeIngestReady } from "../services/youtube-i
 import { analyzeKyotoContentGaps, listOpenKyotoGaps } from "../services/content-gap.service";
 import { getGapFillSummary, getGapFillSourceTotals } from "../services/optimizer-gap-ledger.service";
 import { getProviderHealth } from "../services/provider-health.service";
-import { cityNeighborhoods, expertNeighborhoods, dmoRawContent } from "@shared/schema";
+import { classifyDmoShape } from "../services/dmo-place-extraction.service";
+import { getExtractedPlacesCounts, isConcludedEmptyMarker } from "../services/dmo-extracted-places.service";
+import { getLatestDmoExtractionRun } from "../services/dmo-extraction-runs.service";
+import { cityNeighborhoods, expertNeighborhoods, dmoRawContent, dmoSources, dmoExtractedPlaces } from "@shared/schema";
 import { isExpertRole, isProviderRole, EXPERT_ROLES, PROVIDER_ROLES } from "@shared/roles";
 import { isReadyMadeBadge, READY_MADE_BADGE_VALUES } from "@shared/ready-made-badges";
 import { coordinationService } from "../services/coordination.service";
@@ -1376,6 +1379,102 @@ router.post("/api/admin/dmo/ingest-youtube", isAuthenticated, async (req, res) =
   } catch (err: any) {
     console.error("YouTube DMO ingestion error:", err);
     res.status(500).json({ message: "YouTube ingestion failed", error: err.message });
+  }
+});
+
+// Read-model for the admin "Content Ops" page's YouTube ingestion card (mockup §09, decision-maker
+// ratified Aug 10 2026): configuration readiness + the most recent dmo_extraction_runs row (kind
+// "youtube_ingest"). Absent = "no runs yet", never fabricated (§13).
+router.get("/api/admin/dmo/ingest-youtube/last-run", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser(getUserId(req)!);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const lastRun = await getLatestDmoExtractionRun("youtube_ingest");
+    res.json({ ready: isYoutubeIngestReady(), lastRun });
+  } catch (err: any) {
+    console.error("GET /api/admin/dmo/ingest-youtube/last-run error:", err);
+    res.status(500).json({ message: "Failed to load last run", error: err.message });
+  }
+});
+
+// ── Content Ops: extraction & enrichment status (mockup §09, decision-maker ratified Aug 10
+// 2026) ──────────────────────────────────────────────────────────────────────────────────────
+// Per-guide place-extraction + enrichment counts, for every expert-workspace-visible guide-shaped
+// dmo_raw_content row (classifyDmoShape — same rule the warmup sweep and admin-approve hook use),
+// plus the latest warmup-sweep run row. Every count is a real query result; a guide with zero
+// extracted places is reported honestly as "not yet extracted" or, when the pipeline itself ran a
+// live fetch and concluded there was nothing to find, "concluded empty" (isConcludedEmptyMarker)
+// — never guessed at, never labeled "failed" without a persisted signal that says so (§13).
+router.get("/api/admin/dmo/extraction-status", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser(getUserId(req)!);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const rows = await db
+      .select({
+        id: dmoRawContent.id,
+        name: dmoRawContent.name,
+        city: dmoRawContent.city,
+        latitude: dmoRawContent.latitude,
+        longitude: dmoRawContent.longitude,
+        address: dmoRawContent.address,
+        description: dmoRawContent.description,
+        extractedData: dmoRawContent.extractedData,
+        sourceId: dmoRawContent.sourceId,
+      })
+      .from(dmoRawContent)
+      .where(and(eq(dmoRawContent.expertWorkspaceVisible, true), ne(dmoRawContent.status, "rejected")))
+      .orderBy(desc(dmoRawContent.createdAt))
+      .limit(100);
+
+    const guideRows = rows.filter((r) => classifyDmoShape(r) === "guide");
+    const guideIds = guideRows.map((r) => r.id);
+
+    const placeCounts = await getExtractedPlacesCounts(guideIds);
+
+    // Enriched-place counts per content id (enrichment IS NOT NULL) — mirrors
+    // getExtractedPlacesCounts' shape but with the enrichment predicate added.
+    const enrichedRows = guideIds.length > 0
+      ? await db
+          .select({ dmoContentId: dmoExtractedPlaces.dmoContentId, cnt: count() })
+          .from(dmoExtractedPlaces)
+          .where(and(inArray(dmoExtractedPlaces.dmoContentId, guideIds), isNotNull(dmoExtractedPlaces.enrichment)))
+          .groupBy(dmoExtractedPlaces.dmoContentId)
+      : [];
+    const enrichedCounts = new Map(enrichedRows.map((r) => [r.dmoContentId, Number(r.cnt)]));
+
+    // Source domain lookup — one query for every distinct sourceId referenced.
+    const sourceIds = Array.from(new Set(guideRows.map((r) => r.sourceId)));
+    const sourceRows = sourceIds.length > 0
+      ? await db.select({ id: dmoSources.id, domain: dmoSources.domain }).from(dmoSources).where(inArray(dmoSources.id, sourceIds))
+      : [];
+    const domainById = new Map(sourceRows.map((r) => [r.id, r.domain]));
+
+    const guides = guideRows.map((r) => {
+      const placeCount = placeCounts.get(r.id) ?? 0;
+      const enrichedCount = enrichedCounts.get(r.id) ?? 0;
+      const state: "extracted" | "concluded_empty" | "not_extracted" =
+        placeCount > 0 ? "extracted" : isConcludedEmptyMarker(r.extractedData) ? "concluded_empty" : "not_extracted";
+      return {
+        id: r.id,
+        name: r.name,
+        city: r.city,
+        sourceDomain: domainById.get(r.sourceId) ?? null,
+        placeCount,
+        enrichedCount,
+        state,
+      };
+    });
+
+    const latestWarmupRun = await getLatestDmoExtractionRun("warmup_sweep");
+
+    res.json({ guides, latestWarmupRun });
+  } catch (err: any) {
+    console.error("GET /api/admin/dmo/extraction-status error:", err);
+    res.status(500).json({ message: "Failed to load extraction status", error: err.message });
   }
 });
 
@@ -5523,6 +5622,10 @@ router.get("/api/admin/reviews", isAuthenticated, async (req, res) => {
           reviewText: r.reviewText ?? null,
           responseText: r.responseText ?? null,
           responseAt: r.responseAt ?? null,
+          // §06d: the provider's public reply (distinct from the legacy responseText/responseAt
+          // above) — moderators see it here, read-only in v1 (no clear-reply admin action).
+          providerReply: r.providerReply ?? null,
+          providerRepliedAt: r.providerRepliedAt ?? null,
           status: r.status,
           flagReason: r.flagReason ?? null,
           moderatedAt: r.moderatedAt ?? null,

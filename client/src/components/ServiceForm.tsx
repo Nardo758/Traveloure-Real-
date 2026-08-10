@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useLocation } from "wouter";
 import {
   Plus, Trash2, Loader2, CheckCircle, ArrowLeft,
@@ -145,6 +145,11 @@ interface ServiceFormData {
   // Media
   serviceImage: string;
   galleryImages: string[];
+  // D3 (docs/briefs/SERVICE_FUNDAMENTALS_DECISIONS.md): the deliverable file URL for a
+  // pdf-delivery listing. Same URL-paste mechanism as serviceImage/galleryImages (there is
+  // no upload/object-storage rail in this codebase to reuse — every media field here is a
+  // pasted URL). Only meaningful (and only rendered) when deliveryMethod === "pdf".
+  serviceFile: string;
   // Per-category dynamic attributes
   categoryAttributes: Record<string, any>;
 }
@@ -215,6 +220,7 @@ function buildEmptyForm(role: "expert" | "provider"): ServiceFormData {
     leadTime: "",
     serviceImage: "",
     galleryImages: [],
+    serviceFile: "",
     categoryAttributes: {},
   };
 }
@@ -299,6 +305,9 @@ function mapServiceToForm(s: any, role: "expert" | "provider"): ServiceFormData 
     leadTime: s.leadTime || "",
     serviceImage: s.serviceImage || "",
     galleryImages: Array.isArray(s.galleryImages) ? s.galleryImages : [],
+    // Owner-only field — this hydration only ever runs off the owner-gated
+    // GET /api/provider/services/:id read, never a public surface.
+    serviceFile: s.serviceFile || "",
     categoryAttributes: (s.categoryAttributes && typeof s.categoryAttributes === "object") ? s.categoryAttributes : {},
   };
 }
@@ -369,6 +378,18 @@ function tierFormatsToAllowedMethods(formats: string[]): Set<string> {
   return allowed;
 }
 
+// Fallback label for a category_key when /api/service-categories has no
+// matching row's name (e.g. transient catalog drift) — replace_ with space,
+// title-case. aff_* keys never reach here (filtered out of
+// providerOfferingTypes upstream).
+function prettifyCategoryKey(key: string): string {
+  return key
+    .split("_")
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
 export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   const [, navigate] = useLocation();
   const { toast } = useToast();
@@ -388,6 +409,17 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   // location_precision exactly as they are, so an unrelated edit can never turn a
   // migration-129 neighborhood centroid into an `'exact'` claim.
   const [locationPointTouched, setLocationPointTouched] = useState(false);
+
+  // Audit item #10 (PROVIDER_CONSOLE_IMPROVEMENT_AUDIT.md): the form is a 4-step
+  // wizard instead of one ~7-viewport scroll. LAYOUT ONLY — the field set, zod/
+  // server validation, payload shape and endpoints are untouched. Navigation is
+  // FREE in both create and edit mode (steps are clickable, Next/Back never
+  // validate) — one code path for both modes; in edit mode the clickable
+  // indicator doubles as jump-nav, so a separate anchored layout isn't needed.
+  // Required-field enforcement stays exactly where it was (button disabled
+  // states + createMutation's own throws); the only addition is that a
+  // submit-time miss jumps the user to the step that holds the field.
+  const [currentStep, setCurrentStep] = useState(1);
 
   // Single category taxonomy
   const { data: categories = [] } = useQuery<ServiceCategory[]>({
@@ -415,6 +447,60 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   const providerOfferingTypes = providerOfferingTypesRaw.filter(
     (o) => !!o.category_key && !isAffiliateCategory(o.category_key) && (o as any).is_active !== false
   );
+
+  // Provider offering picker (§17 compaction): the ~114-option list stays
+  // collapsed to a one-line summary once a selection exists (including on
+  // edit-mode load), and only expands to the search+list on "Change" or when
+  // nothing is selected yet — see the render block below for the derivation.
+  const [offeringPickerOpen, setOfferingPickerOpen] = useState(false);
+  const [offeringSearchQuery, setOfferingSearchQuery] = useState("");
+
+  // "Don't see your offering?" (ratified flow, mockup §06c — migration 189 /
+  // offering_type_requests). Shown at the bottom of the picker's list AND in its
+  // zero-match state. Submitting auto-selects the catch-all 'custom_other_offering'
+  // (seeded by migration 189) via the existing handleSelectProviderOffering path so the
+  // provider can proceed immediately — the request itself is reviewed separately by admin.
+  const [requestOfferingOpen, setRequestOfferingOpen] = useState(false);
+  const [requestOfferingName, setRequestOfferingName] = useState("");
+  const [requestOfferingDescription, setRequestOfferingDescription] = useState("");
+  const [requestOfferingConfirmedName, setRequestOfferingConfirmedName] = useState<string | null>(null);
+
+  // Category label lookup for the offering picker's group headers — prefers
+  // the /api/service-categories row's name, falls back to prettifying the
+  // offering's own category_key (never fabricates a category).
+  const categoryLabelByKey = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const c of categories as ServiceCategory[]) {
+      if (c.categoryKey) map.set(c.categoryKey, c.name);
+    }
+    return map;
+  }, [categories]);
+
+  // Group the offering catalog by category_key for the compact picker,
+  // applying the search filter (display_name + tagline + group label,
+  // case-insensitive) and dropping groups left empty by the filter. Group
+  // order follows first appearance in the already sort_order-sorted API
+  // response; item order within a group is untouched.
+  const offeringGroups = useMemo(() => {
+    const q = offeringSearchQuery.trim().toLowerCase();
+    const groups: { key: string; label: string; items: ProviderOfferingType[] }[] = [];
+    const indexByKey = new Map<string, number>();
+    for (const o of providerOfferingTypes) {
+      const label = categoryLabelByKey.get(o.category_key) ?? prettifyCategoryKey(o.category_key);
+      if (q) {
+        const haystack = `${o.display_name} ${o.tagline ?? ""} ${label}`.toLowerCase();
+        if (!haystack.includes(q)) continue;
+      }
+      let idx = indexByKey.get(o.category_key);
+      if (idx === undefined) {
+        idx = groups.length;
+        indexByKey.set(o.category_key, idx);
+        groups.push({ key: o.category_key, label, items: [] });
+      }
+      groups[idx].items.push(o);
+    }
+    return groups;
+  }, [providerOfferingTypes, categoryLabelByKey, offeringSearchQuery]);
 
   // Partition the expert tier picker by the signed-in user's expert role, using
   // the existing ratified serviceTier→role vocabulary in lib/earn-roles.ts
@@ -444,6 +530,13 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   });
 
   const [formData, setFormData] = useState<ServiceFormData>(buildEmptyForm(role));
+
+  const selectedProviderOffering = providerOfferingTypes.find(
+    (o) => o.id === formData.serviceOfferingTypeId
+  ) ?? null;
+  const selectedProviderOfferingLabel = selectedProviderOffering
+    ? (categoryLabelByKey.get(selectedProviderOffering.category_key) ?? prettifyCategoryKey(selectedProviderOffering.category_key))
+    : null;
 
   const { data: subcategories = [] } = useQuery<ServiceSubcategory[]>({
     queryKey: ["/api/service-categories", formData.categoryId, "subcategories"],
@@ -616,6 +709,31 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     }));
   };
 
+  // POST /api/me/offering-requests (offering-requests.routes.ts). userId comes from the
+  // session server-side (§14-by-analogy) — never sent from here.
+  const requestOfferingMutation = useMutation({
+    mutationFn: async () => {
+      const name = requestOfferingName.trim();
+      return apiRequest("POST", "/api/me/offering-requests", {
+        requestedName: name,
+        description: requestOfferingDescription.trim() || undefined,
+      });
+    },
+    onSuccess: () => {
+      const confirmedName = requestOfferingName.trim();
+      setRequestOfferingConfirmedName(confirmedName);
+      setRequestOfferingOpen(false);
+      setRequestOfferingName("");
+      setRequestOfferingDescription("");
+      // Auto-select the catch-all offering so the provider can proceed immediately
+      // instead of being blocked on admin review of the new type.
+      const catchAll = providerOfferingTypes.find((o) => o.offering_type_key === "custom_other_offering");
+      if (catchAll) handleSelectProviderOffering(catchAll);
+      setOfferingPickerOpen(false);
+      setOfferingSearchQuery("");
+    },
+  });
+
   const handleAddIncluded = () => {
     if (newIncluded.trim()) {
       set("whatIncluded", [...formData.whatIncluded, newIncluded.trim()]);
@@ -663,10 +781,12 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
   const handleAddAnother = () => {
     setCreationSuccess(false);
     setCreationOutcome({});
+    setCurrentStep(1);
     setFormData(buildEmptyForm(role));
     setLocationPointTouched(false);
     setNewIncluded("");
     setNewRequirement("");
+    setRequestOfferingConfirmedName(null);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -740,6 +860,11 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         leadTime: formData.leadTime || null,
         serviceImage: formData.serviceImage || null,
         galleryImages: formData.galleryImages,
+        // D3: the deliverable file only means something for pdf delivery — never send a
+        // stale value up for a listing that has since switched to a different delivery
+        // method (a leftover file URL on a call/in-person row would be dead weight, and
+        // could confuse the delivery_asset fundamentals check).
+        serviceFile: formData.deliveryMethod === "pdf" ? (formData.serviceFile || null) : null,
         categoryAttributes: formData.categoryAttributes,
       };
 
@@ -830,11 +955,69 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     enabled: role === "provider",
   });
 
+  // F2 identity + business verification gate (Phase 0.5). Fetches the provider application
+  // status to surface whether identityVerificationStatus and businessVerificationStatus
+  // are both "verified" before allowing a service to be published.
+  const { data: providerAppStatus } = useQuery<{ identityVerificationStatus: string; businessVerificationStatus: string }>({
+    queryKey: ["/api/provider/application-status"],
+    enabled: role === "provider",
+    select: (d: any) => ({
+      identityVerificationStatus: d.identityVerificationStatus ?? "pending",
+      businessVerificationStatus: d.businessVerificationStatus ?? "pending",
+    }),
+  });
+
   const selectedCategory = categories.find((c) => c.id === formData.categoryId);
   const needsMeetingPoint = formData.deliveryMethod === "in-person" || formData.deliveryMethod === "hybrid";
   const isCategoryGated = !!(selectedCategory?.requiresBackgroundCheck || (selectedCategory?.insuranceBand ?? 0) >= 2);
   const isProviderVerified = verificationStatus?.providerVerificationStatus === "verified";
   const publishBlocked = role === "provider" && isCategoryGated && !isProviderVerified;
+  // Verification gate: both identity and business verification must be "verified" before going live.
+  const identityVerified = providerAppStatus?.identityVerificationStatus === "verified";
+  const bizVerified = providerAppStatus?.businessVerificationStatus === "verified";
+  const verificationGateBlocked = role === "provider" && (!identityVerified || !bizVerified);
+
+  // ── Step machinery (audit item #10) ──────────────────────────────────────
+  const STEP_TITLES = ["What you offer", "Details", "Photos", "Terms & requirements"];
+  const TOTAL_STEPS = STEP_TITLES.length;
+
+  const goToStep = (step: number) => {
+    setCurrentStep(Math.min(Math.max(step, 1), TOTAL_STEPS));
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  // Mirrors ONLY the checks already enforced elsewhere (button disabled states +
+  // createMutation's throws) — nothing new is required here. Used to (a) route a
+  // submit-time miss to the step holding the field and (b) explain a disabled
+  // final button. Draft saves stay check-free, exactly as before.
+  const missingForFinal: { step: number; label: string }[] = [];
+  if (!formData.name) missingForFinal.push({ step: 1, label: "Service name" });
+  if (!formData.categoryId) missingForFinal.push({ step: 1, label: "Category" });
+  if (role === "provider" && !isEditMode && !formData.serviceOfferingTypeId) {
+    missingForFinal.push({ step: 1, label: "An offering from the catalog" });
+  }
+  if (role === "expert" && !isEditMode && !formData.expertOfferingTypeId) {
+    missingForFinal.push({ step: 1, label: "Service tier" });
+  }
+  if (needsMeetingPoint && !formData.meetingPoint.trim()) {
+    missingForFinal.push({ step: 2, label: "Meeting point" });
+  }
+
+  const handleFinalSubmit = (action: "submit" | "publish") => {
+    const firstMissing = missingForFinal[0];
+    if (firstMissing) {
+      // Jump to the step that holds the invalid field; the mutation's own
+      // checks remain the backstop and are unchanged.
+      goToStep(firstMissing.step);
+      toast({
+        title: "A required field is missing",
+        description: `${firstMissing.label} (Step ${firstMissing.step}) is required before ${action === "publish" ? "publishing" : "submitting"}. You can Save Draft to finish later.`,
+        variant: "destructive",
+      });
+      return;
+    }
+    createMutation.mutate(action);
+  };
 
   if (isEditMode && loadingExisting) {
     return (
@@ -890,6 +1073,71 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     );
   }
 
+  // "Don't see your offering?" row, rendered at the bottom of the picker's list AND inside
+  // its zero-match state (same block, both call sites below).
+  const renderDontSeeYourOffering = () => {
+    if (requestOfferingOpen) {
+      return (
+        <div className="p-3 space-y-2 border-t border-gray-100">
+          <p className="text-xs font-medium text-gray-700">Tell us what you do</p>
+          <Input
+            value={requestOfferingName}
+            onChange={(e) => setRequestOfferingName(e.target.value)}
+            placeholder="e.g., Falconry experience"
+            data-testid="input-request-offering-name"
+          />
+          <Textarea
+            value={requestOfferingDescription}
+            onChange={(e) => setRequestOfferingDescription(e.target.value)}
+            placeholder="Optional — a sentence or two about it"
+            className="min-h-[60px] text-sm"
+            data-testid="input-request-offering-description"
+          />
+          {requestOfferingMutation.isError && (
+            <p className="text-xs text-red-600" data-testid="text-request-offering-error">
+              Couldn't submit your request — please try again.
+            </p>
+          )}
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              size="sm"
+              disabled={requestOfferingName.trim().length < 3 || requestOfferingMutation.isPending}
+              onClick={() => requestOfferingMutation.mutate()}
+              data-testid="button-submit-request-offering"
+            >
+              {requestOfferingMutation.isPending ? "Submitting…" : "Submit request"}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setRequestOfferingOpen(false);
+                requestOfferingMutation.reset();
+              }}
+              data-testid="button-cancel-request-offering"
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      );
+    }
+    return (
+      <div className="p-3 border-t border-gray-100">
+        <button
+          type="button"
+          className="text-sm text-primary hover:underline"
+          onClick={() => setRequestOfferingOpen(true)}
+          data-testid="button-request-offering"
+        >
+          Don't see your offering? Request it
+        </button>
+      </div>
+    );
+  };
+
   return (
     <div className="p-6 max-w-3xl space-y-6">
 
@@ -908,11 +1156,57 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         </span>
       </div>
 
+      {/* ── Step indicator (audit item #10) — freely clickable in both modes ── */}
+      <nav aria-label="Form steps" className="overflow-x-auto" data-testid="service-form-steps">
+        <ol className="flex items-center gap-1 sm:gap-2">
+          {STEP_TITLES.map((title, i) => {
+            const stepNum = i + 1;
+            const isActive = currentStep === stepNum;
+            return (
+              <li key={stepNum} className="flex items-center gap-1 sm:gap-2 shrink-0">
+                {i > 0 && <div className="w-3 sm:w-6 h-px bg-border" aria-hidden="true" />}
+                <button
+                  type="button"
+                  onClick={() => goToStep(stepNum)}
+                  aria-current={isActive ? "step" : undefined}
+                  className={`flex items-center gap-1.5 rounded-full px-2 py-1 text-sm transition-colors ${
+                    isActive
+                      ? "text-foreground font-medium"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                  data-testid={`button-step-${stepNum}`}
+                >
+                  <span
+                    className={`flex items-center justify-center w-6 h-6 rounded-full text-xs font-semibold border ${
+                      isActive
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "bg-background text-muted-foreground border-border"
+                    }`}
+                  >
+                    {stepNum}
+                  </span>
+                  <span className="hidden sm:inline whitespace-nowrap">{title}</span>
+                </button>
+              </li>
+            );
+          })}
+        </ol>
+      </nav>
+
+      {currentStep === 1 && (<>
+
       {/* ── Offering-first provider create (§17): pick the /earn offering FIRST — ────
           category derives from it below. Shown for both create and edit so an edited
           legacy row's (unset) linkage is visible, but only REQUIRED on a new create
           (enforced in createMutation + the Publish button, not here). ── */}
-      {role === "provider" && (
+      {role === "provider" && (() => {
+        // Collapse to a one-line summary once a selection exists (including
+        // an edit-mode row loaded with its linkage already set) — reopened
+        // by "Change". Nothing-selected always shows the expanded picker,
+        // regardless of offeringPickerOpen, so a required-on-create pick is
+        // never hidden behind a stale collapsed state.
+        const expanded = offeringPickerOpen || !formData.serviceOfferingTypeId;
+        return (
         <Card data-testid="provider-offering-picker">
           <CardHeader>
             <CardTitle>What are you offering? *</CardTitle>
@@ -920,36 +1214,102 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           <CardContent className="space-y-3">
             {providerOfferingTypesRaw.length === 0 ? (
               <p className="text-xs text-muted-foreground">Loading offerings…</p>
-            ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {providerOfferingTypes.map((o) => (
-                  <button
-                    key={o.id}
+            ) : !expanded ? (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-3 rounded-lg border-2 border-primary bg-primary/5 p-3">
+                  <div className="min-w-0">
+                    <p className="font-medium text-sm text-gray-900 truncate">
+                      {selectedProviderOffering?.display_name}
+                    </p>
+                    <p className="text-xs text-gray-500 truncate">
+                      {selectedProviderOfferingLabel}
+                      {selectedProviderOffering?.tagline ? ` — ${selectedProviderOffering.tagline}` : ""}
+                    </p>
+                  </div>
+                  <Button
                     type="button"
-                    onClick={() => handleSelectProviderOffering(o)}
-                    className={`text-left p-3 rounded-lg border-2 transition-colors ${
-                      formData.serviceOfferingTypeId === o.id
-                        ? "border-primary bg-primary/5"
-                        : "border-gray-200 hover:border-gray-300"
-                    }`}
-                    data-testid={`option-offering-${o.offering_type_key}`}
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setRequestOfferingConfirmedName(null);
+                      setOfferingPickerOpen(true);
+                    }}
+                    data-testid="button-reopen-offering-picker"
                   >
-                    <p className="font-medium text-sm text-gray-900">{o.display_name}</p>
-                    {o.tagline && (
-                      <p className="text-xs text-gray-500 mt-0.5">{o.tagline}</p>
-                    )}
-                  </button>
-                ))}
+                    Change
+                  </Button>
+                </div>
+                {requestOfferingConfirmedName && selectedProviderOffering?.offering_type_key === "custom_other_offering" && (
+                  <p className="text-xs text-muted-foreground" data-testid="text-request-offering-confirmed">
+                    Requested: {requestOfferingConfirmedName} — meanwhile your listing continues under Custom / Other
+                  </p>
+                )}
               </div>
+            ) : (
+              <>
+                <Input
+                  value={offeringSearchQuery}
+                  onChange={(e) => setOfferingSearchQuery(e.target.value)}
+                  placeholder="Search offerings — driver, photographer, chef…"
+                  data-testid="input-offering-search"
+                />
+                <div className="max-h-[420px] overflow-y-auto rounded-md border border-gray-200 divide-y divide-gray-100">
+                  {offeringGroups.length === 0 ? (
+                    <div>
+                      <p className="text-xs text-muted-foreground p-3">
+                        No offerings match '{offeringSearchQuery}'
+                      </p>
+                      {renderDontSeeYourOffering()}
+                    </div>
+                  ) : (
+                    <>
+                      {offeringGroups.map((group) => (
+                        <div key={group.key} className="p-2">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground px-1 pb-1 sticky top-0 bg-background">
+                            {group.label}
+                          </p>
+                          <div className="space-y-1">
+                            {group.items.map((o) => (
+                              <button
+                                key={o.id}
+                                type="button"
+                                onClick={() => {
+                                  setRequestOfferingConfirmedName(null);
+                                  handleSelectProviderOffering(o);
+                                  setOfferingPickerOpen(false);
+                                  setOfferingSearchQuery("");
+                                }}
+                                className={`w-full text-left px-2 py-2 rounded-md border transition-colors flex items-baseline gap-2 ${
+                                  formData.serviceOfferingTypeId === o.id
+                                    ? "border-primary bg-primary/5"
+                                    : "border-transparent hover:border-gray-200 hover:bg-gray-50"
+                                }`}
+                                data-testid={`option-offering-${o.offering_type_key}`}
+                              >
+                                <span className="font-medium text-sm text-gray-900 shrink-0">{o.display_name}</span>
+                                {o.tagline && (
+                                  <span className="text-xs text-gray-500 truncate">{o.tagline}</span>
+                                )}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                      {renderDontSeeYourOffering()}
+                    </>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Pick the offering that matches what you provide — this sets your category below and links
+                  your listing to the /earn catalog. Required before publishing; you can save as a draft
+                  without one and finish later.
+                </p>
+              </>
             )}
-            <p className="text-xs text-muted-foreground">
-              Pick the offering that matches what you provide — this sets your category below and links
-              your listing to the /earn catalog. Required before publishing; you can save as a draft
-              without one and finish later.
-            </p>
           </CardContent>
         </Card>
-      )}
+        );
+      })()}
 
       {/* ── Start from a template (expert create — absorbed from the wizard, Phase 2) ── */}
       {role === "expert" && !isEditMode && serviceTemplates.length > 0 && (
@@ -1073,6 +1433,29 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             </div>
           )}
 
+          {/* F2 identity + business verification gate banner (Phase 0.5).
+              Shows when either identity or business verification is not yet "verified". */}
+          {role === "provider" && verificationGateBlocked && (
+            <div
+              className="flex items-start gap-3 p-3 rounded-lg border text-sm bg-red-50 border-red-200 text-red-900 dark:bg-red-900/20 dark:border-red-700 dark:text-red-200"
+              data-testid="banner-identity-biz-verification-required"
+            >
+              <ShieldAlert className="w-4 h-4 mt-0.5 flex-shrink-0 text-red-600 dark:text-red-400" />
+              <div>
+                <p className="font-medium">Identity &amp; business verification required before publishing</p>
+                <p className="text-xs mt-0.5 opacity-80">
+                  {!identityVerified && !bizVerified
+                    ? "Both identity verification (Stripe Identity) and business verification (Stripe Connect) must be completed first."
+                    : !identityVerified
+                    ? "Identity verification (Stripe Identity) must be completed before going live."
+                    : "Business verification (Stripe Connect) must be completed before going live."}
+                  {" "}Complete these steps in your{" "}
+                  <a href="/provider-status" className="underline font-medium">Provider Status page</a>.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Subcategory */}
           {subcategories.length > 0 && (
             <div>
@@ -1094,19 +1477,6 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               </Select>
             </div>
           )}
-
-          {/* Description */}
-          <div>
-            <Label htmlFor="description">Description *</Label>
-            <Textarea
-              id="description"
-              value={formData.description}
-              onChange={(e) => set("description", e.target.value)}
-              placeholder="Describe what your service includes, what makes it special, and what travelers can expect..."
-              rows={4}
-              className="mt-2"
-            />
-          </div>
 
           {/* Pricing */}
           <div className="space-y-4">
@@ -1329,6 +1699,33 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
             </div>
           )}
 
+        </CardContent>
+      </Card>
+
+      </>)}
+
+      {currentStep === 2 && (<>
+
+      {/* ── Details & Delivery ── */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Details & Delivery</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-6">
+
+          {/* Description */}
+          <div>
+            <Label htmlFor="description">Description *</Label>
+            <Textarea
+              id="description"
+              value={formData.description}
+              onChange={(e) => set("description", e.target.value)}
+              placeholder="Describe what your service includes, what makes it special, and what travelers can expect..."
+              rows={4}
+              className="mt-2"
+            />
+          </div>
+
           {/* Duration */}
           <div>
             <Label htmlFor="duration">Duration *</Label>
@@ -1397,6 +1794,33 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               </div>
             );
           })()}
+
+          {/* D3 (docs/briefs/SERVICE_FUNDAMENTALS_DECISIONS.md): the deliverable file —
+              only relevant for pdf delivery. Buyers unlock this URL after a confirmed
+              booking (never before purchase); this field is only ever hydrated from the
+              owner-gated read. */}
+          {formData.deliveryMethod === "pdf" && (
+            <div>
+              <Label htmlFor="serviceFile">Deliverable File URL *</Label>
+              <Input
+                id="serviceFile"
+                value={formData.serviceFile}
+                onChange={(e) => set("serviceFile", e.target.value)}
+                placeholder="https://... (link to the PDF a buyer receives after purchase)"
+                className="mt-2"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Buyers can download this link only after their booking is confirmed. It is
+                never shown before purchase.
+              </p>
+              {!formData.serviceFile && (
+                <p className="text-xs text-amber-600 dark:text-amber-500 mt-1">
+                  A pdf-delivery listing needs a deliverable file before travelers can receive
+                  anything after buying it.
+                </p>
+              )}
+            </div>
+          )}
 
         </CardContent>
       </Card>
@@ -1537,40 +1961,6 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               onKeyDown={(e) => e.key === "Enter" && handleAddIncluded()}
             />
             <Button onClick={handleAddIncluded} variant="outline" size="icon">
-              <Plus className="w-4 h-4" />
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* ── Requirements from Client (absorbed from the expert wizard, Phase 2) ── */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Requirements from Client</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            {formData.requirements.map((item, idx) => (
-              <div key={idx} className="flex items-center justify-between bg-secondary p-2 rounded">
-                <span className="text-sm">{item}</span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleRemoveRequirement(idx)}
-                >
-                  <Trash2 className="w-4 h-4" />
-                </Button>
-              </div>
-            ))}
-          </div>
-          <div className="flex gap-2">
-            <Input
-              value={newRequirement}
-              onChange={(e) => setNewRequirement(e.target.value)}
-              placeholder="e.g., Passport copy, Dietary restrictions, Preferred dates..."
-              onKeyDown={(e) => e.key === "Enter" && handleAddRequirement()}
-            />
-            <Button onClick={handleAddRequirement} variant="outline" size="icon">
               <Plus className="w-4 h-4" />
             </Button>
           </div>
@@ -1764,6 +2154,10 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         </Card>
       )}
 
+      </>)}
+
+      {currentStep === 4 && (<>
+
       {/* ── Booking Terms ── */}
       <Card>
         <CardHeader>
@@ -1821,6 +2215,44 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           </div>
         </CardContent>
       </Card>
+
+      {/* ── Requirements from Client (absorbed from the expert wizard, Phase 2) ── */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Requirements from Client</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-2">
+            {formData.requirements.map((item, idx) => (
+              <div key={idx} className="flex items-center justify-between bg-secondary p-2 rounded">
+                <span className="text-sm">{item}</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleRemoveRequirement(idx)}
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              </div>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <Input
+              value={newRequirement}
+              onChange={(e) => setNewRequirement(e.target.value)}
+              placeholder="e.g., Passport copy, Dietary restrictions, Preferred dates..."
+              onKeyDown={(e) => e.key === "Enter" && handleAddRequirement()}
+            />
+            <Button onClick={handleAddRequirement} variant="outline" size="icon">
+              <Plus className="w-4 h-4" />
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      </>)}
+
+      {currentStep === 3 && (<>
 
       {/* ── Photos ── */}
       <Card>
@@ -1904,8 +2336,10 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         </CardContent>
       </Card>
 
+      </>)}
+
       {/* ── Provider-Specific Features ── */}
-      {role === "provider" && (
+      {currentStep === 4 && role === "provider" && (
         <Card>
           <CardHeader>
             <CardTitle>Additional Features</CardTitle>
@@ -1997,7 +2431,7 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
       )}
 
       {/* ── Expert-Specific Approval Workflow ── */}
-      {role === "expert" && (
+      {currentStep === 4 && role === "expert" && (
         <Card>
           <CardHeader>
             <CardTitle>Submission & Approval</CardTitle>
@@ -2033,62 +2467,105 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         </Card>
       )}
 
-      {/* ── Action Buttons ── */}
+      {/* ── Step Navigation / Action Buttons ── */}
       <Card>
-        <CardContent className="p-6">
-          <div className="flex gap-3 flex-col sm:flex-row">
+        <CardContent className="p-6 space-y-3">
+          <div className="flex gap-3 flex-col sm:flex-row sm:items-center">
             <Button
-              variant="outline"
+              variant="ghost"
               onClick={() => navigate(`/${role}/services`)}
               disabled={createMutation.isPending}
             >
               Cancel
             </Button>
 
-            {role === "expert" ? (
-              <>
-                <Button
-                  variant="outline"
-                  onClick={() => createMutation.mutate("draft")}
-                  disabled={createMutation.isPending}
-                  className="flex-1"
-                >
-                  {createMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-                  Save as Draft
-                </Button>
-                <Button
-                  className="bg-primary hover:bg-primary/90 flex-1"
-                  onClick={() => createMutation.mutate("submit")}
-                  disabled={createMutation.isPending || !formData.name || !formData.categoryId || (!isEditMode && !formData.expertOfferingTypeId)}
-                >
-                  {createMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-                  Submit for Approval
-                </Button>
-              </>
+            {currentStep > 1 && (
+              <Button
+                variant="outline"
+                onClick={() => goToStep(currentStep - 1)}
+                disabled={createMutation.isPending}
+                data-testid="button-step-back"
+              >
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Back
+              </Button>
+            )}
+
+            <div className="flex-1" />
+
+            {/* Draft save is reachable from EVERY step (unchanged: drafts skip
+                required-field checks), so nobody has to walk to step 4 to bail out. */}
+            <Button
+              variant="outline"
+              onClick={() => createMutation.mutate("draft")}
+              disabled={createMutation.isPending}
+              data-testid="button-save-draft"
+            >
+              {createMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+              {role === "expert" ? "Save as Draft" : "Save Draft"}
+            </Button>
+
+            {currentStep < TOTAL_STEPS ? (
+              <Button
+                className="bg-primary hover:bg-primary/90"
+                onClick={() => goToStep(currentStep + 1)}
+                disabled={createMutation.isPending}
+                data-testid="button-step-next"
+              >
+                Next: {STEP_TITLES[currentStep]}
+              </Button>
+            ) : role === "expert" ? (
+              <Button
+                className="bg-primary hover:bg-primary/90"
+                onClick={() => handleFinalSubmit("submit")}
+                disabled={createMutation.isPending || !formData.name || !formData.categoryId || (!isEditMode && !formData.expertOfferingTypeId)}
+              >
+                {createMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                Submit for Approval
+              </Button>
             ) : (
-              <>
-                <Button
-                  variant="outline"
-                  onClick={() => createMutation.mutate("draft")}
-                  disabled={createMutation.isPending}
-                  className="flex-1"
-                >
-                  {createMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-                  Save Draft
-                </Button>
-                <Button
-                  className="bg-primary hover:bg-primary/90 flex-1"
-                  onClick={() => createMutation.mutate("publish")}
-                  disabled={createMutation.isPending || !formData.name || !formData.categoryId || publishBlocked || (!isEditMode && !formData.serviceOfferingTypeId)}
-                  title={publishBlocked ? "Complete background verification before publishing this category" : (!isEditMode && !formData.serviceOfferingTypeId) ? "Pick an offering from the /earn catalog first" : undefined}
-                  data-testid="button-publish-service"
-                >
-                  {createMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-                  {publishBlocked ? "Verification Required" : "Publish Service"}
-                </Button>
-              </>
+              <Button
+                className="bg-primary hover:bg-primary/90"
+                onClick={() => handleFinalSubmit("publish")}
+                disabled={createMutation.isPending || !formData.name || !formData.categoryId || publishBlocked || verificationGateBlocked || (!isEditMode && !formData.serviceOfferingTypeId)}
+                title={
+                  verificationGateBlocked
+                    ? "Complete identity and business verification in your Provider Status page before publishing"
+                    : publishBlocked
+                    ? "Complete background verification before publishing this category"
+                    : (!isEditMode && !formData.serviceOfferingTypeId)
+                    ? "Pick an offering from the /earn catalog first"
+                    : undefined
+                }
+                data-testid="button-publish-service"
+              >
+                {createMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
+                {verificationGateBlocked ? "Verification Required" : publishBlocked ? "Verification Required" : "Publish Service"}
+              </Button>
             )}
           </div>
+
+          {/* Final-step disabled explanation: name WHICH step holds each missing
+              required field, with a jump link — mirrors the existing enforcement,
+              adds none. */}
+          {currentStep === TOTAL_STEPS && missingForFinal.length > 0 && (
+            <p className="text-xs text-muted-foreground sm:text-right" data-testid="text-missing-required">
+              Still needed before you {role === "expert" ? "submit" : "publish"}:{" "}
+              {missingForFinal.map((m, i) => (
+                <span key={`${m.step}-${m.label}`}>
+                  {i > 0 && ", "}
+                  <button
+                    type="button"
+                    className="underline hover:text-foreground"
+                    onClick={() => goToStep(m.step)}
+                  >
+                    {m.label} (Step {m.step})
+                  </button>
+                </span>
+              ))}
+              . Or Save Draft and finish later.
+            </p>
+          )}
         </CardContent>
       </Card>
 

@@ -856,4 +856,39 @@ export const MIGRATION_FILES = [
   // nullable dmo_extracted_places.enrichment jsonb — open-data facts (Wikidata/OSM), never
   // prose, never overwrites expert ticketing_url. Declared in shared/schema.ts (publish-trap).
   "188_extracted_place_enrichment.sql",
+  // 189: schema foundations for the ratified provider back-office wave (decision-maker approved
+  // Aug 9 2026). Three parts, none wire enforcement (feature builds land separately): (a)
+  // users.vacation_until/vacation_message — account-level away flag, never touches
+  // provider_services rows, confirmed bookings unaffected; (b) offering_type_requests — provider
+  // "don't see your offering" requests, admin categories page consumes; (c)
+  // demand_signal_events — append-only §13 event log, every trending/demand surface reads ONLY
+  // these logged events. Also seeds the offering-fallback groundwork: service_categories."Custom
+  // / Other".category_key -> 'custom_other' (idempotent, predicate-guarded) and one catch-all
+  // service_offering_types row ('custom_other_offering') so the provider picker has a landing
+  // option. All declared in shared/schema.ts in the same commit (publish-trap rule).
+  "189_provider_backoffice_foundations.sql",
+  // 190: CLAUDE.md §06d (decision-maker ratified Aug 9 2026). Reviews — provider public replies:
+  // service_reviews.provider_reply/provider_replied_at (additive nullable). ONE public reply by
+  // the service owner, write-gated to the listing's owner, rendered traveler-side beside the
+  // review, visible to admin review-moderation. Distinct from the pre-existing legacy
+  // responseText/responseAt pair, left untouched. Declared in shared/schema.ts (publish-trap).
+  "190_service_reviews_provider_reply.sql",
+  // 191: dmo_extraction_runs — sweep/ingest run ledger for the admin "Content Ops" page
+  // (CLAUDE.md §17 lesson applied by analogy, decision-maker ratified Aug 10 2026). Every
+  // YouTube ingestion call and every warmup-sweep boot pass writes ONE append-only row (kind,
+  // counts jsonb, created_at) so the page's "last run" line can tell "ran and found nothing"
+  // from "never ran". Additive, idempotent, no CHECK. Declared in shared/schema.ts (publish-trap).
+  "191_dmo_extraction_runs.sql",
+  // 192: service_route_points — ordered route stops for a provider service (CLAUDE.md ruling 22,
+  // decision-maker ratified Aug 10 2026). dmo_extracted_places pattern: CASCADE child rows,
+  // UNIQUE (service_id, "position"), nullable lat/lng (an unlocated stop is honestly
+  // coordinate-less — §13, never guessed). Written only by the owner-gated replace-list
+  // endpoint; positions server-derived. Additive, idempotent, no CHECK. Declared in
+  // shared/schema.ts (publish-trap).
+  "192_service_route_points.sql",
+  // 193: short_links.frame — frame-aware short links (D4, decision-maker ratified Aug 10 2026).
+  // Additive nullable varchar(20); NULL = untagged/generic link, the historical shape. No CHECK
+  // (app-enforced closed allowlist, shared/share-frames.ts, same posture as this table's
+  // pre-existing target_type column). Declared in shared/schema.ts (publish-trap).
+  "193_short_links_frame.sql",
 ] as const;

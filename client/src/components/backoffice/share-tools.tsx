@@ -18,7 +18,11 @@ import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { Copy, Download, MessageCircle, Share2, Sparkles } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Copy, Download, MessageCircle, Share2, Sparkles, Instagram } from "lucide-react";
+import type { ShareFrame } from "@shared/share-frames";
+import { SHARE_FRAME_LABEL } from "@shared/share-frames";
+import { connectInstagram } from "@/lib/instagram-connect";
 
 export type ShareLane = "service" | "template" | "ready_made";
 
@@ -37,6 +41,10 @@ export interface OfferingShareOption {
 // prompts. The union deliberately has no 'seasonal' member — seasonal_opportunities has no
 // writer/seeder anywhere in the codebase (0 rows), so that source is honestly omitted rather
 // than faked, not just hidden client-side.
+//
+// D4 — every opportunity carries a `suggestedFrame` (server-derived, deterministic; see
+// expert-console.routes.ts's posting-opportunities handler for the exact mapping) so acting on
+// an opportunity opens the right share-image frame and tags the resulting short link with it.
 export type PostingOpportunity =
   | {
       kind: "new_review";
@@ -46,6 +54,7 @@ export type PostingOpportunity =
       serviceId: string;
       serviceName: string;
       createdAt: string;
+      suggestedFrame: ShareFrame;
     }
   | {
       kind: "open_slots";
@@ -53,6 +62,7 @@ export type PostingOpportunity =
       serviceName: string;
       nextDate: string;
       openSpots: number;
+      suggestedFrame: ShareFrame;
     };
 
 function buildReviewCaption(o: Extract<PostingOpportunity, { kind: "new_review" }>): string {
@@ -77,7 +87,10 @@ export function buildOfferingCaption(offering: OfferingShareOption): string {
 }
 
 export async function ensureShortLink(
-  body: { targetType: string; targetId?: string },
+  // D4 (migration 193): optional `frame` — omit for the historical untagged link (unchanged
+  // behavior). Passing a frame gets its OWN short link (server-side dedupe keys on it too), so a
+  // frame-tagged link never collides with — or gets served instead of — the generic one.
+  body: { targetType: string; targetId?: string; frame?: ShareFrame },
   fallbackHref: string,
 ): Promise<string> {
   try {
@@ -94,6 +107,132 @@ export async function ensureShortLink(
     // Graceful fallback to the existing full public URL (same pattern as MyOfferingsTable's share()).
     return `${window.location.origin}${fallbackHref}`;
   }
+}
+
+/**
+ * InstagramPublishButton — D4's publish button: wires the EXISTING Instagram publish rail
+ * (server/routes/instagram.ts POST /api/instagram/publish — real OAuth + container + publish,
+ * unchanged) into the share kit so an owner can post a frame + caption without leaving here for
+ * Content Studio. No second Instagram integration; this is the same endpoint Content Studio uses.
+ *
+ * Honesty states (§13 — never a button that silently fails):
+ *   - `available: false` (the caller already knows the frame can't render — e.g. an unapproved
+ *     listing, or a route frame with no stops) -> disabled, with the reason shown.
+ *   - Instagram not connected -> the button says so and triggers the SAME connect flow Content
+ *     Studio uses (`connectInstagram`, `client/src/lib/instagram-connect.ts`) rather than a dead
+ *     button or a second OAuth implementation.
+ *   - Otherwise -> publishes `imageUrl` (resolved to an absolute, publicly-reachable URL — Meta's
+ *     Graph API fetches the image server-side, it cannot see a relative path) + caption via the
+ *     existing endpoint.
+ */
+export function InstagramPublishButton({
+  imageUrl,
+  caption,
+  available,
+  unavailableReason,
+  idPrefix,
+}: {
+  /** Path (relative or absolute) to the share-image render this button publishes. */
+  imageUrl: string;
+  caption: string;
+  /** Whether this exact frame can be published right now (caller has already checked the
+   *  approval gate / route-stops gate the way the image itself is gated). */
+  available: boolean;
+  unavailableReason?: string;
+  idPrefix: string;
+}) {
+  const { toast } = useToast();
+  const [publishing, setPublishing] = useState(false);
+  const statusQuery = useQuery<{ connected: boolean; reason?: string }>({
+    queryKey: ["/api/instagram/status"],
+    enabled: available,
+  });
+  const connected = statusQuery.data?.connected ?? false;
+
+  if (!available) {
+    return (
+      <Button
+        size="sm"
+        variant="outline"
+        disabled
+        title={unavailableReason}
+        data-testid={`button-${idPrefix}-publish-ig-disabled`}
+      >
+        <Instagram className="w-3.5 h-3.5 mr-1.5" />
+        {unavailableReason ?? "Can't publish this frame yet"}
+      </Button>
+    );
+  }
+
+  if (statusQuery.isLoading) {
+    return (
+      <Button size="sm" variant="outline" disabled data-testid={`button-${idPrefix}-publish-ig-checking`}>
+        <Instagram className="w-3.5 h-3.5 mr-1.5" />
+        Checking Instagram…
+      </Button>
+    );
+  }
+
+  if (!connected) {
+    return (
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={async () => {
+          const result = await connectInstagram();
+          if (!result.ok) {
+            toast({
+              title: "Couldn't start Instagram connect",
+              description: "Please try again.",
+              variant: "destructive",
+            });
+          }
+        }}
+        data-testid={`button-${idPrefix}-connect-ig`}
+      >
+        <Instagram className="w-3.5 h-3.5 mr-1.5" />
+        Connect Instagram to publish
+      </Button>
+    );
+  }
+
+  const handlePublish = async () => {
+    setPublishing(true);
+    try {
+      const absoluteUrl = imageUrl.startsWith("http") ? imageUrl : `${window.location.origin}${imageUrl}`;
+      const res = await fetch("/api/instagram/publish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ imageUrl: absoluteUrl, caption }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.error || `Publish failed (${res.status})`);
+      }
+      toast({ title: "Published to Instagram", description: "Your post is now live." });
+    } catch (err: any) {
+      toast({
+        title: "Publish failed",
+        description: err?.message || "Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setPublishing(false);
+    }
+  };
+
+  return (
+    <Button
+      size="sm"
+      disabled={publishing}
+      onClick={handlePublish}
+      data-testid={`button-${idPrefix}-publish-ig`}
+    >
+      <Instagram className="w-3.5 h-3.5 mr-1.5" />
+      {publishing ? "Publishing…" : "Publish to Instagram"}
+    </Button>
+  );
 }
 
 export function ShareActions({
@@ -185,6 +324,13 @@ export function OfferingShareDetail({
   showImages: boolean;
 }) {
   const [caption, setCaption] = useState("");
+  // Ruling 22(d): the Route frame only exists for a service that HAS route stops — the
+  // share-image endpoint 404s otherwise (honest absence, §13) and the img onError below
+  // collapses the block instead of showing a broken image.
+  const [routeAvailable, setRouteAvailable] = useState(true);
+  useEffect(() => {
+    setRouteAvailable(true);
+  }, [offering.id]);
   useEffect(() => {
     // Client-side fallback shows immediately; the server caption (when available) replaces it.
     setCaption(buildOfferingCaption(offering));
@@ -227,6 +373,12 @@ export function OfferingShareDetail({
             >
               <Download className="w-3 h-3" /> Download image
             </a>
+            <InstagramPublishButton
+              imageUrl={`/api/share-image/service/${offering.id}.png?format=feed`}
+              caption={caption}
+              available
+              idPrefix={`offering-feed-${offering.id}`}
+            />
           </div>
           <div className="space-y-2">
             <p className="text-xs font-medium text-muted-foreground">Story (1080×1920)</p>
@@ -246,7 +398,46 @@ export function OfferingShareDetail({
             >
               <Download className="w-3 h-3" /> Download image
             </a>
+            <InstagramPublishButton
+              imageUrl={`/api/share-image/service/${offering.id}.png?format=story`}
+              caption={caption}
+              available
+              idPrefix={`offering-story-${offering.id}`}
+            />
           </div>
+          {offering.lane === "service" && (
+            <div className="space-y-2">
+              {routeAvailable && <p className="text-xs font-medium text-muted-foreground">Route (1080×1350)</p>}
+              {routeAvailable && (
+                <>
+                  <img
+                    src={`/api/share-image/service/${offering.id}.png?format=route`}
+                    alt={`${offering.name} — route share card`}
+                    className="w-full rounded-lg border"
+                    style={{ borderColor: "#E8E8E2" }}
+                    onError={() => setRouteAvailable(false)}
+                    data-testid={`img-share-route-${offering.id}`}
+                  />
+                  <a
+                    href={`/api/share-image/service/${offering.id}.png?format=route`}
+                    download={`${offering.id}-route.png`}
+                    className="inline-flex items-center gap-1 text-xs font-medium"
+                    style={{ color: "#E85D55" }}
+                    data-testid={`link-download-route-${offering.id}`}
+                  >
+                    <Download className="w-3 h-3" /> Download image
+                  </a>
+                </>
+              )}
+              <InstagramPublishButton
+                imageUrl={`/api/share-image/service/${offering.id}.png?format=route`}
+                caption={caption}
+                available={routeAvailable}
+                unavailableReason={routeAvailable ? undefined : "This service has no route stops yet"}
+                idPrefix={`offering-route-${offering.id}`}
+              />
+            </div>
+          )}
         </div>
       ) : (
         <p className="text-xs text-muted-foreground">
@@ -274,6 +465,128 @@ export function OfferingShareDetail({
         onGetLink={() =>
           ensureShortLink({ targetType: offering.lane, targetId: offering.id }, offering.publicHref)
         }
+      />
+    </div>
+  );
+}
+
+/** D4 — a review opportunity always suggests the dedicated review frame (its own share-image
+ *  endpoint, no format param). Own state so an image-load failure (e.g. the review or its
+ *  service loses approval between the list read and render) only disables THIS card's publish
+ *  button, never the whole list. */
+function ReviewOpportunityCard({ o }: { o: Extract<PostingOpportunity, { kind: "new_review" }> }) {
+  const [imageFailed, setImageFailed] = useState(false);
+  const imageUrl = `/api/share-image/review/${o.reviewId}.png`;
+  return (
+    <div
+      className="rounded-lg border p-3 space-y-2"
+      style={{ borderColor: "#E8E8E2" }}
+      data-testid={`card-opportunity-review-${o.reviewId}`}
+    >
+      <img
+        src={imageUrl}
+        alt={`${o.rating}★ review on ${o.serviceName}`}
+        className="w-full rounded-md border"
+        style={{ borderColor: "#E8E8E2" }}
+        onError={() => setImageFailed(true)}
+        data-testid={`img-opportunity-review-${o.reviewId}`}
+      />
+      <div className="flex items-center gap-2">
+        <p className="text-sm font-medium">
+          New {o.rating}★ review on {o.serviceName} — share it
+        </p>
+        <Badge variant="outline" className="text-xs" data-testid={`badge-suggested-frame-review-${o.reviewId}`}>
+          {SHARE_FRAME_LABEL[o.suggestedFrame]}
+        </Badge>
+      </div>
+      <ShareActions
+        caption={buildReviewCaption(o)}
+        idPrefix={`opportunity-review-${o.reviewId}`}
+        onGetLink={() =>
+          ensureShortLink(
+            { targetType: "service", targetId: o.serviceId, frame: o.suggestedFrame },
+            `/services/${o.serviceId}`,
+          )
+        }
+      />
+      <InstagramPublishButton
+        imageUrl={imageUrl}
+        caption={buildReviewCaption(o)}
+        available={!imageFailed}
+        unavailableReason={imageFailed ? "Share image unavailable right now" : undefined}
+        idPrefix={`opportunity-review-${o.reviewId}`}
+      />
+    </div>
+  );
+}
+
+/** D4 — an open-slot opportunity's suggested frame is server-derived (route when the service
+ *  actually has route stops, else feed — expert-console.routes.ts). The preview image and the
+ *  publish button both ride that SAME suggested frame, so acting on the opportunity always opens
+ *  the frame the server picked, never a different one derived independently on the client. */
+function SlotOpportunityCard({
+  o,
+  onSelectService,
+}: {
+  o: Extract<PostingOpportunity, { kind: "open_slots" }>;
+  onSelectService?: (serviceId: string) => void;
+}) {
+  const [imageFailed, setImageFailed] = useState(false);
+  const imageUrl = `/api/share-image/service/${o.serviceId}.png?format=${o.suggestedFrame}`;
+  return (
+    <div
+      className="rounded-lg border p-3 space-y-2"
+      style={{ borderColor: "#E8E8E2" }}
+      data-testid={`card-opportunity-slots-${o.serviceId}`}
+    >
+      {!imageFailed && (
+        <img
+          src={imageUrl}
+          alt={`${o.serviceName} — ${SHARE_FRAME_LABEL[o.suggestedFrame]} share card`}
+          className="w-full rounded-md border"
+          style={{ borderColor: "#E8E8E2" }}
+          onError={() => setImageFailed(true)}
+          data-testid={`img-opportunity-slots-${o.serviceId}`}
+        />
+      )}
+      <div className="flex items-center gap-2">
+        <p className="text-sm font-medium">
+          {o.serviceName} has {o.openSpots === 1 ? "1 open spot" : `${o.openSpots} open spots`} on{" "}
+          {formatOpportunityDate(o.nextDate)} — promote it
+        </p>
+        <Badge variant="outline" className="text-xs" data-testid={`badge-suggested-frame-slots-${o.serviceId}`}>
+          {SHARE_FRAME_LABEL[o.suggestedFrame]}
+        </Badge>
+      </div>
+      {onSelectService && (
+        <div className="flex flex-wrap gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => onSelectService(o.serviceId)}
+            data-testid={`button-opportunity-slots-select-${o.serviceId}`}
+          >
+            <Share2 className="w-3.5 h-3.5 mr-1.5" />
+            Select in picker
+          </Button>
+        </div>
+      )}
+      <ShareActions
+        caption={buildSlotCaption(o)}
+        idPrefix={`opportunity-slots-${o.serviceId}`}
+        onGetLink={() =>
+          ensureShortLink(
+            { targetType: "service", targetId: o.serviceId, frame: o.suggestedFrame },
+            `/services/${o.serviceId}`,
+          )
+        }
+      />
+      <InstagramPublishButton
+        imageUrl={imageUrl}
+        caption={buildSlotCaption(o)}
+        available={!imageFailed}
+        unavailableReason={imageFailed ? "Share image unavailable right now" : undefined}
+        idPrefix={`opportunity-slots-${o.serviceId}`}
       />
     </div>
   );
@@ -313,68 +626,9 @@ export function PostingOpportunitiesCard({
           <div className="grid sm:grid-cols-2 gap-4">
             {opportunities.map((o) =>
               o.kind === "new_review" ? (
-                <div
-                  key={`review-${o.reviewId}`}
-                  className="rounded-lg border p-3 space-y-2"
-                  style={{ borderColor: "#E8E8E2" }}
-                  data-testid={`card-opportunity-review-${o.reviewId}`}
-                >
-                  <img
-                    src={`/api/share-image/review/${o.reviewId}.png`}
-                    alt={`${o.rating}★ review on ${o.serviceName}`}
-                    className="w-full rounded-md border"
-                    style={{ borderColor: "#E8E8E2" }}
-                    data-testid={`img-opportunity-review-${o.reviewId}`}
-                  />
-                  <p className="text-sm font-medium">
-                    New {o.rating}★ review on {o.serviceName} — share it
-                  </p>
-                  <ShareActions
-                    caption={buildReviewCaption(o)}
-                    idPrefix={`opportunity-review-${o.reviewId}`}
-                    onGetLink={() =>
-                      ensureShortLink(
-                        { targetType: "service", targetId: o.serviceId },
-                        `/services/${o.serviceId}`,
-                      )
-                    }
-                  />
-                </div>
+                <ReviewOpportunityCard key={`review-${o.reviewId}`} o={o} />
               ) : (
-                <div
-                  key={`slots-${o.serviceId}`}
-                  className="rounded-lg border p-3 space-y-2"
-                  style={{ borderColor: "#E8E8E2" }}
-                  data-testid={`card-opportunity-slots-${o.serviceId}`}
-                >
-                  <p className="text-sm font-medium">
-                    {o.serviceName} has {o.openSpots === 1 ? "1 open spot" : `${o.openSpots} open spots`} on{" "}
-                    {formatOpportunityDate(o.nextDate)} — promote it
-                  </p>
-                  {onSelectService && (
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => onSelectService(o.serviceId)}
-                        data-testid={`button-opportunity-slots-select-${o.serviceId}`}
-                      >
-                        <Share2 className="w-3.5 h-3.5 mr-1.5" />
-                        Select in picker
-                      </Button>
-                    </div>
-                  )}
-                  <ShareActions
-                    caption={buildSlotCaption(o)}
-                    idPrefix={`opportunity-slots-${o.serviceId}`}
-                    onGetLink={() =>
-                      ensureShortLink(
-                        { targetType: "service", targetId: o.serviceId },
-                        `/services/${o.serviceId}`,
-                      )
-                    }
-                  />
-                </div>
+                <SlotOpportunityCard key={`slots-${o.serviceId}`} o={o} onSelectService={onSelectService} />
               ),
             )}
           </div>

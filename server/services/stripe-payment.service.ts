@@ -28,7 +28,7 @@ import { sendBookingConfirmationEmail } from './email.service';
 import { trackFunnelEvent } from '../utils/funnelTracker';
 import { logger } from '../infrastructure/logger';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
+export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
   apiVersion: '2024-12-18.acacia' as any,
 });
 
@@ -863,15 +863,39 @@ class StripePaymentService {
    * deterministic Stripe idempotencyKey so even a cross-process retry returns the same refund rather
    * than issuing a second one.
    */
-  async refundServiceBooking(bookingId: string, reason?: string) {
+  async refundServiceBooking(
+    bookingId: string,
+    reason?: string,
+    options?: {
+      /**
+       * Policy-derived partial refund (cancellation-policy.service.ts). Still SERVER-derived —
+       * never client-supplied (§14). Clamped to [0, total_amount]; undefined = full refund.
+       */
+      amountOverride?: number;
+    },
+  ) {
     const rows = await db.execute(sql`
-      SELECT id, total_amount, stripe_payment_intent_id, status, slot_id
+      SELECT id, total_amount, platform_fee, insurance_fee, stripe_payment_intent_id, status, slot_id
       FROM service_bookings WHERE id = ${bookingId} LIMIT 1
     `);
     const row = rows.rows?.[0] as any;
     if (!row) throw new Error('Service booking not found');
 
-    const amount = parseFloat(row.total_amount || '0');
+    const totalAmount = parseFloat(row.total_amount || '0');
+    // The clamp ceiling is what the traveler was actually CHARGED (service price + platform fee
+    // + insurance fee), not the bare service price — fee-included refunds (platform-owner ruling
+    // 2026-08-10) must not be silently truncated back to total_amount.
+    const amountCharged =
+      totalAmount + parseFloat(row.platform_fee || '0') + parseFloat(row.insurance_fee || '0');
+    // A FULL refund (no override) is the fee-inclusive charged amount — same ruling. Callers
+    // wanting the old service-price-only behaviour must pass it explicitly as an override.
+    const amount =
+      options?.amountOverride !== undefined
+        ? Math.min(Math.max(options.amountOverride, 0), amountCharged)
+        : amountCharged;
+    if (options?.amountOverride !== undefined && amount <= 0) {
+      throw new Error('Refund amount must be greater than zero');
+    }
     if (row.status === 'refunded') {
       return { alreadyRefunded: true, amount, status: 'refunded' as const };
     }
@@ -897,16 +921,28 @@ class StripePaymentService {
     const internalReason = (reason ?? '').trim() || 'requested_by_customer';
     const stripeReason = toStripeRefundReason(internalReason);
 
+    // The idempotency key must be UNAMBIGUOUS for the (operation, amount) pair: Stripe rejects a
+    // key reuse with different params, so a policy-scaled partial refund cannot share the plain
+    // `refund-sb-<id>` key a full refund may have attempted earlier (or vice versa, or a retry
+    // after the policy window shifted the computed amount). Amount-scoped keys keep each distinct
+    // refund attempt retry-safe while the atomic status claim above still guarantees at most ONE
+    // refund actually proceeds per booking.
+    const amountCents = Math.round(amount * 100);
+    const idempotencyKey =
+      options?.amountOverride !== undefined
+        ? `refund-sb-${bookingId}-${amountCents}`
+        : `refund-sb-${bookingId}`;
+
     let refund: Stripe.Refund;
     try {
       refund = await stripe.refunds.create(
         {
           payment_intent: paymentIntentId,
-          amount: Math.round(amount * 100),
+          amount: amountCents,
           reason: stripeReason,
           metadata: { bookingId, source: 'service_booking' },
         },
-        { idempotencyKey: `refund-sb-${bookingId}` },
+        { idempotencyKey },
       );
     } catch (err: any) {
       // Stripe failed — revert the optimistic status claim so a later retry can proceed cleanly.

@@ -12,6 +12,8 @@ import {
   findPriorClaim,
   markStripeAttempt,
   stampAuthorization,
+  assertServiceOwnerNotAway,
+  ProviderAwayError,
 } from "../services/checkout-claim.service";
 import { api } from "@shared/routes";
 import { z } from "zod";
@@ -746,6 +748,25 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
       // §17 room stays claim MULTIPLE nights (one slot per date) instead of a single itemSlotId
       // — all-or-nothing for the stay itself, released into the SAME claimedSlotIds compensation
       // list so a later item's failure also unwinds every night already claimed by this one.
+      // Vacation-mode pre-flight (§06b ruling): a blocked item never reaches the DB claim.
+      // Demand valve, not a money invariant — a race that slips past books normally (documented
+      // in checkout-claim.service.ts beside the guard).
+      try {
+        const checkedOwners = new Set<string>();
+        for (const item of cartData) {
+          const sid = item.service?.id ?? item.serviceId;
+          if (sid && !checkedOwners.has(sid)) {
+            checkedOwners.add(sid);
+            await assertServiceOwnerNotAway(sid);
+          }
+        }
+      } catch (err) {
+        if (err instanceof ProviderAwayError) {
+          return res.status(409).json({ message: "provider_away", detail: err.message });
+        }
+        throw err;
+      }
+
       const claimedSlotIds: string[] = [];
       const releaseClaimed = async (ids: string[]) => {
         for (const id of ids) {
@@ -1296,12 +1317,20 @@ router.get("/api/stripe/connect/dashboard", isAuthenticated, async (req, res) =>
   });
 
 
-router.get("/stripe/connect/return", (_req, res) => {
+router.get("/stripe/connect/return", (req, res) => {
+    // Email-auth sessions store role at req.user.claims.role; Replit-auth at req.user.role.
+    const role = (req.user as any)?.role ?? (req.user as any)?.claims?.role;
+    if (isProviderRole(role)) return res.redirect("/provider/settings?stripe=connected");
+    if (isExpertRole(role)) return res.redirect("/expert/settings?stripe=connected");
     res.redirect("/dashboard?stripe=connected");
   });
 
 
-router.get("/stripe/connect/refresh", (_req, res) => {
+router.get("/stripe/connect/refresh", (req, res) => {
+    // Email-auth sessions store role at req.user.claims.role; Replit-auth at req.user.role.
+    const role = (req.user as any)?.role ?? (req.user as any)?.claims?.role;
+    if (isProviderRole(role)) return res.redirect("/provider/settings?stripe=refresh");
+    if (isExpertRole(role)) return res.redirect("/expert/settings?stripe=refresh");
     res.redirect("/dashboard?stripe=refresh");
   });
 

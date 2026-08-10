@@ -4,10 +4,12 @@ import { availableAtFor } from "./config/earnings-hold.config";
 import { isTripAdvisor, isTripAdvisorWithWriteAccess } from "./utils/trip-advisor";
 import { PROCESSING_FEE_RATE, resolveCommissionRates, resolveServiceOwnerShareRate } from "./services/commission";
 import { isProviderRole } from "@shared/roles";
+import { omitFields } from "./utils/data-sanitizer";
 import { 
   trips, generatedItineraries, touristPlaceResults, touristPlacesSearches,
   userAndExpertChats, helpGuideTrips, vendors,
-  localExpertForms, serviceProviderForms, providerServices,
+  localExpertForms, serviceProviderForms, providerServices, serviceRoutePoints,
+  type ServiceRoutePoint,
   serviceCategories, serviceSubcategories, faqs, wallets, creditTransactions,
   serviceTemplates, serviceBookings, serviceReviews, cartItems, userAndExpertContracts,
   notifications, experienceTypes, experienceTemplateSteps, expertExperienceTypes,
@@ -194,6 +196,8 @@ export interface IStorage {
   // Provider Services
   getProviderServices(userId: string, filters?: { destination?: string; category?: string; activeOnly?: boolean }): Promise<ProviderService[]>;
   getAllProviderServices(): Promise<ProviderService[]>;
+  getServiceRoutePoints(serviceId: string): Promise<ServiceRoutePoint[]>;
+  replaceServiceRoutePoints(serviceId: string, stops: Array<{ name: string; latitude: number | null; longitude: number | null }>): Promise<ServiceRoutePoint[]>;
   createProviderService(service: InsertProviderService & { userId: string }): Promise<ProviderService>;
   updateProviderService(id: string, updates: Partial<InsertProviderService>): Promise<ProviderService | undefined>;
   deleteProviderService(id: string): Promise<void>;
@@ -484,7 +488,7 @@ export interface IStorage {
   releaseEarningsForBooking(bookingId: string, now?: Date): Promise<number>;
   setBookingEarningsDispute(bookingId: string, open: boolean, now?: Date): Promise<number>;
   reverseEarningsForBooking(bookingId: string, now?: Date): Promise<{ reversed: number; skippedPaidOut: number }>;
-  reversePlatformRevenueForBooking(bookingId: string, now?: Date): Promise<number>;
+  reversePlatformRevenueForBooking(bookingId: string, now?: Date, fraction?: number): Promise<number>;
 
   // Provider Payouts
   getProviderPayouts(providerId: string): Promise<ProviderPayout[]>;
@@ -1203,6 +1207,43 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(providerServices).where(eq(providerServices.status, 'active'));
   }
 
+  // Ruling 22: ordered route stops for a service, always position-ascending — the one read
+  // path both the owner console and the public detail endpoint use.
+  async getServiceRoutePoints(serviceId: string): Promise<ServiceRoutePoint[]> {
+    return await db.select().from(serviceRoutePoints)
+      .where(eq(serviceRoutePoints.serviceId, serviceId))
+      .orderBy(serviceRoutePoints.position);
+  }
+
+  // Ruling 22: replace-list write — the route editor submits the full ordered list and the
+  // server derives 1-based positions from array order (never client-numbered). Atomic
+  // delete+insert so a failed save can't leave a half-replaced route. lat/lng arrive already
+  // validated (both-or-neither, range-checked) from the route's allowlist parse; NULL means
+  // honestly unlocated (§13).
+  async replaceServiceRoutePoints(
+    serviceId: string,
+    stops: Array<{ name: string; latitude: number | null; longitude: number | null }>,
+  ): Promise<ServiceRoutePoint[]> {
+    return await db.transaction(async (tx) => {
+      // Serialize concurrent replaces on the same service: under READ COMMITTED two parallel
+      // delete+insert transactions each miss the other's rows and collide on the (service_id,
+      // position) UNIQUE. Locking the parent row first makes the second caller wait and then
+      // replace cleanly (found by the pre-ship concurrency test — 5 parallel PUTs → 23505).
+      await tx.execute(sql`SELECT id FROM provider_services WHERE id = ${serviceId} FOR UPDATE`);
+      await tx.delete(serviceRoutePoints).where(eq(serviceRoutePoints.serviceId, serviceId));
+      if (stops.length === 0) return [];
+      return await tx.insert(serviceRoutePoints).values(
+        stops.map((stop, i) => ({
+          serviceId,
+          position: i + 1,
+          name: stop.name,
+          latitude: stop.latitude === null ? null : String(stop.latitude),
+          longitude: stop.longitude === null ? null : String(stop.longitude),
+        })),
+      ).returning();
+    });
+  }
+
   async createProviderService(service: InsertProviderService & { userId: string }): Promise<ProviderService> {
     // EX-2 layer 2 (docs/testing/EXPERT_UX_WALKTHROUGH.md): a NEGATIVE price never reaches a row —
     // the schema floor is layer 1, but this backstop lives here so every caller is covered (the
@@ -1612,9 +1653,13 @@ export class DatabaseStorage implements IStorage {
     if (location) {
       conditions.push(ilike(providerServices.location, `%${location}%`));
     }
-    return await db.select().from(providerServices)
+    const rows = await db.select().from(providerServices)
       .where(and(...conditions))
       .orderBy(desc(providerServices.bookingsCount));
+    // D3 leak-prevention: this function's one caller is GET /api/services (unauthenticated
+    // public browse) — serviceFile is the pdf-delivery product itself and must never surface
+    // pre-purchase. Redacted to null (not omitted) so the return type stays ProviderService[].
+    return rows.map((r) => ({ ...r, serviceFile: null }));
   }
 
   async toggleServiceStatus(id: string, status: string): Promise<ProviderService | undefined> {
@@ -2065,7 +2110,11 @@ export class DatabaseStorage implements IStorage {
     }
 
     return {
-      services: enrichedServices,
+      // D3 leak-prevention: this function's one caller is GET /api/discover (unauthenticated
+      // public search) — serviceFile is the pdf-delivery product itself and must never
+      // surface pre-purchase. Redacted to null (not omitted) so the return type stays
+      // ProviderService[].
+      services: enrichedServices.map((s) => ({ ...s, serviceFile: null })),
       packages,
       total: filtered.length
     };
@@ -2170,7 +2219,16 @@ export class DatabaseStorage implements IStorage {
             .where(eq(vendorAvailabilitySlots.id, item.slotId));
           if (slotRow) slot = { date: String(slotRow.date), startTime: slotRow.startTime, endTime: slotRow.endTime };
         }
-        return { ...item, isCustomVenue: false, slot, service: service ? { ...service, providerName, categorySlug } : null };
+        // D3 leak-prevention: the cart is pre-purchase by definition (an item sitting in cart
+        // has no confirmed booking yet) — serviceFile must never ride this read even though
+        // it's the cart owner's own cart, or a buyer could add-to-cart, read the file URL, and
+        // abandon the cart without ever paying.
+        return {
+          ...item,
+          isCustomVenue: false,
+          slot,
+          service: service ? omitFields({ ...service, providerName, categorySlug }, ["serviceFile"] as const) : null,
+        };
       }
       return { ...item, service: null };
     }));
@@ -2868,13 +2926,16 @@ export class DatabaseStorage implements IStorage {
   // F2 public read-gate variant: the approved+active subset of an expert's listings, for PUBLIC
   // surfaces (the /api/experts/:id/services profile page and the experts-browse card embed). Keeps
   // the owner view (above) ungated so an expert still sees their own submitted/draft listings.
+  // D3 leak-prevention: every caller of this function is a public surface (verified — see the
+  // two call sites), so serviceFile is stripped HERE rather than at each call site.
   async getApprovedServicesForExpert(expertId: string): Promise<any[]> {
-    return await db.select().from(providerServices)
+    const rows = await db.select().from(providerServices)
       .where(and(
         eq(providerServices.userId, expertId),
         eq(providerServices.approvalStatus, "approved"),
         eq(providerServices.status, "active"),
       ));
+    return rows.map((r) => omitFields(r, ["serviceFile"] as const));
   }
 
   async addExpertSelectedService(expertId: string, serviceOfferingId: string, customPrice?: string): Promise<any> {
@@ -3996,13 +4057,21 @@ export class DatabaseStorage implements IStorage {
    * an atomic claim (WHERE status <> 'reversed') means a second call finds nothing and inserts no
    * second compensating row. Returns the number of original rows reversed.
    */
-  async reversePlatformRevenueForBooking(bookingId: string, now: Date = new Date()): Promise<number> {
+  /**
+   * `fraction` (default 1) scales the compensating negative rows for POLICY PARTIAL refunds
+   * (cancellation-policy.service.ts): a 50% refund inserts -0.5× rows, so the summed net keeps
+   * the RETAINED half recognised as platform revenue instead of zeroing the whole booking.
+   * The original row's status flip remains the idempotency guard either way — a retry (at any
+   * fraction) finds nothing to reverse and inserts no second compensating row.
+   */
+  async reversePlatformRevenueForBooking(bookingId: string, now: Date = new Date(), fraction: number = 1): Promise<number> {
+    const f = Math.min(Math.max(fraction, 0), 1);
     const originals = await db.update(platformRevenue)
       .set({ status: 'reversed' })
       .where(and(eq(platformRevenue.sourceId, bookingId), sqlOp`${platformRevenue.status} <> 'reversed'`))
       .returning();
     for (const o of originals) {
-      const neg = (v: string | null) => String(-parseFloat(v || '0'));
+      const neg = (v: string | null) => (-(Math.round(parseFloat(v || '0') * f * 100) / 100)).toFixed(2);
       await this.recordPlatformRevenue({
         sourceType: o.sourceType,
         sourceId: o.sourceId,

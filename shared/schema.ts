@@ -612,10 +612,12 @@ export const serviceStatusEnum = ["active", "paused", "draft"] as const;
 // hasn't declared a policy type (the honest state — never a fabricated blanket claim).
 export const cancellationPolicyTypeEnum = ["flexible", "moderate", "strict", "non_refundable"] as const;
 export const CANCELLATION_POLICY_TYPE_LABELS: Record<typeof cancellationPolicyTypeEnum[number], string> = {
-  flexible: "Flexible — full refund if cancelled well in advance",
-  moderate: "Moderate — partial refund on shorter notice",
-  strict: "Strict — limited refund window",
-  non_refundable: "Non-refundable",
+  // Concrete windows mirror the server enforcement schedule in
+  // server/services/cancellation-policy.service.ts (refundPercentFor).
+  flexible: "Flexible — full refund if cancelled at least 24 hours before the start",
+  moderate: "Moderate — full refund 5+ days before the start; 50% refund 2+ days before",
+  strict: "Strict — 50% refund if cancelled at least 7 days before the start",
+  non_refundable: "Non-refundable — no refund once booked",
 };
 
 export const providerServices = pgTable("provider_services", {
@@ -695,6 +697,13 @@ export const providerServices = pgTable("provider_services", {
   
   // Media
   serviceImage: text("service_image"), // Cover image URL
+  // D3 (docs/briefs/SERVICE_FUNDAMENTALS_DECISIONS.md): the artifact-delivery deliverable
+  // (pdf listings only — shared/service-fundamentals.ts isArtifactDelivery). Owner-gated
+  // write (same session/ownership check as serviceImage on POST/PATCH /api/provider/services
+  // — not a privileged §14/§18/§19 field, so no allowlist/omit needed there). NEVER select
+  // this column into a public/non-owner read — see the D3 leak-prevention audit; the one
+  // sanctioned reveal is GET /api/service-bookings/:id/deliverable (server/routes.ts), gated
+  // on a confirmed booking belonging to the session user.
   serviceFile: text("service_file"), // File URL
   
   // Status & Analytics
@@ -945,6 +954,11 @@ export const serviceReviews = pgTable("service_reviews", {
   reviewText: text("review_text"),
   responseText: text("response_text"), // Provider response
   responseAt: timestamp("response_at"),
+  // §06d (ratified Aug 9 2026): ONE public reply by the service owner; write-gated to the
+  // listing's owner; rendered traveler-side beside the review; visible to admin
+  // review-moderation.
+  providerReply: text("provider_reply"),
+  providerRepliedAt: timestamp("provider_replied_at"),
   isVerified: boolean("is_verified").default(false),
   // Moderation (REV-MOD)
   status: varchar("status", { length: 20 }).default("pending").notNull(), // pending | approved | flagged | removed
@@ -1739,7 +1753,7 @@ export const createBookingRequestSchema = insertServiceBookingSchema.pick({
   bookingMetadata: true,
 });
 
-export const insertServiceReviewSchema = createInsertSchema(serviceReviews).omit({ id: true, responseText: true, responseAt: true, createdAt: true, status: true, flagReason: true, moderatedBy: true, moderatedAt: true }).extend({
+export const insertServiceReviewSchema = createInsertSchema(serviceReviews).omit({ id: true, responseText: true, responseAt: true, providerReply: true, providerRepliedAt: true, createdAt: true, status: true, flagReason: true, moderatedBy: true, moderatedAt: true }).extend({
   rating: z.number().int().min(1, "Rating must be at least 1 star").max(5, "Rating cannot exceed 5 stars"),
 });
 export const insertCartItemSchema = createInsertSchema(cartItems).omit({ id: true, userId: true, createdAt: true });
@@ -7281,6 +7295,25 @@ export const dmoExtractedPlaces = pgTable("dmo_extracted_places", {
   normalizedNameIdx: index("dmo_extracted_places_normalized_name_idx").on(table.normalizedName),
 }));
 
+// Sweep/ingest run ledger — the admin "Content Ops" page (CLAUDE.md §17 lesson applied by
+// analogy, decision-maker ratified Aug 10 2026; migration 191). Every YouTube ingestion call
+// (server/services/youtube-ingestion.service.ts) and every warmup-sweep boot pass
+// (server/jobs/dmoExtractionWarmup.ts) writes ONE append-only row here, success or not — silence
+// must be distinguishable from "never ran" (§17 rule 2, by analogy). `counts` carries the full
+// stats object each caller already produces verbatim rather than forcing a shared column set
+// neither caller naturally has (youtube_ingest: scanned/upserted/skippedShape/skippedShort/
+// skippedDuplicate/error; warmup_sweep: scanned/extracted/emptied/failed/skippedCap/
+// stoppedNoApiKey/durationMs). No UPDATE/DELETE path. Additive, idempotent, no CHECK. Declared
+// here per the publish-trap rule.
+export const dmoExtractionRuns = pgTable("dmo_extraction_runs", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  kind: varchar("kind", { length: 40 }).notNull(), // 'youtube_ingest' | 'warmup_sweep' (app-enforced, no CHECK — §13 growth room)
+  counts: jsonb("counts").notNull().default({}),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  kindCreatedIdx: index("dmo_extraction_runs_kind_created_idx").on(table.kind, table.createdAt),
+}));
+
 export const expertDmoCollections = pgTable("expert_dmo_collections", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   expertId: varchar("expert_id").notNull().references(() => users.id, { onDelete: "cascade" }),
@@ -7737,12 +7770,19 @@ export type BoardItem = typeof boardItems.$inferSelect;
 // same posture as users.handle (migration 136): a CHECK over an app-layer vocabulary is the
 // publish-time push trap. target_id is nullable (storefront links carry no target_id — the owner's
 // handle is resolved at redirect time, never baked into the row).
+// `frame` (migration 193, D4 — docs/briefs/SERVICE_FUNDAMENTALS_DECISIONS.md, decision-maker
+// ratified Aug 10 2026): additive nullable varchar, same NO-CHECK posture as target_type — the
+// closed allowlist (`shared/share-frames.ts` SHARE_FRAMES) is app-enforced at the create route.
+// NULL = an untagged/generic link, the historical shape; every pre-193 row and every caller that
+// omits frame keeps working exactly as before. Frame participates in the create-path dedupe
+// identity (owner + targetType + targetId + frame) so each frame mints its OWN code.
 export const shortLinks = pgTable("short_links", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   code: varchar("code", { length: 12 }).notNull().unique(),
   ownerUserId: varchar("owner_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   targetType: varchar("target_type", { length: 30 }).notNull(),
   targetId: varchar("target_id"),
+  frame: varchar("frame", { length: 20 }),
   clicks: integer("clicks").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [
@@ -7752,3 +7792,99 @@ export const shortLinks = pgTable("short_links", {
 export const insertShortLinkSchema = createInsertSchema(shortLinks).omit({ id: true, clicks: true, createdAt: true });
 export type ShortLink = typeof shortLinks.$inferSelect;
 export type InsertShortLink = z.infer<typeof insertShortLinkSchema>;
+
+// === Provider Back-Office Wave — migration 189 (decision-maker approved Aug 9 2026) ===
+// Two new tables, neither wired to enforcement yet — the feature builds that read/write these
+// beyond the create path land separately. Vacation mode itself lives on `users`
+// (shared/models/auth.ts: vacationUntil/vacationMessage), not here.
+
+// offering_type_requests — provider "I don't see my offering" requests. status is app-enforced
+// (pending|approved|rejected), no DB CHECK (house posture). Consumed by the admin categories page.
+export const offeringTypeRequests = pgTable("offering_type_requests", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  requestedName: varchar("requested_name", { length: 120 }).notNull(),
+  description: text("description"),
+  status: varchar("status", { length: 30 }).notNull().default("pending"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("offering_type_requests_status_idx").on(table.status),
+]);
+
+// ALLOWLIST (§19/#PS18 target shape, ratchet-exempt — new schemas must be .pick()-based per
+// scripts/check-omit-schema-ratchet.cjs): a request only ever needs to carry the requester's own
+// text; id/userId/status/timestamps are all server-derived (userId from the session, status
+// defaults 'pending', the rest by the DB).
+export const insertOfferingTypeRequestSchema = createInsertSchema(offeringTypeRequests).pick({
+  requestedName: true,
+  description: true,
+});
+export type OfferingTypeRequest = typeof offeringTypeRequests.$inferSelect;
+export type InsertOfferingTypeRequest = z.infer<typeof insertOfferingTypeRequestSchema>;
+
+/** App-enforced offering_type_requests.status vocabulary — no DB CHECK (house posture). */
+export const OFFERING_TYPE_REQUEST_STATUSES = ["pending", "approved", "rejected"] as const;
+export type OfferingTypeRequestStatus = (typeof OFFERING_TYPE_REQUEST_STATUSES)[number];
+
+// demand_signal_events — append-only §13 event log. Every trending/demand surface must read
+// ONLY these logged events; writers land in the feature builds that produce each signal kind,
+// not here. kind is app-enforced (stay_anchor_miss|places_fallthrough|no_stay_flag|
+// search_unfilled), no DB CHECK — same posture as optimizer_gap_fills (migration 182).
+export const demandSignalEvents = pgTable("demand_signal_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  kind: varchar("kind", { length: 40 }).notNull(),
+  market: varchar("market", { length: 100 }),
+  category: varchar("category", { length: 60 }),
+  latitude: decimal("latitude", { precision: 10, scale: 7 }),
+  longitude: decimal("longitude", { precision: 10, scale: 7 }),
+  context: jsonb("context"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("demand_signal_events_kind_created_idx").on(table.kind, table.createdAt),
+  index("demand_signal_events_market_idx").on(table.market),
+]);
+
+// ALLOWLIST (§19/#PS18 target shape, ratchet-exempt — see optimizer_gap_fills precedent): id/
+// createdAt are server-derived; every other column is writer-supplied signal data.
+export const insertDemandSignalEventSchema = createInsertSchema(demandSignalEvents).pick({
+  kind: true,
+  market: true,
+  category: true,
+  latitude: true,
+  longitude: true,
+  context: true,
+});
+export type DemandSignalEvent = typeof demandSignalEvents.$inferSelect;
+export type InsertDemandSignalEvent = z.infer<typeof insertDemandSignalEventSchema>;
+
+/** App-enforced demand_signal_events.kind vocabulary — no DB CHECK (house posture). */
+export const DEMAND_SIGNAL_EVENT_KINDS = [
+  "stay_anchor_miss",
+  "places_fallthrough",
+  "no_stay_flag",
+  "search_unfilled",
+] as const;
+export type DemandSignalEventKind = (typeof DEMAND_SIGNAL_EVENT_KINDS)[number];
+
+// Ordered route stops for a provider service — CLAUDE.md ruling 22 (decision-maker ratified
+// Aug 10, 2026; migration 192). dmo_extracted_places pattern: child rows, CASCADE, composite
+// UNIQUE on (service_id, position). lat/lng nullable — an unlocated stop stays visibly flagged
+// in lists and is NEVER guessed onto the map (§13; no city-center fallback). Positions are
+// server-derived from array order on the replace-list write (PUT
+// /api/provider/services/:id/route-points) — never client-numbered. Declared here per the
+// publish-trap rule (table + UNIQUE + index must survive the deploy push).
+export const serviceRoutePoints = pgTable("service_route_points", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  serviceId: varchar("service_id").notNull().references(() => providerServices.id, { onDelete: "cascade" }),
+  position: integer("position").notNull(), // 1-based stop order (the numbered pins)
+  name: varchar("name", { length: 255 }).notNull(),
+  latitude: decimal("latitude", { precision: 10, scale: 7 }),
+  longitude: decimal("longitude", { precision: 10, scale: 7 }),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  unique("service_route_points_service_position_unique").on(table.serviceId, table.position),
+  index("service_route_points_service_idx").on(table.serviceId),
+]);
+export type ServiceRoutePoint = typeof serviceRoutePoints.$inferSelect;

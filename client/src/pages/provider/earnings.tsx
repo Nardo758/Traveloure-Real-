@@ -1,21 +1,25 @@
 import { ProviderLayout } from "@/components/provider/provider-layout";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { 
-  DollarSign, 
-  TrendingUp, 
-  Clock, 
-  CheckCircle, 
+import {
+  DollarSign,
+  TrendingUp,
+  Clock,
+  CheckCircle,
   Calendar,
   Download,
   ArrowUpRight,
   Loader2,
   PieChart,
   Shield,
+  Link2,
+  MousePointerClick,
+  Copy,
 } from "lucide-react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
+import { Link } from "wouter";
 import type { ServiceBooking, ProviderService } from "@shared/schema";
 import { StripeConnectCard } from "@/components/stripe-connect-card";
 import { EarningsBySourcePanel } from "@/components/backoffice/earnings-by-source-panel";
@@ -41,6 +45,315 @@ interface ProviderEarningsSummary {
   pending: number; // held in escrow, not yet releasable
   available: number; // releasable — payable now
   paidOut: number;
+}
+
+// "Link performance" card (§06a mockup). Reads the S5/S6 short-link rails
+// (server/routes/short-links.routes.ts) — real data only (§13), never a fabricated trend: clicks
+// are a lifetime counter with no per-day log, so there is deliberately no click-over-time chart here.
+interface LinkAnalyticsRow {
+  code: string;
+  targetType: "storefront" | "service" | "template" | "ready_made";
+  targetId: string | null;
+  clicks: number;
+  bookings: number;
+  revenue: number;
+}
+
+interface LinkAnalyticsResponse {
+  range: { days: number; since: string };
+  clicksAreLifetime: boolean;
+  links: LinkAnalyticsRow[];
+  totals: {
+    totalClicks: number;
+    totalBookings: number;
+    totalRevenue: number;
+    conversionRate: number | null;
+  };
+}
+
+interface SourceSplitBucket {
+  source: "direct" | "link" | "cross_sell";
+  label: string;
+  count: number;
+  revenue: number;
+}
+
+interface EarningsBySourceResponse {
+  buckets: SourceSplitBucket[];
+  totals: { count: number; revenue: number };
+  preAttributionCaveat: boolean;
+}
+
+// Statements (mockup §06e). Reads server/routes/statements.routes.ts — months with real ledger
+// activity only (§13: a quiet month is simply absent from this list, never a zeroed row).
+interface StatementMonth {
+  month: string; // "2026-07"
+  bookings: number;
+  gross: number;
+  net: number;
+}
+
+const LINK_TARGET_LABEL: Record<LinkAnalyticsRow["targetType"], string> = {
+  storefront: "Your storefront",
+  service: "Service",
+  template: "Itinerary template",
+  ready_made: "Ready Made Trip",
+};
+
+const SOURCE_BAR_COLOR: Record<SourceSplitBucket["source"], string> = {
+  direct: "bg-console-mid",
+  link: "bg-primary",
+  cross_sell: "bg-blue-500",
+};
+
+function LinkPerformanceCard() {
+  const { toast } = useToast();
+  const [copiedCode, setCopiedCode] = useState<string | null>(null);
+
+  // days=365 is the widest range the rail offers (RANGE_DAYS in short-links.routes.ts) — the
+  // closest honest approximation of "lifetime" for bookings/revenue, which — unlike clicks — are
+  // NOT true lifetime counters server-side.
+  const linkAnalyticsQuery = useQuery<LinkAnalyticsResponse>({
+    queryKey: ["/api/me/link-analytics", { days: 365 }],
+  });
+  const sourceQuery = useQuery<EarningsBySourceResponse>({
+    queryKey: ["/api/me/earnings-by-source"],
+  });
+  const servicesQuery = useQuery<ProviderService[]>({
+    queryKey: ["/api/provider/services"],
+  });
+
+  // Endpoint error -> render nothing. An honest absence beats a broken/half-populated card.
+  if (linkAnalyticsQuery.isError) return null;
+
+  const links = linkAnalyticsQuery.data?.links ?? [];
+  const totals = linkAnalyticsQuery.data?.totals;
+  const hasLinks = links.length > 0;
+
+  const serviceNameById = new Map((servicesQuery.data ?? []).map((s) => [s.id, s.serviceName]));
+  function targetName(row: LinkAnalyticsRow): string {
+    if (row.targetType === "service" && row.targetId) {
+      return serviceNameById.get(row.targetId) ?? "Service";
+    }
+    return LINK_TARGET_LABEL[row.targetType];
+  }
+
+  async function copyLink(code: string) {
+    const url = `${window.location.origin}/r/${code}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopiedCode(code);
+      toast({ title: "Copied", description: "Share link copied to your clipboard." });
+      setTimeout(() => setCopiedCode((c) => (c === code ? null : c)), 2000);
+    } catch {
+      toast({ title: "Couldn't copy", description: "Please copy the link manually.", variant: "destructive" });
+    }
+  }
+
+  const sourceBuckets = sourceQuery.data?.buckets ?? [];
+  const sourceTotalRevenue = sourceQuery.data?.totals?.revenue ?? 0;
+
+  return (
+    <Card className="border border-console-light" data-testid="card-link-performance">
+      <CardHeader>
+        <CardTitle className="text-lg flex items-center gap-2">
+          <Link2 className="w-5 h-5 text-primary" />
+          Link Performance
+        </CardTitle>
+        <CardDescription data-testid="text-link-performance-caveat">
+          Stats count tracked share links only — a raw URL texted or pasted outside Traveloure isn't
+          visible to this dashboard.
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {!hasLinks ? (
+          <EmptyState
+            icon={Link2}
+            title="Share a service from your Catalog to start tracking clicks and bookings"
+            cta={
+              <Button size="sm" variant="outline" asChild data-testid="button-empty-link-performance">
+                <Link href="/provider/services">Go to Catalog</Link>
+              </Button>
+            }
+            testId="empty-link-performance"
+          />
+        ) : (
+          <div className="space-y-6">
+            <div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <StatCard
+                  label="Clicks"
+                  value={(totals?.totalClicks ?? 0).toLocaleString()}
+                  icon={MousePointerClick}
+                  testId="stat-link-clicks"
+                />
+                <StatCard
+                  label="Bookings via links"
+                  value={(totals?.totalBookings ?? 0).toLocaleString()}
+                  icon={CheckCircle}
+                  iconClassName="bg-green-100 text-green-600"
+                  testId="stat-link-bookings"
+                />
+                <StatCard
+                  label="Revenue via links"
+                  value={`$${(totals?.totalRevenue ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                  icon={DollarSign}
+                  iconClassName="bg-console-bg text-console-darkest"
+                  testId="stat-link-revenue"
+                />
+              </div>
+              <p className="text-xs text-console-mid mt-2">Lifetime totals.</p>
+            </div>
+
+            <div className="space-y-2">
+              {links.map((row) => (
+                <div
+                  key={row.code}
+                  className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-lg border border-console-light bg-console-bg"
+                  data-testid={`row-link-${row.code}`}
+                >
+                  <div className="min-w-0">
+                    <p className="font-medium text-console-darkest truncate">{targetName(row)}</p>
+                    <p className="text-xs text-console-mid truncate">{`${window.location.origin}/r/${row.code}`}</p>
+                  </div>
+                  <div className="flex items-center gap-4 text-sm flex-shrink-0">
+                    <div className="text-center">
+                      <p className="font-semibold text-console-darkest">{row.clicks.toLocaleString()}</p>
+                      <p className="text-xs text-console-mid">clicks</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="font-semibold text-console-darkest">{row.bookings.toLocaleString()}</p>
+                      <p className="text-xs text-console-mid">bookings</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="font-semibold text-console-darkest">
+                        ${row.revenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </p>
+                      <p className="text-xs text-console-mid">revenue</p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => copyLink(row.code)}
+                      data-testid={`button-copy-link-${row.code}`}
+                    >
+                      <Copy className="w-3.5 h-3.5 mr-1.5" />
+                      {copiedCode === row.code ? "Copied" : "Copy"}
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {sourceBuckets.length > 0 && sourceTotalRevenue > 0 && (
+              <div>
+                <p className="text-sm font-medium text-console-darkest mb-2">Revenue by source</p>
+                <div className="h-3 rounded-full overflow-hidden flex bg-console-bg" data-testid="bar-link-source-split">
+                  {sourceBuckets.map((b) => {
+                    const pct = (b.revenue / sourceTotalRevenue) * 100;
+                    return <div key={b.source} className={SOURCE_BAR_COLOR[b.source]} style={{ width: `${pct}%` }} />;
+                  })}
+                </div>
+                <div className="flex flex-wrap justify-between gap-2 text-xs text-console-mid mt-1">
+                  {sourceBuckets.map((b) => {
+                    const pct = Math.round((b.revenue / sourceTotalRevenue) * 100);
+                    return (
+                      <span key={b.source} data-testid={`text-link-source-${b.source}`}>
+                        {b.label} {pct}%
+                      </span>
+                    );
+                  })}
+                </div>
+                {sourceQuery.data?.preAttributionCaveat && (
+                  <p className="text-xs text-console-mid mt-2" data-testid="text-link-split-caveat">
+                    This split isn't retroactive — bookings made before link tracking launched are
+                    counted as Direct by default, not because they were confirmed direct.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function monthLabel(month: string): string {
+  const d = new Date(`${month}-01T00:00:00`);
+  if (isNaN(d.getTime())) return month;
+  return d.toLocaleString("default", { month: "long", year: "numeric" });
+}
+
+function StatementsCard() {
+  // Endpoint 404 (pending mount, or a real "not applicable" 404) -> render nothing (§13 — an honest
+  // absence beats a broken card). A 200-HTML unmounted-router response (§9 signature) fails res.json()
+  // parsing the same way a real error does, so isError covers both cases uniformly.
+  const statementsQuery = useQuery<StatementMonth[]>({
+    queryKey: ["/api/me/statements"],
+  });
+
+  if (statementsQuery.isError) return null;
+
+  const months = statementsQuery.data ?? [];
+
+  return (
+    <Card className="border border-console-light" data-testid="card-statements">
+      <CardHeader>
+        <CardTitle className="text-lg flex items-center gap-2">
+          <Download className="w-5 h-5 text-primary" />
+          Statements
+        </CardTitle>
+        <CardDescription>Download a CSV of every earning and payout event for a given month.</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {months.length === 0 ? (
+          <EmptyState
+            icon={Download}
+            title="Statements appear after your first booking month"
+            testId="empty-statements"
+          />
+        ) : (
+          <div className="space-y-2">
+            {months.map((row) => (
+              <div
+                key={row.month}
+                className="flex flex-wrap items-center justify-between gap-3 p-3 rounded-lg border border-console-light bg-console-bg"
+                data-testid={`row-statement-${row.month}`}
+              >
+                <div className="min-w-0">
+                  <p className="font-medium text-console-darkest">{monthLabel(row.month)}</p>
+                  <p className="text-xs text-console-mid">
+                    {row.bookings} {row.bookings === 1 ? "booking" : "bookings"}
+                  </p>
+                </div>
+                <div className="flex items-center gap-4 text-sm flex-shrink-0">
+                  <div className="text-center">
+                    <p className="font-semibold text-console-darkest">
+                      ${row.gross.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                    <p className="text-xs text-console-mid">gross</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="font-semibold text-console-darkest">
+                      ${row.net.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                    <p className="text-xs text-console-mid">net</p>
+                  </div>
+                  <Button size="sm" variant="outline" asChild data-testid={`button-statement-csv-${row.month}`}>
+                    <a href={`/api/me/statements/${row.month}.csv`} download={`statement-${row.month}.csv`}>
+                      <Download className="w-3.5 h-3.5 mr-1.5" />
+                      CSV
+                    </a>
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
 }
 
 export default function ProviderEarnings() {
@@ -162,7 +475,10 @@ export default function ProviderEarnings() {
   const maxEarning = Math.max(...monthlyEarnings.map(m => m.amount), 1);
 
   const revenueBreakdown = useMemo(() => {
-    if (!bookings) return { gross: 0, platformFee: 0, basePlatformFee: 0, insuranceFee: 0, providerShare: 0, effectiveRate: 0.30 };
+    // §8/§13: no client-side rate literal, no fabricated split. With zero gross there is no
+    // real split to show — effectiveRate is null and the UI renders an honest empty state.
+    // With gross > 0 the rate is derived from this provider's real booking rows (share/gross).
+    if (!bookings) return { gross: 0, platformFee: 0, basePlatformFee: 0, insuranceFee: 0, providerShare: 0, effectiveRate: null as number | null };
     let gross = 0, fee = 0, share = 0, insurance = 0;
     for (const b of bookings) {
       gross += Number(b.totalAmount ?? 0);
@@ -170,14 +486,14 @@ export default function ProviderEarnings() {
       share += Number(b.providerEarnings ?? 0);
       insurance += Number((b as any).insuranceFee ?? 0);
     }
-    const effectiveRate = gross > 0 ? share / gross : 0.30;
+    const effectiveRate: number | null = gross > 0 ? share / gross : null;
     const basePlatformFee = Math.round((fee - insurance) * 100) / 100;
     return { gross, platformFee: fee, basePlatformFee, insuranceFee: insurance, providerShare: share, effectiveRate };
   }, [bookings]);
 
   if (isLoading) {
     return (
-      <ProviderLayout title="Earnings">
+      <ProviderLayout title="Money">
         <div className="flex items-center justify-center h-64">
           <Loader2 className="w-8 h-8 animate-spin text-primary" />
         </div>
@@ -193,7 +509,7 @@ export default function ProviderEarnings() {
   ];
 
   return (
-    <ProviderLayout title="Earnings">
+    <ProviderLayout title="Money">
       <div className="p-6 space-y-6">
         <StripeConnectCard />
 
@@ -211,12 +527,6 @@ export default function ProviderEarnings() {
               </CardContent>
             </Card>
           ))}
-        </div>
-
-        <div className="flex flex-wrap gap-3 items-center">
-          <Button variant="outline" data-testid="button-download-statement">
-            <Download className="w-4 h-4 mr-2" /> Download Statement
-          </Button>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -319,14 +629,14 @@ export default function ProviderEarnings() {
                 <p className="text-xs text-console-mid mt-1">Total from all bookings</p>
               </div>
               <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-100 dark:border-red-800 text-center" data-testid="stat-platform-fee">
-                <p className="text-sm text-red-600 mb-1">Platform Fee{revenueBreakdown.gross > 0 ? ` (${Math.round((1 - revenueBreakdown.effectiveRate) * 100)}%)` : ""}</p>
+                <p className="text-sm text-red-600 mb-1">Platform Fee{revenueBreakdown.effectiveRate != null ? ` (${Math.round((1 - revenueBreakdown.effectiveRate) * 100)}%)` : ""}</p>
                 <p className="text-xl font-bold text-red-700">
                   -${revenueBreakdown.platformFee.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </p>
                 <p className="text-xs text-red-400 mt-1">Traveloure service charge</p>
               </div>
               <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800 text-center" data-testid="stat-your-share">
-                <p className="text-sm text-green-600 mb-1">Your Share{revenueBreakdown.gross > 0 ? ` (${Math.round(revenueBreakdown.effectiveRate * 100)}%)` : ""}</p>
+                <p className="text-sm text-green-600 mb-1">Your Share{revenueBreakdown.effectiveRate != null ? ` (${Math.round(revenueBreakdown.effectiveRate * 100)}%)` : ""}</p>
                 <p className="text-xl font-bold text-green-700">
                   ${revenueBreakdown.providerShare.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </p>
@@ -367,21 +677,31 @@ export default function ProviderEarnings() {
               </div>
             </div>
 
-            <div className="mt-3 h-3 bg-console-bg rounded-full overflow-hidden flex" data-testid="bar-revenue-split">
-              <div
-                className="h-full bg-primary transition-all"
-                style={{ width: `${Math.round((1 - revenueBreakdown.effectiveRate) * 100)}%` }}
-              />
-              <div className="h-full bg-green-500 flex-1" />
-            </div>
-            <div className="flex justify-between text-xs text-console-mid mt-1">
-              <span>Platform {Math.round((1 - revenueBreakdown.effectiveRate) * 100)}%</span>
-              <span>You {Math.round(revenueBreakdown.effectiveRate * 100)}%</span>
-            </div>
+            {revenueBreakdown.effectiveRate != null ? (
+              <>
+                <div className="mt-3 h-3 bg-console-bg rounded-full overflow-hidden flex" data-testid="bar-revenue-split">
+                  <div
+                    className="h-full bg-primary transition-all"
+                    style={{ width: `${Math.round((1 - revenueBreakdown.effectiveRate) * 100)}%` }}
+                  />
+                  <div className="h-full bg-green-500 flex-1" />
+                </div>
+                <div className="flex justify-between text-xs text-console-mid mt-1">
+                  <span>Platform {Math.round((1 - revenueBreakdown.effectiveRate) * 100)}%</span>
+                  <span>You {Math.round(revenueBreakdown.effectiveRate * 100)}%</span>
+                </div>
+              </>
+            ) : (
+              <p className="mt-3 text-sm text-console-mid text-center" data-testid="text-revenue-split-empty">
+                No bookings yet — your split appears here after your first booking.
+              </p>
+            )}
           </CardContent>
         </Card>
 
         <EarningsBySourcePanel />
+
+        <LinkPerformanceCard />
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2">
@@ -500,6 +820,8 @@ export default function ProviderEarnings() {
             </CardContent>
           </Card>
         </div>
+
+        <StatementsCard />
       </div>
     </ProviderLayout>
   );

@@ -30,6 +30,19 @@ interface LinkRow {
   code: string;
   targetType: string;
   targetId: string | null;
+  frame: string | null;
+  clicks: number;
+  bookings: number;
+  revenue: number;
+}
+
+/** D4 — per-frame rollup. `frame: null` is the honest "untagged" bucket (legacy links + links
+ *  deliberately created without a frame) — represented explicitly, never dropped or folded into
+ *  a real frame (§13). Only frames the earner actually has a link for are ever present. */
+interface FrameBreakdownRow {
+  frame: string | null;
+  label: string;
+  linkCount: number;
   clicks: number;
   bookings: number;
   revenue: number;
@@ -45,6 +58,7 @@ interface LinkAnalyticsResponse {
     totalRevenue: number;
     conversionRate: number | null;
   };
+  frameBreakdown: FrameBreakdownRow[];
 }
 
 const TARGET_LABEL: Record<string, string> = {
@@ -74,7 +88,7 @@ function generateCSV(
   const rows: string[] = [];
 
   // Header
-  rows.push("code,target_type,target_id,lifetime_clicks,bookings,revenue");
+  rows.push("code,target_type,target_id,frame,lifetime_clicks,bookings,revenue");
 
   // Data rows
   for (const link of links) {
@@ -82,6 +96,7 @@ function generateCSV(
       escapeCSVField(link.code),
       escapeCSVField(link.targetType),
       escapeCSVField(link.targetId),
+      escapeCSVField(link.frame ?? "untagged"),
       link.clicks,
       link.bookings,
       link.revenue.toFixed(2),
@@ -93,6 +108,7 @@ function generateCSV(
   if (totals) {
     const totalsRow = [
       escapeCSVField("TOTAL"),
+      "",
       "",
       "",
       totals.totalClicks,
@@ -130,6 +146,7 @@ export function LinkAnalyticsPanel() {
 
   const totals = data?.totals;
   const links = data?.links ?? [];
+  const frameBreakdown = data?.frameBreakdown ?? [];
   const hasLinks = links.length > 0;
 
   const handleExportCSV = () => {
@@ -234,6 +251,52 @@ export function LinkAnalyticsPanel() {
               </div>
             </div>
 
+            {/* D4 — per-frame breakdown (Performance is where measurement lives, ruling 22(d);
+                the share rail itself never grows its own analytics). Only frames the earner
+                actually has a link for appear — a frame with no link is absent, not a zero row
+                (§13); the "Untagged" bucket keeps legacy/generic links honestly visible. */}
+            {frameBreakdown.length > 0 && (
+              <div className="mb-6" data-testid="section-frame-breakdown">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                  By frame
+                </p>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-xs uppercase text-muted-foreground border-b">
+                        <th className="py-2 pr-3 font-semibold">Frame</th>
+                        <th className="py-2 pr-3 font-semibold">Links</th>
+                        <th className="py-2 pr-3 font-semibold">Clicks</th>
+                        <th className="py-2 pr-3 font-semibold">Bookings</th>
+                        <th className="py-2 font-semibold">Revenue</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {frameBreakdown.map((row) => (
+                        <tr
+                          key={row.frame ?? "untagged"}
+                          className="border-b last:border-0"
+                          data-testid={`frame-row-${row.frame ?? "untagged"}`}
+                        >
+                          <td className="py-2.5 pr-3">
+                            <Badge variant={row.frame ? "default" : "outline"} className="text-xs">
+                              {row.label}
+                            </Badge>
+                          </td>
+                          <td className="py-2.5 pr-3">{row.linkCount.toLocaleString()}</td>
+                          <td className="py-2.5 pr-3">{row.clicks.toLocaleString()}</td>
+                          <td className="py-2.5 pr-3">{row.bookings.toLocaleString()}</td>
+                          <td className="py-2.5">
+                            ${row.revenue.toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
             {/* Per-link table */}
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -241,6 +304,7 @@ export function LinkAnalyticsPanel() {
                   <tr className="text-left text-xs uppercase text-muted-foreground border-b">
                     <th className="py-2 pr-3 font-semibold">Link</th>
                     <th className="py-2 pr-3 font-semibold">Target</th>
+                    <th className="py-2 pr-3 font-semibold">Frame</th>
                     <th className="py-2 pr-3 font-semibold">Clicks</th>
                     <th className="py-2 pr-3 font-semibold">Bookings</th>
                     <th className="py-2 font-semibold">Revenue</th>
@@ -254,6 +318,9 @@ export function LinkAnalyticsPanel() {
                         <Badge variant="outline" className="text-xs">
                           {TARGET_LABEL[row.targetType] ?? row.targetType}
                         </Badge>
+                      </td>
+                      <td className="py-2.5 pr-3 text-xs text-muted-foreground">
+                        {row.frame ?? "Untagged"}
                       </td>
                       <td className="py-2.5 pr-3">{row.clicks.toLocaleString()}</td>
                       <td className="py-2.5 pr-3">{row.bookings.toLocaleString()}</td>

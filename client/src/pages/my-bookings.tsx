@@ -604,10 +604,24 @@ function ConfirmationCodeBadge({ code, bookingId }: { code: string; bookingId: s
   );
 }
 
+interface CancelPreview {
+  policyType: string;
+  policyDefaulted: boolean;
+  refundPercent: number;
+  refundAmount: number;
+  totalAmount: number;
+  hoursUntilStart: number | null;
+  automaticRefundAllowed: boolean;
+  message: string;
+  cancellable: boolean;
+  bookingStatus: string;
+}
+
 function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booking: Booking) => void }) {
   const { toast } = useToast();
   const [disputeOpen, setDisputeOpen] = useState(false);
   const [disputeReason, setDisputeReason] = useState("");
+  const [cancelOpen, setCancelOpen] = useState(false);
   const status = getStatusDisplay(booking.status);
   const StatusIcon = status.icon;
   const canReview = booking.status === "completed" && !booking.hasReview;
@@ -615,6 +629,7 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
   // completion (early-releases the provider's held earnings) or dispute (blocks release for admin
   // review). Both act on this service booking by id.
   const canConfirmOrDispute = booking.status === "completed";
+  const canCancel = booking.status === "pending" || booking.status === "confirmed";
   const isDisputed = booking.status === "disputed";
   const showVisaTimeline = isVisaBooking(booking) && booking.bookingMetadata;
   const isConfirmedOrBeyond = ["confirmed", "in_progress", "completed"].includes(booking.status);
@@ -628,6 +643,54 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
     onError: () => {
       toast({ title: "Could not confirm", description: "Please try again or contact support.", variant: "destructive" });
     },
+  });
+
+  // Refund preview fetched only while the confirmation dialog is open, so the traveler sees
+  // the exact refund amount / policy consequence before confirming a cancellation.
+  const { data: cancelPreview, isLoading: previewLoading } = useQuery<CancelPreview>({
+    queryKey: [`/api/bookings/${booking.id}/cancel-preview`],
+    enabled: cancelOpen,
+    staleTime: 0,
+  });
+
+  const cancelMutation = useMutation({
+    mutationFn: () => apiRequest("POST", `/api/bookings/${booking.id}/cancel`, { reason: "Cancelled by traveler" }),
+    onSuccess: async (res: any) => {
+      const data = typeof res?.json === "function" ? await res.json() : res;
+      queryClient.invalidateQueries({ queryKey: ["/api/my-bookings"] });
+      setCancelOpen(false);
+      const refund = data?.refund;
+      toast({
+        title: "Booking cancelled",
+        description: refund?.issued
+          ? `A refund of $${Number(refund.refundAmount).toFixed(2)} has been issued to your original payment method.`
+          : "No automatic refund was issued for this cancellation.",
+      });
+    },
+    onError: () => {
+      toast({ title: "Could not cancel booking", description: "Please try again or contact support.", variant: "destructive" });
+    },
+  });
+
+  // D3 (docs/briefs/SERVICE_FUNDAMENTALS_DECISIONS.md): the pdf-delivery post-purchase
+  // deliverable. The server (GET /api/service-bookings/:id/deliverable) is the sole authority
+  // on whether this booking qualifies — confirmed status, the traveler's own booking, an
+  // artifact-delivery service, and a real uploaded file — this client only ever renders what
+  // the server granted, never re-derives eligibility. A 404 (not artifact delivery, no file
+  // yet, or not confirmed) is the common, expected case for most bookings, so it's swallowed
+  // quietly rather than surfaced as an error.
+  const { data: deliverable } = useQuery<{ fileUrl: string; deliveryMethod: string } | null>({
+    queryKey: [`/api/service-bookings/${booking.id}/deliverable`],
+    queryFn: async () => {
+      try {
+        const res = await apiRequest("GET", `/api/service-bookings/${booking.id}/deliverable`);
+        return await res.json();
+      } catch {
+        return null;
+      }
+    },
+    enabled: booking.status === "confirmed",
+    staleTime: 5 * 60 * 1000,
   });
 
   const disputeMutation = useMutation({
@@ -702,6 +765,17 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
               </div>
             )}
             
+            {deliverable?.fileUrl && (
+              <div className="mb-2 flex items-center gap-2 flex-wrap" data-testid={`deliverable-${booking.id}`}>
+                <Button variant="outline" size="sm" asChild data-testid={`button-download-deliverable-${booking.id}`}>
+                  <a href={deliverable.fileUrl} target="_blank" rel="noopener noreferrer">
+                    <FileText className="w-4 h-4 mr-1" />
+                    Your deliverable
+                  </a>
+                </Button>
+              </div>
+            )}
+
             <div className="text-sm text-muted-foreground space-y-1">
               {booking.bookingDetails?.scheduledDate && (
                 <div className="flex items-center gap-1">
@@ -726,6 +800,19 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
               ${parseFloat(booking.totalAmount).toFixed(2)}
             </p>
             <div className="flex gap-2 mt-2 flex-wrap justify-end">
+              {canCancel && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="border-red-300 text-red-700 hover:bg-red-50"
+                  onClick={() => setCancelOpen(true)}
+                  disabled={cancelMutation.isPending}
+                  data-testid={`button-cancel-booking-${booking.id}`}
+                >
+                  <XCircle className="w-4 h-4 mr-1" />
+                  Cancel booking
+                </Button>
+              )}
               {canConfirmOrDispute && (
                 <>
                   <Button
@@ -793,6 +880,64 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
           </div>
         </div>
       </CardContent>
+
+      <Dialog open={cancelOpen} onOpenChange={setCancelOpen}>
+        <DialogContent data-testid={`dialog-cancel-${booking.id}`}>
+          <DialogHeader>
+            <DialogTitle>Cancel this booking?</DialogTitle>
+            <DialogDescription>
+              Review your refund before confirming — this is based on the service's cancellation policy.
+            </DialogDescription>
+          </DialogHeader>
+          {previewLoading || !cancelPreview ? (
+            <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground" data-testid={`cancel-preview-loading-${booking.id}`}>
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Calculating your refund…
+            </div>
+          ) : (
+            <div className="space-y-3 py-2">
+              <div className="rounded-md border p-3 space-y-2">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Amount paid</span>
+                  <span className="font-medium">${cancelPreview.totalAmount.toFixed(2)}</span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-muted-foreground">Refund ({cancelPreview.refundPercent}%)</span>
+                  <span
+                    className={`font-bold ${cancelPreview.refundAmount > 0 ? "text-green-700 dark:text-green-400" : "text-red-700 dark:text-red-400"}`}
+                    data-testid={`text-refund-amount-${booking.id}`}
+                  >
+                    ${cancelPreview.refundAmount.toFixed(2)}
+                  </span>
+                </div>
+              </div>
+              <p className="text-sm text-muted-foreground" data-testid={`text-refund-policy-message-${booking.id}`}>
+                {cancelPreview.message}
+              </p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCancelOpen(false)} data-testid={`button-cancel-dialog-close-${booking.id}`}>
+              Keep booking
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => cancelMutation.mutate()}
+              disabled={cancelMutation.isPending || previewLoading || !cancelPreview}
+              data-testid={`button-cancel-confirm-${booking.id}`}
+            >
+              {cancelMutation.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Cancelling…
+                </>
+              ) : (
+                "Confirm cancellation"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={disputeOpen} onOpenChange={setDisputeOpen}>
         <DialogContent data-testid={`dialog-dispute-${booking.id}`}>

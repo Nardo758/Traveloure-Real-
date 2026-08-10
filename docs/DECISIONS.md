@@ -108,6 +108,23 @@ predicates in the same change (protocol advisory) **and** update this column.
 
 Named guard candidates (not yet guards — MISSING until in CI): single-writer-per-event-type (11) · log append-only route inventory (per 12/18) · no-second-scheduling-heuristic (22 remediation) · apply-never-writes-routing_status grep · **`scripts/invariants.mjs` (exists in the repo, in NO workflow and NO package script — per ruling 27 it is MISSING, not a guard; provider-sigma AB-3 / `#PS9`)**.
 
+---
+
+## Decision #39 — Stripe-only KYC/KYB; Persona KYB retired; no Plaid for Experts
+
+**Date:** Aug 2026
+
+**Decision:** All provider identity and business verification flows now run exclusively through Stripe.
+
+- **Expert identity** → Stripe Identity (unchanged).
+- **Provider business verification** → Stripe Connect Express onboarding; Stripe performs KYB during the Express flow and signals the result via `account.updated` webhook. The `businessVerificationStatus` on `service_provider_forms` is derived from `account.charges_enabled`, `account.details_submitted`, and `account.requirements.disabled_reason`.
+- **Persona KYB retired** — `POST /api/identity/business/create-inquiry` and `POST /api/webhooks/persona` both return 410 Gone. The `PERSONA_*` env vars are no longer required.
+- **No Plaid** — the payout identity path relies solely on Stripe Connect; Plaid is not added to the platform.
+
+**Why:** Stripe Express already performs KYB as part of its onboarding. Running a separate Persona check was a redundant compliance burden, added friction, and required maintaining a second HMAC-verified webhook surface. Centralising on Stripe reduces the external vendor surface to one, simplifies the deploy-time secret checklist, and keeps the compliance signal (KYB result) co-located with the payment rail (Stripe Connect).
+
+**Publish gate (F2):** Service creation/update now enforces `identityVerificationStatus === 'verified' AND businessVerificationStatus === 'verified'` server-side (403 + `VERIFICATION_GATE` code) and in the ServiceForm UI (banner + disabled Publish button).
+
 ## Protocol advisories
 
 Process lines that are not themselves rulings but bind the same way. Each cites the concrete incident that produced it.

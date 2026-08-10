@@ -1,284 +1,198 @@
+/**
+ * Provider Playbook (formerly "Resources", /provider/resources → /provider/playbook).
+ *
+ * §13 rebuild: the previous version of this page was entirely fabricated — sample "guides"
+ * with invented reading times, "video tutorials" with invented durations and no video files,
+ * "downloadable resources" with invented file sizes and no files behind them, and a "Read /
+ * Play / Download" button on every single card with no onClick. None of it was routed in the
+ * sidebar nav for exactly that reason (see provider-sidebar.tsx's prior comment).
+ *
+ * This version has no cards that promise content that doesn't exist. Every section below is
+ * written, factual copy about how this platform's real mechanics work, grounded in the actual
+ * server behavior (approval lifecycle, listing-completeness factors, Stripe Connect payouts,
+ * vendor_availability_slots). No invented SLAs, no fee percentages or dollar figures (§8 — those
+ * live in admin-configured fee_bands and on the real Earnings page, never as copy on this page).
+ */
 import { Link } from "wouter";
 import { ProviderLayout } from "@/components/provider/provider-layout";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { 
-  BookOpen, 
-  Video, 
-  FileText, 
-  HelpCircle, 
-  MessageSquare, 
-  ExternalLink,
-  Play,
-  Download,
-  Star,
-  TrendingUp,
-  Users,
-  Camera
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import {
+  ClipboardCheck,
+  MapPin,
+  CreditCard,
+  CalendarClock,
+  MessageSquare,
+  CheckCircle2,
 } from "lucide-react";
-
-const guides = [
-  {
-    id: 1,
-    title: "Getting Started as a Provider",
-    description: "Learn the basics of setting up your profile and listing your services",
-    type: "guide",
-    duration: "10 min read",
-    featured: true,
-  },
-  {
-    id: 2,
-    title: "Optimizing Your Listing",
-    description: "Tips to improve your visibility and attract more clients",
-    type: "guide",
-    duration: "15 min read",
-    featured: true,
-  },
-  {
-    id: 3,
-    title: "Photography Best Practices",
-    description: "How to take stunning photos that showcase your venue",
-    type: "guide",
-    duration: "8 min read",
-    featured: false,
-  },
-  {
-    id: 4,
-    title: "Pricing Strategy Guide",
-    description: "Set competitive prices that maximize your bookings",
-    type: "guide",
-    duration: "12 min read",
-    featured: false,
-  },
-];
-
-const videos = [
-  {
-    id: 1,
-    title: "Platform Overview",
-    description: "A complete walkthrough of the provider dashboard",
-    duration: "5:30",
-    thumbnail: true,
-  },
-  {
-    id: 2,
-    title: "Managing Bookings",
-    description: "How to handle booking requests efficiently",
-    duration: "8:15",
-    thumbnail: true,
-  },
-  {
-    id: 3,
-    title: "Responding to Clients",
-    description: "Best practices for client communication",
-    duration: "6:45",
-    thumbnail: true,
-  },
-];
-
-const faqs = [
-  {
-    question: "How do I receive payments?",
-    answer: "Payments are processed automatically and deposited to your linked bank account based on your payout schedule.",
-  },
-  {
-    question: "What is the platform fee?",
-    answer: "We charge a service fee on completed bookings, which covers payment processing, platform maintenance, and customer support. Your exact rate and net payout are always shown on each booking and on your Earnings page.",
-  },
-  {
-    question: "How do I handle cancellations?",
-    answer: "Cancellation policies are set by you. Navigate to Settings > Business Preferences to configure your cancellation terms.",
-  },
-  {
-    question: "Can I offer custom packages?",
-    answer: "Yes! You can create custom service packages and quotes for each client through the booking details page.",
-  },
-];
-
-const downloadables = [
-  { name: "Contract Template", type: "PDF", size: "245 KB" },
-  { name: "Pricing Worksheet", type: "XLSX", size: "128 KB" },
-  { name: "Brand Guidelines", type: "PDF", size: "1.2 MB" },
-  { name: "Marketing Toolkit", type: "ZIP", size: "5.8 MB" },
-];
 
 export default function ProviderResources() {
   return (
-    <ProviderLayout title="Resources">
+    <ProviderLayout title="Playbook">
       <div className="p-6 space-y-6">
         {/* Header */}
         <div>
-          <h2 className="text-xl font-semibold text-console-darkest">Learning Resources</h2>
-          <p className="text-console-dark">Guides, tutorials, and tools to help you succeed</p>
+          <h2 className="text-xl font-semibold text-console-darkest">Provider Playbook</h2>
+          <p className="text-console-dark">
+            How review, bookability, payouts, and availability actually work on Traveloure.
+          </p>
         </div>
 
-        {/* Featured Guides */}
         <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Star className="w-5 h-5 text-amber-500" />
-              Featured Guides
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {guides.filter(g => g.featured).map((guide) => (
-                <div 
-                  key={guide.id}
-                  className="p-4 border border-console-light rounded-lg hover:bg-console-hover transition-colors"
-                  data-testid={`card-guide-${guide.id}`}
-                >
-                  <div className="flex items-start gap-4">
-                    <div className="w-12 h-12 bg-primary/10 rounded-lg flex items-center justify-center flex-shrink-0">
-                      <BookOpen className="w-6 h-6 text-primary" />
-                    </div>
-                    <div className="flex-1">
-                      <h3 className="font-semibold text-console-darkest">{guide.title}</h3>
-                      <p className="text-sm text-console-dark mt-1">{guide.description}</p>
-                      <div className="flex items-center gap-2 mt-2">
-                        <Badge variant="outline" className="text-xs">{guide.duration}</Badge>
-                        <Button variant="ghost" size="sm" className="text-primary" data-testid={`button-read-guide-${guide.id}`}>
-                          Read Now <ExternalLink className="w-3 h-3 ml-1" />
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
+          <CardContent className="p-0">
+            <Accordion type="multiple" defaultValue={["approval"]} className="w-full">
+              {/* 1. Getting approved */}
+              <AccordionItem value="approval" className="px-6">
+                <AccordionTrigger className="text-left" data-testid="accordion-trigger-approval">
+                  <span className="flex items-center gap-2">
+                    <ClipboardCheck className="w-4 h-4 text-primary" />
+                    Getting approved
+                  </span>
+                </AccordionTrigger>
+                <AccordionContent className="text-console-dark space-y-3">
+                  <p>
+                    Every listing you create — a single service, or a bundle — is born with review
+                    status <strong>submitted</strong>. Nothing you save as a draft or publish goes
+                    live automatically, and nothing you submit skips review.
+                  </p>
+                  <p>
+                    An admin reviews submitted listings before they become visible to travelers.
+                    Public and Discover surfaces only ever show <strong>approved</strong> listings;
+                    your own Catalog page always shows all of your listings regardless of status,
+                    so you can see exactly where each one stands.
+                  </p>
+                  <p>
+                    If you change the price or the set of included items on an already-approved
+                    <strong> bundle</strong> listing, it's automatically dropped back to submitted
+                    and re-enters the review queue — so what's live to travelers always matches
+                    what was actually reviewed, never a silently-changed price. Editing a
+                    standalone service listing's details after approval doesn't trigger a new
+                    review; ownership and ID fields on any listing are never client-editable
+                    regardless.
+                  </p>
+                </AccordionContent>
+              </AccordionItem>
+
+              {/* 2. Making your listing bookable */}
+              <AccordionItem value="bookable" className="px-6">
+                <AccordionTrigger className="text-left" data-testid="accordion-trigger-bookable">
+                  <span className="flex items-center gap-2">
+                    <MapPin className="w-4 h-4 text-primary" />
+                    Making your listing bookable
+                  </span>
+                </AccordionTrigger>
+                <AccordionContent className="text-console-dark space-y-3">
+                  <p>A few things make a listing genuinely ready to be booked, not just approved:</p>
+                  <ul className="space-y-2 pl-1">
+                    <li className="flex gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-console-mid flex-shrink-0 mt-0.5" />
+                      <span>
+                        <strong>A cover photo.</strong> Listings with no photo are harder for
+                        travelers to trust and choose — add one from the listing editor.
+                      </span>
+                    </li>
+                    <li className="flex gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-console-mid flex-shrink-0 mt-0.5" />
+                      <span>
+                        <strong>A confirmed map pin.</strong> A pin you place yourself is marked
+                        <em> Exact location confirmed</em>. Until you place one, a listing in a
+                        neighborhood we recognize shows as <em>Approximate location from your
+                        neighborhood</em> — real coordinates, but a fuzzy one. A listing with no
+                        location at all doesn't get coordinates, and proximity-based
+                        recommendations (like the itinerary-planning engine that surfaces nearby
+                        platform stays) can only ever consider listings that have coordinates.
+                        Placing an exact pin is what gets you considered, and gets travelers the
+                        precise spot rather than a neighborhood-sized guess.
+                      </span>
+                    </li>
+                    <li className="flex gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-console-mid flex-shrink-0 mt-0.5" />
+                      <span>
+                        <strong>Published availability.</strong> Travelers can only book dated
+                        slots you've actually opened — see "Availability & calendar" below.
+                      </span>
+                    </li>
+                    <li className="flex gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-console-mid flex-shrink-0 mt-0.5" />
+                      <span>
+                        <strong>A clear description and price.</strong> Publishing requires a price
+                        greater than zero, and in-person or hybrid delivery requires a meeting
+                        point — both enforced when you switch a listing to active.
+                      </span>
+                    </li>
+                  </ul>
+                </AccordionContent>
+              </AccordionItem>
+
+              {/* 3. Payouts & fees */}
+              <AccordionItem value="payouts" className="px-6">
+                <AccordionTrigger className="text-left" data-testid="accordion-trigger-payouts">
+                  <span className="flex items-center gap-2">
+                    <CreditCard className="w-4 h-4 text-primary" />
+                    Payouts & fees
+                  </span>
+                </AccordionTrigger>
+                <AccordionContent className="text-console-dark space-y-3">
+                  <p>
+                    Getting paid runs through Stripe Connect. You connect (or finish connecting)
+                    your Stripe account from Settings; until that's complete, payouts can't be
+                    requested — the request flow tells you to finish setup rather than failing
+                    silently.
+                  </p>
+                  <p>
+                    Once you have a cleared, available balance from completed bookings, you can
+                    request a payout from your Money page. Platform fees are admin-configured per
+                    service category and are never a hardcoded number in the app — your exact
+                    rate, the fee taken, and your net payout are always shown on the booking itself
+                    and on your Money page, which is the source of truth for your real numbers, not
+                    this page.
+                  </p>
+                </AccordionContent>
+              </AccordionItem>
+
+              {/* 4. Availability & calendar */}
+              <AccordionItem value="availability" className="px-6">
+                <AccordionTrigger className="text-left" data-testid="accordion-trigger-availability">
+                  <span className="flex items-center gap-2">
+                    <CalendarClock className="w-4 h-4 text-primary" />
+                    Availability & calendar
+                  </span>
+                </AccordionTrigger>
+                <AccordionContent className="text-console-dark space-y-3">
+                  <p>
+                    Bookability isn't just "approved" — it's approved <em>and</em> having open
+                    dated slots. Travelers can only book a slot you've actually published; an
+                    approved listing with no open slots simply has nothing for a traveler to
+                    select.
+                  </p>
+                  <p>
+                    Manage slots per-listing from{" "}
+                    <Link href="/provider/services" className="text-primary underline underline-offset-2" data-testid="link-playbook-catalog">
+                      Catalog
+                    </Link>{" "}
+                    — open individual dates or a date range at once. Once published, they show up
+                    on your{" "}
+                    <Link href="/provider/calendar" className="text-primary underline underline-offset-2" data-testid="link-playbook-calendar">
+                      Calendar
+                    </Link>{" "}
+                    alongside your actual bookings, so you can see what's open and what's already
+                    claimed in one place. Deleting a slot that already has a real booking on it
+                    isn't allowed — cancel the booking first if you need to free the date.
+                  </p>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
           </CardContent>
         </Card>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Video Tutorials */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Video className="w-5 h-5 text-blue-600" />
-                Video Tutorials
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {videos.map((video) => (
-                <div 
-                  key={video.id}
-                  className="flex items-center gap-4"
-                  data-testid={`card-video-${video.id}`}
-                >
-                  <div className="w-24 h-16 bg-console-bg rounded-lg flex items-center justify-center relative flex-shrink-0">
-                    <Play className="w-8 h-8 text-console-mid" />
-                    <span className="absolute bottom-1 right-1 text-xs bg-black/70 text-white px-1 rounded">
-                      {video.duration}
-                    </span>
-                  </div>
-                  <div className="flex-1">
-                    <h4 className="font-medium text-console-darkest">{video.title}</h4>
-                    <p className="text-sm text-console-mid">{video.description}</p>
-                  </div>
-                  <Button variant="ghost" size="icon" data-testid={`button-play-video-${video.id}`}>
-                    <Play className="w-4 h-4" />
-                  </Button>
-                </div>
-              ))}
-              <Button variant="ghost" className="w-full" data-testid="button-view-all-videos">
-                View All Videos
-              </Button>
-            </CardContent>
-          </Card>
-
-          {/* Downloadable Resources */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <FileText className="w-5 h-5 text-green-600" />
-                Downloadable Resources
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {downloadables.map((file, index) => (
-                <div 
-                  key={index}
-                  className="flex items-center justify-between py-2 border-b border-console-light last:border-0"
-                  data-testid={`row-download-${index}`}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-console-bg rounded-lg flex items-center justify-center">
-                      <FileText className="w-5 h-5 text-console-mid" />
-                    </div>
-                    <div>
-                      <p className="font-medium text-console-darkest">{file.name}</p>
-                      <p className="text-xs text-console-mid">{file.type} - {file.size}</p>
-                    </div>
-                  </div>
-                  <Button variant="ghost" size="sm" data-testid={`button-download-${index}`}>
-                    <Download className="w-4 h-4" />
-                  </Button>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* All Guides */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <BookOpen className="w-5 h-5 text-purple-600" />
-              All Guides
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {guides.map((guide) => (
-                <div 
-                  key={guide.id}
-                  className="flex items-center justify-between p-3 border border-console-light rounded-lg"
-                  data-testid={`row-guide-${guide.id}`}
-                >
-                  <div className="flex items-center gap-3">
-                    <BookOpen className="w-5 h-5 text-console-mid" />
-                    <div>
-                      <p className="font-medium text-console-darkest">{guide.title}</p>
-                      <p className="text-xs text-console-mid">{guide.duration}</p>
-                    </div>
-                  </div>
-                  <Button variant="ghost" size="sm" data-testid={`button-read-${guide.id}`}>
-                    Read
-                  </Button>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* FAQ */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <HelpCircle className="w-5 h-5 text-amber-600" />
-              Frequently Asked Questions
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {faqs.map((faq, index) => (
-              <div 
-                key={index}
-                className="p-4 bg-console-bg rounded-lg"
-                data-testid={`card-faq-${index}`}
-              >
-                <h4 className="font-medium text-console-darkest">{faq.question}</h4>
-                <p className="text-sm text-console-dark mt-1">{faq.answer}</p>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-
-        {/* Need Help — §13: this card previously claimed "support team available 24/7"
-            (no such commitment exists) behind two buttons with no onClick at all, one of
-            them offering to join a community that does not exist. Now: an honest line and
-            one button that actually goes somewhere — /contact posts to the live
-            POST /api/contact, which persists the message and notifies admins. */}
+        {/* Need Help — real support path (POST /api/contact persists the message and notifies
+            admins; no invented "24/7 team" or dead buttons). */}
         <Card className="bg-primary/5 border-primary/20">
           <CardContent className="p-6 text-center">
             <MessageSquare className="w-12 h-12 text-primary mx-auto mb-4" />
