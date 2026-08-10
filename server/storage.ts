@@ -1224,6 +1224,11 @@ export class DatabaseStorage implements IStorage {
     stops: Array<{ name: string; latitude: number | null; longitude: number | null }>,
   ): Promise<ServiceRoutePoint[]> {
     return await db.transaction(async (tx) => {
+      // Serialize concurrent replaces on the same service: under READ COMMITTED two parallel
+      // delete+insert transactions each miss the other's rows and collide on the (service_id,
+      // position) UNIQUE. Locking the parent row first makes the second caller wait and then
+      // replace cleanly (found by the pre-ship concurrency test — 5 parallel PUTs → 23505).
+      await tx.execute(sql`SELECT id FROM provider_services WHERE id = ${serviceId} FOR UPDATE`);
       await tx.delete(serviceRoutePoints).where(eq(serviceRoutePoints.serviceId, serviceId));
       if (stops.length === 0) return [];
       return await tx.insert(serviceRoutePoints).values(
