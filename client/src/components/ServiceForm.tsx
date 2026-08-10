@@ -941,11 +941,27 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     enabled: role === "provider",
   });
 
+  // F2 identity + business verification gate (Phase 0.5). Fetches the provider application
+  // status to surface whether identityVerificationStatus and businessVerificationStatus
+  // are both "verified" before allowing a service to be published.
+  const { data: providerAppStatus } = useQuery<{ identityVerificationStatus: string; businessVerificationStatus: string }>({
+    queryKey: ["/api/provider/application-status"],
+    enabled: role === "provider",
+    select: (d: any) => ({
+      identityVerificationStatus: d.identityVerificationStatus ?? "pending",
+      businessVerificationStatus: d.businessVerificationStatus ?? "pending",
+    }),
+  });
+
   const selectedCategory = categories.find((c) => c.id === formData.categoryId);
   const needsMeetingPoint = formData.deliveryMethod === "in-person" || formData.deliveryMethod === "hybrid";
   const isCategoryGated = !!(selectedCategory?.requiresBackgroundCheck || (selectedCategory?.insuranceBand ?? 0) >= 2);
   const isProviderVerified = verificationStatus?.providerVerificationStatus === "verified";
   const publishBlocked = role === "provider" && isCategoryGated && !isProviderVerified;
+  // Verification gate: both identity and business verification must be "verified" before going live.
+  const identityVerified = providerAppStatus?.identityVerificationStatus === "verified";
+  const bizVerified = providerAppStatus?.businessVerificationStatus === "verified";
+  const verificationGateBlocked = role === "provider" && (!identityVerified || !bizVerified);
 
   // ── Step machinery (audit item #10) ──────────────────────────────────────
   const STEP_TITLES = ["What you offer", "Details", "Photos", "Terms & requirements"];
@@ -1399,6 +1415,29 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                     </p>
                   </>
                 )}
+              </div>
+            </div>
+          )}
+
+          {/* F2 identity + business verification gate banner (Phase 0.5).
+              Shows when either identity or business verification is not yet "verified". */}
+          {role === "provider" && verificationGateBlocked && (
+            <div
+              className="flex items-start gap-3 p-3 rounded-lg border text-sm bg-red-50 border-red-200 text-red-900 dark:bg-red-900/20 dark:border-red-700 dark:text-red-200"
+              data-testid="banner-identity-biz-verification-required"
+            >
+              <ShieldAlert className="w-4 h-4 mt-0.5 flex-shrink-0 text-red-600 dark:text-red-400" />
+              <div>
+                <p className="font-medium">Identity &amp; business verification required before publishing</p>
+                <p className="text-xs mt-0.5 opacity-80">
+                  {!identityVerified && !bizVerified
+                    ? "Both identity verification (Stripe Identity) and business verification (Stripe Connect) must be completed first."
+                    : !identityVerified
+                    ? "Identity verification (Stripe Identity) must be completed before going live."
+                    : "Business verification (Stripe Connect) must be completed before going live."}
+                  {" "}Complete these steps in your{" "}
+                  <a href="/provider-status" className="underline font-medium">Provider Status page</a>.
+                </p>
               </div>
             </div>
           )}
@@ -2447,12 +2486,20 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               <Button
                 className="bg-primary hover:bg-primary/90"
                 onClick={() => handleFinalSubmit("publish")}
-                disabled={createMutation.isPending || !formData.name || !formData.categoryId || publishBlocked || (!isEditMode && !formData.serviceOfferingTypeId)}
-                title={publishBlocked ? "Complete background verification before publishing this category" : (!isEditMode && !formData.serviceOfferingTypeId) ? "Pick an offering from the /earn catalog first" : undefined}
+                disabled={createMutation.isPending || !formData.name || !formData.categoryId || publishBlocked || verificationGateBlocked || (!isEditMode && !formData.serviceOfferingTypeId)}
+                title={
+                  verificationGateBlocked
+                    ? "Complete identity and business verification in your Provider Status page before publishing"
+                    : publishBlocked
+                    ? "Complete background verification before publishing this category"
+                    : (!isEditMode && !formData.serviceOfferingTypeId)
+                    ? "Pick an offering from the /earn catalog first"
+                    : undefined
+                }
                 data-testid="button-publish-service"
               >
                 {createMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-                {publishBlocked ? "Verification Required" : "Publish Service"}
+                {verificationGateBlocked ? "Verification Required" : publishBlocked ? "Verification Required" : "Publish Service"}
               </Button>
             )}
           </div>

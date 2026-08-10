@@ -3,15 +3,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   CheckCircle2,
   Clock,
@@ -31,7 +22,7 @@ import { Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 
 interface ApplicationStep {
   id: number;
@@ -59,57 +50,9 @@ interface ApplicationStatus {
   } | null;
 }
 
-const COUNTRY_REGISTRATION_LABELS: Record<string, { label: string; placeholder: string }> = {
-  IN: { label: "GSTIN (GST Number)", placeholder: "e.g. 22AAAAA0000A1Z5" },
-  JP: { label: "Corporate Number (法人番号)", placeholder: "e.g. 1234567890123" },
-  CO: { label: "NIT (Tax ID)", placeholder: "e.g. 900123456-7" },
-  GB: { label: "Company Number", placeholder: "e.g. 12345678" },
-  US: { label: "EIN (Employer ID Number)", placeholder: "e.g. 12-3456789" },
-  DE: { label: "Handelsregisternummer", placeholder: "e.g. HRB 12345" },
-  AU: { label: "ABN (Australian Business Number)", placeholder: "e.g. 51 824 753 556" },
-  BR: { label: "CNPJ", placeholder: "e.g. 11.222.333/0001-81" },
-  SG: { label: "UEN (Unique Entity Number)", placeholder: "e.g. 201912345K" },
-  MX: { label: "RFC (Tax ID)", placeholder: "e.g. XAXX010101000" },
-  FR: { label: "SIRET Number", placeholder: "e.g. 732 829 320 00074" },
-  ES: { label: "CIF (Tax ID)", placeholder: "e.g. A-12345678" },
-  ID: { label: "NPWP (Tax ID)", placeholder: "e.g. 01.234.567.8-901.000" },
-  TH: { label: "Tax ID Number", placeholder: "e.g. 0105562123456" },
-};
-
-const COUNTRY_REQUIRED_DOCS: Record<string, string[]> = {
-  IN: ["Certificate of Incorporation", "GST Registration Certificate", "PAN Card (business)"],
-  JP: ["Company Registration Certificate (登記事項証明書)"],
-  CO: ["Cámara de Comercio certificate", "RUT (tax registry)"],
-  GB: ["Companies House confirmation statement", "Certificate of Incorporation"],
-  US: ["Articles of Incorporation or LLC Operating Agreement", "EIN confirmation letter (CP 575)"],
-  DE: ["Handelsregisterauszug (commercial register extract)"],
-  AU: ["ABN registration confirmation", "ASIC company extract"],
-  BR: ["Cartão CNPJ", "Contrato Social or Ato Constitutivo"],
-  SG: ["ACRA Business Profile", "Certificate of Incorporation"],
-  MX: ["Constancia de Situación Fiscal", "Acta Constitutiva"],
-  FR: ["Extrait Kbis (SIREN/SIRET)"],
-  ES: ["Certificado de situación censal", "Escritura de constitución"],
-  ID: ["NIB (Business Identification Number)", "NPWP certificate"],
-  TH: ["DBD company registration certificate", "VAT registration (Por Por 20)"],
-};
-
-const COUNTRY_LIST = [
-  { code: "IN", name: "India" },
-  { code: "JP", name: "Japan" },
-  { code: "CO", name: "Colombia" },
-  { code: "GB", name: "United Kingdom" },
-  { code: "US", name: "United States" },
-  { code: "DE", name: "Germany" },
-  { code: "AU", name: "Australia" },
-  { code: "BR", name: "Brazil" },
-  { code: "SG", name: "Singapore" },
-  { code: "MX", name: "Mexico" },
-  { code: "FR", name: "France" },
-  { code: "ES", name: "Spain" },
-  { code: "ID", name: "Indonesia" },
-  { code: "TH", name: "Thailand" },
-  { code: "OTHER", name: "Other country" },
-];
+// COUNTRY_REGISTRATION_LABELS, COUNTRY_REQUIRED_DOCS, and COUNTRY_LIST removed Aug 2026.
+// Business verification now flows through Stripe Connect KYB (see account.updated webhook).
+// The Persona KYB form that used these constants has been retired.
 
 function StepDot({ status, id }: { status: string; id: number }) {
   const base = "absolute left-2 top-1 w-5 h-5 rounded-full flex items-center justify-center";
@@ -149,15 +92,10 @@ function StepCard({ step }: { step: ApplicationStep }) {
 export default function ProviderStatusPage() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [bizCountry, setBizCountry] = useState("");
-  const [bizRegNumber, setBizRegNumber] = useState("");
-
   const { data: appStatus, isLoading } = useQuery<ApplicationStatus>({
     queryKey: ["/api/provider/application-status"],
     refetchInterval: 10000,
   });
-
-  const [bizDocUrl, setBizDocUrl] = useState("");
 
   const startIdVerification = useMutation({
     mutationFn: async () => {
@@ -173,25 +111,22 @@ export default function ProviderStatusPage() {
     },
   });
 
-  const submitBizVerification = useMutation({
+  // Business verification is now derived from Stripe Connect (account.updated webhook).
+  // Providers complete Stripe Express onboarding; Stripe performs KYB there.
+  const startConnectOnboarding = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/identity/business/create-inquiry", {
-        country: bizCountry,
-        registrationNumber: bizRegNumber,
-        additionalDocUrl: bizDocUrl || undefined,
-      });
+      const res = await apiRequest("POST", "/api/stripe/connect/onboard", {});
       return res.json();
     },
     onSuccess: (data: any) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/provider/application-status"] });
-      if (data.inquiryUrl) {
-        window.open(data.inquiryUrl, "_blank");
+      if (data.url) {
+        window.open(data.url, "_blank");
       } else {
-        toast({ title: "Submitted for verification", description: "Your business details have been submitted. We'll notify you when verification is complete." });
+        toast({ title: "Onboarding unavailable", description: "Please try again later.", variant: "destructive" });
       }
     },
     onError: (err: any) => {
-      toast({ title: "Submission failed", description: err.message || "Please try again.", variant: "destructive" });
+      toast({ title: "Connect onboarding failed", description: err.message || "Please try again.", variant: "destructive" });
     },
   });
 
@@ -202,8 +137,7 @@ export default function ProviderStatusPage() {
       toast({ title: "Verification submitted", description: "We're processing your identity verification." });
       window.history.replaceState({}, "", "/provider-status");
     }
-    if (appStatus?.businessCountry) setBizCountry(appStatus.businessCountry);
-  }, [appStatus?.businessCountry]);
+  }, []);
 
   if (isLoading) {
     return (
@@ -223,7 +157,6 @@ export default function ProviderStatusPage() {
   const currentStep = steps.find(s => s.status === "in_progress") || steps.find(s => s.status === "pending" || s.status === "failed");
   const overallStatus = appStatus?.overallStatus ?? "pending";
 
-  const regInfo = COUNTRY_REGISTRATION_LABELS[bizCountry] ?? { label: "Business Registration Number", placeholder: "Enter your registration number" };
 
   const overallBadge = overallStatus === "approved"
     ? <Badge className="bg-green-100 text-green-700 px-4 py-2"><CheckCircle2 className="w-4 h-4 mr-2" />Approved</Badge>
@@ -352,85 +285,55 @@ export default function ProviderStatusPage() {
           </Card>
         )}
 
-        {/* Business Verification (Persona KYB) */}
+        {/* Business Verification — Stripe Connect KYB (Persona KYB retired Aug 2026).
+            businessVerificationStatus is now derived from the provider's Stripe Connect account
+            via the account.updated webhook. Stripe performs its own KYB during Express onboarding. */}
         {bizStatus !== "verified" ? (
           <Card className="border-2 border-purple-300 bg-purple-50 dark:bg-purple-900/20">
             <CardContent className="p-6">
               <div className="flex items-start gap-3 mb-4">
                 <div className="p-3 bg-purple-600 rounded-full flex-shrink-0">
-                  <Globe className="w-6 h-6 text-white" />
+                  <Building2 className="w-6 h-6 text-white" />
                 </div>
-                <div>
+                <div className="flex-1">
                   <h3 className="text-lg font-semibold text-foreground dark:text-white">Business Verification</h3>
-                  {bizStatus === "pending" && <p className="text-muted-foreground mt-1">Verify your business entity. We check against national registries in 180+ countries.</p>}
-                  {bizStatus === "submitted" && <p className="text-amber-600 mt-1 flex items-center gap-2"><Clock className="w-4 h-4" />Verification submitted — we'll notify you when complete.</p>}
-                  {bizStatus === "failed" && <p className="text-red-600 mt-1 flex items-center gap-2"><AlertCircle className="w-4 h-4" />Verification failed. Please check your details and try again.</p>}
+                  {bizStatus === "pending" && (
+                    <p className="text-muted-foreground mt-1">
+                      Complete your Stripe Connect onboarding to verify your business. Stripe collects and verifies your business details directly during the secure onboarding flow.
+                    </p>
+                  )}
+                  {bizStatus === "submitted" && (
+                    <p className="text-amber-600 mt-1 flex items-center gap-2">
+                      <Clock className="w-4 h-4" />Stripe is reviewing your business details — this usually completes within a few minutes.
+                    </p>
+                  )}
+                  {bizStatus === "failed" && (
+                    <p className="text-red-600 mt-1 flex items-center gap-2">
+                      <AlertCircle className="w-4 h-4" />Business verification was unsuccessful. Retry Connect onboarding or contact support.
+                    </p>
+                  )}
                 </div>
               </div>
-
-              {(bizStatus === "pending" || bizStatus === "failed") && (
-                <div className="space-y-4 mt-2">
-                  <div>
-                    <Label htmlFor="biz-country">Business Country</Label>
-                    <Select value={bizCountry} onValueChange={setBizCountry}>
-                      <SelectTrigger id="biz-country" className="mt-1" data-testid="select-business-country">
-                        <SelectValue placeholder="Select your country" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {COUNTRY_LIST.map(c => (
-                          <SelectItem key={c.code} value={c.code}>{c.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  {bizCountry && COUNTRY_REQUIRED_DOCS[bizCountry] && (
-                    <div className="rounded-md bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 p-3">
-                      <p className="text-xs font-semibold text-blue-700 dark:text-blue-300 mb-1">Required documents for {COUNTRY_LIST.find(c => c.code === bizCountry)?.name}:</p>
-                      <ul className="space-y-1">
-                        {COUNTRY_REQUIRED_DOCS[bizCountry].map((doc, i) => (
-                          <li key={i} className="flex items-center gap-2 text-xs text-blue-600 dark:text-blue-400">
-                            <CheckCircle2 className="w-3 h-3 shrink-0 text-blue-500" />
-                            {doc}
-                          </li>
-                        ))}
-                      </ul>
-                      <p className="text-xs text-blue-500 mt-2">Paste a link to one of these documents in the field below, or your previously uploaded business license will be used.</p>
-                    </div>
-                  )}
-                  <div>
-                    <Label htmlFor="biz-reg">{regInfo.label}</Label>
-                    <Input
-                      id="biz-reg"
-                      className="mt-1"
-                      placeholder={regInfo.placeholder}
-                      value={bizRegNumber}
-                      onChange={e => setBizRegNumber(e.target.value)}
-                      data-testid="input-registration-number"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="biz-doc-url">Supporting Document URL <span className="text-gray-400 text-xs font-normal">(optional)</span></Label>
-                    <Input
-                      id="biz-doc-url"
-                      className="mt-1"
-                      placeholder="Link to business license, certificate of incorporation, etc."
-                      value={bizDocUrl}
-                      onChange={e => setBizDocUrl(e.target.value)}
-                      data-testid="input-document-url"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">Upload your document elsewhere and paste the URL, or your previously uploaded business license will be used automatically.</p>
-                  </div>
-                  <Button
-                    className="w-full bg-purple-600 hover:bg-purple-700 text-white"
-                    onClick={() => submitBizVerification.mutate()}
-                    disabled={submitBizVerification.isPending || !bizCountry || !bizRegNumber}
-                    data-testid="button-submit-business-verification"
-                  >
-                    {submitBizVerification.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Globe className="w-4 h-4 mr-2" />}
-                    Submit for Business Verification
-                  </Button>
-                </div>
-              )}
+              <div className="flex flex-wrap gap-3 mt-2">
+                <Button
+                  className="bg-purple-600 hover:bg-purple-700 text-white"
+                  onClick={() => startConnectOnboarding.mutate()}
+                  disabled={startConnectOnboarding.isPending || bizStatus === "submitted"}
+                  data-testid="button-start-connect-onboarding"
+                >
+                  {startConnectOnboarding.isPending
+                    ? <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    : <ExternalLink className="w-4 h-4 mr-2" />}
+                  {bizStatus === "failed" ? "Retry Connect Onboarding" : "Complete Connect Onboarding →"}
+                </Button>
+                {bizStatus === "failed" && (
+                  <a href="mailto:support@traveloure.com">
+                    <Button variant="outline" className="border-red-300 text-red-700 hover:bg-red-50 dark:border-red-700 dark:text-red-400">
+                      <MessageSquare className="w-4 h-4 mr-2" />Contact Support
+                    </Button>
+                  </a>
+                )}
+              </div>
             </CardContent>
           </Card>
         ) : (
@@ -439,7 +342,7 @@ export default function ProviderStatusPage() {
               <Globe className="w-6 h-6 text-green-600" />
               <div>
                 <p className="font-semibold text-green-800 dark:text-green-300">Business Verified</p>
-                {appStatus?.businessCountry && <p className="text-sm text-green-600">{COUNTRY_LIST.find(c => c.code === appStatus.businessCountry)?.name ?? appStatus.businessCountry}</p>}
+                <p className="text-sm text-green-600">Verified via Stripe Connect</p>
               </div>
               <Badge className="ml-auto bg-green-100 text-green-700"><CheckCircle2 className="w-3 h-3 mr-1" />Verified</Badge>
             </CardContent>
