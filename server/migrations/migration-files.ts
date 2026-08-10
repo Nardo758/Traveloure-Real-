@@ -873,4 +873,10 @@ export const MIGRATION_FILES = [
   // review, visible to admin review-moderation. Distinct from the pre-existing legacy
   // responseText/responseAt pair, left untouched. Declared in shared/schema.ts (publish-trap).
   "190_service_reviews_provider_reply.sql",
+  // 191: dmo_extraction_runs — sweep/ingest run ledger for the admin "Content Ops" page
+  // (CLAUDE.md §17 lesson applied by analogy, decision-maker ratified Aug 10 2026). Every
+  // YouTube ingestion call and every warmup-sweep boot pass writes ONE append-only row (kind,
+  // counts jsonb, created_at) so the page's "last run" line can tell "ran and found nothing"
+  // from "never ran". Additive, idempotent, no CHECK. Declared in shared/schema.ts (publish-trap).
+  "191_dmo_extraction_runs.sql",
 ] as const;

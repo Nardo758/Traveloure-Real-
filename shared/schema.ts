@@ -7286,6 +7286,25 @@ export const dmoExtractedPlaces = pgTable("dmo_extracted_places", {
   normalizedNameIdx: index("dmo_extracted_places_normalized_name_idx").on(table.normalizedName),
 }));
 
+// Sweep/ingest run ledger — the admin "Content Ops" page (CLAUDE.md §17 lesson applied by
+// analogy, decision-maker ratified Aug 10 2026; migration 191). Every YouTube ingestion call
+// (server/services/youtube-ingestion.service.ts) and every warmup-sweep boot pass
+// (server/jobs/dmoExtractionWarmup.ts) writes ONE append-only row here, success or not — silence
+// must be distinguishable from "never ran" (§17 rule 2, by analogy). `counts` carries the full
+// stats object each caller already produces verbatim rather than forcing a shared column set
+// neither caller naturally has (youtube_ingest: scanned/upserted/skippedShape/skippedShort/
+// skippedDuplicate/error; warmup_sweep: scanned/extracted/emptied/failed/skippedCap/
+// stoppedNoApiKey/durationMs). No UPDATE/DELETE path. Additive, idempotent, no CHECK. Declared
+// here per the publish-trap rule.
+export const dmoExtractionRuns = pgTable("dmo_extraction_runs", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  kind: varchar("kind", { length: 40 }).notNull(), // 'youtube_ingest' | 'warmup_sweep' (app-enforced, no CHECK — §13 growth room)
+  counts: jsonb("counts").notNull().default({}),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  kindCreatedIdx: index("dmo_extraction_runs_kind_created_idx").on(table.kind, table.createdAt),
+}));
+
 export const expertDmoCollections = pgTable("expert_dmo_collections", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   expertId: varchar("expert_id").notNull().references(() => users.id, { onDelete: "cascade" }),
