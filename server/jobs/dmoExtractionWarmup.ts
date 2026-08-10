@@ -42,6 +42,7 @@ import { dmoRawContent } from "@shared/schema";
 import { logger } from "../infrastructure";
 import { classifyDmoShape, runPlaceExtraction } from "../services/dmo-place-extraction.service";
 import { isConcludedEmptyMarker } from "../services/dmo-extracted-places.service";
+import { recordDmoExtractionRun } from "../services/dmo-extraction-runs.service";
 
 /** Cap on rows processed in a single boot pass. Hitting it is logged, never silent (§18d). */
 const PER_BOOT_CAP = 25;
@@ -65,6 +66,21 @@ export interface WarmupSweepSummary {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Writes ONE dmo_extraction_runs row (kind "warmup_sweep") per boot pass, success or not — the
+// admin Content Ops page's §17-lesson-by-analogy: silence must be distinguishable from "never
+// ran". Called from BOTH exit points below (the early selection-query-failed abort and the normal
+// completion) so every pass is recorded, not just the ones that finish the loop. A ledger-write
+// failure is caught and logged; it must never make an otherwise-successful sweep look like it
+// threw.
+async function finishWithRunRecord(summary: WarmupSweepSummary): Promise<WarmupSweepSummary> {
+  try {
+    await recordDmoExtractionRun("warmup_sweep", summary as unknown as Record<string, unknown>);
+  } catch (err) {
+    logger.error({ err }, "[dmo-extraction-warmup] failed to record run ledger row");
+  }
+  return summary;
 }
 
 type WarmupCandidateRow = {
@@ -138,7 +154,7 @@ export async function runDmoExtractionWarmupSweep(): Promise<WarmupSweepSummary>
   } catch (err) {
     logger.error({ err }, "[dmo-extraction-warmup] selection query failed — sweep aborted, nothing processed");
     summary.durationMs = Date.now() - startedAt;
-    return summary;
+    return finishWithRunRecord(summary);
   }
 
   if (candidates.length > PER_BOOT_CAP) {
@@ -216,5 +232,5 @@ export async function runDmoExtractionWarmupSweep(): Promise<WarmupSweepSummary>
     "[dmo-extraction-warmup] sweep complete",
   );
 
-  return summary;
+  return finishWithRunRecord(summary);
 }

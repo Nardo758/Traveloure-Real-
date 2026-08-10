@@ -108,6 +108,11 @@ interface Service {
   parentServiceId?: string | null;
   rooms?: RoomSummary[];
   property?: { id: string; serviceName: string } | null;
+  // Vacation mode (link-landing polish, mockup §08 / CLAUDE.md §06b): the owner's
+  // business-level away state, mirrored from the storefront payload's own `away` field
+  // (server: GET /api/services/:id, content.routes.ts). Null when the owner isn't away —
+  // listings stay visible either way, booking is disabled only while `away` is set.
+  away?: { until: string; message: string | null } | null;
 }
 
 interface BundleComponent {
@@ -492,6 +497,14 @@ export default function ServiceDetailPage() {
     hasPickupAddress ||
     hasTransportSignal;
 
+  // Vacation mode (mockup §08/§06b): the listing stays visible while the owner is away —
+  // only new-booking CTAs are disabled. Existing confirmed bookings are untouched (this is
+  // a business-level flag, never a provider_services status change — CLAUDE.md §06b).
+  const isAway = !!service.away;
+  const awayTitle = service.away
+    ? `This provider is away until ${format(new Date(service.away.until), "MMM d, yyyy")}`
+    : undefined;
+
   return (
     <Layout>
       <div className="container py-8 max-w-6xl mx-auto">
@@ -562,6 +575,18 @@ export default function ServiceDetailPage() {
                 )}
               </div>
             </div>
+            {/* Vacation mode (mockup §08/§06b): honest away state — the listing stays visible,
+                only booking is disabled below. Real return date only; no fabricated message
+                when the owner left none. */}
+            {service.away && (
+              <Badge
+                variant="outline"
+                className="mt-2 border-amber-300 bg-amber-50 text-amber-800"
+                data-testid="badge-service-away"
+              >
+                Away — back {format(new Date(service.away.until), "MMM d")}
+              </Badge>
+            )}
             {/* §17 Product Builder — PROPERTY rung: a room links back to its property, only
                 when the property is still approved+active (F2-gated server-side). */}
             {isRoom && service.property && (
@@ -589,8 +614,12 @@ export default function ServiceDetailPage() {
           </div>
         )}
 
+        {/* Link-landing polish (mockup §08): on mobile the booking panel (price/rating/CTA)
+            renders BEFORE the long-form content below via `order` — a texted link must put
+            photo + price + CTA above the fold without a redesign of either column's content.
+            Desktop keeps the original visual (content, then sidebar) via the lg: overrides. */}
         <div className="grid lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-6">
+          <div className="order-2 lg:order-1 lg:col-span-2 space-y-6">
             <Card>
               <CardHeader>
                 <CardTitle>About this service</CardTitle>
@@ -801,9 +830,10 @@ export default function ServiceDetailPage() {
 
           {/* Book Now panel (mockup sidebar): price, Direct-Booking trust panel, the
               availability/slot picker, cancellation policy, and the existing add-to-cart CTA —
-              all in one sticky column, mirroring the mockup's consolidated booking widget. */}
-          <div className="lg:col-span-1">
-            <Card className="sticky top-4">
+              all in one sticky column, mirroring the mockup's consolidated booking widget.
+              `order-1` (see the wrapping grid's comment) puts this panel first on mobile. */}
+          <div className="order-1 lg:order-2 lg:col-span-1">
+            <Card className="lg:sticky lg:top-4">
               <CardContent className="p-6">
                 <div className="text-center mb-4">
                   <p className="text-3xl font-bold" data-testid="text-price">
@@ -818,6 +848,118 @@ export default function ServiceDetailPage() {
                       {service.bookingsCount} booking{service.bookingsCount !== 1 ? "s" : ""}
                     </p>
                   )}
+                </div>
+
+                {/* Link-landing polish (mockup §08): the CTA row moved up to sit directly under
+                    the price — on a texted-link mobile viewport this is what keeps "book" inside
+                    the fold instead of after the trust panel + full availability calendar below.
+                    Same buttons/handlers, no new behavior. */}
+                <div className="space-y-3 mb-4">
+                  {isRoom ? (
+                    <>
+                      <Button
+                        className="w-full"
+                        onClick={() => {
+                          if (!user) {
+                            openSignInModal();
+                            return;
+                          }
+                          addRoomToCartMutation.mutate({ proceed: true });
+                        }}
+                        disabled={isAway || !roomStayAvailable || addRoomToCartMutation.isPending}
+                        title={awayTitle}
+                        data-testid="button-book-now"
+                      >
+                        {addRoomToCartMutation.isPending ? (
+                          <>
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            Booking...
+                          </>
+                        ) : (
+                          <>
+                            <BookOpen className="w-4 h-4 mr-2" />
+                            Book on Traveloure
+                          </>
+                        )}
+                      </Button>
+
+                      <Button
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => {
+                          if (!user) {
+                            openSignInModal();
+                            return;
+                          }
+                          addRoomToCartMutation.mutate({ proceed: false });
+                        }}
+                        disabled={isAway || !roomStayAvailable || addRoomToCartMutation.isPending}
+                        title={awayTitle}
+                        data-testid="button-add-to-cart"
+                      >
+                        <ShoppingCart className="w-4 h-4 mr-2" />
+                        Add to Cart
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <Button
+                        className="w-full"
+                        onClick={() => {
+                          if (!user) {
+                            openSignInModal();
+                            return;
+                          }
+                          addToCartMutation.mutate({ proceed: true });
+                        }}
+                        disabled={isAway || addToCartMutation.isPending}
+                        title={awayTitle}
+                        data-testid="button-book-now"
+                      >
+                        {addToCartMutation.isPending ? (
+                          <>
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            Booking...
+                          </>
+                        ) : (
+                          <>
+                            <BookOpen className="w-4 h-4 mr-2" />
+                            Book on Traveloure
+                          </>
+                        )}
+                      </Button>
+
+                      <Button
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => {
+                          if (!user) {
+                            openSignInModal();
+                            return;
+                          }
+                          addToCartMutation.mutate({ proceed: false });
+                        }}
+                        disabled={isAway || addToCartMutation.isPending}
+                        title={awayTitle}
+                        data-testid="button-add-to-cart"
+                      >
+                        <ShoppingCart className="w-4 h-4 mr-2" />
+                        Add to Cart
+                      </Button>
+                    </>
+                  )}
+
+                  <Button
+                    variant="ghost"
+                    className="w-full"
+                    asChild
+                    data-testid="button-contact-provider"
+                  >
+                    <Link href={`/chat?provider=${service.userId}`}>
+                      <MessageSquare className="w-4 h-4 mr-2" />
+                      Contact Provider
+                    </Link>
+                  </Button>
                 </div>
 
                 {/* Direct-Booking trust panel. The base statement is true of every listing on
@@ -1105,110 +1247,6 @@ export default function ServiceDetailPage() {
                     </div>
                   </>
                 )}
-
-                <div className="space-y-3">
-                  {isRoom ? (
-                    <>
-                      <Button
-                        className="w-full"
-                        onClick={() => {
-                          if (!user) {
-                            openSignInModal();
-                            return;
-                          }
-                          addRoomToCartMutation.mutate({ proceed: true });
-                        }}
-                        disabled={!roomStayAvailable || addRoomToCartMutation.isPending}
-                        data-testid="button-book-now"
-                      >
-                        {addRoomToCartMutation.isPending ? (
-                          <>
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                            Booking...
-                          </>
-                        ) : (
-                          <>
-                            <BookOpen className="w-4 h-4 mr-2" />
-                            Book on Traveloure
-                          </>
-                        )}
-                      </Button>
-
-                      <Button
-                        variant="outline"
-                        className="w-full"
-                        onClick={() => {
-                          if (!user) {
-                            openSignInModal();
-                            return;
-                          }
-                          addRoomToCartMutation.mutate({ proceed: false });
-                        }}
-                        disabled={!roomStayAvailable || addRoomToCartMutation.isPending}
-                        data-testid="button-add-to-cart"
-                      >
-                        <ShoppingCart className="w-4 h-4 mr-2" />
-                        Add to Cart
-                      </Button>
-                    </>
-                  ) : (
-                    <>
-                      <Button
-                        className="w-full"
-                        onClick={() => {
-                          if (!user) {
-                            openSignInModal();
-                            return;
-                          }
-                          addToCartMutation.mutate({ proceed: true });
-                        }}
-                        disabled={addToCartMutation.isPending}
-                        data-testid="button-book-now"
-                      >
-                        {addToCartMutation.isPending ? (
-                          <>
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                            Booking...
-                          </>
-                        ) : (
-                          <>
-                            <BookOpen className="w-4 h-4 mr-2" />
-                            Book on Traveloure
-                          </>
-                        )}
-                      </Button>
-
-                      <Button
-                        variant="outline"
-                        className="w-full"
-                        onClick={() => {
-                          if (!user) {
-                            openSignInModal();
-                            return;
-                          }
-                          addToCartMutation.mutate({ proceed: false });
-                        }}
-                        disabled={addToCartMutation.isPending}
-                        data-testid="button-add-to-cart"
-                      >
-                        <ShoppingCart className="w-4 h-4 mr-2" />
-                        Add to Cart
-                      </Button>
-                    </>
-                  )}
-
-                  <Button
-                    variant="ghost"
-                    className="w-full"
-                    asChild
-                    data-testid="button-contact-provider"
-                  >
-                    <Link href={`/chat?provider=${service.userId}`}>
-                      <MessageSquare className="w-4 h-4 mr-2" />
-                      Contact Provider
-                    </Link>
-                  </Button>
-                </div>
 
                 {/* X1 (§13 hardcoded-copy arm): real per-offering cancellation policy.
                     Shows the owner's declared policy when present; otherwise an honest

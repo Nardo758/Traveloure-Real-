@@ -63,6 +63,7 @@ import {
   getAdminUserByEmail, insertUser, getFirstUser,
   getAllDestinationEvents, insertHelpGuideTrips, insertTouristPlacesSearch,
   insertContentImpression, getDemandCountsForCity,
+  filterOutAwayOwners,
 } from "../services/content-query.service";
 import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, asc } from "drizzle-orm";
 // NOTE: db is intentionally NOT imported here. All raw queries use content-query.service.ts or storage.
@@ -1970,6 +1971,22 @@ router.get("/api/services/:id", async (req, res) => {
     if (!service || service.status !== "active" || service.approvalStatus !== "approved") {
       return res.status(404).json({ message: "Service not found" });
     }
+    // Vacation mode (link-landing polish, mockup §08 / CLAUDE.md §06b, migration 189): the
+    // storefront read (storefront.routes.ts loadStorefront) already surfaces the owner's
+    // away state as `away:{until,message}`; the service-detail read did not carry it at all,
+    // so a texted service link during vacation mode showed a bookable page with no away
+    // signal. Same derivation (non-null vacationUntil in the future), read-only — never
+    // touches provider_services rows or their status/approval; enforcement of the actual
+    // booking block lives at the checkout claim, not here.
+    const [owner] = await db
+      .select({ vacationUntil: users.vacationUntil, vacationMessage: users.vacationMessage })
+      .from(users)
+      .where(eq(users.id, service.userId))
+      .limit(1);
+    const away =
+      owner?.vacationUntil && owner.vacationUntil.getTime() > Date.now()
+        ? { until: owner.vacationUntil.toISOString(), message: owner.vacationMessage ?? null }
+        : null;
     // §17 bundles (migration 151): additive component list on the public detail. Same F2
     // read-gate per component — only components STILL approved+active are exposed; an
     // unapproved/paused component never leaks through the bundle's page.
@@ -1988,7 +2005,7 @@ router.get("/api/services/:id", async (req, res) => {
           eq(providerServices.status, "active"),
         ))
         .orderBy(asc(bundleComponents.position));
-      return res.json({ ...service, bundleComponents: components });
+      return res.json({ ...service, bundleComponents: components, away });
     }
     // §17 Product Builder — PROPERTY rung: additive room list on a property's public detail.
     // Same F2 read-gate as the bundle branch above — only STILL approved+active rooms are ever
@@ -2009,7 +2026,7 @@ router.get("/api/services/:id", async (req, res) => {
           eq(providerServices.status, "active"),
         ))
         .orderBy(asc(providerServices.price));
-      return res.json({ ...service, rooms });
+      return res.json({ ...service, rooms, away });
     }
     // A room's detail carries a link back to its property — gated the same way (an
     // unapproved/paused property never surfaces as a clickable link on its own room's page).
@@ -2027,9 +2044,9 @@ router.get("/api/services/:id", async (req, res) => {
         property && property.approvalStatus === "approved" && property.status === "active"
           ? { id: property.id, serviceName: property.serviceName }
           : null;
-      return res.json({ ...service, property: visibleProperty });
+      return res.json({ ...service, property: visibleProperty, away });
     }
-    res.json(service);
+    res.json({ ...service, away });
   });
 
   // C2: public read-only availability calendar for a service's detail page.
@@ -5708,8 +5725,13 @@ router.get("/api/search/experiences", async (req, res) => {
         // getProviderServices with a filter object in the USERID position, so it matched no rows and
         // the platform arm of this search had always been empty — now reads the full catalog and
         // applies the status + approval gates here.)
-        const platformProviders = (await storage.getAllProviderServices())
+        const approvedProviders = (await storage.getAllProviderServices())
           .filter((s: any) => s.status === "active" && s.approvalStatus === "approved");
+        // §16 vacation-mode enforcement (deferred arm, ratified Aug 9 2026 — see
+        // filterOutAwayOwners doc in content-query.service.ts): a currently-away owner's
+        // listings drop out of platform search results; they reappear automatically once
+        // the flag clears. Read-only — no provider_services row is touched.
+        const platformProviders = await filterOutAwayOwners(approvedProviders, (s: any) => s.userId);
         const dest = (destination || "").toLowerCase();
         const qLower = (q || "").toLowerCase();
         const catLower = (category || "").toLowerCase();

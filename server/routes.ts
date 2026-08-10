@@ -55,6 +55,7 @@ import {
 } from "@shared/content-surface-map";
 import { db } from "./db";
 import { getPlatformFlag, FLAG_MAINTENANCE_MODE } from "./services/platform-flags";
+import { filterOutAwayOwners } from "./services/content-query.service";
 import { resolveMissingItemCoordinates } from "./services/trip-plan.service";
 import { eq, and, or, ilike, sql, desc, count, ne, inArray, asc, isNull } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
@@ -2091,7 +2092,13 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     // F2 public read-gate: this route is unauthenticated (public). getAllProviderServices is shared with
     // admin (which must see all), so gate here at the call site — return approved listings only.
     const services = await storage.getAllProviderServices();
-    res.json(services.filter((s) => s.approvalStatus === "approved"));
+    const approved = services.filter((s) => s.approvalStatus === "approved");
+    // §16 vacation-mode enforcement (deferred arm, ratified Aug 9 2026 — see
+    // filterOutAwayOwners doc in content-query.service.ts): a currently-away owner's
+    // listings drop out of this public surfacing rail; they reappear automatically once
+    // the flag clears. Read-only — no provider_services row is touched.
+    const live = await filterOutAwayOwners(approved, (s) => s.userId);
+    res.json(live);
   });
   
   // Get provider's services
@@ -5052,24 +5059,12 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     }
   });
 
-  app.get("/api/provider/dashboard", isAuthenticated, async (req, res) => {
-    try {
-      const userId = getUserId(req)!;
-      const services = await storage.getProviderServicesByStatus(userId);
-      const bookings = await storage.getServiceBookings({ providerId: userId });
-      const totalRevenue = services.reduce((sum, s) => sum + Number(s.totalRevenue || 0), 0);
-      const totalBookings = services.reduce((sum, s) => sum + (s.bookingsCount || 0), 0);
-      const completedBookings = bookings.filter(b => b.status === "completed");
-      const pendingBookings = bookings.filter(b => b.status === "pending");
-      res.json({
-        summary: { totalRevenue, totalBookings, completedBookings: completedBookings.length, pendingBookings: pendingBookings.length },
-        services: services.map(s => ({ id: s.id, serviceName: s.serviceName, status: s.status, bookingsCount: s.bookingsCount, totalRevenue: s.totalRevenue })),
-      });
-    } catch (err) {
-      console.error("Provider dashboard error:", err);
-      res.status(500).json({ message: "Failed to fetch dashboard" });
-    }
-  });
+  // GET /api/provider/dashboard REMOVED (Punchlist Phase 3): orphaned handler, zero client
+  // callers (grepped client/src for both the API path and any queryKey referencing it — none).
+  // The real provider dashboard page (client/src/pages/provider/dashboard.tsx) reads
+  // /api/provider/analytics/dashboard instead. Left in the PROVIDER_SELF_SERVICE_PREFIXES
+  // role-gate list above (line ~600) since that list is a harmless prefix guard, not a route
+  // registration — an absent path never reaches it.
 
   // Get comprehensive expert analytics dashboard data
   app.get("/api/expert/analytics/dashboard", isAuthenticated, async (req, res) => {

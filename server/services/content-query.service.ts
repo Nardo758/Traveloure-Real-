@@ -474,6 +474,38 @@ export async function getContentRegistryByLocation(params: {
 }
 
 /**
+ * §16 vacation-mode enforcement (deferred arm of the ratified Aug 9 2026 vacation-mode
+ * ruling — CLAUDE.md §06b/mockup). Every platform search/surfacing rail that lists rows
+ * owned by an earner must exclude rows whose owner is CURRENTLY away
+ * (`users.vacationUntil` non-null and in the future) — the listing itself is untouched
+ * (read-only, no provider_services/content_registry row is written), so it reappears
+ * automatically the moment the flag clears or expires. Shared by every surfacing rail so
+ * "away" can't drift between call sites (searchWorkstationPlatformContent below, the public
+ * `/api/provider-services` listing, and the platform arm of `/api/search/experiences`).
+ * `getOwnerId` returning null/undefined (no owner, or an owner field absent on the row)
+ * always passes — there is nothing to be away FROM.
+ */
+export async function filterOutAwayOwners<T>(
+  rows: T[],
+  getOwnerId: (row: T) => string | null | undefined,
+): Promise<T[]> {
+  const ownerIds = Array.from(
+    new Set(rows.map(getOwnerId).filter((id): id is string => !!id)),
+  );
+  if (ownerIds.length === 0) return rows;
+  const awayRows = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(and(inArray(users.id, ownerIds), sql`${users.vacationUntil} > now()`));
+  if (awayRows.length === 0) return rows;
+  const awaySet = new Set(awayRows.map((r) => r.id));
+  return rows.filter((row) => {
+    const ownerId = getOwnerId(row);
+    return !ownerId || !awaySet.has(ownerId);
+  });
+}
+
+/**
  * W1-A: the Workstation Add panel's "Platform content" pill — a read-only search over the
  * central content_registry, scoped to the build's destination + an optional free-text query.
  * Mirrors the traveler resolver's read-gates (getContentRegistryByLocation above): only
@@ -522,9 +554,13 @@ export async function searchWorkstationPlatformContent(params: {
     .where(and(...conditions))
     .limit(limit);
 
+  // §16 vacation-mode enforcement (see filterOutAwayOwners doc above) — an away owner's
+  // content_registry rows drop out of this Workstation search until the flag clears.
+  const liveRows = await filterOutAwayOwners(rows, (r) => r.ownerId);
+
   // Hard invariant (§12/DMO model): 'sourced' content never leaves the DMO pill — even here,
   // even though it's read-only, even if a future placement rule ever pointed at one.
-  return rows
+  return liveRows
     .filter(r => contentOriginFor(r.contentType) !== "sourced")
     .map(r => {
       const meta: any = r.metadata || {};
