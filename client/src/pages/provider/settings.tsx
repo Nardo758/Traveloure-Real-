@@ -590,26 +590,19 @@ export default function ProviderSettings() {
           <VerificationPayoutsSection />
         </div>
 
-        {/* Account Settings */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <User className="w-5 h-5 text-console-mid" />
-              Account Settings
-            </CardTitle>
-            <CardDescription>Manage your account credentials and security</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex gap-2">
-              <Button variant="outline" data-testid="button-change-password">
-                <Shield className="w-4 h-4 mr-2" /> Change Password
-              </Button>
-              <Button variant="outline" data-testid="button-two-factor">
-                Enable Two-Factor Auth
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+        {/* Account Settings — REMOVED (Punchlist Phase 3, §13 honesty): the "Change Password"
+            and "Enable Two-Factor Auth" buttons had nothing behind them. Checked
+            server/routes.ts, every server/routes/*.ts, and
+            server/replit_integrations/auth/emailAuth.ts — there is no self-service
+            change-password endpoint for a logged-in user (only the token-based
+            POST /api/auth/forgot-password + POST /api/auth/reset-password email-round-trip
+            flow, already reachable from the sign-in page's "Forgot password" link) and no 2FA
+            mechanism anywhere in the schema or server. Rather than leave two buttons that do
+            nothing, the whole card is removed; re-add it alongside a real change-password
+            endpoint and/or a real 2FA rail. (client/src/pages/expert/settings.tsx keeps an
+            equivalent card but disables its inputs with the same finding as an inline note —
+            an equally honest treatment; this page opts for removal per the same audit's
+            explicit call.) */}
 
         {/* Business Preferences */}
         <Card>

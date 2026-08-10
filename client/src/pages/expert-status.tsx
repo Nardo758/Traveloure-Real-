@@ -344,9 +344,11 @@ export default function ExpertStatusPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 <p className="text-sm text-muted-foreground">Have questions about your application? Our team is here to help.</p>
-                <Button variant="outline" className="w-full" data-testid="button-contact-support">
-                  <MessageSquare className="w-4 h-4 mr-2" />Contact Support
-                </Button>
+                <Link href="/contact">
+                  <Button variant="outline" className="w-full" data-testid="button-contact-support">
+                    <MessageSquare className="w-4 h-4 mr-2" />Contact Support
+                  </Button>
+                </Link>
                 <Link href="/faq">
                   <Button variant="ghost" className="w-full" data-testid="link-faq">
                     View FAQ<ArrowRight className="w-4 h-4 ml-2" />
