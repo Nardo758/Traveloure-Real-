@@ -484,7 +484,7 @@ export interface IStorage {
   releaseEarningsForBooking(bookingId: string, now?: Date): Promise<number>;
   setBookingEarningsDispute(bookingId: string, open: boolean, now?: Date): Promise<number>;
   reverseEarningsForBooking(bookingId: string, now?: Date): Promise<{ reversed: number; skippedPaidOut: number }>;
-  reversePlatformRevenueForBooking(bookingId: string, now?: Date): Promise<number>;
+  reversePlatformRevenueForBooking(bookingId: string, now?: Date, fraction?: number): Promise<number>;
 
   // Provider Payouts
   getProviderPayouts(providerId: string): Promise<ProviderPayout[]>;
@@ -3996,13 +3996,21 @@ export class DatabaseStorage implements IStorage {
    * an atomic claim (WHERE status <> 'reversed') means a second call finds nothing and inserts no
    * second compensating row. Returns the number of original rows reversed.
    */
-  async reversePlatformRevenueForBooking(bookingId: string, now: Date = new Date()): Promise<number> {
+  /**
+   * `fraction` (default 1) scales the compensating negative rows for POLICY PARTIAL refunds
+   * (cancellation-policy.service.ts): a 50% refund inserts -0.5× rows, so the summed net keeps
+   * the RETAINED half recognised as platform revenue instead of zeroing the whole booking.
+   * The original row's status flip remains the idempotency guard either way — a retry (at any
+   * fraction) finds nothing to reverse and inserts no second compensating row.
+   */
+  async reversePlatformRevenueForBooking(bookingId: string, now: Date = new Date(), fraction: number = 1): Promise<number> {
+    const f = Math.min(Math.max(fraction, 0), 1);
     const originals = await db.update(platformRevenue)
       .set({ status: 'reversed' })
       .where(and(eq(platformRevenue.sourceId, bookingId), sqlOp`${platformRevenue.status} <> 'reversed'`))
       .returning();
     for (const o of originals) {
-      const neg = (v: string | null) => String(-parseFloat(v || '0'));
+      const neg = (v: string | null) => (-(Math.round(parseFloat(v || '0') * f * 100) / 100)).toFixed(2);
       await this.recordPlatformRevenue({
         sourceType: o.sourceType,
         sourceId: o.sourceId,
