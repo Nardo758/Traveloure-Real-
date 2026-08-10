@@ -578,7 +578,7 @@ function DmoReader({
   function flash(n: number) {
     setFlashN(n);
     if (flashTimer.current) clearTimeout(flashTimer.current);
-    flashTimer.current = setTimeout(() => setFlashN(null), 900);
+    flashTimer.current = setTimeout(() => setFlashN(null), 900); // fee-literal-ok: 900ms UI animation timer, not money
   }
 
   function scrollToHighlight(n: number) {
