@@ -90,8 +90,11 @@ describe("getInstagramBannerHeading — heading text", () => {
     assert.equal(getInstagramBannerHeading("auth_error"), "Connect your Instagram account");
   });
 
-  it("falls back to default heading for verification_error (transient network failure)", () => {
-    assert.equal(getInstagramBannerHeading("verification_error"), "Connect your Instagram account");
+  it("shows transient-failure heading for verification_error", () => {
+    assert.equal(
+      getInstagramBannerHeading("verification_error"),
+      "Couldn't reach Instagram — your account may still be connected",
+    );
   });
 });
 
@@ -115,6 +118,10 @@ describe("getInstagramBannerButtonLabel — CTA label", () => {
 
   it("shows default label for auth_error", () => {
     assert.equal(getInstagramBannerButtonLabel("auth_error"), "Connect Instagram");
+  });
+
+  it("shows 'Retry' for verification_error (transient network failure)", () => {
+    assert.equal(getInstagramBannerButtonLabel("verification_error"), "Retry");
   });
 });
 
@@ -195,6 +202,14 @@ describe("Instagram banner — full scenario matrix", () => {
       expectBanner: true,
       expectHeading: "Connect your Instagram account",
       expectButton: "Connect Instagram",
+      expectAmber: false,
+    },
+    {
+      label: "verification_error — transient network failure, distinct heading, Retry CTA",
+      status: { connected: false, reason: "verification_error" },
+      expectBanner: true,
+      expectHeading: "Couldn't reach Instagram — your account may still be connected",
+      expectButton: "Retry",
       expectAmber: false,
     },
   ];
