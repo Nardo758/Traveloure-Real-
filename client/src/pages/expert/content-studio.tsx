@@ -90,6 +90,13 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import {
+  shouldShowInstagramBanner,
+  getInstagramBannerHeading,
+  getInstagramBannerButtonLabel,
+  isInstagramBannerAmberVariant,
+  type InstagramDisconnectReason,
+} from "@/lib/instagram-banner-utils";
 
 const contentTypes = [
   { id: "travel-guide", label: "Travel Guide", icon: BookOpen, color: "text-blue-500", description: "Comprehensive destination guides" },
@@ -217,13 +224,13 @@ export default function ContentStudio() {
 
   const { data: instagramStatus, isLoading: instagramStatusLoading } = useQuery<{
     connected: boolean;
-    reason?: "personal_account" | "token_expired" | "auth_error" | "verification_error";
+    reason?: InstagramDisconnectReason;
     accountType?: string;
   }>({
     queryKey: ["/api/instagram/status"],
   });
   const isInstagramConnected = instagramStatus?.connected ?? false;
-  const instagramDisconnectReason = instagramStatus?.reason;
+  const instagramDisconnectReason = instagramStatus?.reason as InstagramDisconnectReason;
 
   const { data: nuggets = [], isLoading: nuggetsLoading } = useQuery<LocalKnowledgeNugget[]>({
     queryKey: ["/api/expert/knowledge-nuggets"],
@@ -322,7 +329,36 @@ export default function ContentStudio() {
       toast({ title: "Published!", description: "Your content is now live on Instagram." });
     },
     onError: (error: any) => {
-      toast({ title: "Publish Failed", description: error.message || "Could not publish to Instagram", variant: "destructive" });
+      // The server returns { error, reason } in the JSON body. apiRequest
+      // stringifies the body as the error message: "<status>: <json-body>".
+      // Parse the reason so we can show a reconnect prompt instead of a
+      // raw API error when the token has expired.
+      let reason: string | undefined;
+      try {
+        const jsonStart = (error.message as string).indexOf("{");
+        if (jsonStart !== -1) {
+          const parsed = JSON.parse((error.message as string).slice(jsonStart));
+          reason = parsed?.reason;
+        }
+      } catch {
+        // ignore parse errors — fall through to generic message
+      }
+
+      if (reason === "token_expired") {
+        toast({
+          title: "Instagram Session Expired",
+          description: "Your Instagram session has expired. Please reconnect your account.",
+          variant: "destructive",
+        });
+        // Refresh status so the reconnect banner appears immediately.
+        queryClient.invalidateQueries({ queryKey: ["/api/instagram/status"] });
+      } else {
+        toast({
+          title: "Publish Failed",
+          description: error.message || "Could not publish to Instagram",
+          variant: "destructive",
+        });
+      }
     },
   });
 
@@ -763,11 +799,11 @@ export default function ContentStudio() {
         </div>
 
         {/* Instagram connection banner — shown whenever the account is not connected */}
-        {!instagramStatusLoading && !isInstagramConnected && (
+        {shouldShowInstagramBanner(instagramStatus, instagramStatusLoading) && (
           <Card
             className={cn(
               "border",
-              instagramDisconnectReason === "personal_account"
+              isInstagramBannerAmberVariant(instagramDisconnectReason)
                 ? "border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-700"
                 : "border-pink-200 bg-gradient-to-r from-purple-500/5 via-pink-500/5 to-orange-500/5"
             )}
@@ -779,59 +815,54 @@ export default function ContentStudio() {
                   <div
                     className={cn(
                       "w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0",
-                      instagramDisconnectReason === "personal_account"
+                      isInstagramBannerAmberVariant(instagramDisconnectReason)
                         ? "bg-amber-100 dark:bg-amber-900"
                         : "bg-gradient-to-br from-purple-500 via-pink-500 to-orange-500"
                     )}
                   >
-                    {instagramDisconnectReason === "personal_account" ? (
+                    {isInstagramBannerAmberVariant(instagramDisconnectReason) ? (
                       <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400" />
                     ) : (
                       <Instagram className="w-5 h-5 text-white" />
                     )}
                   </div>
                   <div className="min-w-0">
-                    {instagramDisconnectReason === "personal_account" ? (
-                      <>
-                        <p className="font-semibold text-amber-800 dark:text-amber-300">
-                          Business or Creator account required
-                        </p>
-                        <p className="text-sm text-amber-700 dark:text-amber-400 mt-0.5">
-                          Instagram only allows publishing from Business and Creator accounts. Switch your account type in the Instagram app under Settings → Account → Switch to Professional Account, then reconnect here.
-                        </p>
-                      </>
-                    ) : instagramDisconnectReason === "token_expired" ? (
-                      <>
-                        <p className="font-semibold">Instagram session expired</p>
-                        <p className="text-sm text-muted-foreground mt-0.5">
-                          Your Instagram connection has expired. Reconnect to continue publishing directly from Content Studio.
-                        </p>
-                      </>
-                    ) : (
-                      <>
-                        <p className="font-semibold">Connect your Instagram account</p>
-                        <p className="text-sm text-muted-foreground mt-0.5">
-                          Link your Business or Creator Instagram account to publish content directly from Content Studio.
-                        </p>
-                      </>
-                    )}
+                    <p className={cn(
+                      "font-semibold",
+                      isInstagramBannerAmberVariant(instagramDisconnectReason) && "text-amber-800 dark:text-amber-300"
+                    )}>
+                      {getInstagramBannerHeading(instagramDisconnectReason)}
+                    </p>
+                    <p className={cn(
+                      "text-sm mt-0.5",
+                      isInstagramBannerAmberVariant(instagramDisconnectReason)
+                        ? "text-amber-700 dark:text-amber-400"
+                        : "text-muted-foreground"
+                    )}>
+                      {instagramDisconnectReason === "personal_account"
+                        ? "Instagram only allows publishing from Business and Creator accounts. Switch your account type in the Instagram app under Settings → Account → Switch to Professional Account, then reconnect here."
+                        : instagramDisconnectReason === "token_expired"
+                        ? "Your Instagram connection has expired. Reconnect to continue publishing directly from Content Studio."
+                        : instagramDisconnectReason === "verification_error"
+                        ? "We couldn't reach Instagram to verify your connection. Your account is likely still connected — try again in a moment."
+                        : "Link your Business or Creator Instagram account to publish content directly from Content Studio."}
+                    </p>
                   </div>
                 </div>
                 <Button
-                  onClick={handleConnectInstagram}
+                  onClick={
+                    instagramDisconnectReason === "verification_error"
+                      ? () => queryClient.invalidateQueries({ queryKey: ["/api/instagram/status"] })
+                      : handleConnectInstagram
+                  }
                   className={cn(
                     "flex-shrink-0 gap-2",
-                    instagramDisconnectReason === "personal_account" && "bg-amber-600 hover:bg-amber-700 text-white"
+                    isInstagramBannerAmberVariant(instagramDisconnectReason) && "bg-amber-600 hover:bg-amber-700 text-white"
                   )}
-                  variant={instagramDisconnectReason === "personal_account" ? "default" : "default"}
                   data-testid="button-instagram-banner-connect"
                 >
                   <Instagram className="w-4 h-4" />
-                  {instagramDisconnectReason === "token_expired"
-                    ? "Reconnect Instagram"
-                    : instagramDisconnectReason === "personal_account"
-                    ? "Reconnect with Business Account"
-                    : "Connect Instagram"}
+                  {getInstagramBannerButtonLabel(instagramDisconnectReason)}
                 </Button>
               </div>
             </CardContent>

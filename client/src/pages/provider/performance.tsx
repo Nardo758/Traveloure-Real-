@@ -8,7 +8,7 @@
  * page's 9-tab picker), so no ?sub= seam is needed. /provider/analytics redirects to
  * /provider/performance?tab=analytics.
  */
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useState } from "react";
 import { useSearch } from "wouter";
 import { ProviderLayout } from "@/components/provider/provider-layout";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -17,14 +17,21 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
-import { useQuery } from "@tanstack/react-query";
+import { Textarea } from "@/components/ui/textarea";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { format } from "date-fns";
 import {
   Star,
   TrendingUp,
   DollarSign,
   Users,
   BarChart3,
-  Calendar
+  Calendar,
+  MessageSquare,
+  AlertTriangle,
+  Sparkles,
 } from "lucide-react";
 import { ProviderServiceRecommendations } from "@/components/provider/service-recommendations";
 
@@ -64,9 +71,90 @@ interface ProviderAnalytics {
   };
 }
 
+// §06d Reviews tab response shapes.
+interface ProviderReview {
+  id: string;
+  rating: number;
+  reviewText: string | null;
+  createdAt: string;
+  providerReply: string | null;
+  providerRepliedAt: string | null;
+  serviceId: string;
+  serviceName: string;
+  travelerName: string;
+}
+
+interface ProviderReviewsResponse {
+  reviews: ProviderReview[];
+  summary: { total: number; avgRating: number; awaitingReply: number };
+}
+
+// Demand tab response shapes (§10/§11/§12, GET /api/me/demand-signals /
+// POST+GET /api/me/business-advisor — server/routes/demand.routes.ts). Every section is
+// independently null/empty-honest (§13): a market with no matching rows renders its own empty
+// line rather than borrowing another market's data.
+interface DemandSignalRow {
+  kind: string;
+  label: string;
+  count: number;
+  detail?: string;
+}
+
+interface CrowdMonthRow {
+  month: number;
+  monthLabel: string;
+  crowdLevel: string | null;
+  rating: string | null;
+}
+
+interface UpcomingEventRow {
+  id: string;
+  title: string;
+  eventType: string | null;
+  startMonth: number | null;
+  endMonth: number | null;
+  specificDate: string | null;
+}
+
+interface DemandSignalsResponse {
+  market: string | null;
+  lowSignal: boolean;
+  signals: DemandSignalRow[];
+  crowd: CrowdMonthRow[] | null;
+  events: UpcomingEventRow[] | null;
+}
+
+interface BusinessAdvisorResponse {
+  narration: string;
+  generatedAt: string;
+  stale?: boolean;
+  cached?: boolean;
+}
+
+const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+// Crowd-level → bar height. Covers both source vocabularies that can appear in destination_seasons
+// (destination-calendar's Low/Medium/High and TravelPulse's quiet/moderate/busy/packed) — an
+// unrecognized value still renders a real (mid) bar rather than disappearing.
+const CROWD_HEIGHT_PCT: Record<string, number> = {
+  low: 25, quiet: 25,
+  medium: 55, moderate: 55,
+  high: 80, busy: 80,
+  packed: 100, very_high: 100,
+};
+function crowdHeightPct(level: string | null): number {
+  if (!level) return 12;
+  return CROWD_HEIGHT_PCT[level.toLowerCase()] ?? 45;
+}
+
 export default function ProviderPerformance() {
   const search = useSearch();
-  const tabParam = new URLSearchParams(search).get("tab") === "analytics" ? "analytics" : "overview";
+  const tabQuery = new URLSearchParams(search).get("tab");
+  const tabParam =
+    tabQuery === "analytics" ? "analytics" :
+    tabQuery === "reviews" ? "reviews" :
+    tabQuery === "demand" ? "demand" :
+    "overview";
 
   const { data: analytics, isLoading } = useQuery<ProviderAnalytics>({
     queryKey: ["/api/provider/analytics/dashboard"],
@@ -129,6 +217,8 @@ export default function ProviderPerformance() {
           <TabsList data-testid="tabs-performance">
             <TabsTrigger value="overview" data-testid="tab-performance-overview">Overview</TabsTrigger>
             <TabsTrigger value="analytics" data-testid="tab-performance-analytics">Analytics</TabsTrigger>
+            <TabsTrigger value="reviews" data-testid="tab-performance-reviews">Reviews</TabsTrigger>
+            <TabsTrigger value="demand" data-testid="tab-performance-demand">Demand</TabsTrigger>
           </TabsList>
         </div>
 
@@ -360,7 +450,426 @@ export default function ProviderPerformance() {
             <ProviderAnalyticsPage embedded />
           </Suspense>
         </TabsContent>
+
+        {/* §06d Reviews tab — GET /api/me/reviews (session provider's reviews across all their
+            services), PATCH /api/me/reviews/:id/reply to post/edit the public reply. */}
+        <TabsContent value="reviews" data-testid="content-performance-reviews">
+          <div className="p-6">
+            <ReviewsTab />
+          </div>
+        </TabsContent>
+
+        {/* Demand tab (§10/§11/§12) — GET /api/me/demand-signals (signals + crowd/seasonality +
+            upcoming events, all independently null/empty-honest) and the Business Advisor card
+            (POST /api/me/business-advisor, on-demand AI narration over server-assembled facts). */}
+        <TabsContent value="demand" data-testid="content-performance-demand">
+          <DemandTab />
+        </TabsContent>
       </Tabs>
     </ProviderLayout>
+  );
+}
+
+function Stars({ rating }: { rating: number }) {
+  return (
+    <div className="flex items-center gap-0.5">
+      {[1, 2, 3, 4, 5].map((star) => (
+        <Star
+          key={star}
+          className={`w-4 h-4 ${star <= rating ? "text-amber-500 fill-amber-500" : "text-muted-foreground"}`}
+        />
+      ))}
+    </div>
+  );
+}
+
+function ReviewReplyRow({ review }: { review: ProviderReview }) {
+  const { toast } = useToast();
+  const [draft, setDraft] = useState("");
+
+  const replyMutation = useMutation({
+    mutationFn: (reply: string) =>
+      apiRequest("PATCH", `/api/me/reviews/${review.id}/reply`, { reply }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/me/reviews"] });
+      toast({ title: "Reply posted" });
+      setDraft("");
+    },
+    onError: () => toast({ title: "Failed to post reply", variant: "destructive" }),
+  });
+
+  return (
+    <div className="border rounded-lg p-4 space-y-3" data-testid={`row-review-${review.id}`}>
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap mb-1">
+            <span className="font-medium text-sm">{review.travelerName}</span>
+            <span className="text-muted-foreground text-xs">on</span>
+            <span className="text-sm font-medium truncate max-w-[220px]">{review.serviceName}</span>
+          </div>
+          <div className="flex items-center gap-2 mb-2">
+            <Stars rating={review.rating} />
+            <span className="text-xs text-muted-foreground">
+              {format(new Date(review.createdAt), "MMM d, yyyy")}
+            </span>
+          </div>
+          {review.reviewText ? (
+            <p className="text-sm text-foreground">{review.reviewText}</p>
+          ) : (
+            <p className="text-sm text-muted-foreground italic">No review text.</p>
+          )}
+        </div>
+      </div>
+
+      {review.providerReply ? (
+        <div className="rounded-md border bg-muted/40 px-3 py-2">
+          <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground mb-1">
+            <MessageSquare className="w-3 h-3" />
+            Your reply (public)
+            {review.providerRepliedAt && (
+              <span className="font-normal opacity-70">
+                {format(new Date(review.providerRepliedAt), "MMM d, yyyy")}
+              </span>
+            )}
+          </div>
+          <p className="text-sm text-foreground">{review.providerReply}</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <Textarea
+            placeholder="Write a public reply to this review…"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            className="text-sm h-20"
+            maxLength={1000}
+            data-testid={`input-reply-${review.id}`}
+          />
+          <Button
+            size="sm"
+            disabled={!draft.trim() || replyMutation.isPending}
+            onClick={() => replyMutation.mutate(draft.trim())}
+            data-testid={`button-post-reply-${review.id}`}
+          >
+            {replyMutation.isPending ? "Posting…" : "Post reply"}
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ReviewsTab() {
+  const { data, isLoading } = useQuery<ProviderReviewsResponse>({
+    queryKey: ["/api/me/reviews"],
+  });
+
+  const reviews = data?.reviews ?? [];
+  const summary = data?.summary ?? { total: 0, avgRating: 0, awaitingReply: 0 };
+
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          {[1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-24 rounded-lg" />
+          ))}
+        </div>
+        <Skeleton className="h-32 w-full rounded-lg" />
+        <Skeleton className="h-32 w-full rounded-lg" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <Card data-testid="card-reviews-average">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Average</p>
+                <p className="text-2xl font-bold text-foreground">{summary.avgRating.toFixed(1)}<span className="text-base font-normal text-muted-foreground">/5</span></p>
+              </div>
+              <Star className="w-8 h-8 text-amber-500 fill-amber-500" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card data-testid="card-reviews-total">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Total</p>
+                <p className="text-2xl font-bold text-foreground">{summary.total}</p>
+              </div>
+              <Users className="w-8 h-8 text-primary" />
+            </div>
+          </CardContent>
+        </Card>
+        <Card
+          data-testid="card-reviews-awaiting"
+          className={summary.awaitingReply > 0 ? "border-amber-300 bg-amber-50/50 dark:bg-amber-950/10" : ""}
+        >
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-muted-foreground">Awaiting reply</p>
+                <p className={`text-2xl font-bold ${summary.awaitingReply > 0 ? "text-amber-700 dark:text-amber-500" : "text-foreground"}`}>
+                  {summary.awaitingReply}
+                </p>
+              </div>
+              {summary.awaitingReply > 0 ? (
+                <AlertTriangle className="w-8 h-8 text-amber-500" />
+              ) : (
+                <MessageSquare className="w-8 h-8 text-primary" />
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {reviews.length === 0 ? (
+        <div className="text-center py-12 text-muted-foreground" data-testid="text-reviews-empty">
+          <MessageSquare className="w-10 h-10 mx-auto mb-3 opacity-40" />
+          <p>No reviews yet — they appear after completed bookings.</p>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {reviews.map((review) => (
+            <ReviewReplyRow key={review.id} review={review} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DemandTab() {
+  const { data, isLoading, isError } = useQuery<DemandSignalsResponse>({
+    queryKey: ["/api/me/demand-signals"],
+  });
+
+  // Business Advisor GET can 204 ("no advice generated yet") — a bare res.json() would throw on
+  // the empty body, so this is a custom queryFn that reads the status first (same pattern the
+  // trip Advisor narration card uses in client/src/pages/expert/workspace.tsx).
+  const { data: advisor, isLoading: advisorGetLoading } = useQuery<BusinessAdvisorResponse | null>({
+    queryKey: ["/api/me/business-advisor"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/me/business-advisor");
+      if (res.status === 204) return null;
+      return res.json();
+    },
+  });
+
+  // POST is strictly on-demand — only the button below ever fires it. A 502 is surfaced as the
+  // server's own honest inline message, verbatim, never auto-retried.
+  const advisorMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/me/business-advisor", {});
+      return res.json() as Promise<BusinessAdvisorResponse>;
+    },
+    onSuccess: (result) => {
+      queryClient.setQueryData(["/api/me/business-advisor"], result);
+    },
+  });
+
+  if (isLoading) {
+    return (
+      <div className="p-6 space-y-6">
+        <Skeleton className="h-24 w-full rounded-lg" />
+        <Skeleton className="h-40 w-full rounded-lg" />
+        <Skeleton className="h-32 w-full rounded-lg" />
+      </div>
+    );
+  }
+
+  if (isError || !data) {
+    return (
+      <div className="p-6">
+        <p className="text-center text-muted-foreground py-12" data-testid="text-demand-unavailable">
+          Demand data is unavailable right now.
+        </p>
+      </div>
+    );
+  }
+
+  if (!data.market) {
+    return (
+      <div className="p-6">
+        <div className="text-center py-12 text-muted-foreground" data-testid="text-demand-no-market">
+          <TrendingUp className="w-10 h-10 mx-auto mb-3 opacity-40" />
+          <p>Add a city to one of your listings to see demand signals for your market.</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-6 space-y-6">
+      <div>
+        <h2 className="text-lg font-semibold text-foreground" data-testid="text-demand-market">
+          Demand in {data.market}
+        </h2>
+        <p className="text-sm text-muted-foreground">Real traveler search and build activity in your market.</p>
+      </div>
+
+      {/* Demand signals — server-side minimum-event threshold (>=3/kind); lowSignal covers both
+          "nothing yet" and "not enough yet" with one honest line (§13). */}
+      <Card data-testid="card-demand-signals">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <TrendingUp className="w-4 h-4 text-primary" />
+            Demand signals
+          </CardTitle>
+          <CardDescription>Real search and build activity logged for {data.market}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {data.signals.length > 0 ? (
+            <div className="space-y-3">
+              {data.signals.map((s) => (
+                <div
+                  key={s.kind}
+                  className="flex items-center justify-between gap-3 p-3 rounded-lg border"
+                  data-testid={`row-signal-${s.kind}`}
+                >
+                  <div className="min-w-0">
+                    <p className="font-medium text-sm text-foreground">{s.label}</p>
+                    {s.detail && <p className="text-xs text-muted-foreground mt-0.5">{s.detail}</p>}
+                    <p className="text-[11px] text-muted-foreground mt-0.5">Source: demand_signal_events · {s.kind}</p>
+                  </div>
+                  <Badge variant="outline" data-testid={`badge-signal-count-${s.kind}`}>{s.count}</Badge>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground" data-testid="text-signals-low">
+              Not enough signal yet.
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Crowd / seasonality — 12-month bar strip, only months actually present render. */}
+      <Card data-testid="card-demand-crowd">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <BarChart3 className="w-4 h-4 text-primary" />
+            Crowd & seasonality
+          </CardTitle>
+          <CardDescription>TravelPulse monthly crowd levels for {data.market}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {data.crowd && data.crowd.length > 0 ? (
+            <div className="flex items-end gap-2 h-32" data-testid="chart-crowd-strip">
+              {data.crowd.map((m) => (
+                <div key={m.month} className="flex-1 flex flex-col items-center justify-end gap-1 h-full" data-testid={`bar-crowd-${m.month}`}>
+                  <div className="w-full flex-1 flex items-end">
+                    <div
+                      className="w-full rounded-t bg-primary/70"
+                      style={{ height: `${crowdHeightPct(m.crowdLevel)}%` }}
+                      title={m.crowdLevel ?? "unknown"}
+                    />
+                  </div>
+                  <span className="text-[10px] text-muted-foreground">{m.monthLabel}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground" data-testid="text-crowd-empty">
+              No seasonality data on record for {data.market} yet.
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Upcoming events — destination_events, approved only. */}
+      <Card data-testid="card-demand-events">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Calendar className="w-4 h-4 text-primary" />
+            Upcoming destination events
+          </CardTitle>
+          <CardDescription>Approved calendar events for {data.market}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {data.events && data.events.length > 0 ? (
+            <div className="space-y-2">
+              {data.events.map((e) => (
+                <div
+                  key={e.id}
+                  className="flex items-center justify-between gap-3 p-3 rounded-lg border"
+                  data-testid={`row-event-${e.id}`}
+                >
+                  <div className="min-w-0">
+                    <p className="font-medium text-sm text-foreground">{e.title}</p>
+                    {e.eventType && (
+                      <p className="text-xs text-muted-foreground capitalize">{e.eventType.replace(/_/g, " ")}</p>
+                    )}
+                  </div>
+                  {e.startMonth && (
+                    <Badge variant="outline">
+                      {MONTH_NAMES[e.startMonth - 1] ?? e.startMonth}
+                      {e.endMonth && e.endMonth !== e.startMonth ? `–${MONTH_NAMES[e.endMonth - 1] ?? e.endMonth}` : ""}
+                    </Badge>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground" data-testid="text-events-empty">
+              No upcoming events on record for {data.market} yet.
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Business Advisor — on-demand AI narration over the same server-assembled facts
+          (listing health, benchmarks, link stats, demand signals). */}
+      <Card data-testid="card-business-advisor">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-primary" />
+            Business Advisor
+          </CardTitle>
+          <CardDescription>AI advice grounded in your listings, benchmarks, links, and local demand</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {advisorMutation.isPending ? (
+            <p className="text-sm text-muted-foreground" data-testid="text-advisor-loading">Reading your business…</p>
+          ) : advisorMutation.isError ? (
+            <p className="text-sm text-muted-foreground italic" data-testid="text-advisor-error">
+              Advice unavailable right now
+            </p>
+          ) : advisor ? (
+            <div>
+              <p className="text-sm text-foreground whitespace-pre-wrap" data-testid="text-advisor-narration">
+                {advisor.narration}
+              </p>
+              <p className="text-xs text-muted-foreground mt-2" data-testid="text-advisor-generated-at">
+                Generated {format(new Date(advisor.generatedAt), "MMM d, yyyy")}
+              </p>
+              {advisor.stale && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="mt-3"
+                  onClick={() => advisorMutation.mutate()}
+                  data-testid="button-refresh-advice"
+                >
+                  Refresh advice
+                </Button>
+              )}
+            </div>
+          ) : (
+            <Button
+              onClick={() => advisorMutation.mutate()}
+              disabled={advisorGetLoading}
+              data-testid="button-get-advice"
+            >
+              Get advice on my business
+            </Button>
+          )}
+        </CardContent>
+      </Card>
+    </div>
   );
 }

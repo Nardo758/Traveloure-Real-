@@ -77,6 +77,84 @@ interface VacationStatus {
   active: boolean;
 }
 
+// Trending rail (mockup §12) — reads the SAME payload the Demand tab reads
+// (GET /api/me/demand-signals, server/routes/demand.routes.ts). Every field mirrors
+// client/src/pages/provider/performance.tsx's Demand tab shapes exactly (§13: one server
+// contract, no second reading of it).
+interface DemandSignalRow {
+  kind: string;
+  label: string;
+  count: number;
+  detail?: string;
+}
+interface CrowdMonthRow {
+  month: number;
+  monthLabel: string;
+  crowdLevel: string | null;
+  rating: string | null;
+}
+interface UpcomingEventRow {
+  id: string;
+  title: string;
+  eventType: string | null;
+  startMonth: number | null;
+  endMonth: number | null;
+  specificDate: string | null;
+}
+interface DemandSignalsResponse {
+  market: string | null;
+  lowSignal: boolean;
+  signals: DemandSignalRow[];
+  crowd: CrowdMonthRow[] | null;
+  events: UpcomingEventRow[] | null;
+}
+
+interface TrendingItem {
+  key: string;
+  label: string;
+  sourceLine: string;
+  badge?: string;
+}
+
+/** Up to 6 items: real demand signals first (each with its own count/source), then the nearest
+ *  crowd-level headline, then the next upcoming event — same priority order the mockup specifies.
+ *  §13: never pads with invented items; a thin market just renders fewer. */
+function buildTrendingItems(data: DemandSignalsResponse): TrendingItem[] {
+  const items: TrendingItem[] = [];
+
+  for (const s of data.signals) {
+    items.push({
+      key: `signal-${s.kind}`,
+      label: s.label,
+      sourceLine: `demand_signal_events · ${s.kind}`,
+      badge: String(s.count),
+    });
+  }
+
+  if (data.crowd && data.crowd.length > 0) {
+    const currentMonth = new Date().getMonth() + 1;
+    const nearest = [...data.crowd].sort((a, b) => {
+      const da = ((a.month - currentMonth) % 12 + 12) % 12;
+      const db = ((b.month - currentMonth) % 12 + 12) % 12;
+      return da - db;
+    })[0];
+    if (nearest?.crowdLevel) {
+      items.push({
+        key: "crowd-headline",
+        label: `${nearest.monthLabel}: ${nearest.crowdLevel} crowds expected`,
+        sourceLine: "TravelPulse seasonality",
+      });
+    }
+  }
+
+  if (data.events && data.events.length > 0) {
+    const next = data.events[0];
+    items.push({ key: `event-${next.id}`, label: next.title, sourceLine: "destination calendar" });
+  }
+
+  return items.slice(0, 6);
+}
+
 export default function ProviderDashboard() {
   const { user } = useAuth();
 
@@ -100,6 +178,14 @@ export default function ProviderDashboard() {
     queryKey: ["/api/me/vacation"],
     enabled: !!user,
   });
+
+  // Trending rail — hidden whole-card on error or a null market (honest absence, §13); never
+  // partially rendered off a failed fetch.
+  const { data: demandData, isError: demandError } = useQuery<DemandSignalsResponse>({
+    queryKey: ["/api/me/demand-signals"],
+    enabled: !!user,
+  });
+  const trendingItems = demandData?.market ? buildTrendingItems(demandData) : [];
 
   // Same query key SetupChecklistCard uses internally — read here only to size the compact
   // summary row (doneCount/total, eligibility). No extra request: react-query serves both
@@ -393,6 +479,56 @@ export default function ProviderDashboard() {
                 )}
               </CardContent>
             </Card>
+
+            {/* Trending rail (mockup §12) — reads the same /api/me/demand-signals payload the
+                Demand tab reads. Hidden entirely on a 404/error response or a null market
+                (honest absence, §13); the compact layout above/below is otherwise untouched. */}
+            {!demandError && demandData?.market && (
+              <Card className="border border-console-light" data-testid="card-trending-rail">
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between">
+                    <CardTitle className="text-base" data-testid="text-trending-title">
+                      📈 TRENDING · {demandData.market}
+                    </CardTitle>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-2">
+                  {trendingItems.length > 0 ? (
+                    trendingItems.map((item) => (
+                      <div
+                        key={item.key}
+                        className="p-2.5 rounded-lg border border-console-light bg-white"
+                        data-testid={`row-trending-${item.key}`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-sm font-medium text-console-darkest truncate">{item.label}</p>
+                          {item.badge && (
+                            <Badge variant="outline" className="text-xs flex-shrink-0">
+                              {item.badge}
+                            </Badge>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-console-mid mt-0.5">{item.sourceLine}</p>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-sm text-console-mid text-center py-3" data-testid="text-trending-low-signal">
+                      Not enough signal yet.
+                    </p>
+                  )}
+                  <Link href="/provider/performance?tab=demand">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-primary w-full justify-center mt-1"
+                      data-testid="link-full-demand-view"
+                    >
+                      Full demand view <ChevronRight className="w-3.5 h-3.5 ml-1" />
+                    </Button>
+                  </Link>
+                </CardContent>
+              </Card>
+            )}
 
             {/* Performance — compacted to one row (was a 3-row card duplicating the Rating KPI
                 and bookings count already shown above); "View Details" is now a real link

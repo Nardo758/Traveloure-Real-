@@ -111,6 +111,7 @@ import conciergeRoutes from "./routes/concierge.routes";
 import upsellRoutes from "./routes/upsell.routes";
 import tripsRoutes from "./routes/trips.routes";
 import advisorRoutes from "./routes/advisor.routes";
+import demandRoutes from "./routes/demand.routes";
 import providerListingHealthRoutes from "./routes/provider-listing-health.routes";
 import marketsRoutes from "./routes/markets.routes";
 import adminMarketsRoutes from "./routes/admin-markets.routes";
@@ -124,6 +125,10 @@ import storefrontRoutes from "./routes/storefront.routes";
 import travelerProfileRoutes from "./routes/traveler-profile.routes";
 import vacationRoutes from "./routes/vacation.routes";
 import offeringRequestRoutes from "./routes/offering-requests.routes";
+import reviewRepliesRoutes from "./routes/review-replies.routes";
+// Sibling's statements router (mockup §06e) — landed on disk during this session; mounted here
+// per the file-ownership split (sibling owns statements.routes.ts + provider/earnings.tsx only).
+import statementsRoutes from "./routes/statements.routes";
 import shortLinksRoutes from "./routes/short-links.routes";
 import readyMadeRoutes from "./routes/ready-made.routes";
 import expertConsoleRoutes from "./routes/expert-console.routes";
@@ -827,6 +832,12 @@ export async function registerRoutes(
   // narration (cached per tripId, planHash staleness key). Full paths declared in the router.
   app.use(advisorRoutes);
 
+  // Demand tab / Trending rail / Business Advisor (ratified §10/§11/§12 build, migration 189's
+  // append-only demand_signal_events): GET /api/me/demand-signals + POST/GET
+  // /api/me/business-advisor. `logDemandSignal` (its named export) is the one writer used by
+  // advisor.routes.ts and content.routes.ts.
+  app.use(demandRoutes);
+
   // Market geography (CLAUDE.md §20b): public DB-first read for the client geography layer,
   // and the admin "Add market" flow (paths under /api/admin/markets — §2 blanket requireAdmin
   // on the /api/admin prefix is the auth).
@@ -907,6 +918,12 @@ export async function registerRoutes(
   // /api/me/offering-requests + GET /api/admin/offering-requests (under the §2 blanket
   // adminApiGuard). Mounted per §9.
   app.use(offeringRequestRoutes);
+
+  // Reviews — provider public replies (mockup §06d, migration 190, decision-maker ratified
+  // Aug 9 2026) — GET /api/me/reviews + PATCH /api/me/reviews/:id/reply. Mounted per §9.
+  app.use(reviewRepliesRoutes);
+  // Sibling's statements router (mockup §06e) — mounted per §9; owned/authored by the sibling.
+  app.use(statementsRoutes);
 
   // Short-link + click store (backoffice S3) — POST /api/short-links + GET /r/:code. Mounted per §9.
   app.use(shortLinksRoutes);
