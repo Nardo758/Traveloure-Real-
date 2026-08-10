@@ -7770,12 +7770,19 @@ export type BoardItem = typeof boardItems.$inferSelect;
 // same posture as users.handle (migration 136): a CHECK over an app-layer vocabulary is the
 // publish-time push trap. target_id is nullable (storefront links carry no target_id — the owner's
 // handle is resolved at redirect time, never baked into the row).
+// `frame` (migration 193, D4 — docs/briefs/SERVICE_FUNDAMENTALS_DECISIONS.md, decision-maker
+// ratified Aug 10 2026): additive nullable varchar, same NO-CHECK posture as target_type — the
+// closed allowlist (`shared/share-frames.ts` SHARE_FRAMES) is app-enforced at the create route.
+// NULL = an untagged/generic link, the historical shape; every pre-193 row and every caller that
+// omits frame keeps working exactly as before. Frame participates in the create-path dedupe
+// identity (owner + targetType + targetId + frame) so each frame mints its OWN code.
 export const shortLinks = pgTable("short_links", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   code: varchar("code", { length: 12 }).notNull().unique(),
   ownerUserId: varchar("owner_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   targetType: varchar("target_type", { length: 30 }).notNull(),
   targetId: varchar("target_id"),
+  frame: varchar("frame", { length: 20 }),
   clicks: integer("clicks").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => [

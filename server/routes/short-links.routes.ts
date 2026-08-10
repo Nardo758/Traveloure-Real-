@@ -5,11 +5,15 @@
  *                            OWN approved offerings, or their storefront handle. §14: owner is the
  *                            session user only, never req.body. Ownership is verified against the
  *                            target row before a link is minted — a short link can't be forged to
- *                            point at someone else's offering.
+ *                            point at someone else's offering. Accepts an optional `frame`
+ *                            (D4, migration 193) drawn from the closed SHARE_FRAMES allowlist —
+ *                            NULL/omitted stays the historical untagged link, unchanged behavior.
  * GET  /r/:code           — public redirect + atomic click increment. Unknown code -> /discover
- *                            (never a dead 404/500 for a shared link).
+ *                            (never a dead 404/500 for a shared link). frame is metadata only —
+ *                            redirect target and click counting are unchanged by D4.
  * GET  /api/me/link-analytics — S5: per-link click/booking/revenue rollup for the session earner
- *                            only (§14). See handler comment for the exact contract.
+ *                            only (§14), PLUS a D4 per-frame breakdown. See handler comment for
+ *                            the exact contract.
  * GET  /api/me/earnings-by-source — S6: booking count/revenue split by acquisition source
  *                            (direct | link | cross_sell) for the session earner only (§14).
  *                            See handler comment for the honesty caveat on pre-attribution rows.
@@ -24,6 +28,7 @@ import { z } from "zod";
 import { eq, and, isNull, sql, gte, inArray } from "drizzle-orm";
 import { db } from "../db";
 import { users, providerServices, expertTemplates, readyMadeTrips, shortLinks, serviceBookings } from "@shared/schema";
+import { SHARE_FRAMES, SHARE_FRAME_LABEL, UNTAGGED_FRAME_LABEL, type ShareFrame } from "@shared/share-frames";
 
 const router = Router();
 
@@ -38,6 +43,9 @@ type TargetType = (typeof TARGET_TYPES)[number];
 const createSchema = z.object({
   targetType: z.enum(TARGET_TYPES),
   targetId: z.string().min(1).optional(),
+  // D4 (migration 193): optional, closed allowlist (shared/share-frames.ts) — the real formats
+  // the share-image render surface produces. Omitted -> untagged link, today's exact behavior.
+  frame: z.enum(SHARE_FRAMES).optional(),
 });
 
 // 8 chars from [a-z0-9] via crypto.randomBytes — collision-resistant, URL-safe, no ambiguous chars needed.
@@ -58,6 +66,7 @@ router.post("/api/short-links", isAuthenticated, async (req: any, res) => {
     }
     const { targetType } = parsed.data;
     let targetId: string | null = parsed.data.targetId ?? null;
+    const frame: ShareFrame | null = parsed.data.frame ?? null;
 
     // Ownership verification BEFORE minting a link — §14-style: never trust the client's claim
     // that it owns the target, always re-check against the row itself.
@@ -99,16 +108,23 @@ router.post("/api/short-links", isAuthenticated, async (req: any, res) => {
       }
     }
 
-    // Dedup: one short link per (owner, targetType, targetId) — a repeat request returns the
-    // existing row rather than minting a second code for the same destination.
+    // Dedup: one short link per (owner, targetType, targetId, frame) — a repeat request returns
+    // the existing row rather than minting a second code for the same destination. D4 (migration
+    // 193): frame participates in the identity so a frame-tagged request never returns the
+    // untagged link and vice versa — each frame gets its OWN code, or the feature is pointless.
     const dedupWhere = and(
       eq(shortLinks.ownerUserId, userId),
       eq(shortLinks.targetType, targetType),
       targetId === null ? isNull(shortLinks.targetId) : eq(shortLinks.targetId, targetId),
+      frame === null ? isNull(shortLinks.frame) : eq(shortLinks.frame, frame),
     );
-    const [existing] = await db.select({ code: shortLinks.code }).from(shortLinks).where(dedupWhere).limit(1);
+    const [existing] = await db
+      .select({ code: shortLinks.code, frame: shortLinks.frame })
+      .from(shortLinks)
+      .where(dedupWhere)
+      .limit(1);
     if (existing) {
-      return res.json({ code: existing.code, url: `/r/${existing.code}` });
+      return res.json({ code: existing.code, url: `/r/${existing.code}`, frame: existing.frame });
     }
 
     // Code generation: retry up to 3 times on a unique-violation race.
@@ -118,9 +134,9 @@ router.post("/api/short-links", isAuthenticated, async (req: any, res) => {
       try {
         const [created] = await db
           .insert(shortLinks)
-          .values({ code, ownerUserId: userId, targetType, targetId })
-          .returning({ code: shortLinks.code });
-        return res.json({ code: created.code, url: `/r/${created.code}` });
+          .values({ code, ownerUserId: userId, targetType, targetId, frame })
+          .returning({ code: shortLinks.code, frame: shortLinks.frame });
+        return res.json({ code: created.code, url: `/r/${created.code}`, frame: created.frame });
       } catch (e: any) {
         lastError = e;
         if (e?.code === "23505") continue; // unique violation on code -> retry
@@ -181,6 +197,13 @@ const RANGE_DAYS = [7, 30, 90, 365] as const;
  * click log (S5 explicitly does not build one). So `clicks` in this payload is ALWAYS
  * lifetime, while `bookings`/`revenue` respect the `days` range. The payload says so
  * explicitly (`clicksAreLifetime: true`) so the client never mislabels it as range-scoped.
+ *
+ * D4 (migration 193) `frameBreakdown`: clicks/bookings/revenue grouped by `frame`, ruling
+ * 22(d)-honest. A frame group appears ONLY when the caller actually has at least one short
+ * link tagged with it — a frame with zero of the earner's links is simply absent, never a
+ * zero-filled guess (§13). Legacy/generic NULL-frame links are represented too, under the
+ * explicit `frame: null` / "Untagged" bucket, rather than being silently dropped or folded
+ * into one of the real frames.
  */
 router.get("/api/me/link-analytics", isAuthenticated, async (req: any, res) => {
   try {
@@ -194,6 +217,7 @@ router.get("/api/me/link-analytics", isAuthenticated, async (req: any, res) => {
         code: shortLinks.code,
         targetType: shortLinks.targetType,
         targetId: shortLinks.targetId,
+        frame: shortLinks.frame,
         clicks: shortLinks.clicks,
       })
       .from(shortLinks)
@@ -205,6 +229,7 @@ router.get("/api/me/link-analytics", isAuthenticated, async (req: any, res) => {
         clicksAreLifetime: true,
         links: [],
         totals: { totalClicks: 0, totalBookings: 0, totalRevenue: 0, conversionRate: null },
+        frameBreakdown: [],
       });
     }
 
@@ -236,20 +261,52 @@ router.get("/api/me/link-analytics", isAuthenticated, async (req: any, res) => {
     let totalClicks = 0;
     let totalBookings = 0;
     let totalRevenue = 0;
+    // D4: frame -> aggregate, keyed by the real frame or the literal "untagged" bucket for a
+    // NULL-frame (legacy or deliberately generic) link — only groups the caller actually has a
+    // link for are ever emitted (§13, see handler comment above).
+    const byFrame = new Map<string, { clicks: number; bookings: number; revenue: number; linkCount: number }>();
     const rows = links.map((l) => {
       const agg = byCode.get(l.code) ?? { bookings: 0, revenue: 0 };
-      totalClicks += l.clicks ?? 0;
+      const clicks = l.clicks ?? 0;
+      totalClicks += clicks;
       totalBookings += agg.bookings;
       totalRevenue += agg.revenue;
+
+      const frameKey = l.frame ?? "untagged";
+      const bucket = byFrame.get(frameKey) ?? { clicks: 0, bookings: 0, revenue: 0, linkCount: 0 };
+      bucket.clicks += clicks;
+      bucket.bookings += agg.bookings;
+      bucket.revenue += agg.revenue;
+      bucket.linkCount += 1;
+      byFrame.set(frameKey, bucket);
+
       return {
         code: l.code,
         targetType: l.targetType,
         targetId: l.targetId,
-        clicks: l.clicks ?? 0,
+        frame: l.frame,
+        clicks,
         bookings: agg.bookings,
         revenue: agg.revenue,
       };
     });
+
+    // Stable display order: the four real frames in their canonical order, then "untagged" last
+    // — never reordering by volume, so the panel doesn't jump around release to release.
+    const frameOrder: string[] = [...SHARE_FRAMES, "untagged"];
+    const frameBreakdown = frameOrder
+      .filter((key) => byFrame.has(key))
+      .map((key) => {
+        const bucket = byFrame.get(key)!;
+        return {
+          frame: key === "untagged" ? null : (key as ShareFrame),
+          label: key === "untagged" ? UNTAGGED_FRAME_LABEL : SHARE_FRAME_LABEL[key as ShareFrame],
+          linkCount: bucket.linkCount,
+          clicks: bucket.clicks,
+          bookings: bucket.bookings,
+          revenue: bucket.revenue,
+        };
+      });
 
     return res.json({
       range: { days, since: since.toISOString() },
@@ -261,6 +318,7 @@ router.get("/api/me/link-analytics", isAuthenticated, async (req: any, res) => {
         totalRevenue,
         conversionRate: totalClicks > 0 ? totalBookings / totalClicks : null,
       },
+      frameBreakdown,
     });
   } catch (error: any) {
     console.error("[short-links] link-analytics failed:", error);
