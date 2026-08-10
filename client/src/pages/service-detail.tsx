@@ -147,6 +147,12 @@ interface Review {
   reviewText: string | null;
   responseText: string | null;
   responseAt: string | null;
+  // §06d: the provider's ONE public reply (migration 190) — distinct from the legacy
+  // responseText/responseAt above. GET /api/services/:id/reviews returns the full
+  // service_reviews row (storage.getServiceReviews does an unfiltered `db.select()`), so these
+  // two fields already ride along with no server-side change needed for this read.
+  providerReply: string | null;
+  providerRepliedAt: string | null;
   isVerified: boolean;
   status: string;
   createdAt: string;
@@ -1313,6 +1319,14 @@ function ReviewCard({ review, serviceId }: { review: Review; serviceId: string }
                 <p className="text-xs text-muted-foreground mb-1">Provider Response:</p>
                 <p className="text-sm" data-testid={`text-response-${review.id}`}>
                   {review.responseText}
+                </p>
+              </div>
+            )}
+            {review.providerReply && (
+              <div className="mt-3 rounded-md border bg-muted/40 px-3 py-2" data-testid={`block-provider-reply-${review.id}`}>
+                <p className="text-xs font-medium text-muted-foreground mb-1">Response from the provider</p>
+                <p className="text-sm" data-testid={`text-provider-reply-${review.id}`}>
+                  {review.providerReply}
                 </p>
               </div>
             )}

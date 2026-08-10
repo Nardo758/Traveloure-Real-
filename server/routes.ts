@@ -124,6 +124,10 @@ import storefrontRoutes from "./routes/storefront.routes";
 import travelerProfileRoutes from "./routes/traveler-profile.routes";
 import vacationRoutes from "./routes/vacation.routes";
 import offeringRequestRoutes from "./routes/offering-requests.routes";
+import reviewRepliesRoutes from "./routes/review-replies.routes";
+// Sibling's statements router (mockup §06e) — landed on disk during this session; mounted here
+// per the file-ownership split (sibling owns statements.routes.ts + provider/earnings.tsx only).
+import statementsRoutes from "./routes/statements.routes";
 import shortLinksRoutes from "./routes/short-links.routes";
 import readyMadeRoutes from "./routes/ready-made.routes";
 import expertConsoleRoutes from "./routes/expert-console.routes";
@@ -907,6 +911,12 @@ export async function registerRoutes(
   // /api/me/offering-requests + GET /api/admin/offering-requests (under the §2 blanket
   // adminApiGuard). Mounted per §9.
   app.use(offeringRequestRoutes);
+
+  // Reviews — provider public replies (mockup §06d, migration 190, decision-maker ratified
+  // Aug 9 2026) — GET /api/me/reviews + PATCH /api/me/reviews/:id/reply. Mounted per §9.
+  app.use(reviewRepliesRoutes);
+  // Sibling's statements router (mockup §06e) — mounted per §9; owned/authored by the sibling.
+  app.use(statementsRoutes);
 
   // Short-link + click store (backoffice S3) — POST /api/short-links + GET /r/:code. Mounted per §9.
   app.use(shortLinksRoutes);
