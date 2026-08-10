@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useParams, Link, useLocation } from "wouter";
 import { Layout } from "@/components/layout";
+import { ServiceLocationMap, parseLatLng } from "@/components/service-location-map";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -108,6 +109,29 @@ interface Service {
   parentServiceId?: string | null;
   rooms?: RoomSummary[];
   property?: { id: string; serviceName: string } | null;
+  // Vacation mode (link-landing polish, mockup §08 / CLAUDE.md §06b): the owner's
+  // business-level away state, mirrored from the storefront payload's own `away` field
+  // (server: GET /api/services/:id, content.routes.ts). Null when the owner isn't away —
+  // listings stay visible either way, booking is disabled only while `away` is set.
+  away?: { until: string; message: string | null } | null;
+  // Ruling 22: the location facts were ALREADY on the wire (the endpoint spreads the row);
+  // this interface just stopped dropping them on the floor. Map renders only from a real
+  // confirmed pin / located stops — no city-center fallback (§13).
+  latitude?: string | number | null;
+  longitude?: string | number | null;
+  locationPrecision?: string | null;
+  serviceRadius?: string | number | null;
+  dropOffPoint?: string | null;
+  routePoints?: ServiceRoutePointRow[];
+}
+
+// Ruling 22: ordered route stops (service_route_points child rows, migration 192).
+interface ServiceRoutePointRow {
+  id: string;
+  position: number;
+  name: string;
+  latitude: string | null;
+  longitude: string | null;
 }
 
 interface BundleComponent {
@@ -127,11 +151,13 @@ interface RoomSummary {
 // X1: display labels for cancellationPolicyType — mirrors shared/schema.ts
 // CANCELLATION_POLICY_TYPE_LABELS (kept local to avoid a client bundle importing the
 // server schema module; the vocabulary itself is app-enforced, not a DB CHECK).
+// The concrete windows mirror the server's enforcement schedule in
+// server/services/cancellation-policy.service.ts (refundPercentFor).
 const CANCELLATION_POLICY_TYPE_LABELS: Record<string, string> = {
-  flexible: "Flexible — full refund if cancelled well in advance",
-  moderate: "Moderate — partial refund on shorter notice",
-  strict: "Strict — limited refund window",
-  non_refundable: "Non-refundable",
+  flexible: "Flexible — full refund if cancelled at least 24 hours before the start",
+  moderate: "Moderate — full refund 5+ days before the start; 50% refund 2+ days before",
+  strict: "Strict — 50% refund if cancelled at least 7 days before the start",
+  non_refundable: "Non-refundable — no refund once booked",
 };
 
 // In-person delivery methods that have a physical meeting point.
@@ -147,6 +173,12 @@ interface Review {
   reviewText: string | null;
   responseText: string | null;
   responseAt: string | null;
+  // §06d: the provider's ONE public reply (migration 190) — distinct from the legacy
+  // responseText/responseAt above. GET /api/services/:id/reviews returns the full
+  // service_reviews row (storage.getServiceReviews does an unfiltered `db.select()`), so these
+  // two fields already ride along with no server-side change needed for this read.
+  providerReply: string | null;
+  providerRepliedAt: string | null;
   isVerified: boolean;
   status: string;
   createdAt: string;
@@ -486,6 +518,14 @@ export default function ServiceDetailPage() {
     hasPickupAddress ||
     hasTransportSignal;
 
+  // Vacation mode (mockup §08/§06b): the listing stays visible while the owner is away —
+  // only new-booking CTAs are disabled. Existing confirmed bookings are untouched (this is
+  // a business-level flag, never a provider_services status change — CLAUDE.md §06b).
+  const isAway = !!service.away;
+  const awayTitle = service.away
+    ? `This provider is away until ${format(new Date(service.away.until), "MMM d, yyyy")}`
+    : undefined;
+
   return (
     <Layout>
       <div className="container py-8 max-w-6xl mx-auto">
@@ -556,6 +596,18 @@ export default function ServiceDetailPage() {
                 )}
               </div>
             </div>
+            {/* Vacation mode (mockup §08/§06b): honest away state — the listing stays visible,
+                only booking is disabled below. Real return date only; no fabricated message
+                when the owner left none. */}
+            {service.away && (
+              <Badge
+                variant="outline"
+                className="mt-2 border-amber-300 bg-amber-50 text-amber-800"
+                data-testid="badge-service-away"
+              >
+                Away — back {format(new Date(service.away.until), "MMM d")}
+              </Badge>
+            )}
             {/* §17 Product Builder — PROPERTY rung: a room links back to its property, only
                 when the property is still approved+active (F2-gated server-side). */}
             {isRoom && service.property && (
@@ -583,8 +635,12 @@ export default function ServiceDetailPage() {
           </div>
         )}
 
+        {/* Link-landing polish (mockup §08): on mobile the booking panel (price/rating/CTA)
+            renders BEFORE the long-form content below via `order` — a texted link must put
+            photo + price + CTA above the fold without a redesign of either column's content.
+            Desktop keeps the original visual (content, then sidebar) via the lg: overrides. */}
         <div className="grid lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-6">
+          <div className="order-2 lg:order-1 lg:col-span-2 space-y-6">
             <Card>
               <CardHeader>
                 <CardTitle>About this service</CardTitle>
@@ -608,6 +664,76 @@ export default function ServiceDetailPage() {
                 )}
               </CardContent>
             </Card>
+
+            {/* Ruling 22(c): Location & route — renders ONLY when the service has real
+                location facts (confirmed pin and/or route stops). Map draws located stops
+                only; unlocated stops stay listed with an honest "not on map" flag. The
+                connector is stop order, not travel routing — the map component says so. */}
+            {(() => {
+              const servicePin = parseLatLng(service.latitude, service.longitude);
+              const routeStops = service.routePoints ?? [];
+              if (!servicePin && routeStops.length === 0) return null;
+              const locatedStops = routeStops.filter((s) => parseLatLng(s.latitude, s.longitude) !== null);
+              const radiusKm = Number(service.serviceRadius);
+              return (
+                <Card data-testid="card-location-route">
+                  <CardHeader>
+                    <CardTitle>Location & route</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="rounded-lg overflow-hidden border">
+                      <ServiceLocationMap
+                        pin={servicePin}
+                        pinLabel={service.meetingPoint || service.serviceName}
+                        radiusKm={Number.isFinite(radiusKm) && radiusKm > 0 ? radiusKm : null}
+                        stops={routeStops.map((s) => {
+                          const p = parseLatLng(s.latitude, s.longitude);
+                          return { id: s.id, position: s.position, name: s.name, lat: p?.lat ?? null, lng: p?.lng ?? null };
+                        })}
+                        height={300}
+                        testIdPrefix="service-detail-map"
+                      />
+                    </div>
+                    {routeStops.length > 0 && (
+                      <div>
+                        <p className="text-sm font-medium mb-2" data-testid="text-route-summary">
+                          Route — {locatedStops.length} of {routeStops.length} stops located
+                        </p>
+                        <ol className="space-y-1.5">
+                          {routeStops
+                            .slice()
+                            .sort((a, b) => a.position - b.position)
+                            .map((s) => (
+                              <li key={s.id} className="flex items-center gap-2 text-sm" data-testid={`route-stop-${s.position}`}>
+                                <span className="w-5 h-5 rounded-full bg-primary text-primary-foreground text-[11px] font-bold flex items-center justify-center shrink-0">
+                                  {s.position}
+                                </span>
+                                <span className="text-muted-foreground">{s.name}</span>
+                                {parseLatLng(s.latitude, s.longitude) === null && (
+                                  <Badge variant="outline" className="text-[10px]">not on map</Badge>
+                                )}
+                              </li>
+                            ))}
+                        </ol>
+                      </div>
+                    )}
+                    {(service.meetingPoint || service.pickupAddress || service.dropOffPoint) && (
+                      <div className="space-y-1 text-sm text-muted-foreground">
+                        {service.meetingPoint && (
+                          <p data-testid="text-map-meeting-point"><span className="font-medium text-foreground">Meet:</span> {service.meetingPoint}</p>
+                        )}
+                        {service.pickupAddress && (
+                          <p data-testid="text-map-pickup"><span className="font-medium text-foreground">Pickup:</span> {service.pickupAddress}</p>
+                        )}
+                        {service.dropOffPoint && (
+                          <p data-testid="text-map-dropoff"><span className="font-medium text-foreground">Drop-off:</span> {service.dropOffPoint}</p>
+                        )}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })()}
 
             {hasTiers && (
               <Card data-testid="card-pricing-tiers">
@@ -795,9 +921,10 @@ export default function ServiceDetailPage() {
 
           {/* Book Now panel (mockup sidebar): price, Direct-Booking trust panel, the
               availability/slot picker, cancellation policy, and the existing add-to-cart CTA —
-              all in one sticky column, mirroring the mockup's consolidated booking widget. */}
-          <div className="lg:col-span-1">
-            <Card className="sticky top-4">
+              all in one sticky column, mirroring the mockup's consolidated booking widget.
+              `order-1` (see the wrapping grid's comment) puts this panel first on mobile. */}
+          <div className="order-1 lg:order-2 lg:col-span-1">
+            <Card className="lg:sticky lg:top-4">
               <CardContent className="p-6">
                 <div className="text-center mb-4">
                   <p className="text-3xl font-bold" data-testid="text-price">
@@ -812,6 +939,118 @@ export default function ServiceDetailPage() {
                       {service.bookingsCount} booking{service.bookingsCount !== 1 ? "s" : ""}
                     </p>
                   )}
+                </div>
+
+                {/* Link-landing polish (mockup §08): the CTA row moved up to sit directly under
+                    the price — on a texted-link mobile viewport this is what keeps "book" inside
+                    the fold instead of after the trust panel + full availability calendar below.
+                    Same buttons/handlers, no new behavior. */}
+                <div className="space-y-3 mb-4">
+                  {isRoom ? (
+                    <>
+                      <Button
+                        className="w-full"
+                        onClick={() => {
+                          if (!user) {
+                            openSignInModal();
+                            return;
+                          }
+                          addRoomToCartMutation.mutate({ proceed: true });
+                        }}
+                        disabled={isAway || !roomStayAvailable || addRoomToCartMutation.isPending}
+                        title={awayTitle}
+                        data-testid="button-book-now"
+                      >
+                        {addRoomToCartMutation.isPending ? (
+                          <>
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            Booking...
+                          </>
+                        ) : (
+                          <>
+                            <BookOpen className="w-4 h-4 mr-2" />
+                            Book on Traveloure
+                          </>
+                        )}
+                      </Button>
+
+                      <Button
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => {
+                          if (!user) {
+                            openSignInModal();
+                            return;
+                          }
+                          addRoomToCartMutation.mutate({ proceed: false });
+                        }}
+                        disabled={isAway || !roomStayAvailable || addRoomToCartMutation.isPending}
+                        title={awayTitle}
+                        data-testid="button-add-to-cart"
+                      >
+                        <ShoppingCart className="w-4 h-4 mr-2" />
+                        Add to Cart
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <Button
+                        className="w-full"
+                        onClick={() => {
+                          if (!user) {
+                            openSignInModal();
+                            return;
+                          }
+                          addToCartMutation.mutate({ proceed: true });
+                        }}
+                        disabled={isAway || addToCartMutation.isPending}
+                        title={awayTitle}
+                        data-testid="button-book-now"
+                      >
+                        {addToCartMutation.isPending ? (
+                          <>
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                            Booking...
+                          </>
+                        ) : (
+                          <>
+                            <BookOpen className="w-4 h-4 mr-2" />
+                            Book on Traveloure
+                          </>
+                        )}
+                      </Button>
+
+                      <Button
+                        variant="outline"
+                        className="w-full"
+                        onClick={() => {
+                          if (!user) {
+                            openSignInModal();
+                            return;
+                          }
+                          addToCartMutation.mutate({ proceed: false });
+                        }}
+                        disabled={isAway || addToCartMutation.isPending}
+                        title={awayTitle}
+                        data-testid="button-add-to-cart"
+                      >
+                        <ShoppingCart className="w-4 h-4 mr-2" />
+                        Add to Cart
+                      </Button>
+                    </>
+                  )}
+
+                  <Button
+                    variant="ghost"
+                    className="w-full"
+                    asChild
+                    data-testid="button-contact-provider"
+                  >
+                    <Link href={`/chat?provider=${service.userId}`}>
+                      <MessageSquare className="w-4 h-4 mr-2" />
+                      Contact Provider
+                    </Link>
+                  </Button>
                 </div>
 
                 {/* Direct-Booking trust panel. The base statement is true of every listing on
@@ -1100,110 +1339,6 @@ export default function ServiceDetailPage() {
                   </>
                 )}
 
-                <div className="space-y-3">
-                  {isRoom ? (
-                    <>
-                      <Button
-                        className="w-full"
-                        onClick={() => {
-                          if (!user) {
-                            openSignInModal();
-                            return;
-                          }
-                          addRoomToCartMutation.mutate({ proceed: true });
-                        }}
-                        disabled={!roomStayAvailable || addRoomToCartMutation.isPending}
-                        data-testid="button-book-now"
-                      >
-                        {addRoomToCartMutation.isPending ? (
-                          <>
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                            Booking...
-                          </>
-                        ) : (
-                          <>
-                            <BookOpen className="w-4 h-4 mr-2" />
-                            Book on Traveloure
-                          </>
-                        )}
-                      </Button>
-
-                      <Button
-                        variant="outline"
-                        className="w-full"
-                        onClick={() => {
-                          if (!user) {
-                            openSignInModal();
-                            return;
-                          }
-                          addRoomToCartMutation.mutate({ proceed: false });
-                        }}
-                        disabled={!roomStayAvailable || addRoomToCartMutation.isPending}
-                        data-testid="button-add-to-cart"
-                      >
-                        <ShoppingCart className="w-4 h-4 mr-2" />
-                        Add to Cart
-                      </Button>
-                    </>
-                  ) : (
-                    <>
-                      <Button
-                        className="w-full"
-                        onClick={() => {
-                          if (!user) {
-                            openSignInModal();
-                            return;
-                          }
-                          addToCartMutation.mutate({ proceed: true });
-                        }}
-                        disabled={addToCartMutation.isPending}
-                        data-testid="button-book-now"
-                      >
-                        {addToCartMutation.isPending ? (
-                          <>
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                            Booking...
-                          </>
-                        ) : (
-                          <>
-                            <BookOpen className="w-4 h-4 mr-2" />
-                            Book on Traveloure
-                          </>
-                        )}
-                      </Button>
-
-                      <Button
-                        variant="outline"
-                        className="w-full"
-                        onClick={() => {
-                          if (!user) {
-                            openSignInModal();
-                            return;
-                          }
-                          addToCartMutation.mutate({ proceed: false });
-                        }}
-                        disabled={addToCartMutation.isPending}
-                        data-testid="button-add-to-cart"
-                      >
-                        <ShoppingCart className="w-4 h-4 mr-2" />
-                        Add to Cart
-                      </Button>
-                    </>
-                  )}
-
-                  <Button
-                    variant="ghost"
-                    className="w-full"
-                    asChild
-                    data-testid="button-contact-provider"
-                  >
-                    <Link href={`/chat?provider=${service.userId}`}>
-                      <MessageSquare className="w-4 h-4 mr-2" />
-                      Contact Provider
-                    </Link>
-                  </Button>
-                </div>
-
                 {/* X1 (§13 hardcoded-copy arm): real per-offering cancellation policy.
                     Shows the owner's declared policy when present; otherwise an honest
                     "contact provider" fallback — never a fabricated "free cancellation"
@@ -1313,6 +1448,14 @@ function ReviewCard({ review, serviceId }: { review: Review; serviceId: string }
                 <p className="text-xs text-muted-foreground mb-1">Provider Response:</p>
                 <p className="text-sm" data-testid={`text-response-${review.id}`}>
                   {review.responseText}
+                </p>
+              </div>
+            )}
+            {review.providerReply && (
+              <div className="mt-3 rounded-md border bg-muted/40 px-3 py-2" data-testid={`block-provider-reply-${review.id}`}>
+                <p className="text-xs font-medium text-muted-foreground mb-1">Response from the provider</p>
+                <p className="text-sm" data-testid={`text-provider-reply-${review.id}`}>
+                  {review.providerReply}
                 </p>
               </div>
             )}

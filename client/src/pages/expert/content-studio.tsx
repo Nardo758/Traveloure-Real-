@@ -7,6 +7,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { connectInstagram } from "@/lib/instagram-connect";
 import { ExpertLayout } from "@/components/expert/expert-layout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -90,6 +91,13 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import {
+  shouldShowInstagramBanner,
+  getInstagramBannerHeading,
+  getInstagramBannerButtonLabel,
+  isInstagramBannerAmberVariant,
+  type InstagramDisconnectReason,
+} from "@/lib/instagram-banner-utils";
 
 const contentTypes = [
   { id: "travel-guide", label: "Travel Guide", icon: BookOpen, color: "text-blue-500", description: "Comprehensive destination guides" },
@@ -215,10 +223,15 @@ export default function ContentStudio() {
   const [editingNugget, setEditingNugget] = useState<LocalKnowledgeNugget | null>(null);
   const [nuggetSearch, setNuggetSearch] = useState("");
 
-  const { data: instagramStatus } = useQuery<{ connected: boolean }>({
+  const { data: instagramStatus, isLoading: instagramStatusLoading } = useQuery<{
+    connected: boolean;
+    reason?: InstagramDisconnectReason;
+    accountType?: string;
+  }>({
     queryKey: ["/api/instagram/status"],
   });
   const isInstagramConnected = instagramStatus?.connected ?? false;
+  const instagramDisconnectReason = instagramStatus?.reason as InstagramDisconnectReason;
 
   const { data: nuggets = [], isLoading: nuggetsLoading } = useQuery<LocalKnowledgeNugget[]>({
     queryKey: ["/api/expert/knowledge-nuggets"],
@@ -317,7 +330,36 @@ export default function ContentStudio() {
       toast({ title: "Published!", description: "Your content is now live on Instagram." });
     },
     onError: (error: any) => {
-      toast({ title: "Publish Failed", description: error.message || "Could not publish to Instagram", variant: "destructive" });
+      // The server returns { error, reason } in the JSON body. apiRequest
+      // stringifies the body as the error message: "<status>: <json-body>".
+      // Parse the reason so we can show a reconnect prompt instead of a
+      // raw API error when the token has expired.
+      let reason: string | undefined;
+      try {
+        const jsonStart = (error.message as string).indexOf("{");
+        if (jsonStart !== -1) {
+          const parsed = JSON.parse((error.message as string).slice(jsonStart));
+          reason = parsed?.reason;
+        }
+      } catch {
+        // ignore parse errors — fall through to generic message
+      }
+
+      if (reason === "token_expired") {
+        toast({
+          title: "Instagram Session Expired",
+          description: "Your Instagram session has expired. Please reconnect your account.",
+          variant: "destructive",
+        });
+        // Refresh status so the reconnect banner appears immediately.
+        queryClient.invalidateQueries({ queryKey: ["/api/instagram/status"] });
+      } else {
+        toast({
+          title: "Publish Failed",
+          description: error.message || "Could not publish to Instagram",
+          variant: "destructive",
+        });
+      }
     },
   });
 
@@ -391,21 +433,24 @@ export default function ContentStudio() {
   };
 
   const handleConnectInstagram = async () => {
-    const clientId = import.meta.env.VITE_META_APP_ID;
-    if (!clientId) {
-      toast({ 
-        title: "Configuration Required", 
-        description: "Instagram integration requires Meta App setup.", 
-        variant: "destructive" 
-      });
-      return;
+    // D4: this now delegates to the SHARED connect helper (client/src/lib/instagram-connect.ts)
+    // also used by the share kit's publish button — one OAuth-redirect implementation, not two.
+    const result = await connectInstagram();
+    if (!result.ok) {
+      toast(
+        result.reason === "missing_config"
+          ? {
+              title: "Configuration Required",
+              description: "Instagram integration requires Meta App setup.",
+              variant: "destructive",
+            }
+          : {
+              title: "Configuration Error",
+              description: "Could not load Instagram configuration. Please try again.",
+              variant: "destructive",
+            },
+      );
     }
-    
-    const redirectUri = encodeURIComponent(`${window.location.origin}/api/instagram/callback`);
-    const scope = encodeURIComponent("instagram_business_basic,instagram_business_content_publish");
-    const authUrl = `https://www.instagram.com/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}`;
-    
-    window.location.href = authUrl;
   };
 
   const filteredContent = mockContent.filter(item => {
@@ -746,6 +791,77 @@ export default function ContentStudio() {
             </Button>
           </div>
         </div>
+
+        {/* Instagram connection banner — shown whenever the account is not connected */}
+        {shouldShowInstagramBanner(instagramStatus, instagramStatusLoading) && (
+          <Card
+            className={cn(
+              "border",
+              isInstagramBannerAmberVariant(instagramDisconnectReason)
+                ? "border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-700"
+                : "border-pink-200 bg-gradient-to-r from-purple-500/5 via-pink-500/5 to-orange-500/5"
+            )}
+            data-testid="card-instagram-connect-banner"
+          >
+            <CardContent className="p-5">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+                <div className="flex items-center gap-3 flex-1 min-w-0">
+                  <div
+                    className={cn(
+                      "w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0",
+                      isInstagramBannerAmberVariant(instagramDisconnectReason)
+                        ? "bg-amber-100 dark:bg-amber-900"
+                        : "bg-gradient-to-br from-purple-500 via-pink-500 to-orange-500"
+                    )}
+                  >
+                    {isInstagramBannerAmberVariant(instagramDisconnectReason) ? (
+                      <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                    ) : (
+                      <Instagram className="w-5 h-5 text-white" />
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <p className={cn(
+                      "font-semibold",
+                      isInstagramBannerAmberVariant(instagramDisconnectReason) && "text-amber-800 dark:text-amber-300"
+                    )}>
+                      {getInstagramBannerHeading(instagramDisconnectReason)}
+                    </p>
+                    <p className={cn(
+                      "text-sm mt-0.5",
+                      isInstagramBannerAmberVariant(instagramDisconnectReason)
+                        ? "text-amber-700 dark:text-amber-400"
+                        : "text-muted-foreground"
+                    )}>
+                      {instagramDisconnectReason === "personal_account"
+                        ? "Instagram only allows publishing from Business and Creator accounts. Switch your account type in the Instagram app under Settings → Account → Switch to Professional Account, then reconnect here."
+                        : instagramDisconnectReason === "token_expired"
+                        ? "Your Instagram connection has expired. Reconnect to continue publishing directly from Content Studio."
+                        : instagramDisconnectReason === "verification_error"
+                        ? "We couldn't reach Instagram to verify your connection. Your account is likely still connected — try again in a moment."
+                        : "Link your Business or Creator Instagram account to publish content directly from Content Studio."}
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  onClick={
+                    instagramDisconnectReason === "verification_error"
+                      ? () => queryClient.invalidateQueries({ queryKey: ["/api/instagram/status"] })
+                      : handleConnectInstagram
+                  }
+                  className={cn(
+                    "flex-shrink-0 gap-2",
+                    isInstagramBannerAmberVariant(instagramDisconnectReason) && "bg-amber-600 hover:bg-amber-700 text-white"
+                  )}
+                  data-testid="button-instagram-banner-connect"
+                >
+                  <Instagram className="w-4 h-4" />
+                  {getInstagramBannerButtonLabel(instagramDisconnectReason)}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Card>
@@ -1144,9 +1260,51 @@ export default function ContentStudio() {
                       />
 
                       {!isInstagramConnected && (
-                        <div className="flex items-center gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400">
-                          <AlertCircle className="w-4 h-4" />
-                          <span className="text-sm">Connect your Instagram account to publish directly</span>
+                        <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400">
+                          <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                          <div className="text-sm">
+                            {instagramDisconnectReason === "personal_account" ? (
+                              <>
+                                <span className="font-medium">Business or Creator account required.</span>{" "}
+                                Instagram only allows publishing from Business and Creator accounts. Switch your account type in the Instagram app, then{" "}
+                                <button
+                                  type="button"
+                                  onClick={handleConnectInstagram}
+                                  className="underline font-medium hover:no-underline"
+                                  data-testid="button-reconnect-instagram-inline"
+                                >
+                                  reconnect here
+                                </button>
+                                .
+                              </>
+                            ) : instagramDisconnectReason === "token_expired" ? (
+                              <>
+                                Your Instagram session has expired.{" "}
+                                <button
+                                  type="button"
+                                  onClick={handleConnectInstagram}
+                                  className="underline font-medium hover:no-underline"
+                                  data-testid="button-reconnect-instagram-inline"
+                                >
+                                  Reconnect your account
+                                </button>{" "}
+                                to publish directly.
+                              </>
+                            ) : (
+                              <>
+                                Connect your Instagram account to publish directly.{" "}
+                                <button
+                                  type="button"
+                                  onClick={handleConnectInstagram}
+                                  className="underline font-medium hover:no-underline"
+                                  data-testid="button-connect-instagram-inline"
+                                >
+                                  Connect now
+                                </button>
+                                .
+                              </>
+                            )}
+                          </div>
                         </div>
                       )}
                     </div>

@@ -93,6 +93,12 @@ export const users = pgTable("users", {
   isSuspended: boolean("is_suspended").default(false).notNull(),
   suspendedAt: timestamp("suspended_at"),
   suspensionReason: varchar("suspension_reason", { length: 500 }),
+  // Vacation mode (migration 189, provider back-office wave, decision-maker approved Aug 9
+  // 2026). Business-level flag — NEVER touches provider_services rows. Non-null vacationUntil
+  // AND in the future = away; read at QUERY TIME by search/storefront/advisor/checkout surfaces
+  // (enforcement lands in the feature build, not here). Confirmed bookings are unaffected.
+  vacationUntil: timestamp("vacation_until"),
+  vacationMessage: varchar("vacation_message", { length: 200 }),
 }, (table) => [
   index("users_role_idx").on(table.role),
 ]);

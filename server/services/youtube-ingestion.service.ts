@@ -36,6 +36,7 @@
 import { ilike } from "drizzle-orm";
 import { db } from "../db";
 import { dmoRawContent, dmoSources } from "@shared/schema";
+import { recordDmoExtractionRun } from "./dmo-extraction-runs.service";
 
 // Mirrors dmo-place-extraction.service.ts's GUIDE_TITLE_RE (see file header for why this isn't a
 // shared import). "Top 10 Kyoto", "Best Temples in Kyoto", "Kyoto Travel Guide", etc.
@@ -106,8 +107,27 @@ type FetchLike = typeof globalThis.fetch;
  * ⇒ `{ready:false}`, zero writes. `fetchImpl` is injectable so tests can drive this against fixture
  * responses with no real API key or outbound network access; production always calls the real
  * `fetch` against the YouTube Data API v3.
+ *
+ * Thin wrapper over `ingestYoutubeGuidesInner`: every call (ready or not — the keyless case is
+ * intercepted by the route before this is ever invoked, see admin.routes.ts) writes ONE
+ * `dmo_extraction_runs` row (kind "youtube_ingest", CLAUDE.md §17 lesson by analogy) so the
+ * Content Ops admin page's "last run" line is real, not silence. A ledger-write failure is
+ * caught and logged — it must never mask or fail an otherwise-successful ingestion pass.
  */
 export async function ingestYoutubeGuides(
+  args: YoutubeIngestArgs,
+  fetchImpl: FetchLike = globalThis.fetch,
+): Promise<YoutubeIngestStats> {
+  const stats = await ingestYoutubeGuidesInner(args, fetchImpl);
+  try {
+    await recordDmoExtractionRun("youtube_ingest", stats as unknown as Record<string, unknown>);
+  } catch (err: any) {
+    console.warn("[youtube-ingest] failed to record run ledger row:", err?.message || err);
+  }
+  return stats;
+}
+
+async function ingestYoutubeGuidesInner(
   args: YoutubeIngestArgs,
   fetchImpl: FetchLike = globalThis.fetch,
 ): Promise<YoutubeIngestStats> {

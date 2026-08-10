@@ -76,7 +76,8 @@ export type ShareImageKind =
   | "service-story"
   | "review"
   | "ready-made-feed"
-  | "ready-made-story";
+  | "ready-made-story"
+  | "service-route";
 
 export interface ServiceShareImageData {
   serviceName: string;
@@ -101,6 +102,17 @@ export interface ReadyMadeShareImageData {
   authorName?: string | null;
   authorHandle?: string | null;
   /** Footer path text, e.g. "/p/somehandle" or "/ready-made/abc123". */
+  path: string;
+}
+
+export interface ServiceRouteShareImageData {
+  serviceName: string;
+  /** Ordered stop names (ruling 22 route stops). The route layer 404s when empty — this
+   *  template never renders a fabricated route (§13). */
+  stops: string[];
+  earnerName?: string | null;
+  earnerHandle?: string | null;
+  /** Footer path text, e.g. "/p/somehandle" or "/services/abc123". */
   path: string;
 }
 
@@ -566,14 +578,140 @@ function buildReviewElement(data: ReviewShareImageData): El {
   );
 }
 
+// Ruling 22(d): the Route frame — the ordered stop list as a card, feed dimensions. Stop
+// NAMES only in sequence; no distances, durations, or map tiles are fabricated (§13). Long
+// routes clamp to the first 8 stops with an honest "+N more stops" line.
+function buildServiceRouteElement(
+  data: ServiceRouteShareImageData,
+  opts: { width: number; height: number },
+): El {
+  const { width, height } = opts;
+  const pad = 72;
+  const shown = data.stops.slice(0, 8);
+  const hidden = data.stops.length - shown.length;
+  const earnerText = formatEarnerLine(data.earnerName, data.earnerHandle);
+
+  const stopRows: El[] = shown.map((name, i) =>
+    h(
+      "div",
+      { display: "flex", flexDirection: "row", alignItems: "center", marginBottom: 26 },
+      [
+        h(
+          "div",
+          {
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            width: 56,
+            height: 56,
+            borderRadius: 28,
+            border: `3px solid ${DARK_SECONDARY}`,
+            color: DARK_TEXT,
+            fontFamily: "Inter",
+            fontWeight: 700,
+            fontSize: 28,
+            marginRight: 28,
+            flexShrink: 0,
+          },
+          String(i + 1),
+        ),
+        h(
+          "div",
+          { display: "flex", fontFamily: "Inter", fontWeight: 400, fontSize: 38, color: DARK_TEXT },
+          name,
+        ),
+      ],
+    ),
+  );
+  if (hidden > 0) {
+    stopRows.push(
+      h(
+        "div",
+        { display: "flex", fontFamily: "Inter", fontWeight: 400, fontSize: 30, color: DARK_SECONDARY, marginLeft: 84 },
+        `+${hidden} more stop${hidden === 1 ? "" : "s"}`,
+      ),
+    );
+  }
+
+  const middleChildren: El[] = [
+    h(
+      "div",
+      {
+        display: "flex",
+        fontFamily: "Inter",
+        fontWeight: 700,
+        fontSize: 56,
+        lineHeight: 1.15,
+        color: DARK_TEXT,
+        marginBottom: 18,
+      },
+      data.serviceName,
+    ),
+    h(
+      "div",
+      { display: "flex", fontFamily: "Inter", fontWeight: 400, fontSize: 30, color: DARK_SECONDARY, marginBottom: 40 },
+      `${data.stops.length} stop${data.stops.length === 1 ? "" : "s"}, in order`,
+    ),
+    h("div", { display: "flex", flexDirection: "column" }, stopRows),
+  ];
+  if (earnerText) {
+    middleChildren.push(
+      h(
+        "div",
+        { display: "flex", fontFamily: "Inter", fontWeight: 400, fontSize: 26, color: DARK_SECONDARY, marginTop: 34 },
+        earnerText,
+      ),
+    );
+  }
+
+  return h(
+    "div",
+    {
+      display: "flex",
+      flexDirection: "column",
+      justifyContent: "space-between",
+      width,
+      height,
+      padding: pad,
+      backgroundColor: DARK_BG,
+      fontFamily: "Inter",
+    },
+    [
+      h(
+        "div",
+        { display: "flex", fontFamily: "Inter", fontWeight: 700, fontSize: 26, letterSpacing: 4, color: DARK_SECONDARY },
+        "TRAVELOURE",
+      ),
+      h("div", { display: "flex", flexDirection: "column", flex: 1, justifyContent: "center" }, middleChildren),
+      h(
+        "div",
+        { display: "flex", flexDirection: "column", borderTop: `2px solid ${DARK_SECONDARY}`, paddingTop: 26 },
+        [
+          h(
+            "div",
+            { display: "flex", fontFamily: "Inter", fontWeight: 700, fontSize: 30, color: DARK_TEXT },
+            "Book on Traveloure",
+          ),
+          h(
+            "div",
+            { display: "flex", fontFamily: "Inter", fontWeight: 400, fontSize: 26, color: DARK_SECONDARY, marginTop: 8 },
+            data.path,
+          ),
+        ],
+      ),
+    ],
+  );
+}
+
 // --- Public render entrypoint -------------------------------------------------------------------
 
 export function renderShareImage(kind: "service-feed" | "service-story", data: ServiceShareImageData): Promise<Buffer>;
 export function renderShareImage(kind: "review", data: ReviewShareImageData): Promise<Buffer>;
 export function renderShareImage(kind: "ready-made-feed" | "ready-made-story", data: ReadyMadeShareImageData): Promise<Buffer>;
+export function renderShareImage(kind: "service-route", data: ServiceRouteShareImageData): Promise<Buffer>;
 export async function renderShareImage(
   kind: ShareImageKind,
-  data: ServiceShareImageData | ReviewShareImageData | ReadyMadeShareImageData,
+  data: ServiceShareImageData | ReviewShareImageData | ReadyMadeShareImageData | ServiceRouteShareImageData,
 ): Promise<Buffer> {
   let element: El;
   let width: number;
@@ -599,6 +737,10 @@ export async function renderShareImage(
     width = 1080;
     height = 1920;
     element = buildReadyMadeElement(data as ReadyMadeShareImageData, { width, height, story: true });
+  } else if (kind === "service-route") {
+    width = 1080;
+    height = 1350;
+    element = buildServiceRouteElement(data as ServiceRouteShareImageData, { width, height });
   } else {
     throw new Error(`Unknown share-image kind: ${kind}`);
   }

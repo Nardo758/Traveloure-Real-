@@ -16,6 +16,9 @@ import { applyAttributionSubId } from "../services/travelpayouts/travelpayouts-c
 // replaced with opaque bookingTokens the booking-agent rail resolves back (affiliate-url-vault).
 import { vaultAndStripItems, mintBookingTokens, type VaultedBooking } from "../services/affiliate-url-vault.service";
 import { getProviderHealth } from "../services/provider-health.service";
+// Demand-signal writer (ratified §10/§11/§12 build, migration 189's demand_signal_events).
+// Fire-and-forget: never awaited, never allowed to fail the host request (see its own header).
+import { logDemandSignal } from "./demand.routes";
 import {
   verifyBookingRequest,
   VerificationInFlightError,
@@ -60,6 +63,7 @@ import {
   getAdminUserByEmail, insertUser, getFirstUser,
   getAllDestinationEvents, insertHelpGuideTrips, insertTouristPlacesSearch,
   insertContentImpression, getDemandCountsForCity,
+  filterOutAwayOwners,
 } from "../services/content-query.service";
 import { eq, and, or, like, ilike, sql, desc, count, ne, inArray, isNotNull, asc } from "drizzle-orm";
 // NOTE: db is intentionally NOT imported here. All raw queries use content-query.service.ts or storage.
@@ -121,7 +125,7 @@ import { emergencyService } from "../services/emergency.service";
 import { experienceCatalogService } from "../services/experience-catalog.service";
 import { opportunityEngineService } from "../services/opportunity-engine.service";
 import { aiUsageService } from "../services/ai-usage.service";
-import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, createPublicProfile, getDisplayName, redactContactInfo } from "../utils/data-sanitizer";
+import { sanitizeUserForRole, sanitizeBookingForExpert, canSeeFullUserData, createPublicProfile, getDisplayName, redactContactInfo, omitFields } from "../utils/data-sanitizer";
 import { transportLegs, sharedItineraries, mapsExportCache, expertUpdatedItineraries, affiliateProducts, affiliatePartners, contentRegistry } from "@shared/schema";
 import { calculateTransportLegs, regenerateMapsUrlsFromLegs } from "../services/transport-leg-calculator";
 import { buildGoogleNavUrl, buildAppleNavUrl } from "../services/maps-url-builder";
@@ -1961,12 +1965,36 @@ router.delete("/api/destination-calendar/events/:id", isAuthenticated, async (re
   });
 
 router.get("/api/services/:id", async (req, res) => {
-    const service = await storage.getProviderServiceById(req.params.id);
+    const rawService = await storage.getProviderServiceById(req.params.id);
     // Public surface: F2 read-gate (approval_status = 'approved') — harvested from the
     // routes.ts shadow copy, where 23ece804 applied the gate to the dead duplicate.
-    if (!service || service.status !== "active" || service.approvalStatus !== "approved") {
+    if (!rawService || rawService.status !== "active" || rawService.approvalStatus !== "approved") {
       return res.status(404).json({ message: "Service not found" });
     }
+    // D3 leak-prevention: this is the public service-detail read — serviceFile is the
+    // pdf-delivery product itself and must never surface pre-purchase. Stripped once, up
+    // front, so every branch below (bundle/property/room/default) inherits the strip.
+    const service = omitFields(rawService, ["serviceFile"] as const);
+    // Vacation mode (link-landing polish, mockup §08 / CLAUDE.md §06b, migration 189): the
+    // storefront read (storefront.routes.ts loadStorefront) already surfaces the owner's
+    // away state as `away:{until,message}`; the service-detail read did not carry it at all,
+    // so a texted service link during vacation mode showed a bookable page with no away
+    // signal. Same derivation (non-null vacationUntil in the future), read-only — never
+    // touches provider_services rows or their status/approval; enforcement of the actual
+    // booking block lives at the checkout claim, not here.
+    const [owner] = await db
+      .select({ vacationUntil: users.vacationUntil, vacationMessage: users.vacationMessage })
+      .from(users)
+      .where(eq(users.id, service.userId))
+      .limit(1);
+    const away =
+      owner?.vacationUntil && owner.vacationUntil.getTime() > Date.now()
+        ? { until: owner.vacationUntil.toISOString(), message: owner.vacationMessage ?? null }
+        : null;
+    // Ruling 22: ordered route stops ride the public detail on every product shape. The
+    // traveler map renders LOCATED stops only; unlocated stops still list by name and the
+    // client states "X of Y stops located" rather than guessing a pin (§13).
+    const routePoints = await storage.getServiceRoutePoints(service.id);
     // §17 bundles (migration 151): additive component list on the public detail. Same F2
     // read-gate per component — only components STILL approved+active are exposed; an
     // unapproved/paused component never leaks through the bundle's page.
@@ -1985,7 +2013,7 @@ router.get("/api/services/:id", async (req, res) => {
           eq(providerServices.status, "active"),
         ))
         .orderBy(asc(bundleComponents.position));
-      return res.json({ ...service, bundleComponents: components });
+      return res.json({ ...service, bundleComponents: components, away, routePoints });
     }
     // §17 Product Builder — PROPERTY rung: additive room list on a property's public detail.
     // Same F2 read-gate as the bundle branch above — only STILL approved+active rooms are ever
@@ -2006,7 +2034,7 @@ router.get("/api/services/:id", async (req, res) => {
           eq(providerServices.status, "active"),
         ))
         .orderBy(asc(providerServices.price));
-      return res.json({ ...service, rooms });
+      return res.json({ ...service, rooms, away, routePoints });
     }
     // A room's detail carries a link back to its property — gated the same way (an
     // unapproved/paused property never surfaces as a clickable link on its own room's page).
@@ -2024,9 +2052,9 @@ router.get("/api/services/:id", async (req, res) => {
         property && property.approvalStatus === "approved" && property.status === "active"
           ? { id: property.id, serviceName: property.serviceName }
           : null;
-      return res.json({ ...service, property: visibleProperty });
+      return res.json({ ...service, property: visibleProperty, away, routePoints });
     }
-    res.json(service);
+    res.json({ ...service, away, routePoints });
   });
 
   // C2: public read-only availability calendar for a service's detail page.
@@ -5682,6 +5710,19 @@ router.get("/api/search/experiences", async (req, res) => {
       const includePlatform = sourcesFilter !== "google";
       const includeGoogle = sourcesFilter !== "platform";
 
+      // Demand signal (§10/§11/§12): sources=google means the caller already knows/decided the
+      // platform arm has nothing for this destination+category and fell through to Google Places
+      // — a real occurrence of unmet platform-catalog demand. Fire-and-forget, minimal context
+      // (no free-text query — §13 no-PII posture).
+      if (sourcesFilter === "google") {
+        logDemandSignal({
+          kind: "places_fallthrough",
+          market: destination || null,
+          category: category || null,
+          context: { hasQuery: !!q },
+        });
+      }
+
       const apiKey = process.env.GOOGLE_MAPS_API_KEY;
       const results: any[] = [];
 
@@ -5692,8 +5733,13 @@ router.get("/api/search/experiences", async (req, res) => {
         // getProviderServices with a filter object in the USERID position, so it matched no rows and
         // the platform arm of this search had always been empty — now reads the full catalog and
         // applies the status + approval gates here.)
-        const platformProviders = (await storage.getAllProviderServices())
+        const approvedProviders = (await storage.getAllProviderServices())
           .filter((s: any) => s.status === "active" && s.approvalStatus === "approved");
+        // §16 vacation-mode enforcement (deferred arm, ratified Aug 9 2026 — see
+        // filterOutAwayOwners doc in content-query.service.ts): a currently-away owner's
+        // listings drop out of platform search results; they reappear automatically once
+        // the flag clears. Read-only — no provider_services row is touched.
+        const platformProviders = await filterOutAwayOwners(approvedProviders, (s: any) => s.userId);
         const dest = (destination || "").toLowerCase();
         const qLower = (q || "").toLowerCase();
         const catLower = (category || "").toLowerCase();

@@ -417,48 +417,6 @@ router.post('/estimate-cost', isAuthenticated, async (req, res) => {
   }
 });
 
-/**
- * POST /api/bookings/apply-promo
- * Apply promo code to booking
- */
-router.post('/apply-promo', isAuthenticated, async (req, res) => {
-  try {
-    // userId from the session, never the body (was the same client-trusted-identity class as
-    // process-cart: a client could pass another user's id to probe/bypass the per-user promo
-    // limit). This is a discount PREVIEW only — no money moves and no usage is recorded here
-    // (recordPromoUsage runs at checkout); `amount` is the client subtotal to preview against and
-    // is not authoritative — the actual charge + promo are re-derived server-side at /api/checkout.
-    const sessionUserId = getUserId(req)!;
-    if (!sessionUserId) return res.status(401).json({ error: 'Not authenticated' });
-
-    const { code, amount } = req.body; // money-derive-ok: preview subtotal only; charge re-derives at /api/checkout
-
-    if (!code || !amount) {
-      return res.status(400).json({ error: 'Missing required fields' });
-    }
-
-    const result = await pricingService.applyPromoCode(code, amount, sessionUserId);
-
-    if (result.valid) {
-      res.json({
-        success: true,
-        ...result,
-      });
-    } else {
-      res.status(400).json({
-        success: false,
-        error: result.error,
-      });
-    }
-  } catch (error: any) {
-    console.error('Apply promo error:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message,
-    });
-  }
-});
-
 // MONEY_MAP F-2: production guard — STRIPE_WEBHOOK_SECRET defaults to '' below, and passing an
 // empty secret into constructEvent just throws inside the try/catch on every delivery (a noisy,
 // per-request 400 that masks the real misconfiguration). In production specifically, refuse the
@@ -552,10 +510,43 @@ router.post('/refund', isAuthenticated, async (req, res) => {
     if (ownerId === null) {
       return res.status(404).json({ error: 'Booking not found' });
     }
+    let isAdmin = false;
     if (ownerId !== sessionUserId) {
       const actor = await storage.getUser(sessionUserId);
       if (actor?.role !== 'admin') {
         return res.status(403).json({ error: 'Not authorized to refund this booking' });
+      }
+      isAdmin = true;
+    }
+
+    // Cancellation-policy enforcement: a TRAVELER-initiated refund is bounded by the service's
+    // cancellation_policy_type + time-to-start (cancellation-policy.service.ts) — the same quote
+    // the cancel-preview endpoint shows. Admin-initiated refunds (dispute resolution, goodwill)
+    // remain full-amount and are NOT policy-limited.
+    let amountOverride: number | undefined;
+    let refundFraction = 1;
+    if (!isAdmin) {
+      const { quoteCancellationForBooking } = await import('../services/cancellation-policy.service');
+      const quote = await quoteCancellationForBooking(bookingId);
+      if (quote) {
+        if (!quote.automaticRefundAllowed) {
+          return res.status(400).json({
+            error: 'This service is non-refundable, so an automatic refund cannot be issued. Contact support if you believe an exception applies.',
+            policyType: quote.policyType,
+            refundAmount: 0,
+          });
+        }
+        if (quote.refundAmount <= 0) {
+          return res.status(400).json({
+            error: quote.message,
+            policyType: quote.policyType,
+            refundAmount: 0,
+          });
+        }
+        if (quote.refundPercent < 100) {
+          amountOverride = quote.refundAmount;
+          refundFraction = quote.refundPercent / 100;
+        }
       }
     }
 
@@ -571,12 +562,24 @@ router.post('/refund', isAuthenticated, async (req, res) => {
     // fully-reversed ledger that a retry simply re-confirms as a no-op. The previous
     // Stripe-first order had the opposite failure mode: money out the door with the ledger
     // still crediting the earner if the reversal then threw.
-    const reversal = await storage.reverseEarningsForBooking(bookingId);
-    const reversedRevenueRows = await storage.reversePlatformRevenueForBooking(bookingId);
+    // PROPORTIONAL for policy partial refunds: a 50% refund reverses only half the recognised
+    // platform revenue (retained share stays recognised) and does NOT reverse earnings — the
+    // in-escrow earnings correspond to the provider's retained economics, and zeroing them for a
+    // partial refund undercounted every partial cancellation. Full refunds keep the original
+    // full-reversal behavior.
+    const reversal =
+      refundFraction >= 1
+        ? await storage.reverseEarningsForBooking(bookingId)
+        : { reversed: 0, skippedPaidOut: 0 };
+    const reversedRevenueRows = await storage.reversePlatformRevenueForBooking(bookingId, new Date(), refundFraction);
 
-    // Amount server-derived from service_bookings.total_amount; idempotent (atomic status
-    // claim + deterministic Stripe idempotencyKey `refund-sb-<bookingId>`).
-    const result = await stripePaymentService.refundServiceBooking(bookingId, reason);
+    // Amount server-derived from service_bookings.total_amount (policy-scaled when partial);
+    // idempotent (atomic status claim + amount-unambiguous Stripe idempotencyKey).
+    const result = await stripePaymentService.refundServiceBooking(
+      bookingId,
+      reason,
+      amountOverride !== undefined ? { amountOverride } : undefined,
+    );
 
     // Lane 1 W4 — the ROUTING reversal edge (ROUTING_STATE_CONTRACT §1: the refund path is its
     // SOLE writer). Without it the Trip Card keeps showing as `purchased` an item the traveler was

@@ -131,6 +131,7 @@ const AdminRoutingQueue = lazy(() => import("@/pages/admin/routing-queue"));
 const AdminConciergeRequests = lazy(() => import("@/pages/admin/concierge-requests"));
 const AdminCrossSellAnalytics = lazy(() => import("@/pages/admin/cross-sell-analytics"));
 const AdminQAChecklist = lazy(() => import("@/pages/admin/qa-checklist"));
+const AdminContentOps = lazy(() => import("@/pages/admin/content-ops"));
 const ExpertContentStudio = lazy(() => import("@/pages/expert/content-studio"));
 const ReadyMadeDetailPage = lazy(() => import("@/pages/ready-made-detail"));
 const StorefrontPage = lazy(() => import("@/pages/storefront"));
@@ -923,7 +924,14 @@ function Router() {
       <Route path="/provider/settings">
         {() => <ProtectedRoute component={ProviderSettings} requiredRole="provider" />}
       </Route>
+      {/* Console IA C9 follow-up: /provider/resources rebuilt as the Playbook (real, written
+          content — the §13 fabrication removal that let this rejoin the nav; see
+          provider-sidebar.tsx). Route renamed to match the nav label the same way
+          /provider/earnings → /provider/money did; the old path keeps working as a redirect. */}
       <Route path="/provider/resources">
+        <Redirect to="/provider/playbook" />
+      </Route>
+      <Route path="/provider/playbook">
         {() => <ProtectedRoute component={ProviderResources} requiredRole="provider" />}
       </Route>
       {/* Console IA C9: provider Share & Promote retired into Catalog — per-service share
@@ -1055,6 +1063,9 @@ function Router() {
       </Route>
       <Route path="/admin/qa-checklist">
         {() => <ProtectedRoute component={AdminQAChecklist} requiredRole="admin" />}
+      </Route>
+      <Route path="/admin/content-ops">
+        {() => <ProtectedRoute component={AdminContentOps} requiredRole="admin" />}
       </Route>
 
       {/* Redirects for consolidated/renamed pages */}

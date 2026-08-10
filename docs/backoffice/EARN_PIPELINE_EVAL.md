@@ -114,3 +114,25 @@ must not be publishable), so it becomes a **Phase-1 dependency**, not a parallel
 (`STRIPE_*` webhook secret, `PERSONA_API_KEY`/`PERSONA_TEMPLATE_ID`/`PERSONA_WEBHOOK_SECRET`) are
 deploy-time config — the no-key fallbacks are safe (manual review), but a launch checklist must confirm the
 keys are set or every applicant silently falls to manual review.
+
+---
+
+## Phase 0.5 completion — Stripe-only KYC/KYB (Aug 2026)
+
+**Status:** ✅ Complete. Persona KYB retired; businessVerificationStatus now Stripe Connect-derived.
+
+**Changes shipped:**
+
+- `POST /api/identity/business/create-inquiry` → **410 Gone** stub. Persona inquiry flow removed.
+- `POST /api/webhooks/persona` → **410 Gone** stub. Persona HMAC webhook handler removed.
+- `server/routes/webhooks.routes.ts` — `account.updated` handler extended: derives `businessVerificationStatus` from Stripe Connect account signals (`rejected.*` disabled_reason → `failed`; `!restricted && details_submitted && charges_enabled` → `verified`; `details_submitted` → `submitted`; else → `pending`). Writes only when status changes. Uses `serviceProviderForms.stripeAccountId` for lookup.
+- `server/services/stripe-connect.service.ts` — `stripe.accounts.create` now passes `business_type: 'company'` for providers, `'individual'` for experts. This sets the right KYB questions in the Stripe Express onboarding flow, replacing the retired Persona form.
+- `server/routes.ts` (CREATE + PATCH service) — F2 publish gate added: both `identityVerificationStatus === 'verified'` AND `businessVerificationStatus === 'verified'` required before a service can go `active`. Returns 403 with `VERIFICATION_GATE` code on failure. Admins (no `service_provider_forms` row) bypass safely.
+- `client/src/pages/provider-status.tsx` — Business Verification section rewritten. Removed: country select, reg number, doc URL fields, `submitBizVerification` mutation, Persona form, `COUNTRY_LIST/REGISTRATION_LABELS/REQUIRED_DOCS` constants, `Select` component imports. Added: `startConnectOnboarding` mutation (POST `/api/stripe/connect/onboard`), pending/submitted/failed/verified status cards.
+- `client/src/components/ServiceForm.tsx` — Added `providerAppStatus` query + `verificationGateBlocked` flag. Added `banner-identity-biz-verification-required` banner and updated publish button disabled state.
+- `client/src/pages/services-provider.tsx` — Step 4 (Review) now shows a sequencing notice explaining the post-approval identity + Connect onboarding steps.
+- `server/routes/experts.routes.ts` — Four provider role guards normalised from bare `"provider"` string to `isProviderRole(user.role)` from `@shared/roles`.
+
+**No schema migration needed** — `businessVerificationStatus` and `identityVerificationStatus` are existing `varchar(20)` columns on `service_provider_forms`; `stripeAccountId` column already present. No Plaid integration added.
+
+**Env vars removed from launch checklist:** `PERSONA_API_KEY`, `PERSONA_TEMPLATE_ID`, `PERSONA_WEBHOOK_SECRET` — no longer required. `STRIPE_CONNECT_WEBHOOK_SECRET` must remain set.

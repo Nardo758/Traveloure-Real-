@@ -55,6 +55,7 @@ import {
 } from "@shared/content-surface-map";
 import { db } from "./db";
 import { getPlatformFlag, FLAG_MAINTENANCE_MODE } from "./services/platform-flags";
+import { filterOutAwayOwners } from "./services/content-query.service";
 import { resolveMissingItemCoordinates } from "./services/trip-plan.service";
 import { eq, and, or, ilike, sql, desc, count, ne, inArray, asc, isNull } from "drizzle-orm";
 import Anthropic from "@anthropic-ai/sdk";
@@ -87,6 +88,7 @@ import { sanitizeAiContentFailure } from "./utils/ai-error-sanitizer";
 import { revenueTrackingService } from "./services/revenue-tracking.service";
 import { experienceTypes as experienceTypesTable, coordinationStates, coordinationFeeCredits, platformRevenue } from "@shared/schema";
 import { isExpertRole, isProviderRole } from "@shared/roles";
+import { isArtifactDelivery } from "@shared/service-fundamentals";
 import Stripe from "stripe";
 import { sharedCache } from "./services/shared-cache.service";
 import { vaultAndStripItems } from "./services/affiliate-url-vault.service";
@@ -111,6 +113,8 @@ import conciergeRoutes from "./routes/concierge.routes";
 import upsellRoutes from "./routes/upsell.routes";
 import tripsRoutes from "./routes/trips.routes";
 import advisorRoutes from "./routes/advisor.routes";
+import demandRoutes from "./routes/demand.routes";
+import providerListingHealthRoutes from "./routes/provider-listing-health.routes";
 import marketsRoutes from "./routes/markets.routes";
 import adminMarketsRoutes from "./routes/admin-markets.routes";
 import { dedupedRequest, callWithCircuitBreaker } from "./utils/requestDeduplication";
@@ -121,6 +125,12 @@ import eaRoutes from "./routes/ea.routes";
 import providerRoutes from "./routes/provider.routes";
 import storefrontRoutes from "./routes/storefront.routes";
 import travelerProfileRoutes from "./routes/traveler-profile.routes";
+import vacationRoutes from "./routes/vacation.routes";
+import offeringRequestRoutes from "./routes/offering-requests.routes";
+import reviewRepliesRoutes from "./routes/review-replies.routes";
+// Sibling's statements router (mockup §06e) — landed on disk during this session; mounted here
+// per the file-ownership split (sibling owns statements.routes.ts + provider/earnings.tsx only).
+import statementsRoutes from "./routes/statements.routes";
 import shortLinksRoutes from "./routes/short-links.routes";
 import readyMadeRoutes from "./routes/ready-made.routes";
 import expertConsoleRoutes from "./routes/expert-console.routes";
@@ -824,6 +834,12 @@ export async function registerRoutes(
   // narration (cached per tripId, planHash staleness key). Full paths declared in the router.
   app.use(advisorRoutes);
 
+  // Demand tab / Trending rail / Business Advisor (ratified §10/§11/§12 build, migration 189's
+  // append-only demand_signal_events): GET /api/me/demand-signals + POST/GET
+  // /api/me/business-advisor. `logDemandSignal` (its named export) is the one writer used by
+  // advisor.routes.ts and content.routes.ts.
+  app.use(demandRoutes);
+
   // Market geography (CLAUDE.md §20b): public DB-first read for the client geography layer,
   // and the admin "Add market" flow (paths under /api/admin/markets — §2 blanket requireAdmin
   // on the /api/admin prefix is the auth).
@@ -881,6 +897,11 @@ export async function registerRoutes(
   // Provider supply tools — /api/provider/settings (Kyoto-supply activation); provider-role gated
   app.use(providerRoutes);
 
+  // Listing Health (Catalog card meter, §13-deterministic checks). MUST mount before the inline
+  // GET /api/provider/services/:id below (~line 2075) — that route greedily matches /health as
+  // id="health" and 404s (live-verified), so order is load-bearing here.
+  app.use(providerListingHealthRoutes);
+
   // Public earner storefront (backoffice Phase 1a/1b) — /p/:handle OG shell + /api/storefront/:handle
   // + PATCH /api/me/handle. Mounted per §9; /p/:handle must register before the Vite catch-all.
   app.use(storefrontRoutes);
@@ -889,6 +910,22 @@ export async function registerRoutes(
   // /api/me/traveler-profile, the `travelerProfile` namespace on the same users.preferences
   // jsonb column /api/me/preferences already uses. Mounted per §9 (unmounted-router guard).
   app.use(travelerProfileRoutes);
+
+  // Vacation mode (provider back-office wave, migration 189, decision-maker ratified Aug 9
+  // 2026) — GET/PATCH /api/me/vacation. Business-level flag only; never touches
+  // provider_services. Mounted per §9.
+  app.use(vacationRoutes);
+
+  // "Don't see your offering?" request flow (mockup §06c, migration 189) — POST
+  // /api/me/offering-requests + GET /api/admin/offering-requests (under the §2 blanket
+  // adminApiGuard). Mounted per §9.
+  app.use(offeringRequestRoutes);
+
+  // Reviews — provider public replies (mockup §06d, migration 190, decision-maker ratified
+  // Aug 9 2026) — GET /api/me/reviews + PATCH /api/me/reviews/:id/reply. Mounted per §9.
+  app.use(reviewRepliesRoutes);
+  // Sibling's statements router (mockup §06e) — mounted per §9; owned/authored by the sibling.
+  app.use(statementsRoutes);
 
   // Short-link + click store (backoffice S3) — POST /api/short-links + GET /r/:code. Mounted per §9.
   app.use(shortLinksRoutes);
@@ -2056,7 +2093,17 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     // F2 public read-gate: this route is unauthenticated (public). getAllProviderServices is shared with
     // admin (which must see all), so gate here at the call site — return approved listings only.
     const services = await storage.getAllProviderServices();
-    res.json(services.filter((s) => s.approvalStatus === "approved"));
+    const approved = services.filter((s) => s.approvalStatus === "approved");
+    // §16 vacation-mode enforcement (deferred arm, ratified Aug 9 2026 — see
+    // filterOutAwayOwners doc in content-query.service.ts): a currently-away owner's
+    // listings drop out of this public surfacing rail; they reappear automatically once
+    // the flag clears. Read-only — no provider_services row is touched.
+    const live = await filterOutAwayOwners(approved, (s) => s.userId);
+    // D3 leak-prevention: this route is UNAUTHENTICATED public browse — serviceFile is the
+    // product itself for a pdf-delivery listing and must never surface pre-purchase.
+    // getAllProviderServices() is shared with admin (which legitimately needs the full row),
+    // so the strip happens here at the public call site, not in the storage function.
+    res.json(live.map((s) => omitFields(s, ["serviceFile"] as const)));
   });
   
   // Get provider's services
@@ -2098,9 +2145,57 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           neighborhoods = rows.map(r => r.slug);
         }
       }
-      res.json({ ...service, neighborhoods });
+      // Ruling 22: route stops ride the same owner read the edit surfaces already use
+      const routePoints = await storage.getServiceRoutePoints(service.id);
+      res.json({ ...service, neighborhoods, routePoints });
     } catch (err) {
       res.status(500).json({ message: "Failed to fetch service" });
+    }
+  });
+
+  // Ruling 22: replace-list write for a service's ordered route stops. Owner-gated like the
+  // sibling PATCH; ALLOWLIST body (§19 posture — nothing but name + coordinates can reach a
+  // row, and positions are derived server-side from array order, never client-numbered).
+  const routeStopsBodySchema = z.object({
+    stops: z.array(z.object({
+      name: z.string().trim().min(1).max(255),
+      latitude: z.number().min(-90).max(90).nullable().optional(),
+      longitude: z.number().min(-180).max(180).nullable().optional(),
+    })).max(40),
+  });
+  app.put("/api/provider/services/:id/route-points", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req)!;
+      const service = await storage.getProviderServiceById(req.params.id);
+      if (!service || service.userId !== userId) {
+        return res.status(404).json({ message: "Service not found" });
+      }
+      const parsed = routeStopsBodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid route stops", errors: parsed.error.flatten() });
+      }
+      const stops: Array<{ name: string; latitude: number | null; longitude: number | null }> = [];
+      for (const s of parsed.data.stops) {
+        const hasLat = typeof s.latitude === "number";
+        const hasLng = typeof s.longitude === "number";
+        if (hasLat !== hasLng) {
+          // A half-coordinate is a guess waiting to happen (§13): both or neither.
+          return res.status(400).json({ message: "A stop must carry both latitude and longitude, or neither" });
+        }
+        stops.push({ name: s.name, latitude: hasLat ? s.latitude! : null, longitude: hasLng ? s.longitude! : null });
+      }
+      const routePoints = await storage.replaceServiceRoutePoints(service.id, stops);
+      res.json({ routePoints });
+    } catch (err: any) {
+      // The FOR UPDATE lock in replaceServiceRoutePoints serializes concurrent saves; a 23505
+      // here is the residual race backstop — the route changed under this caller, and a fresh
+      // read + retry succeeds. Never a silent 500 either way.
+      const pgCode = err?.code ?? err?.cause?.code;
+      if (pgCode === "23505") {
+        return res.status(409).json({ message: "Route changed elsewhere — reload and try again" });
+      }
+      console.error("[route-points] save failed:", err);
+      res.status(500).json({ message: "Failed to save route stops" });
     }
   });
 
@@ -2175,6 +2270,39 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
             message: "Set a price greater than zero before publishing. Save as draft to finish later.",
             code: "PRICE_REQUIRED",
           });
+        }
+      }
+
+      // F2 identity + business verification publish gate (Phase 0.5 — docs/backoffice/EARN_PIPELINE_EVAL.md).
+      // An offering cannot go live until the provider's identity and business verification are
+      // both confirmed as "verified" (Stripe Identity + Stripe Connect KYB respectively).
+      // Admin-role users bypass (no service_provider_forms row on admin accounts).
+      // Non-admins with NO form row are also blocked — absence of a form means the provider
+      // has not completed the application flow and cannot have verified status.
+      if (input.status === "active") {
+        const reqUserRole = (req.user as any)?.role ?? (req.user as any)?.claims?.role;
+        const isAdmin = reqUserRole === "admin";
+
+        if (!isAdmin) {
+          const [provForm] = await db
+            .select({
+              identityVerificationStatus: serviceProviderForms.identityVerificationStatus,
+              businessVerificationStatus: serviceProviderForms.businessVerificationStatus,
+            })
+            .from(serviceProviderForms)
+            .where(eq(serviceProviderForms.userId, userId))
+            .limit(1);
+
+          const idOk = provForm?.identityVerificationStatus === "verified";
+          const bizOk = provForm?.businessVerificationStatus === "verified";
+          if (!idOk || !bizOk) {
+            return res.status(403).json({
+              message: "Identity and business verification must be complete before publishing an offering. Complete verification in your provider status page.",
+              code: "VERIFICATION_GATE",
+              identityVerified: idOk,
+              businessVerified: bizOk,
+            });
+          }
         }
       }
 
@@ -2337,6 +2465,35 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
                 code: "VERIFICATION_REQUIRED",
               });
             }
+          }
+        }
+      }
+
+      // F2 identity + business verification publish gate (Phase 0.5 — same rule as CREATE above).
+      // Admin users bypass; all other roles require a verified service_provider_forms row.
+      if (input.status === "active") {
+        const reqUserRoleUpd = (req.user as any)?.role ?? (req.user as any)?.claims?.role;
+        const isAdminUpd = reqUserRoleUpd === "admin";
+
+        if (!isAdminUpd) {
+          const [provFormUpd] = await db
+            .select({
+              identityVerificationStatus: serviceProviderForms.identityVerificationStatus,
+              businessVerificationStatus: serviceProviderForms.businessVerificationStatus,
+            })
+            .from(serviceProviderForms)
+            .where(eq(serviceProviderForms.userId, userId))
+            .limit(1);
+
+          const idOk = provFormUpd?.identityVerificationStatus === "verified";
+          const bizOk = provFormUpd?.businessVerificationStatus === "verified";
+          if (!idOk || !bizOk) {
+            return res.status(403).json({
+              message: "Identity and business verification must be complete before publishing an offering. Complete verification in your provider status page.",
+              code: "VERIFICATION_GATE",
+              identityVerified: idOk,
+              businessVerified: bizOk,
+            });
           }
         }
       }
@@ -4513,7 +4670,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         const provider = await storage.getUser(booking.providerId);
         return {
           ...booking,
-          service,
+          // D3 leak-prevention: this is the traveler's OWN booking, but the booking can exist
+          // in a pre-payment claim state (§15b) before it is ever confirmed — serviceFile is
+          // the product itself and must never ride a general read. The one sanctioned reveal
+          // is GET /api/service-bookings/:id/deliverable, gated on a CONFIRMED booking.
+          service: service ? omitFields(service, ["serviceFile"] as const) : service,
           provider: provider ? { id: provider.id, firstName: provider.firstName, lastName: provider.lastName, profileImage: provider.profileImage } : null,
         };
       }));
@@ -4521,6 +4682,46 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     } catch (err) {
       console.error("Service bookings error:", err);
       res.status(500).json({ message: "Failed to fetch service bookings" });
+    }
+  });
+
+  // D3 (docs/briefs/SERVICE_FUNDAMENTALS_DECISIONS.md): the post-purchase delivery surface for
+  // artifact-delivery (pdf) services. Server-derives EVERY condition — never trusts client
+  // state (§14 posture, extended to this non-money reveal because the asset itself is the
+  // thing of value): (1) the booking exists and belongs to the SESSION user (travelerId, never
+  // req.body), (2) its status is 'confirmed' (a payment_pending claim — §15b — never unlocks
+  // the file), (3) its service's deliveryMethod is an artifact-delivery method
+  // (isArtifactDelivery — pdf only), (4) the service actually carries a serviceFile. Any one
+  // condition failing is an honest, undifferentiated 404 (§13 — never leaks WHICH condition
+  // failed to a caller probing booking ids that aren't theirs).
+  app.get("/api/service-bookings/:id/deliverable", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req)!;
+      const booking = await storage.getServiceBooking(req.params.id);
+      if (!booking || booking.travelerId !== userId) {
+        return res.status(404).json({ message: "Deliverable not found" });
+      }
+      if (booking.status !== "confirmed") {
+        return res.status(404).json({ message: "Deliverable not found" });
+      }
+      if (!booking.serviceId) {
+        return res.status(404).json({ message: "Deliverable not found" });
+      }
+      const service = await storage.getProviderServiceById(booking.serviceId);
+      if (!service || !isArtifactDelivery({ deliveryMethod: service.deliveryMethod, productShape: service.productShape })) {
+        return res.status(404).json({ message: "Deliverable not found" });
+      }
+      const fileUrl = (service.serviceFile ?? "").trim();
+      if (!fileUrl) {
+        // §13: honest absence — the booking and service are real and qualify, but the
+        // provider hasn't uploaded anything yet. Distinguishable from "not found" so the
+        // client can render "not uploaded yet" instead of a generic error.
+        return res.status(404).json({ message: "The provider hasn't uploaded a deliverable yet", code: "NO_DELIVERABLE_UPLOADED" });
+      }
+      res.json({ fileUrl, deliveryMethod: service.deliveryMethod });
+    } catch (err) {
+      console.error("Deliverable fetch error:", err);
+      res.status(500).json({ message: "Failed to fetch deliverable" });
     }
   });
 
@@ -4775,11 +4976,104 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           currentStatus: booking.status,
         });
       }
+      // Owner cancels a PAID booking → the traveler gets a FULL refund (service price + platform
+      // fee + insurance fee — never policy-scaled: a provider-initiated cancellation is the
+      // provider's doing, so the traveler is made whole; platform-owner ruling 2026-08-10) and an
+      // in-app notification. Refund BEFORE any terminal status write (retry-safe: on Stripe
+      // failure refundServiceBooking restores the prior status and throws, so the booking stays
+      // cancellable). refundServiceBooking's atomic claim (pending/confirmed → refunded) is the
+      // concurrency guard — a simultaneous traveler cancel and owner cancel issue at most ONE refund.
+      if (status === "cancelled" && booking.stripePaymentIntentId) {
+        // A stamped PI is NOT proof of payment (a pending request-rail booking can carry a
+        // never-charged intent). Only a Stripe-verified `succeeded` PI enters the refund branch;
+        // anything else is an unpaid cancellation and falls through to the plain status flip.
+        let piSucceeded = false;
+        try {
+          const { stripe } = await import("./services/stripe-payment.service");
+          const pi = await stripe.paymentIntents.retrieve(booking.stripePaymentIntentId);
+          piSucceeded = pi.status === "succeeded";
+        } catch (piErr) {
+          console.error("Provider cancel: PI lookup failed, treating as unpaid:", piErr);
+        }
+        if (piSucceeded) {
+          const amountPaid =
+            parseFloat(booking.totalAmount || "0") +
+            parseFloat((booking as any).platformFee || "0") +
+            parseFloat((booking as any).insuranceFee || "0");
+          try {
+            const { stripePaymentService } = await import("./services/stripe-payment.service");
+            const refundResult = await stripePaymentService.refundServiceBooking(
+              req.params.id,
+              reason || "cancelled_by_provider",
+              { amountOverride: amountPaid },
+            );
+            if (refundResult?.alreadyRefunded) {
+              // Another path (e.g. a concurrent traveler cancel) won the atomic refund claim and
+              // owns the ledger reversal + notification — report factually, fire no side-effects.
+              const refreshed = await storage.getServiceBooking(req.params.id);
+              return res.json({ ...refreshed, refund: { issued: false, alreadyRefunded: true } });
+            }
+            // This caller WON the refund claim — apply the matching full-fraction ledger
+            // compensation (idempotent flips; a crash here is repaired by the admin refund
+            // rail re-running them, never by a second Stripe refund).
+            await storage.reverseEarningsForBooking(req.params.id);
+            await storage.reversePlatformRevenueForBooking(req.params.id, new Date(), 1);
+            await db.execute(sql`
+              UPDATE service_bookings
+              SET cancelled_at = NOW(), cancellation_reason = ${reason ?? "Cancelled by the provider"}, updated_at = NOW()
+              WHERE id = ${req.params.id}
+            `);
+            const { revertPurchasedItemsForBooking } = await import("./services/item-routing.service");
+            await revertPurchasedItemsForBooking(req.params.id);
+            if (booking.travelerId) {
+              try {
+                await storage.createNotification({
+                  userId: booking.travelerId,
+                  type: "booking_cancelled",
+                  title: "Booking cancelled by provider — full refund issued",
+                  message: `Your booking ${booking.trackingNumber ?? ""} was cancelled by the provider. A full refund of $${amountPaid.toFixed(2)} has been issued to your original payment method.`,
+                  relatedId: req.params.id,
+                  relatedType: "booking",
+                  data: { bookingId: req.params.id, refundAmount: amountPaid, cancelledBy: "provider" },
+                });
+              } catch (notifyErr) {
+                console.error("Failed to notify traveler of provider cancellation:", notifyErr);
+              }
+            }
+            const refreshed = await storage.getServiceBooking(req.params.id);
+            return res.json({ ...refreshed, refund: { issued: true, amount: refundResult?.amount ?? amountPaid } });
+          } catch (refundErr: any) {
+            console.error("Provider cancellation refund error:", refundErr);
+            return res.status(502).json({
+              message: "The refund could not be issued, so the booking was NOT cancelled. Please try again.",
+              error: refundErr?.message,
+            });
+          }
+        }
+      }
+
       const updated = await storage.updateServiceBookingStatus(req.params.id, status, reason, allowedFrom);
       if (!updated) {
         // Lost the atomic race (or the row vanished): another actor moved it first. Exactly one
         // caller wins; the loser changes nothing and fires no side-effects.
         return res.status(409).json({ message: "This booking changed before your update was applied. Reload and try again." });
+      }
+
+      // Unpaid cancellation still tells the traveler — no silent state changes.
+      if (status === "cancelled" && updated.travelerId) {
+        try {
+          await storage.createNotification({
+            userId: updated.travelerId,
+            type: "booking_cancelled",
+            title: "Booking cancelled by provider",
+            message: `Your booking ${updated.trackingNumber ?? ""} was cancelled by the provider. No charge was made.`,
+            relatedId: req.params.id,
+            relatedType: "booking",
+            data: { bookingId: req.params.id, cancelledBy: "provider" },
+          });
+        } catch (notifyErr) {
+          console.error("Failed to notify traveler of provider cancellation:", notifyErr);
+        }
       }
 
       // E1: trip-share bridge. When an EXPERT accepts a booking that carries a
@@ -4917,7 +5211,31 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     }
   });
 
-  // Cancel booking (traveler action)
+  // Cancellation refund preview (traveler action) — what the traveler gets back if they cancel
+  // NOW, computed from the service's cancellation_policy_type + time-to-scheduled-start
+  // (cancellation-policy.service.ts). The confirmation dialog in my-bookings.tsx shows this
+  // before the traveler confirms, so there are no surprise deductions.
+  app.get("/api/bookings/:id/cancel-preview", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req)!;
+      const { quoteCancellationForBooking } = await import("./services/cancellation-policy.service");
+      const quote = await quoteCancellationForBooking(req.params.id);
+      if (!quote || quote.travelerId !== userId) {
+        return res.status(404).json({ message: "Booking not found or not yours" });
+      }
+      const cancellable = quote.bookingStatus === "pending" || quote.bookingStatus === "confirmed";
+      const { travelerId, bookingStatus, ...publicQuote } = quote;
+      res.json({ ...publicQuote, cancellable, bookingStatus });
+    } catch (err) {
+      console.error("Cancel preview error:", err);
+      res.status(500).json({ message: "Failed to compute cancellation preview" });
+    }
+  });
+
+  // Cancel booking (traveler action). Enforces the service's cancellation policy: the refund
+  // amount is server-derived from policy type + time-to-start — the same computation the
+  // preview endpoint above shows the traveler. Non-refundable (and lapsed-window) cancellations
+  // set status only; refundable ones also issue the policy-scaled Stripe refund.
   app.post("/api/bookings/:id/cancel", isAuthenticated, async (req, res) => {
     try {
       const userId = getUserId(req)!;
@@ -4929,9 +5247,91 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         return res.status(400).json({ message: "Cannot cancel this booking" });
       }
       const { reason } = req.body;
-      const updated = await storage.updateServiceBookingStatus(req.params.id, "cancelled", reason);
-      res.json(updated);
+
+      const { quoteCancellationForBooking } = await import("./services/cancellation-policy.service");
+      const quote = await quoteCancellationForBooking(req.params.id);
+      if (!quote) return res.status(404).json({ message: "Booking not found or not yours" });
+
+      const refundDue = quote.automaticRefundAllowed && quote.refundAmount > 0 && !!booking.stripePaymentIntentId;
+
+      let refundResult: any = null;
+      let updated: any;
+      if (refundDue) {
+        // RETRY-SAFE ORDER: refund BEFORE any terminal status write. refundServiceBooking's
+        // atomic claim flips pending/confirmed → refunded; if Stripe fails it restores the
+        // prior status and throws, so the booking stays cancellable and the traveler can
+        // simply retry — no cancelled-but-unrefunded dead end.
+        //
+        // Ledger: same ledger-first order as POST /api/bookings/refund, but PROPORTIONAL —
+        // a partial (e.g. 50%) refund reverses only the refunded fraction of platform
+        // revenue, keeping the retained share recognised. Both reversals are idempotent
+        // flips, so a Stripe failure + retry re-confirms them as no-ops. Earnings for a
+        // pending/confirmed booking don't exist yet (they are created at completion), so a
+        // full-fraction earnings reversal is only run for 100% refunds as a safety net —
+        // never on a partial refund, where it would wrongly zero any retained share.
+        const refundFraction = quote.refundPercent / 100;
+        if (quote.refundPercent === 100) {
+          await storage.reverseEarningsForBooking(req.params.id);
+        }
+        await storage.reversePlatformRevenueForBooking(req.params.id, new Date(), refundFraction);
+
+        const { stripePaymentService } = await import("./services/stripe-payment.service");
+        refundResult = await stripePaymentService.refundServiceBooking(
+          req.params.id,
+          reason || "requested_by_customer",
+          { amountOverride: quote.refundAmount },
+        );
+
+        // Refund succeeded (status now 'refunded') — stamp the cancellation audit fields
+        // without touching the terminal status.
+        const { db } = await import("./db");
+        const { sql } = await import("drizzle-orm");
+        await db.execute(sql`
+          UPDATE service_bookings
+          SET cancelled_at = NOW(), cancellation_reason = ${reason ?? null}, updated_at = NOW()
+          WHERE id = ${req.params.id}
+        `);
+        updated = await storage.getServiceBooking(req.params.id);
+
+        const { revertPurchasedItemsForBooking } = await import("./services/item-routing.service");
+        await revertPurchasedItemsForBooking(req.params.id);
+      } else {
+        // No automatic refund (non-refundable policy, lapsed window, or nothing charged) —
+        // a plain status cancellation, exactly what the preview told the traveler.
+        updated = await storage.updateServiceBookingStatus(req.params.id, "cancelled", reason);
+      }
+
+      // In-app receipt — no silent state changes, even for traveler-initiated actions.
+      try {
+        await storage.createNotification({
+          userId,
+          type: "booking_cancelled",
+          title: refundResult
+            ? `Booking cancelled — $${quote.refundAmount.toFixed(2)} refund issued`
+            : "Booking cancelled",
+          message: refundResult
+            ? `Your booking ${updated?.trackingNumber ?? ""} was cancelled. A ${quote.refundPercent}% refund of $${quote.refundAmount.toFixed(2)} has been issued to your original payment method.`
+            : `Your booking ${updated?.trackingNumber ?? ""} was cancelled. ${quote.message}`,
+          relatedId: req.params.id,
+          relatedType: "booking",
+          data: { bookingId: req.params.id, refundAmount: refundResult ? quote.refundAmount : 0, cancelledBy: "traveler" },
+        });
+      } catch (notifyErr) {
+        console.error("Failed to write traveler cancellation notification:", notifyErr);
+      }
+
+      res.json({
+        ...updated,
+        refund: {
+          policyType: quote.policyType,
+          refundPercent: quote.refundPercent,
+          refundAmount: refundResult ? quote.refundAmount : 0,
+          message: quote.message,
+          issued: !!refundResult,
+        },
+      });
     } catch (err) {
+      console.error("Cancel booking error:", err);
       res.status(500).json({ message: "Failed to cancel booking" });
     }
   });
@@ -5017,24 +5417,12 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     }
   });
 
-  app.get("/api/provider/dashboard", isAuthenticated, async (req, res) => {
-    try {
-      const userId = getUserId(req)!;
-      const services = await storage.getProviderServicesByStatus(userId);
-      const bookings = await storage.getServiceBookings({ providerId: userId });
-      const totalRevenue = services.reduce((sum, s) => sum + Number(s.totalRevenue || 0), 0);
-      const totalBookings = services.reduce((sum, s) => sum + (s.bookingsCount || 0), 0);
-      const completedBookings = bookings.filter(b => b.status === "completed");
-      const pendingBookings = bookings.filter(b => b.status === "pending");
-      res.json({
-        summary: { totalRevenue, totalBookings, completedBookings: completedBookings.length, pendingBookings: pendingBookings.length },
-        services: services.map(s => ({ id: s.id, serviceName: s.serviceName, status: s.status, bookingsCount: s.bookingsCount, totalRevenue: s.totalRevenue })),
-      });
-    } catch (err) {
-      console.error("Provider dashboard error:", err);
-      res.status(500).json({ message: "Failed to fetch dashboard" });
-    }
-  });
+  // GET /api/provider/dashboard REMOVED (Punchlist Phase 3): orphaned handler, zero client
+  // callers (grepped client/src for both the API path and any queryKey referencing it — none).
+  // The real provider dashboard page (client/src/pages/provider/dashboard.tsx) reads
+  // /api/provider/analytics/dashboard instead. Left in the PROVIDER_SELF_SERVICE_PREFIXES
+  // role-gate list above (line ~600) since that list is a harmless prefix guard, not a route
+  // registration — an absent path never reaches it.
 
   // Get comprehensive expert analytics dashboard data
   app.get("/api/expert/analytics/dashboard", isAuthenticated, async (req, res) => {
@@ -5522,7 +5910,67 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         rating: Number(s.averageRating || 0),
         status: s.status
       })).sort((a, b) => b.revenue - a.revenue);
-      
+
+      // Benchmarks (§13 fix — the previous `categoryAvg: 280, topPerformerAvg: 450` were
+      // fabricated literals). "Primary category" = the categoryId most common among the
+      // provider's OWN listings (mode, ties broken by first-seen); a provider with no
+      // categorized listings has no category to benchmark against, hence no_data.
+      // Comparison pool: OTHER providers' approved+active, priced listings in that same
+      // category (this provider's own rows are excluded — comparing yourself to yourself
+      // isn't a benchmark). categoryAvg = plain mean price. topPerformerAvg = the average
+      // price of listings at/above the 75th percentile ("top quartile average" — a top
+      // performer's typical price, not just the boundary value). Below a 5-listing sample
+      // the numbers are too noisy to be honest, so we return a `no_data` status with NO
+      // numbers rather than a fabricated fallback (§13).
+      const categoryCounts = new Map<string, number>();
+      for (const s of services) {
+        if (s.categoryId) categoryCounts.set(s.categoryId, (categoryCounts.get(s.categoryId) || 0) + 1);
+      }
+      let primaryCategoryId: string | null = null;
+      let primaryCategoryCount = 0;
+      for (const [catId, cnt] of Array.from(categoryCounts.entries())) {
+        if (cnt > primaryCategoryCount) {
+          primaryCategoryId = catId;
+          primaryCategoryCount = cnt;
+        }
+      }
+
+      let benchmarkSampleSize = 0;
+      let benchmarkCategoryAvg: number | null = null;
+      let benchmarkTopPerformerAvg: number | null = null;
+      if (primaryCategoryId) {
+        const statsResult = await db.execute(sql`
+          WITH priced AS (
+            SELECT price::numeric AS price
+            FROM provider_services
+            WHERE category_id = ${primaryCategoryId}
+              AND approval_status = 'approved'
+              AND status = 'active'
+              AND user_id != ${userId}
+              AND price IS NOT NULL
+          ),
+          stats AS (
+            SELECT
+              COUNT(*)::int AS sample_size,
+              AVG(price) AS category_avg,
+              percentile_cont(0.75) WITHIN GROUP (ORDER BY price) AS p75
+            FROM priced
+          )
+          SELECT
+            s.sample_size,
+            s.category_avg,
+            (SELECT AVG(price) FROM priced WHERE price >= s.p75) AS top_quartile_avg
+          FROM stats s
+        `);
+        const row = statsResult.rows?.[0] as any;
+        benchmarkSampleSize = row ? Number(row.sample_size) || 0 : 0;
+        if (benchmarkSampleSize >= 5) {
+          benchmarkCategoryAvg = row.category_avg !== null ? Math.round(Number(row.category_avg)) : null;
+          benchmarkTopPerformerAvg = row.top_quartile_avg !== null ? Math.round(Number(row.top_quartile_avg)) : null;
+        }
+      }
+      const benchmarkStatus = benchmarkSampleSize >= 5 ? "ok" : "no_data";
+
       res.json({
         summary: {
           totalRevenue,
@@ -5536,8 +5984,12 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         servicePerformance,
         benchmarks: {
           avgBookingValue: totalBookings > 0 ? totalRevenue / totalBookings : 0,
-          categoryAvg: 280,
-          topPerformerAvg: 450
+          // status/sampleSize are additive; categoryAvg/topPerformerAvg keep their names but
+          // are null (never a fabricated number) when status is "no_data".
+          status: benchmarkStatus,
+          sampleSize: benchmarkSampleSize,
+          categoryAvg: benchmarkCategoryAvg,
+          topPerformerAvg: benchmarkTopPerformerAvg,
         }
       });
     } catch (err) {

@@ -21,6 +21,7 @@ import {
   type ServiceShareImageData,
   type ReviewShareImageData,
   type ReadyMadeShareImageData,
+  type ServiceRouteShareImageData,
 } from "../services/share-image.service";
 
 const router = Router();
@@ -42,11 +43,12 @@ async function loadOwnerNameAndHandle(userId: string): Promise<{ name: string | 
   return { name, handle: owner.handle ?? null };
 }
 
-// GET /api/share-image/service/:id.png?format=feed|story
+// GET /api/share-image/service/:id.png?format=feed|story|route
 router.get("/api/share-image/service/:id.png", heavyReadRateLimiter, async (req, res) => {
   try {
     const { id } = req.params;
-    const format = req.query.format === "story" ? "story" : "feed";
+    const format =
+      req.query.format === "story" ? "story" : req.query.format === "route" ? "route" : "feed";
 
     const service = await storage.getProviderServiceById(id);
     // F2 public read-gate: never render a card for a listing that isn't public yet.
@@ -55,6 +57,25 @@ router.get("/api/share-image/service/:id.png", heavyReadRateLimiter, async (req,
     }
 
     const { name: earnerName, handle: earnerHandle } = await loadOwnerNameAndHandle(service.userId);
+
+    // Ruling 22(d): the Route frame renders the ordered stop list. A service with no stops
+    // 404s — an honest absence, never a fabricated route card (§13); the client hides the
+    // frame on that signal.
+    if (format === "route") {
+      const routePoints = await storage.getServiceRoutePoints(service.id);
+      if (routePoints.length === 0) {
+        return res.status(404).json({ message: "No route on this service" });
+      }
+      const routeData: ServiceRouteShareImageData = {
+        serviceName: service.serviceName,
+        stops: routePoints.map((p) => p.name),
+        earnerName,
+        earnerHandle,
+        path: earnerHandle ? `/p/${earnerHandle}` : `/services/${service.id}`,
+      };
+      const routeBuf = await renderShareImage("service-route", routeData);
+      return sendPng(res, routeBuf);
+    }
 
     const data: ServiceShareImageData = {
       serviceName: service.serviceName,

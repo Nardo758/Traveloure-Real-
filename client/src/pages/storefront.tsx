@@ -18,6 +18,7 @@ import { useToast } from "@/hooks/use-toast";
 import { SEOHead } from "@/components/seo-head";
 import { useAuth } from "@/hooks/use-auth";
 import { useAskExpert } from "@/lib/use-ask-expert";
+import { isPlaceAnchored } from "@shared/service-fundamentals";
 import {
   Star,
   MapPin,
@@ -56,6 +57,9 @@ interface StorefrontService {
   serviceImage: string | null;
   averageRating: string | null;
   reviewCount: number | null;
+  // D5: text-only location chip for place-anchored listings — city-level only, no map tiles.
+  city: string | null;
+  productShape: string | null;
 }
 
 interface StorefrontTemplate {
@@ -83,6 +87,10 @@ interface StorefrontData {
   services: StorefrontService[];
   templates: StorefrontTemplate[];
   readyMade: StorefrontReadyMade[];
+  // Vacation mode (mockup §06b/§08, CLAUDE.md, migration 189): business-level flag only —
+  // null when the owner isn't away. The server (storefront.routes.ts loadStorefront) already
+  // computes this; the client just needed to render it (link-landing polish).
+  away: { until: string; message: string | null } | null;
 }
 
 const DELIVERY_LABELS: Record<string, string> = {
@@ -225,7 +233,7 @@ export default function StorefrontPage() {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background">
-        <Skeleton className="h-40 sm:h-56 w-full rounded-none" />
+        <Skeleton className="h-28 sm:h-56 w-full rounded-none" />
         <div className="max-w-5xl mx-auto px-4 py-10 space-y-6">
           <Skeleton className="h-24 w-full rounded-xl" />
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -254,9 +262,15 @@ export default function StorefrontPage() {
     );
   }
 
-  const { earner, services, templates, readyMade } = data;
+  const { earner, services, templates, readyMade, away } = data;
   // Hide the CTA when the signed-in visitor IS the earner — no message-myself button/band.
   const isOwnStorefront = !!user && String(user.id) === String(earner.id);
+  // Vacation mode (mockup §08/§06b): listings stay visible, booking is disabled — the actual
+  // booking block lives on each offering's own detail page (service-detail.tsx); here it's
+  // the honest "Away" signal plus a CTA label that no longer promises "book".
+  const awayUntilLabel = away
+    ? new Date(away.until).toLocaleDateString(undefined, { month: "short", day: "numeric" })
+    : null;
   const memberSinceYear = earner.memberSince ? new Date(earner.memberSince).getFullYear() : null;
   const initial = earner.name.charAt(0).toUpperCase() || "T";
 
@@ -289,9 +303,12 @@ export default function StorefrontPage() {
         </div>
       </div>
 
-      {/* Cover band — earner-chosen (users.preferences.storefront.coverImageUrl), gradient fallback. */}
+      {/* Cover band — earner-chosen (users.preferences.storefront.coverImageUrl), gradient fallback.
+          Link-landing polish (mockup §08): shorter on mobile (h-28) so a texted storefront link
+          gets its first bookable card above the fold on a 375px viewport — same band, same image,
+          just less of it above small screens. */}
       <div
-        className={`h-40 sm:h-56 w-full ${earner.coverImageUrl ? "bg-cover bg-center" : "bg-gradient-to-br from-primary/50 via-primary/70 to-primary"}`}
+        className={`h-28 sm:h-56 w-full ${earner.coverImageUrl ? "bg-cover bg-center" : "bg-gradient-to-br from-primary/50 via-primary/70 to-primary"}`}
         style={earner.coverImageUrl ? { backgroundImage: `url(${earner.coverImageUrl})` } : undefined}
         data-testid="storefront-cover"
       />
@@ -334,7 +351,21 @@ export default function StorefrontPage() {
               <span data-testid="storefront-earner-rating">
                 <RatingLine rating={earner.averageRating} count={earner.reviewCount} />
               </span>
+              {away && (
+                <Badge
+                  variant="outline"
+                  className="border-amber-300 bg-amber-50 text-amber-800"
+                  data-testid="badge-storefront-away"
+                >
+                  Away — back {awayUntilLabel}
+                </Badge>
+              )}
             </div>
+            {away?.message && (
+              <p className="mt-1 text-sm text-amber-800" data-testid="storefront-away-message">
+                {away.message}
+              </p>
+            )}
             {earner.bio && (
               <p className="mt-2 text-sm text-foreground max-w-2xl">{earner.bio}</p>
             )}
@@ -374,16 +405,24 @@ export default function StorefrontPage() {
 
         {/* Lane 1: services — book directly */}
         {services.length > 0 && (
-          <section className="mt-12" data-testid="storefront-lane-services">
+          <section className="mt-8 sm:mt-12" data-testid="storefront-lane-services">
             <LaneHeader eyebrow="Book directly" title="Services" count={services.length} />
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {services.map((s) => {
                 const chips = s.deliveryMethod && DELIVERY_LABELS[s.deliveryMethod]
                   ? [DELIVERY_LABELS[s.deliveryMethod]]
                   : [];
+                // D5: place-anchored listings get a city-level location chip (text only, from
+                // the row's own city field — nothing derived, nothing mapped; §13).
+                if (isPlaceAnchored({ deliveryMethod: s.deliveryMethod, productShape: s.productShape }) && s.city?.trim()) {
+                  chips.push(`📍 ${s.city.trim()}`);
+                }
                 const unit = priceUnitLabel(s.priceType, s.pricingUnit);
                 const price = s.price ? `$${Number(s.price).toFixed(0)}` : "Custom quote";
-                const cta = s.pricingUnit === "per_night" ? "Check dates →" : "View & book →";
+                // Vacation mode: the CTA stops promising "book" while the owner is away —
+                // the listing itself stays visible and clickable (its detail page carries
+                // the same honest away state and disables the actual booking action).
+                const cta = away ? "View listing →" : s.pricingUnit === "per_night" ? "Check dates →" : "View & book →";
                 return (
                   <OfferingCard
                     key={s.id}
