@@ -88,6 +88,7 @@ import { sanitizeAiContentFailure } from "./utils/ai-error-sanitizer";
 import { revenueTrackingService } from "./services/revenue-tracking.service";
 import { experienceTypes as experienceTypesTable, coordinationStates, coordinationFeeCredits, platformRevenue } from "@shared/schema";
 import { isExpertRole, isProviderRole } from "@shared/roles";
+import { isArtifactDelivery } from "@shared/service-fundamentals";
 import Stripe from "stripe";
 import { sharedCache } from "./services/shared-cache.service";
 import { vaultAndStripItems } from "./services/affiliate-url-vault.service";
@@ -2098,7 +2099,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     // listings drop out of this public surfacing rail; they reappear automatically once
     // the flag clears. Read-only — no provider_services row is touched.
     const live = await filterOutAwayOwners(approved, (s) => s.userId);
-    res.json(live);
+    // D3 leak-prevention: this route is UNAUTHENTICATED public browse — serviceFile is the
+    // product itself for a pdf-delivery listing and must never surface pre-purchase.
+    // getAllProviderServices() is shared with admin (which legitimately needs the full row),
+    // so the strip happens here at the public call site, not in the storage function.
+    res.json(live.map((s) => omitFields(s, ["serviceFile"] as const)));
   });
   
   // Get provider's services
@@ -4603,7 +4608,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         const provider = await storage.getUser(booking.providerId);
         return {
           ...booking,
-          service,
+          // D3 leak-prevention: this is the traveler's OWN booking, but the booking can exist
+          // in a pre-payment claim state (§15b) before it is ever confirmed — serviceFile is
+          // the product itself and must never ride a general read. The one sanctioned reveal
+          // is GET /api/service-bookings/:id/deliverable, gated on a CONFIRMED booking.
+          service: service ? omitFields(service, ["serviceFile"] as const) : service,
           provider: provider ? { id: provider.id, firstName: provider.firstName, lastName: provider.lastName, profileImage: provider.profileImage } : null,
         };
       }));
@@ -4611,6 +4620,46 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     } catch (err) {
       console.error("Service bookings error:", err);
       res.status(500).json({ message: "Failed to fetch service bookings" });
+    }
+  });
+
+  // D3 (docs/briefs/SERVICE_FUNDAMENTALS_DECISIONS.md): the post-purchase delivery surface for
+  // artifact-delivery (pdf) services. Server-derives EVERY condition — never trusts client
+  // state (§14 posture, extended to this non-money reveal because the asset itself is the
+  // thing of value): (1) the booking exists and belongs to the SESSION user (travelerId, never
+  // req.body), (2) its status is 'confirmed' (a payment_pending claim — §15b — never unlocks
+  // the file), (3) its service's deliveryMethod is an artifact-delivery method
+  // (isArtifactDelivery — pdf only), (4) the service actually carries a serviceFile. Any one
+  // condition failing is an honest, undifferentiated 404 (§13 — never leaks WHICH condition
+  // failed to a caller probing booking ids that aren't theirs).
+  app.get("/api/service-bookings/:id/deliverable", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req)!;
+      const booking = await storage.getServiceBooking(req.params.id);
+      if (!booking || booking.travelerId !== userId) {
+        return res.status(404).json({ message: "Deliverable not found" });
+      }
+      if (booking.status !== "confirmed") {
+        return res.status(404).json({ message: "Deliverable not found" });
+      }
+      if (!booking.serviceId) {
+        return res.status(404).json({ message: "Deliverable not found" });
+      }
+      const service = await storage.getProviderServiceById(booking.serviceId);
+      if (!service || !isArtifactDelivery({ deliveryMethod: service.deliveryMethod, productShape: service.productShape })) {
+        return res.status(404).json({ message: "Deliverable not found" });
+      }
+      const fileUrl = (service.serviceFile ?? "").trim();
+      if (!fileUrl) {
+        // §13: honest absence — the booking and service are real and qualify, but the
+        // provider hasn't uploaded anything yet. Distinguishable from "not found" so the
+        // client can render "not uploaded yet" instead of a generic error.
+        return res.status(404).json({ message: "The provider hasn't uploaded a deliverable yet", code: "NO_DELIVERABLE_UPLOADED" });
+      }
+      res.json({ fileUrl, deliveryMethod: service.deliveryMethod });
+    } catch (err) {
+      console.error("Deliverable fetch error:", err);
+      res.status(500).json({ message: "Failed to fetch deliverable" });
     }
   });
 

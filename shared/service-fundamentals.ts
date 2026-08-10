@@ -45,3 +45,19 @@ export function needsScheduling(s: FundamentalsShape): boolean {
   if (s.productShape === "property") return true;
   return !!s.deliveryMethod && SCHEDULED_METHODS.has(s.deliveryMethod);
 }
+
+// D3 (docs/briefs/SERVICE_FUNDAMENTALS_DECISIONS.md, ratified Aug 10 2026): "the first
+// fulfillment rail is PDF DELIVERY" — deliberately `pdf` only. `video` is EXCLUDED here on
+// purpose: the block comment above (D2, also ratified) classifies `video` as a LIVE session
+// ("Video call") that needs `SCHEDULED_METHODS`/availability, not an artifact file — the two
+// classifications are mutually exclusive by design, not an oversight. `voice_notes` and
+// `async_messaging` are artifact/async delivery too (per the D2 note above) but D3's ratified
+// scope names only pdf as this rail's first (and so-far only) fulfillment target; call
+// join-link and async SLA are the documented second/third rails, on the same pattern, not yet
+// built.
+export const ARTIFACT_DELIVERY_METHODS: ReadonlySet<string> = new Set(["pdf"]);
+
+/** Delivers a standing artifact file (the D3 fulfillment rail) rather than a live session. */
+export function isArtifactDelivery(s: FundamentalsShape): boolean {
+  return !!s.deliveryMethod && ARTIFACT_DELIVERY_METHODS.has(s.deliveryMethod);
+}
