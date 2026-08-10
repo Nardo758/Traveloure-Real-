@@ -814,12 +814,18 @@ export default function ContentStudio() {
                         ? "Instagram only allows publishing from Business and Creator accounts. Switch your account type in the Instagram app under Settings → Account → Switch to Professional Account, then reconnect here."
                         : instagramDisconnectReason === "token_expired"
                         ? "Your Instagram connection has expired. Reconnect to continue publishing directly from Content Studio."
+                        : instagramDisconnectReason === "verification_error"
+                        ? "We couldn't reach Instagram to verify your connection. Your account is likely still connected — try again in a moment."
                         : "Link your Business or Creator Instagram account to publish content directly from Content Studio."}
                     </p>
                   </div>
                 </div>
                 <Button
-                  onClick={handleConnectInstagram}
+                  onClick={
+                    instagramDisconnectReason === "verification_error"
+                      ? () => queryClient.invalidateQueries({ queryKey: ["/api/instagram/status"] })
+                      : handleConnectInstagram
+                  }
                   className={cn(
                     "flex-shrink-0 gap-2",
                     isInstagramBannerAmberVariant(instagramDisconnectReason) && "bg-amber-600 hover:bg-amber-700 text-white"
