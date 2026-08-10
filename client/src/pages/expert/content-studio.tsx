@@ -7,6 +7,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { connectInstagram } from "@/lib/instagram-connect";
 import { ExpertLayout } from "@/components/expert/expert-layout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -432,30 +433,23 @@ export default function ContentStudio() {
   };
 
   const handleConnectInstagram = async () => {
-    try {
-      const configRes = await fetch("/api/instagram/config");
-      const config = await configRes.json();
-      const clientId = config?.appId;
-      if (!clientId) {
-        toast({ 
-          title: "Configuration Required", 
-          description: "Instagram integration requires Meta App setup.", 
-          variant: "destructive" 
-        });
-        return;
-      }
-      
-      const redirectUri = encodeURIComponent(`${window.location.origin}/api/instagram/callback`);
-      const scope = encodeURIComponent("instagram_business_basic,instagram_business_content_publish");
-      const authUrl = `https://www.instagram.com/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}`;
-      
-      window.location.href = authUrl;
-    } catch {
-      toast({ 
-        title: "Configuration Error", 
-        description: "Could not load Instagram configuration. Please try again.", 
-        variant: "destructive" 
-      });
+    // D4: this now delegates to the SHARED connect helper (client/src/lib/instagram-connect.ts)
+    // also used by the share kit's publish button — one OAuth-redirect implementation, not two.
+    const result = await connectInstagram();
+    if (!result.ok) {
+      toast(
+        result.reason === "missing_config"
+          ? {
+              title: "Configuration Required",
+              description: "Instagram integration requires Meta App setup.",
+              variant: "destructive",
+            }
+          : {
+              title: "Configuration Error",
+              description: "Could not load Instagram configuration. Please try again.",
+              variant: "destructive",
+            },
+      );
     }
   };
 

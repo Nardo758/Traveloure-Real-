@@ -21,6 +21,7 @@ import { storage } from "../storage";
 import { isAuthenticated } from "../replit_integrations/auth";
 import { desc, asc, eq, or, isNull, sql, and, gte, ne, inArray } from "drizzle-orm";
 import { localExpertForms, expertServiceOfferings, coordinationStates, insertLocalKnowledgeNuggetSchema, users, vendorAvailabilitySlots, providerServices, serviceReviews, expertTypeEnum } from "@shared/schema";
+import type { ShareFrame } from "@shared/share-frames";
 import {
   getLocalKnowledgeNuggets,
   createLocalKnowledgeNugget,
@@ -488,6 +489,27 @@ router.get("/api/me/posting-opportunities", isAuthenticated, async (req, res) =>
       .orderBy(asc(sql`MIN(${vendorAvailabilitySlots.date})`))
       .limit(3);
 
+    // D4 — opportunity->frame suggestion (docs/briefs/SERVICE_FUNDAMENTALS_DECISIONS.md,
+    // decision-maker ratified Aug 10 2026). Deterministic, kind-based, no AI, no guessing:
+    //   - a review-based opportunity always maps to the dedicated "review" share frame —
+    //     there is no fresher/better frame for "someone just said this about your service".
+    //   - an open-slot opportunity maps to "route" ONLY when the service actually HAS route
+    //     stops (ruling 22(d): the route frame's own share-image endpoint 404s otherwise, an
+    //     honest absence, never a fabricated route card — §13), else falls back to "feed".
+    //     This reuses share-images.routes.ts's OWN source of truth for route offerability
+    //     (storage.getServiceRoutePoints) rather than re-deriving the rule a second way.
+    // An opportunity kind with no honest mapping gets no suggestion (undefined), never a
+    // default frame guessed onto it.
+    const slotServiceIds = Array.from(new Set(slotRows.map((s) => s.serviceId)));
+    const routeStopCounts = new Map(
+      await Promise.all(
+        slotServiceIds.map(async (id): Promise<[string, number]> => {
+          const points = await storage.getServiceRoutePoints(id);
+          return [id, points.length];
+        }),
+      ),
+    );
+
     const opportunities = [
       ...reviewRows.map((r) => {
         const text = (r.reviewText ?? "").trim();
@@ -502,15 +524,20 @@ router.get("/api/me/posting-opportunities", isAuthenticated, async (req, res) =>
           createdAt: r.createdAt,
           // Audit B-3: lets the Inbox awaiting-reply queue clear once a reply exists.
           responded: !!(r.responseText && r.responseText.trim()),
+          suggestedFrame: "review" as ShareFrame,
         };
       }),
-      ...slotRows.map((s) => ({
-        kind: "open_slots" as const,
-        serviceId: s.serviceId,
-        serviceName: nameById.get(s.serviceId) ?? "your service",
-        nextDate: s.nextDate,
-        openSpots: Number(s.openSpots) || 0,
-      })),
+      ...slotRows.map((s) => {
+        const hasRouteStops = (routeStopCounts.get(s.serviceId) ?? 0) > 0;
+        return {
+          kind: "open_slots" as const,
+          serviceId: s.serviceId,
+          serviceName: nameById.get(s.serviceId) ?? "your service",
+          nextDate: s.nextDate,
+          openSpots: Number(s.openSpots) || 0,
+          suggestedFrame: (hasRouteStops ? "route" : "feed") as ShareFrame,
+        };
+      }),
     ];
 
     res.json({ opportunities });

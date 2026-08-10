@@ -886,4 +886,9 @@ export const MIGRATION_FILES = [
   // endpoint; positions server-derived. Additive, idempotent, no CHECK. Declared in
   // shared/schema.ts (publish-trap).
   "192_service_route_points.sql",
+  // 193: short_links.frame — frame-aware short links (D4, decision-maker ratified Aug 10 2026).
+  // Additive nullable varchar(20); NULL = untagged/generic link, the historical shape. No CHECK
+  // (app-enforced closed allowlist, shared/share-frames.ts, same posture as this table's
+  // pre-existing target_type column). Declared in shared/schema.ts (publish-trap).
+  "193_short_links_frame.sql",
 ] as const;
