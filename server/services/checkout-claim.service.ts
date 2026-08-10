@@ -88,7 +88,7 @@
 import Stripe from "stripe";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "../db";
-import { serviceBookings } from "@shared/schema";
+import { serviceBookings, providerServices, users } from "@shared/schema";
 import { logItemTransition } from "./item-transition-log.service";
 import { markItemPurchased } from "./item-routing.service";
 import { logger } from "../infrastructure/logger";
@@ -129,6 +129,78 @@ export interface SweepResult {
   slotsReleased: number;
   /** Diary rows written for the voids (rulings 12/16/18). */
   diaryRows: number;
+}
+
+/**
+ * ─── VACATION-MODE PRE-FLIGHT GUARD (provider back-office wave, decision-maker ratified Aug 9
+ * 2026 — `users.vacationUntil`/`vacationMessage`, migration 189) ───────────────────────────────
+ *
+ * Thrown by `assertServiceOwnerNotAway` when the booked service's owner is away. Message is the
+ * ratified honest-error copy: "This provider is away until <date>".
+ */
+export class ProviderAwayError extends Error {
+  constructor(public readonly until: Date) {
+    super(`This provider is away until ${until.toISOString().slice(0, 10)}`);
+    this.name = "ProviderAwayError";
+  }
+}
+
+/**
+ * Rejects when the owner of `serviceId` (a `provider_services.id`) currently has vacation mode
+ * ON (`vacationUntil` non-null AND in the future — the same predicate GET /api/me/vacation and
+ * the storefront/advisor surfaces use). Resolves normally (no throw) when the owner is not away,
+ * when `serviceId` is absent (the documented transport-commerce NULL-`service_id` exception —
+ * CLAUDE.md "Transport-commerce exception"), or when no owner can be resolved (§13: never
+ * guessed — an unresolvable owner fails open rather than blocking checkout on a data gap).
+ *
+ * GOVERNING CONSTRAINT: business-level flag only. Reads `provider_services.userId` to find the
+ * owner and `users.vacationUntil`; never reads, writes, or references `provider_services`
+ * status/approval or any other row field — the listing itself is completely untouched.
+ *
+ * INTENDED CALL SITE (integration note — outside this file's ownership for this change): the
+ * §15 CLAIM step's per-item loop in `POST /api/checkout` (server/routes/payments.routes.ts,
+ * the "Step A: Create booking as payment_pending BEFORE charging Stripe" block), called with
+ * `item.serviceId` immediately BEFORE `storage.createServiceBooking(...)` for that item, so a
+ * blocked item never reaches the DB claim at all. Catch `ProviderAwayError` there and surface
+ * `err.message` to the client (the same "known configuration errors" pass-through pattern that
+ * route already uses for `resolveCoordinationFee`-style errors) rather than the generic
+ * "Checkout failed" 500. Wiring that call is a payments.routes.ts change and is left to the
+ * integrator — this module supplies the guard, fully implemented and independently callable
+ * (see server/__tests__ or a scratch script driving it directly against a live DB).
+ *
+ * SURGICAL, NOT A SPINE CHANGE: this function is net-new and is not called by anything else in
+ * this module — `markStripeAttempt`/`stampAuthorization`/`promotePaidCheckout` and the §15
+ * atomic-conditional claim/authorize/promote spine are byte-for-byte unchanged. The atomic claim
+ * remains the ONLY concurrency guard on inventory/money.
+ *
+ * WHY NO POST-CLAIM RE-CHECK (documented per the ratification): this is a PRE-FLIGHT COURTESY,
+ * not a money invariant. A race where a provider flips vacation mode ON in the narrow window
+ * between this check passing and the claim landing lets that one booking through — accepted
+ * deliberately. Vacation mode is a demand valve (reduce new inbound while away), not a §15
+ * money-safety invariant: adding a post-claim re-check would mean either voiding an
+ * already-claimed row outside the sweep's documented void conditions (§15b — only an
+ * unattempted, unmarked row is safe to void with no Stripe call) or introducing a second writer
+ * on the claim's state machine, both worse than accepting the rare race. Confirmed bookings are
+ * never touched by this or any vacation-mode surface.
+ */
+export async function assertServiceOwnerNotAway(serviceId: string | null | undefined): Promise<void> {
+  if (!serviceId) return;
+
+  const [service] = await db
+    .select({ ownerId: providerServices.userId })
+    .from(providerServices)
+    .where(eq(providerServices.id, serviceId))
+    .limit(1);
+  if (!service?.ownerId) return;
+
+  const [owner] = await db
+    .select({ vacationUntil: users.vacationUntil })
+    .from(users)
+    .where(eq(users.id, service.ownerId))
+    .limit(1);
+  if (owner?.vacationUntil && owner.vacationUntil.getTime() > Date.now()) {
+    throw new ProviderAwayError(owner.vacationUntil);
+  }
 }
 
 /**

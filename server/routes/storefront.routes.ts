@@ -26,6 +26,9 @@ import path from "path";
 import { eq, and, sql } from "drizzle-orm";
 import { db } from "../db";
 import { users, providerServices, expertTemplates, readyMadeTrips, localExpertForms, serviceProviderForms, expertNeighborhoods, cityNeighborhoods } from "@shared/schema";
+// Vacation mode (provider back-office wave, migration 189, decision-maker ratified Aug 9 2026):
+// business-level flag only, read here for the storefront's `away` field — never touches
+// providerServices/expertTemplates/readyMadeTrips rows or their approval/status columns.
 import { EARNER_ROLES as CANONICAL_EARNER_ROLES, isEarnerRole, isProviderRole } from "@shared/roles";
 import { planTypeLabel, isCustomPlanType } from "@shared/ready-made-plan-types";
 import { transformDevHtml } from "../vite-dev-html";
@@ -513,6 +516,8 @@ async function loadStorefront(handle: string) {
       handle: users.handle,
       createdAt: users.createdAt,
       preferences: users.preferences,
+      vacationUntil: users.vacationUntil,
+      vacationMessage: users.vacationMessage,
     })
     .from(users)
     .where(and(eq(users.handle, normalized), eq(users.isDeleted, false), eq(users.isSuspended, false)))
@@ -625,6 +630,15 @@ async function loadStorefront(handle: string) {
   const coverImageUrl = ((owner.preferences as any)?.storefront?.coverImageUrl as string | undefined) ?? null;
   const memberSince = owner.createdAt ? owner.createdAt.toISOString() : null;
 
+  // Vacation mode (§ above): non-null vacationUntil AND in the future = away. Business-level
+  // flag only — the services/templates/readyMade arrays below are UNCHANGED by this; away
+  // listings stay visible-not-bookable, enforcement happens at the booking path (checkout
+  // claim), not by removing anything from this payload.
+  const away =
+    owner.vacationUntil && owner.vacationUntil.getTime() > Date.now()
+      ? { until: owner.vacationUntil.toISOString(), message: owner.vacationMessage ?? null }
+      : null;
+
   return {
     earner: {
       // Not sensitive — user ids are already public on /experts/:id and similar surfaces.
@@ -648,6 +662,7 @@ async function loadStorefront(handle: string) {
     services,
     templates,
     readyMade,
+    away,
   };
 }
 

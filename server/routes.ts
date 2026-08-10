@@ -122,6 +122,8 @@ import eaRoutes from "./routes/ea.routes";
 import providerRoutes from "./routes/provider.routes";
 import storefrontRoutes from "./routes/storefront.routes";
 import travelerProfileRoutes from "./routes/traveler-profile.routes";
+import vacationRoutes from "./routes/vacation.routes";
+import offeringRequestRoutes from "./routes/offering-requests.routes";
 import shortLinksRoutes from "./routes/short-links.routes";
 import readyMadeRoutes from "./routes/ready-made.routes";
 import expertConsoleRoutes from "./routes/expert-console.routes";
@@ -895,6 +897,16 @@ export async function registerRoutes(
   // /api/me/traveler-profile, the `travelerProfile` namespace on the same users.preferences
   // jsonb column /api/me/preferences already uses. Mounted per §9 (unmounted-router guard).
   app.use(travelerProfileRoutes);
+
+  // Vacation mode (provider back-office wave, migration 189, decision-maker ratified Aug 9
+  // 2026) — GET/PATCH /api/me/vacation. Business-level flag only; never touches
+  // provider_services. Mounted per §9.
+  app.use(vacationRoutes);
+
+  // "Don't see your offering?" request flow (mockup §06c, migration 189) — POST
+  // /api/me/offering-requests + GET /api/admin/offering-requests (under the §2 blanket
+  // adminApiGuard). Mounted per §9.
+  app.use(offeringRequestRoutes);
 
   // Short-link + click store (backoffice S3) — POST /api/short-links + GET /r/:code. Mounted per §9.
   app.use(shortLinksRoutes);
