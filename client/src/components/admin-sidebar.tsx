@@ -47,6 +47,7 @@ import {
   Inbox,
   Sparkles,
   Wrench,
+  RefreshCw,
 } from "lucide-react";
 
 // D4 (UX audit Jul 29) admin nav regrouping — labels/grouping only, no route changes:
@@ -88,6 +89,9 @@ const menuGroups = [
       { title: "Affiliates", href: "/admin/affiliate-partners", icon: Link2 },
       // Content: registry + placement map are tabs on this page.
       { title: "Content", href: "/admin/content-tracking", icon: FileText },
+      // Content Ops (mockup §09, Aug 10 2026): YouTube ingestion trigger, extraction/enrichment
+      // status, requested offering types, and the static market-launch checklist in one seat.
+      { title: "Content Ops", href: "/admin/content-ops", icon: RefreshCw },
       { title: "Plans", href: "/admin/plans", icon: ClipboardList },
       { title: "Reviews", href: "/admin/review-moderation", icon: ShieldCheck },
       { title: "Event Review", href: "/admin/destination-events", icon: CalendarDays },
