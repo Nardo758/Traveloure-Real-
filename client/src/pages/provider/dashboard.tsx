@@ -232,7 +232,8 @@ export default function ProviderDashboard() {
     { label: "Pending Bookings", value: String(analytics?.summary?.pendingBookings ?? 0), icon: Clock, color: "text-amber-600" },
     { label: "This Month", value: String(analytics?.summary?.totalBookings ?? 0), icon: Calendar, color: "text-blue-600" },
     { label: "Revenue (MTD)", value: `$${(analytics?.summary?.totalRevenue ?? 0).toLocaleString()}`, icon: DollarSign, color: "text-green-600" },
-    { label: "Rating Average", value: (analytics?.summary?.avgRating ?? 0).toFixed(1), icon: Star, color: "text-amber-500" },
+    // §13 (mockup §12): a 0.0 with zero reviews reads as a real score — say the truth instead.
+    { label: "Rating Average", value: (analytics?.summary?.avgRating ?? 0) > 0 ? (analytics!.summary.avgRating).toFixed(1) : "no reviews yet", icon: Star, color: "text-amber-500" },
   ];
 
   // Add repeat customers line if there are any
