@@ -1,6 +1,5 @@
 import { ProviderLayout } from "@/components/provider/provider-layout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -14,7 +13,6 @@ import {
   Users,
   Calendar,
   Camera,
-  Edit,
   CheckCircle
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
@@ -24,6 +22,16 @@ import { useAuth } from "@/hooks/use-auth";
 // ?tab= reading, so no param seam is needed; embedded skips the ProviderLayout wrap and the
 // page's own p-6 (the Settings tab container already provides both).
 // /provider/profile redirects to /provider/settings?tab=profile.
+//
+// Punchlist Phase 3 (§13 honesty): this page's 7 "Edit"/"Change logo"/"Manage" buttons were
+// removed, not wired — audited every field they'd edit (businessName, businessType,
+// description, address, phone, email, website, amenities, capacities, photos, avatar) against
+// `users` (shared/models/auth.ts) and found none of them are real columns, and neither
+// PATCH /api/provider/settings (the seven booking/payout prefs only — instantBooking,
+// autoResponse, minimumLeadTimeDays, targetResponseTimeHours, payoutFrequency,
+// minimumPayoutAmount, notificationsJson) nor any other route writes them. No profile-write
+// rail exists for a provider to self-edit this content today — honest absence beats dead
+// chrome. Re-add these buttons only alongside a real backing endpoint.
 export default function ProviderProfile({ embedded = false }: { embedded?: boolean } = {}) {
   const { user } = useAuth();
 
@@ -65,14 +73,8 @@ export default function ProviderProfile({ embedded = false }: { embedded?: boole
                 <Avatar className="w-24 h-24">
                   <AvatarFallback className="bg-primary/10 text-primary text-2xl">GE</AvatarFallback>
                 </Avatar>
-                <Button 
-                  variant="outline" 
-                  size="icon" 
-                  className="absolute -bottom-2 -right-2 rounded-full w-8 h-8"
-                  data-testid="button-change-logo"
-                >
-                  <Camera className="w-4 h-4" />
-                </Button>
+                {/* No logo-upload rail exists (users has no avatar/logo column write path) —
+                    button removed rather than left dead. */}
               </div>
               <div className="flex-1">
                 <div className="flex flex-wrap items-center gap-2">
@@ -86,7 +88,7 @@ export default function ProviderProfile({ embedded = false }: { embedded?: boole
                   )}
                 </div>
                 <p className="text-console-dark">{businessInfo.type}</p>
-                
+
                 <div className="flex flex-wrap items-center gap-4 mt-3">
                   <div className="flex items-center gap-1">
                     <Star className="w-5 h-5 text-amber-500 fill-amber-500" />
@@ -113,9 +115,7 @@ export default function ProviderProfile({ embedded = false }: { embedded?: boole
                   )}
                 </div>
               </div>
-              <Button data-testid="button-edit-profile">
-                <Edit className="w-4 h-4 mr-2" /> Edit Profile
-              </Button>
+              {/* No businessName/businessType write rail exists — button removed. */}
             </div>
           </CardContent>
         </Card>
@@ -124,11 +124,9 @@ export default function ProviderProfile({ embedded = false }: { embedded?: boole
           {/* About & Contact */}
           <div className="lg:col-span-2 space-y-6">
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between gap-2">
+              <CardHeader>
+                {/* No description/bio write rail for the provider console — edit button removed. */}
                 <CardTitle>About</CardTitle>
-                <Button variant="ghost" size="sm" data-testid="button-edit-about">
-                  <Edit className="w-4 h-4" />
-                </Button>
               </CardHeader>
               <CardContent>
                 <p className="text-console-dark" data-testid="text-description">{businessInfo.description}</p>
@@ -137,16 +135,14 @@ export default function ProviderProfile({ embedded = false }: { embedded?: boole
 
             {/* Photos */}
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between gap-2">
+              <CardHeader>
+                {/* No photo-management rail exists — button removed. */}
                 <CardTitle>Photos ({photos.length})</CardTitle>
-                <Button variant="ghost" size="sm" data-testid="button-manage-photos">
-                  <Camera className="w-4 h-4 mr-1" /> Manage
-                </Button>
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                   {photos.map((photo) => (
-                    <div 
+                    <div
                       key={photo.id}
                       className="aspect-video bg-console-bg rounded-lg flex items-center justify-center relative group"
                       data-testid={`photo-${photo.id}`}
@@ -163,11 +159,9 @@ export default function ProviderProfile({ embedded = false }: { embedded?: boole
 
             {/* Capacity */}
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between gap-2">
+              <CardHeader>
+                {/* No capacity-write rail exists (not a real users column) — button removed. */}
                 <CardTitle>Venue Capacity</CardTitle>
-                <Button variant="ghost" size="sm" data-testid="button-edit-capacity">
-                  <Edit className="w-4 h-4" />
-                </Button>
               </CardHeader>
               <CardContent>
                 <div className="overflow-x-auto">
@@ -198,11 +192,9 @@ export default function ProviderProfile({ embedded = false }: { embedded?: boole
           <div className="space-y-6">
             {/* Contact Info */}
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between gap-2">
+              <CardHeader>
+                {/* No address/phone/website write rail exists — button removed. */}
                 <CardTitle>Contact Information</CardTitle>
-                <Button variant="ghost" size="sm" data-testid="button-edit-contact">
-                  <Edit className="w-4 h-4" />
-                </Button>
               </CardHeader>
               <CardContent className="space-y-3">
                 <div className="flex items-start gap-3">
@@ -226,18 +218,16 @@ export default function ProviderProfile({ embedded = false }: { embedded?: boole
 
             {/* Amenities */}
             <Card>
-              <CardHeader className="flex flex-row items-center justify-between gap-2">
+              <CardHeader>
+                {/* No amenities write rail exists (not a real users column) — button removed. */}
                 <CardTitle>Amenities</CardTitle>
-                <Button variant="ghost" size="sm" data-testid="button-edit-amenities">
-                  <Edit className="w-4 h-4" />
-                </Button>
               </CardHeader>
               <CardContent>
                 <div className="flex flex-wrap gap-2">
                   {amenities.map((amenity, index) => (
-                    <Badge 
-                      key={index} 
-                      variant="outline" 
+                    <Badge
+                      key={index}
+                      variant="outline"
                       className="text-console-dark"
                       data-testid={`badge-amenity-${index}`}
                     >
