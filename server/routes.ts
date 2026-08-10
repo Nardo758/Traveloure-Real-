@@ -4817,11 +4817,104 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           currentStatus: booking.status,
         });
       }
+      // Owner cancels a PAID booking → the traveler gets a FULL refund (service price + platform
+      // fee + insurance fee — never policy-scaled: a provider-initiated cancellation is the
+      // provider's doing, so the traveler is made whole; platform-owner ruling 2026-08-10) and an
+      // in-app notification. Refund BEFORE any terminal status write (retry-safe: on Stripe
+      // failure refundServiceBooking restores the prior status and throws, so the booking stays
+      // cancellable). refundServiceBooking's atomic claim (pending/confirmed → refunded) is the
+      // concurrency guard — a simultaneous traveler cancel and owner cancel issue at most ONE refund.
+      if (status === "cancelled" && booking.stripePaymentIntentId) {
+        // A stamped PI is NOT proof of payment (a pending request-rail booking can carry a
+        // never-charged intent). Only a Stripe-verified `succeeded` PI enters the refund branch;
+        // anything else is an unpaid cancellation and falls through to the plain status flip.
+        let piSucceeded = false;
+        try {
+          const { stripe } = await import("./services/stripe-payment.service");
+          const pi = await stripe.paymentIntents.retrieve(booking.stripePaymentIntentId);
+          piSucceeded = pi.status === "succeeded";
+        } catch (piErr) {
+          console.error("Provider cancel: PI lookup failed, treating as unpaid:", piErr);
+        }
+        if (piSucceeded) {
+          const amountPaid =
+            parseFloat(booking.totalAmount || "0") +
+            parseFloat((booking as any).platformFee || "0") +
+            parseFloat((booking as any).insuranceFee || "0");
+          try {
+            const { stripePaymentService } = await import("./services/stripe-payment.service");
+            const refundResult = await stripePaymentService.refundServiceBooking(
+              req.params.id,
+              reason || "cancelled_by_provider",
+              { amountOverride: amountPaid },
+            );
+            if (refundResult?.alreadyRefunded) {
+              // Another path (e.g. a concurrent traveler cancel) won the atomic refund claim and
+              // owns the ledger reversal + notification — report factually, fire no side-effects.
+              const refreshed = await storage.getServiceBooking(req.params.id);
+              return res.json({ ...refreshed, refund: { issued: false, alreadyRefunded: true } });
+            }
+            // This caller WON the refund claim — apply the matching full-fraction ledger
+            // compensation (idempotent flips; a crash here is repaired by the admin refund
+            // rail re-running them, never by a second Stripe refund).
+            await storage.reverseEarningsForBooking(req.params.id);
+            await storage.reversePlatformRevenueForBooking(req.params.id, new Date(), 1);
+            await db.execute(sql`
+              UPDATE service_bookings
+              SET cancelled_at = NOW(), cancellation_reason = ${reason ?? "Cancelled by the provider"}, updated_at = NOW()
+              WHERE id = ${req.params.id}
+            `);
+            const { revertPurchasedItemsForBooking } = await import("./services/item-routing.service");
+            await revertPurchasedItemsForBooking(req.params.id);
+            if (booking.travelerId) {
+              try {
+                await storage.createNotification({
+                  userId: booking.travelerId,
+                  type: "booking_cancelled",
+                  title: "Booking cancelled by provider — full refund issued",
+                  message: `Your booking ${booking.trackingNumber ?? ""} was cancelled by the provider. A full refund of $${amountPaid.toFixed(2)} has been issued to your original payment method.`,
+                  relatedId: req.params.id,
+                  relatedType: "booking",
+                  data: { bookingId: req.params.id, refundAmount: amountPaid, cancelledBy: "provider" },
+                });
+              } catch (notifyErr) {
+                console.error("Failed to notify traveler of provider cancellation:", notifyErr);
+              }
+            }
+            const refreshed = await storage.getServiceBooking(req.params.id);
+            return res.json({ ...refreshed, refund: { issued: true, amount: refundResult?.amount ?? amountPaid } });
+          } catch (refundErr: any) {
+            console.error("Provider cancellation refund error:", refundErr);
+            return res.status(502).json({
+              message: "The refund could not be issued, so the booking was NOT cancelled. Please try again.",
+              error: refundErr?.message,
+            });
+          }
+        }
+      }
+
       const updated = await storage.updateServiceBookingStatus(req.params.id, status, reason, allowedFrom);
       if (!updated) {
         // Lost the atomic race (or the row vanished): another actor moved it first. Exactly one
         // caller wins; the loser changes nothing and fires no side-effects.
         return res.status(409).json({ message: "This booking changed before your update was applied. Reload and try again." });
+      }
+
+      // Unpaid cancellation still tells the traveler — no silent state changes.
+      if (status === "cancelled" && updated.travelerId) {
+        try {
+          await storage.createNotification({
+            userId: updated.travelerId,
+            type: "booking_cancelled",
+            title: "Booking cancelled by provider",
+            message: `Your booking ${updated.trackingNumber ?? ""} was cancelled by the provider. No charge was made.`,
+            relatedId: req.params.id,
+            relatedType: "booking",
+            data: { bookingId: req.params.id, cancelledBy: "provider" },
+          });
+        } catch (notifyErr) {
+          console.error("Failed to notify traveler of provider cancellation:", notifyErr);
+        }
       }
 
       // E1: trip-share bridge. When an EXPERT accepts a booking that carries a
@@ -5047,6 +5140,25 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         // No automatic refund (non-refundable policy, lapsed window, or nothing charged) —
         // a plain status cancellation, exactly what the preview told the traveler.
         updated = await storage.updateServiceBookingStatus(req.params.id, "cancelled", reason);
+      }
+
+      // In-app receipt — no silent state changes, even for traveler-initiated actions.
+      try {
+        await storage.createNotification({
+          userId,
+          type: "booking_cancelled",
+          title: refundResult
+            ? `Booking cancelled — $${quote.refundAmount.toFixed(2)} refund issued`
+            : "Booking cancelled",
+          message: refundResult
+            ? `Your booking ${updated?.trackingNumber ?? ""} was cancelled. A ${quote.refundPercent}% refund of $${quote.refundAmount.toFixed(2)} has been issued to your original payment method.`
+            : `Your booking ${updated?.trackingNumber ?? ""} was cancelled. ${quote.message}`,
+          relatedId: req.params.id,
+          relatedType: "booking",
+          data: { bookingId: req.params.id, refundAmount: refundResult ? quote.refundAmount : 0, cancelledBy: "traveler" },
+        });
+      } catch (notifyErr) {
+        console.error("Failed to write traveler cancellation notification:", notifyErr);
       }
 
       res.json({

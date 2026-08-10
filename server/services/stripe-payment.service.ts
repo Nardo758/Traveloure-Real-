@@ -28,7 +28,7 @@ import { sendBookingConfirmationEmail } from './email.service';
 import { trackFunnelEvent } from '../utils/funnelTracker';
 import { logger } from '../infrastructure/logger';
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
+export const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
   apiVersion: '2024-12-18.acacia' as any,
 });
 
@@ -875,17 +875,24 @@ class StripePaymentService {
     },
   ) {
     const rows = await db.execute(sql`
-      SELECT id, total_amount, stripe_payment_intent_id, status, slot_id
+      SELECT id, total_amount, platform_fee, insurance_fee, stripe_payment_intent_id, status, slot_id
       FROM service_bookings WHERE id = ${bookingId} LIMIT 1
     `);
     const row = rows.rows?.[0] as any;
     if (!row) throw new Error('Service booking not found');
 
     const totalAmount = parseFloat(row.total_amount || '0');
+    // The clamp ceiling is what the traveler was actually CHARGED (service price + platform fee
+    // + insurance fee), not the bare service price — fee-included refunds (platform-owner ruling
+    // 2026-08-10) must not be silently truncated back to total_amount.
+    const amountCharged =
+      totalAmount + parseFloat(row.platform_fee || '0') + parseFloat(row.insurance_fee || '0');
+    // A FULL refund (no override) is the fee-inclusive charged amount — same ruling. Callers
+    // wanting the old service-price-only behaviour must pass it explicitly as an override.
     const amount =
       options?.amountOverride !== undefined
-        ? Math.min(Math.max(options.amountOverride, 0), totalAmount)
-        : totalAmount;
+        ? Math.min(Math.max(options.amountOverride, 0), amountCharged)
+        : amountCharged;
     if (options?.amountOverride !== undefined && amount <= 0) {
       throw new Error('Refund amount must be greater than zero');
     }
