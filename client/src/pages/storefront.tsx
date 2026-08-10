@@ -83,6 +83,10 @@ interface StorefrontData {
   services: StorefrontService[];
   templates: StorefrontTemplate[];
   readyMade: StorefrontReadyMade[];
+  // Vacation mode (mockup §06b/§08, CLAUDE.md, migration 189): business-level flag only —
+  // null when the owner isn't away. The server (storefront.routes.ts loadStorefront) already
+  // computes this; the client just needed to render it (link-landing polish).
+  away: { until: string; message: string | null } | null;
 }
 
 const DELIVERY_LABELS: Record<string, string> = {
@@ -254,9 +258,15 @@ export default function StorefrontPage() {
     );
   }
 
-  const { earner, services, templates, readyMade } = data;
+  const { earner, services, templates, readyMade, away } = data;
   // Hide the CTA when the signed-in visitor IS the earner — no message-myself button/band.
   const isOwnStorefront = !!user && String(user.id) === String(earner.id);
+  // Vacation mode (mockup §08/§06b): listings stay visible, booking is disabled — the actual
+  // booking block lives on each offering's own detail page (service-detail.tsx); here it's
+  // the honest "Away" signal plus a CTA label that no longer promises "book".
+  const awayUntilLabel = away
+    ? new Date(away.until).toLocaleDateString(undefined, { month: "short", day: "numeric" })
+    : null;
   const memberSinceYear = earner.memberSince ? new Date(earner.memberSince).getFullYear() : null;
   const initial = earner.name.charAt(0).toUpperCase() || "T";
 
@@ -334,7 +344,21 @@ export default function StorefrontPage() {
               <span data-testid="storefront-earner-rating">
                 <RatingLine rating={earner.averageRating} count={earner.reviewCount} />
               </span>
+              {away && (
+                <Badge
+                  variant="outline"
+                  className="border-amber-300 bg-amber-50 text-amber-800"
+                  data-testid="badge-storefront-away"
+                >
+                  Away — back {awayUntilLabel}
+                </Badge>
+              )}
             </div>
+            {away?.message && (
+              <p className="mt-1 text-sm text-amber-800" data-testid="storefront-away-message">
+                {away.message}
+              </p>
+            )}
             {earner.bio && (
               <p className="mt-2 text-sm text-foreground max-w-2xl">{earner.bio}</p>
             )}
@@ -383,7 +407,10 @@ export default function StorefrontPage() {
                   : [];
                 const unit = priceUnitLabel(s.priceType, s.pricingUnit);
                 const price = s.price ? `$${Number(s.price).toFixed(0)}` : "Custom quote";
-                const cta = s.pricingUnit === "per_night" ? "Check dates →" : "View & book →";
+                // Vacation mode: the CTA stops promising "book" while the owner is away —
+                // the listing itself stays visible and clickable (its detail page carries
+                // the same honest away state and disables the actual booking action).
+                const cta = away ? "View listing →" : s.pricingUnit === "per_night" ? "Check dates →" : "View & book →";
                 return (
                   <OfferingCard
                     key={s.id}
