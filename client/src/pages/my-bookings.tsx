@@ -672,6 +672,27 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
     },
   });
 
+  // D3 (docs/briefs/SERVICE_FUNDAMENTALS_DECISIONS.md): the pdf-delivery post-purchase
+  // deliverable. The server (GET /api/service-bookings/:id/deliverable) is the sole authority
+  // on whether this booking qualifies — confirmed status, the traveler's own booking, an
+  // artifact-delivery service, and a real uploaded file — this client only ever renders what
+  // the server granted, never re-derives eligibility. A 404 (not artifact delivery, no file
+  // yet, or not confirmed) is the common, expected case for most bookings, so it's swallowed
+  // quietly rather than surfaced as an error.
+  const { data: deliverable } = useQuery<{ fileUrl: string; deliveryMethod: string } | null>({
+    queryKey: [`/api/service-bookings/${booking.id}/deliverable`],
+    queryFn: async () => {
+      try {
+        const res = await apiRequest("GET", `/api/service-bookings/${booking.id}/deliverable`);
+        return await res.json();
+      } catch {
+        return null;
+      }
+    },
+    enabled: booking.status === "confirmed",
+    staleTime: 5 * 60 * 1000,
+  });
+
   const disputeMutation = useMutation({
     mutationFn: (reason: string) => apiRequest("POST", `/api/bookings/${booking.id}/dispute`, { reason }),
     onSuccess: () => {
@@ -744,6 +765,17 @@ function BookingCard({ booking, onReview }: { booking: Booking; onReview: (booki
               </div>
             )}
             
+            {deliverable?.fileUrl && (
+              <div className="mb-2 flex items-center gap-2 flex-wrap" data-testid={`deliverable-${booking.id}`}>
+                <Button variant="outline" size="sm" asChild data-testid={`button-download-deliverable-${booking.id}`}>
+                  <a href={deliverable.fileUrl} target="_blank" rel="noopener noreferrer">
+                    <FileText className="w-4 h-4 mr-1" />
+                    Your deliverable
+                  </a>
+                </Button>
+              </div>
+            )}
+
             <div className="text-sm text-muted-foreground space-y-1">
               {booking.bookingDetails?.scheduledDate && (
                 <div className="flex items-center gap-1">

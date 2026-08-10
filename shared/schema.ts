@@ -697,6 +697,13 @@ export const providerServices = pgTable("provider_services", {
   
   // Media
   serviceImage: text("service_image"), // Cover image URL
+  // D3 (docs/briefs/SERVICE_FUNDAMENTALS_DECISIONS.md): the artifact-delivery deliverable
+  // (pdf listings only — shared/service-fundamentals.ts isArtifactDelivery). Owner-gated
+  // write (same session/ownership check as serviceImage on POST/PATCH /api/provider/services
+  // — not a privileged §14/§18/§19 field, so no allowlist/omit needed there). NEVER select
+  // this column into a public/non-owner read — see the D3 leak-prevention audit; the one
+  // sanctioned reveal is GET /api/service-bookings/:id/deliverable (server/routes.ts), gated
+  // on a confirmed booking belonging to the session user.
   serviceFile: text("service_file"), // File URL
   
   // Status & Analytics

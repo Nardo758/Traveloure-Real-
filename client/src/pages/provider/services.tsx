@@ -624,6 +624,7 @@ const HEALTH_CHECK_LABELS: Record<string, string> = {
   pricing: "no price",
   availability: "no availability",
   approval: "not approved",
+  delivery_asset: "no deliverable",
 };
 
 const TONE_CLASSNAMES = {
