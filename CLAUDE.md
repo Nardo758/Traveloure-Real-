@@ -85,6 +85,30 @@ This document captures architectural decisions to maintain consistency across co
     annotation. The Advisor **fundamentals** checklist (ratified list in `server/routes/advisor.routes.ts`)
     is deterministic, §13-honest (a check with insufficient data is omitted with a reason, never guessed).
 
+22. **Service map & route stops; Catalog is the map's home (decision-maker ratified Aug 10, 2026).**
+    **(a) `service_route_points`** (migration 192, declared in `shared/schema.ts` — publish-trap rule) is the
+    child-row home for a provider service's **ordered route stops**, on the `dmo_extracted_places` pattern:
+    `ON DELETE CASCADE` FK → `provider_services`, `UNIQUE (service_id, "position")`, **nullable lat/lng — an
+    unlocated stop stays visibly flagged, never guessed onto the map** (§13). Writes are owner-gated
+    **replace-list** (`PUT /api/provider/services/:id/route-points`): positions derived server-side from array
+    order, allowlist body (§19 posture — no `createInsertSchema` denylist parsed off the body). Coordinates for
+    a stop come only from an explicit user placement (same L27-P3 confirm posture as the meeting pin).
+    **(b) Placement:** the map authoring surface lives on **Catalog** (`/provider/services`, list↔map toggle) —
+    per the C9 precedent that put availability-slot editing there (per-listing curation belongs to the "what I
+    sell" module). Workstation ladder cards may deep-link in; Workstation never owns the surface. The meeting
+    pin keeps its ONE write path (`extractServiceLocation` on POST/PATCH `/api/provider/services`, confirm-gated
+    `LocationPointPicker`) — the map view mounts the same picker, no second pin-write rail.
+    **(c) Rendering honesty:** route connectors are **straight dashed lines labeled as sequence, not travel
+    routing**; no invented distances/durations (§13). `serviceRadius` may render as a ring around the confirmed
+    pin (display only). Traveler surface (`GET /api/services/:id` now carries `routePoints`;
+    `/services/:id` page): map renders **located stops only**, shows "X of Y stops located", and renders **no
+    map at all when the service has no coordinates** — never a city-center fallback. Traveler map is
+    Leaflet/OSM; ODbL attribution ("© OpenStreetMap contributors") REQUIRED wherever it renders.
+    **(d) Distribute:** the "Route" share frame is a third format of the EXISTING share-image rail
+    (`/api/share-image/service/:id.png?format=route`, satori template beside feed/story) — layout data resolved
+    server-side from the row like the other two; measurement stays on Performance (`LinkAnalyticsPanel`), the
+    share rail never grows its own analytics.
+
 ### §13 — Known Defects (these are BUGS, not intended behavior — do not describe them as how the platform works)
 
 Defect state is VOLATILE and no longer lives in this file (ruling 26 §5): open defects live in findings/audit docs

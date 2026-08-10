@@ -7850,3 +7850,25 @@ export const DEMAND_SIGNAL_EVENT_KINDS = [
   "search_unfilled",
 ] as const;
 export type DemandSignalEventKind = (typeof DEMAND_SIGNAL_EVENT_KINDS)[number];
+
+// Ordered route stops for a provider service — CLAUDE.md ruling 22 (decision-maker ratified
+// Aug 10, 2026; migration 192). dmo_extracted_places pattern: child rows, CASCADE, composite
+// UNIQUE on (service_id, position). lat/lng nullable — an unlocated stop stays visibly flagged
+// in lists and is NEVER guessed onto the map (§13; no city-center fallback). Positions are
+// server-derived from array order on the replace-list write (PUT
+// /api/provider/services/:id/route-points) — never client-numbered. Declared here per the
+// publish-trap rule (table + UNIQUE + index must survive the deploy push).
+export const serviceRoutePoints = pgTable("service_route_points", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  serviceId: varchar("service_id").notNull().references(() => providerServices.id, { onDelete: "cascade" }),
+  position: integer("position").notNull(), // 1-based stop order (the numbered pins)
+  name: varchar("name", { length: 255 }).notNull(),
+  latitude: decimal("latitude", { precision: 10, scale: 7 }),
+  longitude: decimal("longitude", { precision: 10, scale: 7 }),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  unique("service_route_points_service_position_unique").on(table.serviceId, table.position),
+  index("service_route_points_service_idx").on(table.serviceId),
+]);
+export type ServiceRoutePoint = typeof serviceRoutePoints.$inferSelect;

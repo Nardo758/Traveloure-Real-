@@ -185,6 +185,13 @@ export function OfferingShareDetail({
   showImages: boolean;
 }) {
   const [caption, setCaption] = useState("");
+  // Ruling 22(d): the Route frame only exists for a service that HAS route stops — the
+  // share-image endpoint 404s otherwise (honest absence, §13) and the img onError below
+  // collapses the block instead of showing a broken image.
+  const [routeAvailable, setRouteAvailable] = useState(true);
+  useEffect(() => {
+    setRouteAvailable(true);
+  }, [offering.id]);
   useEffect(() => {
     // Client-side fallback shows immediately; the server caption (when available) replaces it.
     setCaption(buildOfferingCaption(offering));
@@ -247,6 +254,28 @@ export function OfferingShareDetail({
               <Download className="w-3 h-3" /> Download image
             </a>
           </div>
+          {offering.lane === "service" && routeAvailable && (
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-muted-foreground">Route (1080×1350)</p>
+              <img
+                src={`/api/share-image/service/${offering.id}.png?format=route`}
+                alt={`${offering.name} — route share card`}
+                className="w-full rounded-lg border"
+                style={{ borderColor: "#E8E8E2" }}
+                onError={() => setRouteAvailable(false)}
+                data-testid={`img-share-route-${offering.id}`}
+              />
+              <a
+                href={`/api/share-image/service/${offering.id}.png?format=route`}
+                download={`${offering.id}-route.png`}
+                className="inline-flex items-center gap-1 text-xs font-medium"
+                style={{ color: "#E85D55" }}
+                data-testid={`link-download-route-${offering.id}`}
+              >
+                <Download className="w-3 h-3" /> Download image
+              </a>
+            </div>
+          )}
         </div>
       ) : (
         <p className="text-xs text-muted-foreground">
