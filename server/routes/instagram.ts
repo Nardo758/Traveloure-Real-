@@ -125,7 +125,7 @@ router.get("/status", isAuthenticated, async (req: Request, res: Response) => {
   try {
     const userId = getUserId(req)!;
     if (!userId) {
-      return res.json({ connected: false });
+      return res.status(401).json({ error: "Not authenticated" });
     }
 
     const [user] = await db
@@ -205,7 +205,7 @@ router.post("/publish", isAuthenticated, async (req: Request, res: Response) => 
     );
 
     if (!createContainerResponse.ok) {
-      const error = await createContainerResponse.text();
+      const error = await publishResponse.text();
       console.error("Container creation failed:", error);
       return res.status(400).json({ error: "Failed to create media container" });
     }
@@ -241,7 +241,7 @@ router.post("/publish", isAuthenticated, async (req: Request, res: Response) => 
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          creation_id: containerId,
+          creation_id: carouselData.id,
           access_token: user.instagramAccessToken,
         }),
       }
@@ -258,15 +258,15 @@ router.post("/publish", isAuthenticated, async (req: Request, res: Response) => 
     res.json({
       success: true,
       mediaId: publishData.id,
-      message: "Successfully published to Instagram",
+      message: "Successfully published carousel to Instagram",
     });
   } catch (error) {
-    console.error("Instagram publish error:", error);
-    res.status(500).json({ error: "Failed to publish to Instagram" });
+    console.error("Instagram carousel publish error:", error);
+    res.status(500).json({ error: "Failed to publish carousel to Instagram" });
   }
 });
 
-router.post("/publish-carousel", isAuthenticated, async (req: Request, res: Response) => {
+router.get("/publishing-limit", isAuthenticated, async (req: Request, res: Response) => {
   try {
     const userId = getUserId(req)!;
     if (!userId) {
@@ -298,24 +298,15 @@ router.post("/publish-carousel", isAuthenticated, async (req: Request, res: Resp
     const containerIds: string[] = [];
 
     for (const imageUrl of imageUrls) {
-      const response = await fetch(
-        `https://graph.instagram.com/${GRAPH_API_VERSION}/${user.instagramUserId}/media`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            image_url: imageUrl,
-            is_carousel_item: true,
-            access_token: user.instagramAccessToken,
-          }),
-        }
-      );
+    const response = await fetch(
+      `https://graph.instagram.com/${GRAPH_API_VERSION}/${user.instagramUserId}/content_publishing_limit?access_token=${user.instagramAccessToken}`
+    );
 
-      if (!response.ok) {
-        return res.status(400).json({ error: "Failed to create carousel item" });
-      }
+    if (!response.ok) {
+      return res.status(400).json({ error: "Failed to get publishing limit" });
+    }
 
-      const data = await response.json();
+    const data = await response.json();
       containerIds.push(data.id);
     }
 
