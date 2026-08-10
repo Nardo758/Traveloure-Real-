@@ -1317,12 +1317,18 @@ router.get("/api/stripe/connect/dashboard", isAuthenticated, async (req, res) =>
   });
 
 
-router.get("/stripe/connect/return", (_req, res) => {
+router.get("/stripe/connect/return", (req, res) => {
+    const role = (req.user as any)?.role;
+    if (isProviderRole(role)) return res.redirect("/provider/settings?stripe=connected");
+    if (isExpertRole(role)) return res.redirect("/expert/settings?stripe=connected");
     res.redirect("/dashboard?stripe=connected");
   });
 
 
-router.get("/stripe/connect/refresh", (_req, res) => {
+router.get("/stripe/connect/refresh", (req, res) => {
+    const role = (req.user as any)?.role;
+    if (isProviderRole(role)) return res.redirect("/provider/settings?stripe=refresh");
+    if (isExpertRole(role)) return res.redirect("/expert/settings?stripe=refresh");
     res.redirect("/dashboard?stripe=refresh");
   });
 
