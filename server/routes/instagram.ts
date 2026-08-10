@@ -7,9 +7,42 @@ import { isAuthenticated } from "../replit_integrations/auth";
 
 const router = Router();
 
-const META_APP_ID = process.env.META_APP_ID;
-const META_APP_SECRET = process.env.META_APP_SECRET;
+/**
+ * Maps a Graph API verification response to the status payload returned by
+ * GET /api/instagram/status. Exported for unit testing.
+ *
+ * @param verifyOk   Whether the HTTP response had a 2xx status code
+ * @param verifyData Parsed JSON body from graph.instagram.com/me
+ */
+export function resolveInstagramVerifyStatus(
+  verifyOk: boolean,
+  verifyData: Record<string, unknown>,
+): { connected: boolean; reason?: string; accountType?: string } {
+  if (!verifyOk || verifyData.error) {
+    const errCode = (verifyData.error as { code?: number } | undefined)?.code;
+    // 190 = invalid/expired token; 102/104 = session expired
+    const isExpired = [102, 104, 190].includes(errCode as number);
+    return {
+      connected: false,
+      reason: isExpired ? "token_expired" : "auth_error",
+    };
+  }
+
+  const accountType: string = (verifyData.account_type as string) ?? "";
+  if (accountType === "PERSONAL") {
+    return { connected: false, reason: "personal_account" };
+  }
+
+  return { connected: true, accountType };
+}
+
+const INSTAGRAM_APP_ID = process.env.INSTAGRAM_APP_ID;
+const INSTAGRAM_APP_SECRET = process.env.INSTAGRAM_APP_SECRET;
 const GRAPH_API_VERSION = "v21.0";
+
+router.get("/config", (req: Request, res: Response) => {
+  res.json({ appId: INSTAGRAM_APP_ID || null });
+});
 
 router.get("/callback", isAuthenticated, async (req: Request, res: Response) => {
   try {
@@ -24,21 +57,21 @@ router.get("/callback", isAuthenticated, async (req: Request, res: Response) => 
       return res.redirect("/expert/content-studio?error=no_code");
     }
 
-    if (!META_APP_ID || !META_APP_SECRET) {
-      console.error("Missing META_APP_ID or META_APP_SECRET");
+    if (!INSTAGRAM_APP_ID || !INSTAGRAM_APP_SECRET) {
+      console.error("Missing INSTAGRAM_APP_ID or INSTAGRAM_APP_SECRET");
       return res.redirect("/expert/content-studio?error=missing_config");
     }
 
     const redirectUri = `${req.protocol}://${req.get("host")}/api/instagram/callback`;
 
     const tokenResponse = await fetch(
-      `https://api.instagram.com/oauth/access_token`,
+      `https://graph.instagram.com/oauth/v2/access_token`,
       {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: new URLSearchParams({
-          client_id: META_APP_ID,
-          client_secret: META_APP_SECRET,
+          client_id: INSTAGRAM_APP_ID,
+          client_secret: INSTAGRAM_APP_SECRET,
           grant_type: "authorization_code",
           redirect_uri: redirectUri,
           code: code as string,
@@ -56,10 +89,10 @@ router.get("/callback", isAuthenticated, async (req: Request, res: Response) => 
     const { access_token, user_id } = tokenData;
 
     const longLivedResponse = await fetch(
-      `https://graph.instagram.com/access_token?` +
+      `https://graph.instagram.com/oauth/v2/access_token?` +
         new URLSearchParams({
           grant_type: "ig_exchange_token",
-          client_secret: META_APP_SECRET,
+          client_secret: INSTAGRAM_APP_SECRET,
           access_token,
         })
     );
@@ -92,15 +125,41 @@ router.get("/status", isAuthenticated, async (req: Request, res: Response) => {
   try {
     const userId = getUserId(req)!;
     if (!userId) {
-      return res.json({ connected: false });
+      return res.status(401).json({ error: "Not authenticated" });
     }
 
     const [user] = await db
-      .select({ instagramUserId: users.instagramUserId })
+      .select({
+        instagramUserId: users.instagramUserId,
+        instagramAccessToken: users.instagramAccessToken,
+      })
       .from(users)
       .where(eq(users.id, userId));
 
-    res.json({ connected: !!user?.instagramUserId });
+    if (!user?.instagramUserId || !user?.instagramAccessToken) {
+      return res.json({ connected: false });
+    }
+
+    // Verify the token is still valid and check account type.
+    // A personal account will succeed the call but return account_type === "PERSONAL".
+    // An expired/revoked token returns an OAuthException error.
+    try {
+      const verifyResponse = await fetch(
+        `https://graph.instagram.com/me?fields=id,account_type&access_token=${user.instagramAccessToken}`
+      );
+      const verifyData = await verifyResponse.json();
+
+      if (!verifyResponse.ok || verifyData.error) {
+        console.warn("Instagram token verification failed:", verifyData.error?.message);
+      }
+
+      return res.json(resolveInstagramVerifyStatus(verifyResponse.ok, verifyData));
+    } catch (verifyErr) {
+      // Network error during verification — treat as disconnected but don't
+      // wipe the stored token; the user may just be offline temporarily.
+      console.error("Instagram token verification network error:", verifyErr);
+      return res.json({ connected: false, reason: "verification_error" });
+    }
   } catch (error) {
     console.error("Instagram status check error:", error);
     res.json({ connected: false });
@@ -146,7 +205,7 @@ router.post("/publish", isAuthenticated, async (req: Request, res: Response) => 
     );
 
     if (!createContainerResponse.ok) {
-      const error = await createContainerResponse.text();
+      const error = await publishResponse.text();
       console.error("Container creation failed:", error);
       return res.status(400).json({ error: "Failed to create media container" });
     }
@@ -182,7 +241,7 @@ router.post("/publish", isAuthenticated, async (req: Request, res: Response) => 
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          creation_id: containerId,
+          creation_id: carouselData.id,
           access_token: user.instagramAccessToken,
         }),
       }
@@ -199,15 +258,15 @@ router.post("/publish", isAuthenticated, async (req: Request, res: Response) => 
     res.json({
       success: true,
       mediaId: publishData.id,
-      message: "Successfully published to Instagram",
+      message: "Successfully published carousel to Instagram",
     });
   } catch (error) {
-    console.error("Instagram publish error:", error);
-    res.status(500).json({ error: "Failed to publish to Instagram" });
+    console.error("Instagram carousel publish error:", error);
+    res.status(500).json({ error: "Failed to publish carousel to Instagram" });
   }
 });
 
-router.post("/publish-carousel", isAuthenticated, async (req: Request, res: Response) => {
+router.get("/publishing-limit", isAuthenticated, async (req: Request, res: Response) => {
   try {
     const userId = getUserId(req)!;
     if (!userId) {
@@ -239,24 +298,15 @@ router.post("/publish-carousel", isAuthenticated, async (req: Request, res: Resp
     const containerIds: string[] = [];
 
     for (const imageUrl of imageUrls) {
-      const response = await fetch(
-        `https://graph.instagram.com/${GRAPH_API_VERSION}/${user.instagramUserId}/media`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            image_url: imageUrl,
-            is_carousel_item: true,
-            access_token: user.instagramAccessToken,
-          }),
-        }
-      );
+    const response = await fetch(
+      `https://graph.instagram.com/${GRAPH_API_VERSION}/${user.instagramUserId}/content_publishing_limit?access_token=${user.instagramAccessToken}`
+    );
 
-      if (!response.ok) {
-        return res.status(400).json({ error: "Failed to create carousel item" });
-      }
+    if (!response.ok) {
+      return res.status(400).json({ error: "Failed to get publishing limit" });
+    }
 
-      const data = await response.json();
+    const data = await response.json();
       containerIds.push(data.id);
     }
 
