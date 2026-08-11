@@ -642,6 +642,8 @@ export async function registerRoutes(
   const EXPERT_SELF_SERVICE_PREFIXES = [
     "/api/expert/neighborhoods",
     "/api/expert/profile-notes",
+    "/api/expert/profile",
+    "/api/expert/photo",
     "/api/expert/selected-services",
     "/api/expert/specializations",
     "/api/expert/service-listings",
@@ -3315,6 +3317,117 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     } catch (err) {
       console.error("Error saving expert notes style:", err);
       res.status(500).json({ message: "Failed to save" });
+    }
+  });
+
+  // PATCH /api/expert/profile — Save the expert's public profile fields
+  // (bio / headline / displayName / first+last name / city / country / languages).
+  // Writes name+bio to the users row (the auth identity + public listing source)
+  // and the display fields to local_expert_forms (the public detail-page source).
+  app.patch("/api/expert/profile", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req)!;
+      const body = req.body ?? {};
+
+      const strField = (key: string, max: number): string | undefined => {
+        const v = body[key];
+        if (v === undefined) return undefined;
+        if (typeof v !== "string") throw new Error(`${key} must be a string`);
+        const trimmed = v.trim();
+        if (trimmed.length > max) throw new Error(`${key} must be at most ${max} characters`);
+        return trimmed;
+      };
+
+      let firstName: string | undefined,
+        lastName: string | undefined,
+        displayName: string | undefined,
+        headline: string | undefined,
+        bio: string | undefined,
+        city: string | undefined,
+        country: string | undefined;
+      let languages: string[] | undefined;
+      try {
+        firstName = strField("firstName", 100);
+        lastName = strField("lastName", 100);
+        displayName = strField("displayName", 100);
+        headline = strField("headline", 150);
+        bio = strField("bio", 500);
+        city = strField("city", 100);
+        country = strField("country", 100);
+        if (body.languages !== undefined) {
+          if (!Array.isArray(body.languages)) throw new Error("languages must be an array");
+          const seen = new Set<string>();
+          languages = [];
+          for (const raw of body.languages) {
+            if (typeof raw !== "string") continue;
+            const trimmed = raw.trim();
+            if (!trimmed || trimmed.length > 50) continue;
+            const key = trimmed.toLowerCase();
+            if (!seen.has(key)) {
+              seen.add(key);
+              languages.push(trimmed);
+            }
+          }
+          if (languages.length > 20) throw new Error("You can list at most 20 languages");
+        }
+      } catch (e: any) {
+        return res.status(400).json({ message: e.message });
+      }
+
+      // users row: identity + the bio the public /api/experts listing reads.
+      const userUpdates: Record<string, any> = {};
+      if (firstName !== undefined) userUpdates.firstName = firstName;
+      if (lastName !== undefined) userUpdates.lastName = lastName;
+      if (bio !== undefined) userUpdates.bio = bio;
+      if (Object.keys(userUpdates).length > 0) {
+        await db.update(users).set(userUpdates).where(eq(users.id, userId));
+      }
+
+      // local_expert_forms row: public detail-page display fields.
+      const formUpdates: Record<string, any> = {};
+      if (firstName !== undefined) formUpdates.firstName = firstName;
+      if (lastName !== undefined) formUpdates.lastName = lastName;
+      if (displayName !== undefined) formUpdates.displayName = displayName;
+      if (headline !== undefined) formUpdates.headline = headline;
+      if (bio !== undefined) formUpdates.bio = bio;
+      if (city !== undefined) formUpdates.city = city;
+      if (country !== undefined) formUpdates.country = country;
+      if (languages !== undefined) formUpdates.languages = languages;
+      if (Object.keys(formUpdates).length > 0) {
+        await storage.updateLocalExpertFormProfileFields(userId, formUpdates);
+      }
+
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Error saving expert profile:", err);
+      res.status(500).json({ message: "Failed to save profile" });
+    }
+  });
+
+  // PATCH /api/expert/photo — Save the expert's profile photo.
+  // Accepts a base64 data URL; server-side validation of type + decoded size.
+  app.patch("/api/expert/photo", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req)!;
+      const { imageData } = req.body ?? {};
+      if (typeof imageData !== "string") {
+        return res.status(400).json({ message: "imageData must be a base64 data URL string" });
+      }
+      const match = imageData.match(/^data:image\/(png|jpeg|jpg|webp);base64,([A-Za-z0-9+/=]+)$/);
+      if (!match) {
+        return res.status(400).json({ message: "Photo must be a PNG, JPEG, or WebP image" });
+      }
+      const MAX_PHOTO_BYTES = 2 * 1024 * 1024; // 2 MB decoded
+      // base64 → bytes: 4 chars encode 3 bytes.
+      const approxBytes = Math.floor((match[2].length * 3) / 4);
+      if (approxBytes > MAX_PHOTO_BYTES) {
+        return res.status(400).json({ message: "Photo must be smaller than 2 MB" });
+      }
+      await db.update(users).set({ profileImageUrl: imageData }).where(eq(users.id, userId));
+      res.json({ success: true });
+    } catch (err) {
+      console.error("Error saving expert photo:", err);
+      res.status(500).json({ message: "Failed to save photo" });
     }
   });
 

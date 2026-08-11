@@ -906,4 +906,8 @@ export const MIGRATION_FILES = [
   // pre-existing duplicates first (keep paid_out, else earliest). Declared in shared/schema.ts
   // (publish-trap rule).
   "195_completion_mint_unique_guards.sql",
+  // 196: expert profile display fields — additive nullable display_name/headline on
+  // local_expert_forms so the expert profile editor can persist the public-facing
+  // name/tagline it exposes. Declared in shared/schema.ts (publish-trap).
+  "196_expert_profile_display_fields.sql",
 ] as const;
