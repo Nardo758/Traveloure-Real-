@@ -1,0 +1,20 @@
+#!/bin/sh
+# Pre-MERGE-commit guard: the sibling of .githooks/pre-commit, and the reason
+# pollution reached CI on PR #453 despite pre-commit being installed.
+#
+# Git does NOT run `pre-commit` for a merge that commits automatically — it runs
+# `pre-merge-commit` instead. `.githooks/` previously contained only `pre-commit`,
+# so every MERGE commit bypassed the lockfile scrub entirely. The 55 replit.local
+# URLs that broke PR #453 arrived on merge commit 3f5b40f.
+#
+# Same scrub as pre-commit: URL-only rewrite, no version or integrity churn.
+# The CI lockfile-purity gate remains the backstop if this is bypassed
+# (--no-verify) or not installed.
+#
+# Installed via `npm install` → package.json "prepare" script
+# (git config core.hooksPath .githooks).
+
+if git diff --cached --name-only | grep -q "^package-lock.json$"; then
+  node scripts/scrub-lockfile.cjs || exit 1
+  git add package-lock.json
+fi

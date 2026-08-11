@@ -266,9 +266,9 @@ export class VendorManagementService {
     const sanitizedFileName = fileName.replace(/[^a-z0-9.-]/gi, "_").substring(0, 100);
     const storagePath = `vendor-documents/${contractId}/${timestamp}-${sanitizedFileName}`;
 
-    // Store in Replit object storage (or can be extended to S3)
-    const storage = require("../storage");
-    const url = await storage.uploadBuffer(storagePath, fileBuffer, mimeType);
+    // Store in Replit App Storage (REPLIT_OBJECT_STORAGE_BUCKET must be set).
+    const { uploadBuffer } = await import("../infrastructure/object-storage");
+    const url = await uploadBuffer(storagePath, fileBuffer);
 
     // Update contract with document URL
     const attachment = { name: fileName, url, uploadedAt: new Date().toISOString(), type: documentType };
