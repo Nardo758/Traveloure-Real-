@@ -620,6 +620,33 @@ export const CANCELLATION_POLICY_TYPE_LABELS: Record<typeof cancellationPolicyTy
   non_refundable: "Non-refundable — no refund once booked",
 };
 
+// ── D7 service-logistics vocabularies (docs/DECISIONS.md ruling 62, migration 195) ───────────
+// Both columns are varchar with NO DB CHECK — the migration-144 posture (app-enforced
+// vocabulary, publish-trap avoidance). NULL is the honest "never captured" state on every
+// pre-195 row; it is NEVER read as "not applicable".
+//
+// `transportProvision` is FINER-GRAINED than the pre-existing `transportProvided`
+// (yes|no|not_applicable, migration 119, which DOES carry a DB CHECK). The two are deliberately
+// NOT merged: widening 119's CHECK to a 4-value set is exactly the publish-time CHECK failure
+// CLAUDE.md warns about, and the old column's answer ("do you drive them once you've met?") is a
+// different question from this one ("how does the traveler get to the start?").
+export const transportProvisionEnum = [
+  "pickup_included",   // the price includes collecting the traveler
+  "pickup_available",  // pickup can be arranged (possibly for extra), but is not the default
+  "meet_at_point",     // the traveler makes their own way to the meeting pin
+  "not_applicable",    // remote/artifact delivery — no physical arrival at all
+] as const;
+
+// The ruling-62 AMENDMENT (decision-maker, verbatim intent: "ensure the service provider can set
+// EITHER a pickup RADIUS or a pickup ROUTE"). This column records WHICH of two ALREADY-SHIPPED
+// stores the provider means their pickup coverage to be read from:
+//   radius → `provider_services.service_radius` (the display-only ring around the confirmed pin)
+//   route  → `service_route_points` (ruling 22, migration 192 — ordered stops)
+// NEVER-CLOBBER RULE (§13): declaring one mode does not delete, null, or overwrite the other
+// mode's data. Both stores keep whatever they hold; only the RENDERING is switched, and the
+// authoring UI states out loud that the other mode's saved data is still there.
+export const pickupCoverageModeEnum = ["radius", "route"] as const;
+
 export const providerServices = pgTable("provider_services", {
   id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
@@ -665,6 +692,44 @@ export const providerServices = pgTable("provider_services", {
   dropOffPoint: text("drop_off_point"),
   // Neighborhood tag (v2 spec §5.1) — soft reference into city_neighborhoods.slug.
   neighborhood: varchar("neighborhood", { length: 100 }),
+
+  // ══ D7 service_logistics capture (docs/DECISIONS.md ruling 62, migration 195) ═══════════════
+  // CAPTURE-ONLY by ruling: nothing here has a consumer yet (no transport resolver, no
+  // fundamentals check, no pricing/matching read). Every column is additive-nullable with NO DB
+  // CHECK — NULL means "the provider never told us", never a fabricated default (§13).
+  //
+  // AUDIT — what this block deliberately REUSES instead of duplicating (ruling 62 asked for a
+  // field set; these members of it already exist on this table and are NOT re-added):
+  //   lead-time hours          → `leadTimeHours` above (integer, default 24)
+  //   pickup radius            → `serviceRadius` above (integer km; the amendment's radius arm)
+  //   pickup route             → `service_route_points` (ruling 22, migration 192)
+  //   meeting point / pickup / drop-off → `meetingPoint`, `pickupAvailable`, `pickupAddress`,
+  //                              `dropOffPoint`
+  //   concurrency cap          → `maxConcurrentBookings` above
+  //   turnaround copy          → `deliveryTimeframe` above (free text; NOT a duration — see below)
+  //   confirmed pin            → `latitude`/`longitude`/`locationPrecision` above
+  //   per-group vs per-person  → `priceType` above already carries `per_person` alongside
+  //                              `fixed`/`per_event` (per-group), so the group-handling flag
+  //                              ruling 62 listed IS already expressible — no new column.
+  //   cancellation refund tiers → `cancellationPolicyType` (a REFUND policy; distinct from the
+  //                              reschedule window captured by `changeCutoffHours` below)
+  transportProvision: varchar("transport_provision", { length: 30 }), // transportProvisionEnum
+  pickupCoverageMode: varchar("pickup_coverage_mode", { length: 20 }), // pickupCoverageModeEnum
+  // Temporal shape. `deliveryTimeframe` is free-text turnaround copy ("24-48 hours") and can't be
+  // arithmetic'd, so a structured duration genuinely had no home on this table (the
+  // `duration_minutes` that exists elsewhere is on `itinerary_items`, a different row entirely).
+  durationMinutes: integer("duration_minutes"),
+  bufferMinutes: integer("buffer_minutes"), // setup//teardown minutes to keep free around a booking
+  earliestStartTime: varchar("earliest_start_time", { length: 5 }), // "HH:MM", local wall clock
+  latestStartTime: varchar("latest_start_time", { length: 5 }),     // "HH:MM", local wall clock
+  serviceTimezone: varchar("service_timezone", { length: 64 }),     // IANA id, e.g. "Asia/Tokyo"
+  // Booking constraints.
+  partySizeMin: integer("party_size_min"),
+  partySizeMax: integer("party_size_max"),
+  changeCutoffHours: integer("change_cutoff_hours"), // reschedule window (NOT the refund policy)
+  // Can this service serve as a day's fixed point? Mirrors the `itinerary_items`/`temporal_anchors`
+  // anchor vocabulary. CAPTURE ONLY — no scheduler reads it yet.
+  canAnchor: boolean("can_anchor"),
 
   // Product Builder shape (§17, migrations 151+153) — NULL = single service (every pre-151
   // row), 'bundle' = a bundle row whose components live in bundle_components, 'property' = an
@@ -1680,6 +1745,21 @@ export const insertProviderServiceSchema = createInsertSchema(providerServices).
     (v) => v == null || (Number.isFinite(Number(v)) && Number(v) >= 0),
     { message: "Price must be a non-negative number" },
   ),
+  // ── D7 (ruling 62, migration 195): app-enforced vocabularies + shape floors ─────────────────
+  // No DB CHECK exists for any of these (publish-trap posture), so THIS is the enforcement.
+  // Field-level so every refinement survives `.partial()` on the PATCH path — the update path is
+  // checked as hard as the insert (§18 rule 2, applied by analogy to a non-privileged field).
+  transportProvision: z.enum(transportProvisionEnum).nullable().optional(),
+  pickupCoverageMode: z.enum(pickupCoverageModeEnum).nullable().optional(),
+  durationMinutes: z.coerce.number().int().min(0).max(10080).nullable().optional(),
+  bufferMinutes: z.coerce.number().int().min(0).max(1440).nullable().optional(),
+  earliestStartTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use HH:MM (24-hour)").nullable().optional(),
+  latestStartTime: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "Use HH:MM (24-hour)").nullable().optional(),
+  serviceTimezone: z.string().trim().min(1).max(64).nullable().optional(),
+  partySizeMin: z.coerce.number().int().min(0).max(10000).nullable().optional(),
+  partySizeMax: z.coerce.number().int().min(0).max(10000).nullable().optional(),
+  changeCutoffHours: z.coerce.number().int().min(0).max(8760).nullable().optional(),
+  canAnchor: z.boolean().nullable().optional(),
 });
 export const insertFaqSchema = createInsertSchema(faqs).omit({ id: true, createdAt: true });
 export const insertWalletSchema = createInsertSchema(wallets).omit({ id: true, userId: true, createdAt: true, updatedAt: true });

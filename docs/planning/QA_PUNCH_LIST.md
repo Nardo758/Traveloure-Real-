@@ -119,7 +119,7 @@ both the build bench and the Replit workspace.
 
 ## Open — build items
 
-**P1 (new, Aug 11) — "adding pins to the map didn't work as intended" (decision-maker report at the
+~~**P1 (new, Aug 11) — "adding pins to the map didn't work as intended" (decision-maker report at the
 ruling-62 ballot; diagnosis pending their symptom description).** Code review found three candidate
 causes, most likely compounding: (a) **env timing** — both Google keys were only just set;
 `VITE_GOOGLE_MAPS_API_KEY` is read at Vite dev-server start (and baked into builds), and the server's
@@ -132,7 +132,21 @@ does not exist on the route editor (the meeting pin has it; stops don't); (c) **
 a fresh Google key without Maps JavaScript API + Geocoding API enabled (or with referrer restrictions)
 yields gm_authFailure / REQUEST_DENIED, which surfaces as the same "No match found" toast. Fix ships
 with the ruling-62 D7 work (same surface): restart-first diagnosis, then click-to-place + drag-adjust
-for route stops on the L27-P3 confirm posture.
+for route stops on the L27-P3 confirm posture.~~
+**RESOLVED (ruling 64, Aug 11 2026) — candidate (b) was the whole of it.** The decision-maker
+verified (a) and (c) live before this build started: the Google keys work, the meeting-pin picker
+renders with click-to-place AND drag-adjust, and `POST /api/geocode` resolves correctly — so
+neither env timing nor key restrictions was the fault. The real gap was exactly (b): route stops
+in `client/src/components/provider/catalog-map-view.tsx` could be located ONLY by name→geocode,
+and their Leaflet markers were static. **Closed here:** located stop markers are draggable
+(drag end moves the DRAFT stop and sets the existing `dirty` flag), and an explicitly ARMED
+"Place a stop here" / per-stop "Place on map" mode turns the next canvas click into that stop's
+coordinates — a bare map click still does nothing, so pan/zoom is untouched. A newly placed pin is
+prompted inline for its name and cannot be saved unnamed. Nothing persists until the pre-existing
+"Save route" button; that dirty→Save step IS the L27-P3 confirm posture on this surface. Geocode
+Locate, the off-map listing of unlocated stops, server-derived positions and the replace-list PUT
+with its 409 handling are all unchanged. Proven by 14 chromium UI proofs (drag→Save→reload
+persists; canvas click places a named stop; an unlocated stop gains a pin by hand).
 
 ~~**P0 — ruling 53's publish gate sits where experts DON'T publish; the two paths that actually
 take an expert listing live are UNGATED (found Aug 11, 2026 by the R2 lane; verified in code).**
