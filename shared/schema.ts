@@ -395,6 +395,9 @@ export const localExpertForms = pgTable("local_expert_forms", {
   phone: varchar("phone", { length: 50 }),
   country: varchar("country", { length: 100 }),
   city: varchar("city", { length: 100 }),
+  // Public-facing display fields (migration 196) — edited from the expert profile editor.
+  displayName: varchar("display_name", { length: 100 }),
+  headline: varchar("headline", { length: 150 }),
   // Expertise
   destinations: jsonb("destinations").default([]),
   specialties: jsonb("specialties").default([]),
