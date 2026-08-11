@@ -37,6 +37,18 @@
 
 import { isProdStrictEnv, checkStripeKeyPrefix } from "./utils/stripe-key-policy";
 
+// Object storage bucket — non-fatal warn. Vendor-document uploads (and any
+// future file uploads) will throw at call-time if this is missing, which is
+// the right behaviour in dev where the feature may not be needed. In prod the
+// bucket must be attached via the Replit App Storage panel.
+if (!process.env.REPLIT_OBJECT_STORAGE_BUCKET) {
+  console.warn(
+    "[validate-env] WARN: REPLIT_OBJECT_STORAGE_BUCKET is not set — " +
+      "file uploads (vendor documents, service assets) will fail until a bucket " +
+      "is attached in the Replit App Storage panel."
+  );
+}
+
 const key = process.env.STRIPE_SECRET_KEY;
 const isProdStrict = isProdStrictEnv();
 
