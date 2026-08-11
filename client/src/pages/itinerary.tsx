@@ -327,6 +327,7 @@ export default function ItineraryPage() {
   const { data: feePreview, isLoading: feePreviewLoading } = useQuery<{
     subtotal: number;
     platformFeeTotal: number;
+    conciergeFeeTotal: number;
     total: number;
     itemCount: number;
   }>({
@@ -705,12 +706,16 @@ export default function ItineraryPage() {
                     // matches the same cart snapshot the fee calculation uses.
                     const pendingTotal = feePreview != null ? feePreview.subtotal : inAppTotal + partnerTotal;
                     // Per-item fee preview: exact same resolution logic as POST /api/checkout.
-                    // Hide fee row while loading or when cart is empty / unauthenticated.
-                    const feeAmount = !feePreviewLoading && feePreview != null && feePreview.platformFeeTotal > 0
-                      ? feePreview.platformFeeTotal
+                    // Hide fee rows while loading or when cart is empty / unauthenticated.
+                    const hasPreview = !feePreviewLoading && feePreview != null;
+                    const feeAmount = hasPreview && feePreview!.platformFeeTotal > 0
+                      ? feePreview!.platformFeeTotal
                       : null;
-                    const totalWithFees = !feePreviewLoading && feePreview != null && feePreview.total > 0
-                      ? feePreview.total
+                    const conciergeFeeAmount = hasPreview && feePreview!.conciergeFeeTotal > 0
+                      ? feePreview!.conciergeFeeTotal
+                      : null;
+                    const totalWithFees = hasPreview && feePreview!.total > 0
+                      ? feePreview!.total
                       : null;
                     return (
                       <>
@@ -741,9 +746,15 @@ export default function ItineraryPage() {
                         {pendingTotal > 0 && feeAmount !== null && totalWithFees !== null && (
                           <>
                             <div className="flex items-center justify-between">
-                              <span className="text-sm text-muted-foreground">Fees</span>
+                              <span className="text-sm text-muted-foreground">Platform fee</span>
                               <span className="text-sm font-semibold text-foreground" data-testid="text-booking-fees">${feeAmount.toFixed(2)}</span>
                             </div>
+                            {conciergeFeeAmount !== null && (
+                              <div className="flex items-center justify-between">
+                                <span className="text-sm text-muted-foreground">Booking Concierge fee</span>
+                                <span className="text-sm font-semibold text-foreground" data-testid="text-concierge-fee">${conciergeFeeAmount.toFixed(2)}</span>
+                              </div>
+                            )}
                             <div className="border-t pt-2 mt-1 flex items-center justify-between">
                               <span className="text-sm font-semibold text-foreground">Total</span>
                               <span className="text-base font-bold text-foreground" data-testid="text-booking-total">${totalWithFees.toFixed(2)}</span>
