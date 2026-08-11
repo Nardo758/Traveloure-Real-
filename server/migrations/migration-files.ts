@@ -897,4 +897,12 @@ export const MIGRATION_FILES = [
   // behavior (D8 is unruled); it is the download SIGNAL that a future D8 pass would need.
   // Additive, idempotent, no CHECK. Declared in shared/schema.ts (publish-trap).
   "194_deliverable_downloads.sql",
+  // 195: provider_services D7 service-logistics capture (docs/DECISIONS.md ruling 62, decision-maker
+  // ratified Aug 11 2026, incl. the radius-or-route AMENDMENT). 11 additive nullable columns:
+  // transport_provision, pickup_coverage_mode, duration_minutes, buffer_minutes,
+  // earliest/latest_start_time, service_timezone, party_size_min/max, change_cutoff_hours,
+  // can_anchor. CAPTURE ONLY — no consumer wired. No CHECK (app-enforced vocabularies, the
+  // migration-144 posture), no backfill (NULL = never captured, §13). Declared in
+  // shared/schema.ts (publish-trap rule).
+  "195_service_logistics_capture.sql",
 ] as const;

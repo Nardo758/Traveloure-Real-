@@ -12,9 +12,16 @@
  *
  * Styling: console tokens with raw-hex fallbacks so the component reads correctly on both the
  * console (tokens defined) and traveler surfaces (tokens absent).
+ *
+ * AUTHORING AFFORDANCES (ruling 62 / QA_PUNCH_LIST P1, Aug 11 2026) are OPT-IN via the
+ * `onStopDragEnd` / `onCanvasClick` props. A traveler surface passes neither, so its markers stay
+ * static and its map clicks do nothing — exactly as before. The provider Catalog map view passes
+ * both, which is what closes the reported "adding pins didn't work" gap: before this, a route
+ * stop could ONLY be located by name→geocode, so a stop the geocoder missed could not be pinned
+ * by hand at all.
  */
 import { useEffect } from "react";
-import { MapContainer, TileLayer, Marker, Popup, Circle, Polyline, useMap } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Popup, Circle, Polyline, useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 
@@ -51,22 +58,38 @@ export function parseLatLng(
   return { lat: nLat, lng: nLng };
 }
 
-function pinDivIcon(): L.DivIcon {
+function pinDivIcon(testId: string): L.DivIcon {
   return L.divIcon({
     className: "",
-    html: `<div style="width:26px;height:26px;border-radius:50%;background:${BRAND};border:3px solid ${CARD};box-shadow:0 2px 8px rgba(0,0,0,0.35);"></div>`,
+    html: `<div data-testid="${testId}" style="width:26px;height:26px;border-radius:50%;background:${BRAND};border:3px solid ${CARD};box-shadow:0 2px 8px rgba(0,0,0,0.35);"></div>`,
     iconSize: [26, 26],
     iconAnchor: [13, 13],
   });
 }
 
-function stopDivIcon(position: number): L.DivIcon {
+function stopDivIcon(position: number, testId: string, draggable: boolean): L.DivIcon {
   return L.divIcon({
     className: "",
-    html: `<div style="width:22px;height:22px;border-radius:50%;background:${CARD};color:${BRAND};border:2.5px solid ${BRAND};box-shadow:0 2px 6px rgba(0,0,0,0.3);font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;font-family:'Inter',-apple-system,sans-serif;">${position}</div>`,
+    html: `<div data-testid="${testId}" style="width:22px;height:22px;border-radius:50%;background:${CARD};color:${BRAND};border:2.5px solid ${BRAND};box-shadow:0 2px 6px rgba(0,0,0,0.3);font-size:11px;font-weight:800;display:flex;align-items:center;justify-content:center;font-family:'Inter',-apple-system,sans-serif;${
+      draggable ? "cursor:grab;" : ""
+    }">${position}</div>`,
     iconSize: [22, 22],
     iconAnchor: [11, 11],
   });
+}
+
+/**
+ * Authoring-only canvas click bridge (ruling 62 / QA_PUNCH_LIST P1). Mounted ONLY when the
+ * owner surface has explicitly armed "place a stop here" — a BARE map click never places
+ * anything, because that would fight pan/zoom and drop pins the provider never meant.
+ */
+function CanvasClickBridge({ onCanvasClick }: { onCanvasClick: (lat: number, lng: number) => void }) {
+  useMapEvents({
+    click(e) {
+      onCanvasClick(e.latlng.lat, e.latlng.lng);
+    },
+  });
+  return null;
 }
 
 /** Fits the viewport to everything real: pin (plus its radius ring extent) + located stops. */
@@ -74,15 +97,21 @@ function FitToContent({
   pin,
   radiusKm,
   located,
+  authoring = false,
 }: {
   pin: ServicePinView | null;
   radiusKm: number | null;
   located: Array<{ lat: number; lng: number }>;
+  /** On the authoring canvas the viewport must NOT jump on every drag-adjust — refit only
+   *  when the SET of located things changes (a stop appears/disappears), not their values. */
+  authoring?: boolean;
 }) {
   const map = useMap();
-  const fitKey = `${pin ? `${pin.lat}:${pin.lng}:${radiusKm ?? 0}` : ""}|${located
-    .map((s) => `${s.lat}:${s.lng}`)
-    .join(",")}`;
+  const fitKey = authoring
+    ? `${pin ? `${pin.lat}:${pin.lng}:${radiusKm ?? 0}` : ""}|n=${located.length}`
+    : `${pin ? `${pin.lat}:${pin.lng}:${radiusKm ?? 0}` : ""}|${located
+        .map((s) => `${s.lat}:${s.lng}`)
+        .join(",")}`;
   useEffect(() => {
     const points: [number, number][] = located.map((s) => [s.lat, s.lng]);
     if (pin) points.push([pin.lat, pin.lng]);
@@ -108,6 +137,9 @@ export function ServiceLocationMap({
   stops = [],
   height = 320,
   testIdPrefix = "service-location-map",
+  onStopDragEnd,
+  onCanvasClick,
+  placementActive = false,
 }: {
   /** The service's CONFIRMED meeting pin (migration-129 latitude/longitude), or null. */
   pin: ServicePinView | null;
@@ -119,7 +151,24 @@ export function ServiceLocationMap({
   stops?: ServiceRouteStopView[];
   height?: number | string;
   testIdPrefix?: string;
+  /**
+   * AUTHORING ONLY (ruling 62 / QA_PUNCH_LIST P1). When supplied, located stop markers become
+   * DRAGGABLE and report their new coordinates on drag end. The caller owns what that means —
+   * on the Catalog map view it updates the DRAFT stop and sets the existing `dirty` flag;
+   * nothing persists until the provider's explicit "Save route" (that dirty→save step IS the
+   * L27-P3 confirm posture on this surface — there is no second dialog). Omitted on every
+   * traveler surface, where markers stay static.
+   */
+  onStopDragEnd?: (stopId: string, lat: number, lng: number) => void;
+  /**
+   * AUTHORING ONLY. Mounted only while the caller has explicitly armed a placement mode — a
+   * bare map click must never drop a pin (it would fight pan/zoom). Pass `undefined` to detach.
+   */
+  onCanvasClick?: (lat: number, lng: number) => void;
+  /** Purely cosmetic: crosshair cursor + a visible "armed" ring while placement is on. */
+  placementActive?: boolean;
 }) {
+  const authoring = !!onStopDragEnd || !!onCanvasClick;
   const located = stops
     .filter((s): s is ServiceRouteStopView & { lat: number; lng: number } => s.lat !== null && s.lng !== null)
     .sort((a, b) => a.position - b.position);
@@ -131,13 +180,25 @@ export function ServiceLocationMap({
   const showConnector = located.length >= 2;
 
   return (
-    <div style={{ position: "relative", width: "100%", height }} data-testid={testIdPrefix}>
+    <div
+      style={{
+        position: "relative",
+        width: "100%",
+        height,
+        cursor: placementActive ? "crosshair" : undefined,
+        outline: placementActive ? `2px solid ${BRAND}` : undefined,
+        outlineOffset: placementActive ? -2 : undefined,
+      }}
+      data-testid={testIdPrefix}
+      data-placement-active={placementActive ? "true" : "false"}
+    >
       <MapContainer center={center} zoom={13} style={{ width: "100%", height: "100%" }} scrollWheelZoom={false}>
         <TileLayer
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
         />
-        <FitToContent pin={pin} radiusKm={radiusKm ?? null} located={located} />
+        <FitToContent pin={pin} radiusKm={radiusKm ?? null} located={located} authoring={authoring} />
+        {onCanvasClick && <CanvasClickBridge onCanvasClick={onCanvasClick} />}
         {pin && radiusKm && radiusKm > 0 && (
           <Circle
             center={[pin.lat, pin.lng]}
@@ -152,7 +213,7 @@ export function ServiceLocationMap({
           />
         )}
         {pin && (
-          <Marker position={[pin.lat, pin.lng]} icon={pinDivIcon()}>
+          <Marker position={[pin.lat, pin.lng]} icon={pinDivIcon(`${testIdPrefix}-pin`)}>
             {pinLabel ? (
               <Popup>
                 <div style={{ fontFamily: "'Inter',-apple-system,sans-serif", fontSize: 13, fontWeight: 700, color: INK }}>
@@ -163,7 +224,25 @@ export function ServiceLocationMap({
           </Marker>
         )}
         {located.map((s) => (
-          <Marker key={s.id} position={[s.lat, s.lng]} icon={stopDivIcon(s.position)}>
+          <Marker
+            key={s.id}
+            position={[s.lat, s.lng]}
+            icon={stopDivIcon(s.position, `${testIdPrefix}-stop-${s.position}`, !!onStopDragEnd)}
+            draggable={!!onStopDragEnd}
+            eventHandlers={
+              onStopDragEnd
+                ? {
+                    dragend: (e: L.LeafletEvent) => {
+                      const ll = (e.target as L.Marker).getLatLng();
+                      // Range-check before handing coordinates back — the same posture as
+                      // parseLatLng above; a drag can never produce a fabricated point.
+                      const next = parseLatLng(ll.lat, ll.lng);
+                      if (next) onStopDragEnd(s.id, next.lat, next.lng);
+                    },
+                  }
+                : undefined
+            }
+          >
             <Popup>
               <div style={{ fontFamily: "'Inter',-apple-system,sans-serif", minWidth: 120 }}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: INK }}>{s.name}</div>

@@ -29,6 +29,9 @@ import {
   parseStoredPoint,
   type LocationPoint,
 } from "@/components/backoffice/location-point-picker";
+// D7 (docs/DECISIONS.md ruling 62): the ONE definition of "place-anchored" — the same predicate
+// the server scorers and console chips use, never a second local copy.
+import { isPlaceAnchored } from "@shared/service-fundamentals";
 
 interface ServiceCategory {
   id: string;
@@ -138,6 +141,20 @@ interface ServiceFormData {
   dropOffPoint: string;
   serviceRadius: number;
   transportProvided: "yes" | "no" | "not_applicable";
+  // ── D7 service-logistics capture (docs/DECISIONS.md ruling 62, migration 195) ───────────────
+  // CAPTURE ONLY — nothing reads these yet. Every one is a string here so that "" can mean
+  // NEVER CAPTURED and reach the server as an honest NULL (§13), never a fabricated default.
+  transportProvision: string;      // transportProvisionEnum | ""
+  pickupCoverageMode: string;      // "radius" | "route" | ""  — the ruling-62 AMENDMENT
+  durationMinutes: string;
+  bufferMinutes: string;
+  earliestStartTime: string;       // "HH:MM"
+  latestStartTime: string;         // "HH:MM"
+  serviceTimezone: string;         // IANA id
+  partySizeMin: string;
+  partySizeMax: string;
+  changeCutoffHours: string;
+  canAnchor: "" | "yes" | "no";    // tri-state: "" = never declared
   // Booking terms
   cancellationPolicy: string;
   // X1 (§13): structured policy TYPE — see CANCELLATION_POLICY_TYPE_OPTIONS. "" = not declared.
@@ -172,6 +189,26 @@ const AFFINITY_TAG_OPTIONS: { value: string; label: string }[] = [
   { value: "wedding_proposal", label: "Wedding/proposal" },
   { value: "general_logistics", label: "Any trip (general logistics)" },
 ];
+
+// ── D7 service-logistics capture (docs/DECISIONS.md ruling 62, migration 195) ────────────────
+// Vocabularies mirror shared/schema.ts's transportProvisionEnum / pickupCoverageModeEnum
+// (app-enforced, no DB CHECK). "" is offered as a real option: NOT SAYING is honest, and is
+// what every pre-195 listing already means (§13).
+const TRANSPORT_PROVISION_OPTIONS: { value: string; label: string }[] = [
+  { value: "pickup_included", label: "Pickup included — I collect the traveler" },
+  { value: "pickup_available", label: "Pickup available — can be arranged" },
+  { value: "meet_at_point", label: "Meet at the meeting point — traveler makes their own way" },
+  { value: "not_applicable", label: "Not applicable" },
+];
+// The pickup provisions — the two that make a coverage AREA meaningful (ruling 62 amendment).
+const PICKUP_PROVISIONS: ReadonlySet<string> = new Set(["pickup_included", "pickup_available"]);
+/** "" → null (never captured). A non-numeric entry is also null, never a fabricated 0. */
+const intOrNull = (v: string): number | null => {
+  const t = v.trim();
+  if (!t) return null;
+  const n = Number.parseInt(t, 10);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+};
 
 // X1 (§13 hardcoded-copy arm): structured cancellation-policy TYPE vocabulary — mirrors
 // shared/schema.ts cancellationPolicyTypeEnum. App-enforced (no DB CHECK, migration 144).
@@ -216,6 +253,18 @@ function buildEmptyForm(role: "expert" | "provider"): ServiceFormData {
     dropOffPoint: "",
     serviceRadius: 0,
     transportProvided: "not_applicable",
+    // D7 (ruling 62): every field starts UNCAPTURED — an empty string, not a guessed default.
+    transportProvision: "",
+    pickupCoverageMode: "",
+    durationMinutes: "",
+    bufferMinutes: "",
+    earliestStartTime: "",
+    latestStartTime: "",
+    serviceTimezone: "",
+    partySizeMin: "",
+    partySizeMax: "",
+    changeCutoffHours: "",
+    canAnchor: "",
     cancellationPolicy: "",
     cancellationPolicyType: "",
     leadTime: "",
@@ -301,6 +350,19 @@ function mapServiceToForm(s: any, role: "expert" | "provider"): ServiceFormData 
     dropOffPoint: s.dropOffPoint || "",
     serviceRadius: Number(s.serviceRadius || 0),
     transportProvided: (s.transportProvided === "yes" || s.transportProvided === "no" ? s.transportProvided : "not_applicable"),
+    // D7 (ruling 62): NULL on the row round-trips back as "" — still uncaptured, never coerced
+    // into a value the provider did not choose.
+    transportProvision: s.transportProvision || "",
+    pickupCoverageMode: s.pickupCoverageMode || "",
+    durationMinutes: s.durationMinutes == null ? "" : String(s.durationMinutes),
+    bufferMinutes: s.bufferMinutes == null ? "" : String(s.bufferMinutes),
+    earliestStartTime: s.earliestStartTime || "",
+    latestStartTime: s.latestStartTime || "",
+    serviceTimezone: s.serviceTimezone || "",
+    partySizeMin: s.partySizeMin == null ? "" : String(s.partySizeMin),
+    partySizeMax: s.partySizeMax == null ? "" : String(s.partySizeMax),
+    changeCutoffHours: s.changeCutoffHours == null ? "" : String(s.changeCutoffHours),
+    canAnchor: s.canAnchor === true ? "yes" : s.canAnchor === false ? "no" : "",
     cancellationPolicy: s.cancellationPolicy || "",
     cancellationPolicyType: s.cancellationPolicyType || "",
     leadTime: s.leadTime || "",
@@ -797,6 +859,14 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
       // Enforced at submit/publish only — a draft is allowed to be incomplete. Existing listings
       // are grandfathered until their next submit/publish (the has_insurance/F2 precedent).
       const isInPerson = formData.deliveryMethod === "in-person" || formData.deliveryMethod === "hybrid";
+      // D7 (ruling 62): the SHARED predicate decides where the logistics capture applies, so
+      // "place-anchored" means the same thing here as it does in the server scorers and the
+      // console chips (shared/service-fundamentals.ts).
+      const isPlaceAnchoredListing = isPlaceAnchored({
+        deliveryMethod: toCanonicalDelivery(formData.deliveryMethod),
+        productShape: existingService?.productShape ?? null,
+      });
+      const isPickupProvision = PICKUP_PROVISIONS.has(formData.transportProvision);
       if (submitAction !== "draft" && isInPerson && !formData.meetingPoint.trim()) {
         throw new Error("Add a meeting point — in-person services must show travelers where to meet. Save as draft to finish later.");
       }
@@ -853,9 +923,39 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         // Content logistics envelope (migration 166, QA_PUNCH_LIST item 20) — mirrors
         // pickupAddress's own pickupAvailable gate; drop-off only means something alongside pickup.
         dropOffPoint: formData.pickupAvailable ? (formData.dropOffPoint || null) : null,
-        serviceRadius: formData.pickupAvailable && formData.serviceRadius > 0 ? formData.serviceRadius : null,
+        // D7 NEVER-CLOBBER (ruling 62's amendment, §13): a saved radius survives a provider
+        // choosing the ROUTE coverage mode. Under any pickup provision the radius is kept as
+        // entered — switching coverage mode changes what RENDERS, never what is stored. The
+        // historical `pickupAvailable` clearing rule is left exactly as it was for every other
+        // case (an explicit pickup toggle-OFF is a different act from a coverage-mode choice).
+        serviceRadius:
+          formData.serviceRadius > 0 && (formData.pickupAvailable || isPickupProvision)
+            ? formData.serviceRadius
+            : null,
         // Transport disclosure only carries meaning for an in-person/hybrid meeting; remote → not_applicable.
         transportProvided: isInPerson ? formData.transportProvided : "not_applicable",
+        // ── D7 service-logistics capture (ruling 62, migration 195) ─────────────────────────
+        // Only sent for place-anchored listings (the shared isPlaceAnchored predicate) — the
+        // keys are OMITTED entirely otherwise, so a PATCH on a pdf/call listing leaves whatever
+        // was captured earlier untouched rather than wiping it (§13).
+        ...(isPlaceAnchoredListing
+          ? {
+              transportProvision: formData.transportProvision || null,
+              // The coverage MODE is meaningless without a pickup provision — clear the CHOICE
+              // when it no longer applies. This clears no DATA: `serviceRadius` above and the
+              // `service_route_points` rows are both untouched by this write.
+              pickupCoverageMode: isPickupProvision ? (formData.pickupCoverageMode || null) : null,
+              durationMinutes: intOrNull(formData.durationMinutes),
+              bufferMinutes: intOrNull(formData.bufferMinutes),
+              earliestStartTime: formData.earliestStartTime || null,
+              latestStartTime: formData.latestStartTime || null,
+              serviceTimezone: formData.serviceTimezone.trim() || null,
+              partySizeMin: intOrNull(formData.partySizeMin),
+              partySizeMax: intOrNull(formData.partySizeMax),
+              changeCutoffHours: intOrNull(formData.changeCutoffHours),
+              canAnchor: formData.canAnchor === "" ? null : formData.canAnchor === "yes",
+            }
+          : {}),
         cancellationPolicy: formData.cancellationPolicy || null,
         cancellationPolicyType: formData.cancellationPolicyType || null,
         leadTime: formData.leadTime || null,
@@ -977,6 +1077,20 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
 
   const selectedCategory = categories.find((c) => c.id === formData.categoryId);
   const needsMeetingPoint = formData.deliveryMethod === "in-person" || formData.deliveryMethod === "hybrid";
+  // ── D7 (docs/DECISIONS.md ruling 62) ─────────────────────────────────────────────────────
+  // Placement: the logistics/delivery step, shown ONLY for place-anchored methods, decided by
+  // the SHARED predicate (shared/service-fundamentals.ts) rather than a local method list.
+  const showLogisticsCapture = isPlaceAnchored({
+    deliveryMethod: toCanonicalDelivery(formData.deliveryMethod),
+    productShape: existingService?.productShape ?? null,
+  });
+  const pickupProvisionChosen = PICKUP_PROVISIONS.has(formData.transportProvision);
+  // NEVER-CLOBBER SURFACING (ruling 62's amendment, §13): picking one coverage mode must not
+  // silently delete the other's data — so state, out loud, that the other side is still there.
+  const savedRouteStopCount: number = Array.isArray(existingService?.routePoints)
+    ? existingService.routePoints.length
+    : 0;
+  const savedRadiusKm = Number(existingService?.serviceRadius ?? 0);
   const isCategoryGated = !!(selectedCategory?.requiresBackgroundCheck || (selectedCategory?.insuranceBand ?? 0) >= 2);
   const isProviderVerified = verificationStatus?.providerVerificationStatus === "verified";
   const publishBlocked = role === "provider" && isCategoryGated && !isProviderVerified;
@@ -2240,6 +2354,235 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                 </>
               )}
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── D7 service logistics (docs/DECISIONS.md ruling 62, migration 195) ──────────────────
+          CAPTURE ONLY. Nothing on this card is read by the transport resolver, the fundamentals
+          checks or any traveler surface yet — ruling 62 captures the field set NOW, while the
+          provider count is ~0, and wires consumers in later lanes. Every control offers a real
+          "not specified" state: an unanswered question stays unanswered (§13). */}
+      {showLogisticsCapture && (
+        <Card data-testid="card-service-logistics">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Clock className="w-5 h-5" />
+              Service logistics
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            <p className="text-xs text-muted-foreground">
+              These details aren't shown to travelers yet — we're capturing them now so the
+              planner can use them when that lands. Leave anything you're unsure of blank.
+            </p>
+
+            {/* Transport provision + the ruling-62 AMENDMENT's coverage choice */}
+            <div>
+              <Label htmlFor="transportProvision" className="flex items-center gap-2">
+                <Truck className="w-4 h-4" />
+                How does the traveler get to the start?
+              </Label>
+              <Select
+                value={formData.transportProvision || "unspecified"}
+                onValueChange={(v) => set("transportProvision", v === "unspecified" ? "" : v)}
+              >
+                <SelectTrigger id="transportProvision" className="mt-2" data-testid="select-transport-provision">
+                  <SelectValue placeholder="Not specified" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="unspecified">Not specified</SelectItem>
+                  {TRANSPORT_PROVISION_OPTIONS.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {pickupProvisionChosen && (
+              <div className="rounded-md border p-3 space-y-3" data-testid="block-pickup-coverage">
+                <Label className="flex items-center gap-2">
+                  <Radius className="w-4 h-4" />
+                  Pickup coverage — a radius or a route?
+                </Label>
+                <p className="text-xs text-muted-foreground">
+                  Pick how your pickup area is defined. Switching between them never deletes the
+                  other one's data — it only changes what travelers see.
+                </p>
+                <Select
+                  value={formData.pickupCoverageMode || "unspecified"}
+                  onValueChange={(v) => set("pickupCoverageMode", v === "unspecified" ? "" : v)}
+                >
+                  <SelectTrigger data-testid="select-pickup-coverage-mode">
+                    <SelectValue placeholder="Not specified" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="unspecified">Not specified</SelectItem>
+                    <SelectItem value="radius">Radius — a distance around my meeting pin</SelectItem>
+                    <SelectItem value="route">Route — a fixed set of stops I collect from</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                {formData.pickupCoverageMode === "radius" && (
+                  <div>
+                    <Label htmlFor="coverageRadius">Pickup radius (km)</Label>
+                    <Input
+                      id="coverageRadius"
+                      type="number"
+                      min={0}
+                      value={formData.serviceRadius || ""}
+                      onChange={(e) => set("serviceRadius", parseInt(e.target.value) || 0)}
+                      className="mt-1"
+                      data-testid="input-coverage-radius"
+                    />
+                    {savedRouteStopCount > 0 && (
+                      <p className="text-xs text-amber-700 mt-2" data-testid="text-coverage-other-preserved">
+                        {savedRouteStopCount} route {savedRouteStopCount === 1 ? "stop is" : "stops are"} saved —
+                        not shown while coverage is set to radius. Nothing was deleted; switch to
+                        Route to show them again.
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {formData.pickupCoverageMode === "route" && (
+                  <div>
+                    <p className="text-xs text-muted-foreground" data-testid="text-route-coverage-hint">
+                      {savedRouteStopCount > 0
+                        ? `${savedRouteStopCount} route ${savedRouteStopCount === 1 ? "stop" : "stops"} saved. Edit them on the Catalog map view.`
+                        : "No route stops saved yet — add them on the Catalog map view (Services → Map)."}
+                    </p>
+                    {savedRadiusKm > 0 && (
+                      <p className="text-xs text-amber-700 mt-2" data-testid="text-coverage-other-preserved">
+                        A {savedRadiusKm} km service radius is saved — not shown while coverage is
+                        set to route. Nothing was deleted; switch to Radius to show it again.
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Temporal shape */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <Label htmlFor="durationMinutes">Duration (minutes)</Label>
+                <Input
+                  id="durationMinutes" type="number" min={0} placeholder="e.g. 180"
+                  value={formData.durationMinutes}
+                  onChange={(e) => set("durationMinutes", e.target.value)}
+                  className="mt-1" data-testid="input-duration-minutes"
+                />
+              </div>
+              <div>
+                <Label htmlFor="bufferMinutes">Setup / buffer (minutes)</Label>
+                <Input
+                  id="bufferMinutes" type="number" min={0} placeholder="e.g. 30"
+                  value={formData.bufferMinutes}
+                  onChange={(e) => set("bufferMinutes", e.target.value)}
+                  className="mt-1" data-testid="input-buffer-minutes"
+                />
+              </div>
+              <div>
+                <Label htmlFor="earliestStartTime">Earliest start</Label>
+                <Input
+                  id="earliestStartTime" type="time"
+                  value={formData.earliestStartTime}
+                  onChange={(e) => set("earliestStartTime", e.target.value)}
+                  className="mt-1" data-testid="input-earliest-start"
+                />
+              </div>
+              <div>
+                <Label htmlFor="latestStartTime">Latest start</Label>
+                <Input
+                  id="latestStartTime" type="time"
+                  value={formData.latestStartTime}
+                  onChange={(e) => set("latestStartTime", e.target.value)}
+                  className="mt-1" data-testid="input-latest-start"
+                />
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="serviceTimezone">Timezone (IANA)</Label>
+              <div className="flex gap-2 mt-1">
+                <Input
+                  id="serviceTimezone" placeholder="e.g. Asia/Tokyo"
+                  value={formData.serviceTimezone}
+                  onChange={(e) => set("serviceTimezone", e.target.value)}
+                  data-testid="input-service-timezone"
+                />
+                <Button
+                  type="button" variant="outline"
+                  onClick={() => {
+                    // Suggest, never assume — the provider still has to keep or change it.
+                    try {
+                      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+                      if (tz) set("serviceTimezone", tz);
+                    } catch { /* no resolvable zone — leave the field alone (§13) */ }
+                  }}
+                  data-testid="button-detect-timezone"
+                >
+                  Use mine
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                The start times above are local wall-clock times in this zone.
+              </p>
+            </div>
+
+            {/* Booking constraints */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <Label htmlFor="partySizeMin">Minimum party size</Label>
+                <Input
+                  id="partySizeMin" type="number" min={0} placeholder="e.g. 1"
+                  value={formData.partySizeMin}
+                  onChange={(e) => set("partySizeMin", e.target.value)}
+                  className="mt-1" data-testid="input-party-size-min"
+                />
+              </div>
+              <div>
+                <Label htmlFor="partySizeMax">Maximum party size</Label>
+                <Input
+                  id="partySizeMax" type="number" min={0} placeholder="e.g. 8"
+                  value={formData.partySizeMax}
+                  onChange={(e) => set("partySizeMax", e.target.value)}
+                  className="mt-1" data-testid="input-party-size-max"
+                />
+              </div>
+              <div>
+                <Label htmlFor="changeCutoffHours">Change cutoff (hours before)</Label>
+                <Input
+                  id="changeCutoffHours" type="number" min={0} placeholder="e.g. 24"
+                  value={formData.changeCutoffHours}
+                  onChange={(e) => set("changeCutoffHours", e.target.value)}
+                  className="mt-1" data-testid="input-change-cutoff-hours"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  When a traveler can still move the booking. Separate from your refund policy.
+                </p>
+              </div>
+              <div>
+                <Label htmlFor="canAnchor">Can this anchor a day?</Label>
+                <Select
+                  value={formData.canAnchor || "unspecified"}
+                  onValueChange={(v) => set("canAnchor", (v === "unspecified" ? "" : v) as "" | "yes" | "no")}
+                >
+                  <SelectTrigger id="canAnchor" className="mt-1" data-testid="select-can-anchor">
+                    <SelectValue placeholder="Not specified" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="unspecified">Not specified</SelectItem>
+                    <SelectItem value="yes">Yes — the day can be planned around it</SelectItem>
+                    <SelectItem value="no">No — it fits around other plans</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Lead time is set under Booking terms, and per-person vs per-group is your pricing
+              type — neither is asked twice here.
+            </p>
           </CardContent>
         </Card>
       )}
