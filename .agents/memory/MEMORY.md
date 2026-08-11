@@ -17,6 +17,7 @@
 - [tsc baseline & getUserId convention](tsc-baseline-and-getuserid.md) — tsc is not clean (~137 pre-existing server errors); diff against baseline. Routes must use getUserId(req) from server/utils/auth.
 - [MapMarker fallback testing](map-marker-fallback-testing.md) — fallback mode drops map-pin-* testids (AdvancedMarker children); find pins by .gm-style [title]; ItineraryMapView is orphaned; Maps key lacks billing.
 - [Amadeus decommission](amadeus-decommission.md) — dropped (ruling 34) and code fully removed Aug 2026; /api/amadeus/* return honest empties; never re-add without new credentials + ledger ruling.
+- [Fee double-take is intended](fee-double-take-ruling.md) — cart checkout charges fee on top AND deducts 25% commission (platform keeps ~50% of list); ratified F1 ruling, not a bug — never "fix" without a new ruling.
 - [Fee-band scope split](fee-band-scope-split.md) — EXPERIENCE_CART 0.30 was display-only; real charges resolve per-item via resolveCommissionRates; new bands must state which surface they control or review rejects.
 - [Journey suite conventions](journey-suite-wave1.md) — --workers=1 + JOURNEY_DB_WRITES_OK=1 locally; fee gates payable in Stripe test mode via connector key; OPEN: optimizer AI generation broken (J1 gate path).
 - [Post-merge boot failures](post-merge-boot-failures.md) — ERR_MODULE_NOT_FOUND after a merge = node_modules not synced; npm install, don't hunt branch bugs.
