@@ -170,7 +170,6 @@ import {
 
 // ─── Commission constants & resolver (canonical source: server/services/commission.ts) ─
 import {
-  getExpertSplitRates,
   resolveExpertSharePct,
   PROCESSING_FEE_RATE,
   resolveCommissionRates,
@@ -4049,80 +4048,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
     }
   });
 
-  // Get expert earnings (authenticated)
-  app.get("/api/expert/earnings", isAuthenticated, async (req, res) => {
-    try {
-      const userId = getUserId(req)!;
-
-      // Fetch bookings (for transactions list), payout history, and authoritative ledger summary
-      const [bookings, payouts, ledgerSummary] = await Promise.all([
-        storage.getServiceBookings({ providerId: userId }),
-        storage.getExpertPayouts(userId),
-        storage.getExpertEarningsSummary(userId),
-      ]);
-
-      // Compute gross/fee totals and monthly figure from bookings for display context
-      const now = new Date();
-      let grossBookingTotal = 0;
-      let platformFeeTotal = 0;
-      let monthlyEarnings = 0;
-
-      for (const b of bookings) {
-        const gross = Number(b.totalAmount ?? 0);
-        const fee = Number(b.platformFee ?? 0);
-        const earned = Number(b.providerEarnings ?? 0);
-
-        grossBookingTotal += gross;
-        platformFeeTotal += fee;
-
-        if (b.status === "completed") {
-          const completedAt = b.completedAt ? new Date(b.completedAt) : null;
-          if (completedAt && completedAt.getMonth() === now.getMonth() && completedAt.getFullYear() === now.getFullYear()) {
-            monthlyEarnings += earned;
-          }
-        }
-      }
-
-      const effectiveRate = grossBookingTotal > 0
-        ? Number(((ledgerSummary.total) / grossBookingTotal).toFixed(4))
-        : (await getExpertSplitRates()).expertShareRate;
-
-      const lastPayout = payouts[0];
-
-      // Summary figures sourced from the expert_earnings ledger — same source used by payout request validation
-      const summary = {
-        totalEarnings: ledgerSummary.total,
-        monthlyEarnings,
-        pendingPayout: ledgerSummary.pending,
-        availableForPayout: ledgerSummary.available,
-        lastPayout: lastPayout ? parseFloat(lastPayout.amount || '0') : 0,
-        lastPayoutDate: lastPayout?.processedAt
-          ? new Date(lastPayout.processedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-          : undefined,
-        platformFeeTotal: Number(platformFeeTotal.toFixed(2)),
-        grossBookingTotal: Number(grossBookingTotal.toFixed(2)),
-        revenueShareRate: effectiveRate,
-      };
-
-      // Build transactions from service_bookings for the activity feed
-      const bookingTransactions = [...bookings]
-        .sort((a, b) => new Date(b.createdAt as any || 0).getTime() - new Date(a.createdAt as any || 0).getTime())
-        .slice(0, 20)
-        .map(b => ({
-          id: b.id,
-          amount: b.providerEarnings || "0",
-          type: "service_booking",
-          status: b.status || "pending",
-          createdAt: b.createdAt || new Date().toISOString(),
-          description: `Booking #${b.trackingNumber || b.id.slice(0, 8)}`,
-        }));
-
-      res.json({ earnings: bookingTransactions, summary });
-    } catch (err) {
-      console.error("Error fetching earnings:", err);
-      res.status(500).json({ message: "Failed to fetch earnings" });
-    }
-  });
+  // NOTE (task retirement, Aug 2026): the legacy GET /api/expert/earnings endpoint was removed.
+  // It built pseudo-transactions from service_bookings (refunded bookings still appeared as earned,
+  // grossBookingTotal included refunds, revenueShareRate was a meaningless derived ratio, and
+  // lastPayout reported pending payout requests as paid). The live UI and tests use the
+  // ledger-backed GET /api/expert/earnings/details (server/routes/experts.routes.ts).
 
   // Get expert template sales (authenticated)
   app.get("/api/expert/template-sales", isAuthenticated, async (req, res) => {
