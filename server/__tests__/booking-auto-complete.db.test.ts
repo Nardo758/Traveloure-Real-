@@ -304,3 +304,44 @@ test("RV-2: negative compensation rows on BOTH earnings ledgers remain insertabl
   const peAfter = await db.execute(sql`SELECT count(*)::int AS n FROM provider_earnings WHERE source_type='booking' AND source_id=${id} AND amount >= 0`);
   assert.equal((peAfter.rows[0] as any).n, 1, "still exactly one positive mint row");
 });
+
+test("RF-1: completion racing a refund cannot leave a refunded booking with live positive earnings", async () => {
+  // Deterministic worst-case interleaving (the ledger-first refund order):
+  //   1. refund caller reverses the ledger — finds NOTHING (mint hasn't happened yet)
+  //   2. completion wins the confirmed-status guard and mints
+  //   3. refund claims the terminal status
+  //   4. post-claim sweep (now inside refundServiceBooking) re-runs the reversals
+  const id = await insertBooking({ status: "confirmed", pi: PAID_PI, confirmedDaysAgo: 5 });
+
+  // 1: pre-claim reversal no-ops
+  const pre = await storage.reverseEarningsForBooking(id);
+  assert.equal(pre.reversed, 0);
+  await storage.reversePlatformRevenueForBooking(id);
+
+  // 2: completion mint wins in between
+  const completed = await storage.updateServiceBookingStatus(id, "completed", undefined, ["confirmed"]);
+  assert.ok(completed, "completion must win while status is still confirmed");
+
+  // 3: refund's atomic terminal claim (as refundServiceBooking does)
+  const claim = await db.execute(sql`UPDATE service_bookings SET status='refunded' WHERE id=${id} AND status <> 'refunded' RETURNING id`);
+  assert.equal(claim.rows.length, 1);
+
+  // 4: the post-claim sweep — must reverse the raced-in mint
+  await storage.reverseEarningsForBooking(id);
+  await storage.reversePlatformRevenueForBooking(id, new Date(), 1);
+
+  const live = await db.execute(sql`
+    SELECT
+      (SELECT count(*) FROM provider_earnings WHERE source_type='booking' AND source_id=${id} AND amount >= 0 AND status NOT IN ('reversed'))::int AS pe,
+      (SELECT count(*) FROM expert_earnings WHERE reference_type='service_booking' AND reference_id=${id} AND amount >= 0 AND status NOT IN ('reversed'))::int AS ee,
+      (SELECT count(*) FROM platform_revenue WHERE source_type='booking_commission' AND source_id=${id} AND gross_amount >= 0 AND status <> 'reversed')::int AS pr
+  `);
+  const r = live.rows[0] as any;
+  assert.equal(r.pe, 0, "no live positive provider earning may remain on a refunded booking");
+  assert.equal(r.ee, 0, "no live positive expert earning may remain on a refunded booking");
+  assert.equal(r.pr, 0, "no live positive platform revenue may remain on a refunded booking");
+
+  // And after the claim, a late completion attempt loses its guard entirely: no re-mint.
+  const late = await storage.updateServiceBookingStatus(id, "completed", undefined, ["confirmed"]);
+  assert.equal(late, undefined, "completion after the refund claim must lose the status guard");
+});

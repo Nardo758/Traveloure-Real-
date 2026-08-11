@@ -958,6 +958,27 @@ class StripePaymentService {
       ) VALUES (${bookingId}, ${refund.id}, ${paymentIntentId}, ${amount}, 'usd', ${refund.status}, ${internalReason}, NOW())
     `);
 
+    // COMPLETION/REFUND RACE SWEEP (task 1091 review): callers reverse the ledger BEFORE this
+    // atomic claim (ledger-first order). A completion mint can commit in between — the caller's
+    // reversal finds nothing, the mint wins the confirmed-status guard, and the booking would end
+    // 'refunded' with live positive earnings. Now that this refund EXCLUSIVELY owns the terminal
+    // status (the claim above), re-run the reversals to sweep any mint that raced in. Both are
+    // idempotent flips: if the caller's earlier reversal already did the work, these no-op.
+    // Earnings are only swept for FULL refunds (partial refunds deliberately keep the retained
+    // share's earnings); platform revenue is swept proportionally, matching caller semantics.
+    try {
+      const { storage } = await import('../storage');
+      const fraction = amountCharged > 0 ? Math.min(amount / amountCharged, 1) : 1;
+      if (fraction >= 1) {
+        await storage.reverseEarningsForBooking(bookingId);
+      }
+      await storage.reversePlatformRevenueForBooking(bookingId, new Date(), fraction);
+    } catch (sweepErr) {
+      // The refund already succeeded; a sweep failure must not undo it. The admin refund rail
+      // re-runs the same idempotent reversals on retry.
+      console.error(`[refund] post-claim ledger sweep failed for booking ${bookingId}:`, sweepErr);
+    }
+
     // C3 filed follow-up: a refunded slot-bound booking gives its capacity back so another
     // traveler can book the time. Runs only under this refund's atomic status claim (the flip
     // above matched exactly one caller — §15), so a repeat refund cannot double-release; the
