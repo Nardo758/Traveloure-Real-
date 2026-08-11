@@ -8,6 +8,14 @@
  *                            point at someone else's offering. Accepts an optional `frame`
  *                            (D4, migration 193) drawn from the closed SHARE_FRAMES allowlist —
  *                            NULL/omitted stays the historical untagged link, unchanged behavior.
+ * PATCH /api/short-links/:id — the EXPIRY writer (docs/DECISIONS.md ruling 69 disposition 7).
+ *                            Ruling 68 landed `short_links.expires_at` (migration 198) read-side
+ *                            first, deliberately: ruling 61's "expired ref -> full rate" refusal
+ *                            needed something to key on, and the ledger recorded that it had NO
+ *                            writer. The decision-maker's disposition names the writer: **the
+ *                            link's OWNER and admin, nobody else**; NULL = never expires; a set
+ *                            value must be in the FUTURE. A default TTL on minting was one of the
+ *                            three options and was NOT chosen — links stay perpetual by default.
  * GET  /r/:code           — public redirect + atomic click increment. Unknown code -> /discover
  *                            (never a dead 404/500 for a shared link). frame is metadata only —
  *                            redirect target and click counting are unchanged by D4.
@@ -18,8 +26,14 @@
  *                            (direct | link | cross_sell) for the session earner only (§14).
  *                            See handler comment for the honesty caveat on pre-attribution rows.
  *
- * No money path (clicks is a counter, not a charge/payout amount; earnings-by-source reads the
- * existing booking ledger read-only, no charge/payout/earning write) — outside the §14/§15 clusters.
+ * MOSTLY no money path (clicks is a counter, not a charge/payout amount; earnings-by-source reads
+ * the existing booking ledger read-only, no charge/payout/earning write) — outside the §14/§15
+ * clusters. ONE exception to state plainly: since ruling 68, `expires_at` BINDS IN A MONEY
+ * DECISION — an expired ref is refused rails and the booking prices at the full rate. The expiry
+ * writer below therefore carries the §19 posture even though it moves no amount: an explicit
+ * ALLOWLIST body of exactly one field, the acting user from the session, and the owner resolved
+ * from the ROW rather than from anything the client sent. Setting an expiry can only ever cost the
+ * owner their own discount lane; it can never raise a traveler's price or lower a payout.
  */
 import { Router } from "express";
 import { getUserId } from "../utils/auth";
@@ -148,6 +162,83 @@ router.post("/api/short-links", isAuthenticated, async (req: any, res) => {
   } catch (error: any) {
     console.error("[short-links] create failed:", error);
     return res.status(500).json({ message: "Failed to create short link" });
+  }
+});
+
+/**
+ * PATCH /api/short-links/:id — set or clear a link's expiry (ruling 69 disposition 7).
+ *
+ * §19 ALLOWLIST: the body is a hand-written zod object with EXACTLY one field. Nothing else off
+ * the body reaches a column — not the code, not the owner, not the target, not the click count.
+ *
+ * AUTHORITY: the link's OWNER, or an admin (DB role lookup on the session id, the `requireAdmin`
+ * pattern — never `req.user.role`, which is a stale session snapshot, CLAUDE.md §2). Anyone else
+ * gets an undifferentiated 404 so a stranger cannot enumerate link ids.
+ *
+ * VALUES: `null` clears the expiry (never expires — the column's own default and the behaviour of
+ * every link minted before migration 198). A timestamp must parse AND be in the FUTURE: accepting
+ * a past date would be a way to retire a link through a field whose name says "expires at", and a
+ * retire action that pretends to be a schedule is the kind of quiet lie §13 exists to stop. An
+ * owner who wants it dead now sets a moment they can see.
+ */
+const expirySchema = z.object({
+  expiresAt: z.union([z.string().datetime({ offset: true }), z.string().datetime(), z.null()]),
+});
+
+router.patch("/api/short-links/:id", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = getUserId(req);
+    if (!userId) return res.status(401).json({ message: "Authentication required" });
+
+    const parsed = expirySchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({
+        message: "Send exactly { expiresAt: <ISO timestamp> | null }",
+        code: "INVALID_EXPIRY",
+        errors: parsed.error.flatten(),
+      });
+    }
+
+    const [link] = await db
+      .select({ id: shortLinks.id, code: shortLinks.code, ownerUserId: shortLinks.ownerUserId })
+      .from(shortLinks)
+      .where(eq(shortLinks.id, req.params.id))
+      .limit(1);
+    if (!link) return res.status(404).json({ message: "Short link not found" });
+
+    if (link.ownerUserId !== userId) {
+      // Admin is the ONLY other authority the disposition names. Role from the DB, not the session.
+      const [me] = await db.select({ role: users.role }).from(users).where(eq(users.id, userId)).limit(1);
+      if (me?.role !== "admin") {
+        // Undifferentiated with "not found" on purpose — a non-owner learns nothing.
+        return res.status(404).json({ message: "Short link not found" });
+      }
+    }
+
+    let expiresAt: Date | null = null;
+    if (parsed.data.expiresAt !== null) {
+      const when = new Date(parsed.data.expiresAt);
+      if (!Number.isFinite(when.getTime())) {
+        return res.status(400).json({ message: "expiresAt is not a valid timestamp", code: "INVALID_EXPIRY" });
+      }
+      if (when.getTime() <= Date.now()) {
+        return res.status(400).json({
+          message: "An expiry must be in the future. To retire this link now, pick a moment you can see.",
+          code: "EXPIRY_IN_PAST",
+        });
+      }
+      expiresAt = when;
+    }
+
+    const [updated] = await db
+      .update(shortLinks)
+      .set({ expiresAt })
+      .where(eq(shortLinks.id, link.id))
+      .returning({ id: shortLinks.id, code: shortLinks.code, expiresAt: shortLinks.expiresAt });
+    return res.json({ id: updated.id, code: updated.code, expiresAt: updated.expiresAt });
+  } catch (error: any) {
+    console.error("[short-links] expiry update failed:", error);
+    return res.status(500).json({ message: "Failed to update the short link" });
   }
 });
 

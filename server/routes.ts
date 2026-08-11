@@ -186,6 +186,16 @@ import {
   resolveDirectProviderRate,
   pickOwnerShareRate,
 } from "./services/direct-charge-rate.service";
+// SS-5a attestation publish gate (docs/DECISIONS.md ruling 69 disposition 3) — beside the F2
+// verification gate at the same three choke points; grandfathering is the transition condition.
+import {
+  resolveAttestationShape,
+  readAffirmAttestationsField,
+  validateAffirmKeys,
+  checkAttestationPublishGate,
+} from "./services/attestation-publish-gate.service";
+// SS-5c protected-title soft warning (ruling 69 disposition 5) — advisory only, never a block.
+import { detectProtectedTitleClaims } from "@shared/service-attestations";
 import { calculateCommission, BookingType } from "./utils/commissionCalculator";
 import { ensureDefaultBookingFeeConfig } from "./services/booking-fee-bootstrap";
 // Ready-made authoring mode (brief §2): explicit present-value author check. Never getTripRole.
@@ -2363,12 +2373,46 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
 
+      // SS-5a ATTESTATION PUBLISH GATE (ruling 69 disposition 3) — beside the F2 gate, at the same
+      // choke point, on the same draft-exempt rule. A CREATE is always a transition to active when
+      // `status:'active'`, so grandfathering has nothing to say here. The affirmations travel with
+      // the write (see the service header for why a child row cannot pre-exist a create), are
+      // re-validated against the SERVER-resolved applicable set, and are recorded after the row
+      // exists.
+      const attestShapeCreate = await resolveAttestationShape({
+        overrides: {
+          deliveryMethod: (input as any).deliveryMethod ?? null,
+          productShape: (input as any).productShape ?? null,
+          categoryId: (input as any).categoryId ?? null,
+        },
+      });
+      const affirmRequestedCreate = readAffirmAttestationsField(req.body) ?? [];
+      const affirmCheckCreate = validateAffirmKeys(affirmRequestedCreate, attestShapeCreate);
+      if (!affirmCheckCreate.ok) {
+        return res.status(affirmCheckCreate.refusal.status).json(affirmCheckCreate.refusal.body);
+      }
+      if (input.status === "active") {
+        const attestGate = await checkAttestationPublishGate({
+          shape: attestShapeCreate,
+          affirmingNow: affirmCheckCreate.keys,
+        });
+        if (attestGate) {
+          return res.status(attestGate.status).json(attestGate.body);
+        }
+      }
+
       // D7 (docs/DECISIONS.md ruling 62): the service-logistics capture fields ride this same
       // deliberate write, exactly like `serviceRadius`/`meetingPoint` beside them — they are
       // ordinary owner-authored listing facts, NOT privileged §14/§18/§19 fields (no amount, no
       // identity, no rate), so they need no allowlist/strip. Their vocabularies are enforced by
       // insertProviderServiceSchema above (no DB CHECK — migration-195 posture).
       const service = await storage.createProviderService({ ...input, ...locationPatch, userId });
+
+      // The affirmations validated above, now that the child row has a parent. Append-only and
+      // idempotent (UNIQUE + ON CONFLICT DO NOTHING); `affirmedBy` is stamped from the session.
+      if (affirmCheckCreate.keys.length > 0) {
+        await storage.affirmServiceAttestations(service.id, affirmCheckCreate.keys, userId);
+      }
 
       // Write (or clear) neighborhood coverage rows whenever the neighborhoods
       // field is present in the payload — including empty arrays, which must
@@ -2386,7 +2430,17 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // approvalStatus from this response (verified); omit just this one verified field
       // rather than a full allowlist — provider_services is large and read by several
       // other unaudited surfaces this endpoint's response itself does not feed.
-      res.status(201).json(omitFields(service, ["revenueShareRate"] as const));
+      // SS-5c SOFT WARNING (ruling 69 disposition 5) — advisory, non-blocking, never auto-editing.
+      // Attached to a SUCCESSFUL response: the listing genuinely saved, and the warning is a nudge
+      // toward the `title_claim_honesty` statement, not a verdict. Absence proves nothing (§13).
+      const titleWarning = detectProtectedTitleClaims({
+        serviceName: (input as any).serviceName,
+        description: (input as any).description,
+      });
+      res.status(201).json({
+        ...omitFields(service, ["revenueShareRate"] as const),
+        ...(titleWarning ? { warnings: { protectedTitleClaim: titleWarning } } : {}),
+      });
     } catch (err) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });
@@ -2541,6 +2595,40 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
 
+      // SS-5a ATTESTATION PUBLISH GATE (ruling 69 disposition 3). GRANDFATHERING lives in the
+      // condition: it fires only on a TRANSITION to active, so a listing that is already `active`
+      // is never evaluated on an edit and can never be knocked off by this. The shape is the one
+      // the listing will HAVE after this save (live row overlaid with the write's own fields), so
+      // the gate cannot be walked past by omitting a field from the body.
+      const attestShapeUpd = await resolveAttestationShape({
+        serviceId: req.params.id,
+        overrides: {
+          ...((input as any).deliveryMethod !== undefined ? { deliveryMethod: (input as any).deliveryMethod } : {}),
+          ...((input as any).productShape !== undefined ? { productShape: (input as any).productShape } : {}),
+          ...((input as any).categoryId !== undefined ? { categoryId: (input as any).categoryId } : {}),
+        },
+      });
+      const affirmRequestedUpd = readAffirmAttestationsField(req.body) ?? [];
+      const affirmCheckUpd = validateAffirmKeys(affirmRequestedUpd, attestShapeUpd);
+      if (!affirmCheckUpd.ok) {
+        return res.status(affirmCheckUpd.refusal.status).json(affirmCheckUpd.refusal.body);
+      }
+      if (affirmCheckUpd.keys.length > 0) {
+        // Recorded BEFORE the gate is judged: an affirmation is a statement the provider made, and
+        // it is a fact whether or not the publish that carried it succeeds (append-only, ruling 67).
+        await storage.affirmServiceAttestations(req.params.id, affirmCheckUpd.keys, userId);
+      }
+      if (input.status === "active" && ownedService.status !== "active") {
+        const attestGate = await checkAttestationPublishGate({
+          serviceId: req.params.id,
+          shape: attestShapeUpd,
+          affirmingNow: affirmCheckUpd.keys,
+        });
+        if (attestGate) {
+          return res.status(attestGate.status).json(attestGate.body);
+        }
+      }
+
       // Compute price scalar from lowest tier when package_tiers pricing is used
       const pricingTiersUpd = (input as any).pricingTiers;
       if ((input as any).priceType === "package_tiers" && Array.isArray(pricingTiersUpd) && pricingTiersUpd.length > 0) {
@@ -2600,7 +2688,21 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
       // CC-8/T3-4: same omission as POST /api/provider/services — revenueShareRate is a
       // commission split (§18) and must never round-trip to the client, on create OR update.
-      res.json(updated ? omitFields(updated, ["revenueShareRate"] as const) : updated);
+      // SS-5c SOFT WARNING (ruling 69 disposition 5) — same posture as CREATE. Scanned against
+      // the text this write actually produces: the field from the body when it was edited, else
+      // the stored value, so an untouched offending description keeps warning on every save.
+      const titleWarningUpd = detectProtectedTitleClaims({
+        serviceName: (input as any).serviceName ?? updated?.serviceName ?? ownedService.serviceName,
+        description: (input as any).description ?? updated?.description ?? ownedService.description,
+      });
+      res.json(
+        updated
+          ? {
+              ...omitFields(updated, ["revenueShareRate"] as const),
+              ...(titleWarningUpd ? { warnings: { protectedTitleClaim: titleWarningUpd } } : {}),
+            }
+          : updated,
+      );
     } catch (err) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });
@@ -4545,6 +4647,19 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         const gateResult = await checkPublishVerificationGate(userId);
         if (gateResult) {
           return res.status(gateResult.status).json(gateResult.body);
+        }
+      }
+      // SS-5a ATTESTATION PUBLISH GATE (ruling 69 disposition 3) — the third choke point, same
+      // transition rule. This toggle carries no listing fields at all, so the shape is read
+      // wholly from the live row, and this door has no inline-affirm path: the provider confirms
+      // in the wizard (where the card is) and toggles afterwards.
+      if (status === "active" && service.status !== "active") {
+        const attestGate = await checkAttestationPublishGate({
+          serviceId: req.params.id,
+          shape: await resolveAttestationShape({ serviceId: req.params.id }),
+        });
+        if (attestGate) {
+          return res.status(attestGate.status).json(attestGate.body);
         }
       }
       const updated = await storage.toggleServiceStatus(req.params.id, status);

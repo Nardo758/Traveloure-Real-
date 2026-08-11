@@ -345,3 +345,115 @@ export function resolveApplicableAttestations(s: AttestationShape): AttestationR
 
   return { applicable, omitted };
 }
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// SS-5c — PROTECTED-TITLE SOFT WARNING (docs/DECISIONS.md ruling 69 disposition 5).
+//
+// Ruling 67 filed the whole of SS-5c and started none of it: *"A provider can affirm
+// `title_claim_honesty` and still type 'Government certified guide' into `service_name`/
+// `description` — the attestation records a promise, it does not detect a breach."* The
+// disposition ratifies the CHEAP HALF only: a submit-time SOFT WARNING that nudges toward the
+// attestation. It **never blocks and never auto-edits**. The full product — two-language phrase
+// detection at scale, a false-positive policy, and an enforcement/review path that does not exist
+// — stays FILED, explicitly.
+//
+// WHY A SMALL NAMED LIST AND NOT A CLEVER MATCHER. Ruling 67's own note: *"'certified' is
+// legitimate in many compounds"*. A broad matcher on a bare word would fire on "PADI certified
+// divemaster" (a true, lawful claim) and teach providers to ignore the warning — which is worse
+// than not warning at all. So this list contains only phrases that assert OFFICIAL/GOVERNMENT
+// sanction, plus the legally protected Japanese title itself. A phrase earns its place here by
+// being a claim about the STATE, not about competence.
+//
+// THIS IS NOT A COMPLIANCE CHECK. A hit means "this reads like a claim of official certification —
+// here is the statement it relates to". It is not evidence of a breach, it does not decide
+// anything, and its absence proves nothing (§13: the negative space is the whole rest of the
+// language).
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+/**
+ * The protected/official-sanction phrases. Matched case-insensitively as substrings after
+ * whitespace normalisation. Japanese needs no case folding and no word boundaries — 通訳案内士 is
+ * the legally protected title itself, and its 士-less stem 通訳案内 is deliberately NOT listed
+ * (it is ordinary description: "interpreting and guiding").
+ */
+export const PROTECTED_TITLE_PHRASES: readonly string[] = [
+  // The legally protected Japanese title (SS-5 / ruling 67's research) and the common variants.
+  "通訳案内士",
+  "全国通訳案内士",
+  "地域通訳案内士",
+  // English claims of STATE sanction. Each asserts an authority granted this status, which is the
+  // claim Japan's 2018 deregulation makes unnecessary and the title law makes unlawful to imply.
+  "government certified",
+  "government-certified",
+  "government licensed",
+  "government-licensed",
+  "government approved",
+  "government-approved",
+  "nationally certified",
+  "nationally-certified",
+  "national guide license",
+  "national guide licence",
+  "licensed national guide",
+  "certified national guide",
+  "officially certified guide",
+  "state certified guide",
+  "state-certified guide",
+];
+
+export interface ProtectedTitleWarning {
+  /** The phrases that matched, as written in this list (not as written by the provider). */
+  matches: string[];
+  /** Which listing fields they were found in. */
+  fields: ("serviceName" | "description")[];
+  /** The attestation this nudges toward — always the SS-5 one. */
+  attestationKey: AttestationKey;
+  message: LocalizedCopy;
+}
+
+const PROTECTED_TITLE_MESSAGE: LocalizedCopy = {
+  en:
+    "This listing's wording reads like a claim of official or government certification. Guiding in Japan has not required a licence since 2018, but the title 通訳案内士 is legally protected — please make sure the wording is accurate, and review the confirmation about how you describe your qualifications.",
+  ja:
+    "この出品の文言は、公的機関による認定を主張しているように読めます。日本では2018年以降ガイド業に資格は不要ですが、「通訳案内士」の名称は法律で保護されています。記載内容が正確かご確認のうえ、資格の表示に関する確認事項をご覧ください。",
+};
+
+/**
+ * Scan a listing's own free text for protected-title claims. Returns null when nothing matched —
+ * which, per the header, is NOT a clean bill of health.
+ *
+ * Never throws, never mutates its input, and has no side effects: a warning is advisory data the
+ * caller attaches to a successful response.
+ */
+export function detectProtectedTitleClaims(input: {
+  serviceName?: string | null;
+  description?: string | null;
+}): ProtectedTitleWarning | null {
+  const fields: ("serviceName" | "description")[] = [];
+  const matches = new Set<string>();
+
+  const scan = (raw: string | null | undefined, field: "serviceName" | "description") => {
+    if (typeof raw !== "string" || !raw.trim()) return;
+    // Normalise runs of whitespace (including full-width spaces) so "government   certified"
+    // and a line break between the words both match.
+    const hay = raw.replace(/[\s　]+/g, " ").toLowerCase();
+    let hitHere = false;
+    for (const phrase of PROTECTED_TITLE_PHRASES) {
+      if (hay.includes(phrase.toLowerCase())) {
+        matches.add(phrase);
+        hitHere = true;
+      }
+    }
+    if (hitHere) fields.push(field);
+  };
+
+  scan(input.serviceName, "serviceName");
+  scan(input.description, "description");
+
+  if (matches.size === 0) return null;
+  return {
+    matches: Array.from(matches),
+    fields,
+    attestationKey: "title_claim_honesty",
+    message: PROTECTED_TITLE_MESSAGE,
+  };
+}

@@ -20,6 +20,7 @@ import {
 import {
   ArrowLeft,
   MapPin,
+  Languages,
   Clock,
   Star,
   DollarSign,
@@ -127,6 +128,10 @@ interface Service {
   // declared — 'radius' | 'route' | null. NULL = never declared (every pre-195 listing), which
   // renders exactly as before. Both stores always hold their data; this only picks what shows.
   pickupCoverageMode?: string | null;
+  // SS-6 (docs/DECISIONS.md ruling 69 disposition 9, migration 199): the language(s) the service
+  // is DELIVERED in. Absent/null on every pre-199 listing and on every listing whose owner has
+  // not said — which renders NOTHING at all, never a presumed "English" (§13).
+  deliveryLanguages?: string[] | null;
 }
 
 // Ruling 22: ordered route stops (service_route_points child rows, migration 192).
@@ -664,6 +669,19 @@ export default function ServiceDetailPage() {
                 {service.deliveryMethod && (
                   <div className="flex items-center gap-2 mt-2 text-sm">
                     <Badge variant="outline">{service.deliveryMethod.replace(/_/g, " ")}</Badge>
+                  </div>
+                )}
+
+                {/* SS-6 (ruling 69 disposition 9): delivery language, plainly, WHEN PRESENT.
+                    In the launch market this is a purchasable attribute — a shared session in
+                    Japanese and a private one in English are commonly different products — and
+                    providers previously could not state it at all. §13: an absent value renders
+                    NOTHING. There is deliberately no "English" fallback and no "language not
+                    specified" line: silence is the honest answer to a question nobody answered. */}
+                {Array.isArray(service.deliveryLanguages) && service.deliveryLanguages.length > 0 && (
+                  <div className="flex items-center gap-2 mt-2 text-sm" data-testid="text-delivery-languages">
+                    <Languages className="w-4 h-4 text-muted-foreground" />
+                    <span>Delivered in: {service.deliveryLanguages.join(", ")}</span>
                   </div>
                 )}
               </CardContent>

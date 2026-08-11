@@ -44,6 +44,8 @@
     "title": "Confirmations",
     "intro": "These are shown because of what you sell and how you deliver it. They are your own statements — Traveloure does not verify them, and they are not shown to travelers.",
     "affirmedOn": "Confirmed on {{date}}",
-    "omitted": "Some confirmations could not be worked out for this listing yet:"
+    "omitted": "Some confirmations could not be worked out for this listing yet:",
+    "gateBlocked": "Confirm these before publishing. You can still save this as a draft.",
+    "gateGrandfathered": "This listing is already live, so these are not blocking it — please confirm them when you can."
   }
 }
