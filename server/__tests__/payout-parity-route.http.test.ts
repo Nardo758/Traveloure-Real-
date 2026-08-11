@@ -17,6 +17,10 @@
  *   R2 — per-service revenueShareRate OVERRIDE: the route must honour safeParseRate's
  *        override path; the fixture rate is chosen so the override figure and the
  *        default-band figure are DISTINGUISHABLE (belt-and-braces discriminator).
+ *   R3 — booking_concierge item: the facilitation fee (fee_bands.expert_concierge_booking)
+ *        must land in platform_fee ONLY — provider_earnings stays the plain recipe figure.
+ *   R4 — missing/inactive concierge band: requireConciergeBookingRate must 500 honestly
+ *        (actionable message, no booking row stamped) instead of charging a silent $0 fee.
  *
  * STRIPE CONTRACT (both legs accepted; the stamp happens BEFORE Stripe either way):
  *   • 503 payment_unavailable (CI stub key, ruling 38's declared-unavailable negative
@@ -88,14 +92,24 @@ function api(path: string, method: string, body?: unknown) {
 }
 
 /** Fixture service owned by the expert; no category ⇒ the route's "default" fee-category fallback. */
-async function makeService(price: string, revenueShareRate?: string): Promise<string> {
+async function makeService(price: string, revenueShareRate?: string, expertOfferingTypeId?: string): Promise<string> {
   const id = `ppr-${RUN}-svc-${crypto.randomUUID().slice(0, 6)}`;
   await db.execute(sql`
-    INSERT INTO provider_services (id, user_id, service_name, description, price, status, approval_status, revenue_share_rate)
-    VALUES (${id}, ${ids.expert}, ${`Payout parity route service ${RUN}`}, 'fixture', ${price}, 'active', 'approved', ${revenueShareRate ?? null})
+    INSERT INTO provider_services (id, user_id, service_name, description, price, status, approval_status, revenue_share_rate, expert_offering_type_id)
+    VALUES (${id}, ${ids.expert}, ${`Payout parity route service ${RUN}`}, 'fixture', ${price}, 'active', 'approved', ${revenueShareRate ?? null}, ${expertOfferingTypeId ?? null})
   `);
   createdServiceIds.push(id);
   return id;
+}
+
+/** Live expert_offering_types row for key booking_concierge (seeded by migrations; must exist). */
+async function bookingConciergeOfferingTypeId(): Promise<string> {
+  const r = await db.execute(sql`
+    SELECT id FROM expert_offering_types WHERE offering_type_key = 'booking_concierge' LIMIT 1
+  `);
+  const id = (r.rows[0] as any)?.id as string | undefined;
+  assert.ok(id, "expert_offering_types must contain the seeded booking_concierge row");
+  return id!;
 }
 
 /** safeParseRate — verbatim behaviour of the checkout route's local helper (and the db suite's). */
@@ -252,4 +266,87 @@ test("R2: per-service revenueShareRate override flows through the route's safePa
     expected.stamped,
     "the route must stamp the per-service override figure (safeParseRate path), not the band figure",
   );
+});
+
+test("R3: booking_concierge facilitation fee lands in platform_fee, NEVER in provider_earnings", async () => {
+  const price = 160;
+  const offeringTypeId = await bookingConciergeOfferingTypeId();
+  const serviceId = await makeService(price.toFixed(2), undefined, offeringTypeId);
+
+  // The recipe expectation is IDENTICAL to a plain default-band item: the concierge fee is
+  // charged ON TOP (rider on the platform take), so the expert's promised figure must not move.
+  const expected = await recipeExpectation(price);
+
+  // Live concierge rate from fee_bands (no fee literal); must be positive on a configured DB,
+  // otherwise this test could not distinguish "fee excluded from earnings" from "fee was $0".
+  const bandRow = await db.execute(sql`
+    SELECT CAST(default_rate AS FLOAT) AS rate FROM fee_bands
+    WHERE band_key = 'expert_concierge_booking' AND rate_type = 'percent' AND is_active = true
+    LIMIT 1
+  `);
+  const conciergeRate = Number((bandRow.rows[0] as any)?.rate ?? 0);
+  assert.ok(conciergeRate > 0, "expert_concierge_booking band must be active with a positive rate (migrations 064–066)");
+  const conciergeFeeAmt = price * conciergeRate;
+
+  const { row } = await checkoutThroughRoute(serviceId);
+
+  // THE CLAIM: provider_earnings EXCLUDES the concierge fee — same figure as a non-concierge item.
+  assert.equal(
+    Number(row.provider_earnings).toFixed(2),
+    expected.stamped,
+    "provider_earnings must equal the plain recipe figure — the concierge facilitation fee LEAKED into the expert's promised earnings",
+  );
+  // platform_fee INCLUDES it: base platform take + insurance + concierge fee.
+  assert.equal(
+    Number(row.platform_fee).toFixed(2),
+    (Number(expected.platformFee) + conciergeFeeAmt).toFixed(2),
+    "platform_fee must include the concierge facilitation fee on top of the base take",
+  );
+  assert.equal(Number(row.insurance_fee).toFixed(2), expected.insurance, "insurance_fee stamp must match the recipe");
+  // Conservation with the rider: earnings + platform take = price + concierge fee (fee is ON TOP
+  // of the list price, not carved out of it) — and total_amount stays the bare price.
+  assert.equal(Number(row.total_amount).toFixed(2), price.toFixed(2), "total_amount must remain the bare item price");
+  assert.equal(
+    (Number(row.provider_earnings) + Number(row.platform_fee)).toFixed(2),
+    (price + conciergeFeeAmt).toFixed(2),
+    "earnings + platform take must equal price + concierge fee (fee charged on top)",
+  );
+});
+
+test("R4: missing concierge band ⇒ requireConciergeBookingRate 500s honestly, no row stamped", async () => {
+  const price = 90;
+  const offeringTypeId = await bookingConciergeOfferingTypeId();
+  const serviceId = await makeService(price.toFixed(2), undefined, offeringTypeId);
+
+  // Simulate the misconfigured-DB posture the strict loader guards against by deactivating the
+  // band for the duration of this single checkout. Restored in finally — verify below.
+  await db.execute(sql`UPDATE fee_bands SET is_active = false WHERE band_key = 'expert_concierge_booking'`);
+  try {
+    await db.execute(sql`DELETE FROM cart_items WHERE user_id = ${travelerId}`);
+    const addRes = await api("/api/cart", "POST", { serviceId });
+    assert.equal(addRes.status, 201, `POST /api/cart must accept the fixture service: ${await addRes.clone().text()}`);
+
+    const checkoutKey = `ppr-${RUN}-${crypto.randomUUID()}`;
+    const res = await api("/api/checkout", "POST", { idempotencyKey: checkoutKey });
+    const bodyText = await res.text();
+    assert.equal(res.status, 500, `checkout with a concierge item and a missing band must 500 honestly, got ${res.status}: ${bodyText}`);
+    const body = JSON.parse(bodyText);
+    assert.match(
+      String(body.message ?? ""),
+      /Booking Concierge fee band not configured/,
+      "the 500 must surface the strict loader's actionable message, not the generic 'Checkout failed'",
+    );
+
+    // The strict gate fires BEFORE any booking insert — no row may exist for this key.
+    const r = await db.execute(sql`
+      SELECT id FROM service_bookings WHERE idempotency_key LIKE ${checkoutKey + "%"}
+    `);
+    assert.equal(r.rows.length, 0, "a failed concierge-band gate must not stamp any booking row");
+  } finally {
+    await db.execute(sql`UPDATE fee_bands SET is_active = true WHERE band_key = 'expert_concierge_booking'`);
+  }
+  const restored = await db.execute(sql`
+    SELECT is_active FROM fee_bands WHERE band_key = 'expert_concierge_booking'
+  `);
+  assert.equal((restored.rows[0] as any)?.is_active, true, "band must be reactivated after the gate test");
 });
