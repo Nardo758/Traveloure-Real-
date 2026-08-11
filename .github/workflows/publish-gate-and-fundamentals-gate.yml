@@ -34,8 +34,11 @@ name: Publish Gate & Fundamentals
 # five suites as five separate sequential steps eliminates the contention entirely — same
 # 38/38 as running each alone.
 #
-# DB setup delegates to the composite action (ci-db-setup-lint.yml enforces this — no
-# inline migrate-entry.ts / create-sessions-table.ts / seed-ci-test-users.ts steps here).
+# DB setup delegates to the ci-db-setup composite action; ci-db-setup-lint.yml enforces that
+# and this workflow inlines none of the setup scripts it forbids. (Do NOT name those scripts
+# literally in this file, even in a comment: that lint is a pure grep with no comment
+# awareness, so a prose mention of a forbidden filename fails the gate — it did exactly that
+# on PR #453.)
 #
 # Negative space of THIS gate (ruling 43 — stated here so it prints on every run, not only
 # in the ledger): proves the five suites' 38 proofs, nothing wider. It does not exercise
