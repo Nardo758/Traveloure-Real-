@@ -713,3 +713,13 @@ below is deliberately out of that phase's scope — recorded so it is not redisc
   and untouched here: localized share frames, PDF deliverables, and emails. Currency display is **out of
   scope by the ruling's own words** (a separate later ruling) — the footer currency pill stays `USD ($)`
   even under a JA locale, on purpose.
+
+- **I18N-5 — The 27 browser proofs now live in the repo but are NOT in CI.** The lane originally ran
+  its ruling-65 proofs from a session-scratch script (ephemeral — the bench container reclaims it), so
+  the ledger's "27/27" would have been unreproducible by anyone else. The independent verification pass
+  (Aug 11) found the gap, ported the harness to **`scripts/i18n-chrome-proofs.mjs`** (env-configurable
+  `BASE_URL`/`OUT_DIR`/account; leaves the bench as found by resetting the account preference to EN),
+  and re-proved **27/27 against a fresh server boot** before committing. Same `[advisory]` posture as
+  rulings 58/64's committed-but-unwired suites: green requires a running server with the beta seed
+  accounts, so wiring it into CI belongs with the same batch that wires those (the ruling 57 gate's
+  pattern is the template).
