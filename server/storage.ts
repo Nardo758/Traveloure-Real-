@@ -1892,73 +1892,78 @@ export class DatabaseStorage implements IStorage {
     const availableAt = availableAtFor('service_booking'); // escrow P2: per-surface clearance window (config)
     let applied = false;
 
+    // RACE-PROOF (task 1091 review): the DB is the guard, not a SELECT. Each effect is an
+    // INSERT ... ON CONFLICT DO NOTHING against migration 195's partial unique indexes, so under
+    // concurrent callers (traveler confirm vs scheduler vs reconciliation) exactly ONE caller
+    // wins each row and the losers are clean no-ops. The service totalRevenue increment rides
+    // the WINNING provider-earning insert only — never double-counted.
     if (platformFee > 0) {
-      const [existingRevenue] = await db.select({ id: platformRevenue.id })
-        .from(platformRevenue)
-        .where(and(eq(platformRevenue.sourceType, 'booking_commission'), eq(platformRevenue.sourceId, booking.id)))
-        .limit(1);
-      if (!existingRevenue) {
-        await this.recordPlatformRevenue({
-          sourceType: 'booking_commission',
-          sourceId: booking.id,
-          trackingNumber: booking.trackingNumber || undefined,
-          grossAmount: String(grossAmount),
-          platformFee: String(platformFee),
-          netAmount: String(platformFee * (1 - PROCESSING_FEE_RATE)),
-          processingFees: String(platformFee * PROCESSING_FEE_RATE),
-          providerId,
-          providerEarnings: String(providerEarningsAmount),
-          description: `Booking commission from ${booking.trackingNumber || booking.id}`,
-          status: 'recorded',
-          transactionDate: new Date(),
-        });
+      const inserted = await db.insert(platformRevenue).values({
+        sourceType: 'booking_commission',
+        sourceId: booking.id,
+        trackingNumber: booking.trackingNumber || undefined,
+        grossAmount: String(grossAmount),
+        platformFee: String(platformFee),
+        netAmount: String(platformFee * (1 - PROCESSING_FEE_RATE)),
+        processingFees: String(platformFee * PROCESSING_FEE_RATE),
+        providerId,
+        providerEarnings: String(providerEarningsAmount),
+        description: `Booking commission from ${booking.trackingNumber || booking.id}`,
+        status: 'recorded',
+        transactionDate: new Date(),
+      }).onConflictDoNothing({
+        target: [platformRevenue.sourceId],
+        where: sql`source_type = 'booking_commission'`,
+      }).returning({ id: platformRevenue.id });
+      if (inserted.length > 0) {
         applied = true;
+        // Daily summary rollup (matches recordPlatformRevenue's side-effect), only for the winner.
+        const date = new Date().toISOString().split('T')[0];
+        await this.updateDailyRevenueSummary(date, {
+          totalGross: String(grossAmount),
+          totalPlatformFee: String(platformFee),
+          totalNet: String(platformFee * (1 - PROCESSING_FEE_RATE)),
+        });
       }
     }
 
     if (providerEarningsAmount > 0) {
-      const [existingProviderEarning] = await db.select({ id: providerEarnings.id })
-        .from(providerEarnings)
-        .where(and(eq(providerEarnings.sourceType, 'booking'), eq(providerEarnings.sourceId, booking.id)))
-        .limit(1);
-      if (!existingProviderEarning) {
-        await this.createProviderEarning({
-          providerId,
-          type: 'service_booking',
-          amount: String(providerEarningsAmount),
-          sourceType: 'booking',
-          sourceId: booking.id,
-          trackingNumber: booking.trackingNumber || undefined,
-          description: `Earnings from booking ${booking.trackingNumber || booking.id}`,
-          status: 'held', // escrow: born held; releasable when available_at clears (migration 112)
-          availableAt,
-        });
-        // Service totalRevenue increment rides the provider-earning insert (same guard), so a
-        // reconciled/re-entered completion never double-counts service revenue.
+      const insertedProvider = await db.insert(providerEarnings).values({
+        providerId,
+        type: 'service_booking',
+        amount: String(providerEarningsAmount),
+        sourceType: 'booking',
+        sourceId: booking.id,
+        trackingNumber: booking.trackingNumber || undefined,
+        description: `Earnings from booking ${booking.trackingNumber || booking.id}`,
+        status: 'held', // escrow: born held; releasable when available_at clears (migration 112)
+        availableAt,
+      }).onConflictDoNothing({
+        target: [providerEarnings.sourceId],
+        where: sql`source_type = 'booking'`,
+      }).returning({ id: providerEarnings.id });
+      if (insertedProvider.length > 0) {
         await db.update(providerServices)
           .set({ totalRevenue: sql`${providerServices.totalRevenue} + ${providerEarningsAmount}` })
           .where(eq(providerServices.id, serviceId));
         applied = true;
       }
 
-      const [existingExpertEarning] = await db.select({ id: expertEarnings.id })
-        .from(expertEarnings)
-        .where(and(eq(expertEarnings.referenceType, 'service_booking'), eq(expertEarnings.referenceId, booking.id)))
-        .limit(1);
-      if (!existingExpertEarning) {
-        // Also record in expert earnings ledger (provider may be an expert)
-        await this.createExpertEarning({
-          expertId: providerId,
-          type: 'consulting',
-          amount: String(providerEarningsAmount),
-          referenceId: booking.id,
-          referenceType: 'service_booking',
-          description: `Service booking earnings from ${booking.trackingNumber || booking.id}`,
-          status: 'held', // escrow: born held; releasable when available_at clears (migration 112)
-          availableAt,
-        });
-        applied = true;
-      }
+      // Also record in expert earnings ledger (provider may be an expert)
+      const insertedExpert = await db.insert(expertEarnings).values({
+        expertId: providerId,
+        type: 'consulting',
+        amount: String(providerEarningsAmount),
+        referenceId: booking.id,
+        referenceType: 'service_booking',
+        description: `Service booking earnings from ${booking.trackingNumber || booking.id}`,
+        status: 'held', // escrow: born held; releasable when available_at clears (migration 112)
+        availableAt,
+      }).onConflictDoNothing({
+        target: [expertEarnings.referenceId],
+        where: sql`reference_type = 'service_booking'`,
+      }).returning({ id: expertEarnings.id });
+      if (insertedExpert.length > 0) applied = true;
     }
 
     return applied;

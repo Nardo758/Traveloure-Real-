@@ -146,3 +146,31 @@ test("IM-1: mintCompletionEarningsForBooking never double-mints", async () => {
   assert.equal((ee.rows[0] as any).n, 1);
   assert.equal((pr.rows[0] as any).n, 1);
 });
+
+test("CM-1: concurrent mint attempts create exactly one row per ledger and one revenue increment", async () => {
+  const id = await insertBooking({ status: "completed", pi: PAID_PI, confirmedDaysAgo: 5, completedAt: new Date() });
+  const booking = await storage.getServiceBooking(id);
+  assert.ok(booking);
+
+  const revBefore = await db.execute(sql`SELECT COALESCE(total_revenue, 0)::numeric AS r FROM provider_services WHERE id = ${serviceId}`);
+
+  // Simulate traveler confirm + scheduler + reconciliation racing: 5 simultaneous mints.
+  const results = await Promise.all(
+    Array.from({ length: 5 }, () => storage.mintCompletionEarningsForBooking(booking!)),
+  );
+  // The three ledger effects race independently, so more than one caller may win ONE piece each —
+  // what must hold is that at least one caller applied something and (below) each ledger has
+  // EXACTLY one row and the revenue counter moved exactly once.
+  assert.ok(results.some(Boolean), "at least one concurrent caller must win the mint");
+
+  const pe = await db.execute(sql`SELECT count(*)::int AS n FROM provider_earnings WHERE source_type = 'booking' AND source_id = ${id}`);
+  const ee = await db.execute(sql`SELECT count(*)::int AS n FROM expert_earnings WHERE reference_type = 'service_booking' AND reference_id = ${id}`);
+  const pr = await db.execute(sql`SELECT count(*)::int AS n FROM platform_revenue WHERE source_type = 'booking_commission' AND source_id = ${id}`);
+  assert.equal((pe.rows[0] as any).n, 1);
+  assert.equal((ee.rows[0] as any).n, 1);
+  assert.equal((pr.rows[0] as any).n, 1);
+
+  const revAfter = await db.execute(sql`SELECT COALESCE(total_revenue, 0)::numeric AS r FROM provider_services WHERE id = ${serviceId}`);
+  const delta = Number((revAfter.rows[0] as any).r) - Number((revBefore.rows[0] as any).r);
+  assert.equal(delta, 90, "service total_revenue must be incremented exactly once (by the winner)");
+});

@@ -4408,7 +4408,12 @@ export const expertEarnings = pgTable("expert_earnings", {
   paidOutAt: timestamp("paid_out_at"),
   payoutId: varchar("payout_id"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => ({
+  // Migration 195 (task 1091): completion-mint race guard — see provider_earnings twin.
+  bookingMintUniq: uniqueIndex("expert_earnings_booking_mint_uniq")
+    .on(table.referenceId)
+    .where(sql`reference_type = 'service_booking'`),
+}));
 
 // Expert payouts - tracks payout requests
 export const expertPayouts = pgTable("expert_payouts", {
@@ -4610,7 +4615,14 @@ export const providerEarnings = pgTable("provider_earnings", {
   payoutId: varchar("payout_id"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => ({
+  // Migration 195 (task 1091): the completion mint's race guard — one booking-mint row per
+  // booking; the mint INSERTs with ON CONFLICT DO NOTHING against this index. Declared here
+  // AND in migration SQL (publish-trap rule).
+  bookingMintUniq: uniqueIndex("provider_earnings_booking_mint_uniq")
+    .on(table.sourceId)
+    .where(sql`source_type = 'booking'`),
+}));
 
 // Provider payouts - tracks payout requests
 export const providerPayouts = pgTable("provider_payouts", {
@@ -4685,7 +4697,12 @@ export const platformRevenue = pgTable("platform_revenue", {
   transactionDate: timestamp("transaction_date").defaultNow(),
   reconciliationDate: timestamp("reconciliation_date"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => ({
+  // Migration 195 (task 1091): completion-mint race guard — see provider_earnings twin.
+  bookingMintUniq: uniqueIndex("platform_revenue_booking_mint_uniq")
+    .on(table.sourceId)
+    .where(sql`source_type = 'booking_commission'`),
+}));
 
 // Daily revenue summary for dashboard analytics
 export const dailyRevenueSummary = pgTable("daily_revenue_summary", {
