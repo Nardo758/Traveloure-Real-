@@ -1126,7 +1126,7 @@ router.get("/api/cart/fee-preview", isAuthenticated, async (req, res) => {
       const cartData = await storage.getCartItems(userId);
 
       if (cartData.length === 0) {
-        return res.json({ subtotal: 0, platformFeeTotal: 0, total: 0, itemCount: 0 });
+        return res.json({ subtotal: 0, platformFeeTotal: 0, conciergeFeeTotal: 0, total: 0, itemCount: 0 });
       }
 
       const safeParseRate = (value: any, fallback: number): number => {
