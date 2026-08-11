@@ -863,6 +863,30 @@ export async function promotePaidCheckout(opts: {
     }
   }
 
+  // ── D6 (ruling 61): the rails fee EVENT, retried from here ──────────────────────────────────
+  // The inline post-authorization write (`payments.routes.ts`) is the normal path; this covers the
+  // window only a payment SIGNAL can reach — a server that died between the authorization stamp and
+  // that write, where the booking is paid and nothing recorded the fee event. Same shared function,
+  // same per-booking key, `ON CONFLICT DO NOTHING`: a double signal is a no-op, never a second row
+  // and never a second waiver. §15c rule 4 holds — this is not a money move and re-runs none of
+  // `promoteAuthorizedCheckout`'s non-idempotent effects; it is a recording, in the same idempotent
+  // class as the `markItemPurchased` catch-up above. Best-effort: the booking is the money truth.
+  if (result.promoted.length > 0 || result.lateAuthorized.length > 0) {
+    try {
+      const { recordRailsFeeLedger } = await import("./fee-ledger.service");
+      await recordRailsFeeLedger({
+        bookingIds: Array.from(new Set([...result.promoted, ...result.lateAuthorized])),
+        stripePaymentRef: paymentIntentId,
+        actor: `promotion:${actor}`,
+      });
+    } catch (err) {
+      logger.error(
+        { err, paymentIntentId, actor },
+        "[checkout-promote] rails fee-ledger catch-up failed (booking stands; append is idempotent and retried by any later signal)",
+      );
+    }
+  }
+
   if (result.promoted.length + result.exceptions.length + result.lateAuthorized.length > 0) {
     logger.info(
       {

@@ -112,7 +112,10 @@ both the build bench and the Replit workspace.
 | 9 | **38 proofs ran nowhere in CI.** Five suites protecting twice-regressed work were script-only — per rulings 26/27, script-only = MISSING. Now a blocking PR-triggered workflow. | FIXED | `00ec75d`; ruling 57 |
 | 10 | **Ledger number collision.** The Stripe-only KYB ruling was written as a prose section headed "Decision #39" while 39 was already taken in the numeric table; the lint parses table rows only, so CI never saw it. Its publish-gate clause was also stale (identity AND business for every publisher — provider-only truth). | RECORDED | ruling 55 |
 | 11 | **D3 deliverable is LINK delivery, not protected delivery.** See the P1 entry below. Object Storage is now **provisioned** (bucket attached in `.replit`, wrapper at `server/infrastructure/object-storage.ts`) — but it is consumed only by `vendor-management.service.ts` for vendor CONTRACT documents. The deliverable rail is **untouched**: `ServiceForm` still renders "Deliverable File URL" as a pasted-URL input, and the entitlement endpoint still returns that raw URL verbatim. The infrastructure unblocks R4; it does not constitute R4. | **OPEN** | P1 below |
-| 12 | **No completion event exists for pdf bookings.** See the P2 entry below. | **OPEN** | P2 below |
+| 12 | **No completion event exists for pdf bookings.** See the P2 entry below. **Wider than reported:** the only writer of `service_bookings.status='completed'` on `main` was the admin dispute-REJECT — the owner rail refuses `completed` and `confirm-completion` demands it, a closed loop — so no completion event existed for **any** delivery method. Closed for pdf/property (timer) and call/video/async/bundle (owner rail) by ruling 66; `in_person`/`hybrid` is left as ruling 63 ordered ("unchanged") and is re-filed as its own open item. | FIXED (ruling 66, `f3984da`) — in-person half re-filed | P2 below; ruling 66 |
+| 13 | **The rails fee lane had no way to be switched on.** `resolveProviderRate`'s `isRails` flag — CI-pinned since ruling 48 as min(category band, rails) + the traveler-fee waiver — had **zero callers in the repo**: nothing at checkout ever told the resolver a booking arrived through a provider's own link, so the whole dual-rate model was a capability with no input. Closed by the D6 chain (validation → resolver input → ledger stamp). | FIXED (ruling 68) | `server/services/rails-attribution.service.ts`; ruling 61 |
+| 14 | **`fee_ledger` (migration 179) had no writer at all.** The table, its CHECKs, its UNIQUE idempotency index and its full fee-type taxonomy have been on disk since the fee-ledger lane's Phase 1B with **no INSERT anywhere in application code** — so every "the ledger records X" reading of migration 179 described an empty table. This lane adds the FIRST writer and it covers **rails bookings only**; direct checkout, the legacy rail, ready-mades, templates, coordination, tips and affiliate margin still write nothing, so the per-booking invariant is **not yet assertable platform-wide**. Do not aggregate the table as if it were complete. | PARTIAL (rails slice only) | `server/services/fee-ledger.service.ts`; ruling 68 |
+| 15 | **`short_links` had no expiry of any kind**, so ruling 61's "expired ref → full rate" refusal had nothing to key on. Migration 198 adds `expires_at` (nullable; NULL = never expires, no backfill, no behaviour change to any link already shared) and it binds in the MONEY decision only — `/r/:code` still redirects and still counts the click, and S4 analytics attribution is unchanged. **No writer sets it yet** (owner/admin expiry control is filed below), so today it is an ops/fixture-set column. | FILED (read-side landed) | migration 198; ruling 68 |
 
 **Standing lessons worth carrying forward:** (a) a fix that closes a reported symptom may not close the class — #1 needed a second pass because the first proved the gate *correct* without proving it *reachable*; (b) duplicated branches at two call sites drifted twice, which is why the resolver is now a single shared function; (c) a guard that is not wired into CI is not a guard, and green means green-within-stated-bounds (ruling 57 states its negative space).
 
@@ -236,7 +239,7 @@ on both. (P4) unauthenticated GET of the raw GCS URL returned **HTTP 403 Forbidd
 empirically PRIVATE; ruling 58 bucket-privacy question CLOSED. Fixtures cleaned up; no code
 changes required.
 
-**P2 — no completion event exists for artifact (pdf) bookings; the D8 auto-complete rule is
+~~**P2 — no completion event exists for artifact (pdf) bookings; the D8 auto-complete rule is
 unbuildable as written (verified Aug 10, 2026; dispatch v1.2 §2).** Premise correction for the D8
 ruling: D3 did **not** define completion "by accident" — it defines **nothing**. The deliverable read
 writes no row, logs no download, and touches no status. A pdf booking therefore reaches `completed`
@@ -247,7 +250,54 @@ earning held indefinitely on a product that was fully delivered the moment it wa
 Consequence for D8's proposed table: **"auto-complete after N days undownloaded" cannot be built
 today — there is no download signal to measure.** It requires D3 to start logging deliverable
 fetches (one write on the endpoint above), which should land with the P1 storage work rather than as
-a separate pass.
+a separate pass.~~
+**CLOSED by ruling 66 (commit `f3984da`).** `deliverable_downloads` (migration 194, R5) supplied the
+download signal, so both arms of ruling 63's pdf rule are now built and proven: 7 days after the
+first download, and 7 days undownloaded post-delivery (the latter measured from the new additive
+`provider_services.deliverable_uploaded_at`, migration 196 — §13: a NULL clock skips that arm with a
+stated reason instead of guessing). The timer is `server/jobs/bookingAutoCompletion.ts`, hourly,
+driving the SHARED `completeBooking` (`server/services/booking-completion.service.ts`).
+**One clause of the entry above was WRONG and is corrected by the same ruling:** the manual path it
+describes does not exist either. `OWNER_SETTABLE_BOOKING_STATUSES` is `["confirmed","cancelled"]`
+and the owner rail answers *"Completion is confirmed by the traveler"*, while
+`POST /api/bookings/:id/confirm-completion` **requires the booking to already be `completed`** — a
+closed loop. The only writer of `service_bookings.status='completed'` on `main` was
+`admin.routes.ts`'s dispute-REJECT, so **no completion event existed for ANY delivery method**, not
+just pdf. See the new open item below for the half of that finding ruling 63 explicitly left alone.
+
+**OPEN (filed by ruling 66) — `in_person` / `hybrid` bookings still cannot reach `completed`.**
+Ruling 63's first table row is "confirm-completion flip as built (unchanged)", so the D8 lane
+deliberately did not touch it — but "as built" is the closed loop described just above: nothing can
+put an in-person booking into `completed`, and `confirm-completion` refuses anything that is not
+already there. Every other method now has a writer (timer for pdf/property, owner rail for
+call/video/async/bundle); in-person has none. Needs a decision-maker ruling on which actor opens
+that door (traveler-declares-then-confirms in one step, an owner rail with the same evidence gate
+the session-end rule uses, or a scheduled-date timer). **Not a regression** — it predates this lane
+and is unchanged by it.
+
+**OPEN (filed by ruling 66, per ruling 63's own instruction) — NO-SHOW POLICY.** Ruling 63 files
+this as its own follow-up and ruling 66 invented none of it. Today a `session_end` completion fires
+purely on the booked slot's end time: a call the traveler never joined completes exactly like one
+they did. There is no attendance signal anywhere in the schema, no no-show state, and no no-show
+refund or partial-payout path. Needs a ruling covering (a) who asserts a no-show and on what
+evidence, (b) whether it blocks completion, splits the fee, or routes to the existing refund lane,
+and (c) whether the traveler's existing 7-day dispute window is considered sufficient recourse
+(it currently IS the only recourse).
+
+**OPEN (filed by ruling 66) — `voice_notes` has no booked slot, so its completion rule cannot
+fire.** The build charter resolves ruling 63's "call/voice" row as call + video + voice_notes, and
+`SESSION_END_METHODS` reflects that — but D2 (`shared/service-fundamentals.ts`) classifies
+`voice_notes` as async/artifact delivery and therefore leaves it out of `SCHEDULED_METHODS`, so such
+a booking normally carries no `slot_id` and the evidence gate refuses it with `no_booked_slot`
+(§13 — never a guessed session end). Two honest resolutions, both needing a ruling: move
+`voice_notes` to the `provider_declared` (async) row, or give it a scheduled shape. Deliberately not
+chosen in-lane.
+
+**OPEN (filed by ruling 66) — the D8 owner-complete endpoint has NO client surface.**
+`POST /api/provider|expert/bookings/:id/complete` is live, owner-gated and proven, but no console
+screen calls it: a provider cannot yet mark a session, an async engagement or a bundle component
+complete from the UI. Server-side only by design (this lane was the machinery); the Workstation /
+Bookings surface is the natural home.
 
 **Filed (externally gated): Instagram publish round-trip unproven.** The D4 publish button self-gates
 honestly, but the real Graph API round-trip (image reachability from Instagram's servers) has never
@@ -464,6 +514,26 @@ block routed to `/expert-status`, provider both-statuses-required, admin bypass,
   recommended delete (the one Segway booking is unrecoverable from DB).
 - **Should trip-routed non-catalog items be checkout-routable** (today: display-only in cart,
   honestly labeled)?
+- **[UNLOCKED, needs a go] The waiver marketing caption.** Ruling 61 held "book through my link —
+  skip the service fee" out of the caption engine *until the attribution pin is green*. **The pin is
+  green as of the D6 build (`server/__tests__/rails-attribution.db.test.ts`, R1–R11, wired into
+  `fee-resolution-authority-gate.yml`; build SHA to be stamped at merge).** The hold is therefore
+  satisfied and the caption **may now be scheduled** — but this lane deliberately shipped **zero
+  caption-engine diffs**, so writing it is a separate change and still needs a decision-maker go.
+  **Read the copy against what the money actually does first:** the waiver waives the D3 traveler
+  service fee, which `/api/checkout` **does not bill on the direct path today** — so "skip the
+  service fee" is a claim about a fee a traveler is not currently charged either way. Either the 1C
+  charge-path repoint lands first, or the caption is worded to the fee model as it actually runs.
+- **[DM] The 1C consequence D6 makes visible.** A rails booking is the FIRST charge path to price
+  through the D1 single resolver, while direct provider bookings still resolve the legacy
+  `expert_standard` band. So a rails booking is cheaper for TWO reasons at once (the rails min() and
+  the un-migrated direct path). The direction is always a smaller platform take and it is reachable
+  only through a provider's own validated link — but the gap closes properly only when the charge
+  paths are repointed onto `resolveProviderRate` (lane item 1C, ruling 45's transfer). Owed.
+- **[DM] Who may expire a share link?** `short_links.expires_at` (migration 198) is enforced in the
+  rails money decision but has no writer — an owner-facing "retire this link" control, an admin one,
+  or a default TTL on newly minted links are three different products. Until one is chosen the
+  refusal exists and is proven, and nothing in the app can trigger it.
 
 ## Build map (Fable-minimized, per docs/EXECUTION_MAP.md §1/§4b — mapped Aug 1, 2026)
 
@@ -588,6 +658,18 @@ a ruling, or real-user validation and is therefore **not built**.
   work" and "how far I collect from" are genuinely different numbers. Tier A labelled them as one
   value; splitting them needs an additive column + a ruling (and touches the D7 surface just landed).
 
+- **SS-5 — D9 attestation: protected professional titles. — ADDRESSED** (DECISIONS.md **ruling 67**,
+  build commit `f0ac5a0`; migration 197, `shared/service-attestations.ts`,
+  `server/routes/service-attestations.routes.ts`, 13/13 in
+  `server/__tests__/service-attestations.http.test.ts`, reachability proven in the live wizard).
+  Built as a **title-claim attestation, not a licensing gate**, exactly as the scope note below
+  demands: the applicable set is SERVER-DERIVED from delivery method + category (guide/interpreting
+  categories, EVERY method — a pdf itinerary can carry the claim too), undecidable rows are omitted
+  WITH A REASON and are not affirmable, and inapplicable ones never appear. Two siblings shipped in
+  the same catalog (`in_person_safety_basics`, `food_safety_disclosure`). **What ruling 67
+  deliberately did NOT build is filed as SS-5a/b/c below — none of it is a defect in this item.**
+  Original finding retained verbatim:
+
 - **SS-5 — D9 attestation: protected professional titles.** [research] Japan deregulated paid guiding on
   4 Jan 2018 — no licence is required — but the title 通訳案内士 (*Tsūyaku Annai-shi*) remains legally
   protected, and unlicensed guides may not use titles implying official certification (e.g. "Government
@@ -597,6 +679,33 @@ a ruling, or real-user validation and is therefore **not built**.
   attestations keyed to method + category risk, inapplicable ones omitted with a reason), which is
   ratified but unbuilt. **Scope note: an attestation about a TITLE CLAIM, not a licensing gate** — the
   licence is not required to trade.
+
+- **SS-5a — [DM] Should an unaffirmed attestation BLOCK publishing?** [filed by ruling 67] The D9
+  build records affirmations and gates nothing: a provider can publish a guide listing without
+  ticking `title_claim_honesty`, by design, because ruling 62 ratified attestations *keyed to method
+  and category* and said nothing about a publish gate — and this wizard already carries five publish
+  gates (meeting point, price, category verification, identity/business, expert identity), so adding
+  a sixth is a funnel decision with real supply cost, not a build detail. The machinery a gate would
+  need already exists (`resolveApplicableAttestations` + the affirmation rows), so this is a small
+  change once ruled. Options: (a) leave ungated as built; (b) block `status:'active'` when any
+  applicable attestation is unaffirmed, draft-exempt like the sibling gates; (c) block for a named
+  high-risk subset only (`title_claim_honesty`) and leave the rest advisory.
+
+- **SS-5b — [DM] Should attestations be shown to TRAVELERS?** [filed by ruling 67] Nothing D9 records
+  reaches `/services/:id` or any traveler surface today — deliberately, because displaying a
+  self-attestation to a buyer converts it into a **trust signal the platform did not verify**, which
+  is the §13 hazard in its sharpest form (a badge reading "insured" that nobody checked is worse than
+  silence). If it is ever shown, the honest framing is the provider's own words attributed to them
+  with the non-verification stated inline, never a checkmark badge. Needs its own ruling before any
+  surface is built.
+
+- **SS-5c — Nothing scans listing TEXT for the phrases the attestation is about.** [filed by ruling
+  67] A provider can affirm `title_claim_honesty` and still type "Government certified guide" into
+  `service_name`/`description` — the attestation records a promise, it does not detect a breach. This
+  is the arm that would actually catch a lie, and it is a different product: phrase detection in two
+  languages, a false-positive policy ("certified" is legitimate in many compounds), and an
+  enforcement path that does not exist (ruling 67 changed no admin review queue). Filed, not started.
+  Cheapest honest first step if scheduled: flag for HUMAN review, never auto-reject.
 
 - **SS-6 — No delivery-language field on `provider_services`.** [code] `information_schema` sweep: the
   only language columns are `local_expert_forms.languages`, `service_gap_analysis.language_gaps`,
@@ -652,3 +761,81 @@ a ruling, or real-user validation and is therefore **not built**.
   missing). Ruling 42's P1–P6 are the proofs for the §14/§18 rate-stripping class, so a bench where two
   of them cannot run is the "a guard that does not run is MISSING" posture (rulings 26/27/43) one level
   down. Not part of ruling 64's stated keep-green list; filed so it is not rediscovered.
+
+## Ruling 60 Phase A — chrome i18n (FILED, NOT BUILT) — Aug 11, 2026
+
+Filed by the chrome-i18n lane (DECISIONS.md **ruling 65**, executing **ruling 60 Phase A**). Everything
+below is deliberately out of that phase's scope — recorded so it is not rediscovered as a defect.
+
+- **I18N-1 — [DM] Native-speaker review of the JA locale files is OWED before market launch.** The
+  Japanese strings in `client/src/locales/ja/*.json` (**269 keys**) are **machine-authored platform
+  copy**. That is acceptable for chrome under ruling 60 (which reserves the labeled-machine-draft rule
+  for *content*, system B), but Kyoto is the launch market and this copy is the first thing a Japanese
+  provider reads. Review should cover register consistency (everything is polite です/ます調) and the
+  glossary below, which is applied uniformly and should be ratified or corrected **as a set**:
+
+  | EN | JA | note |
+  |---|---|---|
+  | listing / your services | 出品 / あなたの出品 | the seller-side noun; **not** リスティング |
+  | storefront | ストアフロント | |
+  | service | サービス | |
+  | catalog | カタログ | |
+  | provider (service provider) | サービス事業者 | **not** プロバイダー |
+  | booking | 予約 | |
+  | customer | 顧客 | |
+  | payout | 出金 | payment = お支払い, kept distinct |
+  | earnings / money module | 売上 | |
+  | listing health | 健全性 | |
+  | active / paused | 公開中 / 一時停止中 | |
+  | sign in / sign up | ログイン / アカウント作成 | |
+  | trip planner / local expert | トリッププランナー / ローカルエキスパート | |
+
+  **Scope grew (ruling 67, D9 attestations):** the review now also owes the **attestation catalog's
+  JA label/body/omission-reason copy** in `shared/service-attestations.ts` — machine-authored like
+  the rest, but this is **legally-loaded copy in the launch market** (it names 通訳案内士 and states
+  what the provider is promising), so it is the highest-priority item in this debt, not another
+  chrome string. Review it as a set with the glossary above; `出品` and `サービス事業者` are already
+  applied there.
+
+  Note one JA-specific layout consequence already visible: Japanese nav labels are longer than their
+  English counterparts and the traveler navbar wraps `マーケットプレイス` to two lines at desktop width.
+  Cosmetic, not broken — but it is the kind of thing a native reviewer should be asked to judge.
+
+- **I18N-2 — Surfaces still on hardcoded English (migrate incrementally; do NOT half-wrap).** Ruling 60
+  Phase A translated: the provider sidebar + all console page titles, provider Settings chrome, the
+  Catalog page chrome (incl. health labels, the D2 "n/a" note and delivery/pin chips), the traveler
+  navbar + footer, and the auth surfaces. **Everything else keeps hardcoded English and falls back
+  silently**, which is correct chrome behavior, not a bug. Known deferred surfaces, roughly by traffic:
+  the expert and EA console sidebars/pages, the provider Dashboard/Calendar/Inbox/Workstation/Money/
+  Customers/Performance/Playbook page BODIES (their titles and shell are translated), `StatusBadge`
+  vocabulary and `ProviderStorefrontHeader` (both render inside the translated Catalog page and are
+  visibly English in the JA screenshots — shared components, deliberately left whole), the service
+  wizard/`ServiceForm`, the traveler landing/discover/cart/checkout pages, and every admin surface.
+  **Convention when migrating one:** mark the file's top with `// i18n: pending migration` while it is
+  in flight, move the WHOLE surface in one commit, and delete the marker — a surface must never be
+  committed half-wrapped, because a page mixing Japanese and English chrome reads as broken in a way a
+  fully-English page does not.
+
+- **I18N-3 — `expert/settings.tsx` offers three locales that do not exist.** Its Language select lists
+  `es`/`fr`/`de` beside `en`/`ja`. Only `en` and `ja` have locale files, so picking Spanish persists a
+  value that resolves to nothing and the UI stays English — the same no-op it was before ruling 60, so
+  this is **pre-existing, not a regression**. It is why `settingsPatchSchema.language` is an enum wider
+  than `SUPPORTED_LOCALES` (narrowing it would 400 that page's whole settings save). Retire the three
+  dead options — or ship those locales — as a small named follow-up; both halves are one edit.
+
+- **I18N-4 — Ruling 60 Phase B (provider CONTENT translation) is NOT started.** No `service_translations`
+  table, no owner-gated translation writes, no labeled AI draft, no "shown in English" fallback tag.
+  Phase A deliberately routes **zero** content strings through `t()`. Also named-not-built by ruling 60
+  and untouched here: localized share frames, PDF deliverables, and emails. Currency display is **out of
+  scope by the ruling's own words** (a separate later ruling) — the footer currency pill stays `USD ($)`
+  even under a JA locale, on purpose.
+
+- **I18N-5 — The 27 browser proofs now live in the repo but are NOT in CI.** The lane originally ran
+  its ruling-65 proofs from a session-scratch script (ephemeral — the bench container reclaims it), so
+  the ledger's "27/27" would have been unreproducible by anyone else. The independent verification pass
+  (Aug 11) found the gap, ported the harness to **`scripts/i18n-chrome-proofs.mjs`** (env-configurable
+  `BASE_URL`/`OUT_DIR`/account; leaves the bench as found by resetting the account preference to EN),
+  and re-proved **27/27 against a fresh server boot** before committing. Same `[advisory]` posture as
+  rulings 58/64's committed-but-unwired suites: green requires a running server with the beta seed
+  accounts, so wiring it into CI belongs with the same batch that wires those (the ruling 57 gate's
+  pattern is the template).

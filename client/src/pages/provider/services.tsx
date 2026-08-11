@@ -19,6 +19,7 @@
  *     /api/me/posting-opportunities — session-scoped, real rows only §13).
  *     /provider/share-promote now redirects here (its expert twin redirected in C2).
  */
+import { useTranslation } from "react-i18next";
 import { ProviderLayout } from "@/components/provider/provider-layout";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -617,15 +618,18 @@ interface HealthResponse {
 
 // Short, compact labels for the failing-checks inline list (the check KEY, not the longer
 // server-provided `detail` prose — "no photo · no exact pin · no availability").
-const HEALTH_CHECK_LABELS: Record<string, string> = {
-  photo: "no photo",
-  exact_pin: "no exact pin",
-  description: "short description",
-  pricing: "no price",
-  availability: "no availability",
-  approval: "not approved",
-  delivery_asset: "no deliverable",
-};
+// Ruling 60 Phase A: the English strings moved to locales/<lng>/catalog.json under
+// health.checks.*; the server-sent check key is the translation key, and an UNKNOWN key still
+// falls through to the raw key exactly as before (the `?? c.key` at the call site).
+const HEALTH_CHECK_KEYS = [
+  "photo",
+  "exact_pin",
+  "description",
+  "pricing",
+  "availability",
+  "approval",
+  "delivery_asset",
+] as const;
 
 const TONE_CLASSNAMES = {
   ok: "bg-green-100 text-green-700 border-green-200",
@@ -635,20 +639,15 @@ const TONE_CLASSNAMES = {
 } as const;
 
 // Short "n/a" labels for method-omitted checks (D2) — the muted note beside the health meter.
-const OMITTED_CHECK_LABELS: Record<string, string> = {
-  exact_pin: "pin",
-  availability: "calendar",
-};
+// Translated under health.omitted.* (ruling 60 Phase A).
+const OMITTED_CHECK_KEYS = ["exact_pin", "availability"] as const;
 
 // Delivery-method chip for non-place-anchored services — shown INSTEAD of a pin chip, because
 // scoring a PDF guide red for "no location" was exactly the unfairness D2 removes.
-const DELIVERY_CHIP_LABELS: Record<string, string> = {
-  pdf: "📄 PDF delivery",
-  video: "🎥 Video call",
-  call: "📞 Call",
-  voice_notes: "🎙️ Voice notes",
-  async_messaging: "💬 Messaging",
-};
+// The seven canonical delivery methods are a DATA vocabulary (CLAUDE.md §3) — the keys below
+// are those values verbatim and are never translated; only their display labels are
+// (delivery.* in catalog.json).
+const DELIVERY_CHIP_KEYS = ["pdf", "video", "call", "voice_notes", "async_messaging"] as const;
 
 /** 62×46 rounded thumbnail from serviceImage/galleryImages[0]; an honest neutral placeholder
  *  tile (muted icon, no fake image) when neither is present. Sourced from the services list
@@ -679,20 +678,16 @@ function ServiceThumb({ service }: { service: Service }) {
 /** Pin-status chip. Semantics mirror the server's exact_pin health check exactly (exact pin =
  *  lat+lng present AND locationPrecision='exact'; else approximate-vs-none by coordinate
  *  presence), computed locally from the services-list row so it renders pre-mount too. */
-function pinStatus(service: Service): { label: string; tone: keyof typeof TONE_CLASSNAMES; title: string } {
+function pinStatus(service: Service): { labelKey: string; tone: keyof typeof TONE_CLASSNAMES; titleKey: string } {
   const hasCoords = service.latitude != null && service.longitude != null && service.latitude !== "" && service.longitude !== "";
   const isExact = hasCoords && service.locationPrecision === "exact";
   if (isExact) {
-    return { label: "📍 Exact pin", tone: "ok", title: "Provider-confirmed exact location." };
+    return { labelKey: "pin.exact", tone: "ok", titleKey: "pin.exactTitle" };
   }
   if (hasCoords) {
-    return {
-      label: "📍 Approximate area",
-      tone: "warn",
-      title: "Approximate area — neighborhood-level location from the platform backfill. Edit this service to set an exact pin.",
-    };
+    return { labelKey: "pin.approximate", tone: "warn", titleKey: "pin.approximateTitle" };
   }
-  return { label: "📍 No location", tone: "bad", title: "No location on file yet. Edit this service to add one." };
+  return { labelKey: "pin.none", tone: "bad", titleKey: "pin.noneTitle" };
 }
 
 /** Pin chip: clicking it opens the service's Edit (the existing edit navigation) — the pin
@@ -701,15 +696,19 @@ function pinStatus(service: Service): { label: string; tone: keyof typeof TONE_C
  *  status is not a defect and must not render as one. Unclassifiable rows (no deliveryMethod,
  *  not a property) keep the historical pin chip, mirroring the server's applicability rule. */
 function PinChip({ service, isBundle }: { service: Service; isBundle: boolean }) {
+  const { t } = useTranslation("catalog");
   const shape = { deliveryMethod: service.deliveryMethod, productShape: service.productShape };
   const editHref = isBundle ? "/provider/workstation" : `/provider/services/${service.id}/edit`;
 
   if (isClassifiable(shape) && !isPlaceAnchored(shape)) {
-    const label = DELIVERY_CHIP_LABELS[service.deliveryMethod ?? ""] ?? "Digital delivery";
+    const method = service.deliveryMethod ?? "";
+    const label = (DELIVERY_CHIP_KEYS as readonly string[]).includes(method)
+      ? t(`delivery.${method}`)
+      : t("delivery.fallback");
     return (
       <Badge
         variant="outline"
-        title="Delivered remotely — no meeting point needed for this service."
+        title={t("pin.remoteTitle")}
         className={`text-[10px] ${TONE_CLASSNAMES.neutral}`}
         data-testid={`chip-pin-${service.id}`}
       >
@@ -718,16 +717,16 @@ function PinChip({ service, isBundle }: { service: Service; isBundle: boolean })
     );
   }
 
-  const { label, tone, title } = pinStatus(service);
+  const { labelKey, tone, titleKey } = pinStatus(service);
   return (
     <Link href={editHref}>
       <Badge
         variant="outline"
-        title={title}
+        title={t(titleKey)}
         className={`text-[10px] cursor-pointer ${TONE_CLASSNAMES[tone]}`}
         data-testid={`chip-pin-${service.id}`}
       >
-        {label}
+        {t(labelKey)}
       </Badge>
     </Link>
   );
@@ -737,13 +736,16 @@ function PinChip({ service, isBundle }: { service: Service; isBundle: boolean })
  *  returned data for this service (endpoint unavailable pre-mount, or the service is missing
  *  from the response) — honest absence per §13, never a skeleton or a guess. */
 function HealthRow({ health }: { health: ServiceHealth | undefined }) {
+  const { t } = useTranslation("catalog");
   if (!health) return null;
   const { passed, total } = health.score;
   if (total <= 0) return null;
   const allPassing = passed === total;
   const failingLabels = health.checks
     .filter((c) => !c.ok)
-    .map((c) => HEALTH_CHECK_LABELS[c.key] ?? c.key);
+    .map((c) =>
+      (HEALTH_CHECK_KEYS as readonly string[]).includes(c.key) ? t(`health.checks.${c.key}`) : c.key,
+    );
   // D2: method-omitted checks render as a muted "n/a" note (reason on hover) — visibly not
   // counted, never presented as failures.
   const omitted = health.omitted ?? [];
@@ -752,7 +754,7 @@ function HealthRow({ health }: { health: ServiceHealth | undefined }) {
     <div className="mt-3 pt-3 border-t border-console-light" data-testid={`health-row-${health.serviceId}`}>
       <div className="flex items-center gap-2 flex-wrap">
         <span className="text-xs font-medium text-console-darkest">
-          Health {passed}/{total}
+          {t("health.meter", { passed, total })}
         </span>
         <div className="w-24 h-1.5 rounded-full bg-console-light overflow-hidden">
           <div
@@ -762,7 +764,7 @@ function HealthRow({ health }: { health: ServiceHealth | undefined }) {
         </div>
         {allPassing ? (
           <Badge className={`text-[10px] ${TONE_CLASSNAMES.ok}`} variant="outline">
-            <CheckCircle2 className="w-3 h-3 mr-1" /> Ready
+            <CheckCircle2 className="w-3 h-3 mr-1" /> {t("health.ready")}
           </Badge>
         ) : (
           <span className="text-xs text-console-mid">{failingLabels.join(" · ")}</span>
@@ -773,7 +775,14 @@ function HealthRow({ health }: { health: ServiceHealth | undefined }) {
             title={omitted.map((o) => o.reason).join("; ")}
             data-testid={`health-omitted-${health.serviceId}`}
           >
-            n/a: {omitted.map((o) => OMITTED_CHECK_LABELS[o.key] ?? o.key).join(", ")}
+            {t("health.naPrefix")}:{" "}
+            {omitted
+              .map((o) =>
+                (OMITTED_CHECK_KEYS as readonly string[]).includes(o.key)
+                  ? t(`health.omitted.${o.key}`)
+                  : o.key,
+              )
+              .join(", ")}
           </span>
         )}
       </div>
@@ -782,6 +791,12 @@ function HealthRow({ health }: { health: ServiceHealth | undefined }) {
 }
 
 export default function ProviderServices() {
+  const { t } = useTranslation("catalog");
+  const { t: tCommon } = useTranslation("common");
+  // NOTE the filter state stays the ENGLISH category name / the literal "All": it is compared
+  // against live category names coming off the API (content, not chrome — ruling 60's system B)
+  // and is also the source of the `button-category-filter-*` testids. Only the "All" pill's
+  // DISPLAY is translated.
   const [selectedCategory, setSelectedCategory] = useState("All");
   // Ruling 22(b): Catalog is the map's home — this toggle swaps the card grid for the map
   // authoring surface (CatalogMapView); everything below the content block is untouched.
@@ -907,12 +922,14 @@ export default function ProviderServices() {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h2 className="text-xl font-semibold text-console-darkest" data-testid="text-services-title">
-              Your Services
+              {t("header.title")}
             </h2>
             {isLoading ? (
               <Skeleton className="h-4 w-40 mt-1" />
             ) : (
-              <p className="text-console-mid text-sm">{activeCount} of {totalServices} services active</p>
+              <p className="text-console-mid text-sm">
+                {t("header.countSummary", { active: activeCount, total: totalServices })}
+              </p>
             )}
           </div>
           <div className="flex items-center gap-2">
@@ -924,7 +941,7 @@ export default function ProviderServices() {
                 onClick={() => setViewMode("list")}
                 data-testid="button-view-list"
               >
-                List
+                {t("header.viewList")}
               </Button>
               <Button
                 variant={viewMode === "map" ? "default" : "ghost"}
@@ -933,12 +950,12 @@ export default function ProviderServices() {
                 onClick={() => setViewMode("map")}
                 data-testid="button-view-map"
               >
-                Map
+                {t("header.viewMap")}
               </Button>
             </div>
             <Link href="/provider/services/new">
               <Button className="bg-primary hover:bg-primary/90" data-testid="button-add-service">
-                <Plus className="w-4 h-4 mr-2" /> Add New Service
+                <Plus className="w-4 h-4 mr-2" /> {t("header.addService")}
               </Button>
             </Link>
           </div>
@@ -955,7 +972,7 @@ export default function ProviderServices() {
                 onClick={() => setSelectedCategory(label)}
                 data-testid={`button-category-filter-${label.toLowerCase().replace(/[^a-z0-9]/g, "-")}`}
               >
-                {label}
+                {label === "All" ? t("filter.all") : label}
               </Button>
             ))}
           </div>
@@ -972,10 +989,8 @@ export default function ProviderServices() {
           /* First-time empty state: show all categories */
           <div className="space-y-6">
             <div className="text-center py-4">
-              <h3 className="text-lg font-semibold text-console-darkest mb-1">What will you offer?</h3>
-              <p className="text-console-mid text-sm">
-                Pick a category below to get started, or build your own service from scratch.
-              </p>
+              <h3 className="text-lg font-semibold text-console-darkest mb-1">{t("empty.title")}</h3>
+              <p className="text-console-mid text-sm">{t("empty.body")}</p>
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
@@ -1000,7 +1015,7 @@ export default function ProviderServices() {
             <div className="text-center">
               <Link href="/provider/services/new">
                 <Button variant="outline" data-testid="button-add-first-service">
-                  <Plus className="w-4 h-4 mr-2" /> Start from scratch
+                  <Plus className="w-4 h-4 mr-2" /> {t("empty.fromScratch")}
                 </Button>
               </Link>
             </div>
@@ -1011,15 +1026,15 @@ export default function ProviderServices() {
         ) : isFilterEmpty ? (
           <Card>
             <CardContent className="p-8 text-center">
-              <p className="text-console-mid font-medium">No services in this category.</p>
-              <p className="text-console-mid text-sm mt-1">Try a different filter or add a new service.</p>
+              <p className="text-console-mid font-medium">{t("filter.emptyTitle")}</p>
+              <p className="text-console-mid text-sm mt-1">{t("filter.emptyBody")}</p>
               <Button
                 variant="outline"
                 className="mt-4"
                 onClick={() => setSelectedCategory("All")}
                 data-testid="button-clear-filter"
               >
-                Clear filter
+                {t("filter.clear")}
               </Button>
             </CardContent>
           </Card>
@@ -1027,7 +1042,9 @@ export default function ProviderServices() {
           /* Service cards */
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             {filteredServices.map((service) => {
-              const displayName = service.serviceName || service.name || "Untitled Service";
+              // The listing's own NAME is provider content (ruling 60 system B) and is never
+              // translated; only the placeholder shown when there is no name is chrome.
+              const displayName = service.serviceName || service.name || t("card.untitled");
               const rawPrice = service.price ?? service.basePrice;
               const priceDisplay = rawPrice == null || rawPrice === ""
                 ? "—"
@@ -1066,12 +1083,12 @@ export default function ProviderServices() {
                           <StatusBadge status={isActive ? "active" : "paused"} />
                           {isBundle && (
                             <Badge variant="outline" className="text-[10px]" data-testid={`badge-bundle-${service.id}`}>
-                              Bundle
+                              {t("card.bundle")}
                             </Badge>
                           )}
                           {service.isFeatured && (
                             <Badge className="bg-primary text-white text-[10px]" data-testid={`badge-featured-${service.id}`}>
-                              Featured
+                              {t("card.featured")}
                             </Badge>
                           )}
                           {categoryName && (
@@ -1095,7 +1112,8 @@ export default function ProviderServices() {
                           )}
                           {service.maxConcurrentBookings && service.maxConcurrentBookings > 1 && (
                             <span className="flex items-center gap-1 text-console-mid">
-                              <Users className="w-4 h-4" /> Up to {service.maxConcurrentBookings}
+                              <Users className="w-4 h-4" />{" "}
+                              {t("card.upTo", { count: service.maxConcurrentBookings })}
                             </span>
                           )}
                           {service.meetingPoint && (
@@ -1105,7 +1123,7 @@ export default function ProviderServices() {
                           )}
                           {service.pickupAvailable && (
                             <span className="flex items-center gap-1 text-blue-500">
-                              <Truck className="w-4 h-4" /> Pickup available
+                              <Truck className="w-4 h-4" /> {t("card.pickupAvailable")}
                             </span>
                           )}
                         </div>
@@ -1114,7 +1132,7 @@ export default function ProviderServices() {
                         {Array.isArray(service.contentAffinityTags) && service.contentAffinityTags.length > 0 && (
                           <div className="mt-3" data-testid={`affinity-tags-${service.id}`}>
                             <p className="text-[10px] font-medium text-console-mid uppercase tracking-wide mb-1.5">
-                              Surfaces when travellers view:
+                              {t("card.affinityHeading")}
                             </p>
                             <div className="flex flex-wrap gap-1.5">
                               {service.contentAffinityTags.map((tag) => (
@@ -1142,7 +1160,7 @@ export default function ProviderServices() {
                           data-testid={`switch-active-${service.id}`}
                         />
                         <span className="text-xs text-console-mid">
-                          {isActive ? "Active" : "Paused"}
+                          {isActive ? tCommon("state.active") : tCommon("state.paused")}
                         </span>
                       </div>
                     </div>
@@ -1150,7 +1168,7 @@ export default function ProviderServices() {
                     <div className="flex gap-2 mt-4 pt-3 border-t border-console-light">
                       <Link href={isBundle ? "/provider/workstation" : `/provider/services/${service.id}/edit`}>
                         <Button variant="outline" size="sm" data-testid={`button-edit-${service.id}`}>
-                          <Edit className="w-4 h-4 mr-1" /> Edit
+                          <Edit className="w-4 h-4 mr-1" /> {tCommon("actions.edit")}
                         </Button>
                       </Link>
                       {/* PB: no Duplicate for bundles — duplicateService copies the
@@ -1164,7 +1182,7 @@ export default function ProviderServices() {
                           disabled={duplicateMutation.isPending}
                           data-testid={`button-duplicate-${service.id}`}
                         >
-                          <Copy className="w-4 h-4 mr-1" /> Duplicate
+                          <Copy className="w-4 h-4 mr-1" /> {tCommon("actions.duplicate")}
                         </Button>
                       )}
                       {/* C9 Share & Promote absorption: share kit only for approved+active
@@ -1176,7 +1194,7 @@ export default function ProviderServices() {
                           onClick={() => setShareTarget(service)}
                           data-testid={`button-share-${service.id}`}
                         >
-                          <Share2 className="w-4 h-4 mr-1" /> Share
+                          <Share2 className="w-4 h-4 mr-1" /> {tCommon("actions.share")}
                         </Button>
                       )}
                       <Button
@@ -1187,7 +1205,7 @@ export default function ProviderServices() {
                         disabled={deleteMutation.isPending}
                         data-testid={`button-delete-${service.id}`}
                       >
-                        <Trash2 className="w-4 h-4 mr-1" /> Delete
+                        <Trash2 className="w-4 h-4 mr-1" /> {tCommon("actions.delete")}
                       </Button>
                     </div>
 
@@ -1205,7 +1223,7 @@ export default function ProviderServices() {
         {/* C9: Share & Promote's opportunity-scoped creation half — real rows only (§13). */}
         <section data-testid="section-catalog-promote">
           <h2 className="text-sm font-semibold text-console-mid uppercase tracking-wide mb-2">
-            Promote
+            {t("sections.promote")}
           </h2>
           <PostingOpportunitiesCard />
         </section>
@@ -1216,7 +1234,7 @@ export default function ProviderServices() {
         <Dialog open={!!shareOffering} onOpenChange={(open) => !open && setShareTarget(null)}>
           <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto" data-testid="dialog-share-kit">
             <DialogHeader>
-              <DialogTitle>{shareOffering?.name ?? "Share"}</DialogTitle>
+              <DialogTitle>{shareOffering?.name ?? t("shareDialog.fallbackTitle")}</DialogTitle>
             </DialogHeader>
             {shareOffering && <OfferingShareDetail offering={shareOffering} showImages />}
           </DialogContent>

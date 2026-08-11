@@ -1,3 +1,5 @@
+import { useTranslation } from "react-i18next";
+import { LanguagePreferenceCard } from "@/components/settings/language-preference-card";
 import { ProviderLayout } from "@/components/provider/provider-layout";
 import { HandleClaimCard } from "@/components/backoffice/handle-claim-card";
 import { StripeConnectCard } from "@/components/stripe-connect-card";
@@ -420,6 +422,7 @@ function VacationModeSection() {
 }
 
 export default function ProviderSettings() {
+  const { t } = useTranslation(["settings", "common"]);
   const { toast } = useToast();
 
   // C9: ?tab= deep-linking (the expert settings C8 convention). Unknown/absent ?tab= falls
@@ -476,10 +479,14 @@ export default function ProviderSettings() {
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/provider/settings"] });
-      toast({ title: "Settings saved", description: "Your preferences have been updated." });
+      toast({ title: t("settings:save.successTitle"), description: t("settings:save.successBody") });
     },
     onError: () => {
-      toast({ title: "Error", description: "Failed to save settings.", variant: "destructive" });
+      toast({
+        title: t("settings:save.errorTitle"),
+        description: t("settings:save.errorBody"),
+        variant: "destructive",
+      });
     },
   });
 
@@ -492,10 +499,10 @@ export default function ProviderSettings() {
           <TabsList className="grid w-full grid-cols-2">
             {/* C9: Profile is the FIRST tab in order; the settings content stays the default. */}
             <TabsTrigger value="profile" className="flex items-center gap-2" data-testid="tab-profile">
-              <Building className="w-4 h-4" /> Profile
+              <Building className="w-4 h-4" /> {t("settings:tabs.profile")}
             </TabsTrigger>
             <TabsTrigger value="settings" className="flex items-center gap-2" data-testid="tab-settings">
-              <User className="w-4 h-4" /> Settings
+              <User className="w-4 h-4" /> {t("settings:tabs.settings")}
             </TabsTrigger>
           </TabsList>
 
@@ -517,11 +524,16 @@ export default function ProviderSettings() {
 
           <TabsContent value="settings" className="mt-6 space-y-6">
 
+        {/* Ruling 60 Phase A — the Settings → Preferences card (mockup §06 frame A), selector
+            entry point (a). Writes users.preferences.settings.language through the existing
+            allow-listed PATCH /api/me/preferences. */}
+        <LanguagePreferenceCard />
+
         {/* Verification & Payouts */}
         <div>
           <h2 className="text-lg font-semibold text-console-darkest mb-4 flex items-center gap-2">
             <ShieldCheck className="w-5 h-5 text-blue-600" />
-            Verification & Payouts
+            {t("settings:verification.title")}
           </h2>
           <VerificationPayoutsSection />
         </div>
@@ -545,16 +557,16 @@ export default function ProviderSettings() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Building className="w-5 h-5 text-console-mid" />
-              Business Preferences
+              {t("settings:business.title")}
             </CardTitle>
-            <CardDescription>Configure how you receive and manage bookings</CardDescription>
+            <CardDescription>{t("settings:business.description")}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="flex items-center justify-between">
               <div className="space-y-0.5">
-                <Label className="text-base">Instant Booking</Label>
+                <Label className="text-base">{t("settings:business.instantBooking")}</Label>
                 <p className="text-sm text-console-mid">
-                  Allow clients to book without prior approval
+                  {t("settings:business.instantBookingDesc")}
                 </p>
               </div>
               <Switch
@@ -566,9 +578,9 @@ export default function ProviderSettings() {
 
             <div className="flex items-center justify-between">
               <div className="space-y-0.5">
-                <Label className="text-base">Auto-Response</Label>
+                <Label className="text-base">{t("settings:business.autoResponse")}</Label>
                 <p className="text-sm text-console-mid">
-                  Send automatic responses to new inquiries
+                  {t("settings:business.autoResponseDesc")}
                 </p>
               </div>
               <Switch
@@ -579,7 +591,7 @@ export default function ProviderSettings() {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="lead-time">Minimum Lead Time</Label>
+              <Label htmlFor="lead-time">{t("settings:business.leadTime")}</Label>
               <div className="flex items-center gap-2">
                 <Input 
                   id="lead-time" 
@@ -589,14 +601,14 @@ export default function ProviderSettings() {
                   className="w-24"
                   data-testid="input-lead-time"
                 />
-                <span className="text-console-dark">days before event</span>
+                <span className="text-console-dark">{t("settings:business.leadTimeUnit")}</span>
               </div>
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="response-time">
                 <Clock className="w-4 h-4 inline mr-1" />
-                Target Response Time
+                {t("settings:business.responseTime")}
               </Label>
               <div className="flex items-center gap-2">
                 <Input 
@@ -607,7 +619,7 @@ export default function ProviderSettings() {
                   className="w-24"
                   data-testid="input-response-time"
                 />
-                <span className="text-console-dark">hours</span>
+                <span className="text-console-dark">{t("settings:business.responseTimeUnit")}</span>
               </div>
             </div>
           </CardContent>
@@ -621,26 +633,33 @@ export default function ProviderSettings() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Bell className="w-5 h-5 text-console-mid" />
-              Notification Preferences
+              {t("settings:notifications.title")}
             </CardTitle>
-            <CardDescription>Choose how you want to be notified</CardDescription>
+            <CardDescription>{t("settings:notifications.description")}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             {Object.entries(notifications).map(([key, value]) => {
-              const labels: Record<string, { title: string; desc: string }> = {
-                newBookings: { title: "New Booking Requests", desc: "Get notified when you receive a new booking request" },
-                bookingUpdates: { title: "Booking Updates", desc: "Updates on confirmed bookings and changes" },
-                messages: { title: "Messages", desc: "New messages from clients and experts" },
-                reviews: { title: "Reviews", desc: "When clients leave reviews" },
-                payouts: { title: "Payout Notifications", desc: "Payout processing and completion" },
-                marketing: { title: "Marketing & Tips", desc: "Tips to improve your listing and promotions" },
-              };
+              // Ruling 60 Phase A: the notification keys are the persisted jsonb field names
+              // (notificationsJson) — data, never translated. Only their labels are.
+              const NOTIFICATION_KEYS = [
+                "newBookings",
+                "bookingUpdates",
+                "messages",
+                "reviews",
+                "payouts",
+                "marketing",
+              ];
+              const known = NOTIFICATION_KEYS.includes(key);
               
               return (
                 <div key={key} className="flex items-center justify-between py-2">
                   <div className="space-y-0.5">
-                    <Label className="text-base">{labels[key]?.title ?? key}</Label>
-                    <p className="text-sm text-console-mid">{labels[key]?.desc ?? ""}</p>
+                    <Label className="text-base">
+                      {known ? t(`settings:notifications.${key}`) : key}
+                    </Label>
+                    <p className="text-sm text-console-mid">
+                      {known ? t(`settings:notifications.${key}Desc`) : ""}
+                    </p>
                   </div>
                   <Switch
                     checked={value}
@@ -660,13 +679,13 @@ export default function ProviderSettings() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <CreditCard className="w-5 h-5 text-console-mid" />
-              Payment Settings
+              {t("settings:payment.title")}
             </CardTitle>
-            <CardDescription>Manage your payout methods and preferences</CardDescription>
+            <CardDescription>{t("settings:payment.description")}</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label>Payout Frequency</Label>
+              <Label>{t("settings:payment.frequency")}</Label>
               <div className="flex gap-2">
                 {(["weekly", "biweekly", "monthly"] as const).map((freq) => (
                   <Button
@@ -677,14 +696,14 @@ export default function ProviderSettings() {
                     onClick={() => setPayoutFrequency(freq)}
                     data-testid={`button-payout-${freq}`}
                   >
-                    {freq.charAt(0).toUpperCase() + freq.slice(1).replace("biweekly", "Bi-weekly")}
+                    {t(`settings:payment.${freq}`)}
                   </Button>
                 ))}
               </div>
             </div>
 
             <div className="space-y-2">
-              <Label>Minimum Payout Amount</Label>
+              <Label>{t("settings:payment.minPayout")}</Label>
               <div className="flex items-center gap-2">
                 <span className="text-console-dark">$</span>
                 <Input 
@@ -707,7 +726,7 @@ export default function ProviderSettings() {
             data-testid="button-save-settings"
           >
             <Save className="w-4 h-4 mr-2" />
-            {saveSettingsMutation.isPending ? "Saving..." : "Save All Settings"}
+            {saveSettingsMutation.isPending ? t("settings:save.saving") : t("settings:save.all")}
           </Button>
         </div>
 

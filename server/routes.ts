@@ -119,6 +119,7 @@ import tripsRoutes from "./routes/trips.routes";
 import advisorRoutes from "./routes/advisor.routes";
 import demandRoutes from "./routes/demand.routes";
 import providerListingHealthRoutes from "./routes/provider-listing-health.routes";
+import serviceAttestationsRoutes from "./routes/service-attestations.routes";
 import marketsRoutes from "./routes/markets.routes";
 import adminMarketsRoutes from "./routes/admin-markets.routes";
 import { dedupedRequest, callWithCircuitBreaker } from "./utils/requestDeduplication";
@@ -965,6 +966,13 @@ export async function registerRoutes(
   // GET /api/provider/services/:id below (~line 2075) — that route greedily matches /health as
   // id="health" and 404s (live-verified), so order is load-bearing here.
   app.use(providerListingHealthRoutes);
+
+  // D9 onboarding attestations (docs/DECISIONS.md ruling 62's D9 clause, executed by ruling 67;
+  // migration 197) — GET/POST /api/provider/services/:id/attestations. Mounted in the same slot
+  // rule as the health router above: ahead of the inline GET /api/provider/services/:id. The
+  // applicable SET is server-derived from the live row on every read AND every write
+  // (shared/service-attestations.ts); the body is a §19 allowlist of one field.
+  app.use(serviceAttestationsRoutes);
 
   // Public earner storefront (backoffice Phase 1a/1b) — /p/:handle OG shell + /api/storefront/:handle
   // + PATCH /api/me/handle. Mounted per §9; /p/:handle must register before the Vite catch-all.
@@ -5288,6 +5296,127 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
   // (only experts had one), so provider bookings dead-ended at "pending". Same
   // ownership gate + transition allow-list.
   app.patch("/api/provider/bookings/:id/status", isAuthenticated, handleOwnerBookingStatus);
+
+  // ── D8 OWNER-DECLARED COMPLETION (docs/DECISIONS.md ruling 63, executed by ruling 66) ────────
+  //
+  // Ruling 63 makes three of the six completion rules the OWNER's to declare: `session_end`
+  // (call/video/voice_notes — "session end per booked slot, provider-confirmed"),
+  // `provider_declared` (async_messaging — "SLA satisfied + scope delivered, provider-declared,
+  // disputable window") and `bundle_components` ("all components complete").
+  //
+  // HOW THIS RECONCILES WITH THE `status` RAIL ABOVE, which deliberately refuses `completed`
+  // ("marking a booking completed fires the escrow earnings side-effect, so allowing the owner to
+  // set it would let them self-credit"). That objection is answered here, not waived:
+  //   (1) it is not a free-text status write — the rule is resolved SERVER-SIDE from the service
+  //       row via the shared `completionRuleFor`, and an owner may only declare the rules ruling
+  //       63 assigns them. in_person/hybrid stay traveler-driven and pdf/property stay
+  //       timer-driven; both are REFUSED here with a stated reason;
+  //   (2) `session_end` is EVIDENCE-GATED against the booked slot's own end time — a provider
+  //       cannot declare a session complete before it has happened, and a booking with no slot or
+  //       no slot end time is refused rather than guessed (§13);
+  //   (3) completion is not payout. The flip mints a HELD earning whose clearance window IS the
+  //       traveler's dispute window (`holdWindowDays('service_booking')` — the same constant
+  //       `POST /api/bookings/:id/dispute` enforces), so a wrongly-declared completion is
+  //       disputable and reversible for the whole window before any money moves.
+  //
+  // BODY IS AN EXPLICIT ALLOWLIST (§19): the ONLY field read is `componentServiceId`, and only
+  // for a bundle. The acting user comes from the session, the booking from the path, and every
+  // amount/rate from the server-side record (§14/§18) — this handler reads none of them.
+  const handleOwnerBookingComplete = async (req: any, res: any) => {
+    try {
+      const userId = getUserId(req)!;
+      const booking = await storage.getServiceBooking(req.params.id);
+      // Ownership gate: the booking's service belongs to the session user. Undifferentiated 404
+      // so a caller probing ids that are not theirs learns nothing (§13 posture).
+      if (!booking || booking.providerId !== userId) {
+        return res.status(404).json({ message: "Booking not found or not yours" });
+      }
+
+      const {
+        completeBooking,
+        ownerActorFor,
+        recordBundleComponentCompletion,
+        resolveCompletionEligibility,
+      } = await import("./services/booking-completion.service");
+
+      const eligibility = await resolveCompletionEligibility(req.params.id);
+      if (!eligibility.rule) {
+        return res.status(409).json({
+          message: "This booking's completion rule cannot be determined from its service, so it cannot be completed here.",
+          reason: eligibility.reason,
+        });
+      }
+      const actor = ownerActorFor(eligibility.rule);
+      if (!actor) {
+        return res.status(409).json({
+          message:
+            eligibility.rule === "confirm_completion"
+              ? "In-person bookings are completed by the traveler confirming, not by you."
+              : "This booking completes automatically — you do not need to mark it complete.",
+          rule: eligibility.rule,
+          reason: "rule_not_owner_declared",
+        });
+      }
+
+      if (eligibility.rule === "bundle_components") {
+        // ALLOWLIST: one field, string, nothing else off the body.
+        const componentServiceId =
+          typeof req.body?.componentServiceId === "string" ? req.body.componentServiceId.trim() : "";
+        if (!componentServiceId) {
+          return res.status(400).json({
+            message: "Name the bundle component you delivered (componentServiceId).",
+            rule: eligibility.rule,
+            evidence: eligibility.evidence,
+          });
+        }
+        const outcome = await recordBundleComponentCompletion({
+          bookingId: req.params.id,
+          componentServiceId,
+          actor,
+        });
+        if (!outcome.recorded) {
+          return res.status(400).json({
+            message: outcome.unknownComponent
+              ? "That service is not one of this bundle's components."
+              : "This bundle component could not be recorded.",
+            rule: outcome.rule,
+            reason: outcome.reason,
+            evidence: outcome.evidence,
+          });
+        }
+        // Partial is a SUCCESSFUL record and an explicitly UNCOMPLETED booking — no partial
+        // payout exists, and none is implied here (ruling 63: partial routes to the refund lane).
+        return res.json({
+          recorded: true,
+          completed: outcome.completed,
+          rule: outcome.rule,
+          reason: outcome.reason,
+          evidence: outcome.evidence,
+        });
+      }
+
+      const outcome = await completeBooking({ bookingId: req.params.id, actor, reason: `d8_owner:${eligibility.rule}` });
+      if (!outcome.completed) {
+        return res.status(409).json({
+          message:
+            outcome.reason === "session_not_ended"
+              ? "This session has not ended yet."
+              : outcome.reason === "no_booked_slot" || outcome.reason === "slot_has_no_end_time"
+                ? "This booking has no booked slot with an end time, so its session end cannot be confirmed."
+                : "This booking cannot be completed right now.",
+          rule: outcome.rule,
+          reason: outcome.reason,
+          evidence: outcome.evidence,
+        });
+      }
+      return res.json({ completed: true, rule: outcome.rule, evidence: outcome.evidence });
+    } catch (err) {
+      console.error("Owner booking completion error:", err);
+      res.status(500).json({ message: "Failed to complete booking" });
+    }
+  };
+  app.post("/api/provider/bookings/:id/complete", isAuthenticated, handleOwnerBookingComplete);
+  app.post("/api/expert/bookings/:id/complete", isAuthenticated, handleOwnerBookingComplete);
 
   // Update visa application status on a service booking (expert/provider action)
   app.patch("/api/service-bookings/:id/visa-status", isAuthenticated, async (req, res) => {
