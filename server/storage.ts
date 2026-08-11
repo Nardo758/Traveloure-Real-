@@ -252,6 +252,7 @@ export interface IStorage {
   getServiceBooking(id: string): Promise<ServiceBooking | undefined>;
   createServiceBooking(booking: InsertServiceBooking): Promise<ServiceBooking>;
   updateServiceBookingStatus(id: string, status: string, reason?: string, expectedFromStatuses?: readonly string[]): Promise<ServiceBooking | undefined>;
+  mintCompletionEarningsForBooking(booking: ServiceBooking, outerTx?: unknown): Promise<boolean>;
   updateServiceBookingMetadata(id: string, metadata: Record<string, any>): Promise<ServiceBooking | undefined>;
 
   // Service Reviews
@@ -1839,90 +1840,166 @@ export class DatabaseStorage implements IStorage {
       ? and(eq(serviceBookings.id, id), inArray(serviceBookings.status, expectedFromStatuses as string[]))
       : eq(serviceBookings.id, id);
 
-    const [updated] = await db.update(serviceBookings)
-      .set(updates)
-      .where(guard)
-      .returning();
+    // A transition to "completed" is a MONEY event: the status flip and the earnings mint must
+    // commit or roll back as ONE transaction (task 1091 review). If the mint fails, the booking
+    // stays in its prior status, so the traveler endpoint's retry re-attempts the whole thing —
+    // never a completed booking with no earnings. Mint is idempotent under conflict (partial
+    // unique indexes + ON CONFLICT DO NOTHING), which also fixes the latent dispute-reject
+    // double-mint (completed → disputed → re-completed).
+    let updated: ServiceBooking | undefined;
+    if (status === "completed") {
+      updated = await db.transaction(async (tx) => {
+        const [u] = await tx.update(serviceBookings)
+          .set(updates)
+          .where(guard)
+          .returning();
+        if (!u) return undefined;
+        await this.mintCompletionEarningsForBooking(u, tx);
+        return u;
+      });
+    } else {
+      [updated] = await db.update(serviceBookings)
+        .set(updates)
+        .where(guard)
+        .returning();
+    }
 
     // 0 rows: either the id vanished, or (with a guard) a concurrent writer moved the row out of
     // every expected state first. Either way this caller lost — and critically, NONE of the
     // side-effects below run, so a lost race mints no earnings and no revenue row.
     if (!updated) return undefined;
 
-    // Only fire completion side-effects on the FIRST transition to "completed".
-    const isFirstCompletion = status === "completed" && priorStatus !== "completed";
-    if (isFirstCompletion) {
-      const grossAmount = parseFloat(updated.totalAmount || '0');
-      const platformFee = parseFloat(updated.platformFee || '0');
-      const providerEarningsAmount = parseFloat(updated.providerEarnings || '0');
-      
-      // Atomically add provider earnings to service totalRevenue
-      if (providerEarningsAmount > 0) {
-        await db.update(providerServices)
-          .set({ totalRevenue: sql`${providerServices.totalRevenue} + ${providerEarningsAmount}` })
-          .where(eq(providerServices.id, updated.serviceId));
-      }
-      
-      // Record platform revenue if there's a platform fee
-      if (platformFee > 0) {
-        await this.recordPlatformRevenue({
-          sourceType: 'booking_commission',
-          sourceId: updated.id,
-          trackingNumber: updated.trackingNumber || undefined,
-          grossAmount: String(grossAmount),
-          platformFee: String(platformFee),
-          netAmount: String(platformFee * (1 - PROCESSING_FEE_RATE)),
-          processingFees: String(platformFee * PROCESSING_FEE_RATE),
-          providerId: updated.providerId,
-          providerEarnings: String(providerEarningsAmount),
-          description: `Booking commission from ${updated.trackingNumber || id}`,
-          status: 'recorded',
-          transactionDate: new Date(),
-        });
-      }
-      
-      // Create earnings ledger entries only if amount > 0
-      // Earnings become available after the configurable hold period (default 7 days)
-      const availableAt = availableAtFor('service_booking'); // escrow P2: per-surface clearance window (config)
-
-      if (providerEarningsAmount > 0) {
-        await this.createProviderEarning({
-          providerId: updated.providerId,
-          type: 'service_booking',
-          amount: String(providerEarningsAmount),
-          sourceType: 'booking',
-          sourceId: updated.id,
-          trackingNumber: updated.trackingNumber || undefined,
-          description: `Earnings from booking ${updated.trackingNumber || id}`,
-          status: 'held', // escrow: born held; releasable when available_at clears (migration 112)
-          availableAt,
-        });
-
-        // Also record in expert earnings ledger (provider may be an expert)
-        await this.createExpertEarning({
-          expertId: updated.providerId,
-          type: 'consulting',
-          amount: String(providerEarningsAmount),
-          referenceId: updated.id,
-          referenceType: 'service_booking',
-          description: `Service booking earnings from ${updated.trackingNumber || id}`,
-          status: 'held', // escrow: born held; releasable when available_at clears (migration 112)
-          availableAt,
-        });
-      }
-    }
-
     // Only decrement bookingsCount on the FIRST transition to cancelled/refunded.
     const cancelStatuses = ["cancelled", "refunded"];
     const isFirstCancellation =
       cancelStatuses.includes(status) && !cancelStatuses.includes(priorStatus || '');
-    if (isFirstCancellation) {
+    if (isFirstCancellation && updated.serviceId) {
       await db.update(providerServices)
         .set({ bookingsCount: sql`GREATEST(${providerServices.bookingsCount} - 1, 0)` })
         .where(eq(providerServices.id, updated.serviceId));
     }
     
     return updated;
+  }
+
+  /**
+   * Completion side-effects for a service booking, extracted from updateServiceBookingStatus and
+   * made IDEMPOTENT (task 1091 review): each ledger effect is guarded by its own existence check,
+   * so this is safe to call (a) on every completed transition, (b) again after a crash that left
+   * a booking `completed` with some or all ledger rows missing (the scheduler's reconciliation
+   * pass), and (c) on dispute-reject re-completion — none of which can double-mint.
+   * Returns true if any effect was newly applied.
+   */
+  async mintCompletionEarningsForBooking(booking: ServiceBooking, outerTx?: Parameters<Parameters<typeof db.transaction>[0]>[0]): Promise<boolean> {
+    const { providerId, serviceId } = booking;
+    if (!providerId || !serviceId) {
+      console.error(`[mintCompletionEarnings] booking ${booking.id} missing providerId/serviceId — cannot mint`);
+      return false;
+    }
+    const grossAmount = parseFloat(booking.totalAmount || '0');
+    const platformFee = parseFloat(booking.platformFee || '0');
+    const providerEarningsAmount = parseFloat(booking.providerEarnings || '0');
+    // Earnings become available after the configurable hold period (default 7 days)
+    const availableAt = availableAtFor('service_booking'); // escrow P2: per-surface clearance window (config)
+    // RACE-PROOF + ATOMIC (task 1091 review): the DB is the guard, not a SELECT. Each ledger
+    // effect is an INSERT ... ON CONFLICT DO NOTHING against migration 195's partial unique
+    // indexes, so under concurrent callers (traveler confirm vs scheduler vs reconciliation)
+    // exactly ONE caller wins each row. The whole mint — ledger rows PLUS their rollup
+    // side-effects (service totalRevenue, daily revenue summary) — runs in ONE transaction:
+    // a crash or failure mid-mint rolls everything back, so a retry re-attempts the full set and
+    // rollups can never be permanently skipped behind an already-inserted ledger row. When an
+    // outer transaction is supplied (the status-transition caller), the mint joins it so the
+    // confirmed → completed flip and the money effects commit or roll back as ONE unit.
+    const run = async (tx: Parameters<Parameters<typeof db.transaction>[0]>[0]) => {
+    let applied = false;
+
+    if (platformFee > 0) {
+      const inserted = await tx.insert(platformRevenue).values({
+        sourceType: 'booking_commission',
+        sourceId: booking.id,
+        trackingNumber: booking.trackingNumber || undefined,
+        grossAmount: String(grossAmount),
+        platformFee: String(platformFee),
+        netAmount: String(platformFee * (1 - PROCESSING_FEE_RATE)),
+        processingFees: String(platformFee * PROCESSING_FEE_RATE),
+        providerId,
+        providerEarnings: String(providerEarningsAmount),
+        description: `Booking commission from ${booking.trackingNumber || booking.id}`,
+        status: 'recorded',
+        transactionDate: new Date(),
+      }).onConflictDoNothing({
+        // gross_amount >= 0 scopes the guard to the ONE original mint row; negative compensation
+        // rows from reversePlatformRevenueForBooking share source_type/source_id and stay free.
+        target: [platformRevenue.sourceId],
+        where: sql`source_type = 'booking_commission' and gross_amount >= 0`,
+      }).returning({ id: platformRevenue.id });
+      if (inserted.length > 0) {
+        applied = true;
+        // Daily summary rollup (matches recordPlatformRevenue's side-effect), only for the
+        // winner, inside the SAME transaction, and as an ATOMIC upsert — concurrent mints for
+        // different bookings on the same date each add their increment, never lost-update.
+        const date = new Date().toISOString().split('T')[0];
+        await tx.insert(dailyRevenueSummary).values({
+          date,
+          totalGross: String(grossAmount),
+          totalPlatformFee: String(platformFee),
+          totalNet: String(platformFee * (1 - PROCESSING_FEE_RATE)),
+          transactionCount: 1,
+        }).onConflictDoUpdate({
+          target: dailyRevenueSummary.date,
+          set: {
+            totalGross: sql`${dailyRevenueSummary.totalGross} + excluded.total_gross`,
+            totalPlatformFee: sql`${dailyRevenueSummary.totalPlatformFee} + excluded.total_platform_fee`,
+            totalNet: sql`${dailyRevenueSummary.totalNet} + excluded.total_net`,
+            transactionCount: sql`${dailyRevenueSummary.transactionCount} + 1`,
+            updatedAt: new Date(),
+          },
+        });
+      }
+    }
+
+    if (providerEarningsAmount > 0) {
+      const insertedProvider = await tx.insert(providerEarnings).values({
+        providerId,
+        type: 'service_booking',
+        amount: String(providerEarningsAmount),
+        sourceType: 'booking',
+        sourceId: booking.id,
+        trackingNumber: booking.trackingNumber || undefined,
+        description: `Earnings from booking ${booking.trackingNumber || booking.id}`,
+        status: 'held', // escrow: born held; releasable when available_at clears (migration 112)
+        availableAt,
+      }).onConflictDoNothing({
+        target: [providerEarnings.sourceId],
+        where: sql`source_type = 'booking' and amount >= 0`,
+      }).returning({ id: providerEarnings.id });
+      if (insertedProvider.length > 0) {
+        await tx.update(providerServices)
+          .set({ totalRevenue: sql`${providerServices.totalRevenue} + ${providerEarningsAmount}` })
+          .where(eq(providerServices.id, serviceId));
+        applied = true;
+      }
+
+      // Also record in expert earnings ledger (provider may be an expert)
+      const insertedExpert = await tx.insert(expertEarnings).values({
+        expertId: providerId,
+        type: 'consulting',
+        amount: String(providerEarningsAmount),
+        referenceId: booking.id,
+        referenceType: 'service_booking',
+        description: `Service booking earnings from ${booking.trackingNumber || booking.id}`,
+        status: 'held', // escrow: born held; releasable when available_at clears (migration 112)
+        availableAt,
+      }).onConflictDoNothing({
+        target: [expertEarnings.referenceId],
+        where: sql`reference_type = 'service_booking' and amount >= 0`,
+      }).returning({ id: expertEarnings.id });
+      if (insertedExpert.length > 0) applied = true;
+    }
+
+    return applied;
+    };
+    return outerTx ? await run(outerTx) : await db.transaction(run);
   }
 
   // Service Reviews

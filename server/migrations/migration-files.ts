@@ -897,4 +897,13 @@ export const MIGRATION_FILES = [
   // behavior (D8 is unruled); it is the download SIGNAL that a future D8 pass would need.
   // Additive, idempotent, no CHECK. Declared in shared/schema.ts (publish-trap).
   "194_deliverable_downloads.sql",
+  // 195: completion-mint race guards (task 1091 review). Partial unique indexes on
+  // provider_earnings(source_id) WHERE source_type='booking',
+  // expert_earnings(reference_id) WHERE reference_type='service_booking', and
+  // platform_revenue(source_id) WHERE source_type='booking_commission' — the DB half of the
+  // idempotent completion mint (INSERT ... ON CONFLICT DO NOTHING), so concurrent traveler
+  // confirm / auto-complete scheduler / reconciliation callers can never double-mint. Dedupes
+  // pre-existing duplicates first (keep paid_out, else earliest). Declared in shared/schema.ts
+  // (publish-trap rule).
+  "195_completion_mint_unique_guards.sql",
 ] as const;

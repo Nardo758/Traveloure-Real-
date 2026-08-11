@@ -25,5 +25,5 @@
 - [GitHub push auth](github-push-auth.md) — shell push failures were an expired token embedded in remote.origin.url + stale askpass; plain URL + env-token credential helper now; gitPush callback is the fallback.
 - [Google Maps runtime fallback](google-maps-runtime-fallback.md) — vis.gl clobbers gm_authFailure; use the accessor wrapper + useGoogleMapsAuthFailed(); curl can't test referrer restrictions.
 - [Cancellation refund policy](cancellation-refund-policy.md) — refund before terminal status; amount-scoped Stripe idempotency keys; partial refunds reverse ledger proportionally.
-- [Earnings mint path](earnings-mint-path.md) — earnings mint only on booking → completed, a transition with NO production path except admin dispute-reject; full fixture recipe inside.
+- [Earnings mint path](earnings-mint-path.md) — earnings mint on booking → completed; production paths are traveler confirm-completion + PI-gated auto-complete scheduler; full fixture recipe inside.
 - [Kyoto bench fixture](kyoto-bench-fixture.md) — durable dev-DB expert kyoto-temples@traveloure.test with lifecycle provenance; never seed Kyoto experts by bare role flip; no DB CHECK on application status.
