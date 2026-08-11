@@ -3352,7 +3352,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         const v = body[key];
         if (v === undefined) return undefined;
         if (typeof v !== "string") throw new Error(`${key} must be a string`);
-        const trimmed = v.trim();
+        // Sanitize server-side: strip HTML tags / escape dangerous characters (stored-XSS defense)
+        const trimmed = sanitizeInput(v.trim());
         if (trimmed.length > max) throw new Error(`${key} must be at most ${max} characters`);
         return trimmed;
       };
@@ -3379,7 +3380,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           languages = [];
           for (const raw of body.languages) {
             if (typeof raw !== "string") continue;
-            const trimmed = raw.trim();
+            // Sanitize server-side (stored-XSS defense)
+            const trimmed = sanitizeInput(raw.trim());
             if (!trimmed || trimmed.length > 50) continue;
             const key = trimmed.toLowerCase();
             if (!seen.has(key)) {
