@@ -123,6 +123,10 @@ interface Service {
   serviceRadius?: string | number | null;
   dropOffPoint?: string | null;
   routePoints?: ServiceRoutePointRow[];
+  // D7 amendment (docs/DECISIONS.md ruling 62, migration 195): which coverage store the owner
+  // declared — 'radius' | 'route' | null. NULL = never declared (every pre-195 listing), which
+  // renders exactly as before. Both stores always hold their data; this only picks what shows.
+  pickupCoverageMode?: string | null;
 }
 
 // Ruling 22: ordered route stops (service_route_points child rows, migration 192).
@@ -671,10 +675,16 @@ export default function ServiceDetailPage() {
                 connector is stop order, not travel routing — the map component says so. */}
             {(() => {
               const servicePin = parseLatLng(service.latitude, service.longitude);
-              const routeStops = service.routePoints ?? [];
+              // D7 amendment (ruling 62): the traveler sees ONLY the coverage mode the owner
+              // chose. The other store still holds its rows — it is hidden here, never deleted
+              // (§13); the owner's wizard says so explicitly. A NULL mode (every pre-195
+              // listing) shows both, exactly as ruling 22 shipped it.
+              const coverageMode = service.pickupCoverageMode ?? null;
+              const routeStops = coverageMode === "radius" ? [] : (service.routePoints ?? []);
+              const rawRadiusKm = Number(service.serviceRadius);
+              const radiusKm = coverageMode === "route" ? NaN : rawRadiusKm;
               if (!servicePin && routeStops.length === 0) return null;
               const locatedStops = routeStops.filter((s) => parseLatLng(s.latitude, s.longitude) !== null);
-              const radiusKm = Number(service.serviceRadius);
               return (
                 <Card data-testid="card-location-route">
                   <CardHeader>
