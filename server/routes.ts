@@ -374,6 +374,28 @@ function sanitizeInput(input: string): string {
     .trim();
 }
 
+// Server-enforced image upload limits (mirrors the client-side 5MB check in profile.tsx,
+// but the server is the authority). Applies to base64 data-URL image fields (e.g. govId,
+// travelLicence on the expert application). Returns an error message or null if valid.
+const MAX_IMAGE_UPLOAD_BYTES = 5 * 1024 * 1024; // 5MB
+const ALLOWED_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+function validateImageDataUrl(value: unknown, fieldName: string): string | null {
+  if (typeof value !== "string" || !value.startsWith("data:")) return null; // not a data-URL — nothing to enforce
+  const match = value.match(/^data:([^;,]+)(;base64)?,/);
+  if (!match) return `${fieldName} is not a valid data URL`;
+  const mime = match[1].toLowerCase();
+  if (!ALLOWED_IMAGE_MIME_TYPES.has(mime)) {
+    return `${fieldName} must be a JPEG, PNG, WebP or GIF image`;
+  }
+  // Estimate decoded size from base64 payload length (4 chars ≈ 3 bytes)
+  const payload = value.slice(value.indexOf(",") + 1);
+  const approxBytes = Math.floor((payload.length * 3) / 4);
+  if (approxBytes > MAX_IMAGE_UPLOAD_BYTES) {
+    return `${fieldName} must be under 5MB`;
+  }
+  return null;
+}
+
 // Sanitize object string fields recursively
 function sanitizeObject<T extends Record<string, any>>(obj: T): T {
   const result = { ...obj };
@@ -1833,6 +1855,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         if (existing.status === "rejected") {
           // Resubmission after rejection: upsert the existing row and reset to pending
           const input = insertLocalExpertFormSchema.parse(req.body);
+          const imgErr = validateImageDataUrl(input.govId, "govId") ?? validateImageDataUrl(input.travelLicence, "travelLicence");
+          if (imgErr) return res.status(400).json({ message: imgErr });
           const form = await storage.updateLocalExpertForm(existing.id, {
             ...input,
             status: "pending",
@@ -1853,6 +1877,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       }
 
       const input = insertLocalExpertFormSchema.parse(req.body);
+      const imgErr = validateImageDataUrl(input.govId, "govId") ?? validateImageDataUrl(input.travelLicence, "travelLicence");
+      if (imgErr) return res.status(400).json({ message: imgErr });
       const form = await storage.createLocalExpertForm({ ...input, userId });
       // Kyoto Knowledge-Bar (advisory): score the knowledge-proof answers in the background and store
       // the result for the admin queue. Fire-and-forget — best-effort, never blocks the submission.
@@ -1884,6 +1910,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         if (existing.status === "rejected") {
           // Resubmission after rejection: upsert the existing row and reset to pending
           const input = insertLocalExpertFormSchema.parse(req.body);
+          const imgErr = validateImageDataUrl(input.govId, "govId") ?? validateImageDataUrl(input.travelLicence, "travelLicence");
+          if (imgErr) return res.status(400).json({ message: imgErr });
           const form = await storage.updateLocalExpertForm(existing.id, {
             ...input,
             status: "pending",
@@ -1903,6 +1931,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         return res.status(400).json({ message: "You already have an application submitted" });
       }
       const input = insertLocalExpertFormSchema.parse(req.body);
+      const imgErr = validateImageDataUrl(input.govId, "govId") ?? validateImageDataUrl(input.travelLicence, "travelLicence");
+      if (imgErr) return res.status(400).json({ message: imgErr });
       const form = await storage.createLocalExpertForm({ ...input, userId });
       // Kyoto Knowledge-Bar (advisory): score the knowledge-proof answers in the background and store
       // the result for the admin queue. Fire-and-forget — best-effort, never blocks the submission.
@@ -3278,7 +3308,8 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const cleaned: string[] = [];
       for (const raw of neighborhoods) {
         if (typeof raw !== "string") continue;
-        const trimmed = raw.trim();
+        // Sanitize server-side: strip HTML tags / escape dangerous characters (stored-XSS defense)
+        const trimmed = sanitizeInput(raw);
         if (!trimmed) continue;
         const key = trimmed.toLowerCase();
         if (!seen.has(key)) {
@@ -3294,7 +3325,11 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         });
       }
 
-      await storage.updateLocalExpertFormNeighborhoods(userId, cleaned, localityProof ?? "");
+      await storage.updateLocalExpertFormNeighborhoods(
+        userId,
+        cleaned,
+        sanitizeInput(localityProof ?? ""),
+      );
       res.json({ success: true });
     } catch (err) {
       console.error("Error saving expert neighborhoods:", err);
@@ -3310,7 +3345,12 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       if (typeof notesStyle !== "string") {
         return res.status(400).json({ message: "notesStyle must be a string" });
       }
-      await storage.updateLocalExpertFormNotesStyle(userId, notesStyle.trim());
+      // Sanitize server-side (stored-XSS defense) and reject empty/whitespace-only input
+      const cleanedNotesStyle = sanitizeInput(notesStyle);
+      if (!cleanedNotesStyle) {
+        return res.status(400).json({ message: "notesStyle cannot be empty" });
+      }
+      await storage.updateLocalExpertFormNotesStyle(userId, cleanedNotesStyle);
       res.json({ success: true });
     } catch (err) {
       console.error("Error saving expert notes style:", err);
@@ -3349,10 +3389,26 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
   // Add specialization to expert's profile (authenticated)
   app.post("/api/expert/specializations", isAuthenticated, async (req, res) => {
-    const userId = getUserId(req)!;
-    const { specialization } = req.body;
-    const spec = await storage.addExpertSpecialization(userId, specialization);
-    res.json(spec);
+    try {
+      const userId = getUserId(req)!;
+      const { specialization } = req.body;
+      if (typeof specialization !== "string") {
+        return res.status(400).json({ message: "specialization must be a string" });
+      }
+      // Sanitize server-side (stored-XSS defense) and reject empty/whitespace-only input
+      const cleaned = sanitizeInput(specialization);
+      if (!cleaned) {
+        return res.status(400).json({ message: "specialization cannot be empty" });
+      }
+      if (cleaned.length > 100) {
+        return res.status(400).json({ message: "specialization must be 100 characters or fewer" });
+      }
+      const spec = await storage.addExpertSpecialization(userId, cleaned);
+      res.json(spec);
+    } catch (err) {
+      console.error("Error adding expert specialization:", err);
+      res.status(500).json({ message: "Failed to add specialization" });
+    }
   });
 
   // Remove specialization from expert's profile (authenticated)
