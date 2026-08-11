@@ -928,4 +928,12 @@ export const MIGRATION_FILES = [
   // (rails-attribution.service.ts); GET /r/:code and the S4 analytics attribution are unchanged.
   // No CHECK, no DEFAULT. Declared in shared/schema.ts (publish-trap rule).
   "198_short_link_expires_at.sql",
+  // 199: provider_services.pickup_radius_km + delivery_languages — SS-4 + SS-6 (docs/DECISIONS.md
+  // ruling 69 disposition 9). TWO additive-nullable columns, no CHECK, no DEFAULT, no backfill.
+  // SS-4 splits "how far I collect from" out of `service_radius` (which two wizard labels were
+  // both writing) WITHOUT touching the existing value — NULL renders as "not set", never as a
+  // copy. SS-6 gives providers a delivery-language field at all, typed to match
+  // `local_expert_forms.languages` (jsonb string array); NULL means never captured and must never
+  // render as a default "English" (§13). Both declared in shared/schema.ts (publish-trap rule).
+  "199_pickup_radius_and_delivery_languages.sql",
 ] as const;

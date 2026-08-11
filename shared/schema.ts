@@ -668,6 +668,13 @@ export const providerServices = pgTable("provider_services", {
   // Delivery
   deliveryMethod: varchar("delivery_method", { length: 50 }).default("pdf"), // canonical: deliveryMethodEnum — DB CHECK enforced since migration 109
   deliveryTimeframe: varchar("delivery_timeframe", { length: 100 }), // "24-48 hours", "same-day", etc.
+  // SS-6 (docs/DECISIONS.md ruling 69 disposition 9, migration 199): the language(s) the service is
+  // DELIVERED in — a purchasable attribute in the launch market, and a thing providers previously
+  // could not state at all. Typed to match `local_expert_forms.languages` (jsonb string array)
+  // rather than inventing a shape. DELIBERATELY no default: NULL = never captured (render NOTHING,
+  // never a presumed "English" — §13), `[]` = deliberately cleared. This is NOT ruling 60's chrome
+  // (A) or content (B) translation; it is the third question those two do not ask.
+  deliveryLanguages: jsonb("delivery_languages").$type<string[]>(),
   revisionsIncluded: integer("revisions_included").default(0),
   includesExpertNotes: boolean("includes_expert_notes").default(false),
   
@@ -682,6 +689,12 @@ export const providerServices = pgTable("provider_services", {
   pickupAvailable: boolean("pickup_available").default(false), // Provider offers pickup
   pickupAddress: text("pickup_address"), // Starting pickup location
   serviceRadius: integer("service_radius"), // km radius provider covers
+  // SS-4 (docs/DECISIONS.md ruling 69 disposition 9, migration 199): how far the provider travels
+  // TO COLLECT a traveler — a genuinely different number from `serviceRadius` above ("how far I
+  // travel to work"). Until this column existed, the wizard rendered BOTH labels and wrote BOTH
+  // into `service_radius`, so typing one changed the other. NEVER-CLOBBER: `serviceRadius` keeps
+  // its stored value with no backfill, and NULL here means "not set" — never 0, never a copy (§13).
+  pickupRadiusKm: integer("pickup_radius_km"),
   // Does the provider transport the traveler during/from the meeting point?
   // 3-value so "not applicable" (remote/self-guided) is distinct from an explicit "no transport".
   // DB CHECK enforced in migration 119. Default not_applicable so grandfathered rows make no claim.
@@ -1772,6 +1785,15 @@ export const insertProviderServiceSchema = createInsertSchema(providerServices).
   partySizeMax: z.coerce.number().int().min(0).max(10000).nullable().optional(),
   changeCutoffHours: z.coerce.number().int().min(0).max(8760).nullable().optional(),
   canAnchor: z.boolean().nullable().optional(),
+  // ── SS-4 + SS-6 (ruling 69 disposition 9, migration 199) ────────────────────────────────────
+  // Same treatment as the D7 block above and for the same reason: no DB CHECK exists (publish-trap
+  // posture), so THIS is the enforcement, and field-level so it survives `.partial()` on PATCH.
+  // Neither is privileged (§18 rule 3 does not apply — no amount, no identity, no rate), so they
+  // are ordinary wizard fields, NOT omitted.
+  pickupRadiusKm: z.coerce.number().int().min(0).max(10000).nullable().optional(),
+  // Array of language NAMES, matching `local_expert_forms.languages`. `null` is preserved as
+  // "never captured" and `[]` as "deliberately cleared" — the two must not collapse (§13).
+  deliveryLanguages: z.array(z.string().trim().min(1).max(60)).max(20).nullable().optional(),
 });
 export const insertFaqSchema = createInsertSchema(faqs).omit({ id: true, createdAt: true });
 export const insertWalletSchema = createInsertSchema(wallets).omit({ id: true, userId: true, createdAt: true, updatedAt: true });

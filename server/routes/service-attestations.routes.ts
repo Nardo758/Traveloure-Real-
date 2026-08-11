@@ -32,7 +32,10 @@
  * record is a fact and does not vanish because the listing changed.
  *
  * ── NEGATIVE SPACE (ruling 67 — do not add these here without a ruling) ──────────────────────
- * No publish gate (nothing here can block `status:'active'`). No traveler-facing surface or trust
+ * A publish GATE now exists (ruling 69 disposition 3) but does NOT live here — it sits beside the
+ * F2 verification gate at the three activation choke points in `server/routes.ts`, and it reuses
+ * this module's resolver through the shared `attestation-publish-gate.service.ts`. Nothing in this
+ * file blocks anything. No traveler-facing surface or trust
  * badge. No licence-document upload or verification. No admin review queue. No scanning of listing
  * text for violating phrases. No un-affirm/DELETE path — the record is append-only.
  */
@@ -43,7 +46,8 @@ import { db } from "../db";
 import { storage } from "../storage";
 import { getUserId } from "../utils/auth";
 import { isAuthenticated } from "../replit_integrations/auth";
-import { providerServices, serviceCategories } from "@shared/schema";
+import { providerServices } from "@shared/schema";
+import { resolveAttestationShape } from "../services/attestation-publish-gate.service";
 import {
   ATTESTATION_CATALOG,
   isAttestationKey,
@@ -66,36 +70,15 @@ async function loadOwnedShape(
   userId: string,
 ): Promise<{ shape: AttestationShape } | null> {
   const [row] = await db
-    .select({
-      id: providerServices.id,
-      userId: providerServices.userId,
-      deliveryMethod: providerServices.deliveryMethod,
-      productShape: providerServices.productShape,
-      categoryId: providerServices.categoryId,
-    })
+    .select({ id: providerServices.id, userId: providerServices.userId })
     .from(providerServices)
     .where(eq(providerServices.id, serviceId));
   if (!row || row.userId !== userId) return null;
 
-  let categoryKey: string | null = null;
-  let categorySlug: string | null = null;
-  if (row.categoryId) {
-    const [cat] = await db
-      .select({ categoryKey: serviceCategories.categoryKey, slug: serviceCategories.slug })
-      .from(serviceCategories)
-      .where(eq(serviceCategories.id, row.categoryId));
-    categoryKey = cat?.categoryKey ?? null;
-    categorySlug = cat?.slug ?? null;
-  }
-
-  return {
-    shape: {
-      deliveryMethod: row.deliveryMethod,
-      productShape: row.productShape,
-      categoryKey,
-      categorySlug,
-    },
-  };
+  // ONE shape assembler, shared with the SS-5a publish gate (ruling 69 disposition 3). The gate
+  // and these endpoints must key off identical inputs or a listing could pass one and fail the
+  // other — the same "second local list" hazard the shared predicate module was created to close.
+  return { shape: await resolveAttestationShape({ serviceId }) };
 }
 
 /** The wire shape both endpoints answer with — one builder, so they can never disagree. */
