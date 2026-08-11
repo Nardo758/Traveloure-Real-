@@ -180,6 +180,22 @@ import {
   resolveServiceOwnerShareRate,
   type CommissionRates,
 } from "./services/commission";
+// 1C direct-lane repoint (docs/DECISIONS.md ruling 69 disposition 6) — the cart quote must price a
+// direct provider line through the same D1 resolver /api/checkout charges it through.
+import {
+  resolveDirectProviderRate,
+  pickOwnerShareRate,
+} from "./services/direct-charge-rate.service";
+// SS-5a attestation publish gate (docs/DECISIONS.md ruling 69 disposition 3) — beside the F2
+// verification gate at the same three choke points; grandfathering is the transition condition.
+import {
+  resolveAttestationShape,
+  readAffirmAttestationsField,
+  validateAffirmKeys,
+  checkAttestationPublishGate,
+} from "./services/attestation-publish-gate.service";
+// SS-5c protected-title soft warning (ruling 69 disposition 5) — advisory only, never a block.
+import { detectProtectedTitleClaims } from "@shared/service-attestations";
 import { calculateCommission, BookingType } from "./utils/commissionCalculator";
 import { ensureDefaultBookingFeeConfig } from "./services/booking-fee-bootstrap";
 // Ready-made authoring mode (brief §2): explicit present-value author check. Never getTripRole.
@@ -1544,23 +1560,40 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           bookingType =
             ownerIsProvider ? BookingType.PROVIDER_BOOKING : BookingType.EXPERT_SESSION;
 
-          // Per-service revenueShareRate is the final override when explicitly set
-          // (consistent with checkout logic in payments.routes.ts).
-          const hasPerServiceRate =
-            service.revenueShareRate !== null && service.revenueShareRate !== undefined;
-
-          if (hasPerServiceRate) {
-            const shareRate = Number(service.revenueShareRate);
-            platformFeeAmt = (totalAmount * (1 - shareRate)).toFixed(2);
-            providerEarningsAmt = (totalAmount * shareRate).toFixed(2);
-          } else {
-            platformFeeAmt = commission.platformFee.toFixed(2);
-            providerEarningsAmt = (
-              ownerIsProvider
-                ? (commission.providerPayout ?? 0)
-                : (commission.expertPayout ?? 0)
-            ).toFixed(2);
-          }
+          // ── 1C charge-path repoint (docs/DECISIONS.md ruling 71; completes ruling 69 D6) ──────
+          // The RATE this booking records resolves through the SAME D1 seam cart checkout uses:
+          // `resolveDirectProviderRate` makes ONE call into `resolveProviderRate` (§18 rule 1 —
+          // delegate, never re-implement), and `pickOwnerShareRate` applies the ONE precedence
+          // (rails → direct D1 band → legacy). The direct band deliberately OUTRANKS the per-service
+          // `revenueShareRate` snapshot, which ruling 47 dethroned as a first operand — pricing a
+          // booking off the stale snapshot here would defeat an admin band edit exactly as the cart
+          // path already prevents. §14/§18: the rate is server-resolved from `fee_bands`, never from
+          // `req.body` and never from the snapshot as an override.
+          //
+          // A refusal (expert lane / no category / breached band guard) never throws — the seam
+          // leaves the INCUMBENT legacy rate standing for that line, so a booking-create is never the
+          // casualty of a misconfigured band (the ruling-70 disposition-6 fallback posture, reused —
+          // not a second handler). The legacy operand is this path's own pre-1C incumbent share (the
+          // `calculateCommission` payout share, byte-identical to what it charged before 1C), with the
+          // snapshot demoted to that fallback's fallback.
+          const parseSnapshotRate = (v: unknown, fallback: number): number => {
+            const n = parseFloat(String(v));
+            return Number.isFinite(n) && n >= 0 && n <= 1 ? n : fallback;
+          };
+          const directRate = await resolveDirectProviderRate({
+            serviceOwnerUserId: providerId,
+            ownerRole,
+            categoryId: service.categoryId ?? null,
+            serviceId,
+          });
+          const incumbentShare = 1 - commission.commissionRate;
+          const { shareRate: ownerShareRate } = pickOwnerShareRate({
+            railsShareRate: null,
+            direct: directRate,
+            legacyShareRate: parseSnapshotRate(service.revenueShareRate, incumbentShare),
+          });
+          platformFeeAmt = (totalAmount * (1 - ownerShareRate)).toFixed(2);
+          providerEarningsAmt = (totalAmount * ownerShareRate).toFixed(2);
         } else {
           // No owner on record — fall back to expert standard split
           const commission = calculateCommission(totalAmount, BookingType.EXPERT_SESSION);
@@ -2357,12 +2390,46 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
 
+      // SS-5a ATTESTATION PUBLISH GATE (ruling 69 disposition 3) — beside the F2 gate, at the same
+      // choke point, on the same draft-exempt rule. A CREATE is always a transition to active when
+      // `status:'active'`, so grandfathering has nothing to say here. The affirmations travel with
+      // the write (see the service header for why a child row cannot pre-exist a create), are
+      // re-validated against the SERVER-resolved applicable set, and are recorded after the row
+      // exists.
+      const attestShapeCreate = await resolveAttestationShape({
+        overrides: {
+          deliveryMethod: (input as any).deliveryMethod ?? null,
+          productShape: (input as any).productShape ?? null,
+          categoryId: (input as any).categoryId ?? null,
+        },
+      });
+      const affirmRequestedCreate = readAffirmAttestationsField(req.body) ?? [];
+      const affirmCheckCreate = validateAffirmKeys(affirmRequestedCreate, attestShapeCreate);
+      if (!affirmCheckCreate.ok) {
+        return res.status(affirmCheckCreate.refusal.status).json(affirmCheckCreate.refusal.body);
+      }
+      if (input.status === "active") {
+        const attestGate = await checkAttestationPublishGate({
+          shape: attestShapeCreate,
+          affirmingNow: affirmCheckCreate.keys,
+        });
+        if (attestGate) {
+          return res.status(attestGate.status).json(attestGate.body);
+        }
+      }
+
       // D7 (docs/DECISIONS.md ruling 62): the service-logistics capture fields ride this same
       // deliberate write, exactly like `serviceRadius`/`meetingPoint` beside them — they are
       // ordinary owner-authored listing facts, NOT privileged §14/§18/§19 fields (no amount, no
       // identity, no rate), so they need no allowlist/strip. Their vocabularies are enforced by
       // insertProviderServiceSchema above (no DB CHECK — migration-195 posture).
       const service = await storage.createProviderService({ ...input, ...locationPatch, userId });
+
+      // The affirmations validated above, now that the child row has a parent. Append-only and
+      // idempotent (UNIQUE + ON CONFLICT DO NOTHING); `affirmedBy` is stamped from the session.
+      if (affirmCheckCreate.keys.length > 0) {
+        await storage.affirmServiceAttestations(service.id, affirmCheckCreate.keys, userId);
+      }
 
       // Write (or clear) neighborhood coverage rows whenever the neighborhoods
       // field is present in the payload — including empty arrays, which must
@@ -2380,7 +2447,17 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       // approvalStatus from this response (verified); omit just this one verified field
       // rather than a full allowlist — provider_services is large and read by several
       // other unaudited surfaces this endpoint's response itself does not feed.
-      res.status(201).json(omitFields(service, ["revenueShareRate"] as const));
+      // SS-5c SOFT WARNING (ruling 69 disposition 5) — advisory, non-blocking, never auto-editing.
+      // Attached to a SUCCESSFUL response: the listing genuinely saved, and the warning is a nudge
+      // toward the `title_claim_honesty` statement, not a verdict. Absence proves nothing (§13).
+      const titleWarning = detectProtectedTitleClaims({
+        serviceName: (input as any).serviceName,
+        description: (input as any).description,
+      });
+      res.status(201).json({
+        ...omitFields(service, ["revenueShareRate"] as const),
+        ...(titleWarning ? { warnings: { protectedTitleClaim: titleWarning } } : {}),
+      });
     } catch (err) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });
@@ -2535,6 +2612,40 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         }
       }
 
+      // SS-5a ATTESTATION PUBLISH GATE (ruling 69 disposition 3). GRANDFATHERING lives in the
+      // condition: it fires only on a TRANSITION to active, so a listing that is already `active`
+      // is never evaluated on an edit and can never be knocked off by this. The shape is the one
+      // the listing will HAVE after this save (live row overlaid with the write's own fields), so
+      // the gate cannot be walked past by omitting a field from the body.
+      const attestShapeUpd = await resolveAttestationShape({
+        serviceId: req.params.id,
+        overrides: {
+          ...((input as any).deliveryMethod !== undefined ? { deliveryMethod: (input as any).deliveryMethod } : {}),
+          ...((input as any).productShape !== undefined ? { productShape: (input as any).productShape } : {}),
+          ...((input as any).categoryId !== undefined ? { categoryId: (input as any).categoryId } : {}),
+        },
+      });
+      const affirmRequestedUpd = readAffirmAttestationsField(req.body) ?? [];
+      const affirmCheckUpd = validateAffirmKeys(affirmRequestedUpd, attestShapeUpd);
+      if (!affirmCheckUpd.ok) {
+        return res.status(affirmCheckUpd.refusal.status).json(affirmCheckUpd.refusal.body);
+      }
+      if (affirmCheckUpd.keys.length > 0) {
+        // Recorded BEFORE the gate is judged: an affirmation is a statement the provider made, and
+        // it is a fact whether or not the publish that carried it succeeds (append-only, ruling 67).
+        await storage.affirmServiceAttestations(req.params.id, affirmCheckUpd.keys, userId);
+      }
+      if (input.status === "active" && ownedService.status !== "active") {
+        const attestGate = await checkAttestationPublishGate({
+          serviceId: req.params.id,
+          shape: attestShapeUpd,
+          affirmingNow: affirmCheckUpd.keys,
+        });
+        if (attestGate) {
+          return res.status(attestGate.status).json(attestGate.body);
+        }
+      }
+
       // Compute price scalar from lowest tier when package_tiers pricing is used
       const pricingTiersUpd = (input as any).pricingTiers;
       if ((input as any).priceType === "package_tiers" && Array.isArray(pricingTiersUpd) && pricingTiersUpd.length > 0) {
@@ -2594,7 +2705,21 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
 
       // CC-8/T3-4: same omission as POST /api/provider/services — revenueShareRate is a
       // commission split (§18) and must never round-trip to the client, on create OR update.
-      res.json(updated ? omitFields(updated, ["revenueShareRate"] as const) : updated);
+      // SS-5c SOFT WARNING (ruling 69 disposition 5) — same posture as CREATE. Scanned against
+      // the text this write actually produces: the field from the body when it was edited, else
+      // the stored value, so an untouched offending description keeps warning on every save.
+      const titleWarningUpd = detectProtectedTitleClaims({
+        serviceName: (input as any).serviceName ?? updated?.serviceName ?? ownedService.serviceName,
+        description: (input as any).description ?? updated?.description ?? ownedService.description,
+      });
+      res.json(
+        updated
+          ? {
+              ...omitFields(updated, ["revenueShareRate"] as const),
+              ...(titleWarningUpd ? { warnings: { protectedTitleClaim: titleWarningUpd } } : {}),
+            }
+          : updated,
+      );
     } catch (err) {
       if (err instanceof z.ZodError) {
         return res.status(400).json({ message: err.errors[0].message });
@@ -4541,6 +4666,19 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           return res.status(gateResult.status).json(gateResult.body);
         }
       }
+      // SS-5a ATTESTATION PUBLISH GATE (ruling 69 disposition 3) — the third choke point, same
+      // transition rule. This toggle carries no listing fields at all, so the shape is read
+      // wholly from the live row, and this door has no inline-affirm path: the provider confirms
+      // in the wizard (where the card is) and toggles afterwards.
+      if (status === "active" && service.status !== "active") {
+        const attestGate = await checkAttestationPublishGate({
+          serviceId: req.params.id,
+          shape: await resolveAttestationShape({ serviceId: req.params.id }),
+        });
+        if (attestGate) {
+          return res.status(attestGate.status).json(attestGate.body);
+        }
+      }
       const updated = await storage.toggleServiceStatus(req.params.id, status);
       res.json(updated);
     } catch (err) {
@@ -5346,15 +5484,23 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
           reason: eligibility.reason,
         });
       }
-      const actor = ownerActorFor(eligibility.rule);
+      // Ruling 69 disposition 1's NARROW arm. in_person/hybrid is a TIMER rule now, so the owner
+      // rail refuses it exactly like pdf/property — EXCEPT for a booking the platform holds no
+      // service date for, where the timer can never fire and the owner is the only actor left.
+      // The service, not this route, decides that (`ownerDeclarableFallback`), and the flip still
+      // mints a HELD earning inside the traveler's dispute window, so the self-credit objection is
+      // answered the same way the other owner-declared rules answer it.
+      const noDateFallback = eligibility.rule === "service_date_timer" && !!eligibility.ownerDeclarableFallback;
+      const actor = noDateFallback ? "provider_declared" : ownerActorFor(eligibility.rule);
       if (!actor) {
         return res.status(409).json({
           message:
-            eligibility.rule === "confirm_completion"
-              ? "In-person bookings are completed by the traveler confirming, not by you."
+            eligibility.rule === "service_date_timer"
+              ? "This in-person booking completes automatically after its booked date — you do not need to mark it complete."
               : "This booking completes automatically — you do not need to mark it complete.",
           rule: eligibility.rule,
           reason: "rule_not_owner_declared",
+          ...(eligibility.eligibleAt ? { eligibleAt: eligibility.eligibleAt } : {}),
         });
       }
 
@@ -5395,7 +5541,12 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
         });
       }
 
-      const outcome = await completeBooking({ bookingId: req.params.id, actor, reason: `d8_owner:${eligibility.rule}` });
+      const outcome = await completeBooking({
+        bookingId: req.params.id,
+        actor,
+        reason: noDateFallback ? "d8_owner:service_date_timer_no_date" : `d8_owner:${eligibility.rule}`,
+        ...(noDateFallback ? { allowOwnerDeclaredFallback: true } : {}),
+      });
       if (!outcome.completed) {
         return res.status(409).json({
           message:
@@ -6352,22 +6503,36 @@ Include 4-6 activities per day. Make it realistic, specific to ${destination}, a
       const feeCategory = item.service?.categoryId
         ? (cartCatMap.get(item.service.categoryId) ?? "default")
         : "default";
-      let isProviderService = false;
+      let ownerRole: string | null = null;
       if (item.service?.userId) {
         const [providerRow] = await db
           .select({ role: users.role })
           .from(users)
           .where(eq(users.id, item.service.userId))
           .limit(1);
-        // Canonical vocabulary (shared/roles.ts): stored role is "service_provider", never "provider".
-        if (isProviderRole(providerRow?.role)) isProviderService = true;
+        ownerRole = providerRow?.role ?? null;
       }
+      // Canonical vocabulary (shared/roles.ts): stored role is "service_provider", never "provider".
+      const isProviderService = isProviderRole(ownerRole);
       const rates = await resolveCommissionRates(
         isProviderService
           ? { source: "provider", providerId: item.service?.userId ?? null }
           : { category: feeCategory, expertId: item.service?.userId ?? null }
       );
-      const expertShare = safeRate(item.service?.revenueShareRate, rates.expertShareRate);
+      // 1C (ruling 69 disposition 6): the cart quote prices a direct provider line through the SAME
+      // `pickOwnerShareRate` precedence /api/checkout charges through, so this quote cannot silently
+      // diverge from the charged total (the same reason the §17 base-amount helper is shared).
+      // No rails here: this surface carries no ref, so it quotes the un-attributed (full) lane.
+      const { shareRate: expertShare } = pickOwnerShareRate({
+        railsShareRate: null,
+        direct: await resolveDirectProviderRate({
+          serviceOwnerUserId: item.service?.userId ?? null,
+          ownerRole,
+          categoryId: item.service?.categoryId ?? null,
+          serviceId: item.service?.id ?? item.serviceId,
+        }),
+        legacyShareRate: safeRate(item.service?.revenueShareRate, rates.expertShareRate),
+      });
       subtotal += price;
       platformFeeTotal += price * (1 - expertShare) + calcInsuranceFee(price, rates, feeCategory);
       const isConciergeItem = item.service?.expertOfferingTypeId

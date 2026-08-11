@@ -17,9 +17,22 @@ name: Fee Resolution Authority Gate
 #   A8  FAIL-LOUD — a bandless category throws; there is no silent fallback rate (ruling 51/R2)
 #   A9  D6 (ruling 61) — `isRails` SELECTS a lane and carries no rate: an admin edit to the
 #       `provider_rails` band reaches the next rails resolution (A1's proof, one lane over)
+#   A10 1C (ruling 69 disposition 6) — A1's proof on the DIRECT lane: a band edit moves the next
+#       direct provider resolution, with no service row and no category row touched
+#   A11 the consequence ruling 68 §5 named, closed — rails and direct on the SAME service now
+#       differ ONLY by ruling 48's min() and the traveler-fee waiver, never by a legacy band
+#   A12 the per-service `revenueShareRate` snapshot never outranks a resolved direct band
+#       (ruling 47's dethroning, finally holding on the direct path too)
+#   A13 the direct lane REFUSES, it never throws — an expert-lane owner, a categoryless line and a
+#       breached R1/R2 band guard all leave the incumbent legacy share standing
 #
 # Registered in the DECISIONS.md Guard registry as `fee-resolution-authority`. Ruling 27: a
 # script-only guard is MISSING — it must run in CI to count as [guarded].
+#
+# Negative space, 1C addendum: A10–A13 pin the direct lane's RESOLUTION and its refusal behaviour.
+# They do NOT prove that `/api/checkout` writes what it resolved, and they say nothing about the D3
+# traveler service fee — ruling 69 disposition 6 moves the RATE only and deliberately does not start
+# billing that fee on the direct path.
 #
 # Negative space (ruling 43 — what this gate does NOT cover): it proves RESOLUTION, not RECORDING.
 # It says nothing about whether a resolved rate is written to `fee_ledger`, whether the ledger

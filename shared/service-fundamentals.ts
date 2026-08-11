@@ -75,8 +75,23 @@ export function isArtifactDelivery(s: FundamentalsShape): boolean {
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
 export type CompletionRule =
-  /** in_person / hybrid — the traveler-driven confirm-completion flip, AS BUILT. Unchanged by D8. */
-  | "confirm_completion"
+  /**
+   * in_person / hybrid — the BOOKED SERVICE DATE timer (ruling 69 disposition 1, which AMENDS
+   * ruling 63's "confirm-completion flip as built" clause).
+   *
+   * Ruling 66 found that "as built" was a closed loop: nothing could put an in-person booking into
+   * `completed`, and `POST /api/bookings/:id/confirm-completion` refuses anything that is not
+   * already there — so in-person was the one method with no writer at all. The decision-maker's
+   * disposition is the `checkout_date` shape one method over: auto-complete N days after the booked
+   * service date has FULLY PASSED, with N reusing `holdWindowDays('service_booking')` so completion
+   * lands exactly where the dispute window closes rather than minting a second constant.
+   *
+   * The traveler's `confirm-completion` is UNCHANGED and is not a D8 rule — it is the EARLY
+   * RELEASE of the held earning, which ruling 66 already separated from the completion event.
+   * A booking with NO service date is not timer-eligible (§13 — never guess a date); it is skipped
+   * with its reason, and in that case ONLY, the owner rail's provider-declared arm opens.
+   */
+  | "service_date_timer"
   /** productShape property / property_room — the stay's checkout date. */
   | "checkout_date"
   /** pdf — delivered via entitlement; the auto-complete timer (first download, or undownloaded). */
@@ -89,16 +104,23 @@ export type CompletionRule =
   | "bundle_components";
 
 /**
- * Ruling 63's "call/voice" row, read as the build charter resolves it: call, video AND
- * voice_notes. NOTE the deliberate tension with D2 above, which classifies `voice_notes` as
- * async/artifact delivery and therefore leaves it OUT of `SCHEDULED_METHODS` — so a voice_notes
- * booking typically carries no `slot_id`, and the session-end gate refuses it with a stated
- * reason rather than guessing a session end (§13). That gap is REPORTED, not papered over.
+ * Ruling 63's "call/voice" row — LIVE sessions only.
+ *
+ * `voice_notes` was here until ruling 69 disposition 8 moved it (see below). Ruling 66 shipped it
+ * in this set and REPORTED the resulting gap rather than papering over it: D2 above classifies
+ * voice_notes as async/artifact delivery and leaves it out of `SCHEDULED_METHODS`, so such a
+ * booking carries no `slot_id` and the session-end evidence gate could only ever refuse it with
+ * `no_booked_slot`. The decision-maker resolved that filed gap by reclassification, not by
+ * inventing a scheduled shape for it.
  */
-export const SESSION_END_METHODS: ReadonlySet<string> = new Set(["call", "video", "voice_notes"]);
+export const SESSION_END_METHODS: ReadonlySet<string> = new Set(["call", "video"]);
 
-/** Ruling 63's "async" row. */
-export const PROVIDER_DECLARED_METHODS: ReadonlySet<string> = new Set(["async_messaging"]);
+/**
+ * Ruling 63's "async" row, PLUS `voice_notes` (ruling 69 disposition 8 — AMENDS ruling 66's
+ * table). voice_notes has no booked slot in the D2 vocabulary, and "SLA satisfied + scope
+ * delivered, provider-declared, disputable window" is what its delivery actually looks like.
+ */
+export const PROVIDER_DECLARED_METHODS: ReadonlySet<string> = new Set(["async_messaging", "voice_notes"]);
 
 /**
  * The completion rule for a service shape, or `null` when the row cannot be classified honestly
@@ -117,7 +139,7 @@ export function completionRuleFor(s: FundamentalsShape): CompletionRule | null {
   if (ARTIFACT_DELIVERY_METHODS.has(s.deliveryMethod)) return "artifact_timer";
   if (SESSION_END_METHODS.has(s.deliveryMethod)) return "session_end";
   if (PROVIDER_DECLARED_METHODS.has(s.deliveryMethod)) return "provider_declared";
-  if (PLACE_ANCHORED_METHODS.has(s.deliveryMethod)) return "confirm_completion";
+  if (PLACE_ANCHORED_METHODS.has(s.deliveryMethod)) return "service_date_timer";
   return null;
 }
 
@@ -125,6 +147,10 @@ export function completionRuleFor(s: FundamentalsShape): CompletionRule | null {
 export const TIMER_DRIVEN_COMPLETION_RULES: ReadonlySet<CompletionRule> = new Set<CompletionRule>([
   "artifact_timer",
   "checkout_date",
+  // Ruling 69 disposition 1 — in_person/hybrid joins the timer rules. The NORMAL path for an
+  // in-person booking is this timer; the owner's provider-declared arm opens ONLY for a booking
+  // that carries no service date at all (see `resolveCompletionEligibility`).
+  "service_date_timer",
 ]);
 
 /** Rules the booking OWNER (provider/expert) declares. */

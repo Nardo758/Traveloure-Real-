@@ -44,6 +44,7 @@ import {
   resolveCompletionEligibility,
 } from "../services/booking-completion.service";
 import { completionRuleFor } from "@shared/service-fundamentals";
+import { serviceDateCompletionDays } from "../config/completion-windows.config";
 import { storage } from "../storage";
 
 const RUN = crypto.randomUUID().slice(0, 8);
@@ -57,6 +58,7 @@ const ids = {
   callSvc: `d8-${RUN}-call`,
   asyncSvc: `d8-${RUN}-async`,
   inPersonSvc: `d8-${RUN}-inp`,
+  voiceSvc: `d8-${RUN}-voice`,
   propSvc: `d8-${RUN}-prop`,
   bundleSvc: `d8-${RUN}-bundle`,
   compA: `d8-${RUN}-compa`,
@@ -219,6 +221,7 @@ before(async () => {
   await svc(ids.callSvc, "D8 call session", "call", null);
   await svc(ids.asyncSvc, "D8 async concierge", "async_messaging", null);
   await svc(ids.inPersonSvc, "D8 walking tour", "in_person", null);
+  await svc(ids.voiceSvc, "D8 voice notes", "voice_notes", null);
   await svc(ids.propSvc, "D8 room", "in_person", "property_room");
   await svc(ids.bundleSvc, "D8 bundle", "in_person", "bundle");
   await svc(ids.compA, "D8 component A", "call", null);
@@ -244,7 +247,7 @@ after(async () => {
     await db.execute(sql`DELETE FROM vendor_availability_slots WHERE id = ${id}`).catch(() => {});
   }
   await db.execute(sql`DELETE FROM bundle_components WHERE bundle_service_id = ${ids.bundleSvc}`).catch(() => {});
-  for (const id of [ids.bundleSvc, ids.compA, ids.compB, ids.pdfSvc, ids.callSvc, ids.asyncSvc, ids.inPersonSvc, ids.propSvc]) {
+  for (const id of [ids.bundleSvc, ids.compA, ids.compB, ids.pdfSvc, ids.callSvc, ids.asyncSvc, ids.inPersonSvc, ids.voiceSvc, ids.propSvc]) {
     await db.execute(sql`DELETE FROM provider_services WHERE id = ${id}`).catch(() => {});
   }
   await db.execute(sql`DELETE FROM users WHERE id = ${ids.traveler}`).catch(() => {});
@@ -384,17 +387,209 @@ test("D8-N4 (§15b): a payment_pending provisional claim is NEVER completed by t
   await db.execute(sql`UPDATE provider_services SET deliverable_uploaded_at = NULL WHERE id = ${ids.pdfSvc}`);
 });
 
-test("D8-N5: an IN-PERSON booking stays traveler-driven — no D8 caller may complete it", async () => {
-  const bk = await makeBooking({ serviceId: ids.inPersonSvc, confirmedDaysAgo: 40 });
+/**
+ * D8-N5 — SUPERSEDED IN PLACE by ruling 69 disposition 1 (which AMENDS ruling 63's
+ * "in_person/hybrid untouched" clause). What it used to assert — that in-person had no D8 writer —
+ * was the very defect ruling 66 filed: the "traveler-driven" path was a closed loop, so an
+ * in-person booking could reach `completed` by NO path at all. The rule is now
+ * `service_date_timer`; what survives from the old assertion, and is asserted here, is that the
+ * OWNER still may not declare it out of turn (see D8-N15 for the dated case).
+ */
+test("D8-N5: in_person/hybrid is a TIMER rule now, and the owner may not simply declare it", async () => {
   const rule = completionRuleFor({ deliveryMethod: "in_person", productShape: null });
-  assert.equal(rule, "confirm_completion", "ruling 63 leaves in_person/hybrid exactly as built");
-  assert.equal(ownerActorFor(rule!), null, "the owner rail may not declare it");
+  assert.equal(rule, "service_date_timer", "ruling 69 disposition 1 amends ruling 63's first row");
+  assert.equal(completionRuleFor({ deliveryMethod: "hybrid", productShape: null }), "service_date_timer");
+  assert.equal(ownerActorFor(rule!), null, "it is not in the owner-declared set — only the narrow no-date arm opens it");
 
-  const attempt = await completeBooking({ bookingId: bk, actor: "provider_declared" });
-  assert.equal(attempt.completed, false);
-  assert.equal(attempt.reason, "rule_not_timer_driven");
+  // A DATED in-person booking whose window is still open cannot be completed by anyone.
+  const soon = new Date(Date.now() - 1 * DAY).toISOString();
+  const bk = await makeBooking({ serviceId: ids.inPersonSvc, confirmedDaysAgo: 40, details: { scheduledDate: soon } });
+  const attempt = await completeBooking({ bookingId: bk, actor: "provider_declared", allowOwnerDeclaredFallback: true });
+  assert.equal(attempt.completed, false, "the no-date arm must NOT rescue a booking that HAS a date");
+  assert.equal(attempt.reason, "window_open");
   assert.equal(await statusOf(bk), "confirmed");
   assert.deepEqual(await earningCounts(bk), { provider: 0, expert: 0, held: 0 });
+});
+
+// ══ ruling 69 disposition 1 — the in_person/hybrid booked-service-date timer ══════════════════
+//
+// Ruling 66 filed the gap in its own words: "nothing can put an in-person booking into
+// `completed`, and `confirm-completion` refuses anything that is not already there". These proofs
+// are that the door is now open, that it opens on the DATE and not on purchase time, and that it
+// stays shut for every case §13 says the platform cannot decide.
+
+test("D8-P7: an IN-PERSON booking auto-completes once its service date + the dispute window has fully passed", async () => {
+  const windowDays = serviceDateCompletionDays();
+  // Comfortably past: the service day, plus the whole window, plus a day.
+  const past = new Date(Date.now() - (windowDays + 2) * DAY).toISOString();
+  const done = await makeBooking({ serviceId: ids.inPersonSvc, confirmedDaysAgo: windowDays + 5, details: { scheduledDate: past } });
+
+  const e = await resolveCompletionEligibility(done);
+  assert.equal(e.rule, "service_date_timer");
+  assert.equal(e.eligible, true, `expected eligible, got ${e.reason} ${JSON.stringify(e.evidence)}`);
+  assert.equal((e.evidence as any).dateSource, "scheduled_date");
+  assert.equal((e.evidence as any).windowDays, windowDays, "N is the REUSED dispute window, not a new constant");
+
+  const run = await runBookingAutoCompletion();
+  assert.ok(run.completedBookingIds.includes(done), `must complete; skipped=${JSON.stringify(run.skipped)}`);
+  assert.equal(await statusOf(done), "completed");
+  const stamp = await completionStamp(done);
+  assert.equal(stamp?.actor, "auto_complete_service_date");
+  assert.equal(stamp?.rule, "service_date_timer");
+  // The SAME payout machinery as every other rule — held earnings, no per-method fork.
+  const earned = await earningCounts(done);
+  assert.equal(earned.provider, 1);
+  assert.equal(earned.expert, 1);
+  assert.equal(earned.held, 2, "born HELD — completion is not payout");
+});
+
+test("D8-N11: it does NOT fire before the service date + window has passed", async () => {
+  const windowDays = serviceDateCompletionDays();
+  // Yesterday's service: the day has passed, the WINDOW has not.
+  const yesterday = new Date(Date.now() - 1 * DAY).toISOString();
+  const early = await makeBooking({ serviceId: ids.inPersonSvc, confirmedDaysAgo: 10, details: { scheduledDate: yesterday } });
+  const e = await resolveCompletionEligibility(early);
+  assert.equal(e.eligible, false);
+  assert.equal(e.reason, "window_open");
+  assert.ok(e.eligibleAt, "a knowable eligibility moment must be stated");
+
+  // A FUTURE service date is even more obviously not complete.
+  const future = new Date(Date.now() + 5 * DAY).toISOString();
+  const notYet = await makeBooking({ serviceId: ids.inPersonSvc, confirmedDaysAgo: 1, details: { scheduledDate: future } });
+
+  await runBookingAutoCompletion();
+  assert.equal(await statusOf(early), "confirmed", "the window must be honoured, not just the day");
+  assert.equal(await statusOf(notYet), "confirmed");
+  assert.deepEqual(await earningCounts(early), { provider: 0, expert: 0, held: 0 });
+  void windowDays;
+});
+
+test("D8-P8: the BOOKED SLOT dates the booking when there is no scheduledDate snapshot", async () => {
+  const windowDays = serviceDateCompletionDays();
+  const slot = await makeSlot({ serviceId: ids.inPersonSvc, daysFromNow: -(windowDays + 2), endTime: "17:00" });
+  const bk = await makeBooking({ serviceId: ids.inPersonSvc, confirmedDaysAgo: windowDays + 5, slotId: slot, details: {} });
+  const e = await resolveCompletionEligibility(bk);
+  assert.equal(e.eligible, true, `expected eligible, got ${e.reason}`);
+  assert.equal((e.evidence as any).dateSource, "booked_slot", "the provider's published slot is the stronger source");
+});
+
+test("D8-N12: a DISPUTED in-person booking is never completed by the timer", async () => {
+  const windowDays = serviceDateCompletionDays();
+  const past = new Date(Date.now() - (windowDays + 3) * DAY).toISOString();
+  const bk = await makeBooking({
+    serviceId: ids.inPersonSvc,
+    status: "disputed",
+    confirmedDaysAgo: windowDays + 6,
+    details: { scheduledDate: past },
+  });
+  // The dispute check is the EXISTING from-state guard — `POST /api/bookings/:id/dispute` writes
+  // `status='disputed'`, and `confirmed` is the only from-state any D8 rule may claim. No new
+  // check was needed and none was added; this proves the existing one covers the new rule.
+  const e = await resolveCompletionEligibility(bk);
+  assert.equal(e.eligible, false);
+  assert.equal(e.reason, "wrong_status");
+  const run = await runBookingAutoCompletion();
+  assert.ok(!run.completedBookingIds.includes(bk));
+  assert.equal(await statusOf(bk), "disputed");
+  assert.deepEqual(await earningCounts(bk), { provider: 0, expert: 0, held: 0 });
+});
+
+test("D8-N13 (§13): NO service date ⇒ skipped with the reason, and ONLY then may the owner declare it", async () => {
+  const bk = await makeBooking({ serviceId: ids.inPersonSvc, confirmedDaysAgo: 60, details: {}, slotId: null });
+  const e = await resolveCompletionEligibility(bk);
+  assert.equal(e.rule, "service_date_timer");
+  assert.equal(e.eligible, false);
+  assert.equal(e.reason, "no_service_date", "a date the platform never held is never guessed");
+  assert.equal(e.ownerDeclarableFallback, true, "and THIS is the one case that opens the owner rail");
+
+  const run = await runBookingAutoCompletion();
+  assert.ok(!run.completedBookingIds.includes(bk), "the timer must skip it, not guess a date");
+  assert.equal(run.skipped["no_service_date"] >= 1, true, `the reason must be counted: ${JSON.stringify(run.skipped)}`);
+  assert.equal(await statusOf(bk), "confirmed");
+
+  // The narrow provider-declared fallback, over real HTTP on the owner rail.
+  const res = await api(`/api/provider/bookings/${bk}/complete`, owner.cookie, "POST", {});
+  const raw = await res.text();
+  assert.equal(res.status, 200, raw);
+  assert.equal(JSON.parse(raw).completed, true);
+  assert.equal(await statusOf(bk), "completed");
+  const stamp = await completionStamp(bk);
+  assert.equal(stamp?.actor, "provider_declared");
+  assert.equal(stamp?.fallback, "owner_declared_no_service_date", "the row must SAY it took the fallback");
+  assert.equal((await earningCounts(bk)).held, 2, "still HELD — disputable for the whole window");
+});
+
+test("D8-N15: the owner rail REFUSES an in-person booking that HAS a service date — the timer is the normal path", async () => {
+  const past = new Date(Date.now() - 2 * DAY).toISOString();
+  const dated = await makeBooking({ serviceId: ids.inPersonSvc, confirmedDaysAgo: 10, details: { scheduledDate: past } });
+  const res = await api(`/api/provider/bookings/${dated}/complete`, owner.cookie, "POST", {});
+  assert.equal(res.status, 409);
+  const body: any = await res.json();
+  assert.equal(body.reason, "rule_not_owner_declared");
+  assert.equal(body.rule, "service_date_timer");
+  assert.equal(await statusOf(dated), "confirmed");
+  assert.deepEqual(await earningCounts(dated), { provider: 0, expert: 0, held: 0 });
+});
+
+test("D8-P9 (§15): a DOUBLE run of the in-person timer is exactly ONE flip and ONE earning set", async () => {
+  const windowDays = serviceDateCompletionDays();
+  const past = new Date(Date.now() - (windowDays + 4) * DAY).toISOString();
+  const bk = await makeBooking({ serviceId: ids.inPersonSvc, confirmedDaysAgo: windowDays + 8, details: { scheduledDate: past } });
+
+  const diaryBefore = await diaryCount(bk);
+  const first = await runBookingAutoCompletion();
+  assert.ok(first.completedBookingIds.includes(bk));
+  const afterFirst = await earningCounts(bk);
+  assert.equal(afterFirst.provider, 1);
+  assert.equal(afterFirst.expert, 1);
+
+  const second = await runBookingAutoCompletion();
+  assert.ok(!second.completedBookingIds.includes(bk), "the second pass must not re-complete it");
+  assert.deepEqual(await earningCounts(bk), afterFirst, "no second earning set");
+  assert.equal(await diaryCount(bk), diaryBefore + 1, "exactly one diary row");
+});
+
+test("D8-P10: the traveler's EARLY confirm-completion still releases, unchanged by the timer", async () => {
+  const windowDays = serviceDateCompletionDays();
+  const past = new Date(Date.now() - (windowDays + 4) * DAY).toISOString();
+  const bk = await makeBooking({ serviceId: ids.inPersonSvc, confirmedDaysAgo: windowDays + 8, details: { scheduledDate: past } });
+  const run = await runBookingAutoCompletion();
+  assert.ok(run.completedBookingIds.includes(bk));
+  assert.equal((await earningCounts(bk)).held, 2, "the timer mints HELD earnings");
+
+  // `POST /api/bookings/:id/confirm-completion` is the traveler's EARLY release and requires the
+  // booking to already be `completed` — which, before this ruling, nothing could make it. Driven
+  // through the same storage call that endpoint uses (the fixture traveler holds no session).
+  const released = await storage.releaseEarningsForBooking(bk);
+  assert.ok(released >= 1, "the traveler's early confirm must still release the held earning");
+  assert.equal((await earningCounts(bk)).held, 0, "nothing left held after an early confirm");
+});
+
+// ══ ruling 69 disposition 8 — voice_notes moves from session_end to provider_declared ═════════
+
+test("D8-P11: voice_notes is PROVIDER-DECLARED — the ruling-66 no_booked_slot refusal is now a success", async () => {
+  assert.equal(
+    completionRuleFor({ deliveryMethod: "voice_notes", productShape: null }),
+    "provider_declared",
+    "ruling 69 disposition 8 amends ruling 66's table",
+  );
+  // A voice_notes booking carries no slot — D2 does not classify it as scheduled. Under ruling 66
+  // that was a permanent `no_booked_slot` refusal; the reclassification is what makes it completable.
+  const bk = await makeBooking({ serviceId: ids.voiceSvc, confirmedDaysAgo: 3, slotId: null });
+  const e = await resolveCompletionEligibility(bk);
+  assert.equal(e.rule, "provider_declared");
+  assert.equal(e.eligible, true, `expected eligible, got ${e.reason}`);
+
+  const res = await api(`/api/provider/bookings/${bk}/complete`, owner.cookie, "POST", {});
+  const raw = await res.text();
+  assert.equal(res.status, 200, raw);
+  assert.equal(JSON.parse(raw).rule, "provider_declared");
+  assert.equal(await statusOf(bk), "completed");
+  assert.equal((await earningCounts(bk)).held, 2, "the same held-earning machinery, no per-method fork");
+
+  // …and no timer may fire it — provider_declared is the owner's to declare.
+  const run = await runBookingAutoCompletion();
+  assert.ok(!run.completedBookingIds.includes(bk));
 });
 
 // ══ property ════════════════════════════════════════════════════════════════════════════════
@@ -536,7 +731,14 @@ test("D8-N9: the owner rail is ownership-gated and refuses rules that are not th
   assert.ok(anon.status === 401 || anon.status === 403, `unauthenticated must be rejected, got ${anon.status}`);
   assert.equal(await statusOf(bk), "confirmed");
 
-  const inPerson = await makeBooking({ serviceId: ids.inPersonSvc, confirmedDaysAgo: 5 });
+  // Ruling 69 disposition 1: in-person is a TIMER rule, refused on the owner rail — as long as the
+  // booking HAS a service date. (The undated case is the narrow fallback, proven by D8-N13; giving
+  // this fixture a date is what keeps it a test of the REFUSAL rather than of the fallback.)
+  const inPerson = await makeBooking({
+    serviceId: ids.inPersonSvc,
+    confirmedDaysAgo: 5,
+    details: { scheduledDate: new Date(Date.now() - 2 * DAY).toISOString() },
+  });
   const refused = await api(`/api/provider/bookings/${inPerson}/complete`, owner.cookie, "POST", {});
   assert.equal(refused.status, 409);
   assert.equal((await refused.json()).reason, "rule_not_owner_declared");

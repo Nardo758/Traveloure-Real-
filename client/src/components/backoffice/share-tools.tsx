@@ -83,7 +83,11 @@ function buildSlotCaption(o: Extract<PostingOpportunity, { kind: "open_slots" }>
 
 export function buildOfferingCaption(offering: OfferingShareOption): string {
   const location = offering.city ? ` in ${offering.city}` : "";
-  return `${offering.name}${location} — book it on Traveloure.`;
+  // Ruling 69 disposition 2 — the NEUTRAL direct-link line, kept byte-identical to the server's
+  // `DIRECT_LINK_CAPTION_LINE` so the instant client fallback and the caption that replaces it a
+  // moment later do not say two different things. It claims nothing about fees: the fee-waiver
+  // wording stays HELD until the traveler fee is actually billed on the direct path.
+  return `${offering.name}${location} — book it on Traveloure. Book direct through my link.`;
 }
 
 export async function ensureShortLink(
