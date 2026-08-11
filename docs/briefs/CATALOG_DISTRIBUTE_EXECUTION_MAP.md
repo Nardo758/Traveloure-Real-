@@ -36,7 +36,7 @@ committed proofs (negatives first), independent verification at the seam.
 ## Lanes
 
 ### Wave 1 — ship the two pages (mostly reuse, low risk)
-- **C1 · Extract the shared traveler card** — `OfferingCard` → `client/src/components/OfferingCard.tsx`, adopted by both storefront and Catalog. Storefront DOM byte-unchanged. *Gates C2.* No schema.
+- **C1 · Extract the shared traveler card** — ✅ **DONE** (`4f8d3f2`, ruling 74): `OfferingCard` → `client/src/components/OfferingCard.tsx` (shared/exported, faithful move), adopted by storefront; Catalog adoption is C2. Storefront DOM byte-unchanged. *Gates C2.* No schema.
 - **C2 · Manage ⇄ Preview toggle** — view-mode on Catalog; Preview renders C1's card with the storefront visibility filter. Proof: paused/unapproved absent from Preview exactly as `/p/:handle`. Needs C1. No schema.
 - **C3 · Per-listing Book & price options** — new `provider_services.show_price` (bool, default true) + `booking_mode` (enum instant|request|hidden, default from account `service_provider_forms.instantBooking:509`). Migration + schema (publish-trap), §19 pick-allowlist on POST/PATCH, money guard clean.
 - **C4 · Map — traveler layers** — mostly done; ship the honest "X of Y located" + unpinned rail. No schema.
