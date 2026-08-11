@@ -22,7 +22,7 @@ export default function TermsOfServicePage() {
 
       <main className="container mx-auto px-4 py-12 max-w-4xl">
         <h1 className="text-4xl font-bold mb-2" data-testid="text-terms-title">Terms and Conditions</h1>
-        <p className="text-muted-foreground mb-8">Effective Date: January 25, 2026</p>
+        <p className="text-muted-foreground mb-8">Effective Date: August 10, 2026</p>
 
         <div className="prose prose-gray dark:prose-invert max-w-none space-y-8">
           <section>
@@ -198,6 +198,9 @@ export default function TermsOfServicePage() {
               <li>Compliance with FTC disclosure guidelines and local advertising regulations</li>
               <li>Professional and brand-appropriate content history</li>
             </ul>
+        <p className="text-muted-foreground leading-relaxed mt-4">
+          Follower counts and engagement metrics are verified through the social accounts you connect to Traveloure. Connecting an Instagram or Facebook account is optional, but we cannot verify eligibility for the Influencer Program without it. Instagram verification requires a Business or Creator account linked to a Facebook Page; personal Instagram accounts cannot be verified.
+        </p>
 
             <h3 className="text-xl font-medium mb-3">5.5.3 Commission Structure</h3>
             <ul className="list-disc pl-6 space-y-2 text-muted-foreground mb-6">
@@ -494,7 +497,7 @@ export default function TermsOfServicePage() {
             
             <h3 className="text-xl font-medium mb-3">16.1 Termination by You</h3>
             <p className="text-muted-foreground leading-relaxed mb-4">
-              You may terminate your account at any time by using account deletion features in settings or contacting admin@traveloure.com. Termination does not affect outstanding payment obligations, active bookings or services in progress, or our right to retain data per our Privacy Policy.
+              You may terminate your account at any time by emailing admin@traveloure.com with the subject line "Data Deletion Request." We will confirm within 7 days and complete deletion within 30 days, as described in Section 8.5 of our Privacy Policy. This route is available to every user, in every country where the Platform is accessible. Termination does not affect outstanding payment obligations or bookings and services already in progress. Records we are legally required to retain, such as completed transactions and Expert or Provider verification records, are described in Section 6 of our Privacy Policy.
             </p>
 
             <h3 className="text-xl font-medium mb-3">16.2 Termination by Traveloure</h3>
@@ -504,7 +507,7 @@ export default function TermsOfServicePage() {
 
             <h3 className="text-xl font-medium mb-3">16.3 Effect of Termination</h3>
             <p className="text-muted-foreground leading-relaxed">
-              Upon termination: your access to the Platform will cease; your account data may be deleted (subject to retention requirements); unused platform credits may be forfeited (subject to applicable law); sections of these Terms that by nature should survive will remain in effect.
+              Upon termination: your access to the Platform will cease; your account data will be deleted, apart from records we are legally required to retain as described in Section 6 of our Privacy Policy; unused platform credits may be forfeited (subject to applicable law); sections of these Terms that by nature should survive will remain in effect.
             </p>
           </section>
 
@@ -536,7 +539,7 @@ export default function TermsOfServicePage() {
           <div className="p-4 bg-muted/50 rounded-lg mt-8">
             <p className="text-sm text-muted-foreground text-center">
               By using Traveloure, you acknowledge that you have read, understood, and agree to be bound by these Terms and Conditions.
-              <br />Last Updated: January 25, 2026 | Version 1.0
+              <br />Last Updated: August 10, 2026 | Version 1.1
             </p>
           </div>
         </div>
