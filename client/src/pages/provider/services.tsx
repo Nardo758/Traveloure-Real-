@@ -50,6 +50,7 @@ import {
   ensureShortLink,
 } from "@/components/backoffice/share-tools";
 import { CatalogMapView } from "@/components/provider/catalog-map-view";
+import { OfferingCard } from "@/components/OfferingCard";
 import { useAuth } from "@/hooks/use-auth";
 import {
   Plus,
@@ -93,6 +94,7 @@ import {
   ChevronDown,
   ImageOff,
   CheckCircle2,
+  Star,
 } from "lucide-react";
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
@@ -122,6 +124,10 @@ interface Service {
   pickupAvailable?: boolean;
   averageRating?: string;
   reviewCount?: number;
+  // C2 Preview toggle: the unfiltered /api/provider/services row already carries these; the
+  // storefront card maps price-unit + place-anchored city chip from them (mirrors storefront.tsx).
+  pricingUnit?: string | null;
+  city?: string | null;
   contentAffinityTags?: string[];
   // PB (§17 Product Builder): a bundle IS a provider_services row (product_shape='bundle',
   // migration 151) — it appears in this list like any listing; NULL = single service.
@@ -790,6 +796,97 @@ function HealthRow({ health }: { health: ServiceHealth | undefined }) {
   );
 }
 
+// ─── Manage ⇄ Preview toggle (Catalog+Distribute ruling 74, lane C2) ─────────────────────────
+//
+// Preview renders each listing through C1's SHARED OfferingCard — the EXACT traveler card the
+// public /p/:handle storefront draws — so "what you see = what users see" by construction. The
+// data-prep below (delivery-method chip, place-anchored city chip, price-unit label, rating slot,
+// non-away CTA) mirrors storefront.tsx's own mapping verbatim; the card itself is reused, never
+// re-implemented. Hover-Edit (ruling 74 resolution B) is layered as an OVERLAY sibling of the
+// card link (a named `group/edit` so it never fights the card's own `group` hover) — the
+// OfferingCard's storefront output stays byte-identical (C1 is not regressed).
+
+const PREVIEW_DELIVERY_LABELS: Record<string, string> = {
+  pdf: "PDF guide",
+  video: "Video call",
+  call: "Phone call",
+  in_person: "In-person",
+  voice_notes: "Voice notes",
+  async_messaging: "Messaging",
+  hybrid: "Hybrid",
+};
+
+function previewPriceUnitLabel(priceType?: string | null, pricingUnit?: string | null): string | null {
+  if (pricingUnit === "per_night") return "per night";
+  if (priceType === "per_person") return "per person";
+  if (priceType === "hourly") return "per hour";
+  if (priceType === "per_event") return "per event";
+  return null;
+}
+
+/** Storefront rating line — "New" pill when there are no reviews (never a fabricated score),
+ *  else star + weighted average + review count. Mirrors storefront.tsx RatingLine. */
+function PreviewRatingLine({ rating, count }: { rating?: string | number | null; count?: number | null }) {
+  if (!count || count === 0 || rating == null) {
+    return <Badge variant="outline" className="text-[11px] w-fit">New</Badge>;
+  }
+  return (
+    <span className="flex items-center gap-1 text-xs text-muted-foreground">
+      <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
+      {Number(rating).toFixed(1)}
+      <span>· {count} review{count === 1 ? "" : "s"}</span>
+    </span>
+  );
+}
+
+function CatalogPreviewCard({ service }: { service: Service }) {
+  const { t: tCommon } = useTranslation("common");
+  const isBundle = service.productShape === "bundle";
+  const editHref = isBundle ? "/provider/workstation" : `/provider/services/${service.id}/edit`;
+
+  const chips = service.deliveryMethod && PREVIEW_DELIVERY_LABELS[service.deliveryMethod]
+    ? [PREVIEW_DELIVERY_LABELS[service.deliveryMethod]]
+    : [];
+  // D5: place-anchored listings get a city-level text chip (row's own city field; nothing mapped/derived, §13).
+  if (
+    isPlaceAnchored({ deliveryMethod: service.deliveryMethod, productShape: service.productShape }) &&
+    service.city?.trim()
+  ) {
+    chips.push(`📍 ${service.city.trim()}`);
+  }
+
+  const rawPrice = service.price;
+  const hasPrice = rawPrice != null && rawPrice !== "";
+  const price = hasPrice ? `$${Number(rawPrice).toFixed(0)}` : "Custom quote";
+  const unit = hasPrice ? previewPriceUnitLabel(service.priceType, service.pricingUnit) : null;
+  const cta = service.pricingUnit === "per_night" ? "Check dates →" : "View & book →";
+
+  return (
+    <div className="relative group/edit" data-testid={`preview-card-${service.id}`}>
+      <OfferingCard
+        href={`/services/${service.id}`}
+        testId={`storefront-service-${service.id}`}
+        image={service.serviceImage ?? null}
+        title={service.serviceName || service.name || "Untitled service"}
+        chips={chips}
+        ratingSlot={<PreviewRatingLine rating={service.averageRating} count={service.reviewCount} />}
+        price={price}
+        unit={unit}
+        cta={cta}
+      />
+      {/* Hover-only Edit deep-link (ruling 74 res. B) — a sibling of the card's own <Link>, not a
+          nested anchor; z-10 keeps it clickable above the full-card link. */}
+      <Link
+        href={editHref}
+        className="absolute top-2 right-2 z-10 inline-flex items-center gap-1 rounded-md border border-console-light bg-white/95 px-2 py-1 text-xs font-medium text-console-dark shadow-sm opacity-0 transition-opacity group-hover/edit:opacity-100 focus:opacity-100"
+        data-testid={`button-preview-edit-${service.id}`}
+      >
+        <Edit className="w-3.5 h-3.5" /> {tCommon("actions.edit")}
+      </Link>
+    </div>
+  );
+}
+
 export default function ProviderServices() {
   const { t } = useTranslation("catalog");
   const { t: tCommon } = useTranslation("common");
@@ -801,6 +898,10 @@ export default function ProviderServices() {
   // Ruling 22(b): Catalog is the map's home — this toggle swaps the card grid for the map
   // authoring surface (CatalogMapView); everything below the content block is untouched.
   const [viewMode, setViewMode] = useState<"list" | "map">("list");
+  // C2 (ruling 74): Manage ⇄ Preview is a SEPARATE axis from List/Map — it governs the LIST
+  // layout's cards only (Manage = today's operational cards; Preview = the shared traveler card).
+  // Map is neither Manage nor Preview, so the Manage/Preview control is shown only in list view.
+  const [catalogMode, setCatalogMode] = useState<"manage" | "preview">("manage");
   const [shareTarget, setShareTarget] = useState<Service | null>(null);
   const [, navigate] = useLocation();
   const { toast } = useToast();
@@ -890,6 +991,15 @@ export default function ProviderServices() {
           return name === selectedCategory;
         });
 
+  // C2 Preview honesty filter (§13): a listing appears in Preview ONLY if it would appear on the
+  // public /p/:handle storefront — the SAME predicate storefront.routes.ts loadStorefront applies
+  // to lane 1 (approvalStatus='approved' AND status='active'; owner-scoping is implicit here since
+  // the query is already the session owner's services). Mirrored, never loosened: a paused/draft/
+  // unapproved listing is visible in Manage but drops out of Preview, exactly as travelers see.
+  const previewServices = filteredServices.filter(
+    (s) => s.approvalStatus === "approved" && s.status === "active",
+  );
+
   const activeCount = (services || []).filter(s => s.status === "active").length;
   const isFirstTimeEmpty = !isLoading && totalServices === 0;
   const isFilterEmpty = !isLoading && totalServices > 0 && filteredServices.length === 0;
@@ -933,6 +1043,30 @@ export default function ProviderServices() {
             )}
           </div>
           <div className="flex items-center gap-2">
+            {/* C2 (ruling 74): Manage ⇄ Preview segmented control — a separate axis from List/Map,
+                shown only in list view (the map is neither Manage nor Preview). */}
+            {viewMode === "list" && (
+              <div className="flex rounded-lg border border-console-light overflow-hidden">
+                <Button
+                  variant={catalogMode === "manage" ? "default" : "ghost"}
+                  size="sm"
+                  className="rounded-none"
+                  onClick={() => setCatalogMode("manage")}
+                  data-testid="button-mode-manage"
+                >
+                  Manage
+                </Button>
+                <Button
+                  variant={catalogMode === "preview" ? "default" : "ghost"}
+                  size="sm"
+                  className="rounded-none"
+                  onClick={() => setCatalogMode("preview")}
+                  data-testid="button-mode-preview"
+                >
+                  Preview
+                </Button>
+              </div>
+            )}
             <div className="flex rounded-lg border border-console-light overflow-hidden">
               <Button
                 variant={viewMode === "list" ? "default" : "ghost"}
@@ -1038,6 +1172,28 @@ export default function ProviderServices() {
               </Button>
             </CardContent>
           </Card>
+        ) : catalogMode === "preview" ? (
+          /* C2 Preview: the shared traveler card, honest storefront visibility (approved+active). */
+          previewServices.length === 0 ? (
+            <Card>
+              <CardContent className="p-8 text-center" data-testid="preview-empty">
+                <p className="text-console-mid font-medium">Nothing is live to preview yet</p>
+                <p className="text-console-mid text-sm mt-1">
+                  Preview shows your listings exactly as travelers see them on your storefront — only
+                  approved, active ones appear. Get a listing approved and switched on to see it here.
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div
+              className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4"
+              data-testid="catalog-preview-grid"
+            >
+              {previewServices.map((service) => (
+                <CatalogPreviewCard key={service.id} service={service} />
+              ))}
+            </div>
+          )
         ) : (
           /* Service cards */
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
