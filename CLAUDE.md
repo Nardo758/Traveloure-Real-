@@ -503,14 +503,28 @@ All service creation routes converge on one destination: `POST /api/provider/ser
   unreachable `package-firewall.replit.local` URLs into `package-lock.json` — that breaks `npm ci` on every
   GitHub runner (this kept main red ~Jul 7–11). The main recurrence engine is `.replit [postMerge]` →
   `scripts/post-merge.sh` → `npm install` after every merge.
-- Guards, in order: `scripts/post-merge.sh` scrubs right after its install; the pre-commit hook
-  (`.githooks/pre-commit`, installed by the `prepare` script) scrubs staged lockfiles from manual installs;
-  the CI `lockfile-purity` gate is the backstop. All use `scripts/scrub-lockfile.cjs` (URL-only rewrite).
-- The project `.npmrc` (`registry=https://registry.npmjs.org/`) may prevent pollution from forming, but its
-  precedence against Replit's proxy is UNVERIFIED (env-level `NPM_CONFIG_*` would override it). To verify
-  from inside a Replit workspace: `npm install && grep -c "replit.local" package-lock.json` — 0 = it works.
-- Do not remove the `.npmrc`, the hooks, or the CI gate; do not run bare `npm install` and commit without
-  the scrub.
+- **Source-level prevention — VERIFIED WORKING Aug 11, 2026:** `.replit [env]` pins
+  `npm_config_registry = "https://registry.npmjs.org/"` (LOWERCASE key, deliberately — Replit injects the
+  lowercase spelling and npm resolves a case-collision in its favor; the same-key pin overwrites it at
+  shell spawn). With the pin in force `npm config get registry` reports the real registry and pollution
+  never forms. The layers below are defense-in-depth for the day a platform change outflanks it.
+- Guards, in order: the `postinstall` script scrubs immediately after EVERY install — at the formation
+  event itself, regardless of who invoked the install (added Aug 11, 2026; this also covers commits made
+  through hook-bypassing interfaces, e.g. Replit's Git pane); `scripts/post-merge.sh` scrubs right after
+  its install; the git hooks scrub staged lockfiles — BOTH `.githooks/pre-commit` (normal commits) AND
+  `.githooks/pre-merge-commit` (merge commits; added Aug 11, 2026 — **git does not run pre-commit for a
+  merge**, and that gap is exactly how 55 polluted URLs reached CI on merge `3f5b40f`, failing 13 checks
+  on PR #453); the CI `lockfile-purity` gate is the backstop and the only guard that cannot be bypassed.
+  All use `scripts/scrub-lockfile.cjs` (URL-only rewrite; integrity hashes untouched).
+- **The `.npmrc` does NOT reliably prevent pollution from forming — VERIFIED by incident, Aug 11, 2026.**
+  55 `replit.local` URLs formed in this repo with the `.npmrc` present, so treat the hooks/scrubs as
+  load-bearing, never as belt-and-braces. Keep the `.npmrc` anyway (harmless, may help in some contexts).
+  NOTE the old verification one-liner (`npm install && grep -c ...`) is INVALID as a probe: an
+  up-to-date install short-circuits ("up to date ... in 2s") without resolving anything, so its clean
+  grep proves nothing. A real probe must force resolution (delete `package-lock.json` first) — but the
+  incident already answered the question; do not burn time re-proving it.
+- Do not remove the `.npmrc`, the `postinstall` scrub, either hook, or the CI gate; do not run bare
+  `npm install` and commit without the scrub.
 
 ---
 

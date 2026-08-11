@@ -5,6 +5,7 @@
   "license": "MIT",
   "scripts": {
     "prepare": "git config core.hooksPath .githooks || true",
+    "postinstall": "node scripts/scrub-lockfile.cjs",
     "scrub-lockfile": "node scripts/scrub-lockfile.cjs",
     "test": "tsx --test client/src/lib/__tests__/footer-route-coverage.test.ts",
     "test:upsell-contract": "tsx --test server/services/__tests__/upsell-engine.test.ts",
