@@ -244,3 +244,140 @@ test("D4-d1: link-analytics frameBreakdown carries feed, story AND an explicit u
   assert.equal(byCode.get(storyCode), "story");
   assert.equal(byCode.get(untaggedCode), null);
 });
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// E — THE EXPIRY WRITER (docs/DECISIONS.md ruling 69 disposition 7), and the NEUTRAL CAPTION
+// (disposition 2). Both live on the SHARE RAIL: the link a provider hands out and the words they
+// hand out with it, which is why they are proven in one suite.
+//
+// Ruling 68 landed `short_links.expires_at` (migration 198) read-side ONLY and said so in the
+// ledger: the money refusal existed and *"nothing in the app can trigger it"*. The disposition
+// names the writer — the link's OWNER and admin, nobody else — and E4 is the end-to-end proof
+// that an expiry a user actually sets is the same expiry the money decision refuses on.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+let expiryLinkId: string;
+let expiryLinkCode: string;
+
+test("E1: the OWNER can set and clear an expiry; NULL means never expires", async () => {
+  const created = await api("/api/short-links", owner.cookie, "POST", {
+    targetType: "service",
+    targetId: serviceId,
+    frame: "route",
+  });
+  assert.equal(created.status, 200, await created.clone().text());
+  expiryLinkCode = ((await created.json()) as any).code;
+  const row = await readPool.query(`SELECT id, expires_at FROM short_links WHERE code = $1`, [expiryLinkCode]);
+  expiryLinkId = row.rows[0].id;
+  assert.equal(row.rows[0].expires_at, null, "a freshly minted link never expires — no default TTL was adopted");
+
+  const future = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString();
+  const set = await api(`/api/short-links/${expiryLinkId}`, owner.cookie, "PATCH", { expiresAt: future });
+  assert.equal(set.status, 200, await set.clone().text());
+  let after = await readPool.query(`SELECT expires_at FROM short_links WHERE id = $1`, [expiryLinkId]);
+  assert.ok(after.rows[0].expires_at, "the expiry must actually land on the row");
+
+  const cleared = await api(`/api/short-links/${expiryLinkId}`, owner.cookie, "PATCH", { expiresAt: null });
+  assert.equal(cleared.status, 200, await cleared.clone().text());
+  after = await readPool.query(`SELECT expires_at FROM short_links WHERE id = $1`, [expiryLinkId]);
+  assert.equal(after.rows[0].expires_at, null, "null clears it — never expires");
+});
+
+test("E2: a NON-OWNER cannot set an expiry — undifferentiated 404, nothing written", async () => {
+  const stranger = await registerActor("expirystranger");
+  const res = await api(`/api/short-links/${expiryLinkId}`, stranger.cookie, "PATCH", {
+    expiresAt: new Date(Date.now() + 86400000).toISOString(),
+  });
+  assert.equal(res.status, 404, "a stranger must not learn that this id exists");
+  const after = await readPool.query(`SELECT expires_at FROM short_links WHERE id = $1`, [expiryLinkId]);
+  assert.equal(after.rows[0].expires_at, null, "and nothing was written");
+
+  const anon = await api(`/api/short-links/${expiryLinkId}`, undefined, "PATCH", { expiresAt: null });
+  assert.ok(anon.status === 401 || anon.status === 403, `unauthenticated must be rejected, got ${anon.status}`);
+});
+
+test("E3: §19 — the body is an ALLOWLIST of one field, and a PAST expiry is refused", async () => {
+  // A past timestamp is a retire-now action wearing a schedule's name — refused with its reason.
+  const past = await api(`/api/short-links/${expiryLinkId}`, owner.cookie, "PATCH", {
+    expiresAt: new Date(Date.now() - 60_000).toISOString(),
+  });
+  assert.equal(past.status, 400);
+  assert.equal(((await past.json()) as any).code, "EXPIRY_IN_PAST");
+
+  // Everything else a caller might send is simply not read: the code, the owner and the click
+  // count are untouched by a request that tries to set them.
+  const before = await readPool.query(
+    `SELECT code, owner_user_id, clicks FROM short_links WHERE id = $1`,
+    [expiryLinkId],
+  );
+  const smuggle = await api(`/api/short-links/${expiryLinkId}`, owner.cookie, "PATCH", {
+    expiresAt: null,
+    code: "hijacked",
+    ownerUserId: "someone-else",
+    clicks: 99999,
+    targetId: "another-service",
+  });
+  assert.equal(smuggle.status, 200, await smuggle.clone().text());
+  const after = await readPool.query(
+    `SELECT code, owner_user_id, clicks FROM short_links WHERE id = $1`,
+    [expiryLinkId],
+  );
+  assert.deepEqual(after.rows[0], before.rows[0], "not one other column may move through this body");
+});
+
+test("E4: END TO END — an expiry a user SETS is the expiry the money decision refuses on", async () => {
+  // Ruling 61's refusal (`expired_ref` -> full rate) previously had no writer, so this link
+  // between the control and the money decision could not be proven at all. The rails validator is
+  // called directly, exactly as `/api/checkout`'s pre-pass calls it.
+  const { validateRailsRef } = await import("../services/rails-attribution.service");
+  const traveler = await registerActor("expirytraveler");
+
+  const live = await validateRailsRef({ ref: expiryLinkCode, travelerUserId: traveler.id });
+  assert.equal(live.valid, true, "before the expiry, the ref is money-grade");
+
+  // Set an expiry through the REAL endpoint, then move the clock forward the only way a test can
+  // without lying to the server: a future value, then aged in place by the same amount.
+  const soon = new Date(Date.now() + 60_000).toISOString();
+  const set = await api(`/api/short-links/${expiryLinkId}`, owner.cookie, "PATCH", { expiresAt: soon });
+  assert.equal(set.status, 200, await set.clone().text());
+  await readPool.query(
+    `UPDATE short_links SET expires_at = expires_at - INTERVAL '2 minutes' WHERE id = $1`,
+    [expiryLinkId],
+  );
+
+  const expired = await validateRailsRef({ ref: expiryLinkCode, travelerUserId: traveler.id });
+  assert.equal(expired.valid, false, "an expired link must not carry rails");
+  assert.equal(expired.reason, "expired_ref");
+});
+
+// ── the neutral direct-link caption (ruling 69 disposition 2) ───────────────────────────────
+
+test("E5: the share caption invites a DIRECT booking and promises nothing about fees", async () => {
+  const res = await api(`/api/promo-text?targetType=service&targetId=${serviceId}`, owner.cookie);
+  assert.equal(res.status, 200, await res.clone().text());
+  const body = (await res.json()) as { caption: string; source: string };
+  assert.ok(body.caption.length > 0);
+
+  // The HELD half of the disposition. Ruling 61 kept the waiver wording out of the caption engine;
+  // disposition 2 keeps it out until the traveler fee is actually billed on the direct path, and
+  // says 1C does NOT unlock it. This assertion is that hold, made mechanical.
+  const forbidden = [
+    /skip\s+the\s+(service\s+)?fee/i,
+    /no\s+(service\s+)?fee/i,
+    /waive/i,
+    /fee[-\s]?free/i,
+    /save\s+\d/i,
+  ];
+  for (const pattern of forbidden) {
+    assert.ok(
+      !pattern.test(body.caption),
+      `the caption must make no fee-waiver claim (matched ${pattern}): ${body.caption}`,
+    );
+  }
+
+  // The deterministic template is the one this bench actually produces (no ANTHROPIC_API_KEY), and
+  // it carries the NEUTRAL line the disposition released.
+  if (body.source === "template") {
+    assert.match(body.caption, /Book direct through my link\./);
+  }
+});

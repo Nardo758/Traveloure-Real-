@@ -188,6 +188,8 @@ after(async () => {
       await readPool.query(`DELETE FROM provider_services WHERE id = $1`, [id]).catch(() => {});
     }
     for (const email of createdEmails) {
+      await readPool.query(`DELETE FROM service_provider_forms WHERE user_id IN (SELECT id FROM users WHERE email = $1)`, [email]).catch(() => {});
+      await readPool.query(`DELETE FROM local_expert_forms WHERE user_id IN (SELECT id FROM users WHERE email = $1)`, [email]).catch(() => {});
       await readPool.query(`DELETE FROM users WHERE email = $1`, [email]).catch(() => {});
     }
   } finally {
@@ -557,4 +559,273 @@ test("D9-A11: the read returns affirmed state, omitted-with-reason, and records 
   const bareBody = (await (await api(`/api/provider/services/${bare}/attestations`, provider.cookie)).json()) as any;
   assert.ok(bareBody.omitted.length >= 1);
   assert.ok(bareBody.omitted.every((o: any) => typeof o.reason?.en === "string" && o.reason.en.length > 10));
+});
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// SS-5a — THE PUBLISH GATE (docs/DECISIONS.md ruling 69 disposition 3), and SS-5c — the
+// protected-title SOFT WARNING (disposition 5).
+//
+// Ruling 67 shipped attestations that gated nothing and filed the question. The disposition is
+// option (b): a listing may not TRANSITION to active with an applicable attestation unaffirmed;
+// anything already active is GRANDFATHERED. These proofs are the gate, its three doors, and the
+// two things it must NOT do — block a draft, and touch a live listing.
+//
+// The fixture provider here is F2-VERIFIED on purpose: the verification gate runs first at every
+// one of these doors, so an unverified fixture would prove nothing about this gate (it would be
+// refused one layer earlier with a different code).
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+let gateProvider: Actor;
+
+async function verifyProvider(userId: string): Promise<void> {
+  await readPool.query(
+    `INSERT INTO service_provider_forms
+       (id, user_id, business_name, name, email, mobile, country, address, business_type,
+        identity_verification_status, business_verification_status)
+     VALUES ($1, $2, 'SS5a Gate Biz', 'SS5a Tester', 'ss5a@t.test', '+1-555-0199',
+             'JPN', '1 Karasuma', 'tour_operator', 'verified', 'verified')`,
+    [crypto.randomUUID(), userId],
+  );
+  // `tour_guide` is a background-check category, so the SEPARATE 422 category gate would refuse
+  // every publish below before the attestation gate is ever consulted. Cleared deliberately —
+  // this suite is about the attestation gate, and a proof masked by a different gate proves
+  // nothing (the same reason the provider is F2-verified above).
+  await readPool.query(
+    `UPDATE users SET provider_verification_status = 'verified', background_check_confirmed = true WHERE id = $1`,
+    [userId],
+  );
+}
+
+/** A guide-category IN-PERSON draft — applicable set = title_claim + in_person_safety_basics. */
+async function gatedDraft(cookie: string, extra: Record<string, unknown> = {}): Promise<string> {
+  return createService(cookie, { categoryId: guideCategoryId, status: "draft", ...extra });
+}
+
+test("D9-G0: fixture — a verified provider, so the F2 gate never masks the attestation gate", async () => {
+  gateProvider = await registerActor("gateprovider");
+  await readPool.query(`UPDATE users SET role = 'service_provider' WHERE id = $1`, [gateProvider.id]);
+  await verifyProvider(gateProvider.id);
+  const probe = await gatedDraft(gateProvider.cookie);
+  const read = await api(`/api/provider/services/${probe}/attestations`, gateProvider.cookie);
+  const body: any = await read.json();
+  assert.deepEqual(
+    body.applicable.map((a: any) => a.key).sort(),
+    ["in_person_safety_basics", "title_claim_honesty"],
+    "the fixture must actually have applicable attestations, or every gate proof below is vacuous",
+  );
+});
+
+test("D9-G1: a listing with unaffirmed applicable attestations CANNOT be created active", async () => {
+  const res = await api("/api/provider/services", gateProvider.cookie, "POST", {
+    serviceName: `D9 gate create ${RUN}`,
+    description: "gate fixture",
+    price: "120.00",
+    priceType: "fixed",
+    deliveryMethod: "in_person",
+    meetingPoint: "Kyoto Station, Karasuma exit",
+    location: "Kyoto",
+    categoryId: guideCategoryId,
+    status: "active",
+  });
+  assert.equal(res.status, 403);
+  const body: any = await res.json();
+  assert.equal(body.code, "ATTESTATION_GATE");
+  assert.deepEqual(
+    [...body.unaffirmed].sort(),
+    ["in_person_safety_basics", "title_claim_honesty"],
+    "the refusal must NAME the keys, so the wizard can point at the exact rows",
+  );
+  // The localized label pair rides the refusal (I18N-2: no EN-only text inside a JA card).
+  assert.ok(body.attestations?.[0]?.label?.ja, "the refusal must carry localized labels");
+});
+
+test("D9-G2: the SAME payload saves fine as a DRAFT — the gate is draft-exempt", async () => {
+  const id = await gatedDraft(gateProvider.cookie);
+  const r = await readPool.query(`SELECT status FROM provider_services WHERE id = $1`, [id]);
+  assert.equal(r.rows[0].status, "draft", "a draft with unaffirmed attestations must still save");
+});
+
+test("D9-G3: affirming the applicable set WITH the write lets it publish", async () => {
+  const res = await api("/api/provider/services", gateProvider.cookie, "POST", {
+    serviceName: `D9 gate pass ${RUN}`,
+    description: "gate fixture",
+    price: "120.00",
+    priceType: "fixed",
+    deliveryMethod: "in_person",
+    meetingPoint: "Kyoto Station, Karasuma exit",
+    location: "Kyoto",
+    categoryId: guideCategoryId,
+    status: "active",
+    affirmAttestations: ["title_claim_honesty", "in_person_safety_basics"],
+  });
+  assert.equal(res.status, 201, await res.clone().text());
+  const created: any = await res.json();
+  createdServiceIds.push(created.id);
+  assert.equal(created.status, "active");
+  // …and the affirmations are real rows, stamped with the SESSION user (§14) — not a bypass flag.
+  const rows = await attestationRows(created.id);
+  assert.deepEqual(rows.map((r) => r.attestation_key).sort(), ["in_person_safety_basics", "title_claim_honesty"]);
+  assert.equal(rows[0].affirmed_by, gateProvider.id);
+});
+
+test("D9-G4: the affirm-with-write field is re-validated server-side — an inapplicable key is a 400", async () => {
+  const res = await api("/api/provider/services", gateProvider.cookie, "POST", {
+    serviceName: `D9 gate bogus ${RUN}`,
+    description: "gate fixture",
+    price: "120.00",
+    priceType: "fixed",
+    deliveryMethod: "in_person",
+    meetingPoint: "Kyoto Station, Karasuma exit",
+    location: "Kyoto",
+    categoryId: guideCategoryId,
+    status: "active",
+    // Food handling does not apply to a guide-category listing — the client does not get to say.
+    affirmAttestations: ["food_safety_disclosure"],
+  });
+  assert.equal(res.status, 400);
+  const body: any = await res.json();
+  assert.equal(body.code, "ATTESTATION_NOT_APPLICABLE");
+});
+
+test("D9-G5: PATCH to active is gated, and passes once the attestation is on record", async () => {
+  const id = await gatedDraft(gateProvider.cookie);
+  const blocked = await api(`/api/provider/services/${id}`, gateProvider.cookie, "PATCH", { status: "active" });
+  assert.equal(blocked.status, 403);
+  assert.equal((await blocked.json()).code, "ATTESTATION_GATE");
+  let r = await readPool.query(`SELECT status FROM provider_services WHERE id = $1`, [id]);
+  assert.equal(r.rows[0].status, "draft", "a refused publish must leave the row alone");
+
+  // Affirm through the EXISTING endpoint (not the inline field) — either route satisfies the gate.
+  const aff = await api(`/api/provider/services/${id}/attestations`, gateProvider.cookie, "POST", {
+    affirm: ["title_claim_honesty", "in_person_safety_basics"],
+  });
+  assert.equal(aff.status, 200, await aff.clone().text());
+  const ok = await api(`/api/provider/services/${id}`, gateProvider.cookie, "PATCH", { status: "active" });
+  assert.equal(ok.status, 200, await ok.clone().text());
+  r = await readPool.query(`SELECT status FROM provider_services WHERE id = $1`, [id]);
+  assert.equal(r.rows[0].status, "active");
+});
+
+test("D9-G6: the Activate TOGGLE door is gated too", async () => {
+  // `PATCH /api/expert/services/:id/status` is the OWNER'S-OWN-TOGGLE door the F2 gate note names,
+  // and it is expert-role-gated by RBAC before any of this — so the actor here must be an EXPERT.
+  // (A provider gets a plain "Expert access required" 403 one layer earlier; asserting the
+  // attestation gate through that door would have proven nothing.)
+  const expert = await registerActor("gateexpert");
+  await readPool.query(`UPDATE users SET role = 'expert' WHERE id = $1`, [expert.id]);
+  await readPool.query(
+    `INSERT INTO local_expert_forms (id, user_id, identity_verification_status) VALUES ($1, $2, 'verified')`,
+    [crypto.randomUUID(), expert.id],
+  );
+  const id = await gatedDraft(expert.cookie);
+  const res = await api(`/api/expert/services/${id}/status`, expert.cookie, "PATCH", { status: "active" });
+  assert.equal(res.status, 403, await res.clone().text());
+  assert.equal((await res.json()).code, "ATTESTATION_GATE");
+  let r = await readPool.query(`SELECT status FROM provider_services WHERE id = $1`, [id]);
+  assert.equal(r.rows[0].status, "draft");
+
+  // …and it opens once the statements are on record — the door is gated, not sealed.
+  const aff = await api(`/api/provider/services/${id}/attestations`, expert.cookie, "POST", {
+    affirm: ["title_claim_honesty", "in_person_safety_basics"],
+  });
+  assert.equal(aff.status, 200, await aff.clone().text());
+  const ok = await api(`/api/expert/services/${id}/status`, expert.cookie, "PATCH", { status: "active" });
+  assert.equal(ok.status, 200, await ok.clone().text());
+  r = await readPool.query(`SELECT status FROM provider_services WHERE id = $1`, [id]);
+  assert.equal(r.rows[0].status, "active");
+});
+
+test("D9-G7: GRANDFATHERING — an already-ACTIVE listing is never touched by the gate", async () => {
+  const id = await gatedDraft(gateProvider.cookie);
+  // Put it live the way history did: directly, with no affirmations on record.
+  await readPool.query(`UPDATE provider_services SET status = 'active' WHERE id = $1`, [id]);
+  const rowsBefore = await attestationRows(id);
+  assert.equal(rowsBefore.length, 0, "this listing is deliberately unaffirmed");
+
+  // An ordinary edit of a live listing must NOT be refused and must NOT unpublish it.
+  const edit = await api(`/api/provider/services/${id}`, gateProvider.cookie, "PATCH", {
+    description: "an edit to a grandfathered live listing",
+    status: "active",
+  });
+  assert.equal(edit.status, 200, await edit.clone().text());
+  const r = await readPool.query(`SELECT status, description FROM provider_services WHERE id = $1`, [id]);
+  assert.equal(r.rows[0].status, "active", "a grandfathered listing is nudged, never auto-unpublished");
+  assert.match(r.rows[0].description, /grandfathered/);
+  assert.deepEqual(await attestationRows(id), [], "and nothing was silently affirmed on its behalf");
+});
+
+test("D9-G8: §13 — an UNDECIDABLE attestation never gates (the platform cannot demand it)", async () => {
+  // No category ⇒ title_claim is OMITTED WITH A REASON, not applicable. The in-person one still
+  // applies on the method axis alone, so affirming just that must be enough to publish.
+  const res = await api("/api/provider/services", gateProvider.cookie, "POST", {
+    serviceName: `D9 gate undecidable ${RUN}`,
+    description: "gate fixture",
+    price: "120.00",
+    priceType: "fixed",
+    deliveryMethod: "in_person",
+    meetingPoint: "Kyoto Station, Karasuma exit",
+    location: "Kyoto",
+    status: "active",
+    affirmAttestations: ["in_person_safety_basics"],
+  });
+  assert.equal(res.status, 201, await res.clone().text());
+  const created: any = await res.json();
+  createdServiceIds.push(created.id);
+  assert.equal(created.status, "active", "an omitted-with-reason key must not block a publish");
+});
+
+// ── SS-5c: the soft warning (ruling 69 disposition 5) ───────────────────────────────────────
+
+test("D9-W1: a protected-title claim WARNS and never blocks — the listing still saves", async () => {
+  const res = await api("/api/provider/services", gateProvider.cookie, "POST", {
+    serviceName: `Government certified guide ${RUN}`,
+    description: "Private Kyoto walking tour",
+    price: "120.00",
+    priceType: "fixed",
+    deliveryMethod: "in_person",
+    meetingPoint: "Kyoto Station, Karasuma exit",
+    location: "Kyoto",
+    categoryId: guideCategoryId,
+    status: "draft",
+  });
+  assert.equal(res.status, 201, await res.clone().text());
+  const body: any = await res.json();
+  createdServiceIds.push(body.id);
+  const warn = body.warnings?.protectedTitleClaim;
+  assert.ok(warn, "the warning must be attached to the SUCCESSFUL response");
+  assert.deepEqual(warn.matches, ["government certified"]);
+  assert.deepEqual(warn.fields, ["serviceName"]);
+  assert.equal(warn.attestationKey, "title_claim_honesty", "it nudges toward the SS-5 statement");
+  assert.ok(warn.message.en && warn.message.ja, "the nudge copy is localized like the catalog copy");
+  // NEVER AUTO-EDITS: the provider's own text is stored exactly as written.
+  const r = await readPool.query(`SELECT service_name FROM provider_services WHERE id = $1`, [body.id]);
+  assert.match(r.rows[0].service_name, /^Government certified guide/);
+});
+
+test("D9-W2: the Japanese protected title is detected in a DESCRIPTION too", async () => {
+  const id = await gatedDraft(gateProvider.cookie);
+  const res = await api(`/api/provider/services/${id}`, gateProvider.cookie, "PATCH", {
+    description: "京都のプライベートツアー。通訳案内士がご案内します。",
+  });
+  assert.equal(res.status, 200, await res.clone().text());
+  const body: any = await res.json();
+  assert.deepEqual(body.warnings?.protectedTitleClaim?.matches, ["通訳案内士"]);
+  assert.deepEqual(body.warnings?.protectedTitleClaim?.fields, ["description"]);
+});
+
+test("D9-W3: ordinary wording produces NO warning — and its absence proves nothing (§13)", async () => {
+  const res = await api("/api/provider/services", gateProvider.cookie, "POST", {
+    serviceName: `PADI certified divemaster tour ${RUN}`,
+    description: "A licensed local historian shows you Gion.",
+    price: "120.00",
+    priceType: "fixed",
+    deliveryMethod: "in_person",
+    meetingPoint: "Kyoto Station, Karasuma exit",
+    location: "Kyoto",
+    status: "draft",
+  });
+  assert.equal(res.status, 201);
+  const body: any = await res.json();
+  createdServiceIds.push(body.id);
+  assert.equal(body.warnings, undefined, "a legitimate 'certified' compound must not fire the warning");
 });

@@ -37,6 +37,7 @@ import { isPlaceAnchored } from "@shared/service-fundamentals";
 // drift. The client calls it only to draw the card — it never decides what it may affirm.
 import {
   resolveApplicableAttestations,
+  detectProtectedTitleClaims,
   type AttestationKey,
 } from "@shared/service-attestations";
 import { ServiceAttestationsCard } from "@/components/provider/service-attestations-card";
@@ -148,6 +149,14 @@ interface ServiceFormData {
   // departure. "" = never captured, matches meetingPoint's own optional-string convention.
   dropOffPoint: string;
   serviceRadius: number;
+  // SS-4 (ruling 69 disposition 9, migration 199): the PICKUP radius, its own column at last.
+  // "" = not set — deliberately a string so the never-captured state survives round-tripping and
+  // reaches the server as NULL rather than as a fabricated 0 (§13).
+  pickupRadiusKm: string;
+  // SS-6 (ruling 69 disposition 9, migration 199): the language(s) the service is DELIVERED in.
+  // `null` = never captured (render nothing); `[]` = deliberately cleared. The two must not
+  // collapse, so this is nullable rather than defaulting to an empty array.
+  deliveryLanguages: string[] | null;
   transportProvided: "yes" | "no" | "not_applicable";
   // ── D7 service-logistics capture (docs/DECISIONS.md ruling 62, migration 195) ───────────────
   // CAPTURE ONLY — nothing reads these yet. Every one is a string here so that "" can mean
@@ -185,6 +194,25 @@ interface ServiceFormProps {
   id?: string;
   onSuccess?: (serviceId: string) => void;
 }
+
+/**
+ * SS-6 (docs/DECISIONS.md ruling 69 disposition 9, migration 199) — the languages a service can be
+ * DELIVERED in. A short starter list for the launch market plus the majors; the column itself is a
+ * free jsonb string array, so this list constrains the UI only and never the data. Deliberately NOT
+ * pre-selected: an absent value means "the provider never told us" and must render as nothing on
+ * the traveler surface, never as a presumed "English" (§13).
+ */
+const DELIVERY_LANGUAGE_OPTIONS: string[] = [
+  "English",
+  "日本語",
+  "中文",
+  "한국어",
+  "Français",
+  "Deutsch",
+  "Español",
+  "Italiano",
+  "Português",
+];
 
 const AFFINITY_TAG_OPTIONS: { value: string; label: string }[] = [
   { value: "hotel_arrival", label: "Hotel arrival/departure" },
@@ -271,6 +299,8 @@ function buildEmptyForm(role: "expert" | "provider"): ServiceFormData {
     pickupAddress: "",
     dropOffPoint: "",
     serviceRadius: 0,
+    pickupRadiusKm: "",
+    deliveryLanguages: null,
     transportProvided: "not_applicable",
     // D7 (ruling 62): every field starts UNCAPTURED — an empty string, not a guessed default.
     transportProvision: "",
@@ -368,6 +398,9 @@ function mapServiceToForm(s: any, role: "expert" | "provider"): ServiceFormData 
     pickupAddress: s.pickupAddress || "",
     dropOffPoint: s.dropOffPoint || "",
     serviceRadius: Number(s.serviceRadius || 0),
+    // NULL round-trips as "" / null — never coerced into a number or a presumed language.
+    pickupRadiusKm: s.pickupRadiusKm == null ? "" : String(s.pickupRadiusKm),
+    deliveryLanguages: Array.isArray(s.deliveryLanguages) ? (s.deliveryLanguages as string[]) : null,
     transportProvided: (s.transportProvided === "yes" || s.transportProvided === "no" ? s.transportProvided : "not_applicable"),
     // D7 (ruling 62): NULL on the row round-trips back as "" — still uncaptured, never coerced
     // into a value the provider did not choose.
@@ -966,6 +999,14 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           formData.serviceRadius > 0 && (formData.pickupAvailable || isPickupProvision)
             ? formData.serviceRadius
             : null,
+        // SS-4 (ruling 69 disposition 9): the pickup radius writes its OWN column. `serviceRadius`
+        // above is untouched by this field and vice versa — that separation IS the fix, and the
+        // two-labels-one-column notice the six-sigma pass added is retired with it. "" stays NULL
+        // ("not set"), never 0.
+        pickupRadiusKm: formData.pickupRadiusKm.trim() === "" ? null : (parseInt(formData.pickupRadiusKm, 10) || 0),
+        // SS-6 (ruling 69 disposition 9): sent only once the provider has touched the field —
+        // `null` here means "never captured" and must not be confused with a cleared `[]`.
+        deliveryLanguages: formData.deliveryLanguages,
         // Transport disclosure only carries meaning for an in-person/hybrid meeting; remote → not_applicable.
         transportProvided: isInPerson ? formData.transportProvided : "not_applicable",
         // ── D7 service-logistics capture (ruling 62, migration 195) ─────────────────────────
@@ -1035,6 +1076,17 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
       }
       // revisionsIncluded is shared (expert + provider)
       payload.revisionsIncluded = formData.revisionsIncluded;
+
+      // SS-5a (ruling 69 disposition 3): the ticked confirmations travel WITH the write, because
+      // the publish gate is judged before the row exists on a create — a child row cannot pre-date
+      // its parent. The server re-derives what applies and refuses anything outside it; this sends
+      // only keys, never an opinion about applicability.
+      const affirmWithWrite = Object.entries(attestationChecks)
+        .filter(([, v]) => v)
+        .map(([k]) => k);
+      if (affirmWithWrite.length > 0) {
+        payload.affirmAttestations = affirmWithWrite;
+      }
 
       // L2: read back the actual created/updated row (status + approvalStatus) rather
       // than assuming from submitAction — the server clamps the born approval state
@@ -1179,6 +1231,32 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     for (const a of attestationState?.affirmedOther ?? []) out[a.key] = a.affirmedAt;
     return out;
   }, [attestationState]);
+
+  // ── SS-5a PUBLISH GATE (ruling 69 disposition 3) ────────────────────────────────────────
+  // The applicable attestations this listing has NOT affirmed, counting both what is on record
+  // and what is ticked in this session (both of which the save will carry). This mirrors the
+  // server predicate; the SERVER is still the authority — this only stops the provider from
+  // walking into a 403 they could not see coming.
+  const unaffirmedAttestations = useMemo(
+    () =>
+      attestationResolution.applicable.filter(
+        (key) => !attestationAffirmedAt[key] && !attestationChecks[key],
+      ),
+    [attestationResolution, attestationAffirmedAt, attestationChecks],
+  );
+  // The gate binds on a TRANSITION to active: an already-live listing is grandfathered, exactly
+  // as the server has it, so an edit of a live listing is never blocked here either.
+  const attestationGateBlocked =
+    unaffirmedAttestations.length > 0 && !(isEditMode && existingService?.status === "active");
+
+  // ── SS-5c SOFT WARNING (ruling 69 disposition 5) ────────────────────────────────────────
+  // The SAME shared detector the server runs, over the text as currently drafted, so the nudge
+  // appears while the provider is typing rather than only after a save. It never blocks and never
+  // edits: the server attaches the authoritative warning to its own response.
+  const protectedTitleWarning = useMemo(
+    () => detectProtectedTitleClaims({ serviceName: formData.name, description: formData.description }),
+    [formData.name, formData.description],
+  );
 
   // NEVER-CLOBBER SURFACING (ruling 62's amendment, §13): picking one coverage mode must not
   // silently delete the other's data — so state, out loud, that the other side is still there.
@@ -2074,6 +2152,48 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                     Options filtered to your selected tier's delivery formats.
                   </p>
                 )}
+
+                {/* ── SS-6 delivery language (ruling 69 disposition 9, migration 199) ─────────
+                    Placed beside the delivery METHOD because it answers the sibling question:
+                    how it is delivered, and in what language. This is NOT ruling 60's chrome or
+                    content translation — it is a purchasable attribute of the experience itself
+                    (in Kyoto, an English-run session is commonly a different product from the
+                    shared Japanese one). Untouched ⇒ nothing is sent and nothing is shown. */}
+                <div className="mt-4">
+                  <Label>Delivered in (languages)</Label>
+                  <p className="text-xs text-muted-foreground mb-2" data-testid="text-delivery-languages-hint">
+                    The language(s) you actually run this service in. Leave blank if you would
+                    rather not say — we will not guess one for you.
+                  </p>
+                  <div className="flex flex-wrap gap-x-4 gap-y-2">
+                    {DELIVERY_LANGUAGE_OPTIONS.map((lang) => {
+                      const selected = formData.deliveryLanguages?.includes(lang) ?? false;
+                      return (
+                        <label key={lang} className="flex cursor-pointer items-center gap-2 text-sm font-normal">
+                          <input
+                            type="checkbox"
+                            checked={selected}
+                            onChange={(e) => {
+                              // The FIRST touch turns null (never captured) into a real array;
+                              // unticking the last one leaves [] (deliberately cleared), which is
+                              // a different fact and is preserved as such.
+                              const current = formData.deliveryLanguages ?? [];
+                              set(
+                                "deliveryLanguages",
+                                e.target.checked
+                                  ? [...current, lang]
+                                  : current.filter((l) => l !== lang),
+                              );
+                            }}
+                            className="h-4 w-4 rounded"
+                            data-testid={`checkbox-delivery-language-${lang}`}
+                          />
+                          {lang}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
             );
           })()}
@@ -2530,30 +2650,22 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                       id="coverageRadius"
                       type="number"
                       min={0}
-                      value={formData.serviceRadius || ""}
-                      onChange={(e) => set("serviceRadius", parseInt(e.target.value) || 0)}
+                      value={formData.pickupRadiusKm}
+                      onChange={(e) => set("pickupRadiusKm", e.target.value)}
+                      placeholder="Not set"
                       className="mt-1"
                       data-testid="input-coverage-radius"
                     />
-                    {/* SIX-SIGMA PASS (docs/findings/SIX_SIGMA_PROVIDER_PASS.md, Tier A /
-                        finding M-3): this input and the "Service Radius (km)" input in the
-                        Pickup card above are TWO LABELS OVER ONE COLUMN
-                        (provider_services.service_radius) — measured: typing 17 here makes
-                        #serviceRadius read 17 instantly. Both are shown at once whenever the
-                        provider has the Pickup switch on AND a pickup coverage mode of radius,
-                        which is precisely the configuration a pickup operator uses. Left
-                        unlabelled, a provider reads them as "how far I travel" vs "how far I
-                        collect from" — two genuinely different numbers in this trade — and the
-                        second silently overwrites the first. State the truth rather than
-                        inventing a second store (§13); a real split needs a column and a
-                        ruling, filed as Tier B. */}
-                    {formData.pickupAvailable && (
-                      <p className="text-xs text-muted-foreground mt-1" data-testid="text-radius-single-value">
-                        This is the same number as “Service Radius (km)” under Pickup/Drop-off
-                        above — one radius per listing, shown in both places. Changing it here
-                        changes it there.
-                      </p>
-                    )}
+                    {/* SS-4 CLOSED (docs/DECISIONS.md ruling 69 disposition 9, migration 199).
+                        The six-sigma pass (finding M-3) measured this input and "Service Radius
+                        (km)" in the Pickup card above writing ONE column: typing 17 here made
+                        #serviceRadius read 17 instantly. They are now two columns
+                        (`pickup_radius_km` and `service_radius`), so the honesty notice that used
+                        to sit here — stating they were the same number — is RETIRED rather than
+                        reworded: it described a defect that no longer exists. NEVER-CLOBBER: the
+                        split added a column and backfilled nothing, so a listing saved under the
+                        old UI keeps its number on `service_radius` and shows "Not set" here until
+                        its owner says otherwise (§13 — never a guessed copy). */}
                     {savedRouteStopCount > 0 && (
                       <p className="text-xs text-amber-700 mt-2" data-testid="text-coverage-other-preserved">
                         {savedRouteStopCount} route {savedRouteStopCount === 1 ? "stop is" : "stops are"} saved —
@@ -2812,9 +2924,11 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           Placement: the "Terms & requirements" step — the C9 precedent that puts per-listing
           curation on the "what I sell" module. The card renders ITSELF only when the SHARED
           resolver returns a non-empty applicable set for what is currently drafted; nothing
-          here decides applicability locally. NOT a publish gate: leaving a box unticked
-          blocks nothing (ruling 67's negative space — whether it should is a filed
-          decision-maker question, deliberately unanswered here). */}
+          here decides applicability locally. IT IS NOW A PUBLISH GATE (ruling 69 disposition
+          3, answering the question ruling 67 filed as SS-5a): an unticked applicable box
+          blocks a TRANSITION to active — draft saves and already-live listings are exempt,
+          which is the whole grandfathering mechanism. The server holds the authority; the
+          disabled Publish button below only makes the refusal visible before it happens. */}
       <ServiceAttestationsCard
         resolution={attestationResolution}
         affirmedAt={attestationAffirmedAt}
@@ -2822,6 +2936,9 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         onToggle={(key: AttestationKey, next: boolean) =>
           setAttestationChecks((prev) => ({ ...prev, [key]: next }))
         }
+        unaffirmed={unaffirmedAttestations}
+        gateApplies={!(isEditMode && existingService?.status === "active")}
+        titleClaimWarning={protectedTitleWarning}
       />
 
       </>)}
@@ -3120,12 +3237,14 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
               <Button
                 className="bg-primary hover:bg-primary/90"
                 onClick={() => handleFinalSubmit("publish")}
-                disabled={createMutation.isPending || !formData.name || !formData.categoryId || publishBlocked || verificationGateBlocked || (!isEditMode && !formData.serviceOfferingTypeId)}
+                disabled={createMutation.isPending || !formData.name || !formData.categoryId || publishBlocked || verificationGateBlocked || attestationGateBlocked || (!isEditMode && !formData.serviceOfferingTypeId)}
                 title={
                   verificationGateBlocked
                     ? "Complete identity and business verification in your Provider Status page before publishing"
                     : publishBlocked
                     ? "Complete background verification before publishing this category"
+                    : attestationGateBlocked
+                    ? "Tick the confirmations on the Terms & requirements step before publishing"
                     : (!isEditMode && !formData.serviceOfferingTypeId)
                     ? "Pick an offering from the /earn catalog first"
                     : undefined
@@ -3133,7 +3252,11 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
                 data-testid="button-publish-service"
               >
                 {createMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : null}
-                {verificationGateBlocked ? "Verification Required" : publishBlocked ? "Verification Required" : "Publish Service"}
+                {verificationGateBlocked || publishBlocked
+                  ? "Verification Required"
+                  : attestationGateBlocked
+                  ? "Confirmations Required"
+                  : "Publish Service"}
               </Button>
             )}
           </div>

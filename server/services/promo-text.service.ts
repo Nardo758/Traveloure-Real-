@@ -15,6 +15,17 @@
  *   - ready_made: an approved ready_made_trips listing — title/market/durationDays/priceCents
  *     only; no rating/review claim ever (no rating aggregate exists for this product — §13).
  *   - storefront: the earner's own /p/:handle page (ports the share-promote.tsx template).
+ *
+ * ── THE DIRECT-LINK LINE (docs/DECISIONS.md ruling 69 disposition 2) ─────────────────────────
+ * Ruling 61 held the waiver marketing caption ("book through my link — skip the service fee") out
+ * of this engine until the D6 attribution pin was green. The pin IS green (ruling 68), and the
+ * decision-maker's disposition is **reword now, full claim later**: a NEUTRAL "book direct through
+ * my link" line may ship, and the FEE-WAIVER wording stays HELD until the D3 traveler fee is
+ * actually billed on the direct path. 1C (disposition 6) does NOT unlock it — repointing the RATE
+ * does not start billing the traveler FEE, so "skip the service fee" would still describe a charge
+ * no traveler is currently made. **Nothing in this file may say skip / waive / free / no fee about
+ * the service fee, and the AI prompt below forbids it explicitly**, because the caption is the one
+ * place a model could invent the promise the ruling is holding back.
  */
 import Anthropic from "@anthropic-ai/sdk";
 import { logger } from "../infrastructure/logger";
@@ -28,6 +39,14 @@ export interface PromoTextResult {
   caption: string;
   source: "ai" | "template";
 }
+
+/**
+ * The NEUTRAL direct-link line (ruling 69 disposition 2). It states WHERE to book and nothing
+ * about price: the earner's own short link is a real, verifiable thing, and every share surface
+ * that uses these captions routes through `/r/:code` or `/p/:handle` (§16). It deliberately makes
+ * no claim about fees, discounts or savings — see the file header for what is still held.
+ */
+export const DIRECT_LINK_CAPTION_LINE = "Book direct through my link.";
 
 // Instagram caption cap (client/src/pages/expert/content-studio.tsx:113 — instagramCaption zod max).
 const CAPTION_MAX = 2200;
@@ -49,7 +68,7 @@ export function buildDeterministicCaption(target: PromoTextTarget): string {
     case "service": {
       // Ported from buildOfferingCaption (share-promote.tsx:93).
       const location = target.city ? ` in ${target.city}` : "";
-      return `${target.serviceName}${location} — book it on Traveloure.`;
+      return `${target.serviceName}${location} — book it on Traveloure. ${DIRECT_LINK_CAPTION_LINE}`;
     }
     case "ready_made": {
       const base = `『${target.title}』 — a ${target.durationDays}-day ${target.market} trip I built on Traveloure.`;
@@ -58,7 +77,7 @@ export function buildDeterministicCaption(target: PromoTextTarget): string {
     }
     case "storefront": {
       // Ported from share-promote.tsx:278.
-      return `Check out everything I offer on Traveloure — my storefront is @${target.handle}.`;
+      return `Check out everything I offer on Traveloure — my storefront is @${target.handle}. ${DIRECT_LINK_CAPTION_LINE}`;
     }
   }
 }
@@ -105,7 +124,12 @@ export async function generatePromoText(target: PromoTextTarget): Promise<PromoT
     `Use ONLY the facts given below — do not invent facts, do not invent or imply reviews, ratings, ` +
     `testimonials, availability, or urgency ("almost sold out", "limited spots", etc.) that aren't ` +
     `stated here. Keep it concise (1-3 sentences), friendly, and specific to the listing. You may ` +
-    `include at most 3 hashtags total, and only if they add value — no hashtag spam. Return ONLY the ` +
+    `include at most 3 hashtags total, and only if they add value — no hashtag spam. ` +
+    // Ruling 69 disposition 2: the model must not invent the promise the ruling is holding back.
+    `NEVER claim or imply any discount, saving, waived fee, "no service fee", "skip the fee", ` +
+    `cheaper price, or any other pricing benefit for booking through this link — no such benefit ` +
+    `is being offered to the traveler and stating one would be false. You MAY invite people to ` +
+    `book directly through the link. Return ONLY the ` +
     `caption text, no quotes, no preamble, no explanation.\n\n` +
     `${describeTargetForPrompt(target)}`;
 

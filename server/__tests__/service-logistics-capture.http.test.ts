@@ -363,3 +363,137 @@ test("D7-L5d: a malformed start-time is rejected (HH:MM is the captured shape)",
   });
   assert.equal(res.status, 400, `expected 400, got ${res.status}: ${await res.clone().text()}`);
 });
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// SS-4 + SS-6 (docs/DECISIONS.md ruling 69 disposition 9, migration 199). Filed here rather than
+// in a new file because both are capture fields on the SAME table and the SAME wizard write that
+// D7 landed, and SS-4's whole subject is a column D7's block already reuses (`service_radius`).
+//
+// SS-4's measured defect: two wizard labels ("Service Radius (km)" and "Pickup radius (km)") wrote
+// ONE column, so typing 17 into one made the other read 17. SS-6's: providers had no way to say
+// what LANGUAGE they deliver in at all.
+//
+// The load-bearing negatives are the NEVER-CLOBBER ones — a split that silently backfilled, or a
+// language field that defaulted to "English", would each be a §13 fabrication of a fact the
+// provider never stated.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+async function splitRow(serviceId: string) {
+  const r = await readPool.query(
+    `SELECT service_radius, pickup_radius_km, delivery_languages
+       FROM provider_services WHERE id = $1`,
+    [serviceId],
+  );
+  return r.rows[0];
+}
+
+test("SS4-1: pickup radius and service radius are TWO columns — setting one never moves the other", async () => {
+  const res = await createService(provider.cookie, {
+    transportProvision: "pickup_included",
+    pickupCoverageMode: "radius",
+    pickupAvailable: true,
+    serviceRadius: 30,
+    pickupRadiusKm: 8,
+  });
+  assert.equal(res.status, 201, await res.clone().text());
+  const id = ((await res.json()) as any).id as string;
+  createdServiceIds.push(id);
+
+  let row = await splitRow(id);
+  assert.equal(Number(row.service_radius), 30, "how far I travel to work");
+  assert.equal(Number(row.pickup_radius_km), 8, "how far I collect from — a different number");
+
+  // Move ONLY the pickup radius. The service radius must not follow it (the whole defect).
+  const patched = await api(`/api/provider/services/${id}`, provider.cookie, "PATCH", { pickupRadiusKm: 17 });
+  assert.equal(patched.status, 200, await patched.clone().text());
+  row = await splitRow(id);
+  assert.equal(Number(row.pickup_radius_km), 17);
+  assert.equal(Number(row.service_radius), 30, "typing 17 into one must NOT make the other read 17");
+});
+
+test("SS4-2 (§13): NEVER-CLOBBER — an unset pickup radius stays NULL, never 0 and never a copy", async () => {
+  const res = await createService(provider.cookie, {
+    pickupAvailable: true,
+    serviceRadius: 25,
+    // pickupRadiusKm deliberately absent — the pre-split listing shape.
+  });
+  assert.equal(res.status, 201, await res.clone().text());
+  const id = ((await res.json()) as any).id as string;
+  createdServiceIds.push(id);
+  const row = await splitRow(id);
+  assert.equal(Number(row.service_radius), 25, "the existing value is untouched");
+  assert.equal(row.pickup_radius_km, null, "not set — not 0, and not backfilled from service_radius");
+
+  // …and an explicit null keeps meaning "not set" through the UPDATE path too.
+  const cleared = await api(`/api/provider/services/${id}`, provider.cookie, "PATCH", { pickupRadiusKm: null });
+  assert.equal(cleared.status, 200, await cleared.clone().text());
+  assert.equal((await splitRow(id)).pickup_radius_km, null);
+});
+
+test("SS4-3: the UPDATE path is checked as hard as the insert — a negative radius is rejected", async () => {
+  const res = await createService(provider.cookie, { pickupRadiusKm: 5 });
+  assert.equal(res.status, 201);
+  const id = ((await res.json()) as any).id as string;
+  createdServiceIds.push(id);
+
+  const bad = await api(`/api/provider/services/${id}`, provider.cookie, "PATCH", { pickupRadiusKm: -3 });
+  assert.equal(bad.status, 400, "no DB CHECK exists (publish-trap posture) — the schema IS the enforcement");
+  assert.equal(Number((await splitRow(id)).pickup_radius_km), 5, "and nothing was written");
+});
+
+test("SS6-1: delivery languages round-trip, and NULL vs [] stay DIFFERENT facts", async () => {
+  const res = await createService(provider.cookie, { deliveryLanguages: ["English", "日本語"] });
+  assert.equal(res.status, 201, await res.clone().text());
+  const id = ((await res.json()) as any).id as string;
+  createdServiceIds.push(id);
+  assert.deepEqual((await splitRow(id)).delivery_languages, ["English", "日本語"]);
+
+  // [] = "opened the field and cleared it". NULL = "never told us". Collapsing them would erase
+  // the difference between a provider who declined to say and one who has not been asked.
+  const emptied = await api(`/api/provider/services/${id}`, provider.cookie, "PATCH", { deliveryLanguages: [] });
+  assert.equal(emptied.status, 200, await emptied.clone().text());
+  assert.deepEqual((await splitRow(id)).delivery_languages, [], "cleared, not un-captured");
+
+  const nulled = await api(`/api/provider/services/${id}`, provider.cookie, "PATCH", { deliveryLanguages: null });
+  assert.equal(nulled.status, 200, await nulled.clone().text());
+  assert.equal((await splitRow(id)).delivery_languages, null, "never captured");
+});
+
+test("SS6-2 (§13): a listing that says nothing gets NULL — there is no presumed 'English'", async () => {
+  const res = await createService(provider.cookie, {});
+  assert.equal(res.status, 201);
+  const id = ((await res.json()) as any).id as string;
+  createdServiceIds.push(id);
+  assert.equal((await splitRow(id)).delivery_languages, null, "no default language may be fabricated");
+});
+
+test("SS6-3: the traveler surface carries the languages when present and omits them when absent", async () => {
+  const withLangs = await createService(provider.cookie, {
+    deliveryLanguages: ["日本語"],
+    status: "draft",
+  });
+  const withId = ((await withLangs.json()) as any).id as string;
+  createdServiceIds.push(withId);
+  const without = await createService(provider.cookie, {});
+  const withoutId = ((await without.json()) as any).id as string;
+  createdServiceIds.push(withoutId);
+
+  // The public read gates on approval+active; the fixture rows are drafts, so promote them the
+  // same way the sibling suites do rather than routing through the (separately gated) publish path.
+  await readPool.query(
+    `UPDATE provider_services SET status = 'active', approval_status = 'approved' WHERE id = ANY($1)`,
+    [[withId, withoutId]],
+  );
+
+  const a = await fetch(`${BASE_URL}/api/services/${withId}`);
+  assert.equal(a.status, 200);
+  assert.deepEqual(((await a.json()) as any).deliveryLanguages, ["日本語"]);
+
+  const b = await fetch(`${BASE_URL}/api/services/${withoutId}`);
+  assert.equal(b.status, 200);
+  const bodyB: any = await b.json();
+  assert.ok(
+    bodyB.deliveryLanguages === null || bodyB.deliveryLanguages === undefined,
+    "an unstated language must reach the traveler as nothing at all",
+  );
+});

@@ -13,6 +13,8 @@
  * flip. Do not add a parallel constant.
  */
 
+import { holdWindowDays } from "./earnings-hold.config";
+
 function envDays(key: string, dflt: number): number {
   const v = parseInt(process.env[key] || "", 10);
   return Number.isFinite(v) && v >= 0 ? v : dflt;
@@ -32,3 +34,20 @@ export const ARTIFACT_AUTO_COMPLETE_DAYS = envDays("BOOKING_AUTO_COMPLETE_DAYS_A
 export const PROPERTY_AUTO_COMPLETE_GRACE_DAYS = envDays("BOOKING_AUTO_COMPLETE_GRACE_PROPERTY", 0);
 
 export const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Ruling 69 disposition 1's in_person/hybrid row: "auto-complete N days after the booked service
+ * date". **N IS NOT A NEW CONSTANT** — it is `holdWindowDays('service_booking')`, re-exported
+ * through this one named accessor so the intent is readable where the rule is read.
+ *
+ * WHY THAT NUMBER AND NOT ANOTHER: the decision-maker's disposition says completion at the moment
+ * the dispute window closes is the coherent shape. `holdWindowDays('service_booking')` is already
+ * BOTH the held earning's `availableAt` and the `POST /api/bookings/:id/dispute` cutoff, so a
+ * separate in-person timer constant could only ever drift away from the window it is supposed to
+ * track. The file header's "do not add a parallel constant" rule therefore binds here too — this
+ * function delegates, it does not define.
+ */
+export function serviceDateCompletionDays(): number {
+  // Imported lazily-by-reference (a plain call) rather than re-declared: one authority, one value.
+  return holdWindowDays("service_booking");
+}

@@ -24,6 +24,12 @@ import {
   TRAVELER_SERVICE_FEE_BAND,
   round2,
 } from "../services/fee-resolution.service";
+// 1C (ruling 69 disposition 6) — the direct charge lane's entry points. They delegate to the same
+// `resolveProviderRate` above; these pins prove the delegation, the precedence and the refusals.
+import {
+  resolveDirectProviderRate,
+  pickOwnerShareRate,
+} from "../services/direct-charge-rate.service";
 
 const SUFFIX = `feeres-${process.pid}`;
 let categoryId: string;
@@ -225,6 +231,172 @@ test("A8: a category with no band throws rather than falling back to a default r
       (e: unknown) => e instanceof BandResolutionError,
       "a bandless category must throw, never resolve to a fallback",
     );
+  } finally {
+    await db.execute(sql`DELETE FROM service_categories WHERE id = ${orphanId}`);
+    await db.execute(sql`ALTER TABLE service_categories ALTER COLUMN commission_band_key SET NOT NULL`);
+  }
+});
+
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+// 1C — THE DIRECT CHARGE PATH (docs/DECISIONS.md ruling 69 disposition 6).
+//
+// Ruling 68 §5 recorded the gap in its own words: a rails booking was the FIRST charge path to
+// price through this resolver, while a DIRECT provider booking still resolved the legacy
+// `expert_standard` lane — "cheaper for TWO reasons at once". These pins are the proof the second
+// reason is gone: the direct lane now reaches the SAME resolver, so `fee_bands` is the authority on
+// every provider charge path and A1's band-edit proof holds for a direct booking too.
+//
+// NEGATIVE SPACE (ruling 43): these pin RESOLUTION on the direct lane, not the charge. They say
+// nothing about whether `/api/checkout` writes what it resolved (that is the checkout's own
+// suites), and nothing about the D3 traveler fee, which disposition 6 deliberately does NOT start
+// billing on the direct path.
+// ═════════════════════════════════════════════════════════════════════════════════════════════
+
+/**
+ * A10 — A1's proof, on the DIRECT lane. Edit the band; the next DIRECT resolution reflects it,
+ * with no service row and no category row touched. This is the assertion that fails on the day
+ * anyone repoints the direct path back onto a legacy band or a per-service snapshot.
+ */
+test("A10 (1C): a direct provider line's rate provably comes from fee_bands — a band edit moves it", async () => {
+  const bandBefore = await requireBand(bandKeyUnderTest);
+  const before = await resolveDirectProviderRate({
+    serviceOwnerUserId: providerId,
+    ownerRole: "service_provider",
+    categoryId,
+  });
+  assert.equal(before.resolved, true, "a provider-owned, categorised line must resolve on the direct lane");
+  assert.equal(before.rate!.platformRate, bandBefore.rate, "the direct rate must equal the band's current rate");
+  assert.equal(before.rate!.rateSource, "band");
+  assert.equal(before.rate!.bandId, bandBefore.id, "a band-sourced direct rate must name its band");
+
+  // The ONLY mutation: the band row.
+  const edited = round2(bandBefore.rate / 2);
+  await db.execute(sql`UPDATE fee_bands SET default_rate = ${edited} WHERE band_key = ${bandKeyUnderTest}`);
+  try {
+    const after = await resolveDirectProviderRate({
+      serviceOwnerUserId: providerId,
+      ownerRole: "service_provider",
+      categoryId,
+    });
+    assert.equal(after.rate!.platformRate, edited, "the band edit must reach the next DIRECT resolution");
+    assert.notEqual(after.rate!.platformRate, before.rate!.platformRate, "the direct rate must actually have moved");
+  } finally {
+    await db.execute(sql`UPDATE fee_bands SET default_rate = ${bandBefore.rate} WHERE band_key = ${bandKeyUnderTest}`);
+  }
+});
+
+/**
+ * A11 — THE CONSEQUENCE RULING 68 §5 NAMED, CLOSED. On the SAME service, a rails booking and a
+ * direct booking may now differ ONLY by ruling 48's two rails concessions — the min() and the
+ * traveler-fee waiver. Both directions are asserted, because the premium case is where "only the
+ * waiver differs" becomes literally true.
+ */
+test("A11 (1C): rails and direct on the same service differ ONLY by the rails min() and the waiver", async () => {
+  const rails = await requireBand(PROVIDER_RAILS_BAND);
+  const original = (await requireBand(bandKeyUnderTest)).rate;
+  try {
+    // Case 1 — category band ABOVE rails: rails wins by min(), and it waives. The direct lane is
+    // the category band. The gap is exactly the min(), never a legacy band.
+    await db.execute(sql`UPDATE fee_bands SET default_rate = ${round2(rails.rate * 2)} WHERE band_key = ${bandKeyUnderTest}`);
+    const dearBand = await requireBand(bandKeyUnderTest);
+    const directDear = await resolveDirectProviderRate({
+      serviceOwnerUserId: providerId, ownerRole: "service_provider", categoryId,
+    });
+    const railsDear = await resolveProviderRate({ categoryId, providerId, isRails: true });
+    assert.equal(directDear.rate!.platformRate, dearBand.rate, "direct must charge the CATEGORY band");
+    assert.equal(railsDear.platformRate, rails.rate, "rails must charge the rails band when it is lower");
+    assert.ok(railsDear.platformRate < directDear.rate!.platformRate, "the only gap is the min()");
+    assert.equal(railsDear.travelerFeeWaived, true);
+
+    // Case 2 — PREMIUM: category band BELOW rails. min() keeps the category band, so the two lanes
+    // resolve the IDENTICAL rate from the IDENTICAL band and the waiver is the whole difference.
+    const cheaper = round2(rails.rate / 2);
+    await db.execute(sql`UPDATE fee_bands SET default_rate = ${cheaper} WHERE band_key = ${bandKeyUnderTest}`);
+    const directPremium = await resolveDirectProviderRate({
+      serviceOwnerUserId: providerId, ownerRole: "service_provider", categoryId,
+    });
+    const railsPremium = await resolveProviderRate({ categoryId, providerId, isRails: true });
+    assert.equal(directPremium.rate!.platformRate, cheaper);
+    assert.equal(railsPremium.platformRate, directPremium.rate!.platformRate, "premium: the rates must be identical");
+    assert.equal(railsPremium.bandId, directPremium.rate!.bandId, "premium: the SAME band produced both");
+    const directWaiver = await resolveTravelerServiceFee(100, { waived: false });
+    const railsWaiver = await resolveTravelerServiceFee(100, { waived: railsPremium.travelerFeeWaived });
+    assert.equal(railsWaiver.amount, 0, "rails waives");
+    assert.ok(directWaiver.amount > 0, "direct does not");
+  } finally {
+    await db.execute(sql`UPDATE fee_bands SET default_rate = ${original} WHERE band_key = ${bandKeyUnderTest}`);
+  }
+});
+
+/**
+ * A12 — THE SNAPSHOT IS OUTRANKED ON THE DIRECT PATH TOO. Ruling 47 dethroned
+ * `provider_services.revenue_share_rate` as a first operand; until 1C that only held on the rails
+ * lane. `pickOwnerShareRate` is the ONE precedence every quote and charge surface reads, so this
+ * pin covers all four of them at once.
+ */
+test("A12 (1C): the per-service revenueShareRate snapshot never outranks a resolved direct band", async () => {
+  const direct = await resolveDirectProviderRate({
+    serviceOwnerUserId: providerId, ownerRole: "service_provider", categoryId,
+  });
+  assert.equal(direct.resolved, true);
+  // A deliberately absurd snapshot — the shape audit C2/Q9 described (a stale row winning).
+  const STALE_SNAPSHOT_SHARE = 0.999;
+  const picked = pickOwnerShareRate({ railsShareRate: null, direct, legacyShareRate: STALE_SNAPSHOT_SHARE });
+  assert.equal(picked.lane, "direct_band", "a resolved direct band must win the precedence");
+  assert.equal(picked.shareRate, direct.rate!.providerShareRate, "the band's share, not the snapshot's");
+  assert.notEqual(picked.shareRate, STALE_SNAPSHOT_SHARE);
+
+  // …and rails still outranks the direct band (ruling 61 unchanged by 1C).
+  const railsPicked = pickOwnerShareRate({ railsShareRate: 0.5, direct, legacyShareRate: STALE_SNAPSHOT_SHARE });
+  assert.equal(railsPicked.lane, "rails");
+  assert.equal(railsPicked.shareRate, 0.5);
+});
+
+/**
+ * A13 — THE DIRECT LANE REFUSES, IT NEVER THROWS. A8 pins that the resolver is fail-loud; on the
+ * DIRECT lane there is no optional discount to decline — a throw would be the CHARGE failing. So a
+ * breached band guard degrades to the incumbent legacy share with an enumerated reason, and an
+ * expert-owned line is refused rather than silently re-banded onto the provider model.
+ */
+test("A13 (1C): an expert-lane owner and a breached band guard both REFUSE, leaving the legacy share", async () => {
+  const LEGACY = 0.75;
+
+  const expertLine = await resolveDirectProviderRate({
+    serviceOwnerUserId: providerId, ownerRole: "expert", categoryId,
+  });
+  assert.equal(expertLine.resolved, false);
+  assert.equal(expertLine.reason, "not_provider_lane", "no ruling gives the expert model a category-band variant");
+  assert.equal(pickOwnerShareRate({ direct: expertLine, legacyShareRate: LEGACY }).lane, "legacy");
+
+  const noCategory = await resolveDirectProviderRate({
+    serviceOwnerUserId: providerId, ownerRole: "service_provider", categoryId: null,
+  });
+  assert.equal(noCategory.reason, "no_category");
+
+  const noOwner = await resolveDirectProviderRate({
+    serviceOwnerUserId: null, ownerRole: "service_provider", categoryId,
+  });
+  assert.equal(noOwner.reason, "no_service_owner");
+
+  // A breached R1/R2 guard: the same defeated-NOT-NULL construction A8 uses. The resolver throws;
+  // the direct lane must catch it and leave the incumbent rate standing.
+  const orphan = await db.execute(sql`
+    INSERT INTO service_categories (id, name, slug, commission_band_key)
+    VALUES (gen_random_uuid()::text, ${"zz-1c-" + SUFFIX}, ${"zz-1c-" + SUFFIX}, ${bandKeyUnderTest})
+    RETURNING id
+  `);
+  const orphanId = String((orphan.rows[0] as any).id);
+  await db.execute(sql`ALTER TABLE service_categories ALTER COLUMN commission_band_key DROP NOT NULL`);
+  try {
+    await db.execute(sql`UPDATE service_categories SET commission_band_key = NULL WHERE id = ${orphanId}`);
+    const breached = await resolveDirectProviderRate({
+      serviceOwnerUserId: providerId, ownerRole: "service_provider", categoryId: orphanId,
+    });
+    assert.equal(breached.resolved, false, "a breached guard must not price the line");
+    assert.equal(breached.reason, "band_unresolvable");
+    const picked = pickOwnerShareRate({ direct: breached, legacyShareRate: LEGACY });
+    assert.equal(picked.lane, "legacy", "the incumbent rate stands — a purchase is never the casualty");
+    assert.equal(picked.shareRate, LEGACY);
   } finally {
     await db.execute(sql`DELETE FROM service_categories WHERE id = ${orphanId}`);
     await db.execute(sql`ALTER TABLE service_categories ALTER COLUMN commission_band_key SET NOT NULL`);
