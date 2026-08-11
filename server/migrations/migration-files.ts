@@ -891,4 +891,10 @@ export const MIGRATION_FILES = [
   // (app-enforced closed allowlist, shared/share-frames.ts, same posture as this table's
   // pre-existing target_type column). Declared in shared/schema.ts (publish-trap).
   "193_short_links_frame.sql",
+  // 194: deliverable_downloads — R4/R5 append-only download log for the D3 deliverable rail
+  // (docs/DECISIONS.md ruling 58). One row per successful deliverable fetch (booking id, service
+  // id, user id, timestamp, protected flag). Log-only — implements no completion/auto-complete
+  // behavior (D8 is unruled); it is the download SIGNAL that a future D8 pass would need.
+  // Additive, idempotent, no CHECK. Declared in shared/schema.ts (publish-trap).
+  "194_deliverable_downloads.sql",
 ] as const;

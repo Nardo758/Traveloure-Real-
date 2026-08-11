@@ -157,7 +157,7 @@ paths) both resolve through the same function. `approved`+`paused` rows are neve
 by `server/__tests__/publish-verification-hold.http.test.ts` (9 proofs); original 11
 f2-verification-gate proofs stay green.
 
-**P1 — the D3 deliverable is LINK-delivery, not protected delivery (verified Aug 10, 2026;
+~~**P1 — the D3 deliverable is LINK-delivery, not protected delivery (verified Aug 10, 2026;
 Service Fundamentals dispatch v1.2 §4).** `GET /api/service-bookings/:id/deliverable` server-derives
 every entitlement condition correctly, then returns **the raw `serviceFile` string verbatim**
 (`res.json({ fileUrl, deliveryMethod })` — no proxy, no signing, no redirect, no expiry) and performs
@@ -182,7 +182,19 @@ the BUCKET, not the RAIL. The provisioning is real progress — it removes the b
 blocking R4 — but P1 is unchanged: an entitled buyer is still handed a permanent, shareable,
 unrevokable external URL. R4 remains to be built: upload on the ServiceForm delivery step, a proxying
 serve path that never discloses a location, an inventory of existing pasted-URL rows, and R5's
-download-log write on the same endpoint.
+download-log write on the same endpoint.~~
+**FIXED (R4, Aug 11, 2026 — docs/DECISIONS.md ruling 58).** `provider_services.serviceFile` now
+distinguishes a platform-managed upload (`objstore:<key>`) from a legacy pasted URL by the
+`objstore:` prefix, same column, no migration. `POST /api/provider/services/:id/deliverable-file`
+(owner-gated, `%PDF-` magic-byte validated, no new dependency) uploads via
+`server/infrastructure/object-storage.ts`'s `uploadBuffer`; `GET /api/service-bookings/:id/deliverable`
+now branches on the prefix — an `objstore:` value is downloaded server-side and STREAMED
+(`Content-Type: application/pdf`, never a URL/key in the response), a legacy value keeps the pre-R4
+JSON shape plus an honest `protected: false` marker. Existing pasted-URL rows are NOT migrated
+(inventoried, not repaired — 0 found on this dev DB; prod count is an open `#PS17`-class follow-up).
+R5's `deliverable_downloads` log (migration 194) gives a future D8 pass the download signal it
+needs; D8 itself remains unruled. Proven by `deliverable-protected-rail.http.test.ts` (13 proofs);
+all 9 original `service-deliverable.http.test.ts` proofs still green.
 
 **P2 — no completion event exists for artifact (pdf) bookings; the D8 auto-complete rule is
 unbuildable as written (verified Aug 10, 2026; dispatch v1.2 §2).** Premise correction for the D8
