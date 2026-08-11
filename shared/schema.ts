@@ -7888,3 +7888,24 @@ export const serviceRoutePoints = pgTable("service_route_points", {
   index("service_route_points_service_idx").on(table.serviceId),
 ]);
 export type ServiceRoutePoint = typeof serviceRoutePoints.$inferSelect;
+
+// R4/R5 (docs/DECISIONS.md ruling 58; migration 194): append-only download log for the D3
+// deliverable rail. One row per SUCCESSFUL fetch of GET /api/service-bookings/:id/deliverable —
+// the download signal D8's proposed "auto-complete after N days undownloaded" needs and does not
+// yet have (P2, QA_PUNCH_LIST.md); this table only LOGS, it implements no completion/auto-complete
+// behavior (D8 is unruled). `protected` distinguishes a proxied `objstore:` stream (true) from a
+// legacy pasted-URL reveal (false) — the same discriminator the endpoint response carries.
+// Additive, no CHECK (publish-trap avoidance). Declared here per the publish-trap rule (table +
+// index must survive the deploy push).
+export const deliverableDownloads = pgTable("deliverable_downloads", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  bookingId: varchar("booking_id").notNull().references(() => serviceBookings.id, { onDelete: "cascade" }),
+  serviceId: varchar("service_id").notNull().references(() => providerServices.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  protected: boolean("protected").notNull().default(false),
+  downloadedAt: timestamp("downloaded_at").defaultNow().notNull(),
+}, (table) => [
+  index("deliverable_downloads_booking_idx").on(table.bookingId),
+  index("deliverable_downloads_service_idx").on(table.serviceId),
+]);
+export type DeliverableDownload = typeof deliverableDownloads.$inferSelect;
