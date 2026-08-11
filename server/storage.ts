@@ -1912,8 +1912,10 @@ export class DatabaseStorage implements IStorage {
         status: 'recorded',
         transactionDate: new Date(),
       }).onConflictDoNothing({
+        // gross_amount >= 0 scopes the guard to the ONE original mint row; negative compensation
+        // rows from reversePlatformRevenueForBooking share source_type/source_id and stay free.
         target: [platformRevenue.sourceId],
-        where: sql`source_type = 'booking_commission'`,
+        where: sql`source_type = 'booking_commission' and gross_amount >= 0`,
       }).returning({ id: platformRevenue.id });
       if (inserted.length > 0) {
         applied = true;

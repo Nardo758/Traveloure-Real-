@@ -39,12 +39,18 @@ WHERE ee.reference_type = 'service_booking'
     )
   );
 
+-- Only POSITIVE rows are deduped/uniqued for platform_revenue: refund/dispute reversals
+-- (reversePlatformRevenueForBooking) deliberately insert NEGATIVE compensation rows with the
+-- SAME source_type/source_id, and those must remain unrestricted (partial refunds can add
+-- several). The unique identity is "the one original completion-mint row" = gross_amount >= 0.
 DELETE FROM platform_revenue pr
 USING platform_revenue keep
 WHERE pr.source_type = 'booking_commission'
   AND keep.source_type = 'booking_commission'
   AND pr.source_id = keep.source_id
   AND pr.id <> keep.id
+  AND pr.gross_amount >= 0
+  AND keep.gross_amount >= 0
   AND (keep.created_at, keep.id) < (pr.created_at, pr.id);
 
 CREATE UNIQUE INDEX IF NOT EXISTS provider_earnings_booking_mint_uniq
@@ -57,4 +63,4 @@ CREATE UNIQUE INDEX IF NOT EXISTS expert_earnings_booking_mint_uniq
 
 CREATE UNIQUE INDEX IF NOT EXISTS platform_revenue_booking_mint_uniq
   ON platform_revenue (source_id)
-  WHERE source_type = 'booking_commission';
+  WHERE source_type = 'booking_commission' AND gross_amount >= 0;

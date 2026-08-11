@@ -174,3 +174,31 @@ test("CM-1: concurrent mint attempts create exactly one row per ledger and one r
   const delta = Number((revAfter.rows[0] as any).r) - Number((revBefore.rows[0] as any).r);
   assert.equal(delta, 90, "service total_revenue must be incremented exactly once (by the winner)");
 });
+
+test("RV-1: refund reversal still records a negative compensation row after migration 195, and re-mint stays a no-op", async () => {
+  const id = await insertBooking({ status: "completed", pi: PAID_PI, confirmedDaysAgo: 5, completedAt: new Date() });
+  const booking = await storage.getServiceBooking(id);
+  assert.ok(booking);
+
+  assert.equal(await storage.mintCompletionEarningsForBooking(booking!), true, "initial mint must apply");
+
+  // Full reversal (refund / dispute upheld): flips the original and inserts a negative twin.
+  const reversed = await storage.reversePlatformRevenueForBooking(id);
+  assert.equal(reversed, 1, "one original platform-revenue row must be reversed");
+
+  const rows = await db.execute(sql`
+    SELECT gross_amount::numeric AS gross, status FROM platform_revenue
+    WHERE source_type = 'booking_commission' AND source_id = ${id}
+    ORDER BY gross DESC`);
+  assert.equal(rows.rows.length, 2, "original + compensation rows must both exist");
+  const [orig, comp] = rows.rows as any[];
+  assert.ok(Number(orig.gross) > 0 && orig.status === 'reversed', "original flipped to reversed");
+  assert.ok(Number(comp.gross) < 0, "compensation row is negative");
+  const sum = Number(orig.gross) + Number(comp.gross);
+  assert.equal(sum, 0, "full reversal nets to zero");
+
+  // A late mint retry (scheduler/reconciliation) after reversal must NOT resurrect revenue.
+  await storage.mintCompletionEarningsForBooking(booking!);
+  const after = await db.execute(sql`SELECT count(*)::int AS n FROM platform_revenue WHERE source_type = 'booking_commission' AND source_id = ${id}`);
+  assert.equal((after.rows[0] as any).n, 2, "re-mint after reversal must be a no-op");
+});

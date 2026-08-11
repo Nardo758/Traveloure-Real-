@@ -4699,9 +4699,11 @@ export const platformRevenue = pgTable("platform_revenue", {
   createdAt: timestamp("created_at").defaultNow(),
 }, (table) => ({
   // Migration 195 (task 1091): completion-mint race guard — see provider_earnings twin.
+  // gross_amount >= 0: only the original completion-mint row is unique; negative reversal
+  // compensation rows (reversePlatformRevenueForBooking) share the same identity and stay free.
   bookingMintUniq: uniqueIndex("platform_revenue_booking_mint_uniq")
     .on(table.sourceId)
-    .where(sql`source_type = 'booking_commission'`),
+    .where(sql`source_type = 'booking_commission' AND gross_amount >= 0`),
 }));
 
 // Daily revenue summary for dashboard analytics
