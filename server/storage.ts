@@ -252,6 +252,7 @@ export interface IStorage {
   getServiceBooking(id: string): Promise<ServiceBooking | undefined>;
   createServiceBooking(booking: InsertServiceBooking): Promise<ServiceBooking>;
   updateServiceBookingStatus(id: string, status: string, reason?: string, expectedFromStatuses?: readonly string[]): Promise<ServiceBooking | undefined>;
+  mintCompletionEarningsForBooking(booking: ServiceBooking): Promise<boolean>;
   updateServiceBookingMetadata(id: string, metadata: Record<string, any>): Promise<ServiceBooking | undefined>;
 
   // Service Reviews
@@ -1849,67 +1850,12 @@ export class DatabaseStorage implements IStorage {
     // side-effects below run, so a lost race mints no earnings and no revenue row.
     if (!updated) return undefined;
 
-    // Only fire completion side-effects on the FIRST transition to "completed".
-    const isFirstCompletion = status === "completed" && priorStatus !== "completed";
-    if (isFirstCompletion) {
-      const grossAmount = parseFloat(updated.totalAmount || '0');
-      const platformFee = parseFloat(updated.platformFee || '0');
-      const providerEarningsAmount = parseFloat(updated.providerEarnings || '0');
-      
-      // Atomically add provider earnings to service totalRevenue
-      if (providerEarningsAmount > 0) {
-        await db.update(providerServices)
-          .set({ totalRevenue: sql`${providerServices.totalRevenue} + ${providerEarningsAmount}` })
-          .where(eq(providerServices.id, updated.serviceId));
-      }
-      
-      // Record platform revenue if there's a platform fee
-      if (platformFee > 0) {
-        await this.recordPlatformRevenue({
-          sourceType: 'booking_commission',
-          sourceId: updated.id,
-          trackingNumber: updated.trackingNumber || undefined,
-          grossAmount: String(grossAmount),
-          platformFee: String(platformFee),
-          netAmount: String(platformFee * (1 - PROCESSING_FEE_RATE)),
-          processingFees: String(platformFee * PROCESSING_FEE_RATE),
-          providerId: updated.providerId,
-          providerEarnings: String(providerEarningsAmount),
-          description: `Booking commission from ${updated.trackingNumber || id}`,
-          status: 'recorded',
-          transactionDate: new Date(),
-        });
-      }
-      
-      // Create earnings ledger entries only if amount > 0
-      // Earnings become available after the configurable hold period (default 7 days)
-      const availableAt = availableAtFor('service_booking'); // escrow P2: per-surface clearance window (config)
-
-      if (providerEarningsAmount > 0) {
-        await this.createProviderEarning({
-          providerId: updated.providerId,
-          type: 'service_booking',
-          amount: String(providerEarningsAmount),
-          sourceType: 'booking',
-          sourceId: updated.id,
-          trackingNumber: updated.trackingNumber || undefined,
-          description: `Earnings from booking ${updated.trackingNumber || id}`,
-          status: 'held', // escrow: born held; releasable when available_at clears (migration 112)
-          availableAt,
-        });
-
-        // Also record in expert earnings ledger (provider may be an expert)
-        await this.createExpertEarning({
-          expertId: updated.providerId,
-          type: 'consulting',
-          amount: String(providerEarningsAmount),
-          referenceId: updated.id,
-          referenceType: 'service_booking',
-          description: `Service booking earnings from ${updated.trackingNumber || id}`,
-          status: 'held', // escrow: born held; releasable when available_at clears (migration 112)
-          availableAt,
-        });
-      }
+    // Fire completion side-effects on a transition to "completed". mintCompletionEarningsForBooking
+    // is INTERNALLY idempotent (ledger-existence guard), which also fixes a latent double-mint:
+    // completed → disputed → admin dispute-reject re-enters "completed" with priorStatus
+    // 'disputed', which the old priorStatus-only check treated as a first completion.
+    if (status === "completed") {
+      await this.mintCompletionEarningsForBooking(updated);
     }
 
     // Only decrement bookingsCount on the FIRST transition to cancelled/refunded.
@@ -1923,6 +1869,99 @@ export class DatabaseStorage implements IStorage {
     }
     
     return updated;
+  }
+
+  /**
+   * Completion side-effects for a service booking, extracted from updateServiceBookingStatus and
+   * made IDEMPOTENT (task 1091 review): each ledger effect is guarded by its own existence check,
+   * so this is safe to call (a) on every completed transition, (b) again after a crash that left
+   * a booking `completed` with some or all ledger rows missing (the scheduler's reconciliation
+   * pass), and (c) on dispute-reject re-completion — none of which can double-mint.
+   * Returns true if any effect was newly applied.
+   */
+  async mintCompletionEarningsForBooking(booking: ServiceBooking): Promise<boolean> {
+    const { providerId, serviceId } = booking;
+    if (!providerId || !serviceId) {
+      console.error(`[mintCompletionEarnings] booking ${booking.id} missing providerId/serviceId — cannot mint`);
+      return false;
+    }
+    const grossAmount = parseFloat(booking.totalAmount || '0');
+    const platformFee = parseFloat(booking.platformFee || '0');
+    const providerEarningsAmount = parseFloat(booking.providerEarnings || '0');
+    // Earnings become available after the configurable hold period (default 7 days)
+    const availableAt = availableAtFor('service_booking'); // escrow P2: per-surface clearance window (config)
+    let applied = false;
+
+    if (platformFee > 0) {
+      const [existingRevenue] = await db.select({ id: platformRevenue.id })
+        .from(platformRevenue)
+        .where(and(eq(platformRevenue.sourceType, 'booking_commission'), eq(platformRevenue.sourceId, booking.id)))
+        .limit(1);
+      if (!existingRevenue) {
+        await this.recordPlatformRevenue({
+          sourceType: 'booking_commission',
+          sourceId: booking.id,
+          trackingNumber: booking.trackingNumber || undefined,
+          grossAmount: String(grossAmount),
+          platformFee: String(platformFee),
+          netAmount: String(platformFee * (1 - PROCESSING_FEE_RATE)),
+          processingFees: String(platformFee * PROCESSING_FEE_RATE),
+          providerId,
+          providerEarnings: String(providerEarningsAmount),
+          description: `Booking commission from ${booking.trackingNumber || booking.id}`,
+          status: 'recorded',
+          transactionDate: new Date(),
+        });
+        applied = true;
+      }
+    }
+
+    if (providerEarningsAmount > 0) {
+      const [existingProviderEarning] = await db.select({ id: providerEarnings.id })
+        .from(providerEarnings)
+        .where(and(eq(providerEarnings.sourceType, 'booking'), eq(providerEarnings.sourceId, booking.id)))
+        .limit(1);
+      if (!existingProviderEarning) {
+        await this.createProviderEarning({
+          providerId,
+          type: 'service_booking',
+          amount: String(providerEarningsAmount),
+          sourceType: 'booking',
+          sourceId: booking.id,
+          trackingNumber: booking.trackingNumber || undefined,
+          description: `Earnings from booking ${booking.trackingNumber || booking.id}`,
+          status: 'held', // escrow: born held; releasable when available_at clears (migration 112)
+          availableAt,
+        });
+        // Service totalRevenue increment rides the provider-earning insert (same guard), so a
+        // reconciled/re-entered completion never double-counts service revenue.
+        await db.update(providerServices)
+          .set({ totalRevenue: sql`${providerServices.totalRevenue} + ${providerEarningsAmount}` })
+          .where(eq(providerServices.id, serviceId));
+        applied = true;
+      }
+
+      const [existingExpertEarning] = await db.select({ id: expertEarnings.id })
+        .from(expertEarnings)
+        .where(and(eq(expertEarnings.referenceType, 'service_booking'), eq(expertEarnings.referenceId, booking.id)))
+        .limit(1);
+      if (!existingExpertEarning) {
+        // Also record in expert earnings ledger (provider may be an expert)
+        await this.createExpertEarning({
+          expertId: providerId,
+          type: 'consulting',
+          amount: String(providerEarningsAmount),
+          referenceId: booking.id,
+          referenceType: 'service_booking',
+          description: `Service booking earnings from ${booking.trackingNumber || booking.id}`,
+          status: 'held', // escrow: born held; releasable when available_at clears (migration 112)
+          availableAt,
+        });
+        applied = true;
+      }
+    }
+
+    return applied;
   }
 
   // Service Reviews

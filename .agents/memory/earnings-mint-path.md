@@ -10,14 +10,12 @@ Earnings (`expert_earnings` + `provider_earnings`) are minted ONLY on the FIRST 
 (`promotePaidCheckout` — webhook or `/api/bookings/confirm-payment`) only flips to `confirmed`
 and mints NOTHING.
 
-**Completion path (fixed Aug 11 2026):** two production rails now drive `confirmed → completed`
-(both gate on a Stripe-verified succeeded PI so unpaid request-rail bookings never mint):
-1. Traveler `POST /api/bookings/:id/confirm-completion` — on a paid `confirmed` booking it
-   completes (mints held earnings) then early-releases; on `completed` it just releases.
-2. Auto-complete scheduler (`booking-auto-complete.service.ts`, hourly) — completes paid
-   `confirmed` bookings once COALESCE(slot date EOD, confirmed_at) + BOOKING_AUTO_COMPLETE_DAYS
-   (default 3) has passed; earnings born held, mature via the normal release job/dispute window.
-The owner status endpoint still deliberately excludes `completed` (self-credit risk).
+**Completion design (ratified Aug 2026):** completion is traveler- or scheduler-driven, never
+owner-driven (self-credit risk). Both rails must gate on a Stripe-verified succeeded PI — a
+`confirmed` request-rail booking can be unpaid or carry a never-charged PI. The mint is
+idempotent per ledger effect (existence guards), which is what makes dispute-reject
+re-completion and crash reconciliation safe; any new completion caller must preserve that.
+Unpaid candidates get a recheck stamp so a stale backlog can't head-of-line block paid rows.
 
 **How to drive a full earnings fixture (verified end-to-end):**
 1. add-to-cart `POST /api/cart` {serviceId} → `POST /api/checkout` {idempotencyKey} (mints
