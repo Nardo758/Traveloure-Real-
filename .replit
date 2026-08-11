@@ -8,6 +8,15 @@ packages = ["unzip", "psmisc"]
 
 [env]
 PORT = "5000"
+# Lockfile-purity, source-level fix (Aug 11, 2026 — see CLAUDE.md "Lockfile purity"):
+# Replit injects an env-level npm registry override pointing at its package-firewall
+# proxy, which OUTRANKS the project .npmrc (npm precedence: env > project file) and
+# bakes unreachable package-firewall.replit.local URLs into package-lock.json.
+# Verified the firewall is advisory, not mandatory (direct registry.npmjs.org
+# returns 200 from the workspace shell), so pinning the registry here prevents
+# pollution from FORMING. The postinstall scrub + hooks + CI gate remain as
+# defense-in-depth if this env route ever loses precedence again.
+NPM_CONFIG_REGISTRY = "https://registry.npmjs.org/"
 
 [deployment]
 deploymentTarget = "autoscale"
