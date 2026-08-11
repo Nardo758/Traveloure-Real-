@@ -16,7 +16,11 @@ PORT = "5000"
 # returns 200 from the workspace shell), so pinning the registry here prevents
 # pollution from FORMING. The postinstall scrub + hooks + CI gate remain as
 # defense-in-depth if this env route ever loses precedence again.
-NPM_CONFIG_REGISTRY = "https://registry.npmjs.org/"
+# LOWERCASE key, deliberately (verified Aug 11): Replit injects lowercase
+# npm_config_registry, and with BOTH spellings present npm resolved the collision
+# in the lowercase one's favor (uppercase NPM_CONFIG_REGISTRY was in env and lost).
+# Same key = one value at the OS level; whichever layer sets it last wins.
+npm_config_registry = "https://registry.npmjs.org/"
 
 [deployment]
 deploymentTarget = "autoscale"
