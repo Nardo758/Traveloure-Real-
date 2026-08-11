@@ -196,6 +196,17 @@ R5's `deliverable_downloads` log (migration 194) gives a future D8 pass the down
 needs; D8 itself remains unruled. Proven by `deliverable-protected-rail.http.test.ts` (13 proofs);
 all 9 original `service-deliverable.http.test.ts` proofs still green.
 
+**R4 end-to-end verified live against the real bucket (Aug 11, 2026).** Four proofs run against the
+provisioned bucket (`replit-objstore-b9da6238-639b-4b0e-8956-034ec0042760`) with REPLIT_OBJECT_STORAGE_BUCKET
+live in the server process: (P1) provider uploads a PDF → 200, `protected:true`, `serviceFile`
+stamped `objstore:<random-hex>.pdf` in the DB, key never returned to caller. (P2) traveler with a
+`confirmed` booking downloads → HTTP 200, `Content-Type: application/pdf`,
+`Content-Disposition: attachment; filename="…pdf"`, bytes byte-identical to the upload, no storage
+key or URL in the response body. (P3) two fetches → two `deliverable_downloads` rows, `protected=true`
+on both. (P4) unauthenticated GET of the raw GCS URL returned **HTTP 403 Forbidden** — bucket is
+empirically PRIVATE; ruling 58 bucket-privacy question CLOSED. Fixtures cleaned up; no code
+changes required.
+
 **P2 — no completion event exists for artifact (pdf) bookings; the D8 auto-complete rule is
 unbuildable as written (verified Aug 10, 2026; dispatch v1.2 §2).** Premise correction for the D8
 ruling: D3 did **not** define completion "by accident" — it defines **nothing**. The deliverable read
