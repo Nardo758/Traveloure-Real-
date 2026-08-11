@@ -79,6 +79,7 @@ import { cityNeighborhoods, expertNeighborhoods, dmoRawContent, dmoSources, dmoE
 import { isExpertRole, isProviderRole, EXPERT_ROLES, PROVIDER_ROLES } from "@shared/roles";
 import { isReadyMadeBadge, READY_MADE_BADGE_VALUES } from "@shared/ready-made-badges";
 import { coordinationService } from "../services/coordination.service";
+import { resolvePublishVerification } from "../services/publish-verification.service";
 import { vendorManagementService } from "../services/vendor-management.service";
 import { budgetService } from "../services/budget.service";
 import { itineraryIntelligenceService } from "../services/itinerary-intelligence.service";
@@ -2733,7 +2734,15 @@ router.post("/api/admin/provider-services/:id/approve", isAuthenticated, async (
         return res.status(400).json({ message: "Can only approve submitted services" });
       }
 
-      const approved = await storage.approveProviderServiceListing(req.params.id, adminId);
+      // QA_PUNCH_LIST.md P0 / DECISIONS.md ruling 53's amending ruling — option (B): admin
+      // approval always records the approval (preserves the admin's review work) but only
+      // goes publicly live when the LISTING OWNER (service.expertId, NEVER adminId — the
+      // acting admin's own verification is irrelevant here) already satisfies the publish
+      // predicate. An unverified owner's listing lands approved+draft — held, not live;
+      // go-live then follows automatically the next time the owner completes verification
+      // (activateVerificationHeldListings, wired at the verification write paths).
+      const ownerVerification = await resolvePublishVerification(service.expertId);
+      const approved = await storage.approveProviderServiceListing(req.params.id, adminId, ownerVerification.ok);
 
       // ESO promotion was using expert_id / external_id columns dropped in migration 013.
       // Expert-owned services now live in provider_services; no ESO write needed here.
