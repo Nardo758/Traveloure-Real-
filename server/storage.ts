@@ -181,6 +181,7 @@ export interface IStorage {
   updateLocalExpertFormKnowledgeScore(id: string, knowledgeScore: unknown): Promise<void>;
   updateLocalExpertFormNotesStyle(userId: string, notesStyle: string): Promise<void>;
   updateLocalExpertFormNeighborhoods(userId: string, neighborhoods: string[], localityProof: string): Promise<void>;
+  updateLocalExpertFormProfileFields(userId: string, fields: Partial<Pick<InsertLocalExpertForm, "displayName" | "headline" | "city" | "country" | "languages" | "bio" | "firstName" | "lastName">>): Promise<void>;
   updateLocalExpertFormType(userId: string, expertType: string): Promise<void>;
 
   // Provider Verification (publish-gate Step 1)
@@ -1113,6 +1114,26 @@ export class DatabaseStorage implements IStorage {
     await db.update(localExpertForms)
       .set({ knowledgeScore: knowledgeScore as any, knowledgeScoredAt: new Date() })
       .where(eq(localExpertForms.id, id));
+  }
+
+  // Expert profile editor persistence: partial update of the public-facing display
+  // fields on the expert's form row. Creates a minimal form row when the expert
+  // (e.g. a travel_expert who never filled the application form) has none — the
+  // local_expert public gate only applies to role='local_expert', so this cannot
+  // surface an unapproved local expert.
+  async updateLocalExpertFormProfileFields(
+    userId: string,
+    fields: Partial<Pick<InsertLocalExpertForm, "displayName" | "headline" | "city" | "country" | "languages" | "bio" | "firstName" | "lastName">>,
+  ): Promise<void> {
+    if (Object.keys(fields).length === 0) return;
+    const existing = await this.getLocalExpertForm(userId);
+    if (existing) {
+      await db.update(localExpertForms)
+        .set(fields)
+        .where(eq(localExpertForms.userId, userId));
+    } else {
+      await db.insert(localExpertForms).values({ userId, ...fields });
+    }
   }
 
   async updateLocalExpertFormNotesStyle(userId: string, notesStyle: string): Promise<void> {
@@ -3124,6 +3145,13 @@ export class DatabaseStorage implements IStorage {
         selectedServices: services,
         specializations: specializations.map(s => s.specialization),
         expertForm: form,
+        // Public display fields surfaced top-level from the expert's form (the
+        // profile editor + cards read them off the expert object directly).
+        displayName: form?.displayName ?? null,
+        headline: form?.headline ?? null,
+        city: form?.city ?? null,
+        country: form?.country ?? null,
+        languages: (form?.languages as string[] | null) ?? [],
         // Computed expert-level aggregate (overrides any column of the same name).
         averageRating: expertAverageRating,
         reviewCount: totalReviews,
