@@ -905,4 +905,11 @@ export const MIGRATION_FILES = [
   // migration-144 posture), no backfill (NULL = never captured, §13). Declared in
   // shared/schema.ts (publish-trap rule).
   "195_service_logistics_capture.sql",
+  // 196: provider_services.deliverable_uploaded_at — D8 per-method completion (docs/DECISIONS.md
+  // ruling 63, executed by ruling 66). ONE additive nullable timestamp stamped by the deliverable
+  // UPLOAD path; it is the "post-delivery" clock the pdf auto-complete timer's UNDOWNLOADED arm
+  // measures from (the downloaded arm rides deliverable_downloads, migration 194, and needs no new
+  // state). NULL = never recorded → that arm is skipped with a stated reason, never guessed (§13).
+  // No backfill, no CHECK. Declared in shared/schema.ts (publish-trap rule).
+  "196_deliverable_uploaded_at.sql",
 ] as const;

@@ -1369,11 +1369,30 @@ export class DatabaseStorage implements IStorage {
     // since `insertProviderServiceSchema.partial()` let a single-field PATCH set nothing but the
     // commission split on an already-approved listing. Stripped in STORAGE, not the route, so every
     // caller is covered — same placement rationale as the approval-lifecycle strip.
+    // D8/ruling 66 layer 2 — `deliverableUploadedAt` is STRIP-AND-DERIVE, same §18 shape as the
+    // two above. It is a MONEY-TIMER field (it is the clock the pdf auto-complete's undownloaded
+    // arm measures from), so a client must never be able to set it: a backdated value would fire
+    // the completion timer — and mint the held earning — on a booking whose deliverable never
+    // existed. Stripped here in STORAGE so every caller is covered, and DERIVED below from the
+    // one fact the server observes: the deliverable value actually changing.
     const {
       approvalStatus: _as, submittedAt: _sa, reviewedAt: _ra, reviewedBy: _rb,
-      rejectionReason: _rr, userId: _uid, revenueShareRate: _rsr, ...safeUpdates
+      rejectionReason: _rr, userId: _uid, revenueShareRate: _rsr, deliverableUploadedAt: _dua,
+      ...safeUpdates
     } = updates as Record<string, unknown>;
     let patch: Partial<InsertProviderService> = safeUpdates as Partial<InsertProviderService>;
+    // Derive: stamp the delivery clock only when the deliverable value CHANGES to a non-empty
+    // one. Re-saving the same value on an unrelated listing edit must not restamp (that would
+    // silently push every open booking's undownloaded timer out); clearing it must not stamp.
+    if (Object.prototype.hasOwnProperty.call(safeUpdates, 'serviceFile')) {
+      const nextFile = String((safeUpdates as any).serviceFile ?? '').trim();
+      if (nextFile) {
+        const prior = await this.getProviderServiceById(id);
+        if (String(prior?.serviceFile ?? '').trim() !== nextFile) {
+          (patch as any).deliverableUploadedAt = new Date();
+        }
+      }
+    }
     if (Object.prototype.hasOwnProperty.call(updates, 'serviceOfferingTypeId') && (updates as any).serviceOfferingTypeId) {
       const [known] = await db.select({ id: serviceOfferingTypes.id })
         .from(serviceOfferingTypes)

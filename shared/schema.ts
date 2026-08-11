@@ -770,6 +770,14 @@ export const providerServices = pgTable("provider_services", {
   // sanctioned reveal is GET /api/service-bookings/:id/deliverable (server/routes.ts), gated
   // on a confirmed booking belonging to the session user.
   serviceFile: text("service_file"), // File URL
+  // D8 artifact-timer delivery clock (ruling 63, executed by ruling 66; migration 196). Stamped
+  // by the deliverable UPLOAD path only. `deliveredAt` for a pdf booking is
+  // max(booking.confirmedAt, this) — the moment the entitlement first became satisfiable. NULL =
+  // never recorded (every pre-196 row, and every legacy pasted-URL deliverable) ⇒ the
+  // UNDOWNLOADED auto-complete arm is skipped with a stated reason, never guessed (§13). The
+  // downloaded arm rides deliverable_downloads and is unaffected. Declared here per the
+  // publish-trap rule — a column only in migration SQL is dropped by the deploy push.
+  deliverableUploadedAt: timestamp("deliverable_uploaded_at"),
   
   // Status & Analytics
   status: varchar("status", { length: 20 }).default("active"), // active, paused, draft
@@ -1731,7 +1739,11 @@ export const insertServiceSubcategorySchema = createInsertSchema(serviceSubcateg
 // fee_bands-resolved split at the real Stripe charge — a client-supplied rate reaching a payment
 // decision (§14 in substance, §8 in spirit). No UI ever sent it. Layer 2 is the storage-level
 // derivation in `createProviderService`/`updateProviderService`, so every caller is covered.
-export const insertProviderServiceSchema = createInsertSchema(providerServices).omit({ id: true, userId: true, formStatus: true, bookingsCount: true, totalRevenue: true, averageRating: true, reviewCount: true, createdAt: true, updatedAt: true, revenueShareRate: true }).extend({
+// D8/ruling 66: `deliverableUploadedAt` joins the omit list (§18 layer 1). It is the clock the
+// pdf auto-complete timer measures from — a client-settable, backdatable value would fire a
+// completion event, and mint a held earning, on a booking whose deliverable never existed. The
+// storage strip-and-derive in `updateProviderService` is layer 2, so every caller is covered.
+export const insertProviderServiceSchema = createInsertSchema(providerServices).omit({ id: true, userId: true, formStatus: true, bookingsCount: true, totalRevenue: true, averageRating: true, reviewCount: true, createdAt: true, updatedAt: true, revenueShareRate: true, deliverableUploadedAt: true }).extend({
   // X1: app-enforced vocabulary (migration 144 has no DB CHECK) — reject anything outside the set here.
   cancellationPolicyType: z.enum(cancellationPolicyTypeEnum).nullable().optional(),
   // EX-2 (expert walkthrough, docs/testing/EXPERT_UX_WALKTHROUGH.md): a NEGATIVE price is never
