@@ -1,0 +1,43 @@
+{
+  "groups": {
+    "work": "Work",
+    "business": "Business",
+    "account": "Account"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "calendar": "Calendar",
+    "inbox": "Inbox",
+    "workstation": "Workstation",
+    "catalog": "Catalog",
+    "customers": "Customers",
+    "performance": "Performance",
+    "money": "Money",
+    "settings": "Settings",
+    "playbook": "Playbook"
+  },
+  "sidebar": {
+    "defaultDisplayName": "Service Provider",
+    "logout": "Logout"
+  },
+  "shell": {
+    "notifications": "Notifications",
+    "ratingNew": "New"
+  },
+  "pageTitle": {
+    "Dashboard": "Dashboard",
+    "Calendar": "Calendar",
+    "Inbox": "Inbox",
+    "Workstation": "Workstation",
+    "Catalog": "Catalog",
+    "Customers": "Customers",
+    "Performance": "Performance",
+    "Analytics": "Analytics",
+    "Money": "Money",
+    "Settings": "Settings",
+    "Playbook": "Playbook",
+    "Business Profile": "Business Profile",
+    "New Service": "New Service",
+    "Edit Service": "Edit Service"
+  }
+}

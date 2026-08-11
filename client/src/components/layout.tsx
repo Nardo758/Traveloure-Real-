@@ -1,6 +1,9 @@
 import { type CSSProperties } from "react";
 import { Link, useLocation } from "wouter";
+import { useTranslation } from "react-i18next";
 import { useRecentlyViewed } from "@/hooks/use-recently-viewed";
+import { useLocale } from "@/hooks/use-locale";
+import { LanguageMenu } from "@/components/language-menu";
 import { useAuth } from "@/hooks/use-auth";
 import { useSignInModal } from "@/contexts/SignInModalContext";
 import { Button } from "@/components/ui/button";
@@ -103,12 +106,18 @@ const AUTH_NAV_ICONS: Record<string, React.ComponentType<{ className?: string }>
   "Expert Chat": MessageSquare,
 };
 
+// Ruling 60 Phase A (chrome i18n): `i18nKey` rides through from nav-config. Every English
+// `name`/`title` is KEPT, because it is both the translation fallback and the source of this
+// file's data-testid values (`link-nav-*`, `link-mobile-*`, `nav-dropdown-*`) — translating a
+// name in place would have renamed selectors the Playwright suites depend on.
 const navItems = navGroupsConfig.map((group) => ({
   name: group.name,
+  i18nKey: group.i18nKey,
   href: group.href,
   icon: ChevronDown,
   sections: group.sections?.map((section) => ({
     title: section.title,
+    i18nKey: section.i18nKey,
     items: section.items.map((item) => ({
       ...item,
       icon: NAV_LEAF_ICONS[item.name] ?? MapPin,
@@ -125,6 +134,10 @@ const authNavItems = authNavConfig.map((item) => ({
 const FOCUS_RING = "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:rounded";
 
 function DesktopDropdown({ item, isActive }: { item: typeof navItems[0], isActive?: boolean }) {
+  const { t } = useTranslation("nav");
+  // A config entry with no i18nKey renders English in every locale — the documented migration
+  // path for anything added to nav-config later. Never passes an empty key to t().
+  const tr = (key: string | undefined, fallback: string) => (key ? t(key, fallback) : fallback);
   const [isOpen, setIsOpen] = useState(false);
   const [megaStyle, setMegaStyle] = useState<CSSProperties>({});
   const recentCities = useRecentlyViewed();
@@ -211,7 +224,7 @@ function DesktopDropdown({ item, isActive }: { item: typeof navItems[0], isActiv
         aria-current={isActive ? "page" : undefined}
         data-testid={`link-nav-${slugify(item.name)}`}
       >
-        {item.name}
+        {tr(item.i18nKey, item.name)}
       </Link>
     );
   }
@@ -241,7 +254,7 @@ function DesktopDropdown({ item, isActive }: { item: typeof navItems[0], isActiv
         onKeyDown={handleKeyDown}
         data-testid={`button-nav-dropdown-${slugify(item.name)}`}
       >
-        {item.name}
+        {tr(item.i18nKey, item.name)}
         <ChevronDown className={cn("ml-1 w-4 h-4 transition-transform", isOpen && "rotate-180")} aria-hidden="true" />
       </button>
 
@@ -250,7 +263,7 @@ function DesktopDropdown({ item, isActive }: { item: typeof navItems[0], isActiv
           <motion.div
             id={dropdownId}
             role="menu"
-            aria-label={`${item.name} navigation`}
+            aria-label={`${tr(item.i18nKey, item.name)} ${t("mainNavigation")}`}
             {...motionProps}
             onMouseEnter={handleMouseEnter}
             onMouseLeave={handleMouseLeave}
@@ -277,7 +290,7 @@ function DesktopDropdown({ item, isActive }: { item: typeof navItems[0], isActiv
                     )}
                     aria-hidden="true"
                   >
-                    {section.title}
+                    {tr(section.i18nKey, section.title)}
                   </div>
                   {section.items.map((child) => {
                     const sharedClass = cn(
@@ -289,7 +302,9 @@ function DesktopDropdown({ item, isActive }: { item: typeof navItems[0], isActiv
                       <>
                         {child.icon && <child.icon className="w-4 h-4 mt-0.5 text-muted-foreground shrink-0" aria-hidden="true" />}
                         <div className="min-w-0">
-                          <div className="text-foreground font-medium truncate">{child.name}</div>
+                          <div className="text-foreground font-medium truncate">
+                            {tr(child.i18nKey, child.name)}
+                          </div>
                           {child.description && sections.length <= 2 && (
                             <div className="text-xs text-muted-foreground">{child.description}</div>
                           )}
@@ -359,6 +374,10 @@ function DesktopDropdown({ item, isActive }: { item: typeof navItems[0], isActiv
 }
 
 export function Layout({ children }: { children: React.ReactNode }) {
+  const { t } = useTranslation("nav");
+  const { t: tCommon } = useTranslation("common");
+  const { locale } = useLocale();
+  const tr = (key: string | undefined, fallback: string) => (key ? t(key, fallback) : fallback);
   const { user, logout } = useAuth();
   const { openSignInModal } = useSignInModal();
   const [location] = useLocation();
@@ -447,13 +466,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
         href="#main-content"
         className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[200] focus:px-4 focus:py-2 focus:bg-background focus:text-foreground focus:ring-2 focus:ring-primary focus:rounded-md focus:outline-none focus:shadow-lg"
       >
-        Skip to main content
+        {t("skipToContent")}
       </a>
 
       {/* TEST 5 — aria-label="Main navigation" announces the landmark to screen readers */}
       <nav
         ref={navRef}
-        aria-label="Main navigation"
+        aria-label={t("mainNavigation")}
         className="bg-card/80 backdrop-blur-lg border-b border-border sticky top-0 z-50 shadow-sm"
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -463,7 +482,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <Link
                 href="/"
                 className={cn("flex-shrink-0 flex items-center gap-3", FOCUS_RING)}
-                aria-label="Traveloure home"
+                aria-label={t("homeAria")}
                 data-testid="link-logo"
               >
                 <div className="flex items-center gap-1.5">
@@ -485,24 +504,30 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </div>
 
             <div className="flex items-center gap-2 flex-shrink-0">
+              {/* Ruling 60 Phase A — the ONE selector, entry point (b). Rendered for guests AND
+                  signed-in travelers: a guest's choice persists to localStorage, which the
+                  resolution order honors ahead of Accept-Language on the next visit. */}
+              <LanguageMenu />
 
               {!user && (
                 <div className="hidden lg:flex items-center gap-2">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button variant="outline" size="sm" data-testid="button-become-expert-nav" className="gap-1 text-sm">
-                        Join as Partner
+                        {t("joinAsPartner")}
                         <ChevronDown className="w-3.5 h-3.5" aria-hidden="true" />
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-72 p-2">
                       {[
-                        { label: "Trip Planner", desc: "Help travellers design itineraries & craft unforgettable journeys", href: "/become-expert?type=travel_expert", icon: Plane },
-                        { label: "Local Expert", desc: "Turn your city knowledge into consultations & local guides", href: "/become-expert?type=local_expert", icon: MapPin },
-                        { label: "Event Planner", desc: "Plan your event — weddings, proposals & group celebrations", href: "/start/events", icon: Calendar },
-                        { label: "Service Provider", desc: "Offer venues, transport & speciality services", href: "/become-provider", icon: Building2 },
-                        { label: "Executive Assistant", desc: "Manage travel & events for high-net-worth clients", href: "/become-expert?type=executive_assistant", icon: Briefcase },
-                      ].map(({ label, desc, href, icon: Icon }) => (
+                        // `label` stays English: it is the React key AND the source of the
+                        // `link-partner-*` testid. Only `k` drives what the user reads.
+                        { label: "Trip Planner", k: "tripPlanner", href: "/become-expert?type=travel_expert", icon: Plane },
+                        { label: "Local Expert", k: "localExpert", href: "/become-expert?type=local_expert", icon: MapPin },
+                        { label: "Event Planner", k: "eventPlanner", href: "/start/events", icon: Calendar },
+                        { label: "Service Provider", k: "serviceProvider", href: "/become-provider", icon: Building2 },
+                        { label: "Executive Assistant", k: "executiveAssistant", href: "/become-expert?type=executive_assistant", icon: Briefcase },
+                      ].map(({ label, k, href, icon: Icon }) => (
                         <DropdownMenuItem key={label} asChild className="p-0 focus:bg-transparent">
                           <Link href={href} data-testid={`link-partner-${label.toLowerCase().replace(/[\s/]+/g, "-")}`}>
                             <div className="flex items-start gap-3 px-3 py-2.5 rounded-md hover:bg-muted w-full cursor-pointer">
@@ -510,8 +535,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
                                 <Icon className="w-3.5 h-3.5 text-primary" aria-hidden="true" />
                               </div>
                               <div>
-                                <p className="text-sm font-medium text-foreground">{label}</p>
-                                <p className="text-xs text-muted-foreground leading-snug mt-0.5">{desc}</p>
+                                <p className="text-sm font-medium text-foreground">{t(`partner.${k}`)}</p>
+                                <p className="text-xs text-muted-foreground leading-snug mt-0.5">{t(`partner.${k}Desc`)}</p>
                               </div>
                             </div>
                           </Link>
@@ -525,7 +550,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     onClick={() => openSignInModal()}
                     data-testid="button-sign-in"
                   >
-                    Sign In
+                    {t("signIn")}
                   </Button>
                 </div>
               )}
@@ -548,7 +573,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     "inline-flex items-center justify-center p-2 min-w-[44px] min-h-[44px] rounded-md text-muted-foreground hover-elevate",
                     FOCUS_RING
                   )}
-                  aria-label={isMobileMenuOpen ? "Close navigation menu" : "Open navigation menu"}
+                  aria-label={isMobileMenuOpen ? t("closeMenu") : t("openMenu")}
                   aria-expanded={isMobileMenuOpen}
                   aria-controls="mobile-menu"
                   data-testid="button-mobile-menu"
@@ -572,7 +597,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               ref={mobileMenuRef}
               role="dialog"
               aria-modal="true"
-              aria-label="Navigation menu"
+              aria-label={t("navigationMenu")}
               {...slideMotion}
               className="lg:hidden border-t border-border bg-background max-h-[calc(100svh-64px)] overflow-y-auto"
             >
@@ -582,12 +607,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   item.sections ? (
                     <div key={item.name} className="py-2">
                       <div className="px-3 py-2 text-sm font-semibold text-muted-foreground uppercase tracking-wide" aria-hidden="true">
-                        {item.name}
+                        {tr(item.i18nKey, item.name)}
                       </div>
                       {item.sections.map((section) => (
                         <div key={section.title}>
                           <div className="px-6 py-1.5 text-xs font-semibold text-muted-foreground uppercase" aria-hidden="true">
-                            {section.title}
+                            {tr(section.i18nKey, section.title)}
                           </div>
                           {section.items.map((child) => {
                             const mobileClass = cn(
@@ -605,7 +630,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                                   onClick={() => { setIsMobileMenuOpen(false); openSignInModal({ returnTo: child.href }); }}
                                 >
                                   {child.icon && <child.icon className="w-5 h-5" aria-hidden="true" />}
-                                  {child.name}
+                                  {tr(child.i18nKey, child.name)}
                                 </button>
                               );
                             }
@@ -619,7 +644,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                                 aria-current={isActive(child.href) ? "page" : undefined}
                               >
                                 {child.icon && <child.icon className="w-5 h-5" aria-hidden="true" />}
-                                {child.name}
+                                {tr(child.i18nKey, child.name)}
                               </Link>
                             );
                           })}
@@ -638,7 +663,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       data-testid={`link-mobile-${item.name.toLowerCase().replace(/\s+/g, '-')}`}
                       aria-current={item.href && isActive(item.href) ? "page" : undefined}
                     >
-                      {item.name}
+                      {tr(item.i18nKey, item.name)}
                     </Link>
                   )
                 ))}
@@ -661,7 +686,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       variant="ghost"
                       onClick={() => logout()}
                       className={cn("text-destructive hover-elevate min-w-[44px] min-h-[44px] px-3", FOCUS_RING)}
-                      aria-label="Sign out"
+                      aria-label={t("signOut")}
                       data-testid="button-mobile-logout"
                     >
                       <LogOut className="h-5 w-5" aria-hidden="true" />
@@ -669,18 +694,19 @@ export function Layout({ children }: { children: React.ReactNode }) {
                   </div>
                 ) : (
                   <div className="flex flex-col gap-2">
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-1 mb-1">Join as a Partner</p>
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-1 mb-1">{t("joinAsPartnerMobile")}</p>
                     {[
-                      { label: "Trip Planner", href: "/become-expert?type=travel_expert", icon: Plane },
-                      { label: "Local Expert", href: "/become-expert?type=local_expert", icon: MapPin },
-                      { label: "Event Planner", href: "/start/events", icon: Calendar },
-                      { label: "Service Provider", href: "/become-provider", icon: Building2 },
-                      { label: "Executive Assistant", href: "/become-expert?type=executive_assistant", icon: Briefcase },
-                    ].map(({ label, href, icon: Icon }) => (
+                      // `label` stays English — React key + `button-mobile-*` testid source.
+                      { label: "Trip Planner", k: "tripPlanner", href: "/become-expert?type=travel_expert", icon: Plane },
+                      { label: "Local Expert", k: "localExpert", href: "/become-expert?type=local_expert", icon: MapPin },
+                      { label: "Event Planner", k: "eventPlanner", href: "/start/events", icon: Calendar },
+                      { label: "Service Provider", k: "serviceProvider", href: "/become-provider", icon: Building2 },
+                      { label: "Executive Assistant", k: "executiveAssistant", href: "/become-expert?type=executive_assistant", icon: Briefcase },
+                    ].map(({ label, k, href, icon: Icon }) => (
                       <Link key={label} href={href} onClick={() => setIsMobileMenuOpen(false)}>
                         <Button variant="outline" className="w-full justify-start gap-2" data-testid={`button-mobile-${label.toLowerCase().replace(/[\s/]+/g, "-")}`}>
                           <Icon className="w-4 h-4 text-primary" aria-hidden="true" />
-                          {label}
+                          {t(`partner.${k}`)}
                         </Button>
                       </Link>
                     ))}
@@ -692,7 +718,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                       }}
                       data-testid="button-mobile-sign-in"
                     >
-                      Sign In
+                      {t("signIn")}
                     </Button>
                   </div>
                 )}
@@ -723,7 +749,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 <span className="font-display font-bold text-xl text-foreground">Traveloure</span>
               </div>
               <p className="text-muted-foreground text-sm mb-6 max-w-sm leading-relaxed">
-                Experience personalized travel planning with insider knowledge from local experts and trip planners, powered by advanced AI technology.
+                {t("footer.tagline")}
               </p>
               {/* TEST 3 — Social links: aria-label for icon-only anchors */}
               <div className="flex items-center gap-3">
@@ -763,7 +789,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
             {/* Footer columns */}
             {footerSectionsConfig.map((section) => (
               <div key={section.title}>
-                <h3 className="font-semibold mb-4 text-foreground text-sm uppercase tracking-wider">{section.title}</h3>
+                <h3 className="font-semibold mb-4 text-foreground text-sm uppercase tracking-wider">
+                  {tr(section.i18nKey, section.title)}
+                </h3>
                 <ul className="space-y-3 text-sm text-muted-foreground">
                   {section.links.map((link) => (
                     <li key={link.href}>
@@ -772,7 +800,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                         className={cn("hover:text-foreground transition-colors", FOCUS_RING)}
                         data-testid={`link-footer-${link.href.replace(/^\//, '').replace(/\//g, '-')}`}
                       >
-                        {link.label}
+                        {tr(link.i18nKey, link.label)}
                       </Link>
                     </li>
                   ))}
@@ -784,12 +812,16 @@ export function Layout({ children }: { children: React.ReactNode }) {
           {/* Bottom Bar */}
           <div className="border-t border-border mt-12 pt-8 flex flex-col md:flex-row items-center justify-between gap-4">
             <p className="text-sm text-muted-foreground">
-              © {new Date().getFullYear()} Traveloure. All rights reserved.
+              {t("footer.rights", { year: new Date().getFullYear() })}
             </p>
             <div className="flex items-center gap-6 text-xs text-muted-foreground">
-              <span className="flex items-center gap-1.5">
+              {/* Ruling 60 Phase A: this pill read a hardcoded "English (US)" and would have
+                  stayed English while the whole footer above it rendered Japanese. It now shows
+                  the LIVE locale's endonym. The currency pill beside it is deliberately
+                  untouched — currency display is explicitly OUT of ruling 60's scope. */}
+              <span className="flex items-center gap-1.5" data-testid="text-footer-locale">
                 <Globe className="w-3.5 h-3.5" aria-hidden="true" />
-                English (US)
+                {tCommon(`language.${locale}`, { lng: locale })}
               </span>
               <span>USD ($)</span>
             </div>

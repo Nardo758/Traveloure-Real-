@@ -1,7 +1,9 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
+import { useTranslation } from "react-i18next";
 
 export function SignupPage() {
+  const { t } = useTranslation("auth");
   const [, setLocation] = useLocation();
 
   const params = new URLSearchParams(window.location.search);
@@ -37,12 +39,12 @@ export function SignupPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.message || "Signup failed");
+        setError(data.message || t("signupPage.failed"));
         return;
       }
       setLocation("/dashboard");
     } catch {
-      setError("Something went wrong");
+      setError(t("signupPage.genericError"));
     } finally {
       setLoading(false);
     }
@@ -52,7 +54,7 @@ export function SignupPage() {
     <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
       <div className="bg-white rounded-2xl border border-gray-200 p-8 w-full max-w-md">
         <h1 className="text-xl font-semibold text-gray-900 mb-6">
-          Create your Traveloure account
+          {t("signupPage.title")}
         </h1>
 
         {error && (
@@ -64,7 +66,7 @@ export function SignupPage() {
         <div className="space-y-4">
           <div>
             <label className="text-sm font-medium text-gray-700 block mb-1">
-              Full name
+              {t("fields.fullName")}
             </label>
             <input
               data-testid="input-name"
@@ -72,13 +74,13 @@ export function SignupPage() {
               value={form.name}
               onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-              placeholder="Your name"
+              placeholder={t("fields.namePlaceholder")}
             />
           </div>
 
           <div>
             <label className="text-sm font-medium text-gray-700 block mb-1">
-              Email
+              {t("fields.email")}
             </label>
             <input
               data-testid="input-email"
@@ -86,13 +88,13 @@ export function SignupPage() {
               value={form.email}
               onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-              placeholder="you@email.com"
+              placeholder={t("fields.signupEmailPlaceholder")}
             />
           </div>
 
           <div>
             <label className="text-sm font-medium text-gray-700 block mb-1">
-              Password
+              {t("fields.password")}
             </label>
             <input
               data-testid="input-password"
@@ -100,7 +102,7 @@ export function SignupPage() {
               value={form.password}
               onChange={(e) => setForm((f) => ({ ...f, password: e.target.value }))}
               className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-gray-900"
-              placeholder="Min 8 characters"
+              placeholder={t("fields.passwordPlaceholderSignup")}
             />
           </div>
 
@@ -110,20 +112,20 @@ export function SignupPage() {
             disabled={loading}
             className="w-full bg-gray-900 text-white rounded-lg py-2.5 text-sm font-semibold hover:bg-gray-700 disabled:opacity-50 transition-colors"
           >
-            {loading ? "Creating account..." : "Create account"}
+            {loading ? t("signupPage.creating") : t("signupPage.createAccount")}
           </button>
         </div>
 
         <p className="text-xs text-gray-400 text-center mt-4">
-          Already have an account?{" "}
+          {t("signupPage.haveAccount")}{" "}
           <a href="/" className="text-gray-700 underline">
-            Sign in
+            {t("signupPage.signIn")}
           </a>
         </p>
 
         {refToken && (
           <p className="text-xs text-gray-300 text-center mt-2">
-            Referral: {refToken}
+            {t("signupPage.referral", { token: refToken })}
           </p>
         )}
       </div>

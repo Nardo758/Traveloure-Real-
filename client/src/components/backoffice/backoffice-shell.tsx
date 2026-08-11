@@ -3,6 +3,7 @@ import { Bell } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
 import { UserMenu } from "@/components/user-menu";
+import { LanguageMenu } from "@/components/language-menu";
 
 /**
  * BackofficeShell — the single console shell shared by the provider and expert
@@ -75,6 +76,9 @@ export function BackofficeShell({
             </div>
             <div className="flex items-center gap-2">
               {statusBadge}
+              {/* Ruling 60 Phase A: the 🌐 quick-switch, mounted on the SHARED console shell so
+                  the provider, expert and EA consoles get the one selector rather than three. */}
+              <LanguageMenu variant="console" />
               <Link href={notificationsHref}>
                 <Button
                   variant="ghost"
