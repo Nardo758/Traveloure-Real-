@@ -829,18 +829,46 @@ a ruling, or real-user validation and is therefore **not built**.
   all. Wiring the consumers is a named later lane per ruling 64 — filed here with the trade evidence for
   when it is scheduled.
 
-- **SS-13 — [NEW, filed by ruling 70] A PROVIDER has no activate/pause TOGGLE door at all.**
-  [measured] `PATCH /api/expert/services/:id/status` — the door ruling 56 / QA P0 calls "the
-  owner's-own-toggle door" — is **expert-role-gated by RBAC before the handler runs**: a
-  `service_provider` account gets a flat `{"message":"Expert access required"}` 403 (measured
-  directly on the bench while writing the SS-5a gate proofs, which is why D9-G6 uses an expert
-  actor). So a provider's only route to `active` is `PATCH /api/provider/services/:id` with the
-  whole listing body. Not a security hole and not a regression — but it means the three "activation
-  choke points" the F2 and SS-5a gates guard are really **two** for providers and **three** for
-  experts, and any future claim of "all owners can pause from the list view" is false for
-  providers. Needs a call: a provider-named alias for the toggle (the `PATCH
-  /api/provider/bookings/:id/status` precedent), or a documented statement that providers pause
-  through the wizard only.
+- ~~**SS-13 — [NEW, filed by ruling 70] A PROVIDER has no activate/pause TOGGLE door at all.**~~
+  **RESOLVED as documentation (Aug 11, 2026 — decision-maker review of the finished console).** The
+  finding's premise was too strong. The provider Catalog list-view toggle
+  (`client/src/pages/provider/services.tsx:832`) calls **`PATCH /api/provider/services/:id` with a
+  status-only body `{status}`** — the provider route, which accepts the partial body and carries
+  BOTH the F2 verification gate and the SS-5a attestation gate. Verified live: the Catalog renders a
+  working Paused/Active switch on every card (one seeded listing sits Paused, two Active), and
+  toggling drives that route. So a provider **does** have a working activate/pause door from the list
+  view — it is the provider PATCH route, not a dedicated `/status` sub-route. The expert-only
+  `PATCH /api/expert/services/:id/status` returning a 403 for a `service_provider` account is
+  **correct RBAC**, not a missing door. **Disposition: (b) documented** — providers activate/pause
+  through `PATCH /api/provider/services/:id`; no provider-named `/status` alias is built (it would be
+  an endpoint with no consumer, §18c posture). The "three choke points" phrasing stands corrected:
+  the attestation/verification gates guard **two** provider paths (create + the status-carrying
+  PATCH) and **three** expert paths (the extra one being the expert `/status` toggle) — the coverage
+  is complete on both because every path to `active` on each role passes a gate.
+
+- **SS-14 — [NEW, filed by ruling 70; SHARPENED Aug 11, 2026] `revenueShareRate` is not merely dead
+  weight — it is still a LIVE first operand on a second charge-economics path 1C did not repoint.**
+  [code] `resolveServiceOwnerShareRate` (`server/services/commission.ts`, the §18/MI-1
+  strip-and-derive) still computes the column from the **legacy** `resolveCommissionRates` and stamps
+  it on every provider service. The 1C repoint (ruling 70) moved **cart checkout + `/api/cart`
+  fee-preview** onto the D1 resolver, where `pickOwnerShareRate` outranks the snapshot — but the
+  re-audit for this review found the snapshot is **still a first operand** at
+  **`POST /api/expert-booking-requests` (`server/routes.ts:1563-1571`)**: when
+  `service.revenueShareRate` is set it computes `platformFee = total·(1−rate)` and
+  `providerEarnings = total·rate` DIRECTLY from it and persists both onto a real `service_bookings`
+  row (`createServiceBooking`, status `pending`). It is also read as a display estimate in
+  `booking-actions.ts` (the earnings breakdown). So the platform now has **two charge-economics
+  rails on two different rates**: cart checkout on the D1 band, and expert-booking-requests on the
+  legacy snapshot. This is precisely the audit C2/Q9 "first operand returning" (ruling 47's
+  dethroning) — not hypothetical, live. **RECOMMENDATION (needs a decision-maker ruling — this is a
+  money path):** finish 1C — repoint `POST /api/expert-booking-requests` (and the booking-actions
+  breakdown read) onto `resolveProviderRate` via the same `direct-charge-rate.service.ts` seam, so
+  the D1 band is the single authority on every charge path; THEN stop deriving the snapshot for
+  provider-lane rows and leave it NULL (keeping the §18 input strip untouched — a field with no
+  consumer is still stripped). Until that lands, treat `expert-booking-requests` economics as
+  legacy-rate and do not describe 1C as "complete." Do NOT do the NULL step before the repoint — a
+  NULL snapshot on the current code silently falls the expert-booking-requests path to the
+  `commission` calc, which is a behavior change with no proofs.
 
 - **SS-14 — [NEW, filed by ruling 70] `revenueShareRate`'s derived snapshot is now dead weight on
   the provider lane.** [code] `resolveServiceOwnerShareRate` (`server/services/commission.ts`, the
