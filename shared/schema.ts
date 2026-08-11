@@ -611,6 +611,9 @@ export const serviceStatusEnum = ["active", "paused", "draft"] as const;
 // with no DB CHECK (migration 144: app-enforced, like deliveryMethodEnum pre-109); NULL = the owner
 // hasn't declared a policy type (the honest state — never a fabricated blanket claim).
 export const cancellationPolicyTypeEnum = ["flexible", "moderate", "strict", "non_refundable"] as const;
+// Deposit CONFIG vocabulary (Lane 7, ruling 72). App-enforced (no DB CHECK): 'percentage' collects
+// depositPercentage% of the line total now; 'flat' collects depositFlatAmount dollars now.
+export const depositTypeEnum = ["percentage", "flat"] as const;
 export const CANCELLATION_POLICY_TYPE_LABELS: Record<typeof cancellationPolicyTypeEnum[number], string> = {
   // Concrete windows mirror the server enforcement schedule in
   // server/services/cancellation-policy.service.ts (refundPercentFor).
@@ -740,6 +743,20 @@ export const providerServices = pgTable("provider_services", {
   partySizeMin: integer("party_size_min"),
   partySizeMax: integer("party_size_max"),
   changeCutoffHours: integer("change_cutoff_hours"), // reschedule window (NOT the refund policy)
+
+  // ══ Deposits / partial payments — CONFIG (Lane 7, docs/DECISIONS.md ruling 72, migration 200) ══
+  // PROVIDER OPT-IN PER LISTING: no listing takes a deposit unless `depositEnabled` is on and a
+  // percentage OR a flat amount is set. These are ordinary owner-authored LISTING facts, like
+  // `price`/`serviceRadius` beside them — the provider's OWN business config on their OWN listing,
+  // read server-side at checkout to derive the amount-due-now (§14). They are NOT a platform
+  // fee/commission rate (§8/§18 do not apply: nothing here multiplies a platform take or selects a
+  // fee band), and are named so the fee gate cannot misread them. All additive-nullable, app-layer
+  // vocabulary in insertProviderServiceSchema, no DB CHECK (publish-trap posture).
+  depositEnabled: boolean("deposit_enabled").default(false),
+  depositType: varchar("deposit_type", { length: 20 }),          // depositTypeEnum: 'percentage' | 'flat'
+  depositPercentage: integer("deposit_percentage"),               // e.g. 30 = collect 30% of the line total now
+  depositFlatAmount: decimal("deposit_flat_amount", { precision: 10, scale: 2 }), // flat dollars collected now
+
   // Can this service serve as a day's fixed point? Mirrors the `itinerary_items`/`temporal_anchors`
   // anchor vocabulary. CAPTURE ONLY — no scheduler reads it yet.
   canAnchor: boolean("can_anchor"),
@@ -971,7 +988,25 @@ export const serviceBookings = pgTable("service_bookings", {
   insuranceFee: decimal("insurance_fee", { precision: 10, scale: 2 }).default("0.00"),
   providerEarnings: decimal("provider_earnings", { precision: 10, scale: 2 }),
   stripePaymentIntentId: varchar("stripe_payment_intent_id", { length: 255 }),
-  
+
+  // ══ Deposits / partial payments — BOOKING STATE (Lane 7, ruling 72, migration 200) ═══════════
+  // Mirrors the legacy `bookings` deposit/balance shape additively on THIS (cart-rail) table. A
+  // deposit-partial booking lands in status='deposit_paid' (a plain varchar value, no CHECK) —
+  // distinguishable BY CONSTRUCTION from a full-paid `confirmed` (deposit_paid has an outstanding
+  // balance) and from an unauthorized `payment_pending` claim (deposit_paid carries a stamped PI +
+  // deposit_paid=true). `total_amount`/`platformFee`/`providerEarnings` stay the FULL values — the
+  // deposit/balance split is the PAYMENT SCHEDULE, not a re-split of the charge, so completion (D8)
+  // and earnings math read the full amounts unchanged.
+  depositAmount: decimal("deposit_amount", { precision: 10, scale: 2 }),   // charged NOW at deposit checkout (§14 server-derived)
+  depositPaid: boolean("deposit_paid").default(false),
+  balanceAmount: decimal("balance_amount", { precision: 10, scale: 2 }),   // = (total_amount + platform_fee) − deposit; collected at the SECOND checkout
+  balancePaid: boolean("balance_paid").default(false),
+  balanceDueAt: timestamp("balance_due_at"),                                // cutoff, derived at checkout from the listing's service date / change window
+  // §19a: PI linkage — written ONLY by the shared promotion / balance-authorization paths, never
+  // born on the row. Stripped in insertServiceBookingSchema (.omit) and in createServiceBooking.
+  stripeDepositIntentId: varchar("stripe_deposit_intent_id", { length: 255 }),
+  stripeBalanceIntentId: varchar("stripe_balance_intent_id", { length: 255 }),
+
   // Visa / specialty service metadata collected during booking intake
   bookingMetadata: jsonb("booking_metadata").default({}),
 
@@ -1794,6 +1829,19 @@ export const insertProviderServiceSchema = createInsertSchema(providerServices).
   // Array of language NAMES, matching `local_expert_forms.languages`. `null` is preserved as
   // "never captured" and `[]` as "deliberately cleared" — the two must not collapse (§13).
   deliveryLanguages: z.array(z.string().trim().min(1).max(60)).max(20).nullable().optional(),
+  // ── Deposits CONFIG (Lane 7, ruling 72) — owner listing config, NOT a §18 rate ──────────────
+  // App-enforced vocabulary + shape floors (no DB CHECK, migration-200 posture); field-level so
+  // each refinement survives `.partial()` on the PATCH path (the update path is checked as hard as
+  // the insert). These are ordinary wizard fields (no amount/identity/rate reaching a MONEY
+  // DECISION on the config write — the deposit is derived server-side at checkout from the
+  // persisted row), so they are NOT omitted.
+  depositEnabled: z.boolean().nullable().optional(),
+  depositType: z.enum(depositTypeEnum).nullable().optional(),
+  depositPercentage: z.coerce.number().int().min(1).max(100).nullable().optional(),
+  depositFlatAmount: z.string().nullish().refine(
+    (v) => v == null || (Number.isFinite(Number(v)) && Number(v) >= 0),
+    { message: "Deposit amount must be a non-negative number" },
+  ),
 });
 export const insertFaqSchema = createInsertSchema(faqs).omit({ id: true, createdAt: true });
 export const insertWalletSchema = createInsertSchema(wallets).omit({ id: true, userId: true, createdAt: true, updatedAt: true });
@@ -1828,6 +1876,11 @@ export const insertServiceBookingSchema = createInsertSchema(serviceBookings).om
   travelerId: true,  // Set server-side from authenticated user
   providerId: true,  // Set server-side from service lookup
   stripePaymentIntentId: true,  // PS15/ruling 46 — server-verified actors only, via stampAuthorization
+  // Lane 7 (ruling 72): the deposit/balance PI linkage columns are the same class as
+  // stripePaymentIntentId — written ONLY by the shared promotion / balance-authorization paths
+  // (§19a), never born on the row. Stripped here (layer 1) and in createServiceBooking (layer 2).
+  stripeDepositIntentId: true,
+  stripeBalanceIntentId: true,
   confirmedAt: true,
   completedAt: true,
   cancelledAt: true,

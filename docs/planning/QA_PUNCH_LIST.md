@@ -81,6 +81,35 @@ owner-only, denormalized names) has ZERO client callers — retire as dead code 
 catalog price can never be §14-compliantly charged (no server price authority) — display-only in
 the cart IS the design, not a gap. CLOSED.
 
+## Deposits / partial payments (Lane 7 — LANDED, DECISIONS.md ruling 72, Aug 11 2026)
+
+**LANDED (ruling 72).** Deposits on the cart-checkout rail, ratified shape: MANUAL BALANCE + PROVIDER
+OPT-IN PER LISTING. Config on `provider_services` (`provider_pricing` audited as an orphan and NOT
+reused); deposit/balance state mirrored onto `service_bookings` (migration 200, additive-nullable,
+declared in `shared/schema.ts`). A deposit line checks out through the EXISTING §15 claim machine and
+lands in `status='deposit_paid'` (distinguishable by construction from `confirmed` and from an
+unauthorized claim; releases no earning — D8 completion still requires `confirmed`). Balance is a
+second, owner-gated checkout (`POST /api/bookings/:id/pay-balance`) with its own PaymentIntent on
+`stripe_balance_intent_id`, promoted `deposit_paid → confirmed` by `promoteBalancePayment` (the same
+atomic shape, parameterised — no fork). ServiceForm gains a deposit config section. Proofs:
+`server/__tests__/deposit-checkout.db.test.ts` D1–D9 (10, green); §15 spine + fee suites unchanged.
+
+Follow-ups (filed, NOT built):
+
+- **DEP-1 — overdue-balance SWEEP** [future lane]: v1 builds DETECTION only
+  (`GET /api/admin/bookings/balance-overdue`; the state reads as `deposit_paid`, never `confirmed`).
+  The automatic cancel/refund-or-forfeit at the cutoff — running per the listing's EXISTING
+  `cancellationPolicyType` (no new refund policy), modelled on the TTL sweep (atomic conditional,
+  never voiding a row whose PI may exist) — is deferred.
+- **DEP-2 — deposit-aware reconciliation** [future lane]: the daily drift job's §17 expected-charge is
+  `SUM(total_amount + platform_fee)` over a PI's bookings; a fully-paid deposit booking is a `confirmed`
+  two-PI row whose deposit PI covered only part, which that check would flag. `deposit_paid` rows are
+  skipped by the scan today; make the scan deposit-aware (sum deposit+balance PIs) before deposits see
+  real volume. Does not affect the detection suite's fixtures.
+- **DEP-3 — auto-charge v2** [DM]: the ratified v1 is deliberately manual-balance-only. A future
+  stored-card / off-session / SCA-mandate auto-charge at the cutoff is a separate decision-maker call
+  (it leaves the one-intent-per-claim shape and needs its own consent/mandate design).
+
 ## Open — [DM] / externally-gated only (the buildable column is EMPTY as of Wave 5)
 
 - **activity_bookings** [DM, re-framed]: keep the declaration + accept the publish prompt (safe,

@@ -395,6 +395,52 @@ router.get("/api/admin/bookings/stale-pending", isAuthenticated, async (req, res
 });
 
 /**
+ * GET /api/admin/bookings/balance-overdue  (Lane 7, DECISIONS.md ruling 72)
+ *
+ * DETECTION for the deposit-partial-payment overdue case. A deposit-paid booking whose
+ * `balance_due_at` cutoff has passed while `balance_paid` is still false. The v1 ruling builds
+ * DETECTION only — no automatic cancel/refund sweep yet (deferred to v2, to run per the listing's
+ * EXISTING cancellationPolicyType). By construction such a booking reads as `deposit_paid`, NEVER
+ * `confirmed`, so it never looks fully paid and releases no earning (§13 — the gap is visible, not
+ * silent). Rows with a NULL cutoff are honestly excluded (no date the platform can key on).
+ */
+router.get("/api/admin/bookings/balance-overdue", isAuthenticated, async (req, res) => {
+  const user = await getFullAdminUser(getUserId(req)!);
+  if (!user || user.role !== "admin") {
+    return res.status(403).json({ message: "Admin access required" });
+  }
+  try {
+    const result = await db.execute(sql`
+      SELECT
+        sb.id,
+        sb.traveler_id,
+        sb.service_id,
+        sb.trip_id,
+        sb.status,
+        sb.total_amount,
+        sb.deposit_amount,
+        sb.balance_amount,
+        sb.balance_due_at,
+        sb.stripe_deposit_intent_id,
+        sb.created_at,
+        u.email AS traveler_email
+      FROM service_bookings sb
+      LEFT JOIN users u ON u.id = sb.traveler_id
+      WHERE sb.status = 'deposit_paid'
+        AND sb.balance_paid IS NOT TRUE
+        AND sb.balance_due_at IS NOT NULL
+        AND sb.balance_due_at < NOW()
+      ORDER BY sb.balance_due_at ASC
+      LIMIT 200
+    `);
+    res.json({ bookings: result.rows, count: result.rows.length });
+  } catch (err) {
+    console.error("Balance-overdue bookings error:", err);
+    res.status(500).json({ message: "Failed to fetch balance-overdue bookings" });
+  }
+});
+
+/**
  * GET /api/admin/bookings/stuck-pending
  * Returns service_bookings stuck in payment_pending status for more than 10 minutes.
  * These are bookings where Stripe was (or may have been) charged but the server
