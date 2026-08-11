@@ -15,6 +15,8 @@ name: Fee Resolution Authority Gate
 #   A6  C2 REGRESSION — a provider service resolves its CATEGORY band, not expert_standard
 #   A7  a per-entity override is stamped `entity_override` with a NULL band_id (ruling 47)
 #   A8  FAIL-LOUD — a bandless category throws; there is no silent fallback rate (ruling 51/R2)
+#   A9  D6 (ruling 61) — `isRails` SELECTS a lane and carries no rate: an admin edit to the
+#       `provider_rails` band reaches the next rails resolution (A1's proof, one lane over)
 #
 # Registered in the DECISIONS.md Guard registry as `fee-resolution-authority`. Ruling 27: a
 # script-only guard is MISSING — it must run in CI to count as [guarded].
@@ -22,7 +24,9 @@ name: Fee Resolution Authority Gate
 # Negative space (ruling 43 — what this gate does NOT cover): it proves RESOLUTION, not RECORDING.
 # It says nothing about whether a resolved rate is written to `fee_ledger`, whether the ledger
 # balances (that is the invariant gate), or about any money path outside provider commission and
-# the traveler service fee.
+# the traveler service fee. A9 pins the resolver's END of the D6 chain only — it never exercises the
+# ATTRIBUTION half (validating a ref against `short_links`, owner match, expiry, the ledger stamp),
+# which lives in `server/__tests__/rails-attribution.db.test.ts` and is run by the same job below.
 
 on:
   pull_request:
@@ -80,6 +84,19 @@ jobs:
 
       - name: Resolver authority pins
         run: npx tsx --test server/__tests__/fee-resolution-authority.db.test.ts
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
+          SESSION_SECRET: ci-test-secret-not-for-production
+          STRIPE_SECRET_KEY: [REDACTED_STRIPE_TEST_KEY]_stub_no_real_calls
+          NODE_ENV: test
+          ALLOW_TEST_ACCOUNTS: '1'
+
+      # D6 attribution pin (ruling 61). Runs in the SAME job, deliberately: the resolver half and
+      # the attribution half are one chain, and a green resolver over a broken attribution chain is
+      # exactly the false comfort ruling 43 warns about. Ruling 61 holds the waiver marketing caption
+      # out of the caption engine until this step is green.
+      - name: Rails attribution pins (D6)
+        run: npx tsx --test server/__tests__/rails-attribution.db.test.ts
         env:
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/traveloure
           SESSION_SECRET: ci-test-secret-not-for-production

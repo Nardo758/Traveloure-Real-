@@ -113,6 +113,9 @@ both the build bench and the Replit workspace.
 | 10 | **Ledger number collision.** The Stripe-only KYB ruling was written as a prose section headed "Decision #39" while 39 was already taken in the numeric table; the lint parses table rows only, so CI never saw it. Its publish-gate clause was also stale (identity AND business for every publisher — provider-only truth). | RECORDED | ruling 55 |
 | 11 | **D3 deliverable is LINK delivery, not protected delivery.** See the P1 entry below. Object Storage is now **provisioned** (bucket attached in `.replit`, wrapper at `server/infrastructure/object-storage.ts`) — but it is consumed only by `vendor-management.service.ts` for vendor CONTRACT documents. The deliverable rail is **untouched**: `ServiceForm` still renders "Deliverable File URL" as a pasted-URL input, and the entitlement endpoint still returns that raw URL verbatim. The infrastructure unblocks R4; it does not constitute R4. | **OPEN** | P1 below |
 | 12 | **No completion event exists for pdf bookings.** See the P2 entry below. **Wider than reported:** the only writer of `service_bookings.status='completed'` on `main` was the admin dispute-REJECT — the owner rail refuses `completed` and `confirm-completion` demands it, a closed loop — so no completion event existed for **any** delivery method. Closed for pdf/property (timer) and call/video/async/bundle (owner rail) by ruling 66; `in_person`/`hybrid` is left as ruling 63 ordered ("unchanged") and is re-filed as its own open item. | FIXED (ruling 66, `f3984da`) — in-person half re-filed | P2 below; ruling 66 |
+| 13 | **The rails fee lane had no way to be switched on.** `resolveProviderRate`'s `isRails` flag — CI-pinned since ruling 48 as min(category band, rails) + the traveler-fee waiver — had **zero callers in the repo**: nothing at checkout ever told the resolver a booking arrived through a provider's own link, so the whole dual-rate model was a capability with no input. Closed by the D6 chain (validation → resolver input → ledger stamp). | FIXED (ruling 68) | `server/services/rails-attribution.service.ts`; ruling 61 |
+| 14 | **`fee_ledger` (migration 179) had no writer at all.** The table, its CHECKs, its UNIQUE idempotency index and its full fee-type taxonomy have been on disk since the fee-ledger lane's Phase 1B with **no INSERT anywhere in application code** — so every "the ledger records X" reading of migration 179 described an empty table. This lane adds the FIRST writer and it covers **rails bookings only**; direct checkout, the legacy rail, ready-mades, templates, coordination, tips and affiliate margin still write nothing, so the per-booking invariant is **not yet assertable platform-wide**. Do not aggregate the table as if it were complete. | PARTIAL (rails slice only) | `server/services/fee-ledger.service.ts`; ruling 68 |
+| 15 | **`short_links` had no expiry of any kind**, so ruling 61's "expired ref → full rate" refusal had nothing to key on. Migration 198 adds `expires_at` (nullable; NULL = never expires, no backfill, no behaviour change to any link already shared) and it binds in the MONEY decision only — `/r/:code` still redirects and still counts the click, and S4 analytics attribution is unchanged. **No writer sets it yet** (owner/admin expiry control is filed below), so today it is an ops/fixture-set column. | FILED (read-side landed) | migration 198; ruling 68 |
 
 **Standing lessons worth carrying forward:** (a) a fix that closes a reported symptom may not close the class — #1 needed a second pass because the first proved the gate *correct* without proving it *reachable*; (b) duplicated branches at two call sites drifted twice, which is why the resolver is now a single shared function; (c) a guard that is not wired into CI is not a guard, and green means green-within-stated-bounds (ruling 57 states its negative space).
 
@@ -511,6 +514,26 @@ block routed to `/expert-status`, provider both-statuses-required, admin bypass,
   recommended delete (the one Segway booking is unrecoverable from DB).
 - **Should trip-routed non-catalog items be checkout-routable** (today: display-only in cart,
   honestly labeled)?
+- **[UNLOCKED, needs a go] The waiver marketing caption.** Ruling 61 held "book through my link —
+  skip the service fee" out of the caption engine *until the attribution pin is green*. **The pin is
+  green as of the D6 build (`server/__tests__/rails-attribution.db.test.ts`, R1–R11, wired into
+  `fee-resolution-authority-gate.yml`; build SHA to be stamped at merge).** The hold is therefore
+  satisfied and the caption **may now be scheduled** — but this lane deliberately shipped **zero
+  caption-engine diffs**, so writing it is a separate change and still needs a decision-maker go.
+  **Read the copy against what the money actually does first:** the waiver waives the D3 traveler
+  service fee, which `/api/checkout` **does not bill on the direct path today** — so "skip the
+  service fee" is a claim about a fee a traveler is not currently charged either way. Either the 1C
+  charge-path repoint lands first, or the caption is worded to the fee model as it actually runs.
+- **[DM] The 1C consequence D6 makes visible.** A rails booking is the FIRST charge path to price
+  through the D1 single resolver, while direct provider bookings still resolve the legacy
+  `expert_standard` band. So a rails booking is cheaper for TWO reasons at once (the rails min() and
+  the un-migrated direct path). The direction is always a smaller platform take and it is reachable
+  only through a provider's own validated link — but the gap closes properly only when the charge
+  paths are repointed onto `resolveProviderRate` (lane item 1C, ruling 45's transfer). Owed.
+- **[DM] Who may expire a share link?** `short_links.expires_at` (migration 198) is enforced in the
+  rails money decision but has no writer — an owner-facing "retire this link" control, an admin one,
+  or a default TTL on newly minted links are three different products. Until one is chosen the
+  refusal exists and is proven, and nothing in the app can trigger it.
 
 ## Build map (Fable-minimized, per docs/EXECUTION_MAP.md §1/§4b — mapped Aug 1, 2026)
 

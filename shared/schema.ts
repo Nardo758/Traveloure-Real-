@@ -7877,11 +7877,21 @@ export const shortLinks = pgTable("short_links", {
   frame: varchar("frame", { length: 20 }),
   clicks: integer("clicks").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow(),
+  // D6 rails attribution (migration 198, ruling 61). NULL = never expires — every link shared
+  // before this column existed behaves identically. Read by the rails MONEY decision only
+  // (rails-attribution.service.ts): past-dated ⇒ the ref no longer selects the rails band lane.
+  // The /r/:code redirect and the S4 analytics attribution deliberately ignore it — a click that
+  // really happened stays a true analytics fact whatever the fee lane says (§13).
+  expiresAt: timestamp("expires_at"),
 }, (table) => [
   index("idx_short_links_owner_user_id").on(table.ownerUserId),
 ]);
 
-export const insertShortLinkSchema = createInsertSchema(shortLinks).omit({ id: true, clicks: true, createdAt: true });
+// §18 rule 3 ("a field with no consumer is still stripped") + ruling 66's money-timer precedent:
+// `expiresAt` GATES a fee lane (an unexpired link selects the rails band, an expired one does not),
+// so it is omitted here as well as being absent from the route's hand-written body schema. This
+// schema is parsed off no request body today; that is exactly why it must not become the way in.
+export const insertShortLinkSchema = createInsertSchema(shortLinks).omit({ id: true, clicks: true, createdAt: true, expiresAt: true });
 export type ShortLink = typeof shortLinks.$inferSelect;
 export type InsertShortLink = z.infer<typeof insertShortLinkSchema>;
 
