@@ -8,6 +8,25 @@ packages = ["unzip", "psmisc"]
 
 [env]
 PORT = "5000"
+# Lockfile-purity, source-level fix (Aug 11, 2026 — see CLAUDE.md "Lockfile purity"):
+# Replit injects an env-level npm registry override pointing at its package-firewall
+# proxy, which OUTRANKS the project .npmrc (npm precedence: env > project file) and
+# bakes unreachable package-firewall.replit.local URLs into package-lock.json.
+# Verified the firewall is advisory, not mandatory (direct registry.npmjs.org
+# returns 200 from the workspace shell), so pinning the registry here prevents
+# pollution from FORMING. The postinstall scrub + hooks + CI gate remain as
+# defense-in-depth if this env route ever loses precedence again.
+# LOWERCASE key, deliberately (verified Aug 11): Replit injects lowercase
+# npm_config_registry, and with BOTH spellings present npm resolved the collision
+# in the lowercase one's favor (uppercase NPM_CONFIG_REGISTRY was in env and lost).
+# Same key = one value at the OS level; whichever layer sets it last wins.
+npm_config_registry = "https://registry.npmjs.org/"
+# R4 deliverable rail: the object-storage wrapper (server/infrastructure/
+# object-storage.ts) reads this env var. Platform auto-injection of this name was
+# assumed but never observed (verified absent after [env] re-application, Aug 11),
+# so it is set here explicitly. Value mirrors [objectStorage].defaultBucketID
+# below — keep the two in sync if the bucket is ever re-provisioned.
+REPLIT_OBJECT_STORAGE_BUCKET = "replit-objstore-b9da6238-639b-4b0e-8956-034ec0042760"
 
 [deployment]
 deploymentTarget = "autoscale"

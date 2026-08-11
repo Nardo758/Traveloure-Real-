@@ -1865,40 +1865,52 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           })()}
 
           {/* D3 (docs/briefs/SERVICE_FUNDAMENTALS_DECISIONS.md): the deliverable file —
-              only relevant for pdf delivery. Buyers unlock this URL after a confirmed
-              booking (never before purchase); this field is only ever hydrated from the
-              owner-gated read. */}
-          {formData.deliveryMethod === "pdf" && (
-            <div>
-              <Label htmlFor="serviceFile">Deliverable File URL *</Label>
-              <Input
-                id="serviceFile"
-                value={formData.serviceFile}
-                onChange={(e) => set("serviceFile", e.target.value)}
-                placeholder="https://... (link to the PDF a buyer receives after purchase)"
-                className="mt-2"
-              />
-              <p className="text-xs text-muted-foreground mt-1">
-                Buyers can download this link only after their booking is confirmed. It is
-                never shown before purchase.
-              </p>
-              {/* R4 interim honesty labeling (dispatch v1.3 R4; QA_PUNCH_LIST.md P1): this is
-                  LINK delivery, not protected delivery — the platform gates WHO receives the
-                  link but returns it verbatim, so once a buyer has it, it's theirs to share and
-                  we can't revoke it. Copy-only; the endpoint/schema/gating are unchanged. */}
-              <p className="text-xs text-muted-foreground mt-1">
-                This is link delivery, not protected file storage: we control who receives the
-                link, but not what they do with it afterward — once a buyer has it, it can be
-                shared further and we can't revoke it. Use a link you're willing to rotate.
-              </p>
-              {!formData.serviceFile && (
-                <p className="text-xs text-amber-600 dark:text-amber-500 mt-1">
-                  A pdf-delivery listing needs a deliverable file before travelers can receive
-                  anything after buying it.
+              only relevant for pdf delivery. Buyers unlock this after a confirmed booking
+              (never before purchase); this field is only ever hydrated from the owner-gated
+              read. R4 (docs/DECISIONS.md ruling 58; QA_PUNCH_LIST.md P1 — RESOLVED) added a
+              platform-managed upload path (POST /api/provider/services/:id/deliverable-file)
+              alongside this legacy paste-a-link input; the two are distinguished on the stored
+              value by an `objstore:` prefix (never shown to the owner, so a plain `objstore:...`
+              string never leaks into this text field). The copy below states which case THIS
+              listing is actually in — factual, no spin. */}
+          {formData.deliveryMethod === "pdf" && (() => {
+            const isManaged = formData.serviceFile.trim().startsWith("objstore:");
+            return (
+              <div>
+                <Label htmlFor="serviceFile">Deliverable File URL *</Label>
+                <Input
+                  id="serviceFile"
+                  value={isManaged ? "" : formData.serviceFile}
+                  onChange={(e) => set("serviceFile", e.target.value)}
+                  placeholder={isManaged ? "Leave blank to keep the protected upload" : "https://... (link to the PDF a buyer receives after purchase)"}
+                  className="mt-2"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  Buyers can download this only after their booking is confirmed. It is never
+                  shown before purchase.
                 </p>
-              )}
-            </div>
-          )}
+                {isManaged ? (
+                  <p className="text-xs text-emerald-600 dark:text-emerald-500 mt-1">
+                    This listing's deliverable is an uploaded file in platform-protected storage —
+                    the platform streams it to buyers and can revoke access. Pasting a link above
+                    replaces it with an unprotected one.
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    A pasted link is not platform-protected: we control who receives it, but not
+                    what they do with it afterward — once a buyer has it, it can be shared further
+                    and we can't revoke it. Use a link you're willing to rotate.
+                  </p>
+                )}
+                {!formData.serviceFile && (
+                  <p className="text-xs text-amber-600 dark:text-amber-500 mt-1">
+                    A pdf-delivery listing needs a deliverable file before travelers can receive
+                    anything after buying it.
+                  </p>
+                )}
+              </div>
+            );
+          })()}
 
         </CardContent>
       </Card>
