@@ -2,6 +2,7 @@ import type { Express, RequestHandler } from "express";
 import express from "express";
 import { randomBytes } from "node:crypto";
 import { getUserId } from "./utils/auth";
+import { validateImageDataUrl } from "./utils/imageValidation";
 import type { Server } from "http";
 import { adminRateLimit, aiRateLimit, leadRoutingRateLimit, heavyReadRateLimit } from "./middleware/rateLimiter";
 import { getSlowQueryLog, clearSlowQueryLog } from "./utils/queryTimer";
@@ -372,28 +373,6 @@ function sanitizeInput(input: string): string {
       return entities[char] || char;
     })
     .trim();
-}
-
-// Server-enforced image upload limits (mirrors the client-side 5MB check in profile.tsx,
-// but the server is the authority). Applies to base64 data-URL image fields (e.g. govId,
-// travelLicence on the expert application). Returns an error message or null if valid.
-const MAX_IMAGE_UPLOAD_BYTES = 5 * 1024 * 1024; // 5MB
-const ALLOWED_IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
-function validateImageDataUrl(value: unknown, fieldName: string): string | null {
-  if (typeof value !== "string" || !value.startsWith("data:")) return null; // not a data-URL — nothing to enforce
-  const match = value.match(/^data:([^;,]+)(;base64)?,/);
-  if (!match) return `${fieldName} is not a valid data URL`;
-  const mime = match[1].toLowerCase();
-  if (!ALLOWED_IMAGE_MIME_TYPES.has(mime)) {
-    return `${fieldName} must be a JPEG, PNG, WebP or GIF image`;
-  }
-  // Estimate decoded size from base64 payload length (4 chars ≈ 3 bytes)
-  const payload = value.slice(value.indexOf(",") + 1);
-  const approxBytes = Math.floor((payload.length * 3) / 4);
-  if (approxBytes > MAX_IMAGE_UPLOAD_BYTES) {
-    return `${fieldName} must be under 5MB`;
-  }
-  return null;
 }
 
 // Sanitize object string fields recursively
