@@ -1,0 +1,20 @@
+Pull the branch (git pull origin claude/sync-local-repo-2j7ghv) — five new commits, no migrations and no dependency changes, so just pull and fully restart the server (a new service file was added; hot-reload won't pick it up). Then verify:
+
+1. The publish gate's behavior CHANGED — this is the important one. Ruling 53's gate was found to sit where experts don't actually publish, and ruling 56 (decision-maker chose option B) closed the two real doors. Confirm the new behavior end to end:
+
+An admin approving an UNVERIFIED owner's listing now lands it approvalStatus='approved' + status='draft' — approved but not publicly live. Verify it does NOT appear on public browse or the storefront.
+Approving a verified owner's listing still goes straight to active.
+The Activate toggle (PATCH /api/expert/services/:id/status) is now verification-gated for status:"active".
+When an owner's verification flips to verified, their approved+draft listings auto-activate — but any approved+paused listing must stay paused (that's owner intent; overriding it would be a defect). This is the invariant most worth confirming by hand.
+2. Expert verification is now surfaced early (R2): an unverified expert should see the requirement on landing at /expert/catalog and on every step of the service wizard — never first discovering it at a 403. Confirm draft saves still work freely for an unverified expert.
+
+3. Run the newly CI-wired suites locally — 38 proofs, all needing the dev server up and JOURNEY_DB_WRITES_OK=1: f2-verification-gate.http (11), publish-verification-hold.http (9), service-deliverable.http (9), short-links-frame.http (7), posting-opportunities-frame.http (2).
+
+4. Guards + baseline: check-money-endpoints.cjs, phase2-fee-gate.sh, check-unmounted-routers.cjs, check-decision-guards.cjs — all exit 0; npx tsc --noEmit 2>&1 | grep -c "error TS" must be 183.
+
+Note: a new blocking CI workflow (Publish Gate & Fundamentals) now runs those 38 proofs on every PR to main, so a regression in the gate or the D3/D4 surfaces will fail your PR rather than reaching review. Don't modify .github/workflows/build.yml's TSC_BASELINE. Report results; push only if a verification step forces a fix.
+
+One thing to flag
+A new PR #452 was opened for this branch (the CI run attached there, not to #451). Worth checking whether #451 and #452 are both open against main from the same branch — if so, you probably want to close one to avoid two review threads on identical work.
+
+And R4 still waits on you enabling Object Storage in Replit; that's the last blocker before the deliverable rail is genuinely finished rather than finished-in-letter.

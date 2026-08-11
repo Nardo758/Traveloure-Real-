@@ -353,7 +353,7 @@ export interface IStorage {
   createProviderServiceListing(expertId: string, service: InsertProviderServiceListing): Promise<ProviderServiceListing>;
   updateProviderServiceListing(id: string, updates: Partial<InsertProviderServiceListing>): Promise<ProviderServiceListing | undefined>;
   submitProviderServiceListing(id: string): Promise<ProviderServiceListing | undefined>;
-  approveProviderServiceListing(id: string, reviewedBy: string): Promise<ProviderServiceListing | undefined>;
+  approveProviderServiceListing(id: string, reviewedBy: string, goLive: boolean): Promise<ProviderServiceListing | undefined>;
   rejectProviderServiceListing(id: string, reviewedBy: string, reason: string): Promise<ProviderServiceListing | undefined>;
   deleteProviderServiceListing(id: string): Promise<void>;
   getApprovedProviderServiceListingsForExperts(expertIds: string[]): Promise<ProviderServiceListing[]>;
@@ -3220,11 +3220,20 @@ export class DatabaseStorage implements IStorage {
     return row ? this.mapProviderServiceToListing(row) : undefined;
   }
 
-  async approveProviderServiceListing(id: string, reviewedBy: string): Promise<ProviderServiceListing | undefined> {
+  // `goLive` (QA_PUNCH_LIST.md P0 / DECISIONS.md ruling 53's amending ruling): admin approval
+  // ALWAYS sets approvalStatus="approved" (preserves the admin's review work), but only sets
+  // status="active" when the caller has already confirmed the LISTING OWNER satisfies the
+  // publish-verification predicate (resolvePublishVerification — server/routes/admin.routes.ts
+  // is the sole caller and resolves it against the owner, never the acting admin). Otherwise
+  // the row lands approved + status="draft" — held, not publicly live, by construction:
+  // approved+draft is distinguishable from approved+paused (the owner's own Pause toggle,
+  // which this method never writes) so the auto-activation sweep can promote the former and
+  // must never touch the latter.
+  async approveProviderServiceListing(id: string, reviewedBy: string, goLive: boolean): Promise<ProviderServiceListing | undefined> {
     const [row] = await db.update(providerServices)
       .set({
         approvalStatus: "approved",
-        status: "active",
+        status: goLive ? "active" : "draft",
         reviewedAt: new Date(),
         reviewedBy,
         rejectionReason: null,
