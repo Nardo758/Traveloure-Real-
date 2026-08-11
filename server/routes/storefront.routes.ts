@@ -195,7 +195,21 @@ const settingsPatchSchema = z.object({
     paymentReceived: notificationChannelSchema.optional(),
     platformAnnouncements: notificationChannelSchema.optional(),
   }).strict().optional(),
-  language: z.string().trim().max(20).optional(),
+  // Ruling 60 Phase A (chrome i18n): this field is the account-persisted copy of the chrome
+  // locale — RESOLUTION STEP 1. It already existed on this allow-list as a free-form
+  // max(20) string; tightening it to an enum keeps arbitrary text out of the jsonb namespace
+  // while staying a minimal extension of the existing strict-allowlist posture (no new
+  // endpoint, no new column, no migration — the preference rides users.preferences.settings).
+  //
+  // WHY THE LIST IS WIDER THAN THE SHIPPED LOCALES: only `en` and `ja` have locale files
+  // (SUPPORTED_LOCALES, client/src/lib/i18n.ts). `es`/`fr`/`de` are here because
+  // client/src/pages/expert/settings.tsx has offered them in its Language select since before
+  // this ruling, and narrowing to en|ja would 400 that page's whole settings save (notifications
+  // and timezone included) for any expert who had picked one. They persist and resolve to
+  // nothing — the client's normalizeLocale drops an unshipped locale and the resolution order
+  // falls through to the next step, which is exactly the pre-ruling behavior. Retiring those
+  // three options is filed on the punchlist, not done here.
+  language: z.enum(["en", "ja", "es", "fr", "de"]).optional(),
   timezone: z.string().trim().max(30).optional(),
   // Audit B-5: the Settings leaderboard toggle had a Save with no handler and no store —
   // now a real persisted preference (display opt-in only, no money/ranking semantics here).

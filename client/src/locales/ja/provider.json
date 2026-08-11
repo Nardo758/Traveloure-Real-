@@ -1,0 +1,49 @@
+{
+  "groups": {
+    "work": "業務",
+    "business": "ビジネス",
+    "account": "アカウント"
+  },
+  "nav": {
+    "dashboard": "ダッシュボード",
+    "calendar": "カレンダー",
+    "inbox": "受信トレイ",
+    "workstation": "ワークステーション",
+    "catalog": "カタログ",
+    "customers": "顧客",
+    "performance": "パフォーマンス",
+    "money": "売上",
+    "settings": "設定",
+    "playbook": "プレイブック"
+  },
+  "sidebar": {
+    "defaultDisplayName": "サービス事業者",
+    "logout": "ログアウト"
+  },
+  "shell": {
+    "notifications": "お知らせ",
+    "ratingNew": "新規"
+  },
+  "pageTitle": {
+    "Dashboard": "ダッシュボード",
+    "Calendar": "カレンダー",
+    "Inbox": "受信トレイ",
+    "Workstation": "ワークステーション",
+    "Catalog": "カタログ",
+    "Customers": "顧客",
+    "Performance": "パフォーマンス",
+    "Analytics": "アナリティクス",
+    "Money": "売上",
+    "Settings": "設定",
+    "Playbook": "プレイブック",
+    "Business Profile": "事業者プロフィール",
+    "New Service": "サービスを新規作成",
+    "Edit Service": "サービスを編集"
+  },
+  "attestations": {
+    "title": "確認事項",
+    "intro": "提供内容と提供方法に応じて表示されています。これらはサービス事業者ご自身による表明であり、Traveloure が確認するものではなく、お客様には表示されません。",
+    "affirmedOn": "{{date}} に確認済み",
+    "omitted": "この出品については、判定できなかった確認事項があります:"
+  }
+}

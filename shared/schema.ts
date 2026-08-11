@@ -770,6 +770,14 @@ export const providerServices = pgTable("provider_services", {
   // sanctioned reveal is GET /api/service-bookings/:id/deliverable (server/routes.ts), gated
   // on a confirmed booking belonging to the session user.
   serviceFile: text("service_file"), // File URL
+  // D8 artifact-timer delivery clock (ruling 63, executed by ruling 66; migration 196). Stamped
+  // by the deliverable UPLOAD path only. `deliveredAt` for a pdf booking is
+  // max(booking.confirmedAt, this) — the moment the entitlement first became satisfiable. NULL =
+  // never recorded (every pre-196 row, and every legacy pasted-URL deliverable) ⇒ the
+  // UNDOWNLOADED auto-complete arm is skipped with a stated reason, never guessed (§13). The
+  // downloaded arm rides deliverable_downloads and is unaffected. Declared here per the
+  // publish-trap rule — a column only in migration SQL is dropped by the deploy push.
+  deliverableUploadedAt: timestamp("deliverable_uploaded_at"),
   
   // Status & Analytics
   status: varchar("status", { length: 20 }).default("active"), // active, paused, draft
@@ -1731,7 +1739,11 @@ export const insertServiceSubcategorySchema = createInsertSchema(serviceSubcateg
 // fee_bands-resolved split at the real Stripe charge — a client-supplied rate reaching a payment
 // decision (§14 in substance, §8 in spirit). No UI ever sent it. Layer 2 is the storage-level
 // derivation in `createProviderService`/`updateProviderService`, so every caller is covered.
-export const insertProviderServiceSchema = createInsertSchema(providerServices).omit({ id: true, userId: true, formStatus: true, bookingsCount: true, totalRevenue: true, averageRating: true, reviewCount: true, createdAt: true, updatedAt: true, revenueShareRate: true }).extend({
+// D8/ruling 66: `deliverableUploadedAt` joins the omit list (§18 layer 1). It is the clock the
+// pdf auto-complete timer measures from — a client-settable, backdatable value would fire a
+// completion event, and mint a held earning, on a booking whose deliverable never existed. The
+// storage strip-and-derive in `updateProviderService` is layer 2, so every caller is covered.
+export const insertProviderServiceSchema = createInsertSchema(providerServices).omit({ id: true, userId: true, formStatus: true, bookingsCount: true, totalRevenue: true, averageRating: true, reviewCount: true, createdAt: true, updatedAt: true, revenueShareRate: true, deliverableUploadedAt: true }).extend({
   // X1: app-enforced vocabulary (migration 144 has no DB CHECK) — reject anything outside the set here.
   cancellationPolicyType: z.enum(cancellationPolicyTypeEnum).nullable().optional(),
   // EX-2 (expert walkthrough, docs/testing/EXPERT_UX_WALKTHROUGH.md): a NEGATIVE price is never
@@ -7865,11 +7877,21 @@ export const shortLinks = pgTable("short_links", {
   frame: varchar("frame", { length: 20 }),
   clicks: integer("clicks").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow(),
+  // D6 rails attribution (migration 198, ruling 61). NULL = never expires — every link shared
+  // before this column existed behaves identically. Read by the rails MONEY decision only
+  // (rails-attribution.service.ts): past-dated ⇒ the ref no longer selects the rails band lane.
+  // The /r/:code redirect and the S4 analytics attribution deliberately ignore it — a click that
+  // really happened stays a true analytics fact whatever the fee lane says (§13).
+  expiresAt: timestamp("expires_at"),
 }, (table) => [
   index("idx_short_links_owner_user_id").on(table.ownerUserId),
 ]);
 
-export const insertShortLinkSchema = createInsertSchema(shortLinks).omit({ id: true, clicks: true, createdAt: true });
+// §18 rule 3 ("a field with no consumer is still stripped") + ruling 66's money-timer precedent:
+// `expiresAt` GATES a fee lane (an unexpired link selects the rails band, an expired one does not),
+// so it is omitted here as well as being absent from the route's hand-written body schema. This
+// schema is parsed off no request body today; that is exactly why it must not become the way in.
+export const insertShortLinkSchema = createInsertSchema(shortLinks).omit({ id: true, clicks: true, createdAt: true, expiresAt: true });
 export type ShortLink = typeof shortLinks.$inferSelect;
 export type InsertShortLink = z.infer<typeof insertShortLinkSchema>;
 
@@ -7968,6 +7990,35 @@ export const serviceRoutePoints = pgTable("service_route_points", {
   index("service_route_points_service_idx").on(table.serviceId),
 ]);
 export type ServiceRoutePoint = typeof serviceRoutePoints.$inferSelect;
+
+// D9 onboarding attestations — docs/DECISIONS.md ruling 62's D9 clause, executed by ruling 67
+// (migration 197). Child rows of provider_services on the service_route_points pattern: ON DELETE
+// CASCADE, composite UNIQUE (service_id, attestation_key). That UNIQUE is the idempotency
+// mechanism, not a nicety — the write path is INSERT … ON CONFLICT DO NOTHING, so re-affirming
+// keeps the FIRST affirmation's timestamp and never mints a second row.
+//
+// `attestationKey` carries NO DB CHECK: the vocabulary lives in shared/service-attestations.ts and
+// is app-enforced (the migration-144/195 posture — a CHECK over an app vocabulary is the
+// publish-time deploy-push failure CLAUDE.md warns about). `affirmedBy` is the SESSION user,
+// stamped server-side (§14 — never from req.body), ON DELETE SET NULL because deleting an account
+// must not erase the historical fact that the attestation was made.
+//
+// Deliberately NO createInsertSchema: the write body is a hand-written zod ALLOWLIST in
+// server/routes/service-attestations.routes.ts (§19/#PS18 — a denylist schema over a table whose
+// every non-key column is server-stamped would be exactly the mass-assignment shape ruling 46
+// named). Declared here per the publish-trap rule.
+export const serviceAttestations = pgTable("service_attestations", {
+  id: varchar("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  serviceId: varchar("service_id").notNull().references(() => providerServices.id, { onDelete: "cascade" }),
+  attestationKey: varchar("attestation_key", { length: 64 }).notNull(),
+  affirmedAt: timestamp("affirmed_at").notNull().defaultNow(),
+  affirmedBy: varchar("affirmed_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  unique("service_attestations_service_key_unique").on(table.serviceId, table.attestationKey),
+  index("service_attestations_service_idx").on(table.serviceId),
+]);
+export type ServiceAttestation = typeof serviceAttestations.$inferSelect;
 
 // R4/R5 (docs/DECISIONS.md ruling 58; migration 194): append-only download log for the D3
 // deliverable rail. One row per SUCCESSFUL fetch of GET /api/service-bookings/:id/deliverable —

@@ -15,6 +15,17 @@ import {
   assertServiceOwnerNotAway,
   ProviderAwayError,
 } from "../services/checkout-claim.service";
+// D6 rails attribution (docs/DECISIONS.md ruling 61): the chain from a shared link to the single
+// fee resolver. §14/§18 — the ref SELECTS a band lane and can carry no rate, amount or identity;
+// every rate still comes from `fee_bands` through `resolveProviderRate`, one call, inside the
+// service below. A ref that fails server-side validation degrades to the incumbent full rate.
+import {
+  validateRailsRef,
+  resolveRailsForItem,
+  railsSnapshot,
+  logRailsRefusal,
+  type RailsItemResolution,
+} from "../services/rails-attribution.service";
 import { api } from "@shared/routes";
 import { z } from "zod";
 import { isAuthenticated } from "../replit_integrations/auth";
@@ -383,6 +394,32 @@ async function authorizeAndPromote(
       message: "This checkout expired before payment could start. Your cart is intact — please try again.",
       retryable: true,
     });
+  }
+
+  // ── D6 (ruling 61): the fee EVENT for a rails-attributed booking ────────────────────────────
+  // Written HERE, at the authorization stamp — migration 179's own stated strategy (b): the
+  // PaymentIntent is in scope, and a provisional claim the TTL sweep may still void never gets a
+  // row in an append-only table with no DELETE path. Rows are derived from the snapshot the claim
+  // already carries, never re-resolved (a band re-priced in the last few seconds must not rewrite
+  // what was charged), and the write is idempotent by a per-booking key + UNIQUE index, so the
+  // re-drive and the webhook's own retry land EXACTLY ONE row.
+  //
+  // Best-effort in precisely the sense every post-authorization effect here is: Stripe has the
+  // money and the booking row is the money truth, so a recording failure is logged loudly and the
+  // promotion path retries the same idempotent write — it never fails a paid checkout.
+  try {
+    const { recordRailsFeeLedger } = await import("../services/fee-ledger.service");
+    await recordRailsFeeLedger({
+      bookingIds,
+      stripePaymentRef: paymentIntent.paymentIntentId,
+      actor: "checkout",
+    });
+  } catch (ledgerErr: any) {
+    console.error(
+      `[checkout] rails fee-ledger write failed for idempotencyKey=${checkoutKey} ` +
+        `(payment AUTHORIZED; the promotion path retries the same idempotent write):`,
+      ledgerErr?.message ?? ledgerErr,
+    );
   }
 
   await promoteAuthorizedCheckout(userId, bookingIds);
@@ -874,6 +911,66 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
         ? await requireConciergeBookingRate()
         : await getConciergeBookingRate();
 
+      // ── D6 RAILS ATTRIBUTION (docs/DECISIONS.md ruling 61) ───────────────────────────────────
+      // ONE pre-pass, consumed by BOTH loops below, so the amount QUOTED and the amount CLAIMED can
+      // never disagree about attribution: the two loops already resolve rates twice, and this lane
+      // deliberately does not add a third place where the decision could drift.
+      //
+      // §14/§18 — `req.body.ref` is an OPAQUE SELECTOR. It names a `short_links` row that the server
+      // re-reads and re-authorizes against THIS traveler and THIS listing's owner; it can express
+      // neither a rate nor an amount, and a forged one buys nothing. Every refusal (fabricated /
+      // expired / wrong-provider / self-referral / non-provider lane) degrades to the incumbent full
+      // rate, is recorded on the booking row, and can never fail the purchase.
+      //
+      // The rate itself is ONE call into the single resolver (`resolveProviderRate`, rulings 47/48)
+      // made inside `resolveRailsForItem` — min(category band, rails) and the traveler-fee waiver
+      // both stay in there. Nothing here computes a rate.
+      //
+      // The whole pre-pass is wrapped: rails is an OPTIONAL discount lane, so an attribution
+      // failure of any kind leaves an empty map, every line prices at the incumbent full rate, and
+      // the traveler still buys. It can never be the reason a checkout 500s.
+      const railsByItemId = new Map<string, RailsItemResolution>();
+      try {
+        const railsValidation = await validateRailsRef({ ref: refCandidate, travelerUserId: userId });
+        const railsOwnerRoleById = new Map<string, string | null>();
+        for (const item of cartData) {
+          if (!item.service) continue;
+          const ownerId = item.service.userId ?? null;
+          if (ownerId && !railsOwnerRoleById.has(ownerId)) {
+            const [ownerRow] = await db
+              .select({ role: users.role })
+              .from(users)
+              .where(eq(users.id, ownerId))
+              .limit(1);
+            railsOwnerRoleById.set(ownerId, ownerRow?.role ?? null);
+          }
+          const railsResolution = await resolveRailsForItem({
+            ref: refCandidate,
+            travelerUserId: userId,
+            serviceOwnerUserId: ownerId,
+            ownerRole: ownerId ? railsOwnerRoleById.get(ownerId) ?? null : null,
+            categoryId: item.service.categoryId ?? null,
+            itemSubtotal: resolveItemBaseAmount(item),
+            preValidated: railsValidation,
+          });
+          railsByItemId.set(item.id, railsResolution);
+          if (!railsResolution.attributed && railsResolution.reason) {
+            logRailsRefusal({
+              reason: railsResolution.reason,
+              ref: railsResolution.ref,
+              serviceId: item.service.id ?? item.serviceId,
+              travelerUserId: userId,
+            });
+          }
+        }
+      } catch (railsErr: any) {
+        railsByItemId.clear();
+        console.error(
+          `[checkout] rails attribution pre-pass failed — every line prices at the FULL rate:`,
+          railsErr?.message ?? railsErr,
+        );
+      }
+
       // Calculate totals — resolve per-item rates from booking_fee_configs then sum
       let checkoutSubtotal = 0;
       let checkoutBasePlatformFeeTotal = 0;
@@ -907,8 +1004,15 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
             ? { source: "provider", providerId: item.service.userId ?? null }
             : { category: feeCategory, expertId: item.service.userId ?? null } // EXP-OVR.P2
         );
-        // Per-service revenueShareRate is the final override (takes priority over config)
-        const itemExpertShare = safeParseRate(item.service.revenueShareRate, itemCategoryRates.expertShareRate);
+        // D6 (ruling 61): a rails-attributed line takes its share from the SINGLE resolver — the
+        // band-resolved min(category band, rails). It deliberately outranks the per-service
+        // `revenueShareRate` snapshot, which ruling 47 dethroned as a first operand; letting a
+        // stale snapshot survive here would defeat the band edit exactly as audit C2/Q9 described.
+        // Non-rails lines are byte-identical to before.
+        const itemRails = railsByItemId.get(item.id);
+        const itemExpertShare = itemRails?.rate
+          ? itemRails.rate.providerShareRate
+          : safeParseRate(item.service.revenueShareRate, itemCategoryRates.expertShareRate);
         checkoutSubtotal += itemPrice;
         // FEE-2: insurance is part of the platform take; include it in the Stripe charge total
         const itemInsuranceFee = calcInsuranceFee(itemPrice, itemCategoryRates, feeCategory);
@@ -959,7 +1063,12 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
             : { category: feeCategory2, expertId: item.service.userId ?? null } // EXP-OVR.P2
         );
         // expertShareRate: fraction expert earns; platform gets (1 - expertShareRate)
-        const expertShareRate = safeParseRate(item.service.revenueShareRate, itemCategoryRates2.expertShareRate);
+        // D6 (ruling 61): same precedence as the quote loop above, from the SAME pre-pass decision —
+        // rails resolves through the single resolver and outranks the dethroned per-service snapshot.
+        const itemRails2 = railsByItemId.get(item.id);
+        const expertShareRate = itemRails2?.rate
+          ? itemRails2.rate.providerShareRate
+          : safeParseRate(item.service.revenueShareRate, itemCategoryRates2.expertShareRate);
         const baseExpertEarningsAmt = price * expertShareRate;
         const basePlatformFeeAmt = price - baseExpertEarningsAmt;
         // Insurance tier (FEE-2 Phase 2): use feeCategory2 slug as bookingType so appliesTo filter works
@@ -1029,6 +1138,13 @@ router.post("/api/checkout", isAuthenticated, async (req, res) => {
               ...(bundleSnapshots.has(item.serviceId)
                 ? { bundleComponents: bundleSnapshots.get(item.serviceId) }
                 : {}),
+              // D6 (ruling 61): the rails decision, SNAPSHOT onto the row it priced — including
+              // every REFUSAL with its reason, so "this ref bought nothing and here is why" is a DB
+              // fact per booking and not only a log line (the ruling-66 precedent for a record that
+              // must survive on a tripless booking). Server-derived in full; no client value reaches
+              // it. The fee-ledger row is written from this snapshot at the authorization stamp, so
+              // an admin re-pricing a band mid-checkout cannot rewrite what was charged.
+              ...(itemRails2 ? { railsAttribution: railsSnapshot(itemRails2) } : {}),
               // §17 property rooms: the night range + rate SNAPSHOT into the booking (locked at
               // purchase — the same ready-made snapshot posture as bundle contents above).
               ...(stay

@@ -32,6 +32,14 @@ import {
 // D7 (docs/DECISIONS.md ruling 62): the ONE definition of "place-anchored" — the same predicate
 // the server scorers and console chips use, never a second local copy.
 import { isPlaceAnchored } from "@shared/service-fundamentals";
+// D9 (docs/DECISIONS.md ruling 62's D9 clause, executed by ruling 67): the SAME resolver the
+// server re-runs on the write, so what this wizard renders and what the API will accept cannot
+// drift. The client calls it only to draw the card — it never decides what it may affirm.
+import {
+  resolveApplicableAttestations,
+  type AttestationKey,
+} from "@shared/service-attestations";
+import { ServiceAttestationsCard } from "@/components/provider/service-attestations-card";
 
 interface ServiceCategory {
   id: string;
@@ -634,6 +642,21 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     enabled: isEditMode,
   });
 
+  // ── D9 attestations (ruling 62's D9 clause / ruling 67) ──────────────────────────────────
+  // Affirmations already ON RECORD for this listing. Edit mode only — a listing that does not
+  // exist yet can have none (the record is a child row of the service). Read-only here: the
+  // record is append-only and this query never writes.
+  const { data: attestationState } = useQuery<{
+    applicable: Array<{ key: string; affirmedAt: string | null }>;
+    affirmedOther: Array<{ key: string; affirmedAt: string }>;
+  }>({
+    queryKey: ["/api/provider/services", id, "attestations"],
+    enabled: isEditMode,
+  });
+  // Locally checked-but-unsaved boxes. Written to the server only AFTER the listing save
+  // succeeds — the affirmation is a child row and needs the service id to exist.
+  const [attestationChecks, setAttestationChecks] = useState<Record<string, boolean>>({});
+
   const categoryPreSelected = useRef(false);
   const offeringTypeKeyPreSelected = useRef(false);
   const providerOfferingTypeKeyPreSelected = useRef(false);
@@ -1020,10 +1043,45 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
         ? await apiRequest("PATCH", `/api/provider/services/${id}`, payload)
         : await apiRequest("POST", "/api/provider/services", payload);
       const service = await res.json().catch(() => null);
-      return { submitAction, service };
+
+      // ── D9 attestations (ruling 62's D9 clause / ruling 67) ────────────────────────────
+      // An affirmation is a CHILD ROW, so it can only be written once the service id exists —
+      // hence a second call AFTER the save rather than fields on the listing payload. The
+      // server re-derives the applicable set from the saved row and refuses anything outside
+      // it; this call sends nothing but the keys the provider ticked.
+      //
+      // A failure here does NOT fail the save — the listing genuinely landed, and reporting
+      // "Failed to create service" would be a lie (§13). It is surfaced as its own honest
+      // toast in onSuccess instead.
+      let attestationError: string | null = null;
+      const keysToAffirm = Object.entries(attestationChecks)
+        .filter(([, v]) => v)
+        .map(([k]) => k);
+      const savedServiceId: string | undefined = service?.id ?? (isEditMode ? id : undefined);
+      if (keysToAffirm.length > 0 && savedServiceId) {
+        try {
+          await apiRequest("POST", `/api/provider/services/${savedServiceId}/attestations`, {
+            affirm: keysToAffirm,
+          });
+        } catch (err: any) {
+          attestationError = err?.message || "unknown error";
+        }
+      }
+      return { submitAction, service, attestationError };
     },
-    onSuccess: ({ submitAction, service }) => {
+    onSuccess: ({ submitAction, service, attestationError }) => {
       queryClient.invalidateQueries({ queryKey: ["/api/provider/services"] });
+      if (attestationError) {
+        // English, deliberately: ServiceForm is on I18N-2's "hardcoded English, migrate the
+        // WHOLE surface in one commit" list, and a single t() call here would half-wrap it —
+        // the one thing that convention forbids. The attestation CARD is a new file and is
+        // wholly wrapped; this toast belongs to the wizard, not the card.
+        toast({
+          title: "Listing saved — confirmations were not recorded",
+          description: `${attestationError}. Reopen this listing and confirm them.`,
+          variant: "destructive",
+        });
+      }
       if (role === "expert") {
         queryClient.invalidateQueries({ queryKey: ["/api/expert/service-listings"] });
       }
@@ -1096,6 +1154,32 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
     productShape: existingService?.productShape ?? null,
   });
   const pickupProvisionChosen = PICKUP_PROVISIONS.has(formData.transportProvision);
+
+  // ── D9 (ruling 62's D9 clause, executed by ruling 67) ────────────────────────────────────
+  // The applicable attestation set for the listing AS CURRENTLY DRAFTED, from the SHARED
+  // resolver. Recomputed as the provider changes category or delivery method, so the card
+  // tracks what they are actually building. This is a PREVIEW: the server re-derives the same
+  // set from the saved row on the write and rejects anything outside it (§14 posture).
+  const attestationResolution = useMemo(
+    () =>
+      resolveApplicableAttestations({
+        deliveryMethod: toCanonicalDelivery(formData.deliveryMethod),
+        productShape: existingService?.productShape ?? null,
+        categoryKey: selectedCategory?.categoryKey ?? null,
+        categorySlug: selectedCategory?.slug ?? null,
+      }),
+    [formData.deliveryMethod, existingService?.productShape, selectedCategory?.categoryKey, selectedCategory?.slug],
+  );
+  // attestationKey → the date it was affirmed, for the read-only rows.
+  const attestationAffirmedAt = useMemo(() => {
+    const out: Record<string, string> = {};
+    for (const a of attestationState?.applicable ?? []) {
+      if (a.affirmedAt) out[a.key] = a.affirmedAt;
+    }
+    for (const a of attestationState?.affirmedOther ?? []) out[a.key] = a.affirmedAt;
+    return out;
+  }, [attestationState]);
+
   // NEVER-CLOBBER SURFACING (ruling 62's amendment, §13): picking one coverage mode must not
   // silently delete the other's data — so state, out loud, that the other side is still there.
   const savedRouteStopCount: number = Array.isArray(existingService?.routePoints)
@@ -2723,6 +2807,22 @@ export function ServiceForm({ role, id, onSuccess }: ServiceFormProps) {
           </div>
         </CardContent>
       </Card>
+
+      {/* ── D9 attestations (ruling 62's D9 clause, executed by ruling 67) ──────────────────
+          Placement: the "Terms & requirements" step — the C9 precedent that puts per-listing
+          curation on the "what I sell" module. The card renders ITSELF only when the SHARED
+          resolver returns a non-empty applicable set for what is currently drafted; nothing
+          here decides applicability locally. NOT a publish gate: leaving a box unticked
+          blocks nothing (ruling 67's negative space — whether it should is a filed
+          decision-maker question, deliberately unanswered here). */}
+      <ServiceAttestationsCard
+        resolution={attestationResolution}
+        affirmedAt={attestationAffirmedAt}
+        checked={attestationChecks}
+        onToggle={(key: AttestationKey, next: boolean) =>
+          setAttestationChecks((prev) => ({ ...prev, [key]: next }))
+        }
+      />
 
       </>)}
 

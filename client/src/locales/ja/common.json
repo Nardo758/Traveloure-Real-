@@ -1,0 +1,27 @@
+{
+  "brand": "Traveloure",
+  "language": {
+    "menuLabel": "言語",
+    "ariaLabel": "言語を変更する",
+    "en": "English (US)",
+    "ja": "日本語",
+    "savedToAccount": "言語設定をアカウントに保存しました。",
+    "savedForDevice": "言語設定をこの端末に保存しました。",
+    "saveFailed": "言語設定を保存できませんでした。"
+  },
+  "actions": {
+    "save": "保存する",
+    "saving": "保存しています...",
+    "cancel": "キャンセル",
+    "edit": "編集する",
+    "delete": "削除する",
+    "duplicate": "複製する",
+    "share": "共有する",
+    "close": "閉じる"
+  },
+  "state": {
+    "active": "公開中",
+    "paused": "一時停止中",
+    "loading": "読み込んでいます..."
+  }
+}

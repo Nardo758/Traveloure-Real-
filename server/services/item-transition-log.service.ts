@@ -38,7 +38,17 @@ export type TransitionActorType =
   // that arrived a day late through the drift scan is a materially different fact from one that
   // arrived on the webhook, and ops needs to be able to tell them apart. 14 chars: fits
   // actor_type VARCHAR(20) (migration 171).
-  | "reconciliation";
+  | "reconciliation"
+  // D8 completion lane (ruling 63, executed by ruling 66): the booking OWNER — provider or
+  // expert — declaring a completion the ruling makes theirs to declare (session end, async
+  // SLA, a bundle component). Distinct from `expert` (which means an expert acting on a TRIP
+  // item) so a diary row answers "who completed this booking?". 8 chars.
+  | "provider"
+  // D8 completion lane: the scheduled auto-complete timer (pdf entitlement, property checkout
+  // date). Distinct from the generic `system` for exactly the reason `reconciliation` is
+  // distinct from `webhook` — a completion nobody asserted, that a clock inferred, is a
+  // materially different fact and ops must be able to tell them apart. 13 chars.
+  | "auto_complete";
 
 export type TransitionEventType =
   | "status_transition"
@@ -74,7 +84,14 @@ export type TransitionEventType =
   // Trip-scoped (itemId NULL, ruling 16), written in the SAME transaction as the atomic
   // conditional flip (rulings 12/18) — mirrors task #1028's workspace_status_transition
   // convention one level up the same row (trip_expert_advisors.status, not .workspaceStatus).
-  | "assignment_accepted";
+  | "assignment_accepted"
+  // D8 completion lane (ruling 63, executed by ruling 66): a booking's COMPLETION event —
+  // `confirmed → completed`, the flip that mints the held earning. ONE event type for all six
+  // per-method rules, because there is ONE completion machinery: which rule fired is recorded on
+  // the booking row (`bookingDetails.completion`) and WHO fired it is `actorType`. from/to carry
+  // the BOOKING statuses (like `checkout_payment_confirmed`), not an item's routing_status.
+  // 17 chars — fits event_type varchar(30) (migration 171).
+  | "booking_completed";
 
 /** The executor shape both `db` and a drizzle `tx` satisfy — callers inside a transaction MUST
  *  pass their `tx` (ruling 18: same-transaction pair), everything else may pass `db`. */

@@ -1,4 +1,5 @@
 import { Link, useLocation } from "wouter";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "@/hooks/use-auth";
 import { initialsFromUser } from "@/lib/initials";
 import {
@@ -40,20 +41,28 @@ import {
 // live (born-submitted, unlocks at 2+ approved services — the §17 creation ladder); the
 // property rung (per-night pricing, room availability) is ALSO live — Workstation's Property
 // card opens the real create dialog (openPropertyCreate in workstation.tsx).
+//
+// Ruling 60 Phase A (chrome i18n): each group/item keeps its ENGLISH `label`/`title` verbatim
+// and gains an `i18nKey`. The English string is NOT decoration — it is both the fallback
+// rendered when a key is missing AND, critically, the source of this file's `data-testid`
+// values (`nav-${item.title.toLowerCase()...}`) and its `key` props. Translating `title` in
+// place would have silently renamed every provider nav testid the Playwright suites select on,
+// so the display string and the test-selector string are deliberately kept as separate values.
 const menuGroups = [
   {
     label: "Work",
+    labelKey: "groups.work",
     items: [
       // C9 originally relabeled "Dashboard" → "Today" (module 1, ops home). Renamed back to
       // "Dashboard" (ratified provider back-office wave, Aug 9 2026) — route unchanged; the
       // page still leads with today's bookings + pending action items. A sibling change
       // renames the page's own header to match.
-      { title: "Dashboard", href: "/provider/dashboard", icon: Home },
+      { title: "Dashboard", i18nKey: "nav.dashboard", href: "/provider/dashboard", icon: Home },
       // C9: /provider/calendar is now the Channel Calendar (the ratified 9th module — the
       // expert C3 pattern on GET /api/me/calendar, provider-real chips only). The old
       // availability-editor sheets there were non-persisting previews; REAL slot editing
       // moved to its ratified Catalog home (/provider/services availability section).
-      { title: "Calendar", href: "/provider/calendar", icon: CalendarDays },
+      { title: "Calendar", i18nKey: "nav.calendar", href: "/provider/calendar", icon: CalendarDays },
       // C9 Inbox absorption (mirrors expert C5): "Bookings" and "Messages" retired into ONE
       // "Inbox" entry. Bookings' uniques (pending accept/decline via
       // PATCH /api/provider/bookings/:id/status, the visa-status management dialog, stats,
@@ -61,58 +70,61 @@ const menuGroups = [
       // path into /chat) is now Inbox's Messages tab — a real recent-threads queue over
       // GET /api/chats, not a bare link. /provider/bookings redirects to /provider/inbox;
       // /chat itself stays reachable (it's the thread home the Messages tab deep-links into).
-      { title: "Inbox", href: "/provider/inbox", icon: Inbox },
+      { title: "Inbox", i18nKey: "nav.inbox", href: "/provider/inbox", icon: Inbox },
       // PB: the Product Builder (§17 creation ladder — single service → bundle → property).
       // Placed after Inbox: the expert sidebar carries Workstation in its Work group too;
       // the provider Work group keeps its existing order and appends the new module.
-      { title: "Workstation", href: "/provider/workstation", icon: Wrench },
+      { title: "Workstation", i18nKey: "nav.workstation", href: "/provider/workstation", icon: Wrench },
     ],
   },
   {
     label: "Business",
+    labelKey: "groups.business",
     items: [
       // C9: "My Offerings" relabeled "Catalog" (module 5, "what I sell") — route unchanged.
       // The page absorbed the storefront header (/p/:handle management), availability slot
       // editing (the ratified Catalog placement), and Share & Promote's creation half
       // (per-service share kits + posting opportunities via the shared
       // components/backoffice/share-tools.tsx — the same absorption expert C2 did).
-      { title: "Catalog", href: "/provider/services", icon: LayoutGrid },
+      { title: "Catalog", i18nKey: "nav.catalog", href: "/provider/services", icon: LayoutGrid },
       // C9: "Share & Promote" entry RETIRED — its unique functions live on Catalog (per-
       // service share kit, posting opportunities, storefront share); the measurement half
       // (LinkAnalyticsPanel) already renders on the Analytics tab under Performance.
       // /provider/share-promote redirects to /provider/services.
       // Customers — module 6: honest self-scoped aggregation over this provider's real
       // bookings (GET /api/me/customers); no invented CRM fields.
-      { title: "Customers", href: "/provider/customers", icon: Users },
-      { title: "Performance", href: "/provider/performance", icon: TrendingUp },
+      { title: "Customers", i18nKey: "nav.customers", href: "/provider/customers", icon: Users },
+      { title: "Performance", i18nKey: "nav.performance", href: "/provider/performance", icon: TrendingUp },
       // C9: "Analytics" entry RETIRED — the page (intact) is hosted as Performance's
       // Analytics tab (the expert C6 fold); /provider/analytics redirects to
       // /provider/performance?tab=analytics.
       // C9: module renamed Earnings → Money per §17; /provider/earnings redirects to
       // /provider/money (same page; inbound notification/email links re-pointed).
-      { title: "Money", href: "/provider/money", icon: DollarSign },
+      { title: "Money", i18nKey: "nav.money", href: "/provider/money", icon: DollarSign },
     ],
   },
   {
     label: "Account",
+    labelKey: "groups.account",
     items: [
       // C9: "Profile" entry RETIRED — the profile page lives as Settings' FIRST tab
       // (settings.tsx lazy-mounts it embedded; Settings still defaults to its own content,
       // the actionable verification/preferences surface). /provider/profile redirects to
       // /provider/settings?tab=profile.
-      { title: "Settings", href: "/provider/settings", icon: Settings },
+      { title: "Settings", i18nKey: "nav.settings", href: "/provider/settings", icon: Settings },
       // Playbook (formerly Resources, /provider/resources → /provider/playbook): rebuilt as
       // real, written-in-the-page content grounded in how approval/booking/payouts/availability
       // actually work in this codebase (no invented guides, videos, or downloads — §13). Now
       // that its content is honest it rejoins the nav; it's still not one of the NINE modules,
       // so it lives here in Account rather than in Work/Business.
-      { title: "Playbook", href: "/provider/playbook", icon: BookOpen },
+      { title: "Playbook", i18nKey: "nav.playbook", href: "/provider/playbook", icon: BookOpen },
     ],
   },
 ];
 
 export function ProviderSidebar() {
   const [location] = useLocation();
+  const { t } = useTranslation("provider");
   const { user, logout } = useAuth();
 
   const initials = initialsFromUser(user);
@@ -120,7 +132,7 @@ export function ProviderSidebar() {
   const displayName =
     user?.businessName ||
     `${user?.firstName ?? ""} ${user?.lastName ?? ""}`.trim() ||
-    "Service Provider";
+    t("sidebar.defaultDisplayName");
 
   return (
     <Sidebar collapsible="icon" className="bg-white" style={{ borderRight: "1px solid #E8E8E2" }}>
@@ -151,7 +163,7 @@ export function ProviderSidebar() {
               className="text-[10px] font-semibold uppercase tracking-[1.2px] px-2.5 mb-1 h-auto group-data-[collapsible=icon]:hidden"
               style={{ color: "#AEAEA6" }}
             >
-              {group.label}
+              {t(group.labelKey, group.label)}
             </SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
@@ -165,7 +177,7 @@ export function ProviderSidebar() {
                       <SidebarMenuButton
                         asChild
                         isActive={isActive}
-                        tooltip={item.title}
+                        tooltip={t(item.i18nKey, item.title)}
                         className={
                           isActive
                             ? "bg-[rgba(232,85,85,0.08)] text-[#E85D55] font-semibold"
@@ -177,7 +189,7 @@ export function ProviderSidebar() {
                           data-testid={`nav-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
                         >
                           <item.icon className="w-4 h-4" style={{ opacity: isActive ? 1 : 0.7 }} />
-                          <span className="text-[13px]">{item.title}</span>
+                          <span className="text-[13px]">{t(item.i18nKey, item.title)}</span>
                         </Link>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
@@ -218,7 +230,7 @@ export function ProviderSidebar() {
           data-testid="button-provider-logout"
         >
           <LogOut className="w-4 h-4 mr-2 group-data-[collapsible=icon]:mr-0" />
-          <span className="group-data-[collapsible=icon]:hidden">Logout</span>
+          <span className="group-data-[collapsible=icon]:hidden">{t("sidebar.logout")}</span>
         </Button>
       </SidebarFooter>
     </Sidebar>
