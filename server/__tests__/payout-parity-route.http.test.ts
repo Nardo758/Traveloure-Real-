@@ -21,6 +21,10 @@
  *        must land in platform_fee ONLY — provider_earnings stays the plain recipe figure.
  *   R4 — missing/inactive concierge band: requireConciergeBookingRate must 500 honestly
  *        (actionable message, no booking row stamped) instead of charging a silent $0 fee.
+ *   R5 — provider-owned service (users.role = 'service_provider'): the route must take the
+ *        isProviderRole → resolveCommissionRates({source:'provider', providerId}) branch;
+ *        the stamp must equal the provider-source recipe, not the expert default band
+ *        (the historical role-string misrouting bug).
  *
  * STRIPE CONTRACT (both legs accepted; the stamp happens BEFORE Stripe either way):
  *   • 503 payment_unavailable (CI stub key, ruling 38's declared-unavailable negative
@@ -48,6 +52,7 @@ const PASSWORD = "TestPass123!";
 const RUN = crypto.randomUUID().slice(0, 8);
 const ids = {
   expert: `ppr-${RUN}-expert`,
+  provider: `ppr-${RUN}-provider`,
   travelerEmail: `ppr-${RUN}-trav@t.test`,
 };
 const createdServiceIds: string[] = [];
@@ -91,12 +96,17 @@ function api(path: string, method: string, body?: unknown) {
   });
 }
 
-/** Fixture service owned by the expert; no category ⇒ the route's "default" fee-category fallback. */
-async function makeService(price: string, revenueShareRate?: string, expertOfferingTypeId?: string): Promise<string> {
+/** Fixture service; no category ⇒ the route's "default" fee-category fallback. Owner defaults to the expert. */
+async function makeService(
+  price: string,
+  revenueShareRate?: string,
+  expertOfferingTypeId?: string,
+  ownerId: string = ids.expert,
+): Promise<string> {
   const id = `ppr-${RUN}-svc-${crypto.randomUUID().slice(0, 6)}`;
   await db.execute(sql`
     INSERT INTO provider_services (id, user_id, service_name, description, price, status, approval_status, revenue_share_rate, expert_offering_type_id)
-    VALUES (${id}, ${ids.expert}, ${`Payout parity route service ${RUN}`}, 'fixture', ${price}, 'active', 'approved', ${revenueShareRate ?? null}, ${expertOfferingTypeId ?? null})
+    VALUES (${id}, ${ownerId}, ${`Payout parity route service ${RUN}`}, 'fixture', ${price}, 'active', 'approved', ${revenueShareRate ?? null}, ${expertOfferingTypeId ?? null})
   `);
   createdServiceIds.push(id);
   return id;
@@ -123,9 +133,18 @@ function safeParseRate(value: any, fallback: number): number {
  * default fee category, expert-band resolution, per-service override via safeParseRate,
  * insurance deducted from the expert's gross share. No fee literals.
  */
-async function recipeExpectation(price: number, revenueShareRate?: string) {
+async function recipeExpectation(
+  price: number,
+  revenueShareRate?: string,
+  owner:
+    | { source: "expert"; expertId?: string }
+    | { source: "provider"; providerId: string } = { source: "expert" },
+) {
   const feeCategory = "default";
-  const rates = await resolveCommissionRates({ category: feeCategory, expertId: ids.expert });
+  const rates =
+    owner.source === "provider"
+      ? await resolveCommissionRates({ source: "provider", providerId: owner.providerId })
+      : await resolveCommissionRates({ category: feeCategory, expertId: owner.expertId ?? ids.expert });
   const expertShareRate = safeParseRate(revenueShareRate, rates.expertShareRate);
   const insuranceFeeAmt = calcInsuranceFee(price, rates, feeCategory);
   const netExpertEarningsAmt = price * expertShareRate - insuranceFeeAmt;
@@ -199,10 +218,16 @@ before(async () => {
   travelerCookie = setCookie!.split(";")[0];
   travelerId = ((await reg.json()) as any).user.id;
 
-  // Expert (service owner) — direct fixture insert, same posture as the db suite.
+  // Service owners — direct fixture inserts, same posture as the db suite. The provider row
+  // carries the canonical stored role string 'service_provider' (shared/roles.ts) so the route's
+  // isProviderRole branch fires for R5, PLUS a per-expert EXP-OVR override: the correct
+  // provider-source resolution ({source:'provider', providerId}) never passes expertId so the
+  // override is IGNORED, while the historical misroute ({category, expertId}) would apply it —
+  // that asymmetry is R3's discriminator (live bands are otherwise all 0.25, indistinguishable).
   await db.execute(sql`
-    INSERT INTO users (id, email, first_name, last_name, role)
-    VALUES (${ids.expert}, ${`ppr-${RUN}-expert@t.test`}, 'PPR', 'Expert', 'expert')
+    INSERT INTO users (id, email, first_name, last_name, role, commission_override_expert_share_percent)
+    VALUES (${ids.expert}, ${`ppr-${RUN}-expert@t.test`}, 'PPR', 'Expert', 'expert', NULL),
+           (${ids.provider}, ${`ppr-${RUN}-provider@t.test`}, 'PPR', 'Provider', 'service_provider', 90)
   `);
 });
 
@@ -223,7 +248,7 @@ after(async () => {
     await db.execute(sql`DELETE FROM content_registry WHERE content_id = ${id}`).catch(() => {});
     await db.execute(sql`DELETE FROM provider_services WHERE id = ${id}`).catch(() => {});
   }
-  await db.execute(sql`DELETE FROM users WHERE id = ${ids.expert}`).catch(() => {});
+  await db.execute(sql`DELETE FROM users WHERE id IN (${ids.expert}, ${ids.provider})`).catch(() => {});
   await db.execute(sql`DELETE FROM users WHERE email = ${ids.travelerEmail}`).catch(() => {});
 });
 
@@ -349,4 +374,35 @@ test("R4: missing concierge band ⇒ requireConciergeBookingRate 500s honestly, 
     SELECT is_active FROM fee_bands WHERE band_key = 'expert_concierge_booking'
   `);
   assert.equal((restored.rows[0] as any)?.is_active, true, "band must be reactivated after the gate test");
+});
+test("R5: provider-owned service routes through the provider-source branch (isProviderRole)", async () => {
+  const price = 240;
+  const serviceId = await makeService(price.toFixed(2), undefined, undefined, ids.provider);
+  const expected = await recipeExpectation(price, undefined, { source: "provider", providerId: ids.provider });
+  assert.ok(Number(expected.stamped) > 0, "provider-source recipe expectation must be a positive payout");
+
+  // Belt-and-braces discriminator: the provider user carries a per-expert EXP-OVR override
+  // (90%). The correct provider-source branch omits expertId so the override is IGNORED; the
+  // historical misroute ({category, expertId: ownerId}) would APPLY it. If the two figures were
+  // equal, this test could not distinguish the branches and the parity claim would be vacuous.
+  const misrouted = await recipeExpectation(price, undefined, { source: "expert", expertId: ids.provider });
+  assert.notEqual(
+    expected.stamped,
+    misrouted.stamped,
+    "discriminator collapsed: provider-source figure equals the misrouted expert-branch figure — fix the fixture override",
+  );
+
+  const { row } = await checkoutThroughRoute(serviceId);
+  assert.equal(
+    Number(row.provider_earnings).toFixed(2),
+    expected.stamped,
+    "the route's stamped figure for a service_provider-owned item has DRIFTED from the provider-source recipe (isProviderRole branch misrouting?)",
+  );
+  assert.equal(Number(row.insurance_fee).toFixed(2), expected.insurance, "insurance_fee stamp must match the provider-source recipe");
+  assert.equal(Number(row.platform_fee).toFixed(2), expected.platformFee, "platform_fee stamp must match the provider-source recipe");
+  assert.equal(
+    (Number(row.provider_earnings) + Number(row.platform_fee)).toFixed(2),
+    Number(row.total_amount).toFixed(2),
+    "earnings + platform take must reconstruct the charged amount",
+  );
 });
