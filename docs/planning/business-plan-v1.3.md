@@ -427,11 +427,18 @@ Dr. Cash/Stripe Account        $50
    Cr. Unused Credits Liability     $50
 ```
 
-When Credits Used (Expert Service with Credits):
+When an Expert Service Is Booked (fee-on-top + commission-deducted — F1 ruling, Jul 26 2026):
+
+> **Model of record** (ratified F1 ruling, `docs/backoffice/REVENUE_MODEL.md`): the buyer pays the
+> list price **plus** a platform service fee shown as its own line at checkout, and the platform
+> **also** deducts its commission from the expert's side. On a $P expert_standard item, the buyer
+> pays **1.25P**, the expert earns **0.75P**, and the platform keeps **0.50P** (~40% of gross).
+
 ```
-Dr. Unused Credits Liability   $10
-   Cr. Platform Revenue              $2.50  (25% commission)
-   Cr. Expert Payouts Payable        $7.50  (75% to expert)
+Example: $10 list-price expert service (expert_standard 25/75)
+Dr. Cash/Stripe Account        $12.50  (buyer pays list + 25% service fee on top)
+   Cr. Platform Revenue              $5.00  ($2.50 fee-on-top + $2.50 commission deducted)
+   Cr. Expert Payouts Payable        $7.50  (75% of list price)
 ```
 
 When Concierge Tier Charged (monthly):
@@ -448,9 +455,8 @@ Dr. Cash/Stripe Account        $100   (booking value)
 ```
 
 **Credit Purchase Example: $50**
-- Platform Revenue: $50 (immediate)
-- Expert Services: $37.50 (paid from credit pool)
-- Platform Profit: $12.50 (25% retained)
+- Cash received: $50 (immediate; recognized as credits are consumed)
+- When spent on expert services, the fee-on-top + commission-deducted model above applies: the expert receives 75% of each item's list price, and the platform keeps the service fee plus the deducted commission (F1 ruling).
 - Unused Credits: Future revenue recognition issue
 
 **Concierge Power-User Tier: $9/month (or annual)**
@@ -489,6 +495,14 @@ The tier is priced *net of platform cost* — it includes only cost-bounded bene
 ### 4.8 Fee Architecture & Admin Controls
 
 **Governing principle:** Every fee on the platform is **admin-configurable**. The values below are *approved defaults* that ship out of the box; the Admin Fee Management console can override any of them — globally, by market, by provider tier, or by individual expert/provider — without a code change or redeploy. No fee is hard-coded in application logic; all rates resolve from a single settings store with the defaults below as fallbacks.
+
+> **Fee semantics (F1 ruling, Jul 26 2026 — `docs/backoffice/REVENUE_MODEL.md`):** for expert
+> service bookings via cart checkout, the platform service fee is charged **on top of** the list
+> price (disclosed as a separate line at checkout and on /pricing) **and** the commission is
+> deducted from the earner's side. The commission percentages below define the **split** of the
+> list price; they do not mean the fee comes out of the price. Net effect on a $P expert_standard
+> booking: buyer pays 1.25P, expert earns 0.75P, platform keeps 0.50P. Any change to this
+> fee-on-top + commission-deducted model requires a new ruling.
 
 **Fee schedule (approved defaults — admin-overridable):**
 
