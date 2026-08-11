@@ -6267,7 +6267,7 @@ router.post("/api/admin/leads/:expertRequestId/assign", isAuthenticated, async (
     if (!row.assigned_expert_id) return res.status(400).json({ error: "No expert assigned to this request" });
     if (!row.trip_id) return res.status(400).json({ error: "Request has no associated trip" });
 
-    const assignment = await db.transaction(async (tx) => {
+    const { assignment, wasCreated } = await db.transaction(async (tx) => {
       // Lock the expert_requests row to serialise concurrent confirms
       await tx.execute(sql`SELECT id FROM expert_requests WHERE id = ${requestId} FOR UPDATE`);
 
@@ -6279,7 +6279,7 @@ router.post("/api/admin/leads/:expertRequestId/assign", isAuthenticated, async (
         ))
         .limit(1);
 
-      if (existing) return existing;
+      if (existing) return { assignment: existing, wasCreated: false };
 
       // Insert; ON CONFLICT DO NOTHING handles the rare concurrent-insert race
       const [created] = await tx.insert(tripExpertAdvisors)
@@ -6306,8 +6306,21 @@ router.post("/api/admin/leads/:expertRequestId/assign", isAuthenticated, async (
         UPDATE expert_requests SET status = 'assigned', assigned_at = NOW() WHERE id = ${requestId}
       `);
 
-      return result;
+      return { assignment: result, wasCreated: Boolean(created) };
     });
+
+    // Task 1113: notify the expert the moment they're assigned a trip. Fires only when a NEW
+    // advisor row was created (idempotent re-confirms stay silent). Non-fatal — the assignment
+    // itself must still succeed even if the notification insert fails.
+    if (wasCreated && assignment) {
+      try {
+        const { createExpertAssignmentNotification, getTripLabel } = await import("../services/booking-actions.service");
+        const tripLabel = await getTripLabel(row.trip_id);
+        await createExpertAssignmentNotification(row.assigned_expert_id, row.trip_id, tripLabel);
+      } catch (notifyErr) {
+        console.error("Failed to notify expert of trip assignment:", notifyErr);
+      }
+    }
 
     return res.json({ assignment });
   }
