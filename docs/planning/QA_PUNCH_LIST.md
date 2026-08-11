@@ -95,6 +95,36 @@ the cart IS the design, not a gap. CLOSED.
 
 ## Open — build items
 
+**P0 — ruling 53's publish gate sits where experts DON'T publish; the two paths that actually
+take an expert listing live are UNGATED (found Aug 11, 2026 by the R2 lane; verified in code).**
+Ruling 53 records verify-to-publish as enforced. It is enforced — but only on
+`POST`/`PATCH /api/provider/services` when the request carries `status:"active"`, and **the expert
+UI never sends that**: `ServiceForm.tsx`'s Submit-for-Approval sets `approvalStatus:"submitted"` +
+`status:"draft"` (the expert branch), so `checkPublishVerificationGate` is unreachable through the
+button experts actually use. It has exactly two call sites (`server/routes.ts:2366`, `:2539`).
+Public visibility requires **both** `approval_status='approved'` AND `status='active'`
+(storage.ts:1649, :1994; storefront.routes.ts:557). The two paths that produce that state:
+1. **ADMIN APPROVAL — the real hole.** `storage.approveProviderServiceListing`
+   (server/storage.ts:3223) sets `approvalStatus:"approved"` **and** `status:"active"` in one
+   update, with no verification check anywhere. This is the canonical way an expert listing goes
+   live, and an admin approving an UNVERIFIED expert's listing publishes it — exactly the outcome
+   ruling 53 exists to prevent.
+2. **The owner's own Activate toggle.** `PATCH /api/expert/services/:id/status`
+   (server/routes.ts:4521) accepts `status:"active"`, is ownership-checked but NOT verification-
+   checked, and calls `storage.toggleServiceStatus` directly. Narrower (it only re-lives an
+   already-approved listing, e.g. one paused after approval or after verification lapsed) but it
+   is a second ungated door.
+**Ledger consequence (DECISIONS.md's own rule — a ledger-vs-code disagreement is a finding, never
+a silent divergence):** ruling 53 as appended **overclaims**. It describes the gate's placement
+accurately but implies an enforcement completeness the code does not have. Whatever fix lands must
+append an amending ruling that states the true enforcement boundary; do not edit 53.
+**[DM] needed — this is a policy edge, not just a code fix:** when an admin approves a listing from
+an unverified expert, should the approval be (a) REFUSED with a typed reason, (b) allowed but
+landing `approved` + `status:'draft'`/`paused` so it is not publicly live until the expert verifies
+(recommended — it preserves the admin's review work and lets go-live follow verification
+automatically), or (c) allowed with an explicit admin override that is recorded? The Activate
+toggle should call the same shared helper regardless of which is chosen.
+
 **P1 — the D3 deliverable is LINK-delivery, not protected delivery (verified Aug 10, 2026;
 Service Fundamentals dispatch v1.2 §4).** `GET /api/service-bookings/:id/deliverable` server-derives
 every entitlement condition correctly, then returns **the raw `serviceFile` string verbatim**
