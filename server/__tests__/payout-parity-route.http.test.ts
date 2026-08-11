@@ -468,3 +468,46 @@ test("R6: fee-preview total equals subtotal + platform fee + concierge fee for a
   // Clean up the cart so subsequent tests start clean.
   await db.execute(sql`DELETE FROM cart_items WHERE user_id = ${travelerId}`);
 });
+
+test("R7: fee-preview with a concierge item and a missing band ⇒ machine-readable 503, never a $0 fee", async () => {
+  const price = 110;
+  const offeringTypeId = await bookingConciergeOfferingTypeId();
+  const serviceId = await makeService(price.toFixed(2), undefined, offeringTypeId);
+
+  // Same misconfigured-DB posture as R4, but on the PREVIEW surface: the broken config must
+  // surface BEFORE the traveler hits "Pay", not as a silent $0 concierge fee.
+  await db.execute(sql`UPDATE fee_bands SET is_active = false WHERE band_key = 'expert_concierge_booking'`);
+  try {
+    await db.execute(sql`DELETE FROM cart_items WHERE user_id = ${travelerId}`);
+    const addRes = await api("/api/cart", "POST", { serviceId });
+    assert.equal(addRes.status, 201, `POST /api/cart must accept the fixture service: ${await addRes.clone().text()}`);
+
+    const previewRes = await api("/api/cart/fee-preview", "GET");
+    const bodyText = await previewRes.text();
+    assert.equal(
+      previewRes.status,
+      503,
+      `fee-preview with a concierge item and a missing band must 503 (parallel to R4's checkout posture), got ${previewRes.status}: ${bodyText}`,
+    );
+    const body = JSON.parse(bodyText);
+    assert.equal(
+      body.error,
+      "concierge_fee_unconfigured",
+      "the 503 must carry the machine-readable code the cart UI keys off",
+    );
+    assert.ok(String(body.message ?? "").length > 0, "the 503 must carry an actionable human-readable message");
+  } finally {
+    await db.execute(sql`UPDATE fee_bands SET is_active = true WHERE band_key = 'expert_concierge_booking'`);
+    await db.execute(sql`DELETE FROM cart_items WHERE user_id = ${travelerId}`).catch(() => {});
+  }
+
+  // Sanity: with the band restored, the SAME cart previews cleanly with a positive concierge fee
+  // — proving the 503 above was the band posture, not some unrelated breakage.
+  const addRes2 = await api("/api/cart", "POST", { serviceId });
+  assert.equal(addRes2.status, 201, `POST /api/cart must accept the fixture service after restore: ${await addRes2.clone().text()}`);
+  const okRes = await api("/api/cart/fee-preview", "GET");
+  assert.equal(okRes.status, 200, `fee-preview must recover once the band is restored, got ${okRes.status}: ${await okRes.clone().text()}`);
+  const ok = await okRes.json() as { conciergeFeeTotal: number };
+  assert.ok(ok.conciergeFeeTotal > 0, "restored band must yield a positive concierge fee in the preview");
+  await db.execute(sql`DELETE FROM cart_items WHERE user_id = ${travelerId}`);
+});

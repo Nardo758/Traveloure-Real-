@@ -324,7 +324,7 @@ export default function ItineraryPage() {
     staleTime: 30000,
   });
 
-  const { data: feePreview, isLoading: feePreviewLoading } = useQuery<{
+  const { data: feePreview, isLoading: feePreviewLoading, error: feePreviewError } = useQuery<{
     subtotal: number;
     platformFeeTotal: number;
     conciergeFeeTotal: number;
@@ -334,6 +334,11 @@ export default function ItineraryPage() {
     queryKey: ["/api/cart/fee-preview"],
     staleTime: 30 * 1000,
   });
+  // Task 1108: the server now answers 503 `concierge_fee_unconfigured` when the cart holds a
+  // Booking Concierge item but the fee band is misconfigured — surface that as an actionable
+  // banner instead of a misleadingly low total (checkout would hard-fail on the same config).
+  const conciergeFeeUnavailable =
+    feePreviewError != null && String((feePreviewError as Error).message ?? "").includes("concierge_fee_unconfigured");
 
   if (isLoading) {
     return (
@@ -743,6 +748,18 @@ export default function ItineraryPage() {
                           <span className="text-sm text-muted-foreground">Subtotal</span>
                           <span className="text-sm font-semibold text-foreground" data-testid="text-total-pending">${pendingTotal}</span>
                         </div>
+                        {conciergeFeeUnavailable && (
+                          <div
+                            className="flex items-start gap-2 p-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800"
+                            data-testid="banner-concierge-fee-unavailable"
+                          >
+                            <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                            <p className="text-xs text-amber-700 dark:text-amber-300">
+                              The Booking Concierge fee can't be calculated right now, so we can't show an
+                              accurate total. Please try again shortly or contact support before checking out.
+                            </p>
+                          </div>
+                        )}
                         {pendingTotal > 0 && feeAmount !== null && totalWithFees !== null && (
                           <>
                             <div className="flex items-center justify-between">
